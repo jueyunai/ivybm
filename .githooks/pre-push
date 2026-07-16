@@ -1,0 +1,21 @@
+#!/bin/sh
+
+set -eu
+
+if [ "${IVYBM_ALLOW_MAIN_PUSH:-0}" = "1" ]; then
+  printf '%s\n' "WARNING: IVYBM_ALLOW_MAIN_PUSH=1，允许紧急推送 main；请事后补 PR 或记录。" >&2
+  exit 0
+fi
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    printf '%s\n' "ERROR: IVYBM 禁止直接 push main。" >&2
+    printf '%s\n' "请推送 Task 短分支并通过 PR 合并：" >&2
+    printf '%s\n' "  git switch -c feat/task-<编号>-<简述>" >&2
+    printf '%s\n' "  git push -u origin HEAD" >&2
+    printf '%s\n' "仅在用户明确授权的紧急情况下使用 IVYBM_ALLOW_MAIN_PUSH=1。" >&2
+    exit 1
+  fi
+done
+
+exit 0

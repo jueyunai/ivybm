@@ -38,3 +38,9 @@ references/
 - [`docs/plans/2026-07-16-一期开发实施计划.md`](docs/plans/2026-07-16-一期开发实施计划.md)
 
 两人协作分支和 PR 规范见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+
+编码代理规则见 [`AGENTS.md`](AGENTS.md)；Claude Code 入口见 [`CLAUDE.md`](CLAUDE.md)。首次 clone 后运行：
+
+```bash
+bash scripts/install-git-hooks.sh
+```

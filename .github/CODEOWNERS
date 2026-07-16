@@ -1,0 +1,11 @@
+# 免费私有仓库下 CODEOWNERS 只用于自动请求 review，不能替代 branch protection。
+* @jueyunai @xuemusi
+
+# 高频冲突和共享接口文件必须由双方关注。
+/src/payload.config.ts @jueyunai @xuemusi
+/src/migrations/ @jueyunai @xuemusi
+/src/collections/Leads.ts @jueyunai @xuemusi
+/src/collections/Conversations.ts @jueyunai @xuemusi
+/src/collections/Messages.ts @jueyunai @xuemusi
+/src/collections/GeneratedContents.ts @jueyunai @xuemusi
+/src/collections/PublishJobs.ts @jueyunai @xuemusi
