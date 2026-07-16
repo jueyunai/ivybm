@@ -36,3 +36,5 @@ references/
 - [`docs/requirements/一期需求说明文档.md`](docs/requirements/一期需求说明文档.md)
 - [`docs/architecture/一期技术选型与部署架构规划.md`](docs/architecture/一期技术选型与部署架构规划.md)
 - [`docs/plans/2026-07-16-一期开发实施计划.md`](docs/plans/2026-07-16-一期开发实施计划.md)
+
+两人协作分支和 PR 规范见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
