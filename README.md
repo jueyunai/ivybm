@@ -30,3 +30,9 @@ references/
 - 不提交数据库、上传文件、备份、浏览器日志和构建产物。
 
 项目进度见 [`docs/开发进度.md`](docs/开发进度.md)。
+
+一期执行依据：
+
+- [`docs/requirements/一期需求说明文档.md`](docs/requirements/一期需求说明文档.md)
+- [`docs/architecture/一期技术选型与部署架构规划.md`](docs/architecture/一期技术选型与部署架构规划.md)
+- [`docs/plans/2026-07-16-一期开发实施计划.md`](docs/plans/2026-07-16-一期开发实施计划.md)
