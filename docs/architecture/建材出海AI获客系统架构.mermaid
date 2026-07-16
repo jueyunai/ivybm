@@ -1,0 +1,218 @@
+%% 建材出海 AI 获客与运营系统架构图 v2.1
+%% 基于 2026-06-16 初次沟通 + 2026-06-17 需求沟通会
+graph TB
+
+    subgraph "前端获客渠道层"
+        A1[谷歌SEO搜索<br/>关键词排第3位]
+        A2[Facebook<br/>广告待启动]
+        A3[LinkedIn领英<br/>主动开发]
+        A4[Instagram]
+        A5[WhatsApp<br/>客户多但疏于跟进]
+        A6[YouTube<br/>仅展示]
+        A7[TikTok]
+    end
+
+    subgraph "目标市场定位"
+        M1[中东: 迪拜/沙特/卡塔尔<br/>双曲铝单板当地无法生产]
+        M2[美国/澳洲等<br/>经济发达区域]
+        M3[不重点开发<br/>印度/巴基斯坦等]
+    end
+
+    subgraph "官网展示层 - 铝单板单品独立站"
+        B1[ToB官网<br/>仅展示不做电商]
+        B2[企业实力 + 工厂实拍图]
+        B3[项目案例效果图<br/>AI补充生成/放大标注]
+        B4[首页/产品/案例/关于/联系]
+        B5[图册+技术参数下载入口]
+        B6[多语言: 英文+阿拉伯语<br/>不开放中文]
+        B7[甲方自有域名+自有服务器<br/>完全归甲方所有]
+        B8[官网CMS后台<br/>产品/案例/参数/文章可维护]
+        B9[SEO+GEO关键词体系<br/>News/Blog持续更新]
+        B10[即时联系入口<br/>WhatsApp/社媒私信/AI客服]
+    end
+
+    subgraph "AI智能客服层"
+        C1[AI客服机器人<br/>自动回复简单问题]
+        C2[意向筛选引擎<br/>高/中/低意向]
+        C3[多语言支持<br/>英文/阿拉伯语]
+        C4[多渠道接入<br/>网站/WhatsApp/FB/LinkedIn]
+        C5[客户信息采集]
+        C6[业务知识库/话术库<br/>手册/参数/FAQ/历史聊天]
+    end
+
+    subgraph "社媒消息统一接收层"
+        S1[多平台消息聚合<br/>FB/WhatsApp/LinkedIn/IG]
+        S2[AI自动回复初步筛选]
+        S3[高意向转人工跟进]
+        S4[统一回复工作台<br/>多账号/多语言消息]
+    end
+
+    subgraph "AI内容生产层"
+        D1[AI图片生成<br/>GPT]
+        D2[AI视频剪辑<br/>豆包]
+        D3[AI文案生成<br/>多语言]
+        D4[多平台内容适配]
+        D5[素材库管理]
+    end
+
+    subgraph "社媒自动化运营层"
+        E1[社媒发布引擎<br/>脚本化发布/减少接口依赖]
+        E2[多账号管理<br/>多语言账号]
+        E3[定时发布/一键分发]
+        E4[数据分析反馈]
+        E5[账号/IP/风控策略<br/>养号/授权/验证码验证]
+    end
+
+    subgraph "客户管理层 - 飞书CRM"
+        F1[客户信息库<br/>自动录入]
+        F2[客户画像生成]
+        F3[跟进记录管理]
+        F4[自动提醒系统<br/>新增自动提醒跟单人员]
+        F5[客户分级提醒<br/>A类每周/B类两周/C类15天]
+        F6[生日等场景提醒]
+        F7[人工录入入口<br/>业务员/跟单补录]
+        F8[渠道归因/互动记录<br/>来源/活动/关键词]
+    end
+
+    subgraph "业务人员层"
+        G1[跟单人员]
+        G2[销售团队<br/>1人1年2单覆盖成本]
+        G3[运营/兼职人员<br/>提供素材+审核内容]
+    end
+
+    subgraph "AI核心引擎 - 多模型整合"
+        H1[大语言模型<br/>Claude/Gemini/豆包按任务调度]
+        H2[图像生成模型<br/>GPT]
+        H3[视频生成模型<br/>豆包]
+        H4[数据分析引擎]
+    end
+
+    %% 前端渠道到官网
+    A1 --> B1
+    A2 --> B1
+    A3 --> B1
+    A4 --> B1
+    A5 --> B1
+    A6 --> B1
+    A7 --> B1
+
+    %% 目标市场定位
+    M1 -.-> B1
+    M2 -.-> B1
+    M3 -.-> C2
+
+    %% 官网模块到官网
+    B2 --> B1
+    B3 --> B1
+    B4 --> B1
+    B5 --> B1
+    B6 --> B1
+    B7 -.-> B1
+    B8 --> B1
+    B9 --> B1
+    B10 --> C1
+
+    %% 官网到AI客服
+    B1 --> C1
+
+    %% 社媒渠道消息统一接收
+    A2 --> S1
+    A3 --> S1
+    A4 --> S1
+    A5 --> S1
+    S1 --> S4
+    S4 --> S2
+    S2 --> S3
+    S2 --> C2
+
+    %% AI客服筛选流程
+    C6 --> C1
+    C6 --> C2
+    C1 --> C2
+    C2 --> C3
+    C3 --> C4
+    C4 --> C5
+
+    %% 客户信息到CRM
+    C5 --> F1
+    S3 --> F1
+    G1 --> F7
+    G2 --> F7
+    F7 --> F1
+
+    %% CRM内部流转
+    F1 --> F2
+    F1 --> F3
+    F1 --> F8
+    F2 --> F5
+    F3 --> F4
+    F4 --> F5
+    F4 --> F6
+
+    %% CRM到业务人员
+    F4 --> G1
+    F5 --> G1
+    F2 --> G2
+
+    %% 运营人员到内容生产
+    G3 --> D5
+    D5 --> D1
+    D5 --> D2
+    D5 --> D3
+
+    %% 内容生产到社媒发布
+    D1 --> D4
+    D2 --> D4
+    D3 --> D4
+    C6 --> D3
+    D4 --> E1
+    D4 --> B8
+    E5 --> E1
+
+    %% 社媒发布到各平台
+    E1 --> E2
+    E2 --> E3
+    E3 --> A2
+    E3 --> A3
+    E3 --> A4
+    E3 --> A5
+    E3 --> A6
+    E3 --> A7
+
+    %% 数据分析反馈
+    E3 --> E4
+    E4 --> D5
+    E4 --> F8
+
+    %% AI引擎支持
+    H1 --> C1
+    H1 --> D3
+    H1 --> F2
+    H1 --> S2
+    H2 --> D1
+    H3 --> D2
+    H4 --> E4
+    H4 --> F5
+    H4 --> F8
+
+    %% 样式定义
+    classDef channelStyle fill:#e1f5ff,stroke:#01579b,stroke-width:2px,color:#000
+    classDef marketStyle fill:#fce4ec,stroke:#c2185b,stroke-width:2px,color:#000
+    classDef websiteStyle fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
+    classDef aiStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000
+    classDef socialStyle fill:#ede7f6,stroke:#4527a0,stroke-width:2px,color:#000
+    classDef contentStyle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px,color:#000
+    classDef crmStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#000
+    classDef userStyle fill:#ffe0b2,stroke:#e65100,stroke-width:2px,color:#000
+    classDef engineStyle fill:#e0e0e0,stroke:#212121,stroke-width:3px,color:#000
+
+    class A1,A2,A3,A4,A5,A6,A7 channelStyle
+    class M1,M2,M3 marketStyle
+    class B1,B2,B3,B4,B5,B6,B7,B8,B9,B10 websiteStyle
+    class C1,C2,C3,C4,C5,C6 aiStyle
+    class S1,S2,S3,S4 socialStyle
+    class D1,D2,D3,D4,D5 contentStyle
+    class E1,E2,E3,E4,E5 contentStyle
+    class F1,F2,F3,F4,F5,F6,F7,F8 crmStyle
+    class G1,G2,G3 userStyle
+    class H1,H2,H3,H4 engineStyle

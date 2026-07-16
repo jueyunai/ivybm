@@ -1,0 +1,55 @@
+# IDE / 编辑器配置
+.mcp.json
+.codex/
+.trae/
+.codebuddy/
+.kiro/
+
+# macOS / 编辑器临时文件
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 环境变量、密钥和证书
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Node.js / Next.js / Payload
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# 本地运行数据和上传文件
+uploads/
+data/
+backups/
+*.sqlite
+*.sqlite3
+
+# 临时文件、测试与浏览器日志
+tmp/
+.playwright-cli/
+playwright-report/
+test-results/
+*.tmp
+*.log
+
+# 客户商务与原始材料不进入源码仓库
+private/
+contracts/
+quotes/
+customer-inputs/
