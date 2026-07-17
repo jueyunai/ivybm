@@ -45,7 +45,7 @@ describe('PostgreSQL foundation', () => {
       "SELECT vector_dims('[0.1,0.2,0.3]'::vector)::int AS dimensions",
     )
 
-    expect(server.rows[0]?.serverVersion).toMatch(/^18\.4(?:\.|$)/)
+    expect(server.rows[0]?.serverVersion).toMatch(/^18\.4(?:[.\s]|$)/)
     expect(extension.rows[0]?.version).toBe('0.8.5')
     expect(vector.rows[0]?.dimensions).toBe(3)
   })
