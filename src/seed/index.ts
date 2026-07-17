@@ -56,9 +56,11 @@ const seed = async (): Promise<void> => {
 
     payload.logger.info(`Created demo administrator: ${email}`)
   } finally {
-    await payload.db.pool.end()
     await payload.destroy()
   }
 }
 
 await seed()
+
+// Payload 3.86 leaves its PostgreSQL pool active after destroy(). This is a one-shot CLI.
+process.exit(0)
