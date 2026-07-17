@@ -1,6 +1,6 @@
 services:
   db:
-    image: pgvector/pgvector:0.8.5-pg17-bookworm
+    image: pgvector/pgvector:0.8.5-pg17-bookworm@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ivybm}

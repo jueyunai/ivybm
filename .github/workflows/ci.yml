@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 15
     services:
       db:
-        image: pgvector/pgvector:0.8.5-pg17-bookworm
+        image: pgvector/pgvector:0.8.5-pg17-bookworm@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0
         env:
           POSTGRES_DB: ivybm_ci
           POSTGRES_PASSWORD: postgres
@@ -37,6 +37,8 @@ jobs:
       PAYLOAD_SECRET: ci-build-only-secret-at-least-32-characters
       NEXT_PUBLIC_SERVER_URL: http://localhost:3000
       APP_VERSION: ci
+      SEED_ADMIN_EMAIL: admin@example.invalid
+      SEED_ADMIN_PASSWORD: ci-demo-admin-password
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -68,6 +70,14 @@ jobs:
 
       - name: Apply database migrations
         run: pnpm db:migrate
+
+      - name: Reset test database
+        run: pnpm db:reset:test
+
+      - name: Seed demo data twice
+        run: |
+          pnpm db:seed
+          pnpm db:seed
 
       - name: Database integration tests
         run: pnpm test:integration -- tests/integration/database.test.ts
