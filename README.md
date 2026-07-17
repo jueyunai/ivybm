@@ -8,8 +8,35 @@
 
 - 已从前期资料目录迁入需求基线、技术架构和必要调研文档。
 - 已将静态网站预览迁入 `references/website-prototype/`，仅作为 UI 和内容参考。
-- 正式应用工程尚未初始化。
-- 计划技术栈：Next.js、Payload CMS、PostgreSQL + pgvector、Docker Compose、1Panel OpenResty。
+- Task 1 正式应用工程已初始化，当前具备 Next.js 前台、Payload Admin、REST API、GraphQL API 和基础测试能力。
+- 当前技术栈：Next.js 16.2.6、Payload CMS 3.86.0、React 19.2.6、PostgreSQL Adapter、Node.js 24、pnpm 10.15.1。
+- 后续按实施计划继续接入 PostgreSQL + pgvector、Docker Compose、1Panel OpenResty 及业务模块。
+
+## 本地开发
+
+准备 Node.js 24、pnpm 10.15.1 和 PostgreSQL，然后执行：
+
+```bash
+cp .env.example .env
+pnpm install --frozen-lockfile
+pnpm dev
+```
+
+默认访问地址：
+
+- 前台：`http://localhost:3000/`
+- Payload Admin：`http://localhost:3000/admin`
+- REST API：`http://localhost:3000/api`
+- GraphQL API：`http://localhost:3000/api/graphql`
+
+提交前运行：
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test:unit
+pnpm build
+```
 
 ## 目录
 
@@ -21,6 +48,12 @@ docs/
   plans/          经确认的实施设计与计划
 references/
   website-prototype/  静态网站原型，仅供参考
+src/
+  app/            Next.js 前台、Payload Admin 与 API 路由
+  collections/    Payload Collections
+  lib/            共享服务与工具
+tests/
+  unit/           Vitest 单元测试
 ```
 
 ## 安全约定
