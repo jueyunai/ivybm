@@ -18,23 +18,39 @@ jobs:
     name: Quality gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      db:
+        image: pgvector/pgvector:0.8.5-pg17-bookworm@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0
+        env:
+          POSTGRES_DB: ivybm_ci
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ivybm_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ivybm_ci
       PAYLOAD_SECRET: ci-build-only-secret-at-least-32-characters
       NEXT_PUBLIC_SERVER_URL: http://localhost:3000
       APP_VERSION: ci
+      SEED_ADMIN_EMAIL: admin@example.invalid
+      SEED_ADMIN_PASSWORD: ci-demo-admin-password
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.15.1
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -51,6 +67,20 @@ jobs:
 
       - name: Unit tests
         run: pnpm test:unit
+
+      - name: Apply database migrations
+        run: pnpm db:migrate
+
+      - name: Reset test database
+        run: pnpm db:reset:test
+
+      - name: Seed demo data twice
+        run: |
+          pnpm db:seed
+          pnpm db:seed
+
+      - name: Database integration tests
+        run: pnpm test:integration -- tests/integration/database.test.ts
 
       - name: Production build
         run: pnpm build
