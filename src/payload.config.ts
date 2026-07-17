@@ -6,8 +6,15 @@ import { fileURLToPath } from 'url'
 import sharp from 'sharp'
 
 import { AuditLogs } from './collections/AuditLogs'
-import { Users } from './collections/Users'
+import { Downloads } from './collections/Downloads'
 import { Media } from './collections/Media'
+import { Pages } from './collections/Pages'
+import { Posts } from './collections/Posts'
+import { ProductCategories } from './collections/ProductCategories'
+import { Products } from './collections/Products'
+import { Projects } from './collections/Projects'
+import { Users } from './collections/Users'
+import { SiteSettings } from './globals/SiteSettings'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -24,8 +31,27 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [Users, Media, AuditLogs],
+  collections: [
+    Users,
+    Media,
+    AuditLogs,
+    Pages,
+    ProductCategories,
+    Products,
+    Projects,
+    Posts,
+    Downloads,
+  ],
   editor: lexicalEditor(),
+  globals: [SiteSettings],
+  localization: {
+    defaultLocale: 'en',
+    fallback: true,
+    locales: [
+      { code: 'en', label: 'English' },
+      { code: 'ar', label: 'العربية', rtl: true },
+    ],
+  },
   secret: payloadSecret || 'local-development-only-secret-change-me',
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
