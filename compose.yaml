@@ -1,6 +1,6 @@
 services:
   db:
-    image: pgvector/pgvector:0.8.5-pg17-bookworm@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0
+    image: pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ivybm}
@@ -15,7 +15,7 @@ services:
       retries: 5
       start_period: 20s
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     logging:
       driver: local

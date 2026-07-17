@@ -35,15 +35,43 @@ describe('PostgreSQL foundation', () => {
 
   it('has the vector extension available', async () => {
     const database = getDatabase()
-    const extension = await database.pool.query<{ installed: boolean }>(
-      "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') AS installed",
+    const server = await database.pool.query<{ serverVersion: string }>(
+      'SELECT current_setting(\'server_version\') AS "serverVersion"',
+    )
+    const extension = await database.pool.query<{ version: string }>(
+      "SELECT extversion AS version FROM pg_extension WHERE extname = 'vector'",
     )
     const vector = await database.pool.query<{ dimensions: number }>(
       "SELECT vector_dims('[0.1,0.2,0.3]'::vector)::int AS dimensions",
     )
 
-    expect(extension.rows[0]?.installed).toBe(true)
+    expect(server.rows[0]?.serverVersion).toMatch(/^18\.4(?:[.\s]|$)/)
+    expect(extension.rows[0]?.version).toBe('0.8.5')
     expect(vector.rows[0]?.dimensions).toBe(3)
+  })
+
+  it('orders stored vectors by cosine distance', async () => {
+    const database = getDatabase()
+    const client = await database.pool.connect()
+
+    await client.query('BEGIN')
+
+    try {
+      await client.query(
+        'CREATE TEMP TABLE vector_distance_probe (label text NOT NULL, embedding vector(3) NOT NULL) ON COMMIT DROP',
+      )
+      await client.query(
+        "INSERT INTO vector_distance_probe (label, embedding) VALUES ('nearest', '[1,0,0]'), ('farther', '[0,1,0]')",
+      )
+      const result = await client.query<{ label: string }>(
+        "SELECT label FROM vector_distance_probe ORDER BY embedding <=> '[1,0,0]'::vector LIMIT 1",
+      )
+
+      expect(result.rows).toEqual([{ label: 'nearest' }])
+    } finally {
+      await client.query('ROLLBACK')
+      client.release()
+    }
   })
 
   it('has applied at least one tracked migration', async () => {
