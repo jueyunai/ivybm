@@ -13,9 +13,14 @@
 
 ## PR 与 Review
 
-- `main` 开启分支保护：禁止直接 push，合并前必须 PR + CI（lint / typecheck / test）通过。
+- 仓库保持 private。当前 GitHub 免费私有仓库无法启用原生 branch protection，因此使用项目规则 + PR 流程 + CODEOWNERS + 本地 `pre-push` hook 形成多层约束。
+- 每位开发者首次 clone 后运行 `bash scripts/install-git-hooks.sh`。该 hook 会阻止本机直接 push `main`；紧急绕过必须获得明确授权，并使用 `IVYBM_ALLOW_MAIN_PUSH=1`，事后补 PR 或记录。
+- 不直接 push 到 `main`，一律走 PR。合并前本地运行 `pnpm lint && pnpm typecheck && pnpm test:unit`；涉及数据库 / 契约测试的任务额外运行对应命令，并把结果贴在 PR 描述中。
+- GitHub 管理员仍具有平台侧绕过能力，因此本方案不能等同于服务端 branch protection；若后续升级 GitHub Pro，再启用服务端强制门禁。
 - 两人互相 review 对方 PR；改动涉及共享 Collection（`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`PublishJobs`）或 `src/payload.config.ts` 时，必须等另一人 review 后才能合并——这几个文件改动频率高，是最容易冲突的地方。
 - PR 描述引用对应 Task 编号，方便对照实施计划里的验证步骤。
+
+本项目内的编码代理还必须遵守 `AGENTS.md`；Claude Code 同时读取 `CLAUDE.md`。这些文件用于阻止代理主动直推，并统一人工操作预期。
 
 ## Migration 冲突处理
 
