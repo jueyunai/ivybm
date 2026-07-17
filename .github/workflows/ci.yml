@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 15
     services:
       db:
-        image: pgvector/pgvector:0.8.5-pg17-bookworm@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0
+        image: pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
         env:
           POSTGRES_DB: ivybm_ci
           POSTGRES_PASSWORD: postgres
@@ -81,6 +81,9 @@ jobs:
 
       - name: Integration tests
         run: pnpm test:integration
+
+      - name: Verify Compose database persistence
+        run: pnpm db:test:persistence
 
       - name: Production build
         run: pnpm build
