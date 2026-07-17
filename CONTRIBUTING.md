@@ -17,7 +17,9 @@
 - 每位开发者首次 clone 后运行 `bash scripts/install-git-hooks.sh`。该 hook 会阻止本机直接 push `main`；紧急绕过必须获得明确授权，并使用 `IVYBM_ALLOW_MAIN_PUSH=1`，事后补 PR 或记录。
 - 不直接 push 到 `main`，一律走 PR。合并前本地运行 `pnpm lint && pnpm typecheck && pnpm test:unit`；涉及数据库 / 契约测试的任务额外运行对应命令，并把结果贴在 PR 描述中。
 - GitHub 管理员仍具有平台侧绕过能力，因此本方案不能等同于服务端 branch protection；若后续升级 GitHub Pro，再启用服务端强制门禁。
-- 两人互相 review 对方 PR；改动涉及共享 Collection（`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`PublishJobs`）或 `src/payload.config.ts` 时，必须等另一人 review 后才能合并——这几个文件改动频率高，是最容易冲突的地方。
+- PR 分为“负责人自检合并”和“另一名开发者 review”两条路径。项目初始化、CI、工程配置、文档，以及负责人自己板块内的独立改动，在 CI 通过、PR 清单完成、作者逐项检查完整 diff，且不满足下述强制 review 条件时，可以由负责人自行合并。作者不能在 GitHub 上批准自己的 PR；这里的“自检合并”是完成自检并在 PR 中记录依据后直接合并，不伪装成独立审批。
+- 出现以下任一情况时，必须等另一名开发者 review 后才能合并：修改 `src/payload.config.ts`、migration，或共享 Collection（`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`PublishJobs`）；修改供另一人任务消费的公共接口、字段或契约；跨越双方板块边界，或实质影响另一人的在途任务。拿不准是否属于共享边界时，默认走另一人 review。
+- 负责人自检合并时，在 PR 描述或评论中明确记录“不涉及共享结构、跨人契约或协作者范围”，并保留对应测试与 CI 结果。CODEOWNERS 只为已列出的共享文件自动请求关注，不再为普通自有范围 PR 默认请求双方 review；公共契约、跨板块边界和对在途任务的影响无法完全依赖路径识别，PR 作者必须人工判断并请求另一名开发者 review。
 - PR 描述引用对应 Task 编号，方便对照实施计划里的验证步骤。
 
 本项目内的编码代理还必须遵守 `AGENTS.md`；Claude Code 同时读取 `CLAUDE.md`。这些文件用于阻止代理主动直推，并统一人工操作预期。
@@ -38,17 +40,17 @@ Payload / PostgreSQL 的 migration 按时间线性生成，两人各自本地生
 
 ## 发布
 
-CI/CD 与发布回滚流程见架构文档 [16.8 节](docs/architecture/一期技术选型与部署架构规划.md#L523)：CI 构建镜像 → staging 验证 → 人工批准 → production。协作分工不改变这部分设计，production 发布审批人固定为 jueyunai。
+CI/CD 与发布回滚流程见架构文档 [16.8 节](docs/architecture/一期技术选型与部署架构规划.md#L523)：CI 构建镜像 → staging 验证 → 人工批准 → production。协作分工不改变这部分设计，production 发布审批人固定为 jueyunai；一期上线验收仍需两人共同确认，不适用负责人自检合并规则。
 
 ## 分工速查
 
-| 板块 | 负责人 |
-|---|---|
-| 官网与 CMS | jueyunai |
-| SEO / GEO 基础 | jueyunai |
-| AI 客服与知识库 | xuemusi |
-| 社媒会话与发布 | xuemusi |
-| 飞书 CRM | jueyunai |
-| 内容工作台 | jueyunai |
+| 板块            | 负责人   |
+| --------------- | -------- |
+| 官网与 CMS      | jueyunai |
+| SEO / GEO 基础  | jueyunai |
+| AI 客服与知识库 | xuemusi  |
+| 社媒会话与发布  | xuemusi  |
+| 飞书 CRM        | jueyunai |
+| 内容工作台      | jueyunai |
 
 "方案梳理与竞品调研"和"第一批部署上线、培训与试运营修复"不属于以上 6 个板块，统一由 jueyunai 收尾；上线验收需两人共同确认。
