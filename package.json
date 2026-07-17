@@ -15,6 +15,7 @@
     "db:migrate:status": "cross-env NODE_OPTIONS=--no-deprecation payload migrate:status",
     "db:reset:test": "cross-env NODE_OPTIONS=--no-deprecation NODE_ENV=test DISABLE_PAYLOAD_HMR=true tsx scripts/db/reset-test.ts",
     "db:seed": "cross-env NODE_OPTIONS=--no-deprecation DISABLE_PAYLOAD_HMR=true tsx src/seed/index.ts",
+    "db:test:persistence": "bash scripts/db/verify-compose-persistence.sh",
     "dev": "cross-env NODE_OPTIONS=--no-deprecation next dev",
     "generate:importmap": "cross-env NODE_OPTIONS=--no-deprecation payload generate:importmap",
     "generate:types": "cross-env NODE_OPTIONS=--no-deprecation payload generate:types",

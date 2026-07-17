@@ -82,5 +82,8 @@ jobs:
       - name: Integration tests
         run: pnpm test:integration
 
+      - name: Verify Compose database persistence
+        run: pnpm db:test:persistence
+
       - name: Production build
         run: pnpm build

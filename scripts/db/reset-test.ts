@@ -1,7 +1,13 @@
 import 'dotenv/config'
 
 import type { MigrateDownArgs, PostgresAdapter } from '@payloadcms/db-postgres'
-import { getPayload } from 'payload'
+import {
+  commitTransaction,
+  createLocalReq,
+  getPayload,
+  initTransaction,
+  killTransaction,
+} from 'payload'
 
 import { migrations } from '@/migrations'
 import config from '@/payload.config'
@@ -34,6 +40,7 @@ const payload = await getPayload({
 
 try {
   const database = payload.db as unknown as PostgresAdapter
+  const req = await createLocalReq({}, payload)
   const appliedResult = await database.pool.query<{ name: string }>(
     'SELECT name FROM payload_migrations',
   )
@@ -55,13 +62,27 @@ try {
     }
 
     payload.logger.info(`Resetting migration: ${migration.name}`)
-    await database.drizzle.transaction(async (transaction) => {
+    try {
+      await initTransaction(req)
+      const transactionID = await req.transactionID
+      const transaction = transactionID
+        ? database.sessions[String(transactionID)]?.db
+        : undefined
+
+      if (!transaction) {
+        throw new Error(`Failed to start transaction for migration: ${migration.name}`)
+      }
+
       await migration.down({
-        db: transaction,
+        db: transaction as MigrateDownArgs['db'],
         payload,
-        req: undefined,
-      } as unknown as MigrateDownArgs)
-    })
+        req,
+      })
+      await commitTransaction(req)
+    } catch (error) {
+      await killTransaction(req)
+      throw error
+    }
   }
 
   // Do not depend on an individual migration dropping Payload's tracking table.

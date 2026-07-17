@@ -15,7 +15,7 @@ services:
       retries: 5
       start_period: 20s
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     logging:
       driver: local
