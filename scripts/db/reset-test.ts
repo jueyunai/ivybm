@@ -1,8 +1,6 @@
 import 'dotenv/config'
 
-import { getPayload } from 'payload'
-
-import config from '../../src/payload.config'
+import { spawnSync } from 'node:child_process'
 
 const databaseUrl = process.env.DATABASE_URL
 
@@ -18,15 +16,31 @@ if (!databaseName.endsWith('_test') && !databaseName.endsWith('_ci')) {
   )
 }
 
-const payload = await getPayload({
-  config,
-  disableOnInit: true,
-  key: 'database-test-reset',
-})
+const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
+const resetResult = spawnSync(
+  pnpmCommand,
+  ['exec', 'payload', 'migrate:fresh', '--force-accept-warning'],
+  {
+    env: {
+      ...process.env,
+      DISABLE_PAYLOAD_HMR: 'true',
+      NODE_ENV: 'test',
+    },
+    stdio: 'inherit',
+    timeout: 5 * 60 * 1000,
+  },
+)
 
-try {
-  await payload.db.migrateFresh({ forceAcceptWarning: true })
-  payload.logger.info(`Reset test database: ${databaseName}`)
-} finally {
-  await payload.destroy()
+if (resetResult.error) {
+  throw resetResult.error
 }
+
+if (resetResult.status !== 0) {
+  const termination = resetResult.signal
+    ? `signal ${resetResult.signal}`
+    : `exit code ${resetResult.status ?? 'unknown'}`
+
+  throw new Error(`Failed to reset test database "${databaseName}": ${termination}`)
+}
+
+console.info(`Reset test database: ${databaseName}`)
