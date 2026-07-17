@@ -7,7 +7,7 @@
 ## 当前状态
 
 - 已从前期资料目录迁入需求基线、技术架构和必要调研文档。
-- 已将静态网站预览迁入 `references/website-prototype/`，仅作为 UI 和内容参考。
+- 已将客户提供并确认的官网原型迁入 `references/website-prototype/`，作为正式官网 UI / 交互验收基准；生产实现使用 Next.js / Payload 重写，但必须高保真还原原型效果。
 - Task 1 正式应用工程已初始化，当前具备 Next.js 前台、Payload Admin、REST API、GraphQL API 和基础测试能力。
 - 当前技术栈：Next.js 16.2.6、Payload CMS 3.86.0、React 19.2.6、PostgreSQL Adapter、Node.js 24、pnpm 10.15.1。
 - 后续按实施计划继续接入 PostgreSQL + pgvector、Docker Compose、1Panel OpenResty 及业务模块。
@@ -47,7 +47,7 @@ docs/
   research/       平台、供应商和邮箱调研
   plans/          经确认的实施设计与计划
 references/
-  website-prototype/  静态网站原型，仅供参考
+  website-prototype/  客户确认的官网 UI / 交互验收基准
 src/
   app/            Next.js 前台、Payload Admin 与 API 路由
   collections/    Payload Collections

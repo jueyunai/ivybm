@@ -2,6 +2,12 @@
 
 This is a first working version of the IVYBM foreign trade showcase website for curved aluminum facade panels.
 
+## Production UI Acceptance Baseline
+
+This customer-provided prototype is the approved UI and interaction acceptance baseline for the production website, not an optional visual reference. The formal Next.js / Payload implementation must reproduce its visual hierarchy, layout, colors, typography, spacing, component states, navigation, carousel, filtering, form interactions, responsive behavior, English LTR presentation, and Arabic RTL presentation with high fidelity.
+
+The production implementation may replace only the prototype's placeholder contact details, external demo images, sample content, simulated form submission, and client-only routing or data logic with approved assets, CMS content, locale-prefixed SEO routes, server-side rendering, and persistent backend workflows. Any intentional visual or interaction change requires customer confirmation.
+
 ## Run Locally
 
 ```powershell
