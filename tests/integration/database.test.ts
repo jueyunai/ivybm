@@ -62,6 +62,7 @@ describe('PostgreSQL foundation', () => {
       data: {
         email,
         password: 'integration-test-only-password',
+        role: 'sales',
       },
       overrideAccess: true,
     })

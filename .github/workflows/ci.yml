@@ -79,8 +79,8 @@ jobs:
           pnpm db:seed
           pnpm db:seed
 
-      - name: Database integration tests
-        run: pnpm test:integration -- tests/integration/database.test.ts
+      - name: Integration tests
+        run: pnpm test:integration
 
       - name: Production build
         run: pnpm build

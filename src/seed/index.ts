@@ -50,6 +50,7 @@ const seed = async (): Promise<void> => {
       data: {
         email,
         password,
+        role: 'admin',
       },
       overrideAccess: true,
     })
