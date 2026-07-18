@@ -76,6 +76,9 @@ export interface Config {
     projects: Project;
     posts: Post;
     downloads: Download;
+    'knowledge-documents': KnowledgeDocument;
+    'knowledge-chunks': KnowledgeChunk;
+    'prompt-templates': PromptTemplate;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -92,6 +95,9 @@ export interface Config {
     projects: ProjectsSelect<false> | ProjectsSelect<true>;
     posts: PostsSelect<false> | PostsSelect<true>;
     downloads: DownloadsSelect<false> | DownloadsSelect<true>;
+    'knowledge-documents': KnowledgeDocumentsSelect<false> | KnowledgeDocumentsSelect<true>;
+    'knowledge-chunks': KnowledgeChunksSelect<false> | KnowledgeChunksSelect<true>;
+    'prompt-templates': PromptTemplatesSelect<false> | PromptTemplatesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -530,6 +536,73 @@ export interface Download {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-documents".
+ */
+export interface KnowledgeDocument {
+  id: number;
+  sourceTitle: string;
+  sourceType: 'faq' | 'product-manual' | 'technical-specification' | 'sales-script' | 'project-case' | 'other';
+  sourceURL?: string | null;
+  sourceFile?: (number | null) | Media;
+  sourceVersion: string;
+  locale: 'en' | 'ar';
+  content: string;
+  reviewStatus: 'draft' | 'reviewed' | 'archived';
+  reviewedAt?: string | null;
+  reviewedBy?: (number | null) | User;
+  indexStatus: 'pending' | 'processing' | 'ready' | 'failed';
+  indexedAt?: string | null;
+  embeddingModel?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-chunks".
+ */
+export interface KnowledgeChunk {
+  id: number;
+  document: number | KnowledgeDocument;
+  stableId: string;
+  index: number;
+  locale: 'en' | 'ar';
+  content: string;
+  sourceTitle: string;
+  sourceVersion: string;
+  sourceURL?: string | null;
+  embeddingModel?: string | null;
+  embeddingDimensions?: number | null;
+  embeddedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "prompt-templates".
+ */
+export interface PromptTemplate {
+  id: number;
+  key: string;
+  purpose: 'customer-chat' | 'conversation-summary' | 'translation' | 'content-generation';
+  locale: 'all' | 'en' | 'ar';
+  version: number;
+  template: string;
+  variables?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  status: 'draft' | 'active' | 'archived';
+  model?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -587,6 +660,18 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'downloads';
         value: number | Download;
+      } | null)
+    | ({
+        relationTo: 'knowledge-documents';
+        value: number | KnowledgeDocument;
+      } | null)
+    | ({
+        relationTo: 'knowledge-chunks';
+        value: number | KnowledgeChunk;
+      } | null)
+    | ({
+        relationTo: 'prompt-templates';
+        value: number | PromptTemplate;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -883,6 +968,62 @@ export interface DownloadsSelect<T extends boolean = true> {
         ogImage?: T;
         noIndex?: T;
       };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-documents_select".
+ */
+export interface KnowledgeDocumentsSelect<T extends boolean = true> {
+  sourceTitle?: T;
+  sourceType?: T;
+  sourceURL?: T;
+  sourceFile?: T;
+  sourceVersion?: T;
+  locale?: T;
+  content?: T;
+  reviewStatus?: T;
+  reviewedAt?: T;
+  reviewedBy?: T;
+  indexStatus?: T;
+  indexedAt?: T;
+  embeddingModel?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-chunks_select".
+ */
+export interface KnowledgeChunksSelect<T extends boolean = true> {
+  document?: T;
+  stableId?: T;
+  index?: T;
+  locale?: T;
+  content?: T;
+  sourceTitle?: T;
+  sourceVersion?: T;
+  sourceURL?: T;
+  embeddingModel?: T;
+  embeddingDimensions?: T;
+  embeddedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "prompt-templates_select".
+ */
+export interface PromptTemplatesSelect<T extends boolean = true> {
+  key?: T;
+  purpose?: T;
+  locale?: T;
+  version?: T;
+  template?: T;
+  variables?: T;
+  status?: T;
+  model?: T;
   updatedAt?: T;
   createdAt?: T;
 }

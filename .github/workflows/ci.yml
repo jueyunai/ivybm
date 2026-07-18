@@ -68,6 +68,9 @@ jobs:
       - name: Unit tests
         run: pnpm test:unit
 
+      - name: Contract tests
+        run: pnpm test:contract
+
       - name: Apply database migrations
         run: pnpm db:migrate
 
