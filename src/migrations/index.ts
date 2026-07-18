@@ -3,6 +3,7 @@ import * as migration_20260717_083319_auth_audit from './20260717_083319_auth_au
 import * as migration_20260717_092625_cms_core from './20260717_092625_cms_core'
 import * as migration_20260717_102058_cms_seo_completion from './20260717_102058_cms_seo_completion'
 import * as migration_20260718_015857_cms_media_policy from './20260718_015857_cms_media_policy'
+import * as migration_20260718_053459_task8_knowledge_base from './20260718_053459_task8_knowledge_base'
 
 export const migrations = [
   {
@@ -29,5 +30,10 @@ export const migrations = [
     up: migration_20260718_015857_cms_media_policy.up,
     down: migration_20260718_015857_cms_media_policy.down,
     name: '20260718_015857_cms_media_policy',
+  },
+  {
+    up: migration_20260718_053459_task8_knowledge_base.up,
+    down: migration_20260718_053459_task8_knowledge_base.down,
+    name: '20260718_053459_task8_knowledge_base',
   },
 ]
