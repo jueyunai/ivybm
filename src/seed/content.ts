@@ -1,5 +1,7 @@
-import sharp from 'sharp'
 import type { Payload } from 'payload'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 type SeedCollection =
   'downloads' | 'pages' | 'posts' | 'product-categories' | 'products' | 'projects'
@@ -13,10 +15,26 @@ type LocalizedSeedArgs = {
   slug: string
 }
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const mediaDir = path.resolve(__dirname, '../../media')
+
 const seedContext = {
   disableRevalidate: true,
   skipAudit: true,
 }
+
+/** Demo images downloaded from Unsplash matching the website prototype. */
+const demoImages: Array<{ alt: string; filename: string }> = [
+  { alt: 'Modern commercial building facade with glass curtain wall', filename: 'ivybm-demo-hero-1.jpg' },
+  { alt: 'Contemporary architecture building exterior at sunset', filename: 'ivybm-demo-hero-2.jpg' },
+  { alt: 'Modern architectural building with geometric facade', filename: 'ivybm-demo-hero-3.jpg' },
+  { alt: 'Factory production line and manufacturing facility', filename: 'ivybm-demo-factory.jpg' },
+  { alt: 'Office interior with modern workspace design', filename: 'ivybm-demo-panel.jpg' },
+  { alt: 'Modern airport terminal interior architecture', filename: 'ivybm-demo-airport.jpg' },
+  { alt: 'Landmark building with unique architectural design', filename: 'ivybm-demo-landmark.jpg' },
+  { alt: 'Factory workshop with aluminum panel fabrication equipment', filename: 'ivybm-demo-workshop.jpg' },
+]
 
 const buildMinimalPDF = (): Buffer => {
   const objects = [
@@ -58,8 +76,8 @@ const findMediaByFilename = async (payload: Payload, filename: string) => {
   return result.docs[0]
 }
 
-const ensurePlaceholderImage = async (payload: Payload): Promise<number> => {
-  const filename = 'ivybm-facade-placeholder.jpg'
+/** Read a file from disk and create or update a media record. */
+const ensureMediaFile = async (payload: Payload, filepath: string, filename: string, alt: string): Promise<number> => {
   const existing = await findMediaByFilename(payload, filename)
 
   if (existing) {
@@ -67,9 +85,9 @@ const ensurePlaceholderImage = async (payload: Payload): Promise<number> => {
       collection: 'media',
       context: seedContext,
       data: {
-        alt: 'Architectural aluminum facade panel application',
+        alt,
         isPublic: true,
-        source: 'IVYBM-owned development placeholder generated locally; replace with approved brand photography before production.',
+        source: 'Unsplash demo image for development preview; replace with approved brand photography before production.',
       },
       id: existing.id,
       overrideAccess: true,
@@ -78,23 +96,14 @@ const ensurePlaceholderImage = async (payload: Payload): Promise<number> => {
     return media.id
   }
 
-  const data = await sharp({
-    create: {
-      background: '#b78335',
-      channels: 3,
-      height: 1200,
-      width: 1800,
-    },
-  })
-    .jpeg({ quality: 85 })
-    .toBuffer()
+  const data = fs.readFileSync(filepath)
   const media = await payload.create({
     collection: 'media',
     context: seedContext,
     data: {
-      alt: 'Architectural aluminum facade panel application',
+      alt,
       isPublic: true,
-      source: 'IVYBM-owned development placeholder generated locally; replace with approved brand photography before production.',
+      source: 'Unsplash demo image for development preview; replace with approved brand photography before production.',
     },
     file: {
       data,
@@ -106,6 +115,46 @@ const ensurePlaceholderImage = async (payload: Payload): Promise<number> => {
   })
 
   return media.id
+}
+
+/** Upload all demo images and return a map of filename -> media ID. */
+const ensureSeedImages = async (payload: Payload): Promise<Map<string, number>> => {
+  const results = await Promise.allSettled(
+    demoImages.map(async ({ alt, filename }) => {
+      const filepath = path.join(mediaDir, filename)
+      if (!fs.existsSync(filepath)) {
+        payload.logger.warn(`Demo image not found on disk, skipping: ${filename}`)
+        return null
+      }
+      const id = await ensureMediaFile(payload, filepath, filename, alt)
+      return { filename, id }
+    }),
+  )
+
+  const map = new Map<string, number>()
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value) {
+      map.set(result.value.filename, result.value.id)
+    }
+  }
+
+  // Fallback: if no image was loaded (e.g. media dir missing), regenerate the placeholder
+  if (map.size === 0) {
+    const { default: sharp } = await import('sharp')
+    const data = await sharp({ create: { background: '#b78335', channels: 3, height: 1200, width: 1800 } })
+      .jpeg({ quality: 85 })
+      .toBuffer()
+    const media = await payload.create({
+      collection: 'media',
+      context: seedContext,
+      data: { alt: 'Architectural aluminum facade panel application', isPublic: true, source: 'Local placeholder.' },
+      file: { data, mimetype: 'image/jpeg', name: 'fallback-placeholder.jpg', size: data.length },
+      overrideAccess: true,
+    })
+    map.set('fallback-placeholder.jpg', media.id)
+  }
+
+  return map
 }
 
 const ensurePlaceholderPDF = async (payload: Payload): Promise<number> => {
@@ -150,7 +199,13 @@ const ensurePlaceholderPDF = async (payload: Payload): Promise<number> => {
 }
 
 const removeLegacySeedMedia = async (payload: Payload) => {
-  for (const filename of ['ivybm-demo-facade.jpg', 'ivybm-demo-technical-data.pdf']) {
+  for (const filename of [
+    'ivybm-demo-facade.jpg',
+    'ivybm-demo-technical-data.pdf',
+    'ivybm-facade-placeholder.jpg',
+    'ivybm-facade-placeholder-1.jpg',
+    'fallback-placeholder.jpg',
+  ]) {
     const media = await findMediaByFilename(payload, filename)
     if (!media) continue
 
@@ -218,15 +273,24 @@ const upsertLocalizedDocument = async ({
 }
 
 export const seedContent = async (payload: Payload): Promise<void> => {
-  const [imageID, pdfID] = await Promise.all([
-    ensurePlaceholderImage(payload),
+  const [imgMap, pdfID] = await Promise.all([
+    ensureSeedImages(payload),
     ensurePlaceholderPDF(payload),
   ])
+  const heroID = imgMap.get('ivybm-demo-hero-1.jpg') ?? imgMap.values().next().value
+  const hero2ID = imgMap.get('ivybm-demo-hero-2.jpg') ?? heroID
+  const hero3ID = imgMap.get('ivybm-demo-hero-3.jpg') ?? heroID
+  const factoryID = imgMap.get('ivybm-demo-factory.jpg') ?? heroID
+  const panelID = imgMap.get('ivybm-demo-panel.jpg') ?? heroID
+  const airportID = imgMap.get('ivybm-demo-airport.jpg') ?? heroID
+  const landmarkID = imgMap.get('ivybm-demo-landmark.jpg') ?? heroID
+  const workshopID = imgMap.get('ivybm-demo-workshop.jpg') ?? heroID
+
   const homeID = await upsertLocalizedDocument({
     arabic: { summary: 'حلول واجهات ألمنيوم معمارية للمشاريع العالمية.', title: 'الرئيسية' },
     collection: 'pages',
     english: {
-      heroImage: imageID,
+      heroImage: heroID,
       internalNotes: 'Development content. Replace with customer-approved copy before production.',
       summary: 'Architectural aluminum facade solutions for global projects.',
       title: 'Home',
@@ -239,6 +303,7 @@ export const seedContent = async (payload: Payload): Promise<void> => {
     arabic: { summary: 'خبرة في تصنيع وتوريد أنظمة الواجهات.', title: 'من نحن' },
     collection: 'pages',
     english: {
+      heroImage: hero2ID,
       summary: 'Manufacturing and supply experience for architectural facade systems.',
       title: 'About Us',
     },
@@ -250,6 +315,7 @@ export const seedContent = async (payload: Payload): Promise<void> => {
     arabic: { summary: 'تواصل مع فريق المشروع للحصول على الدعم الفني.', title: 'اتصل بنا' },
     collection: 'pages',
     english: {
+      heroImage: workshopID,
       summary: 'Contact the project team for technical and quotation support.',
       title: 'Contact Us',
     },
@@ -362,11 +428,17 @@ export const seedContent = async (payload: Payload): Promise<void> => {
     },
   ]
 
+  const productImages: Record<string, number> = {
+    'double-curved': hero3ID,
+    'single-curved': airportID,
+    'aluminum-panels': panelID,
+  }
+
   for (const product of productSeeds) {
     const englishProduct = {
       ...product.english,
       category: categoryIDs.get(product.categorySlug),
-      coverImage: imageID,
+      coverImage: productImages[product.categorySlug] ?? heroID,
     }
     const productID = await upsertLocalizedDocument({
       arabic: product.arabic,
@@ -403,19 +475,28 @@ export const seedContent = async (payload: Payload): Promise<void> => {
   }
 
   const projectSeeds = [
-    ['commercial-complex-facade', 'Commercial Complex Facade', 'Dubai, UAE', 'Double-curved panels', 'واجهة مجمع تجاري', 'دبي، الإمارات', 'ألواح مزدوجة الانحناء'],
-    ['airport-terminal-roof', 'Airport Terminal Roof', 'Central Asia', 'Single-curved panels', 'سقف مبنى مطار', 'آسيا الوسطى', 'ألواح أحادية الانحناء'],
-    ['landmark-curtain-wall', 'Landmark Curtain Wall', 'Abu Dhabi, UAE', 'Custom-shaped panels', 'واجهة مبنى مميز', 'أبوظبي، الإمارات', 'ألواح بأشكال مخصصة'],
-    ['factory-production-support', 'Factory Production Support', 'China', 'VMU / PMU samples', 'دعم الإنتاج في المصنع', 'الصين', 'عينات VMU وPMU'],
-    ['hotel-podium-cladding', 'Hotel Podium Cladding', 'Riyadh, Saudi Arabia', 'PVDF facade panels', 'تكسية قاعدة فندق', 'الرياض، السعودية', 'ألواح واجهات PVDF'],
-    ['public-building-canopy', 'Public Building Canopy', 'Doha, Qatar', 'Perforated aluminum panels', 'مظلة مبنى عام', 'الدوحة، قطر', 'ألواح ألمنيوم مثقبة'],
-  ] as const
+    ['commercial-complex-facade', 'Commercial Complex Facade', 'Dubai, UAE', 'Double-curved panels', 'واجهة مجمع تجاري', 'دبي، الإمارات', 'ألواح مزدوجة الانحناء', 'hero1'] as const,
+    ['airport-terminal-roof', 'Airport Terminal Roof', 'Central Asia', 'Single-curved panels', 'سقف مبنى مطار', 'آسيا الوسطى', 'ألواح أحادية الانحناء', 'airport'] as const,
+    ['landmark-curtain-wall', 'Landmark Curtain Wall', 'Abu Dhabi, UAE', 'Custom-shaped panels', 'واجهة مبنى مميز', 'أبوظبي، الإمارات', 'ألواح بأشكال مخصصة', 'landmark'] as const,
+    ['factory-production-support', 'Factory Production Support', 'China', 'VMU / PMU samples', 'دعم الإنتاج في المصنع', 'الصين', 'عينات VMU وPMU', 'factory'] as const,
+    ['hotel-podium-cladding', 'Hotel Podium Cladding', 'Riyadh, Saudi Arabia', 'PVDF facade panels', 'تكسية قاعدة فندق', 'الرياض، السعودية', 'ألواح واجهات PVDF', 'hero2'] as const,
+    ['public-building-canopy', 'Public Building Canopy', 'Doha, Qatar', 'Perforated aluminum panels', 'مظلة مبنى عام', 'الدوحة، قطر', 'ألواح ألمنيوم مثقبة', 'hero3'] as const,
+  ]
 
-  for (const [slug, title, location, application, arabicTitle, arabicLocation, arabicApplication] of projectSeeds) {
+  const projectImageMap: Record<string, number> = {
+    hero1: heroID,
+    hero2: hero2ID,
+    hero3: hero3ID,
+    airport: airportID,
+    landmark: landmarkID,
+    factory: factoryID,
+  }
+
+  for (const [slug, title, location, application, arabicTitle, arabicLocation, arabicApplication, imgKey] of projectSeeds) {
     await upsertLocalizedDocument({
       arabic: { application: arabicApplication, location: arabicLocation, summary: 'مرجع لتنسيق التصميم والتصنيع والتسليم للمشروع.', title: arabicTitle },
       collection: 'projects',
-      english: { application, coverImage: imageID, location, summary: 'Reference for project-specific design coordination, fabrication, inspection, and delivery.', title },
+      english: { application, coverImage: projectImageMap[imgKey] ?? heroID, location, summary: 'Reference for project-specific design coordination, fabrication, inspection, and delivery.', title },
       payload,
       publishable: true,
       slug,
@@ -457,14 +538,14 @@ export const seedContent = async (payload: Payload): Promise<void> => {
     },
   ] as const
 
-  for (const post of postSeeds) {
+  for (const [index, post] of postSeeds.entries()) {
     await upsertLocalizedDocument({
       arabic: post.arabic,
       collection: 'posts',
       english: {
         ...post.english,
         category: post.category,
-        featuredImage: imageID,
+        featuredImage: [hero3ID, factoryID, heroID][index],
         publishedAt: post.publishedAt,
         seo: { noIndex: 'noIndex' in post ? post.noIndex : false },
       },
@@ -478,7 +559,7 @@ export const seedContent = async (payload: Payload): Promise<void> => {
     arabic: { description: 'ملف تطوير داخلي يجب استبداله بالبيانات الفنية المعتمدة قبل الإنتاج.', title: 'البيانات الفنية' },
     collection: 'downloads',
     english: {
-      coverImage: imageID,
+      coverImage: heroID,
       description: 'Development file; replace with approved technical data before production.',
       file: pdfID,
       isActive: true,
@@ -508,7 +589,7 @@ export const seedContent = async (payload: Payload): Promise<void> => {
     context: seedContext,
     data: {
       footerText: 'Factory-direct architectural aluminum facade solutions for overseas projects.',
-      logo: imageID,
+      logo: heroID,
       navigation: navigationPages.map((page, index) => ({
         ...(existingNavigationIDs.get(page) ? { id: existingNavigationIDs.get(page) } : {}),
         label: ['Home', 'About', 'Contact'][index],
