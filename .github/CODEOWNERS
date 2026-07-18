@@ -9,3 +9,5 @@
 /src/collections/GeneratedContents.ts @jueyunai @xuemusi
 /src/collections/PublishJobs.ts @jueyunai @xuemusi
 /src/collections/PublishLogs.ts @jueyunai @xuemusi
+/src/modules/conversations/contracts.ts @jueyunai @xuemusi
+/src/modules/publishing/contracts.ts @jueyunai @xuemusi

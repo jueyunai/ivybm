@@ -36,10 +36,19 @@ Payload / PostgreSQL 的 migration 按时间线性生成，两人各自本地生
 
 `Leads`、`Conversations` / `Messages`、`GeneratedContents` / `PublishJobs` / `PublishLogs` 是两人板块之间的接口（对应需求文档"合作开发者交接说明"提到的三个基础数据结构）。改动这些 Collection 的字段前先口头对齐，不单方面改动后直接合并。
 
+### Task 9 / Task 12 前后端协作边界
+
+| 任务    | jueyunai                                                                                                                          | xuemusi                                                                                                     |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Task 9  | 官网 `ChatWidget`、交互状态、前端 E2E；使用 `ChatService` mock                                                                    | 会话/AI/人工接管 API、评分与知识引用、`Conversations` / `Messages` / `Handoffs` 集成；提供 contract fixture |
+| Task 12 | 内容工作台页面、内容生成/审核 UI、内部状态流、`PublishJobs` / `PublishLogs` 共享结构和发布任务创建；使用 `PublishingService` mock | 第三方平台 capability / publish / status API、平台 adapter、发布结果回调；不把平台 SDK / token 暴露给前端   |
+
+跨边界开发必须先提交并 review TypeScript port/interface、请求响应 schema、错误码、状态枚举和 mock 行为。消费者先用 fake service 开发，服务提供者先用 fake repository / 官方 fixture 实现；真实数据库和平台 adapter 在对应 Collection、migration、Payload 类型和 staging 条件满足后接入。
+
 依赖分三个阶段处理：
 
-1. **接口 / 纯逻辑阶段**：允许使用 TypeScript port/interface、fake repository、mock 和官方结构 fixture 并行开发。Task 13 在这一阶段可实现连接器接口、Webhook 验签、时间戳、事件幂等、payload 归一化和 Meta / WhatsApp mock；不创建临时 `Leads`、`Conversations`、`Messages`、`PublishJobs` 或 `PublishLogs`，不生成替代 migration。
-2. **数据库集成阶段**：必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`，再从最新 `origin/main` 更新分支并实现 adapter。Task 9 读写 Task 7 的 `Leads`；Task 13 会话侧读写 Task 9 的 `Conversations` / `Messages`，发布侧读写 Task 12 的 `PublishJobs` / `PublishLogs`。Task 13 的真实 Webhook 异步处理、发布执行、失败重试、dead job 和人工补偿还必须等待 Task 10 的 `Jobs` Collection、worker、migration、Payload 注册和生成类型合并；纯连接器和 fixture 测试不依赖 Task 10。
+1. **接口 / 纯逻辑阶段**：允许使用 TypeScript port/interface、fake repository、mock 和官方结构 fixture 并行开发。Task 9 前端先使用 `ChatService` mock，Task 12 前端先使用 `PublishingService` mock；Task 13 在这一阶段可实现连接器接口、Webhook 验签、时间戳、事件幂等、payload 归一化和 Meta / WhatsApp mock；不创建临时 `Leads`、`Conversations`、`Messages`、`PublishJobs` 或 `PublishLogs`，不生成替代 migration。
+2. **数据库集成阶段**：必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`，再从最新 `origin/main` 更新分支并实现 adapter。Task 9 服务读写 Task 7 的 `Leads`；Task 13 会话侧读写 Task 9 的 `Conversations` / `Messages`，发布侧读写 Task 12 的 `PublishJobs` / `PublishLogs`。Task 13 的真实 Webhook 异步处理、发布执行、失败重试、dead job 和人工补偿还必须等待 Task 10 的 `Jobs` Collection、worker、migration、Payload 注册和生成类型合并；纯连接器和 fixture 测试不依赖 Task 10。
 3. **外部平台联调阶段**：需要甲方账号资产、平台授权或 staging 环境。条件满足时实测 Webhook、入站消息和测试发布；条件缺失时以 fixture 契约测试、模拟记录、配置说明和阻塞证据按 P1 / P2 口径验收。fixture / mock 通过只代表接口契约完成，不得据此把平台标记为 `available`。
 
 ## 发布
@@ -48,13 +57,13 @@ CI/CD 与发布回滚流程见架构文档 [16.8 节](docs/architecture/一期�
 
 ## 分工速查
 
-| 板块            | 负责人   |
-| --------------- | -------- |
-| 官网与 CMS      | jueyunai |
-| SEO / GEO 基础  | jueyunai |
-| AI 客服与知识库 | xuemusi  |
-| 社媒会话与发布  | xuemusi  |
-| 飞书 CRM        | jueyunai |
-| 内容工作台      | jueyunai |
+| 板块            | 负责人                                    |
+| --------------- | ----------------------------------------- |
+| 官网与 CMS      | jueyunai                                  |
+| SEO / GEO 基础  | jueyunai                                  |
+| AI 客服与知识库 | xuemusi（服务）/ jueyunai（官网 UI）      |
+| 社媒会话与发布  | xuemusi（平台服务）/ jueyunai（发布页面） |
+| 飞书 CRM        | jueyunai                                  |
+| 内容工作台      | jueyunai                                  |
 
 "方案梳理与竞品调研"和"第一批部署上线、培训与试运营修复"不属于以上 6 个板块，统一由 jueyunai 收尾；上线验收需两人共同确认。
