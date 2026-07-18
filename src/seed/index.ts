@@ -3,6 +3,7 @@ import 'dotenv/config'
 import { getPayload } from 'payload'
 
 import config from '../payload.config'
+import { seedContent } from './content'
 
 const requireEnvironment = (name: string): string => {
   const value = process.env[name]
@@ -42,20 +43,21 @@ const seed = async (): Promise<void> => {
 
     if (existing.totalDocs > 0) {
       payload.logger.info(`Demo administrator already exists: ${email}`)
-      return
+    } else {
+      await payload.create({
+        collection: 'users',
+        data: {
+          email,
+          password,
+          role: 'admin',
+        },
+        overrideAccess: true,
+      })
+
+      payload.logger.info(`Created demo administrator: ${email}`)
     }
 
-    await payload.create({
-      collection: 'users',
-      data: {
-        email,
-        password,
-        role: 'admin',
-      },
-      overrideAccess: true,
-    })
-
-    payload.logger.info(`Created demo administrator: ${email}`)
+    await seedContent(payload)
   } finally {
     await payload.destroy()
   }

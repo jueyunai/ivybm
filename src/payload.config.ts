@@ -53,6 +53,14 @@ export default buildConfig({
     ],
   },
   secret: payloadSecret || 'local-development-only-secret-change-me',
+  upload: {
+    abortOnLimit: true,
+    limits: {
+      fileSize: 20 * 1024 * 1024,
+      files: 1,
+    },
+    responseOnLimit: 'File size limit has been reached.',
+  },
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },

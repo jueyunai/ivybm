@@ -1,10 +1,28 @@
 import type { CollectionConfig } from 'payload'
 
+import {
+  activeDownloadsRead,
+  contentAdmin,
+  contentCreate,
+  contentDelete,
+  contentUpdate,
+} from '../access/content'
 import { seoField } from '../fields/seo'
 import { stableSlugField } from '../fields/slug'
+import {
+  revalidateContentAfterChange,
+  revalidateContentAfterDelete,
+} from '../hooks/revalidateContent'
 
 export const Downloads: CollectionConfig = {
   slug: 'downloads',
+  access: {
+    admin: contentAdmin,
+    create: contentCreate,
+    delete: contentDelete,
+    read: activeDownloadsRead,
+    update: contentUpdate,
+  },
   admin: {
     defaultColumns: ['title', 'type', 'isActive', 'updatedAt'],
     group: 'Website Content',
@@ -52,4 +70,8 @@ export const Downloads: CollectionConfig = {
     },
     seoField(),
   ],
+  hooks: {
+    afterChange: [revalidateContentAfterChange],
+    afterDelete: [revalidateContentAfterDelete],
+  },
 }

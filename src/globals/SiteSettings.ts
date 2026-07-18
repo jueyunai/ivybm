@@ -1,9 +1,15 @@
 import type { GlobalConfig } from 'payload'
 
+import { contentUpdate, publicRead } from '../access/content'
 import { seoField } from '../fields/seo'
+import { revalidateSiteSettingsAfterChange } from '../hooks/revalidateContent'
 
 export const SiteSettings: GlobalConfig = {
   slug: 'site-settings',
+  access: {
+    read: publicRead,
+    update: contentUpdate,
+  },
   admin: {
     group: 'Website Settings',
   },
@@ -96,4 +102,7 @@ export const SiteSettings: GlobalConfig = {
     },
     seoField('defaultSeo'),
   ],
+  hooks: {
+    afterChange: [revalidateSiteSettingsAfterChange],
+  },
 }
