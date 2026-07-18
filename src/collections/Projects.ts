@@ -8,6 +8,7 @@ import {
   publishedContentRead,
 } from '../access/content'
 import { internalNotesField } from '../fields/internalNotes'
+import { imageMediaFilter } from '../fields/media'
 import { seoField } from '../fields/seo'
 import { stableSlugField } from '../fields/slug'
 import {
@@ -60,12 +61,14 @@ export const Projects: CollectionConfig = {
     {
       name: 'coverImage',
       type: 'upload',
+      filterOptions: imageMediaFilter,
       relationTo: 'media',
       required: true,
     },
     {
       name: 'gallery',
       type: 'upload',
+      filterOptions: imageMediaFilter,
       hasMany: true,
       relationTo: 'media',
     },

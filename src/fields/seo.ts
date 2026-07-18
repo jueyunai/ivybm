@@ -1,5 +1,7 @@
 import type { GroupField } from 'payload'
 
+import { imageMediaFilter } from './media'
+
 export const seoField = (name = 'seo'): GroupField => ({
   name,
   type: 'group',
@@ -35,6 +37,7 @@ export const seoField = (name = 'seo'): GroupField => ({
     {
       name: 'ogImage',
       type: 'upload',
+      filterOptions: imageMediaFilter,
       relationTo: 'media',
     },
     {
