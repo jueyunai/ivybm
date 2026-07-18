@@ -9,6 +9,8 @@ import { AuditLogs } from './collections/AuditLogs'
 import { Downloads } from './collections/Downloads'
 import { KnowledgeChunks } from './collections/KnowledgeChunks'
 import { KnowledgeDocuments } from './collections/KnowledgeDocuments'
+import { Leads } from './collections/Leads'
+import { LeadSources } from './collections/LeadSources'
 import { Media } from './collections/Media'
 import { Pages } from './collections/Pages'
 import { Posts } from './collections/Posts'
@@ -47,6 +49,8 @@ export default buildConfig({
     KnowledgeDocuments,
     KnowledgeChunks,
     PromptTemplates,
+    LeadSources,
+    Leads,
   ],
   editor: lexicalEditor(),
   globals: [SiteSettings],

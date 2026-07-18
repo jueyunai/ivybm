@@ -79,6 +79,8 @@ export interface Config {
     'knowledge-documents': KnowledgeDocument;
     'knowledge-chunks': KnowledgeChunk;
     'prompt-templates': PromptTemplate;
+    'lead-sources': LeadSource;
+    leads: Lead;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -98,6 +100,8 @@ export interface Config {
     'knowledge-documents': KnowledgeDocumentsSelect<false> | KnowledgeDocumentsSelect<true>;
     'knowledge-chunks': KnowledgeChunksSelect<false> | KnowledgeChunksSelect<true>;
     'prompt-templates': PromptTemplatesSelect<false> | PromptTemplatesSelect<true>;
+    'lead-sources': LeadSourcesSelect<false> | LeadSourcesSelect<true>;
+    leads: LeadsSelect<false> | LeadsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -603,6 +607,54 @@ export interface PromptTemplate {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "lead-sources".
+ */
+export interface LeadSource {
+  id: number;
+  name: string;
+  /**
+   * Stable integration key. Create a new source instead of renaming this value.
+   */
+  key: string;
+  channel: 'website' | 'ai-chat' | 'social' | 'manual';
+  isActive: boolean;
+  description?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "leads".
+ */
+export interface Lead {
+  id: number;
+  requestId: string;
+  idempotencyKey: string;
+  source: number | LeadSource;
+  locale: 'en' | 'ar';
+  status: 'new' | 'contacted' | 'qualified' | 'disqualified';
+  intentLevel: 'unscored' | 'a' | 'b' | 'c';
+  assignedTo?: (number | null) | User;
+  name: string;
+  company?: string | null;
+  country: string;
+  email: string;
+  phone?: string | null;
+  interest?: string | null;
+  message: string;
+  sourceURL?: string | null;
+  utm?: {
+    source?: string | null;
+    medium?: string | null;
+    campaign?: string | null;
+    term?: string | null;
+    content?: string | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -672,6 +724,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'prompt-templates';
         value: number | PromptTemplate;
+      } | null)
+    | ({
+        relationTo: 'lead-sources';
+        value: number | LeadSource;
+      } | null)
+    | ({
+        relationTo: 'leads';
+        value: number | Lead;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -1024,6 +1084,51 @@ export interface PromptTemplatesSelect<T extends boolean = true> {
   variables?: T;
   status?: T;
   model?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "lead-sources_select".
+ */
+export interface LeadSourcesSelect<T extends boolean = true> {
+  name?: T;
+  key?: T;
+  channel?: T;
+  isActive?: T;
+  description?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "leads_select".
+ */
+export interface LeadsSelect<T extends boolean = true> {
+  requestId?: T;
+  idempotencyKey?: T;
+  source?: T;
+  locale?: T;
+  status?: T;
+  intentLevel?: T;
+  assignedTo?: T;
+  name?: T;
+  company?: T;
+  country?: T;
+  email?: T;
+  phone?: T;
+  interest?: T;
+  message?: T;
+  sourceURL?: T;
+  utm?:
+    | T
+    | {
+        source?: T;
+        medium?: T;
+        campaign?: T;
+        term?: T;
+        content?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
 }
