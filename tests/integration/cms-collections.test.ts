@@ -1,5 +1,6 @@
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import { randomUUID } from 'node:crypto'
+import sharp from 'sharp'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { getPayload, ValidationError, type Payload } from 'payload'
 
@@ -20,16 +21,17 @@ const createdDocuments: Array<{
   id: DocumentID
 }> = []
 
-const pngData = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2n9sAAAAASUVORK5CYII=',
-  'base64',
-)
+const pngData = await sharp({
+  create: { background: '#777777', channels: 3, height: 600, width: 800 },
+})
+  .png()
+  .toBuffer()
 
 const uploadTestImage = async (alt: string) => {
   const filename = `task4-${randomUUID()}.png`
   const media = await payload.create({
     collection: 'media',
-    data: { alt },
+    data: { alt, isPublic: true, source: 'IVYBM generated integration test fixture' },
     file: {
       data: pngData,
       mimetype: 'image/png',
@@ -140,7 +142,7 @@ describe.sequential('multilingual CMS collections', () => {
     await expect(
       payload.create({
         collection: 'media',
-        data: {} as { alt: string },
+        data: { source: 'IVYBM generated integration test fixture' } as never,
         file: {
           data: pngData,
           mimetype: 'image/png',

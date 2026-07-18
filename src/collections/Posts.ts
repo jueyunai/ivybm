@@ -1,11 +1,29 @@
 import type { CollectionConfig } from 'payload'
 
+import {
+  contentAdmin,
+  contentCreate,
+  contentDelete,
+  contentUpdate,
+  publishedContentRead,
+} from '../access/content'
 import { internalNotesField } from '../fields/internalNotes'
 import { seoField } from '../fields/seo'
 import { stableSlugField } from '../fields/slug'
+import {
+  revalidateContentAfterChange,
+  revalidateContentAfterDelete,
+} from '../hooks/revalidateContent'
 
 export const Posts: CollectionConfig = {
   slug: 'posts',
+  access: {
+    admin: contentAdmin,
+    create: contentCreate,
+    delete: contentDelete,
+    read: publishedContentRead,
+    update: contentUpdate,
+  },
   admin: {
     defaultColumns: ['title', 'category', 'publishedAt', '_status', 'updatedAt'],
     group: 'Website Content',
@@ -58,6 +76,10 @@ export const Posts: CollectionConfig = {
     seoField(),
     internalNotesField(),
   ],
+  hooks: {
+    afterChange: [revalidateContentAfterChange],
+    afterDelete: [revalidateContentAfterDelete],
+  },
   versions: {
     drafts: true,
     maxPerDoc: 50,
