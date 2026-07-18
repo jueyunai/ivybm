@@ -2,6 +2,8 @@
 
 更新日期：2026-07-18
 
+> 本文件随 docs-only PR 提交，用于冻结 Task 13 的验收口径和阻塞条件。当前分支及 `main` 尚未交付连接器代码；下表中的 fixture / mock 证据来自未 push 的本地 checkpoint，仅供后续实现参考，不属于仓库交付，也不代表平台真实可用。
+
 ## 状态定义
 
 | 状态            | 含义                                                                            |
@@ -10,6 +12,8 @@
 | `conditional`   | 连接器契约或 mock 已完成，真实接入仍受账号、权限、App Review 或上游数据结构限制 |
 | `blocked`       | 所需资产、官方权限或上游依赖缺失，当前只能保留配置、格式化或人工降级路径        |
 | `research-only` | 一期只记录官方能力和限制，不承诺自动读写或发布                                  |
+
+fixture / mock 通过只表示接口契约完成。只有在 staging 或等价真实环境完成账号授权、Webhook 和目标操作实测后，平台能力才能标记为 `available`。
 
 ## 当前能力矩阵
 
@@ -23,7 +27,7 @@
 | LinkedIn 发布                 | `blocked`       | 已锁定“API 可用则自动，否则格式化、素材打包、复制文案和人工发布”降级口径                                   | 等待 Task 12 内容契约和甲方 LinkedIn 应用 / 发布权限证据                                                       |
 | TikTok 私信 / 发布            | `research-only` | 需求和实施计划明确不作为一期自动化必达项                                                                   | 甲方商业账号、目标地区能力和官方开放接口证据                                                                   |
 
-## 接口 / 纯逻辑阶段证据
+## 本地接口 / 纯逻辑 checkpoint（未 push，非仓库交付）
 
 - 实现统一归一化事件、connector、原子 `enqueue` 幂等 repository port、Webhook rate limiter port、conversation writer port 和 message-status writer port。WhatsApp 消息送达状态与 Task 12 社媒内容发布状态保持独立。
 - 验签使用原始请求字节与 `X-Hub-Signature-256` HMAC-SHA256；不记录 app secret、verify token 或平台 token。
@@ -35,7 +39,8 @@
 
 - Task 9 `Conversations` / `Messages` 尚未合并：不创建临时会话 Collection，不提供伪生产持久化。
 - Task 12 `PublishJobs` / `PublishLogs` 尚未合并：不创建临时发布 Collection 或替代 migration。
-- 上游合并后，必须先 `git fetch origin` 并从最新 `origin/main` 更新 Task 13 基线，再实现 Payload / PostgreSQL adapter 与 integration test。
+- Task 10 `Jobs`、worker 及 migration 尚未合并：不实现真实 Webhook 异步消费、发布执行、失败重试、dead job 或人工补偿。纯连接器接口和 fixture 契约测试不依赖 Task 10。
+- 每个数据库依赖都必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`。随后必须先 `git fetch origin` 并从最新 `origin/main` 更新 Task 13 基线，再实现 Payload / PostgreSQL adapter 与 integration test。
 
 ## 外部资产清单
 
