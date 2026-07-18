@@ -40,10 +40,11 @@ bash scripts/install-git-hooks.sh
 ## 分工与依赖
 
 - jueyunai：Task 1-7、10-12、14-15；官网/CMS、SEO、飞书、内容工作台、部署收尾。Task 9 由 jueyunai 负责官网 ChatWidget 前端；Task 12 由 jueyunai 负责内容工作台前端、内容生成/审核工作流，以及 `PublishJobs` / `PublishLogs` 共享结构和发布任务创建。
-- xuemusi：Task 8-9、13；知识库/AI 客服、社媒会话与发布。Task 9 由 xuemusi 负责会话/AI/人工接管服务接口和数据库集成；Task 12 由 xuemusi 负责第三方平台 capability、publish、status 接口、平台 adapter 和发布结果回调。
+- xuemusi：Task 8-9、13；知识库/AI 客服、社媒会话与发布。Task 9 由 xuemusi 负责会话/AI 服务，以及人工接管状态机、转换守卫、幂等、权限、审计、领域事件和数据库集成；Task 12 由 xuemusi 负责第三方平台 capability、publish、status 接口、平台 adapter 和发布结果回调。
 - Task 9 的官网前端可以先依赖 `ChatService` mock 开发；其后端服务和数据库集成必须等待 Task 7 的 `Leads` 合并到 `main`，并消费 Task 8 的 AI 网关 contract。
 - Task 12 的内容工作台前端和内部内容/审核/发布任务流程可以先依赖 `PublishingService` mock 开发；第三方平台发布接口由 xuemusi 提供，不能在前端直接接入平台 SDK 或 token。
 - Task 9 / Task 12 的跨人接口必须先冻结 TypeScript port/interface、请求响应 schema、错误码、状态枚举和 fixture；双方各自用 fake service / fake repository 完成测试后再替换真实 adapter。
+- 人工接管以前端体验与领域服务分层：jueyunai 负责 ChatWidget 和运营接管界面，xuemusi 负责服务端权威状态机；前端不得直接写 `handoffStatus`、`assignedTo` 或审计字段。服务端产生领域事件，Task 10 / 11 处理飞书通知、重试和补偿。
 - Task 13 会话侧数据库集成必须等待 Task 9 的 `Conversations` / `Messages`；发布侧数据库集成必须等待 Task 12 的 `PublishJobs` / `PublishLogs`；真实 Webhook 异步处理、发布执行、失败重试和人工补偿必须等待 Task 10 的 `Jobs`、worker 及其 migration 合并到 `main`。纯连接器接口和 fixture 契约测试不依赖 Task 10。
 - 依赖未合并时，Task 13 可并行开发连接器接口、Webhook 验签、事件幂等、payload 归一化、官方 fixture 契约测试和 Meta / WhatsApp mock；必须使用 TypeScript port/interface 与 fake repository，不得创建临时替代 Collection 或替代 migration。
 - 任何数据库 adapter 开发都必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`，仅有接口定义或 Collection 代码不视为依赖已满足。

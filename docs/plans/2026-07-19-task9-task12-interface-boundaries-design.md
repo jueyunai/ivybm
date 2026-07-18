@@ -19,6 +19,16 @@ Task 9 和 Task 12 按“前端体验与内部工作流”和“后端服务与�
 - xuemusi 的服务实现可以先使用 fake repository 和 fake provider；平台账号、审核和 staging 条件满足后，再替换为真实 adapter。
 - 共享 Collection、migration、Payload 注册和生成类型仍按 `main` 的合并顺序维护；接口 contract 可以先于数据库 adapter 合并。
 
+### 人工接管边界
+
+- jueyunai 负责 ChatWidget、运营会话列表、接管提示、认领/解决操作和所有用户可见状态。
+- xuemusi 负责服务端权威状态机、转换守卫、幂等、权限、审计，以及进入 `human_active` 后阻止 AI 自动回复。
+- `ChatService` 的 HTTP route 是模块化单体内的薄适配层，不是独立微服务；官网、运营后台和社媒连接器共用同一个 `ConversationService`。
+- 前端只提交 `reason`、`source` 和 `idempotencyKey` 等命令参数，不能直接写 `handoffStatus`、`assignedTo` 或审计字段。
+- 服务端产生 `handoff.created` 领域事件，Task 10 / 11 负责 Job、飞书通知、失败重试和人工补偿，AI 服务不直接依赖飞书 SDK。
+
+人工接管的完整决策和状态机见 [`ADR-0001`](../architecture/adr/0001-human-handoff-domain-boundary.md)。
+
 ## Mock-first 交付顺序
 
 1. 双方共同提交 TypeScript port/interface、JSON schema、错误码、状态枚举和官方结构 fixture。

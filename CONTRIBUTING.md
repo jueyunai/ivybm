@@ -38,12 +38,14 @@ Payload / PostgreSQL 的 migration 按时间线性生成，两人各自本地生
 
 ### Task 9 / Task 12 前后端协作边界
 
-| 任务    | jueyunai                                                                                                                          | xuemusi                                                                                                     |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Task 9  | 官网 `ChatWidget`、交互状态、前端 E2E；使用 `ChatService` mock                                                                    | 会话/AI/人工接管 API、评分与知识引用、`Conversations` / `Messages` / `Handoffs` 集成；提供 contract fixture |
-| Task 12 | 内容工作台页面、内容生成/审核 UI、内部状态流、`PublishJobs` / `PublishLogs` 共享结构和发布任务创建；使用 `PublishingService` mock | 第三方平台 capability / publish / status API、平台 adapter、发布结果回调；不把平台 SDK / token 暴露给前端   |
+| 任务    | jueyunai                                                                                                                          | xuemusi                                                                                                                 |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Task 9  | 官网 `ChatWidget`、运营会话/接管界面、交互状态、前端 E2E；使用 `ChatService` mock                                                 | 会话/AI 服务、接管状态机/幂等/权限/审计/领域事件、`Conversations` / `Messages` / `Handoffs` 集成；提供 contract fixture |
+| Task 12 | 内容工作台页面、内容生成/审核 UI、内部状态流、`PublishJobs` / `PublishLogs` 共享结构和发布任务创建；使用 `PublishingService` mock | 第三方平台 capability / publish / status API、平台 adapter、发布结果回调；不把平台 SDK / token 暴露给前端               |
 
 跨边界开发必须先提交并 review TypeScript port/interface、请求响应 schema、错误码、状态枚举和 mock 行为。消费者先用 fake service 开发，服务提供者先用 fake repository / 官方 fixture 实现；真实数据库和平台 adapter 在对应 Collection、migration、Payload 类型和 staging 条件满足后接入。
+
+人工接管由服务端维护权威状态，官网、运营后台和社媒连接器只能通过 `ChatService` 命令接口表达请求。前端不得直接修改 `handoffStatus`、`assignedTo` 或审计字段；服务端进入 `human_active` 后必须阻止 AI 自动回复，并通过领域事件把通知和补偿交给 Task 10 / 11。完整决策见 [`ADR-0001`](docs/architecture/adr/0001-human-handoff-domain-boundary.md)。
 
 依赖分三个阶段处理：
 
