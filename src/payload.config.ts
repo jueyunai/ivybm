@@ -7,11 +7,14 @@ import sharp from 'sharp'
 
 import { AuditLogs } from './collections/AuditLogs'
 import { Downloads } from './collections/Downloads'
+import { KnowledgeChunks } from './collections/KnowledgeChunks'
+import { KnowledgeDocuments } from './collections/KnowledgeDocuments'
 import { Media } from './collections/Media'
 import { Pages } from './collections/Pages'
 import { Posts } from './collections/Posts'
 import { ProductCategories } from './collections/ProductCategories'
 import { Products } from './collections/Products'
+import { PromptTemplates } from './collections/PromptTemplates'
 import { Projects } from './collections/Projects'
 import { Users } from './collections/Users'
 import { SiteSettings } from './globals/SiteSettings'
@@ -41,6 +44,9 @@ export default buildConfig({
     Projects,
     Posts,
     Downloads,
+    KnowledgeDocuments,
+    KnowledgeChunks,
+    PromptTemplates,
   ],
   editor: lexicalEditor(),
   globals: [SiteSettings],

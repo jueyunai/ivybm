@@ -12,11 +12,7 @@ export type RoleUser = {
 export type AccessAction = 'create' | 'read' | 'update' | 'delete'
 
 export type AccessResource =
-  | 'users'
-  | 'content'
-  | 'platformAccounts'
-  | 'conversations'
-  | 'leads'
+  'users' | 'content' | 'knowledge' | 'platformAccounts' | 'conversations' | 'leads'
 
 type ResolveRoleAccessArgs = {
   action: AccessAction
@@ -59,7 +55,7 @@ export const resolveRoleAccess = ({
   }
 
   if (user.role === 'operator') {
-    if (resource === 'content') {
+    if (resource === 'content' || resource === 'knowledge') {
       return true
     }
 
@@ -84,7 +80,8 @@ export const resolveRoleAccess = ({
   return false
 }
 
-export const accessFor = (resource: AccessResource, action: AccessAction): Access =>
+export const accessFor =
+  (resource: AccessResource, action: AccessAction): Access =>
   ({ req }): AccessResult =>
     resolveRoleAccess({
       action,
