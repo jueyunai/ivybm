@@ -56,6 +56,41 @@ describe('AI gateway contract', () => {
     expect(onUsage).toHaveBeenCalledTimes(2)
   })
 
+  it('does not turn successful provider calls into failures when usage reporting fails', async () => {
+    const provider = {
+      ...fakeProvider,
+      embed: vi.fn(fakeProvider.embed),
+      generateText: vi.fn(fakeProvider.generateText),
+    }
+    const usageFailure = new Error('usage store unavailable')
+    const onUsage = vi.fn().mockRejectedValue(usageFailure)
+    const onUsageError = vi.fn()
+    const gateway = createAiGateway({
+      models: { embedding: 'fake-embedding', text: 'fake-text' },
+      onUsage,
+      onUsageError,
+      provider,
+    })
+
+    await expect(gateway.generateText({ input: 'successful generation' })).resolves.toMatchObject({
+      text: 'Reviewed answer',
+    })
+    await expect(gateway.embed({ input: ['successful embedding'] })).resolves.toMatchObject({
+      embeddings: [[1, 0, 0]],
+    })
+
+    expect(provider.generateText).toHaveBeenCalledTimes(1)
+    expect(provider.embed).toHaveBeenCalledTimes(1)
+    expect(onUsage).toHaveBeenCalledTimes(2)
+    expect(onUsageError).toHaveBeenCalledTimes(2)
+    expect(onUsageError).toHaveBeenNthCalledWith(1, usageFailure, expect.objectContaining({
+      operation: 'generateText',
+    }))
+    expect(onUsageError).toHaveBeenNthCalledWith(2, usageFailure, expect.objectContaining({
+      operation: 'embed',
+    }))
+  })
+
   it('normalizes timeout and provider errors without exposing credentials', async () => {
     const timeoutGateway = createAiGateway({
       models: { embedding: 'fake-embedding', text: 'fake-text' },

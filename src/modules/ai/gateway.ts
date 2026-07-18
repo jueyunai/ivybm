@@ -100,6 +100,7 @@ export type AiUsageRecord = {
 type GatewayOptions = {
   models: { embedding: string; text: string }
   onUsage?: (record: AiUsageRecord) => Promise<void> | void
+  onUsageError?: (error: unknown, record: AiUsageRecord) => Promise<void> | void
   pricing?: Record<string, ModelPricing>
   provider: AiProvider
   timeouts?: { embedMs?: number; generateTextMs?: number }
@@ -187,6 +188,18 @@ const validateEmbeddings = (embeddings: number[][], expected: number): void => {
   }
 }
 
+const reportUsage = async (options: GatewayOptions, record: AiUsageRecord): Promise<void> => {
+  try {
+    await options.onUsage?.(record)
+  } catch (error) {
+    try {
+      await options.onUsageError?.(error, record)
+    } catch {
+      // Usage telemetry must not change the result of an already successful model call.
+    }
+  }
+}
+
 export const createAiGateway = (options: GatewayOptions) => ({
   embed: async (input: EmbedInput) => {
     if (input.input.length === 0 || input.input.some((value) => !value.trim())) {
@@ -211,7 +224,7 @@ export const createAiGateway = (options: GatewayOptions) => ({
         requestId: result.requestId,
         usage: result.usage,
       }
-      await options.onUsage?.(record)
+      await reportUsage(options, record)
 
       return { ...result, cost, provider: options.provider.name }
     } catch (error) {
@@ -243,7 +256,7 @@ export const createAiGateway = (options: GatewayOptions) => ({
         requestId: result.requestId,
         usage: result.usage,
       }
-      await options.onUsage?.(record)
+      await reportUsage(options, record)
 
       return { ...result, cost, provider: options.provider.name }
     } catch (error) {

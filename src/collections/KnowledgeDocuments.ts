@@ -1,6 +1,5 @@
 import type {
   CollectionBeforeChangeHook,
-  CollectionBeforeDeleteHook,
   CollectionConfig,
 } from 'payload'
 
@@ -74,15 +73,6 @@ const stampReview: CollectionBeforeChangeHook = ({ data, operation, originalDoc,
   }
 
   return data
-}
-
-const deleteDocumentChunks: CollectionBeforeDeleteHook = async ({ id, req }) => {
-  await req.payload.delete({
-    collection: 'knowledge-chunks',
-    overrideAccess: true,
-    req,
-    where: { document: { equals: id } },
-  })
 }
 
 export const KnowledgeDocuments: CollectionConfig = {
@@ -198,6 +188,5 @@ export const KnowledgeDocuments: CollectionConfig = {
   ],
   hooks: {
     beforeChange: [stampReview],
-    beforeDelete: [deleteDocumentChunks],
   },
 }

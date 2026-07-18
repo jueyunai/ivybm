@@ -66,7 +66,7 @@ export async function up({ db, payload: _payload, req: _req }: MigrateUpArgs): P
   ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "prompt_templates_id" integer;
   ALTER TABLE "knowledge_documents" ADD CONSTRAINT "knowledge_documents_source_file_id_media_id_fk" FOREIGN KEY ("source_file_id") REFERENCES "public"."media"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "knowledge_documents" ADD CONSTRAINT "knowledge_documents_reviewed_by_id_users_id_fk" FOREIGN KEY ("reviewed_by_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "knowledge_chunks" ADD CONSTRAINT "knowledge_chunks_document_id_knowledge_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."knowledge_documents"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "knowledge_chunks" ADD CONSTRAINT "knowledge_chunks_document_id_knowledge_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."knowledge_documents"("id") ON DELETE cascade ON UPDATE no action;
   CREATE INDEX "knowledge_documents_source_file_idx" ON "knowledge_documents" USING btree ("source_file_id");
   CREATE INDEX "knowledge_documents_locale_idx" ON "knowledge_documents" USING btree ("locale");
   CREATE INDEX "knowledge_documents_review_status_idx" ON "knowledge_documents" USING btree ("review_status");

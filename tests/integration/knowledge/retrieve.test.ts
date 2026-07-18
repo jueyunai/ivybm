@@ -8,6 +8,7 @@ import {
   retrieveKnowledgeForQuery,
 } from '@/modules/knowledge/retrieve'
 import { indexKnowledgeDocument, setKnowledgeChunkEmbedding } from '@/modules/knowledge/embed'
+import { chunkKnowledgeDocument } from '@/modules/knowledge/chunk'
 import config from '@/payload.config'
 
 let payload: Payload
@@ -512,5 +513,313 @@ describe.sequential('knowledge retrieval', () => {
       where: { document: { equals: document.id } },
     })
     chunkIDs.push(...createdChunks.docs.map(({ id }) => id))
+  })
+
+  it('atomically allows only one concurrent indexing run for a document', async () => {
+    const suffix = randomUUID()
+    const document = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'Only one concurrent request may index this reviewed engineering statement.',
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Concurrent index ${suffix}`,
+        sourceType: 'technical-specification',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(document.id)
+
+    let releaseEmbedding!: () => void
+    const embeddingReleased = new Promise<void>((resolve) => {
+      releaseEmbedding = resolve
+    })
+    let signalEmbeddingStarted!: () => void
+    const embeddingStarted = new Promise<void>((resolve) => {
+      signalEmbeddingStarted = resolve
+    })
+    const gateway = {
+      embed: async ({ input }: { input: string[] }) => {
+        signalEmbeddingStarted()
+        await embeddingReleased
+        return {
+          cost: { currency: 'USD' as const, estimated: 0 },
+          embeddings: input.map(() => [1, 0, 0]),
+          model: 'fake-concurrent-index-model',
+          provider: 'fake',
+          usage: { inputTokens: 5, totalTokens: 5 },
+        }
+      },
+    }
+
+    const first = indexKnowledgeDocument({
+      documentId: document.id,
+      gateway,
+      payload,
+      pool: getDatabase().pool,
+    })
+    await embeddingStarted
+
+    await expect(
+      indexKnowledgeDocument({
+        documentId: document.id,
+        gateway,
+        payload,
+        pool: getDatabase().pool,
+      }),
+    ).rejects.toThrow('Knowledge document is already being indexed')
+
+    releaseEmbedding()
+    await expect(first).resolves.toEqual({
+      chunkCount: 1,
+      model: 'fake-concurrent-index-model',
+    })
+
+    const indexedDocument = await payload.findByID({
+      collection: 'knowledge-documents',
+      id: document.id,
+      overrideAccess: true,
+    })
+    expect(indexedDocument.indexStatus).toBe('ready')
+    const chunks = await payload.find({
+      collection: 'knowledge-chunks',
+      overrideAccess: true,
+      where: { document: { equals: document.id } },
+    })
+    chunkIDs.push(...chunks.docs.map(({ id }) => id))
+    expect(chunks.totalDocs).toBe(1)
+  })
+
+  it('paginates all existing chunks when reindexing more than 1000 rows', async () => {
+    const suffix = randomUUID()
+    const content = 'Stable reviewed knowledge that must reuse its existing chunk.'
+    const document = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content,
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Large reindex ${suffix}`,
+        sourceType: 'faq',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(document.id)
+    const [expectedChunk] = chunkKnowledgeDocument({
+      documentId: document.id,
+      locale: document.locale,
+      sourceTitle: document.sourceTitle,
+      sourceVersion: document.sourceVersion,
+      text: document.content,
+    })
+    const pool = getDatabase().pool
+
+    await pool.query(
+      `INSERT INTO knowledge_chunks
+        (document_id, stable_id, "index", locale, content, source_title, source_version)
+       SELECT $1, $3 || value, value, 'en', 'stale', $2, '0.9'
+       FROM generate_series(1, 1000) AS value`,
+      [document.id, document.sourceTitle, `stale-${suffix}-`],
+    )
+    const matching = await payload.create({
+      collection: 'knowledge-chunks',
+      data: {
+        content: expectedChunk.content,
+        document: document.id,
+        index: expectedChunk.index,
+        locale: expectedChunk.locale,
+        sourceTitle: expectedChunk.citation.title,
+        sourceVersion: expectedChunk.citation.version,
+        stableId: expectedChunk.stableId,
+      },
+      overrideAccess: true,
+    })
+
+    await expect(
+      indexKnowledgeDocument({
+        documentId: document.id,
+        gateway: {
+          embed: async ({ input }) => ({
+            cost: { currency: 'USD' as const, estimated: 0 },
+            embeddings: input.map(() => [1, 0, 0]),
+            model: 'fake-large-reindex-model',
+            provider: 'fake',
+            usage: { inputTokens: 5, totalTokens: 5 },
+          }),
+        },
+        payload,
+        pool,
+      }),
+    ).resolves.toEqual({ chunkCount: 1, model: 'fake-large-reindex-model' })
+
+    const remaining = await payload.find({
+      collection: 'knowledge-chunks',
+      limit: 10,
+      overrideAccess: true,
+      where: { document: { equals: document.id } },
+    })
+    chunkIDs.push(...remaining.docs.map(({ id }) => id))
+    expect(remaining.totalDocs).toBe(1)
+    expect(remaining.docs[0].id).toBe(matching.id)
+  })
+
+  it('batches embedding calls within item and estimated token limits', async () => {
+    const suffix = randomUUID()
+    const paragraphs = Array.from(
+      { length: 5 },
+      (_, index) => `Section ${index + 1} ${'x'.repeat(44)}.`,
+    )
+    const document = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: paragraphs.join('\n\n'),
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Batch limits ${suffix}`,
+        sourceType: 'product-manual',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(document.id)
+    const batches: string[][] = []
+
+    await expect(
+      indexKnowledgeDocument({
+        chunkOptions: { maxCharacters: 60 },
+        documentId: document.id,
+        gateway: {
+          embed: async ({ input }) => {
+            batches.push(input)
+            return {
+              cost: { currency: 'USD' as const, estimated: 0 },
+              embeddings: input.map(() => [1, 0, 0]),
+              model: 'fake-batched-model',
+              provider: 'fake',
+              usage: { inputTokens: input.length * 10, totalTokens: input.length * 10 },
+            }
+          },
+        },
+        limits: {
+          embeddingBatchMaxItems: 2,
+          embeddingBatchMaxTokens: 30,
+        },
+        payload,
+        pool: getDatabase().pool,
+      }),
+    ).resolves.toEqual({ chunkCount: 5, model: 'fake-batched-model' })
+
+    expect(batches.map((batch) => batch.length)).toEqual([2, 2, 1])
+    expect(
+      batches.every(
+        (batch) => batch.reduce((tokens, text) => tokens + Math.ceil(Buffer.byteLength(text) / 4), 0) <= 30,
+      ),
+    ).toBe(true)
+
+    const chunks = await payload.find({
+      collection: 'knowledge-chunks',
+      overrideAccess: true,
+      where: { document: { equals: document.id } },
+    })
+    chunkIDs.push(...chunks.docs.map(({ id }) => id))
+  })
+
+  it('rejects documents that exceed configured byte or chunk limits before embedding', async () => {
+    const suffix = randomUUID()
+    const oversizedDocument = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'This reviewed document is larger than its deliberately tiny test limit.',
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Byte limit ${suffix}`,
+        sourceType: 'faq',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    const overChunkedDocument = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: `${'First section '.repeat(5)}\n\n${'Second section '.repeat(5)}`,
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Chunk limit ${suffix}`,
+        sourceType: 'faq',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(oversizedDocument.id, overChunkedDocument.id)
+    const embed = async () => {
+      throw new Error('embedding must not run when limits are exceeded')
+    }
+
+    await expect(
+      indexKnowledgeDocument({
+        documentId: oversizedDocument.id,
+        gateway: { embed },
+        limits: { documentMaxBytes: 10 },
+        payload,
+        pool: getDatabase().pool,
+      }),
+    ).rejects.toThrow('Knowledge document exceeds the configured size limit')
+    await expect(
+      indexKnowledgeDocument({
+        chunkOptions: { maxCharacters: 60 },
+        documentId: overChunkedDocument.id,
+        gateway: { embed },
+        limits: { maxChunksPerDocument: 1 },
+        payload,
+        pool: getDatabase().pool,
+      }),
+    ).rejects.toThrow('Knowledge document exceeds the configured chunk limit')
+  })
+
+  it('relies on the database foreign key to delete chunks with their document', async () => {
+    const suffix = randomUUID()
+    const document = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'Document deleted directly in the database.',
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Cascade delete ${suffix}`,
+        sourceType: 'faq',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    const chunk = await payload.create({
+      collection: 'knowledge-chunks',
+      data: {
+        content: document.content,
+        document: document.id,
+        index: 0,
+        locale: document.locale,
+        sourceTitle: document.sourceTitle,
+        sourceVersion: document.sourceVersion,
+        stableId: `cascade-${suffix}`,
+      },
+      overrideAccess: true,
+    })
+    const pool = getDatabase().pool
+
+    await expect(pool.query('DELETE FROM knowledge_documents WHERE id = $1', [document.id])).resolves.toMatchObject({
+      rowCount: 1,
+    })
+    const remaining = await pool.query<{ count: string }>(
+      'SELECT COUNT(*) AS count FROM knowledge_chunks WHERE id = $1',
+      [chunk.id],
+    )
+    expect(remaining.rows[0].count).toBe('0')
   })
 })
