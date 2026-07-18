@@ -28,39 +28,40 @@ Browser-rendered checks covered English and Arabic navigation, language switchin
 
 - Fonts and typography: heading scale, weight, line-height, wrapping, eyebrow treatment, body hierarchy, and Arabic alignment closely follow the approved prototype at desktop and mobile sizes.
 - Spacing and layout rhythm: header height, hero content placement, CTA grouping, carousel controls, section transition, responsive stacking, and RTL mirroring preserve the prototype's composition. No clipped controls or horizontal overflow were found.
-- Colors and visual tokens: dark header, blue CTA, white secondary CTA, light-blue eyebrow, and warm hero treatment are internally consistent. The warm fallback palette is intentionally visible because photography is unavailable.
-- Image quality and asset fidelity: blocked. The prototype uses full-bleed modern curved-facade photography; the implementation currently uses repository-local generated development placeholder images and a warm fallback treatment. The assets are safe and contain no external hotlinks, but they do not match the source subject, depth, crop, or photographic quality.
+- Colors and visual tokens: dark header, blue CTA, white secondary CTA, light-blue eyebrow, image overlays, and text contrast remain internally consistent after replacing the warm fallback images.
+- Image quality and asset fidelity: sufficient for customer showcase. Eight prototype-aligned Unsplash images are stored as repository seed inputs, uploaded through Payload, and rendered without external hotlinks. They restore the intended architectural depth and subject variety, but remain temporary showcase assets rather than customer-approved long-term brand photography.
 - Copy and content: public English and Arabic content is coherent and contains no Demo/Fake labels or placeholder contact details. Content differences from the prototype reflect the seeded CMS copy rather than layout drift.
 - Icons and controls: navigation, language, menu, CTA, project, and carousel controls are aligned and functional. The prototype's chat entry is intentionally deferred to the later AI customer-service task and is not represented as working Task 6 functionality.
 
 ## Findings
 
-- [P1] Approved architectural photography is missing
+- [P1] Customer-approved long-term architectural photography is still missing
   - Location: home hero and CMS-backed product/project/news image surfaces.
-  - Evidence: the source comparisons show real curved-aluminum building photography; the implementation comparisons show local development placeholders and a warm fallback field.
-  - Impact: this is the dominant visual difference and prevents the website from matching the customer's approved brand presentation for production.
-  - Fix: replace development placeholders with customer-owned or explicitly licensed factory, product, and project photography, preserving each measured crop and responsive focal point; then regenerate the visual baselines and repeat this QA.
+  - Evidence: the source and refreshed implementation baselines now show prototype-aligned architecture imagery; the implementation assets are still recorded as temporary Unsplash showcase material rather than customer-owned brand photography.
+  - Impact: no longer blocks customer demonstration, but still blocks final production asset acceptance and long-term brand ownership confirmation.
+  - Fix: replace the temporary showcase assets with customer-owned or explicitly approved factory, product, and project photography, preserving each measured crop and responsive focal point; then regenerate the visual baselines and repeat this QA.
 
 ## Open questions
 
-- The repository does not contain approved brand/factory/project photography. Built-in image generation was attempted but returned HTTP 404, and the prototype's external Unsplash URLs cannot be copied as formal assets. The remaining fix therefore needs an approved asset source.
+- The repository now contains locally stored temporary showcase copies of the prototype's Unsplash images, with source URLs and SHA-256 values recorded in `docs/assets/客户演示素材来源.md`. The customer still needs to confirm the final long-term production assets.
 
 ## Comparison history
 
 1. Initial desktop comparison at `1440x900` found the P1 photography mismatch; navigation, typography, hero geometry, CTA placement, and carousel position were otherwise aligned.
 2. English and Arabic mobile comparisons at `390x844` confirmed the same photography blocker while validating responsive stacking, RTL mirroring, control placement, and zero horizontal overflow.
-3. No compliant replacement asset was available after the image-generation failure, so the P1 remains open. No further code-only iteration can resolve the missing source photography without fabricating or hotlinking an asset.
+3. The customer authorized the prototype images for an online showcase. Eight images were committed as deterministic seed inputs, all 36 visual baselines were regenerated, and visual tests were updated to wait for lazy-loaded images before capture.
+4. Desktop and mobile spot checks confirm real images across Hero, product, project, News, and Contact surfaces in English and Arabic. The remaining P1 is limited to final production ownership / approval, not showcase fidelity.
 
 ## Implementation checklist
 
-- Obtain customer-owned or explicitly licensed architectural/factory/product/project photography.
-- Replace all development placeholder imagery while preserving the approved crops and focal points.
-- Re-run English and Arabic desktop/tablet/mobile screenshots and visual regression tests.
-- Repeat Design QA and change the final result only after the P1 is resolved.
+- Obtain customer-owned or explicitly approved long-term architectural/factory/product/project photography before final production acceptance.
+- Replace the temporary showcase imagery while preserving the approved crops and focal points.
+- Re-run English and Arabic desktop/tablet/mobile screenshots and visual regression tests after the final asset replacement.
+- Repeat Design QA before marking the production asset P1 resolved.
 
 ## Follow-up polish
 
 - Recheck Arabic line wrapping after final photography changes because crop contrast may affect readable text placement.
 - Add the persistent customer-service entry when the later AI customer-service task supplies its real behavior.
 
-final result: blocked
+final result: passed for customer showcase; blocked for final production asset acceptance
