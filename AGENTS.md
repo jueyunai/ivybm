@@ -33,7 +33,7 @@ bash scripts/install-git-hooks.sh
 - 提交前运行该 Task 规定的 lint、typecheck、test、build；不能运行时明确说明原因。
 - PR 标题和描述必须引用 Task 编号，并填写 `.github/pull_request_template.md`。
 - 项目初始化、CI、工程配置、文档及负责人自己板块内的独立改动，在 CI 通过、完成 PR 清单并检查完整 diff 后，可由负责人自检合并；必须在 PR 中记录不涉及共享结构、跨人契约、协作者范围或一期上线验收。作者自检不等同于 GitHub 独立审批。
-- 共享文件 `src/payload.config.ts`、migration、`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`PublishJobs`，以及供另一人任务消费的公共接口、字段或契约，必须由另一名开发者 review。跨双方板块边界或影响另一人在途任务的改动同样不得自检合并。
+- 共享文件 `src/payload.config.ts`、migration、`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`PublishJobs`、`PublishLogs`，以及供另一人任务消费的公共接口、字段或契约，必须由另一名开发者 review。跨双方板块边界或影响另一人在途任务的改动同样不得自检合并。
 - production 发布仍由 jueyunai 审批，一期上线验收必须由两人共同确认。
 - `main` 上的紧急修复只能在用户明确授权后使用 `IVYBM_ALLOW_MAIN_PUSH=1` 绕过本地 hook；完成后必须补建 PR 或事故记录。
 
@@ -41,8 +41,10 @@ bash scripts/install-git-hooks.sh
 
 - jueyunai：Task 1-7、10-12、14-15；官网/CMS、SEO、飞书、内容工作台、部署收尾。
 - xuemusi：Task 8-9、13；知识库/AI 客服、社媒会话与发布。
-- Task 9 必须等待 Task 7 的 `Leads` 合并到 `main`。
-- Task 13 发布侧必须等待 Task 12 的 `PublishJobs` 合并到 `main`。
+- Task 9 的数据库集成必须等待 Task 7 的 `Leads` 合并到 `main`。
+- Task 13 会话侧数据库集成必须等待 Task 9 的 `Conversations` / `Messages`；发布侧数据库集成必须等待 Task 12 的 `PublishJobs` / `PublishLogs` 合并到 `main`。
+- 依赖未合并时，Task 13 可并行开发连接器接口、Webhook 验签、事件幂等、payload 归一化、官方 fixture 契约测试和 Meta / WhatsApp mock；必须使用 TypeScript port/interface 与 fake repository，不得创建临时替代 Collection 或替代 migration。
+- 外部平台联调需要对应账号、授权和 staging；条件不足时以官方 fixture 契约测试、配置说明和阻塞记录按 P1 / P2 口径验收。
 - migration 以先合并到 `main` 的历史为准；未合并分支在同步最新 `main` 后重新生成，不修改已合并 migration。
 
 ## 安全与资料边界
