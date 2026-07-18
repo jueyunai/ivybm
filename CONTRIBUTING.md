@@ -18,7 +18,7 @@
 - 不直接 push 到 `main`，一律走 PR。合并前本地运行 `pnpm lint && pnpm typecheck && pnpm test:unit`；涉及数据库 / 契约测试的任务额外运行对应命令，并把结果贴在 PR 描述中。
 - GitHub 管理员仍具有平台侧绕过能力，因此本方案不能等同于服务端 branch protection；若后续升级 GitHub Pro，再启用服务端强制门禁。
 - PR 分为“负责人自检合并”和“另一名开发者 review”两条路径。项目初始化、CI、工程配置、文档，以及负责人自己板块内的独立改动，在 CI 通过、PR 清单完成、作者逐项检查完整 diff，且不满足下述强制 review 条件时，可以由负责人自行合并。作者不能在 GitHub 上批准自己的 PR；这里的“自检合并”是完成自检并在 PR 中记录依据后直接合并，不伪装成独立审批。
-- 出现以下任一情况时，必须等另一名开发者 review 后才能合并：修改 `src/payload.config.ts`、migration，或共享 Collection（`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`PublishJobs`）；修改供另一人任务消费的公共接口、字段或契约；跨越双方板块边界，或实质影响另一人的在途任务。拿不准是否属于共享边界时，默认走另一人 review。
+- 出现以下任一情况时，必须等另一名开发者 review 后才能合并：修改 `src/payload.config.ts`、migration，或共享 Collection（`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`PublishJobs`、`PublishLogs`）；修改供另一人任务消费的公共接口、字段或契约；跨越双方板块边界，或实质影响另一人的在途任务。拿不准是否属于共享边界时，默认走另一人 review。
 - 负责人自检合并时，在 PR 描述或评论中明确记录“不涉及共享结构、跨人契约或协作者范围”，并保留对应测试与 CI 结果。CODEOWNERS 只为已列出的共享文件自动请求关注，不再为普通自有范围 PR 默认请求双方 review；公共契约、跨板块边界和对在途任务的影响无法完全依赖路径识别，PR 作者必须人工判断并请求另一名开发者 review。
 - PR 描述引用对应 Task 编号，方便对照实施计划里的验证步骤。
 
@@ -34,9 +34,13 @@ Payload / PostgreSQL 的 migration 按时间线性生成，两人各自本地生
 
 ## 共享数据结构变更
 
-`Leads`、`Conversations` / `Messages`、`GeneratedContents` / `PublishJobs` 是两人板块之间的接口（对应需求文档"合作开发者交接说明"提到的三个基础数据结构）。改动这些 Collection 的字段前先口头对齐，不单方面改动后直接合并。
+`Leads`、`Conversations` / `Messages`、`GeneratedContents` / `PublishJobs` / `PublishLogs` 是两人板块之间的接口（对应需求文档"合作开发者交接说明"提到的三个基础数据结构）。改动这些 Collection 的字段前先口头对齐，不单方面改动后直接合并。
 
-已知强依赖：Task 9（AI 客服与意向评分）读写 Task 7（询盘表单与线索模型）创建的 `Leads`，Task 9 必须等 Task 7 合并到 `main` 才能开始；Task 13（平台连接器）的发布侧依赖 Task 12（内容工作台）产出的 `PublishJobs`。
+依赖分三个阶段处理：
+
+1. **接口 / 纯逻辑阶段**：允许使用 TypeScript port/interface、fake repository、mock 和官方结构 fixture 并行开发。Task 13 在这一阶段可实现连接器接口、Webhook 验签、时间戳、事件幂等、payload 归一化和 Meta / WhatsApp mock；不创建临时 `Leads`、`Conversations`、`Messages`、`PublishJobs` 或 `PublishLogs`，不生成替代 migration。
+2. **数据库集成阶段**：必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`，再从最新 `origin/main` 更新分支并实现 adapter。Task 9 读写 Task 7 的 `Leads`；Task 13 会话侧读写 Task 9 的 `Conversations` / `Messages`，发布侧读写 Task 12 的 `PublishJobs` / `PublishLogs`。Task 13 的真实 Webhook 异步处理、发布执行、失败重试、dead job 和人工补偿还必须等待 Task 10 的 `Jobs` Collection、worker、migration、Payload 注册和生成类型合并；纯连接器和 fixture 测试不依赖 Task 10。
+3. **外部平台联调阶段**：需要甲方账号资产、平台授权或 staging 环境。条件满足时实测 Webhook、入站消息和测试发布；条件缺失时以 fixture 契约测试、模拟记录、配置说明和阻塞证据按 P1 / P2 口径验收。fixture / mock 通过只代表接口契约完成，不得据此把平台标记为 `available`。
 
 ## 发布
 
