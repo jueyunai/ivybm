@@ -5,6 +5,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "ai:eval:coverage": "node scripts/ai-eval/coverage-report.mjs",
+    "ai:eval:csv": "node scripts/ai-eval/export-csv.mjs",
+    "ai:eval:validate": "node scripts/ai-eval/validate.mjs",
     "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build",
     "db:migrate": "cross-env NODE_OPTIONS=--no-deprecation payload migrate",
     "db:migrate:create": "cross-env NODE_OPTIONS=--no-deprecation payload migrate:create",
@@ -25,7 +28,7 @@
     "test": "pnpm run test:unit",
     "test:e2e": "cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" playwright test --config=playwright.config.ts",
     "test:integration": "cross-env NODE_OPTIONS=--no-deprecation NODE_ENV=test vitest run --config ./vitest.integration.config.mts",
-    "test:unit": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts tests/unit",
+    "test:unit": "pnpm run ai:eval:validate && cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts tests/unit",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
