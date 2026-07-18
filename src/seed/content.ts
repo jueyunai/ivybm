@@ -76,9 +76,27 @@ const findMediaByFilename = async (payload: Payload, filename: string) => {
   return result.docs[0]
 }
 
+const findSeedMedia = async (payload: Payload, filename: string, alt: string) => {
+  const exactFilename = await findMediaByFilename(payload, filename)
+  if (exactFilename) return exactFilename
+
+  const renamedUpload = await payload.find({
+    collection: 'media',
+    limit: 1,
+    overrideAccess: true,
+    where: {
+      alt: {
+        equals: alt,
+      },
+    },
+  })
+
+  return renamedUpload.docs[0]
+}
+
 /** Read a file from disk and create or update a media record. */
 const ensureMediaFile = async (payload: Payload, filepath: string, filename: string, alt: string): Promise<number> => {
-  const existing = await findMediaByFilename(payload, filename)
+  const existing = await findSeedMedia(payload, filename, alt)
 
   if (existing) {
     const media = await payload.update({
@@ -119,23 +137,16 @@ const ensureMediaFile = async (payload: Payload, filepath: string, filename: str
 
 /** Upload all demo images and return a map of filename -> media ID. */
 const ensureSeedImages = async (payload: Payload): Promise<Map<string, number>> => {
-  const results = await Promise.allSettled(
-    demoImages.map(async ({ alt, filename }) => {
-      const filepath = path.join(mediaDir, filename)
-      if (!fs.existsSync(filepath)) {
-        payload.logger.warn(`Demo image not found on disk, skipping: ${filename}`)
-        return null
-      }
-      const id = await ensureMediaFile(payload, filepath, filename, alt)
-      return { filename, id }
-    }),
-  )
-
   const map = new Map<string, number>()
-  for (const result of results) {
-    if (result.status === 'fulfilled' && result.value) {
-      map.set(result.value.filename, result.value.id)
+  for (const { alt, filename } of demoImages) {
+    const filepath = path.join(mediaDir, filename)
+    if (!fs.existsSync(filepath)) {
+      payload.logger.warn(`Demo image not found on disk, skipping: ${filename}`)
+      continue
     }
+
+    const id = await ensureMediaFile(payload, filepath, filename, alt)
+    map.set(filename, id)
   }
 
   // Fallback: if no image was loaded (e.g. media dir missing), regenerate the placeholder
@@ -159,14 +170,15 @@ const ensureSeedImages = async (payload: Payload): Promise<Map<string, number>> 
 
 const ensurePlaceholderPDF = async (payload: Payload): Promise<number> => {
   const filename = 'ivybm-technical-data-placeholder.pdf'
-  const existing = await findMediaByFilename(payload, filename)
+  const alt = 'Aluminum panel technical data document'
+  const existing = await findSeedMedia(payload, filename, alt)
 
   if (existing) {
     const media = await payload.update({
       collection: 'media',
       context: seedContext,
       data: {
-        alt: 'Aluminum panel technical data document',
+        alt,
         isPublic: true,
         source: 'IVYBM-owned development document generated locally; replace with approved technical data before production.',
       },
@@ -182,7 +194,7 @@ const ensurePlaceholderPDF = async (payload: Payload): Promise<number> => {
     collection: 'media',
     context: seedContext,
     data: {
-      alt: 'Aluminum panel technical data document',
+      alt,
       isPublic: true,
       source: 'IVYBM-owned development document generated locally; replace with approved technical data before production.',
     },
@@ -277,7 +289,10 @@ export const seedContent = async (payload: Payload): Promise<void> => {
     ensureSeedImages(payload),
     ensurePlaceholderPDF(payload),
   ])
-  const heroID = imgMap.get('ivybm-demo-hero-1.jpg') ?? imgMap.values().next().value
+  const fallbackImageID = imgMap.values().next().value
+  if (fallbackImageID === undefined) throw new Error('Website seed requires at least one image')
+
+  const heroID = imgMap.get('ivybm-demo-hero-1.jpg') ?? fallbackImageID
   const hero2ID = imgMap.get('ivybm-demo-hero-2.jpg') ?? heroID
   const hero3ID = imgMap.get('ivybm-demo-hero-3.jpg') ?? heroID
   const factoryID = imgMap.get('ivybm-demo-factory.jpg') ?? heroID
