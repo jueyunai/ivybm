@@ -23,7 +23,7 @@ const buildMinimalPDF = (): Buffer => {
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
     '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
     '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 420 240] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n',
-    '4 0 obj\n<< /Length 66 >>\nstream\nBT /F1 16 Tf 48 120 Td (IVYBM demo technical data) Tj ET\nendstream\nendobj\n',
+    '4 0 obj\n<< /Length 61 >>\nstream\nBT /F1 16 Tf 48 120 Td (IVYBM technical data) Tj ET\nendstream\nendobj\n',
     '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
   ]
   let pdf = '%PDF-1.4\n'
@@ -58,11 +58,25 @@ const findMediaByFilename = async (payload: Payload, filename: string) => {
   return result.docs[0]
 }
 
-const ensureDemoImage = async (payload: Payload): Promise<number> => {
-  const filename = 'ivybm-demo-facade.jpg'
+const ensurePlaceholderImage = async (payload: Payload): Promise<number> => {
+  const filename = 'ivybm-facade-placeholder.jpg'
   const existing = await findMediaByFilename(payload, filename)
 
-  if (existing) return existing.id
+  if (existing) {
+    const media = await payload.update({
+      collection: 'media',
+      context: seedContext,
+      data: {
+        alt: 'Architectural aluminum facade panel application',
+        isPublic: true,
+        source: 'IVYBM-owned development placeholder generated locally; replace with approved brand photography before production.',
+      },
+      id: existing.id,
+      overrideAccess: true,
+    })
+
+    return media.id
+  }
 
   const data = await sharp({
     create: {
@@ -78,9 +92,9 @@ const ensureDemoImage = async (payload: Payload): Promise<number> => {
     collection: 'media',
     context: seedContext,
     data: {
-      alt: 'Demo architectural aluminum facade placeholder',
+      alt: 'Architectural aluminum facade panel application',
       isPublic: true,
-      source: 'IVYBM-owned placeholder generated locally; replace before production.',
+      source: 'IVYBM-owned development placeholder generated locally; replace with approved brand photography before production.',
     },
     file: {
       data,
@@ -94,20 +108,34 @@ const ensureDemoImage = async (payload: Payload): Promise<number> => {
   return media.id
 }
 
-const ensureDemoPDF = async (payload: Payload): Promise<number> => {
-  const filename = 'ivybm-demo-technical-data.pdf'
+const ensurePlaceholderPDF = async (payload: Payload): Promise<number> => {
+  const filename = 'ivybm-technical-data-placeholder.pdf'
   const existing = await findMediaByFilename(payload, filename)
 
-  if (existing) return existing.id
+  if (existing) {
+    const media = await payload.update({
+      collection: 'media',
+      context: seedContext,
+      data: {
+        alt: 'Aluminum panel technical data document',
+        isPublic: true,
+        source: 'IVYBM-owned development document generated locally; replace with approved technical data before production.',
+      },
+      id: existing.id,
+      overrideAccess: true,
+    })
+
+    return media.id
+  }
 
   const data = buildMinimalPDF()
   const media = await payload.create({
     collection: 'media',
     context: seedContext,
     data: {
-      alt: 'Demo aluminum panel technical data document',
+      alt: 'Aluminum panel technical data document',
       isPublic: true,
-      source: 'IVYBM-owned placeholder generated locally; replace before production.',
+      source: 'IVYBM-owned development document generated locally; replace with approved technical data before production.',
     },
     file: {
       data,
@@ -119,6 +147,20 @@ const ensureDemoPDF = async (payload: Payload): Promise<number> => {
   })
 
   return media.id
+}
+
+const removeLegacySeedMedia = async (payload: Payload) => {
+  for (const filename of ['ivybm-demo-facade.jpg', 'ivybm-demo-technical-data.pdf']) {
+    const media = await findMediaByFilename(payload, filename)
+    if (!media) continue
+
+    await payload.delete({
+      collection: 'media',
+      context: seedContext,
+      id: media.id,
+      overrideAccess: true,
+    })
+  }
 }
 
 const upsertLocalizedDocument = async ({
@@ -176,13 +218,16 @@ const upsertLocalizedDocument = async ({
 }
 
 export const seedContent = async (payload: Payload): Promise<void> => {
-  const [imageID, pdfID] = await Promise.all([ensureDemoImage(payload), ensureDemoPDF(payload)])
+  const [imageID, pdfID] = await Promise.all([
+    ensurePlaceholderImage(payload),
+    ensurePlaceholderPDF(payload),
+  ])
   const homeID = await upsertLocalizedDocument({
     arabic: { summary: 'حلول واجهات ألمنيوم معمارية للمشاريع العالمية.', title: 'الرئيسية' },
     collection: 'pages',
     english: {
       heroImage: imageID,
-      internalNotes: 'Demo content only. Replace with customer-approved copy before production.',
+      internalNotes: 'Development content. Replace with customer-approved copy before production.',
       summary: 'Architectural aluminum facade solutions for global projects.',
       title: 'Home',
     },
@@ -212,84 +257,237 @@ export const seedContent = async (payload: Payload): Promise<void> => {
     publishable: true,
     slug: 'contact',
   })
-  const categoryID = await upsertLocalizedDocument({
-    arabic: { description: 'ألواح ألمنيوم معمارية قابلة للتخصيص.', title: 'ألواح الألمنيوم' },
-    collection: 'product-categories',
-    english: {
-      description: 'Custom architectural aluminum panel systems.',
-      title: 'Aluminum Panels',
+  const categorySeeds = [
+    {
+      arabic: { description: 'ألواح ثلاثية الأبعاد للواجهات ذات الأشكال المعقدة.', title: 'ألواح مزدوجة الانحناء' },
+      english: { description: 'Three-dimensional panels for complex facade geometry.', sortOrder: 1, title: 'Double-Curved' },
+      slug: 'double-curved',
     },
-    payload,
-    slug: 'aluminum-panels',
-  })
+    {
+      arabic: { description: 'ألواح منحنية للأسقف والمظلات والواجهات القوسية.', title: 'ألواح أحادية الانحناء' },
+      english: { description: 'Curved panels for roofs, canopies, and arc-shaped facade zones.', sortOrder: 2, title: 'Single-Curved' },
+      slug: 'single-curved',
+    },
+    {
+      arabic: { description: 'ألواح ألمنيوم معمارية قابلة للتخصيص للواجهات القياسية.', title: 'واجهات قياسية' },
+      english: { description: 'Custom architectural aluminum panel systems for standard facade applications.', sortOrder: 3, title: 'Standard Facade' },
+      slug: 'aluminum-panels',
+    },
+  ]
+  const categoryIDs = new Map<string, number>()
 
-  await Promise.all([
-    upsertLocalizedDocument({
+  for (const category of categorySeeds) {
+    categoryIDs.set(
+      category.slug,
+      await upsertLocalizedDocument({
+        ...category,
+        collection: 'product-categories',
+        payload,
+      }),
+    )
+  }
+
+  const productSeeds = [
+    {
       arabic: {
-        shortDescription: 'ألواح متينة قابلة للتخصيص لتطبيقات الواجهات.',
+        shortDescription: 'للواجهات المميزة والأسطح الانسيابية والأشكال الهندسية المعقدة.',
         specifications: [
-          { label: 'المادة', value: 'سبائك الألمنيوم' },
-          { label: 'التشطيب', value: 'طلاء PVDF' },
+          { label: 'السماكة', value: '2.0 / 2.5 / 3.0 / 4.0 مم' },
+          { label: 'المادة', value: 'سبائك AA3003 / AA5005' },
+          { label: 'التشطيب', value: 'PVDF أو طلاء بودرة أو أنودة' },
+          { label: 'التصنيع', value: 'تشكيل ثلاثي الأبعاد ولحام ومعايرة CNC' },
         ],
-        title: 'ألواح ألمنيوم مصمتة',
+        title: 'ألواح ألمنيوم مزدوجة الانحناء',
       },
-      collection: 'products',
+      categorySlug: 'double-curved',
       english: {
-        category: categoryID,
-        coverImage: imageID,
-        shortDescription: 'Durable custom panels for architectural facade applications.',
+        shortDescription: 'For landmark facades, complex geometry, flowing surfaces, and high-precision architectural skins.',
         specifications: [
-          { label: 'Material', value: 'Aluminum alloy' },
-          { label: 'Finish', value: 'PVDF coating' },
+          { label: 'Thickness', value: '2.0 / 2.5 / 3.0 / 4.0 mm' },
+          { label: 'Material', value: 'AA3003 / AA5005 aluminum alloy' },
+          { label: 'Surface', value: 'PVDF, powder coating, or anodized' },
+          { label: 'Process', value: '3D forming, welding, and CNC calibration' },
         ],
-        title: 'Solid Aluminum Panel',
+        title: 'Double-Curved Aluminum Panel',
       },
-      payload,
-      publishable: true,
+      slug: 'double-curved-aluminum-panel',
+    },
+    {
+      arabic: {
+        shortDescription: 'لأسقف المطارات والمظلات وتكسية الأعمدة ومناطق الواجهات القوسية.',
+        specifications: [
+          { label: 'السماكة', value: '2.0 / 2.5 / 3.0 مم' },
+          { label: 'نصف القطر', value: 'حسب رسومات المشروع' },
+          { label: 'التشطيب', value: 'PVDF أو طلاء بودرة أو لون معدني' },
+          { label: 'الاستخدام', value: 'الأسقف والمظلات والواجهات المنحنية' },
+        ],
+        title: 'ألواح ألمنيوم أحادية الانحناء',
+      },
+      categorySlug: 'single-curved',
+      english: {
+        shortDescription: 'For airport roofs, canopies, column wraps, and arc-shaped facade zones.',
+        specifications: [
+          { label: 'Thickness', value: '2.0 / 2.5 / 3.0 mm' },
+          { label: 'Radius', value: 'Custom bending radius by shop drawing' },
+          { label: 'Finish', value: 'PVDF, powder coating, or metallic color' },
+          { label: 'Use', value: 'Roof, soffit, canopy, and facade curve' },
+        ],
+        title: 'Single-Curved Aluminum Panel',
+      },
+      slug: 'single-curved-aluminum-panel',
+    },
+    {
+      arabic: {
+        shortDescription: 'لتكسية الجدران الخارجية والأسقف والردهات وأنظمة الواجهات المتينة.',
+        specifications: [
+          { label: 'السماكة', value: '1.5 / 2.0 / 2.5 / 3.0 مم' },
+          { label: 'المقاس', value: 'مقاسات مخصصة بعد المراجعة الهندسية' },
+          { label: 'اللون', value: 'RAL أو Pantone أو معدني أو ملمس حجري' },
+          { label: 'التركيب', value: 'أنظمة ألواح كاسيت مدعمة ومثبتة' },
+        ],
+        title: 'ألواح ألمنيوم للواجهات القياسية',
+      },
+      categorySlug: 'aluminum-panels',
+      english: {
+        shortDescription: 'For curtain wall cladding, exterior walls, ceilings, parapets, and durable decorative systems.',
+        specifications: [
+          { label: 'Thickness', value: '1.5 / 2.0 / 2.5 / 3.0 mm' },
+          { label: 'Max size', value: 'Custom size subject to engineering review' },
+          { label: 'Color', value: 'RAL, Pantone, metallic, or stone texture' },
+          { label: 'Installation', value: 'Ribbed, bracketed, cassette panel systems' },
+        ],
+        title: 'Standard Facade Aluminum Panel',
+      },
       slug: 'solid-aluminum-panel',
-    }),
-    upsertLocalizedDocument({
-      arabic: { location: 'مشروع تجريبي', title: 'مشروع واجهة تجريبي' },
-      collection: 'projects',
-      english: {
-        coverImage: imageID,
-        location: 'Demo project',
-        summary: 'Placeholder case study for CMS and layout validation.',
-        title: 'Demo Facade Project',
-      },
+    },
+  ]
+
+  for (const product of productSeeds) {
+    const englishProduct = {
+      ...product.english,
+      category: categoryIDs.get(product.categorySlug),
+      coverImage: imageID,
+    }
+    const productID = await upsertLocalizedDocument({
+      arabic: product.arabic,
+      collection: 'products',
+      english: englishProduct,
       payload,
       publishable: true,
-      slug: 'demo-facade-project',
-    }),
-    upsertLocalizedDocument({
-      arabic: { excerpt: 'مقدمة تجريبية لتخطيط محتوى الواجهات.', title: 'دليل واجهات الألمنيوم' },
+      slug: product.slug,
+    })
+    const localizedProduct = (await payload.findByID({
+      collection: 'products',
+      fallbackLocale: false,
+      id: productID,
+      locale: 'ar',
+      overrideAccess: true,
+    })) as { specifications?: Array<{ id?: string }> }
+
+    await payload.update({
+      collection: 'products',
+      context: seedContext,
+      data: {
+        ...englishProduct,
+        _status: 'published',
+        specifications: product.english.specifications.map((specification, index) => ({
+          ...specification,
+          id: localizedProduct.specifications?.[index]?.id,
+        })),
+      },
+      draft: false,
+      id: productID,
+      locale: 'en',
+      overrideAccess: true,
+    })
+  }
+
+  const projectSeeds = [
+    ['commercial-complex-facade', 'Commercial Complex Facade', 'Dubai, UAE', 'Double-curved panels', 'واجهة مجمع تجاري', 'دبي، الإمارات', 'ألواح مزدوجة الانحناء'],
+    ['airport-terminal-roof', 'Airport Terminal Roof', 'Central Asia', 'Single-curved panels', 'سقف مبنى مطار', 'آسيا الوسطى', 'ألواح أحادية الانحناء'],
+    ['landmark-curtain-wall', 'Landmark Curtain Wall', 'Abu Dhabi, UAE', 'Custom-shaped panels', 'واجهة مبنى مميز', 'أبوظبي، الإمارات', 'ألواح بأشكال مخصصة'],
+    ['factory-production-support', 'Factory Production Support', 'China', 'VMU / PMU samples', 'دعم الإنتاج في المصنع', 'الصين', 'عينات VMU وPMU'],
+    ['hotel-podium-cladding', 'Hotel Podium Cladding', 'Riyadh, Saudi Arabia', 'PVDF facade panels', 'تكسية قاعدة فندق', 'الرياض، السعودية', 'ألواح واجهات PVDF'],
+    ['public-building-canopy', 'Public Building Canopy', 'Doha, Qatar', 'Perforated aluminum panels', 'مظلة مبنى عام', 'الدوحة، قطر', 'ألواح ألمنيوم مثقبة'],
+  ] as const
+
+  for (const [slug, title, location, application, arabicTitle, arabicLocation, arabicApplication] of projectSeeds) {
+    await upsertLocalizedDocument({
+      arabic: { application: arabicApplication, location: arabicLocation, summary: 'مرجع لتنسيق التصميم والتصنيع والتسليم للمشروع.', title: arabicTitle },
+      collection: 'projects',
+      english: { application, coverImage: imageID, location, summary: 'Reference for project-specific design coordination, fabrication, inspection, and delivery.', title },
+      payload,
+      publishable: true,
+      slug,
+    })
+  }
+
+  const legacyProjects = await payload.find({
+    collection: 'projects',
+    limit: 20,
+    overrideAccess: true,
+    where: { slug: { equals: 'demo-facade-project' } },
+  })
+  for (const project of legacyProjects.docs) {
+    await payload.delete({ collection: 'projects', context: seedContext, id: project.id, overrideAccess: true })
+  }
+
+  const postSeeds = [
+    {
+      arabic: { excerpt: 'اعتبارات الهندسة ثلاثية الأبعاد ودقة التشكيل والرسومات واتساق التشطيب.', title: 'كيف تدعم ألواح الألمنيوم مزدوجة الانحناء تصميم الواجهات المميزة' },
+      category: 'products',
+      english: { excerpt: 'Key considerations for 3D geometry, forming accuracy, shop drawings, and surface consistency.', title: 'How Double-Curved Aluminum Panels Support Landmark Facade Design' },
+      publishedAt: '2026-06-18T00:00:00.000Z',
+      slug: 'aluminum-facade-guide',
+    },
+    {
+      arabic: { excerpt: 'قائمة فحص عملية لسماكة الطلاء واختلاف اللون والالتصاق وحماية التعبئة.', title: 'فحوصات طلاء PVDF لمشاريع الواجهات الخارجية' },
+      category: 'industry',
+      english: { excerpt: 'A practical inspection checklist for coating thickness, color difference, adhesion, and packing protection.', title: 'PVDF Coating Checks For Overseas Curtain Wall Projects' },
+      publishedAt: '2026-06-10T00:00:00.000Z',
+      slug: 'pvdf-coating-checks',
+    },
+    {
+      arabic: { excerpt: 'تحسين الوثائق وسير العينات وتقارير الإنتاج لفرق شراء الواجهات في الخارج.', title: 'IVYBM توسع دعم التصدير لمقاولي الشرق الأوسط' },
+      category: 'company',
+      english: { excerpt: 'Improved documentation, sample workflow, and production reporting for overseas facade procurement teams.', title: 'IVYBM Expands Export Support For Middle East Contractors' },
+      noIndex: true,
+      publishedAt: '2026-05-28T00:00:00.000Z',
+      slug: 'middle-east-export-support',
+    },
+  ] as const
+
+  for (const post of postSeeds) {
+    await upsertLocalizedDocument({
+      arabic: post.arabic,
       collection: 'posts',
       english: {
-        category: 'industry',
-        excerpt: 'Demo introduction for aluminum facade content planning.',
+        ...post.english,
+        category: post.category,
         featuredImage: imageID,
-        publishedAt: new Date('2026-07-18T00:00:00.000Z').toISOString(),
-        title: 'Aluminum Facade Guide',
+        publishedAt: post.publishedAt,
+        seo: { noIndex: 'noIndex' in post ? post.noIndex : false },
       },
       payload,
       publishable: true,
-      slug: 'aluminum-facade-guide',
-    }),
-    upsertLocalizedDocument({
-      arabic: { description: 'ملف تجريبي، يجب استبداله قبل الإنتاج.', title: 'البيانات الفنية' },
-      collection: 'downloads',
-      english: {
-        coverImage: imageID,
-        description: 'Demo technical file. Replace before production.',
-        file: pdfID,
-        isActive: true,
-        title: 'Technical Data',
-        type: 'technical-data',
-      },
-      payload,
-      slug: 'aluminum-panel-technical-data',
-    }),
-  ])
+      slug: post.slug,
+    })
+  }
+
+  await upsertLocalizedDocument({
+    arabic: { description: 'ملف تطوير داخلي يجب استبداله بالبيانات الفنية المعتمدة قبل الإنتاج.', title: 'البيانات الفنية' },
+    collection: 'downloads',
+    english: {
+      coverImage: imageID,
+      description: 'Development file; replace with approved technical data before production.',
+      file: pdfID,
+      isActive: true,
+      title: 'Technical Data',
+      type: 'technical-data',
+    },
+    payload,
+    slug: 'aluminum-panel-technical-data',
+  })
 
   const navigationPages = [homeID, aboutID, contactID]
   const existingSettings = await payload.findGlobal({
@@ -309,7 +507,7 @@ export const seedContent = async (payload: Payload): Promise<void> => {
   const englishSettings = await payload.updateGlobal({
     context: seedContext,
     data: {
-      footerText: 'Demo content only — replace with customer-approved information.',
+      footerText: 'Factory-direct architectural aluminum facade solutions for overseas projects.',
       logo: imageID,
       navigation: navigationPages.map((page, index) => ({
         ...(existingNavigationIDs.get(page) ? { id: existingNavigationIDs.get(page) } : {}),
@@ -317,7 +515,7 @@ export const seedContent = async (payload: Payload): Promise<void> => {
         page,
       })),
       siteDescription: 'Architectural aluminum facade manufacturer',
-      siteName: 'IVY Building Materials Demo',
+      siteName: 'IVY Building Materials',
     },
     locale: 'en',
     overrideAccess: true,
@@ -326,19 +524,21 @@ export const seedContent = async (payload: Payload): Promise<void> => {
   await payload.updateGlobal({
     context: seedContext,
     data: {
-      footerText: 'محتوى تجريبي فقط — يجب استبداله بالمعلومات المعتمدة.',
+      footerText: 'حلول واجهات ألمنيوم معمارية مباشرة من المصنع للمشاريع الخارجية.',
       navigation: navigationPages.map((page, index) => ({
         id: englishSettings.navigation?.[index]?.id,
         label: ['الرئيسية', 'من نحن', 'اتصل بنا'][index],
         page,
       })),
       siteDescription: 'مصنع واجهات ألمنيوم معمارية',
-      siteName: 'عرض آيفي لمواد البناء',
+      siteName: 'IVY لمواد البناء',
     },
     locale: 'ar',
     overrideAccess: true,
     slug: 'site-settings',
   })
 
-  payload.logger.info('Seeded deterministic English and Arabic demo CMS content')
+  await removeLegacySeedMedia(payload)
+
+  payload.logger.info('Seeded deterministic English and Arabic CMS development content')
 }

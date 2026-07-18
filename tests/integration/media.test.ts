@@ -171,6 +171,19 @@ describe.sequential('media policy integration', () => {
 
     expect(media.mimeType).toBe('application/pdf')
     expect(media.sizes?.thumbnail?.url).toBeFalsy()
+
+    await expect(
+      payload.create({
+        collection: 'pages',
+        data: {
+          heroImage: media.id,
+          slug: `pdf-hero-${randomUUID()}`,
+          title: 'PDF hero should be rejected',
+        },
+        locale: 'en',
+        overrideAccess: true,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError)
   })
 
   it('rejects unsupported MIME types', async () => {

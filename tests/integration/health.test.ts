@@ -3,7 +3,8 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { getPayload, type Payload } from 'payload'
 
 import { GET as getLiveHealth } from '@/app/api/health/live/route'
-import { createReadyHandler, GET as getReadyHealth } from '@/app/api/health/ready/route'
+import { GET as getReadyHealth } from '@/app/api/health/ready/route'
+import { createReadyHandler } from '@/lib/readiness'
 import config from '@/payload.config'
 
 let healthPayload: Payload | undefined

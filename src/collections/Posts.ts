@@ -8,6 +8,7 @@ import {
   publishedContentRead,
 } from '../access/content'
 import { internalNotesField } from '../fields/internalNotes'
+import { imageMediaFilter } from '../fields/media'
 import { seoField } from '../fields/seo'
 import { stableSlugField } from '../fields/slug'
 import {
@@ -62,6 +63,7 @@ export const Posts: CollectionConfig = {
     {
       name: 'featuredImage',
       type: 'upload',
+      filterOptions: imageMediaFilter,
       relationTo: 'media',
     },
     {
