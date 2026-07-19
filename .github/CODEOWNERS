@@ -6,6 +6,7 @@
 /src/collections/Leads.ts @jueyunai @xuemusi
 /src/collections/Conversations.ts @jueyunai @xuemusi
 /src/collections/Messages.ts @jueyunai @xuemusi
+/src/collections/Handoffs.ts @jueyunai @xuemusi
 /src/collections/GeneratedContents.ts @jueyunai @xuemusi
 /src/collections/PublishJobs.ts @jueyunai @xuemusi
 /src/collections/PublishLogs.ts @jueyunai @xuemusi

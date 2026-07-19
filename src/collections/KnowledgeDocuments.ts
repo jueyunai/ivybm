@@ -13,6 +13,7 @@ import {
 
 const reviewRelevantFields = [
   'content',
+  'customerVisible',
   'locale',
   'sourceFile',
   'sourceTitle',
@@ -85,7 +86,7 @@ export const KnowledgeDocuments: CollectionConfig = {
     update: knowledgeUpdate,
   },
   admin: {
-    defaultColumns: ['sourceTitle', 'sourceType', 'locale', 'sourceVersion', 'reviewStatus'],
+    defaultColumns: ['sourceTitle', 'sourceType', 'customerVisible', 'locale', 'sourceVersion', 'reviewStatus'],
     group: 'Knowledge Base',
     useAsTitle: 'sourceTitle',
   },
@@ -107,6 +108,15 @@ export const KnowledgeDocuments: CollectionConfig = {
         { label: 'Other', value: 'other' },
       ],
       required: true,
+    },
+    {
+      name: 'customerVisible',
+      type: 'checkbox',
+      defaultValue: false,
+      index: true,
+      admin: {
+        description: 'Only reviewed, indexed documents marked here may be used by the public website chat.',
+      },
     },
     {
       name: 'sourceURL',

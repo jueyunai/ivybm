@@ -81,6 +81,11 @@ export interface Config {
     'prompt-templates': PromptTemplate;
     'lead-sources': LeadSource;
     leads: Lead;
+    'visitor-sessions': VisitorSession;
+    conversations: Conversation;
+    messages: Message;
+    handoffs: Handoff;
+    'conversation-commands': ConversationCommand;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -102,6 +107,11 @@ export interface Config {
     'prompt-templates': PromptTemplatesSelect<false> | PromptTemplatesSelect<true>;
     'lead-sources': LeadSourcesSelect<false> | LeadSourcesSelect<true>;
     leads: LeadsSelect<false> | LeadsSelect<true>;
+    'visitor-sessions': VisitorSessionsSelect<false> | VisitorSessionsSelect<true>;
+    conversations: ConversationsSelect<false> | ConversationsSelect<true>;
+    messages: MessagesSelect<false> | MessagesSelect<true>;
+    handoffs: HandoffsSelect<false> | HandoffsSelect<true>;
+    'conversation-commands': ConversationCommandsSelect<false> | ConversationCommandsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -546,6 +556,10 @@ export interface KnowledgeDocument {
   id: number;
   sourceTitle: string;
   sourceType: 'faq' | 'product-manual' | 'technical-specification' | 'sales-script' | 'project-case' | 'other';
+  /**
+   * Only reviewed, indexed documents marked here may be used by the public website chat.
+   */
+  customerVisible?: boolean | null;
   sourceURL?: string | null;
   sourceFile?: (number | null) | Media;
   sourceVersion: string;
@@ -655,6 +669,126 @@ export interface Lead {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "visitor-sessions".
+ */
+export interface VisitorSession {
+  id: number;
+  publicId: string;
+  sessionTokenHash: string;
+  idempotencyKey: string;
+  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram';
+  locale: 'en' | 'ar';
+  sourceURL?: string | null;
+  expiresAt: string;
+  lastSeenAt: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "conversations".
+ */
+export interface Conversation {
+  id: number;
+  publicId: string;
+  requestId: string;
+  visitorSession: number | VisitorSession;
+  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram';
+  externalThreadId?: string | null;
+  locale: 'en' | 'ar';
+  handoffStatus: 'ai_active' | 'handoff_requested' | 'human_active' | 'resolved';
+  revision: number;
+  assignedTo?: (number | null) | User;
+  lead?: (number | null) | Lead;
+  intentLevel: 'unscored' | 'a' | 'b' | 'c';
+  intentScore?: number | null;
+  summary?: string | null;
+  lastMessageAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "messages".
+ */
+export interface Message {
+  id: number;
+  conversation: number | Conversation;
+  requestId: string;
+  idempotencyKey: string;
+  externalMessageId?: string | null;
+  author: 'visitor' | 'ai' | 'operator' | 'system';
+  status: 'pending' | 'sent' | 'failed';
+  content: string;
+  citations?:
+    | {
+        documentId: string;
+        title: string;
+        version: string;
+        url?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  promptVersion?: number | null;
+  model?: string | null;
+  tokenUsage?: {
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+    totalTokens?: number | null;
+  };
+  estimatedCostUSD?: number | null;
+  errorCode?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "handoffs".
+ */
+export interface Handoff {
+  id: number;
+  publicId: string;
+  conversation: number | Conversation;
+  idempotencyKey: string;
+  domainEventId: string;
+  status: 'requested' | 'active' | 'resolved';
+  source: 'visitor' | 'ai_policy' | 'operator';
+  reason: string;
+  requestedBy?: (number | null) | User;
+  assignedTo?: (number | null) | User;
+  requestedAt: string;
+  acceptedAt?: string | null;
+  resolvedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "conversation-commands".
+ */
+export interface ConversationCommand {
+  id: number;
+  scope: string;
+  idempotencyKey: string;
+  ownerToken: string;
+  leaseExpiresAt: string;
+  status: 'processing' | 'completed' | 'failed';
+  conversation?: (number | null) | Conversation;
+  result?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  errorCode?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -732,6 +866,26 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'leads';
         value: number | Lead;
+      } | null)
+    | ({
+        relationTo: 'visitor-sessions';
+        value: number | VisitorSession;
+      } | null)
+    | ({
+        relationTo: 'conversations';
+        value: number | Conversation;
+      } | null)
+    | ({
+        relationTo: 'messages';
+        value: number | Message;
+      } | null)
+    | ({
+        relationTo: 'handoffs';
+        value: number | Handoff;
+      } | null)
+    | ({
+        relationTo: 'conversation-commands';
+        value: number | ConversationCommand;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -1038,6 +1192,7 @@ export interface DownloadsSelect<T extends boolean = true> {
 export interface KnowledgeDocumentsSelect<T extends boolean = true> {
   sourceTitle?: T;
   sourceType?: T;
+  customerVisible?: T;
   sourceURL?: T;
   sourceFile?: T;
   sourceVersion?: T;
@@ -1129,6 +1284,115 @@ export interface LeadsSelect<T extends boolean = true> {
         term?: T;
         content?: T;
       };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "visitor-sessions_select".
+ */
+export interface VisitorSessionsSelect<T extends boolean = true> {
+  publicId?: T;
+  sessionTokenHash?: T;
+  idempotencyKey?: T;
+  channel?: T;
+  locale?: T;
+  sourceURL?: T;
+  expiresAt?: T;
+  lastSeenAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "conversations_select".
+ */
+export interface ConversationsSelect<T extends boolean = true> {
+  publicId?: T;
+  requestId?: T;
+  visitorSession?: T;
+  channel?: T;
+  externalThreadId?: T;
+  locale?: T;
+  handoffStatus?: T;
+  revision?: T;
+  assignedTo?: T;
+  lead?: T;
+  intentLevel?: T;
+  intentScore?: T;
+  summary?: T;
+  lastMessageAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "messages_select".
+ */
+export interface MessagesSelect<T extends boolean = true> {
+  conversation?: T;
+  requestId?: T;
+  idempotencyKey?: T;
+  externalMessageId?: T;
+  author?: T;
+  status?: T;
+  content?: T;
+  citations?:
+    | T
+    | {
+        documentId?: T;
+        title?: T;
+        version?: T;
+        url?: T;
+        id?: T;
+      };
+  promptVersion?: T;
+  model?: T;
+  tokenUsage?:
+    | T
+    | {
+        inputTokens?: T;
+        outputTokens?: T;
+        totalTokens?: T;
+      };
+  estimatedCostUSD?: T;
+  errorCode?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "handoffs_select".
+ */
+export interface HandoffsSelect<T extends boolean = true> {
+  publicId?: T;
+  conversation?: T;
+  idempotencyKey?: T;
+  domainEventId?: T;
+  status?: T;
+  source?: T;
+  reason?: T;
+  requestedBy?: T;
+  assignedTo?: T;
+  requestedAt?: T;
+  acceptedAt?: T;
+  resolvedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "conversation-commands_select".
+ */
+export interface ConversationCommandsSelect<T extends boolean = true> {
+  scope?: T;
+  idempotencyKey?: T;
+  ownerToken?: T;
+  leaseExpiresAt?: T;
+  status?: T;
+  conversation?: T;
+  result?: T;
+  errorCode?: T;
   updatedAt?: T;
   createdAt?: T;
 }
