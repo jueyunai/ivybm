@@ -91,6 +91,12 @@ jobs:
       - name: Production build
         run: pnpm build
 
+      - name: Install Chromium for ChatWidget E2E
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: ChatWidget browser E2E
+        run: pnpm test:e2e -- tests/e2e/chat-handoff.spec.ts
+
       - name: Build staging runtime image
         run: >-
           docker build

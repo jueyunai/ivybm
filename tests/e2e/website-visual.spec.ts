@@ -24,7 +24,9 @@ for (const locale of ['en', 'ar'] as const) {
         test(`${route.name} matches the approved composition`, async ({ page }) => {
           await page.emulateMedia({ reducedMotion: 'reduce' })
           await page.goto(`/${locale}${route.path}`)
-          await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
+          // The persistent chat control has dedicated state/visual coverage. Hide it here
+          // so content-layout baselines do not duplicate the same floating widget 36 times.
+          await page.addStyleTag({ content: 'nextjs-portal, .chat-widget { display: none !important; }' })
           await expect(page.locator('main')).toBeVisible()
 
           const images = page.locator('main img:visible')
