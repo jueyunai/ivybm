@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import React from 'react'
 
+import { ChatWidget } from '@/components/chat/ChatWidget'
 import { JsonLd } from '@/components/website/JsonLd'
 import { SiteFooter } from '@/components/website/SiteFooter'
 import { SiteHeader } from '@/components/website/SiteHeader'
@@ -50,6 +51,7 @@ export default async function WebsiteLayout({
         <SiteHeader locale={locale} siteName={settings.siteName} whatsapp={settings.contact?.whatsapp} />
         <main>{children}</main>
         <SiteFooter locale={locale} settings={settings} />
+        <ChatWidget locale={locale} />
       </body>
     </html>
   )
