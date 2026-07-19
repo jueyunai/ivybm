@@ -1,0 +1,78 @@
+services:
+  db:
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+
+  migrate:
+    build:
+      context: .
+      target: tooling
+    command: ['pnpm', 'db:migrate']
+    restart: 'no'
+    environment: &app-environment
+      APP_VERSION: ${APP_VERSION:?APP_VERSION is required}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL:?NEXT_PUBLIC_SERVER_URL is required}
+      PAYLOAD_SECRET: ${PAYLOAD_SECRET:?PAYLOAD_SECRET is required}
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: &app-logging
+      driver: local
+      options:
+        max-size: 10m
+        max-file: '5'
+
+  seed:
+    profiles: ['tools']
+    build:
+      context: .
+      target: tooling
+    command: ['pnpm', 'db:seed']
+    restart: 'no'
+    environment:
+      <<: *app-environment
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?SEED_ADMIN_EMAIL is required}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD is required}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - media_data:/app/media
+    logging: *app-logging
+
+  app:
+    build:
+      context: .
+      target: runtime
+      args:
+        NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL:?NEXT_PUBLIC_SERVER_URL is required}
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      HOSTNAME: 0.0.0.0
+      NODE_ENV: production
+      PORT: 3000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/api/health/ready').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    ports:
+      - ${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3000}:3000
+    volumes:
+      - media_data:/app/media
+    logging: *app-logging
+
+volumes:
+  media_data:

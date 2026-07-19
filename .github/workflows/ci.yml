@@ -90,3 +90,22 @@ jobs:
 
       - name: Production build
         run: pnpm build
+
+      - name: Build staging runtime image
+        run: >-
+          docker build
+          --target runtime
+          --build-arg NEXT_PUBLIC_SERVER_URL=http://localhost:3000
+          --tag ivybm:ci .
+
+      - name: Validate staging Compose configuration
+        env:
+          APP_VERSION: ci
+          DATABASE_URL: postgres://postgres:postgres@db:5432/ivybm_ci
+          NEXT_PUBLIC_SERVER_URL: https://dev.ivybm.com
+          POSTGRES_DB: ivybm_ci
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          SEED_ADMIN_EMAIL: admin@example.invalid
+          SEED_ADMIN_PASSWORD: ci-demo-admin-password
+        run: docker compose -f compose.yaml -f compose.staging.yaml config >/dev/null
