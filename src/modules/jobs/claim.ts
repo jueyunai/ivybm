@@ -1,0 +1,419 @@
+import { randomUUID } from 'node:crypto'
+
+import type { PostgresAdapter } from '@payloadcms/db-postgres'
+import {
+  commitTransaction,
+  createLocalReq,
+  initTransaction,
+  killTransaction,
+  type Payload,
+  type PayloadRequest,
+} from 'payload'
+
+import type { Job, User } from '@/payload-types'
+
+import {
+  type ClaimedJob,
+  type CreateJobInput,
+  type JobFailure,
+  JobQueueError,
+  type JobRecord,
+  type JobRetryActor,
+  type JobStatus,
+} from './contracts'
+import {
+  manualRetryState,
+  transitionAfterFailure,
+  validateMaxAttempts,
+  type RetryOptions,
+} from './retry'
+
+const DEFAULT_JOB_LEASE_MS = 120_000
+
+const jobColumnNames = [
+  'id',
+  'type',
+  'idempotency_key',
+  'payload',
+  'status',
+  'attempts',
+  'max_attempts',
+  'next_run_at',
+  'lease_expires_at',
+  'owner_token',
+  'last_error',
+  'completed_at',
+  'dead_at',
+  'manual_retry_count',
+  'updated_at',
+  'created_at',
+]
+
+const selectedJobColumns = jobColumnNames.map((column) => `"${column}"`).join(', ')
+const selectedJobColumnsFrom = (alias: string): string =>
+  jobColumnNames.map((column) => `${alias}."${column}"`).join(', ')
+
+type JobDatabaseRow = {
+  attempts: number | string
+  completed_at: Date | string | null
+  created_at: Date | string
+  dead_at: Date | string | null
+  id: number
+  idempotency_key: string | null
+  last_error: string | null
+  lease_expires_at: Date | string | null
+  manual_retry_count: number | string
+  max_attempts: number | string
+  next_run_at: Date | string | null
+  owner_token: string | null
+  payload: unknown
+  status: JobStatus
+  type: string
+  updated_at: Date | string
+}
+
+export type PayloadJobQueueOptions = {
+  clock?: () => Date
+  leaseMs?: number
+  payload: Payload
+  retryOptions?: RetryOptions
+}
+
+const toDateString = (value: Date | string | null): string | null => {
+  if (value === null) return null
+  const date = value instanceof Date ? value : new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    throw new JobQueueError('validation', 'Job date is invalid')
+  }
+
+  return date.toISOString()
+}
+
+const toNumber = (value: number | string, field: string): number => {
+  const number = Number(value)
+  if (!Number.isFinite(number)) {
+    throw new JobQueueError('validation', `Job ${field} is invalid`)
+  }
+
+  return number
+}
+
+const toPayload = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new JobQueueError('validation', 'Job payload must be an object')
+  }
+
+  return value as Record<string, unknown>
+}
+
+const mapDatabaseJob = (row: JobDatabaseRow): JobRecord => ({
+  attempts: toNumber(row.attempts, 'attempts'),
+  completedAt: toDateString(row.completed_at),
+  createdAt: toDateString(row.created_at) ?? '',
+  deadAt: toDateString(row.dead_at),
+  id: row.id,
+  idempotencyKey: row.idempotency_key,
+  lastError: row.last_error,
+  leaseExpiresAt: toDateString(row.lease_expires_at),
+  manualRetryCount: toNumber(row.manual_retry_count, 'manualRetryCount'),
+  maxAttempts: toNumber(row.max_attempts, 'maxAttempts'),
+  nextRunAt: toDateString(row.next_run_at),
+  ownerToken: row.owner_token,
+  payload: toPayload(row.payload),
+  status: row.status,
+  type: row.type,
+  updatedAt: toDateString(row.updated_at) ?? '',
+})
+
+const mapPayloadJob = (job: Job): JobRecord => ({
+  attempts: job.attempts,
+  completedAt: job.completedAt ?? null,
+  createdAt: job.createdAt,
+  deadAt: job.deadAt ?? null,
+  id: job.id,
+  idempotencyKey: job.idempotencyKey ?? null,
+  lastError: job.lastError ?? null,
+  leaseExpiresAt: job.leaseExpiresAt ?? null,
+  manualRetryCount: job.manualRetryCount,
+  maxAttempts: job.maxAttempts,
+  nextRunAt: job.nextRunAt ?? null,
+  ownerToken: job.ownerToken ?? null,
+  payload: toPayload(job.payload),
+  status: job.status,
+  type: job.type,
+  updatedAt: job.updatedAt,
+})
+
+const requireClaimedJob = (job: JobRecord): ClaimedJob => {
+  if (!job.ownerToken) {
+    throw new JobQueueError('conflict', `Job ${job.id} was claimed without an owner token`)
+  }
+
+  return job as ClaimedJob
+}
+
+const errorMessage = (error: Error): string => error.message.slice(0, 2_000)
+
+export class PayloadJobQueue {
+  private readonly clock: () => Date
+  private readonly leaseMs: number
+  private readonly payload: Payload
+  private readonly retryOptions?: RetryOptions
+
+  constructor(options: PayloadJobQueueOptions) {
+    this.clock = options.clock ?? (() => new Date())
+    this.leaseMs = options.leaseMs ?? DEFAULT_JOB_LEASE_MS
+    this.payload = options.payload
+    this.retryOptions = options.retryOptions
+
+    if (!Number.isInteger(this.leaseMs) || this.leaseMs < 1_000) {
+      throw new RangeError('leaseMs must be an integer of at least 1000')
+    }
+  }
+
+  private get pool() {
+    return (this.payload.db as unknown as PostgresAdapter).pool
+  }
+
+  private async transaction<T>(actor: User, operation: (req: PayloadRequest) => Promise<T>): Promise<T> {
+    const req = await createLocalReq({ user: actor }, this.payload)
+    await initTransaction(req)
+    try {
+      const result = await operation(req)
+      await commitTransaction(req)
+      return result
+    } catch (error) {
+      await killTransaction(req).catch(() => undefined)
+      throw error
+    }
+  }
+
+  async enqueue(input: CreateJobInput): Promise<{ job: JobRecord; state: 'created' | 'duplicate' }> {
+    if (!input.type.trim()) {
+      throw new JobQueueError('validation', 'Job type is required')
+    }
+
+    const now = this.clock()
+    const nextRunAt = input.nextRunAt ?? now
+    const maxAttempts = validateMaxAttempts(input.maxAttempts ?? 5)
+    const idempotencyKey = input.idempotencyKey ?? null
+    const inserted = await this.pool.query<JobDatabaseRow>(
+      `INSERT INTO jobs (
+        type, idempotency_key, payload, status, attempts, max_attempts, next_run_at,
+        manual_retry_count, updated_at, created_at
+      ) VALUES ($1, $2, $3::jsonb, 'pending', 0, $4, $5, 0, $6, $6)
+      ON CONFLICT (type, idempotency_key) DO NOTHING
+      RETURNING ${selectedJobColumns}`,
+      [
+        input.type,
+        idempotencyKey,
+        JSON.stringify(input.payload),
+        maxAttempts,
+        nextRunAt.toISOString(),
+        now.toISOString(),
+      ],
+    )
+
+    if (inserted.rows[0]) {
+      return { job: mapDatabaseJob(inserted.rows[0]), state: 'created' }
+    }
+
+    if (!idempotencyKey) {
+      throw new JobQueueError('conflict', 'Job insert did not return a row')
+    }
+
+    const existing = await this.pool.query<JobDatabaseRow>(
+      `SELECT ${selectedJobColumns}
+       FROM jobs
+       WHERE type = $1 AND idempotency_key = $2
+       LIMIT 1`,
+      [input.type, idempotencyKey],
+    )
+    if (!existing.rows[0]) {
+      throw new JobQueueError('conflict', 'Idempotent job was not found after insert conflict')
+    }
+
+    return { job: mapDatabaseJob(existing.rows[0]), state: 'duplicate' }
+  }
+
+  async claimNext(): Promise<ClaimedJob | null> {
+    const now = this.clock()
+    const nowISO = now.toISOString()
+    const leaseExpiresAt = new Date(now.getTime() + this.leaseMs).toISOString()
+    const token = randomUUID()
+    const result = await this.pool.query<JobDatabaseRow>(
+      `WITH expired_final_attempts AS (
+        UPDATE jobs
+        SET
+          status = 'dead',
+          dead_at = $1,
+          lease_expires_at = NULL,
+          owner_token = NULL,
+          last_error = COALESCE(last_error, 'Lease expired after the final allowed attempt'),
+          updated_at = $1
+        WHERE status = 'processing'
+          AND lease_expires_at <= $1
+          AND attempts >= max_attempts
+      ),
+      candidate AS (
+        SELECT id
+        FROM jobs
+        WHERE attempts < max_attempts
+          AND (
+            (status IN ('pending', 'failed') AND next_run_at <= $1)
+            OR (status = 'processing' AND lease_expires_at <= $1)
+          )
+        ORDER BY next_run_at ASC NULLS LAST, created_at ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      )
+      UPDATE jobs AS job
+      SET
+        attempts = job.attempts + 1,
+        lease_expires_at = $2,
+        owner_token = $3,
+        status = 'processing',
+        updated_at = $1
+      FROM candidate
+      WHERE job.id = candidate.id
+      RETURNING ${selectedJobColumnsFrom('job')}`,
+      [nowISO, leaseExpiresAt, token],
+    )
+
+    return result.rows[0] ? requireClaimedJob(mapDatabaseJob(result.rows[0])) : null
+  }
+
+  async renew(job: ClaimedJob): Promise<ClaimedJob> {
+    const now = this.clock()
+    const result = await this.pool.query<JobDatabaseRow>(
+      `UPDATE jobs
+       SET lease_expires_at = $1, updated_at = $2
+       WHERE id = $3
+         AND status = 'processing'
+         AND owner_token = $4
+         AND lease_expires_at > $2
+       RETURNING ${selectedJobColumns}`,
+      [new Date(now.getTime() + this.leaseMs).toISOString(), now.toISOString(), job.id, job.ownerToken],
+    )
+
+    if (!result.rows[0]) {
+      throw new JobQueueError('conflict', `Job ${job.id} lease was reclaimed before renewal`)
+    }
+
+    return requireClaimedJob(mapDatabaseJob(result.rows[0]))
+  }
+
+  async complete(job: ClaimedJob): Promise<JobRecord> {
+    const now = this.clock().toISOString()
+    const result = await this.pool.query<JobDatabaseRow>(
+      `UPDATE jobs
+       SET
+         completed_at = $1,
+         lease_expires_at = NULL,
+         next_run_at = NULL,
+         owner_token = NULL,
+         status = 'succeeded',
+         updated_at = $1
+       WHERE id = $2 AND status = 'processing' AND owner_token = $3
+       RETURNING ${selectedJobColumns}`,
+      [now, job.id, job.ownerToken],
+    )
+
+    if (!result.rows[0]) {
+      throw new JobQueueError('conflict', `Job ${job.id} lease was reclaimed before completion`)
+    }
+
+    return mapDatabaseJob(result.rows[0])
+  }
+
+  async fail({ error, job }: JobFailure): Promise<JobRecord> {
+    const now = this.clock()
+    const transition = transitionAfterFailure({
+      attempts: job.attempts,
+      maxAttempts: job.maxAttempts,
+      now,
+      retryOptions: this.retryOptions,
+    })
+    const result = await this.pool.query<JobDatabaseRow>(
+      `UPDATE jobs
+       SET
+         dead_at = $1,
+         last_error = $2,
+         lease_expires_at = NULL,
+         next_run_at = $3,
+         owner_token = NULL,
+         status = $4,
+         updated_at = $5
+       WHERE id = $6 AND status = 'processing' AND owner_token = $7
+       RETURNING ${selectedJobColumns}`,
+      [
+        transition.deadAt?.toISOString() ?? null,
+        errorMessage(error),
+        transition.nextRunAt?.toISOString() ?? null,
+        transition.status,
+        now.toISOString(),
+        job.id,
+        job.ownerToken,
+      ],
+    )
+
+    if (!result.rows[0]) {
+      throw new JobQueueError('conflict', `Job ${job.id} lease was reclaimed before failure handling`)
+    }
+
+    return mapDatabaseJob(result.rows[0])
+  }
+
+  async getByID(id: number): Promise<JobRecord | null> {
+    const result = await this.pool.query<JobDatabaseRow>(
+      `SELECT ${selectedJobColumns} FROM jobs WHERE id = $1 LIMIT 1`,
+      [id],
+    )
+    return result.rows[0] ? mapDatabaseJob(result.rows[0]) : null
+  }
+
+  async retryManually(id: number, actor: JobRetryActor): Promise<JobRecord> {
+    if (actor.role !== 'admin') {
+      throw new JobQueueError('forbidden', 'Only administrators may retry failed jobs')
+    }
+
+    return this.transaction(actor as User, async (req) => {
+      const found = await this.payload.find({
+        collection: 'jobs',
+        depth: 0,
+        limit: 1,
+        overrideAccess: true,
+        req,
+        where: { id: { equals: id } },
+      })
+      const job = found.docs[0]
+      if (!job) {
+        throw new JobQueueError('not_found', `Job ${id} does not exist`)
+      }
+
+      const next = manualRetryState(job, this.clock())
+      const updated = await this.payload.update({
+        collection: 'jobs',
+        data: {
+          ...next,
+          nextRunAt: next.nextRunAt?.toISOString() ?? null,
+        },
+        overrideAccess: true,
+        req,
+        where: {
+          and: [
+            { id: { equals: job.id } },
+            { manualRetryCount: { equals: job.manualRetryCount } },
+            { status: { equals: job.status } },
+          ],
+        },
+      })
+      if (updated.docs.length !== 1) {
+        throw new JobQueueError('conflict', `Job ${id} changed before it could be retried`)
+      }
+
+      return mapPayloadJob(updated.docs[0])
+    })
+  }
+}

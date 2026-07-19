@@ -46,6 +46,10 @@ USER nextjs
 
 CMD ["pnpm", "db:migrate"]
 
+FROM tooling AS worker
+
+CMD ["pnpm", "worker"]
+
 FROM base AS runtime
 
 ENV HOSTNAME=0.0.0.0
