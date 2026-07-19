@@ -7,7 +7,7 @@ import { InMemoryConversationRepository } from '../../fakes/conversationReposito
 
 const createService = () => {
   let sequence = 0
-  const publish = vi.fn(async () => undefined)
+  const repository = new InMemoryConversationRepository()
   const generateReply = vi.fn(async () => ({
     content: 'Reviewed answer with a citation.',
     estimatedCostUSD: 0,
@@ -18,16 +18,15 @@ const createService = () => {
   const service = createConversationService({
     clock: () => new Date('2026-07-19T00:00:00.000Z'),
     createId: (kind) => `${kind}-${++sequence}`,
-    eventSink: { publish },
-    repository: new InMemoryConversationRepository(),
+    repository,
     responder: { generateReply },
   })
-  return { generateReply, publish, service }
+  return { generateReply, repository, service }
 }
 
 describe('ConversationService', () => {
-  it('emits one handoff event for duplicate requests and blocks subsequent AI replies', async () => {
-    const { generateReply, publish, service } = createService()
+  it('persists one authoritative handoff state for duplicate requests and blocks subsequent AI replies', async () => {
+    const { generateReply, repository, service } = createService()
     const session = await service.startSession({
       channel: 'website',
       idempotencyKey: 'start-1',
@@ -47,10 +46,14 @@ describe('ConversationService', () => {
     })
 
     expect(repeated).toEqual(first)
-    expect(publish).toHaveBeenCalledTimes(1)
-    expect(publish).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'handoff.created', source: 'visitor' }),
-    )
+    expect(repeated).toMatchObject({ handoffStatus: 'handoff_requested' })
+    expect(repository.handoffEvents).toEqual([
+      expect.objectContaining({
+        conversationId: session.id,
+        idempotencyKey: 'handoff-1',
+        type: 'handoff.created',
+      }),
+    ])
     await expect(
       service.sendMessage({
         idempotencyKey: 'message-after-handoff',
@@ -59,6 +62,56 @@ describe('ConversationService', () => {
       }),
     ).rejects.toMatchObject({ code: 'conflict' } satisfies Partial<ChatServiceError>)
     expect(generateReply).not.toHaveBeenCalled()
+  })
+
+  it('safely routes an unavailable AI response to human handoff instead of surfacing a provider failure', async () => {
+    let sequence = 0
+    const service = createConversationService({
+      createId: (kind) => `${kind}-${++sequence}`,
+      repository: new InMemoryConversationRepository(),
+      responder: {
+        generateReply: async () => {
+          throw new Error('provider timeout')
+        },
+      },
+    })
+    const session = await service.startSession({
+      channel: 'website',
+      idempotencyKey: 'start-ai-failure',
+      locale: 'en',
+    })
+
+    await expect(service.sendMessage({
+      idempotencyKey: 'message-ai-failure',
+      sessionId: session.id,
+      text: 'What finishes are available?',
+    })).resolves.toMatchObject({
+      handoffStatus: 'handoff_requested',
+      messages: [expect.objectContaining({ author: 'visitor' })],
+    })
+  })
+
+  it('records an audit intent for illegal handoff transitions', async () => {
+    const repository = new InMemoryConversationRepository()
+    const service = createConversationService({
+      repository,
+      responder: {
+        generateReply: async () => ({
+          content: 'fixture', estimatedCostUSD: 0, model: 'fixture', promptVersion: 1,
+          tokenUsage: { inputTokens: 1, totalTokens: 1 },
+        }),
+      },
+    })
+    const session = await service.startSession({
+      channel: 'website', idempotencyKey: 'illegal-start', locale: 'en',
+    })
+
+    await expect(service.takeOver({
+      idempotencyKey: 'illegal-takeover', sessionId: session.id,
+    })).rejects.toMatchObject({ code: 'conflict' })
+    expect(repository.rejectedTransitions).toEqual([
+      { command: 'take_over', current: 'ai_active', sessionId: session.id },
+    ])
   })
 
   it('allows visitor messages after takeover without invoking the AI and then resolves', async () => {

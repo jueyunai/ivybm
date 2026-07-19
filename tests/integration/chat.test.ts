@@ -6,10 +6,7 @@ import { getPayload, type Payload } from 'payload'
 import config from '@/payload.config'
 import { authorizeVisitorSession, hashVisitorToken } from '@/modules/conversations/auth'
 import { PayloadConversationLeadSink } from '@/modules/leads/conversationLeadSink'
-import {
-  PayloadConversationRepository,
-  PayloadHandoffEventSink,
-} from '@/modules/conversations/payloadRepository'
+import { PayloadConversationRepository } from '@/modules/conversations/payloadRepository'
 import { createConversationService } from '@/modules/conversations/service'
 
 let payload: Payload
@@ -77,6 +74,7 @@ describe.sequential('Task 9 conversation persistence', () => {
       collection: 'visitor-sessions',
       data: {
         channel: 'website',
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000).toISOString(),
         idempotencyKey: `visitor-${suffix}`,
         lastSeenAt: new Date().toISOString(),
         locale: 'en',
@@ -95,6 +93,7 @@ describe.sequential('Task 9 conversation persistence', () => {
         intentScore: 85,
         locale: 'en',
         publicId: `conversation-${suffix}`,
+        revision: 1,
         requestId: `request-${suffix}`,
         visitorSession: visitor.id,
       },
@@ -152,6 +151,21 @@ describe.sequential('Task 9 conversation persistence', () => {
     expect(otherView.totalDocs).toBe(0)
     expect(assignedMessages.totalDocs).toBe(1)
 
+    await expect(payload.update({
+      collection: 'conversations',
+      data: { handoffStatus: 'human_active' },
+      id: conversation.id,
+      overrideAccess: false,
+      user: operator,
+    })).rejects.toThrow()
+    await expect(payload.update({
+      collection: 'handoffs',
+      data: { status: 'active' },
+      id: handoff.id,
+      overrideAccess: false,
+      user: operator,
+    })).rejects.toThrow()
+
     const pool = (payload.db as unknown as PostgresAdapter).pool
     await pool.query('DELETE FROM conversations WHERE id = $1', [conversation.id])
     const children = await pool.query<{ handoffs: string; messages: string }>(
@@ -198,8 +212,7 @@ describe.sequential('Task 9 conversation persistence', () => {
       }),
     }
     const visitorService = createConversationService({
-      eventSink: new PayloadHandoffEventSink(payload),
-      leadSink: new PayloadConversationLeadSink(payload),
+      leadSink: new PayloadConversationLeadSink(),
       repository: new PayloadConversationRepository({
         payload,
         sessionTokenHash: hashVisitorToken(token),
@@ -229,10 +242,26 @@ describe.sequential('Task 9 conversation persistence', () => {
     })
     expect(leads.totalDocs).toBe(1)
     expect(leads.docs[0].intentLevel).toBe('a')
+    await expect(visitorService.requestHandoff({
+      idempotencyKey: `illegal-handoff-${suffix}`,
+      reason: 'duplicate_request',
+      sessionId: session.id,
+      source: 'visitor',
+    })).rejects.toMatchObject({ code: 'conflict' })
+    const rejectedAudit = await payload.find({
+      collection: 'audit-logs', limit: 10, overrideAccess: true,
+      where: { resource: { equals: 'conversation.handoff.rejected.handoff_requested.request' } },
+    })
+    const conversationForAudit = (await payload.find({
+      collection: 'conversations', limit: 1, overrideAccess: true,
+      where: { publicId: { equals: String(session.id) } },
+    })).docs[0]
+    expect(rejectedAudit.docs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ documentId: String(conversationForAudit.id) }),
+    ]))
 
     const createOperatorService = (actor: typeof firstOperator) =>
       createConversationService({
-        eventSink: new PayloadHandoffEventSink(payload, actor),
         repository: new PayloadConversationRepository({ actor, payload }),
         responder,
       })
@@ -246,9 +275,25 @@ describe.sequential('Task 9 conversation persistence', () => {
     expect(takeover.filter(({ status }) => status === 'rejected')).toHaveLength(1)
     const active = await visitorService.getSession(session.id)
     expect(active.handoffStatus).toBe('human_active')
-    expect([firstOperator.id, secondOperator.id]).toContain(active.assignedTo?.id)
+    expect(active).not.toHaveProperty('assignedTo')
+    const persistedActive = (await payload.find({
+      collection: 'conversations', depth: 0, limit: 1, overrideAccess: true,
+      where: { publicId: { equals: String(session.id) } },
+    })).docs[0]
+    const assignedID = typeof persistedActive.assignedTo === 'number'
+      ? persistedActive.assignedTo
+      : persistedActive.assignedTo?.id
+    expect([firstOperator.id, secondOperator.id]).toContain(assignedID)
+    const activeHandoffs = await payload.find({
+      collection: 'handoffs', limit: 10, overrideAccess: true,
+      where: { conversation: { equals: persistedActive.id } },
+    })
+    expect(activeHandoffs.docs).toHaveLength(1)
+    const handoffAssignee = activeHandoffs.docs[0].assignedTo
+    expect(typeof handoffAssignee === 'number' ? handoffAssignee : handoffAssignee?.id).toBe(assignedID)
+    expect(activeHandoffs.docs[0]).toMatchObject({ status: 'active' })
 
-    const winner = active.assignedTo?.id === firstOperator.id ? firstService : secondService
+    const winner = assignedID === firstOperator.id ? firstService : secondService
     const replied = await winner.sendOperatorMessage({
       idempotencyKey: `operator-message-${suffix}`,
       sessionId: session.id,
@@ -280,11 +325,201 @@ describe.sequential('Task 9 conversation persistence', () => {
     if (leads.docs[0]) await payload.delete({ collection: 'leads', id: leads.docs[0].id, overrideAccess: true })
   })
 
+  it('uses the persisted revision to serialize concurrent messages and lets the loser retry safely', async () => {
+    const suffix = randomUUID()
+    let replyCalls = 0
+    let releaseFirstPair: (() => void) | undefined
+    const firstPairReady = new Promise<void>((resolve) => {
+      releaseFirstPair = resolve
+    })
+    const service = createConversationService({
+      repository: new PayloadConversationRepository({
+        payload,
+        sessionTokenHash: hashVisitorToken(`revision-token-${suffix}`),
+      }),
+      responder: {
+        generateReply: async () => {
+          replyCalls += 1
+          if (replyCalls <= 2) {
+            if (replyCalls === 2) releaseFirstPair?.()
+            await firstPairReady
+          }
+          return {
+            content: 'Concurrent-safe fixture reply.',
+            estimatedCostUSD: 0,
+            model: 'fake-model',
+            promptVersion: 1,
+            tokenUsage: { inputTokens: 1, totalTokens: 1 },
+          }
+        },
+      },
+    })
+    const session = await service.startSession({
+      channel: 'website', idempotencyKey: `revision-start-${suffix}`, locale: 'en',
+    })
+    const inputs = [
+      { idempotencyKey: `revision-message-a-${suffix}`, text: 'First concurrent enquiry.' },
+      { idempotencyKey: `revision-message-b-${suffix}`, text: 'Second concurrent enquiry.' },
+    ]
+    const attempts = await Promise.allSettled(inputs.map((input) => service.sendMessage({
+      ...input,
+      sessionId: session.id,
+    })))
+    expect(attempts.filter(({ status }) => status === 'fulfilled')).toHaveLength(1)
+    expect(attempts.filter(({ status }) => status === 'rejected')).toHaveLength(1)
+
+    const failedIndex = attempts.findIndex(({ status }) => status === 'rejected')
+    const recovered = await service.sendMessage({ ...inputs[failedIndex], sessionId: session.id })
+    expect(recovered.messages.filter(({ author }) => author === 'visitor')).toHaveLength(2)
+    expect(recovered.messages.filter(({ author }) => author === 'ai')).toHaveLength(2)
+    expect(recovered.revision).toBe(3)
+
+    const conversation = (await payload.find({
+      collection: 'conversations', limit: 1, overrideAccess: true,
+      where: { publicId: { equals: String(session.id) } },
+    })).docs[0]
+    expect(conversation.revision).toBe(3)
+    await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
+    await payload.delete({
+      collection: 'visitor-sessions', overrideAccess: true,
+      where: { idempotencyKey: { equals: `revision-start-${suffix}` } },
+    })
+    await payload.delete({
+      collection: 'conversation-commands', overrideAccess: true,
+      where: { idempotencyKey: { contains: suffix } },
+    })
+  })
+
+  it('reclaims an expired command lease and fences the prior owner', async () => {
+    const suffix = randomUUID()
+    let now = new Date('2026-07-19T00:00:00.000Z')
+    const repository = new PayloadConversationRepository({
+      clock: () => now,
+      commandLeaseMs: 1_000,
+      payload,
+      sessionTokenHash: hashVisitorToken(`lease-token-${suffix}`),
+    })
+    const service = createConversationService({
+      repository,
+      responder: {
+        generateReply: async () => ({
+          content: 'Fixture response.',
+          estimatedCostUSD: 0,
+          model: 'fake-model',
+          promptVersion: 1,
+          tokenUsage: { inputTokens: 1, totalTokens: 1 },
+        }),
+      },
+    })
+    const session = await service.startSession({
+      channel: 'website',
+      idempotencyKey: `lease-start-${suffix}`,
+      locale: 'en',
+    })
+    const scope = `lease:${String(session.id)}`
+    const key = `lease-command-${suffix}`
+    const first = await repository.beginCommand(scope, key)
+    if (first.state !== 'claimed') throw new Error('Expected first command claim')
+    await expect(repository.beginCommand(scope, key)).resolves.toEqual({ state: 'processing' })
+
+    now = new Date(now.getTime() + 1_001)
+    const reclaimed = await repository.beginCommand(scope, key)
+    if (reclaimed.state !== 'claimed') throw new Error('Expected expired command reclamation')
+    expect(reclaimed.claim.token).not.toBe(first.claim.token)
+
+    const base = await repository.getSession(session.id)
+    if (!base) throw new Error('Expected persisted session')
+    await expect(repository.saveSession(structuredClone(base), { base }, first.claim)).rejects.toMatchObject({
+      code: 'conflict',
+    })
+    const fenced = await payload.findByID({
+      collection: 'conversation-commands', id: reclaimed.claim.id, overrideAccess: true,
+    })
+    expect(fenced).toMatchObject({ ownerToken: reclaimed.claim.token, status: 'processing' })
+
+    await expect(repository.saveSession(structuredClone(base), { base }, reclaimed.claim)).resolves.toMatchObject({
+      id: session.id,
+    })
+    const completed = await payload.findByID({
+      collection: 'conversation-commands', id: reclaimed.claim.id, overrideAccess: true,
+    })
+    expect(completed).toMatchObject({ status: 'completed' })
+
+    const conversation = (await payload.find({
+      collection: 'conversations', limit: 1, overrideAccess: true,
+      where: { publicId: { equals: String(session.id) } },
+    })).docs[0]
+    if (conversation) await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
+    const visitors = await payload.find({
+      collection: 'visitor-sessions', limit: 1, overrideAccess: true,
+      where: { idempotencyKey: { equals: `lease-start-${suffix}` } },
+    })
+    if (visitors.docs[0]) await payload.delete({ collection: 'visitor-sessions', id: visitors.docs[0].id, overrideAccess: true })
+    await payload.delete({
+      collection: 'conversation-commands', overrideAccess: true,
+      where: { idempotencyKey: { contains: suffix } },
+    })
+  })
+
+  it('scopes an idempotent handoff command to its conversation', async () => {
+    const suffix = randomUUID()
+    const createVisitorService = (token: string) => createConversationService({
+      repository: new PayloadConversationRepository({
+        payload,
+        sessionTokenHash: hashVisitorToken(token),
+      }),
+      responder: {
+        generateReply: async () => ({
+          content: 'Fixture response.',
+          estimatedCostUSD: 0,
+          model: 'fake-model',
+          promptVersion: 1,
+          tokenUsage: { inputTokens: 1, totalTokens: 1 },
+        }),
+      },
+    })
+    const firstService = createVisitorService(`handoff-first-${suffix}`)
+    const secondService = createVisitorService(`handoff-second-${suffix}`)
+    const [first, second] = await Promise.all([
+      firstService.startSession({ channel: 'website', idempotencyKey: `handoff-start-first-${suffix}`, locale: 'en' }),
+      secondService.startSession({ channel: 'website', idempotencyKey: `handoff-start-second-${suffix}`, locale: 'en' }),
+    ])
+    const sharedKey = `handoff-shared-${suffix}`
+    await Promise.all([
+      firstService.requestHandoff({
+        idempotencyKey: sharedKey, reason: 'visitor_request', sessionId: first.id, source: 'visitor',
+      }),
+      secondService.requestHandoff({
+        idempotencyKey: sharedKey, reason: 'visitor_request', sessionId: second.id, source: 'visitor',
+      }),
+    ])
+    const handoffs = await payload.find({
+      collection: 'handoffs', limit: 10, overrideAccess: true,
+      where: { idempotencyKey: { equals: sharedKey } },
+    })
+    expect(handoffs.docs).toHaveLength(2)
+
+    for (const session of [first, second]) {
+      const conversation = (await payload.find({
+        collection: 'conversations', limit: 1, overrideAccess: true,
+        where: { publicId: { equals: String(session.id) } },
+      })).docs[0]
+      if (conversation) await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
+    }
+    await payload.delete({
+      collection: 'visitor-sessions', overrideAccess: true,
+      where: { idempotencyKey: { contains: suffix } },
+    })
+    await payload.delete({
+      collection: 'conversation-commands', overrideAccess: true,
+      where: { idempotencyKey: { contains: suffix } },
+    })
+  })
+
   it('rolls back the visitor message when the paired AI message cannot be persisted', async () => {
     const suffix = randomUUID()
     const pool = (payload.db as unknown as PostgresAdapter).pool
     const service = createConversationService({
-      eventSink: new PayloadHandoffEventSink(payload),
       repository: new PayloadConversationRepository({
         payload,
         sessionTokenHash: hashVisitorToken(`atomic-token-${suffix}`),
@@ -333,6 +568,48 @@ describe.sequential('Task 9 conversation persistence', () => {
         where: { conversation: { equals: conversation.id } },
       })
       expect(stored.totalDocs).toBe(0)
+      const unchangedConversation = await payload.findByID({
+        collection: 'conversations', id: conversation.id, overrideAccess: true,
+      })
+      expect(unchangedConversation).toMatchObject({
+        handoffStatus: 'ai_active',
+        lastMessageAt: null,
+      })
+      const failedCommand = await payload.find({
+        collection: 'conversation-commands', limit: 1, overrideAccess: true,
+        where: {
+          and: [
+            { scope: { equals: `message:${String(session.id)}` } },
+            { idempotencyKey: { equals: `atomic-message-${suffix}` } },
+          ],
+        },
+      })
+      expect(failedCommand.docs[0]).toMatchObject({ status: 'failed' })
+
+      await pool.query(`
+        DROP TRIGGER IF EXISTS task9_reject_ai_message ON messages;
+        DROP FUNCTION IF EXISTS task9_reject_ai_message();
+      `)
+      const recovered = await service.sendMessage({
+        idempotencyKey: `atomic-message-${suffix}`,
+        sessionId: session.id,
+        text: 'Tell me about available panel finishes.',
+      })
+      expect(recovered.messages.map(({ author }) => author)).toEqual(['visitor', 'ai'])
+      const completedCommand = await payload.find({
+        collection: 'conversation-commands', limit: 1, overrideAccess: true,
+        where: {
+          and: [
+            { scope: { equals: `message:${String(session.id)}` } },
+            { idempotencyKey: { equals: `atomic-message-${suffix}` } },
+          ],
+        },
+      })
+      expect(completedCommand.docs[0]).toMatchObject({
+        result: { sessionId: session.id },
+        status: 'completed',
+      })
+      expect(completedCommand.docs[0]?.result).not.toHaveProperty('messages')
     } finally {
       await pool.query(`
         DROP TRIGGER IF EXISTS task9_reject_ai_message ON messages;

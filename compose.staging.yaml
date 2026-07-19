@@ -52,9 +52,16 @@ services:
     restart: unless-stopped
     environment:
       <<: *app-environment
+      AI_PROVIDER_API_KEY: ${AI_PROVIDER_API_KEY:?AI_PROVIDER_API_KEY is required for real chat}
+      AI_PROVIDER_BASE_URL: ${AI_PROVIDER_BASE_URL:?AI_PROVIDER_BASE_URL is required for real chat}
+      AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:?AI_EMBEDDING_MODEL is required for real chat}
+      AI_EMBEDDING_TIMEOUT_MS: ${AI_EMBEDDING_TIMEOUT_MS:-15000}
+      AI_TEXT_MODEL: ${AI_TEXT_MODEL:?AI_TEXT_MODEL is required for real chat}
+      AI_TEXT_TIMEOUT_MS: ${AI_TEXT_TIMEOUT_MS:-30000}
       HOSTNAME: 0.0.0.0
       NODE_ENV: production
       PORT: 3000
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
     depends_on:
       migrate:
         condition: service_completed_successfully

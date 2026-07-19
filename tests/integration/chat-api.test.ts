@@ -6,6 +6,7 @@ import { getPayload, type Payload } from 'payload'
 
 import { POST as startSession } from '@/app/api/chat/sessions/route'
 import { GET as getSession } from '@/app/api/chat/sessions/[id]/route'
+import { GET as listOperatorSessions } from '@/app/api/chat/operator/sessions/route'
 import { POST as requestHandoff } from '@/app/api/chat/sessions/[id]/handoff/route'
 import { POST as sendMessage } from '@/app/api/chat/sessions/[id]/messages/route'
 import { POST as sendOperatorMessage } from '@/app/api/chat/sessions/[id]/operator-messages/route'
@@ -33,7 +34,7 @@ describe.sequential('chat HTTP API', () => {
     delete process.env.AI_EMBEDDING_MODEL
   })
 
-  it('sets an HttpOnly visitor cookie, authorizes the session and keeps start idempotent', async () => {
+  it('sets an HttpOnly random visitor cookie, isolates sessions and only resumes an owned duplicate', async () => {
     const suffix = randomUUID()
     const idempotencyKey = `api-start-${suffix}`
     const body = JSON.stringify({ channel: 'website', idempotencyKey, locale: 'en' })
@@ -45,6 +46,7 @@ describe.sequential('chat HTTP API', () => {
       }),
     )
     expect(first.status).toBe(201)
+    expect(first.headers.get('cache-control')).toBe('private, no-store')
     const session = await first.json() as { id: string }
     const cookie = first.headers.get('set-cookie')?.split(';')[0]
     expect(cookie).toContain('ivybm_chat_session=')
@@ -53,12 +55,21 @@ describe.sequential('chat HTTP API', () => {
     const repeated = await startSession(
       new NextRequest('http://localhost/api/chat/sessions', {
         body,
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', cookie: cookie || '' },
         method: 'POST',
       }),
     )
     expect(repeated.status).toBe(201)
     await expect(repeated.json()).resolves.toMatchObject({ id: session.id })
+
+    const unownedRepeat = await startSession(
+      new NextRequest('http://localhost/api/chat/sessions', {
+        body,
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      }),
+    )
+    expect(unownedRepeat.status).toBe(403)
 
     const authorized = await getSession(
       new NextRequest(`http://localhost/api/chat/sessions/${session.id}`, {
@@ -75,6 +86,24 @@ describe.sequential('chat HTTP API', () => {
       { params: Promise.resolve({ id: session.id }) },
     )
     expect(forbidden.status).toBe(403)
+
+    const otherStartKey = `api-start-other-${suffix}`
+    const other = await startSession(
+      new NextRequest('http://localhost/api/chat/sessions', {
+        body: JSON.stringify({ channel: 'website', idempotencyKey: otherStartKey, locale: 'en' }),
+        headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.201' },
+        method: 'POST',
+      }),
+    )
+    expect(other.status).toBe(201)
+    const otherSession = await other.json() as { id: string }
+    const crossSession = await getSession(
+      new NextRequest(`http://localhost/api/chat/sessions/${otherSession.id}`, {
+        headers: { cookie: cookie || '' },
+      }),
+      { params: Promise.resolve({ id: otherSession.id }) },
+    )
+    expect(crossSession.status).toBe(403)
 
     const handoff = await requestHandoff(
       new NextRequest(`http://localhost/api/chat/sessions/${session.id}/handoff`, {
@@ -101,10 +130,120 @@ describe.sequential('chat HTTP API', () => {
     if (visitors.docs[0]) {
       await payload.delete({ collection: 'visitor-sessions', id: visitors.docs[0].id, overrideAccess: true })
     }
+    const otherConversations = await payload.find({
+      collection: 'conversations', limit: 1, overrideAccess: true,
+      where: { publicId: { equals: otherSession.id } },
+    })
+    if (otherConversations.docs[0]) {
+      await payload.delete({ collection: 'conversations', id: otherConversations.docs[0].id, overrideAccess: true })
+    }
+    const otherVisitors = await payload.find({
+      collection: 'visitor-sessions', limit: 1, overrideAccess: true,
+      where: { idempotencyKey: { equals: otherStartKey } },
+    })
+    if (otherVisitors.docs[0]) {
+      await payload.delete({ collection: 'visitor-sessions', id: otherVisitors.docs[0].id, overrideAccess: true })
+    }
     await payload.delete({
       collection: 'conversation-commands', overrideAccess: true,
       where: { idempotencyKey: { contains: suffix } },
     })
+  })
+
+  it('accepts only the website channel and rejects an expired server-side visitor credential', async () => {
+    const suffix = randomUUID()
+    const unsupported = await startSession(new NextRequest('http://localhost/api/chat/sessions', {
+      body: JSON.stringify({ channel: 'facebook', idempotencyKey: `external-${suffix}`, locale: 'en' }),
+      headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.211' },
+      method: 'POST',
+    }))
+    expect(unsupported.status).toBe(400)
+
+    const idempotencyKey = `expired-${suffix}`
+    const started = await startSession(new NextRequest('http://localhost/api/chat/sessions', {
+      body: JSON.stringify({ channel: 'website', idempotencyKey, locale: 'en' }),
+      headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.212' },
+      method: 'POST',
+    }))
+    const session = await started.json() as { id: string }
+    const cookie = started.headers.get('set-cookie')?.split(';')[0] || ''
+    const visitor = (await payload.find({
+      collection: 'visitor-sessions', limit: 1, overrideAccess: true,
+      where: { idempotencyKey: { equals: idempotencyKey } },
+    })).docs[0]
+    await payload.update({
+      collection: 'visitor-sessions', data: { expiresAt: '2026-07-01T00:00:00.000Z' },
+      id: visitor.id, overrideAccess: true,
+    })
+
+    const expired = await getSession(
+      new NextRequest(`http://localhost/api/chat/sessions/${session.id}`, { headers: { cookie } }),
+      { params: Promise.resolve({ id: session.id }) },
+    )
+    expect(expired.status).toBe(403)
+
+    const conversation = (await payload.find({
+      collection: 'conversations', limit: 1, overrideAccess: true,
+      where: { publicId: { equals: session.id } },
+    })).docs[0]
+    if (conversation) await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
+    await payload.delete({ collection: 'visitor-sessions', id: visitor.id, overrideAccess: true })
+    await payload.delete({
+      collection: 'conversation-commands', overrideAccess: true,
+      where: { idempotencyKey: { contains: suffix } },
+    })
+  })
+
+  it('bounds an anonymous mutation body before attempting visitor authorization', async () => {
+    const response = await sendMessage(new NextRequest(
+      'http://localhost/api/chat/sessions/session_oversized/messages',
+      {
+        body: JSON.stringify({ idempotencyKey: 'oversized-body', text: 'x'.repeat(32 * 1024) }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      },
+    ), { params: Promise.resolve({ id: 'session_oversized' }) })
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'invalid_request' },
+    })
+  })
+
+  it('safely creates a handoff when the AI runtime is unavailable', async () => {
+    const suffix = randomUUID()
+    const startKey = `unavailable-start-${suffix}`
+    const started = await startSession(new NextRequest('http://localhost/api/chat/sessions', {
+      body: JSON.stringify({ channel: 'website', idempotencyKey: startKey, locale: 'en' }),
+      headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.202' }, method: 'POST',
+    }))
+    const session = await started.json() as { id: string }
+    const cookie = started.headers.get('set-cookie')?.split(';')[0] || ''
+    const response = await sendMessage(new NextRequest(
+      `http://localhost/api/chat/sessions/${session.id}/messages`,
+      {
+        body: JSON.stringify({ idempotencyKey: `unavailable-message-${suffix}`, text: 'What finishes are available?' }),
+        headers: { 'content-type': 'application/json', cookie, 'x-real-ip': '198.51.100.202' },
+        method: 'POST',
+      },
+    ), { params: Promise.resolve({ id: session.id }) })
+    expect(response.status).toBe(200)
+    const snapshot = await response.json() as { handoffStatus: string; messages: Array<{ author: string }> }
+    expect(snapshot.handoffStatus).toBe('handoff_requested')
+    expect(snapshot.messages).toEqual([expect.objectContaining({ author: 'visitor' })])
+
+    const conversation = (await payload.find({ collection: 'conversations', limit: 1, overrideAccess: true,
+      where: { publicId: { equals: session.id } } })).docs[0]
+    const handoffs = await payload.find({ collection: 'handoffs', limit: 10, overrideAccess: true,
+      where: { conversation: { equals: conversation.id } } })
+    expect(handoffs.docs).toHaveLength(1)
+    expect(handoffs.docs[0]).toMatchObject({ reason: 'ai_service_unavailable', status: 'requested' })
+
+    await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
+    const visitors = await payload.find({ collection: 'visitor-sessions', limit: 1, overrideAccess: true,
+      where: { idempotencyKey: { equals: startKey } } })
+    if (visitors.docs[0]) await payload.delete({ collection: 'visitor-sessions', id: visitors.docs[0].id, overrideAccess: true })
+    await payload.delete({ collection: 'conversation-commands', overrideAccess: true,
+      where: { idempotencyKey: { contains: suffix } } })
   })
 
   it('answers from reviewed knowledge through a fake provider and persists AI metadata', async () => {
@@ -113,7 +252,7 @@ describe.sequential('chat HTTP API', () => {
       collection: 'knowledge-documents',
       data: {
         content: 'PVDF, powder coating, and anodized finishes are available after engineering review.',
-        indexStatus: 'pending', locale: 'en', reviewStatus: 'reviewed',
+        customerVisible: true, indexStatus: 'pending', locale: 'en', reviewStatus: 'reviewed',
         sourceTitle: `Finish manual ${suffix}`, sourceType: 'product-manual', sourceVersion: '1.0',
       },
       overrideAccess: true,
@@ -171,9 +310,13 @@ describe.sequential('chat HTTP API', () => {
     expect(response.status).toBe(200)
     const snapshot = await response.json() as { messages: Array<Record<string, unknown>> }
     expect(snapshot.messages.at(-1)).toMatchObject({
-      author: 'ai', model: 'fake-text-model', promptVersion: 1,
+      author: 'ai', status: 'sent',
     })
     expect(snapshot.messages.at(-1)?.citations).toHaveLength(1)
+    expect(snapshot.messages.at(-1)).not.toHaveProperty('estimatedCostUSD')
+    expect(snapshot.messages.at(-1)).not.toHaveProperty('model')
+    expect(snapshot.messages.at(-1)).not.toHaveProperty('promptVersion')
+    expect(snapshot.messages.at(-1)).not.toHaveProperty('tokenUsage')
 
     const stored = await payload.find({
       collection: 'messages', limit: 10, overrideAccess: true,
@@ -292,10 +435,67 @@ describe.sequential('chat HTTP API', () => {
     ])
     expect(takeover.map(({ status }) => status).sort()).toEqual([200, 409])
 
+    const visitorSnapshot = await getSession(
+      new NextRequest(`http://localhost/api/chat/sessions/${session.id}`, { headers: { cookie } }),
+      { params: Promise.resolve({ id: session.id }) },
+    )
+    expect(visitorSnapshot.status).toBe(200)
+    await expect(visitorSnapshot.json()).resolves.not.toHaveProperty('assignedTo')
+
+    const operatorSnapshot = await getSession(
+      new NextRequest(`http://localhost/api/chat/sessions/${session.id}?view=operator`, {
+        headers: firstAuth,
+      }),
+      { params: Promise.resolve({ id: session.id }) },
+    )
+    expect(operatorSnapshot.status).toBe(200)
+    await expect(operatorSnapshot.json()).resolves.toMatchObject({
+      allowedActions: ['send_operator_message', 'resolve'],
+    })
+    const unassignedSalesSnapshot = await getSession(
+      new NextRequest(`http://localhost/api/chat/sessions/${session.id}?view=operator`, {
+        headers: otherSalesAuth,
+      }),
+      { params: Promise.resolve({ id: session.id }) },
+    )
+    expect(unassignedSalesSnapshot.status).toBe(403)
+
     const conversation = (await payload.find({ collection: 'conversations', depth: 0, limit: 1,
       overrideAccess: true, where: { publicId: { equals: session.id } } })).docs[0]
     await payload.update({ collection: 'conversations', id: conversation.id, overrideAccess: true,
       data: { assignedTo: users[2].id } })
+
+    const salesSnapshot = await getSession(
+      new NextRequest(`http://localhost/api/chat/sessions/${session.id}?view=operator`, {
+        headers: salesAuth,
+      }),
+      { params: Promise.resolve({ id: session.id }) },
+    )
+    expect(salesSnapshot.status).toBe(200)
+    await expect(salesSnapshot.json()).resolves.toMatchObject({
+      allowedActions: ['send_operator_message', 'resolve'], assignedTo: { id: users[2].id },
+    })
+    const operatorInbox = await listOperatorSessions(new NextRequest(
+      'http://localhost/api/chat/operator/sessions?limit=10', { headers: firstAuth },
+    ))
+    expect(operatorInbox.status).toBe(200)
+    const operatorInboxBody = await operatorInbox.json() as { docs: Array<Record<string, unknown>> }
+    expect(operatorInboxBody.docs).toEqual(expect.arrayContaining([expect.objectContaining({ id: session.id })]))
+    expect(operatorInboxBody.docs.find(({ id }) => id === session.id)).not.toHaveProperty('messages')
+    const salesInbox = await listOperatorSessions(new NextRequest(
+      'http://localhost/api/chat/operator/sessions?limit=10', { headers: salesAuth },
+    ))
+    expect(salesInbox.status).toBe(200)
+    await expect(salesInbox.json()).resolves.toMatchObject({
+      docs: expect.arrayContaining([expect.objectContaining({ id: session.id })]),
+    })
+    const otherSalesInbox = await listOperatorSessions(new NextRequest(
+      'http://localhost/api/chat/operator/sessions?limit=10', { headers: otherSalesAuth },
+    ))
+    expect(otherSalesInbox.status).toBe(200)
+    await expect(otherSalesInbox.json()).resolves.toMatchObject({
+      docs: expect.not.arrayContaining([expect.objectContaining({ id: session.id })]),
+    })
 
     const otherReply = await sendOperatorMessage(new NextRequest(
       `http://localhost/api/chat/sessions/${session.id}/operator-messages`,

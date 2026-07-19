@@ -1,7 +1,5 @@
-import type { Payload } from 'payload'
-
 import type { ChatSession } from '@/modules/conversations/contracts'
-import type { ConversationLeadSink } from '@/modules/conversations/service'
+import type { ConversationLeadEvaluation, ConversationLeadSink } from '@/modules/conversations/service'
 
 import { scoreLeadIntent, type LeadScoringInput } from './score'
 
@@ -47,83 +45,18 @@ export const extractLeadSignals = (session: ChatSession): LeadScoringInput => {
   }
 }
 
+/**
+ * Keeps intent scoring pure so that the repository can commit score, lead, handoff and command
+ * result in one database transaction.
+ */
 export class PayloadConversationLeadSink implements ConversationLeadSink {
-  constructor(private readonly payload: Payload) {}
-
-  async evaluate(session: ChatSession): Promise<{ handoffReason?: string }> {
+  async evaluate(session: ChatSession): Promise<ConversationLeadEvaluation> {
     const signals = extractLeadSignals(session)
     const score = scoreLeadIntent(signals)
-    const conversations = await this.payload.find({
-      collection: 'conversations',
-      limit: 1,
-      overrideAccess: true,
-      where: { publicId: { equals: String(session.id) } },
-    })
-    const conversation = conversations.docs[0]
-    if (!conversation) return {}
-    await this.payload.update({
-      collection: 'conversations',
-      data: { intentLevel: score.level, intentScore: score.score },
-      id: conversation.id,
-      overrideAccess: true,
-    })
-
-    if (score.level === 'a' && signals.contact.email && signals.country) {
-      let sources = await this.payload.find({
-        collection: 'lead-sources',
-        limit: 1,
-        overrideAccess: true,
-        where: { key: { equals: 'ai-chat' } },
-      })
-      if (!sources.docs[0]) {
-        await this.payload.create({
-          collection: 'lead-sources',
-          data: { channel: 'ai-chat', isActive: true, key: 'ai-chat', name: 'AI Chat' },
-          overrideAccess: true,
-        }).catch(() => undefined)
-        sources = await this.payload.find({
-          collection: 'lead-sources',
-          limit: 1,
-          overrideAccess: true,
-          where: { key: { equals: 'ai-chat' } },
-        })
-      }
-      const source = sources.docs[0]
-      if (source) {
-        const idempotencyKey = `chat-lead:${String(session.id)}`
-        const existing = await this.payload.find({
-          collection: 'leads',
-          limit: 1,
-          overrideAccess: true,
-          where: { idempotencyKey: { equals: idempotencyKey } },
-        })
-        const data = {
-          company: signals.company,
-          country: signals.country,
-          email: signals.contact.email,
-          idempotencyKey,
-          intentLevel: 'a' as const,
-          interest: signals.productInterest,
-          locale: session.locale,
-          message: session.messages.filter(({ author }) => author === 'visitor').map(({ content }) => content).join('\n'),
-          name: signals.company || signals.contact.email.split('@')[0],
-          phone: signals.contact.phone,
-          requestId: `chat-${session.requestId}`,
-          source: source.id,
-          status: 'new' as const,
-        }
-        const lead = existing.docs[0]
-          ? await this.payload.update({ collection: 'leads', data, id: existing.docs[0].id, overrideAccess: true })
-          : await this.payload.create({ collection: 'leads', data, overrideAccess: true })
-        await this.payload.update({
-          collection: 'conversations',
-          data: { lead: lead.id },
-          id: conversation.id,
-          overrideAccess: true,
-        })
-      }
-      return { handoffReason: 'high_intent' }
+    return {
+      ...(score.handoffRecommended ? { handoffReason: 'high_intent' } : {}),
+      score,
+      signals,
     }
-    return {}
   }
 }

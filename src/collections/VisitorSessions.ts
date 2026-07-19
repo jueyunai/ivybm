@@ -1,6 +1,11 @@
 import type { CollectionConfig } from 'payload'
 
-import { conversationInternalWrite, visitorSessionsAdmin } from '../access/conversations'
+import {
+  conversationInternalFieldRead,
+  conversationInternalFieldWrite,
+  conversationInternalWrite,
+  visitorSessionsAdmin,
+} from '../access/conversations'
 
 export const VisitorSessions: CollectionConfig = {
   slug: 'visitor-sessions',
@@ -12,7 +17,7 @@ export const VisitorSessions: CollectionConfig = {
     update: conversationInternalWrite,
   },
   admin: {
-    defaultColumns: ['publicId', 'channel', 'locale', 'lastSeenAt', 'createdAt'],
+    defaultColumns: ['publicId', 'channel', 'locale', 'lastSeenAt', 'expiresAt', 'createdAt'],
     group: 'Conversations',
     useAsTitle: 'publicId',
   },
@@ -25,6 +30,11 @@ export const VisitorSessions: CollectionConfig = {
       index: true,
       required: true,
       unique: true,
+      access: {
+        create: conversationInternalFieldWrite,
+        read: conversationInternalFieldRead,
+        update: conversationInternalFieldWrite,
+      },
     },
     {
       name: 'idempotencyKey',
@@ -33,6 +43,11 @@ export const VisitorSessions: CollectionConfig = {
       index: true,
       required: true,
       unique: true,
+      access: {
+        create: conversationInternalFieldWrite,
+        read: conversationInternalFieldRead,
+        update: conversationInternalFieldWrite,
+      },
     },
     {
       name: 'channel',
@@ -51,6 +66,7 @@ export const VisitorSessions: CollectionConfig = {
       required: true,
     },
     { name: 'sourceURL', type: 'text', maxLength: 2_048 },
+    { name: 'expiresAt', type: 'date', index: true, required: true },
     { name: 'lastSeenAt', type: 'date', index: true, required: true },
   ],
 }

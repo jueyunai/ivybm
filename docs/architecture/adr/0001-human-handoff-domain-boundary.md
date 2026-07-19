@@ -31,7 +31,7 @@ handoff_requested
     │  assignment accepted
     ▼
 human_active
-    │  operator resolves conversation
+    │  assigned operator or sales resolves conversation
     ▼
 resolved
 ```
@@ -70,8 +70,10 @@ ChatWidget / Operator UI / Platform Connector
 - `POST /api/chat/sessions/:id/take-over`
 - `POST /api/chat/sessions/:id/resolve`
 - `GET /api/chat/sessions/:id`
+- `GET /api/chat/sessions/:id?view=operator`
+- `GET /api/chat/operator/sessions`
 
-访客只能操作自己会话的有限命令；operator / admin 才能认领和解决会话。浏览器不得直接写 `handoffStatus`、`assignedTo`、审计字段或消息作者身份。
+访客只能操作自己会话的有限命令；operator / admin 才能认领。sales 只能在会话已被分配给自己后读取、回复或解决，不能认领、改派或读取其他会话。浏览器不得直接写 `handoffStatus`、`assignedTo`、审计字段或消息作者身份。
 
 ## 为什么需要 API
 

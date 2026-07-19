@@ -10,6 +10,7 @@ const session: ChatSession = {
   id: 'session-1',
   locale: 'en',
   messages: [],
+  revision: 1,
   requestId: 'request-1',
 }
 

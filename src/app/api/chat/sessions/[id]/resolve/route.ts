@@ -1,8 +1,16 @@
 import { NextRequest } from 'next/server'
 
-import { authenticateOperator } from '@/modules/conversations/auth'
-import { ChatServiceError } from '@/modules/conversations/contracts'
-import { chatErrorResponse, readChatJSON, requireString } from '@/modules/conversations/http'
+import {
+  authenticateOperator,
+  authorizeOperatorConversation,
+  requireChatPublicID,
+} from '@/modules/conversations/auth'
+import { chatErrorResponse, chatJSONResponse, readChatJSON, requireString } from '@/modules/conversations/http'
+import {
+  CHAT_RATE_LIMIT_SCOPES,
+  chatOperatorCommandRateLimiter,
+  enforceChatRateLimit,
+} from '@/modules/conversations/rateLimit'
 import { createPayloadChatService, getChatPayload } from '@/modules/conversations/runtime'
 
 export const dynamic = 'force-dynamic'
@@ -13,26 +21,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   try {
-    const { id } = await params
+    const { id: rawID } = await params
+    const id = requireChatPublicID(rawID)
+    enforceChatRateLimit(request, chatOperatorCommandRateLimiter, CHAT_RATE_LIMIT_SCOPES.operatorCommand)
+    const body = await readChatJSON(request)
     const payload = await getChatPayload()
     const actor = await authenticateOperator(payload, request)
-    if (actor.role === 'sales') {
-      const conversations = await payload.find({
-        collection: 'conversations',
-        depth: 0,
-        limit: 1,
-        overrideAccess: true,
-        where: { publicId: { equals: id } },
-      })
-      const assigned = conversations.docs[0]?.assignedTo
-      const assignedID = typeof assigned === 'number' ? assigned : assigned?.id
-      if (assignedID !== actor.id) {
-        throw new ChatServiceError('forbidden', 'Sales users may resolve only assigned conversations')
-      }
-    }
-    const body = await readChatJSON(request)
+    await authorizeOperatorConversation(payload, id, actor)
     const service = await createPayloadChatService({ actor })
-    return Response.json(
+    return chatJSONResponse(
       await service.resolve({
         idempotencyKey: requireString(body, 'idempotencyKey', 200),
         sessionId: id,

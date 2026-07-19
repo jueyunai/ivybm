@@ -9,7 +9,7 @@ import { retrieveKnowledgeForQuery } from '@/modules/knowledge/retrieve'
 import { PayloadConversationLeadSink } from '@/modules/leads/conversationLeadSink'
 
 import { ChatServiceError } from './contracts'
-import { PayloadConversationRepository, PayloadHandoffEventSink } from './payloadRepository'
+import { PayloadConversationRepository } from './payloadRepository'
 import { createKnowledgeConversationResponder } from './responder'
 import { createConversationService } from './service'
 
@@ -72,6 +72,7 @@ export const createPayloadChatService = async (options: ChatRuntimeOptions = {})
     },
     retrieve: async ({ locale, query }) =>
       retrieveKnowledgeForQuery({
+        customerVisible: true,
         gateway: getGateway(),
         locale,
         minScore: 0.2,
@@ -80,8 +81,7 @@ export const createPayloadChatService = async (options: ChatRuntimeOptions = {})
       }),
   })
   return createConversationService({
-    eventSink: new PayloadHandoffEventSink(payload, options.actor),
-    leadSink: new PayloadConversationLeadSink(payload),
+    leadSink: new PayloadConversationLeadSink(),
     repository: new PayloadConversationRepository({
       actor: options.actor,
       payload,

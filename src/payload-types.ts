@@ -556,6 +556,10 @@ export interface KnowledgeDocument {
   id: number;
   sourceTitle: string;
   sourceType: 'faq' | 'product-manual' | 'technical-specification' | 'sales-script' | 'project-case' | 'other';
+  /**
+   * Only reviewed, indexed documents marked here may be used by the public website chat.
+   */
+  customerVisible?: boolean | null;
   sourceURL?: string | null;
   sourceFile?: (number | null) | Media;
   sourceVersion: string;
@@ -675,6 +679,7 @@ export interface VisitorSession {
   channel: 'website' | 'whatsapp' | 'facebook' | 'instagram';
   locale: 'en' | 'ar';
   sourceURL?: string | null;
+  expiresAt: string;
   lastSeenAt: string;
   updatedAt: string;
   createdAt: string;
@@ -692,6 +697,7 @@ export interface Conversation {
   externalThreadId?: string | null;
   locale: 'en' | 'ar';
   handoffStatus: 'ai_active' | 'handoff_requested' | 'human_active' | 'resolved';
+  revision: number;
   assignedTo?: (number | null) | User;
   lead?: (number | null) | Lead;
   intentLevel: 'unscored' | 'a' | 'b' | 'c';
@@ -765,6 +771,7 @@ export interface ConversationCommand {
   scope: string;
   idempotencyKey: string;
   ownerToken: string;
+  leaseExpiresAt: string;
   status: 'processing' | 'completed' | 'failed';
   conversation?: (number | null) | Conversation;
   result?:
@@ -1185,6 +1192,7 @@ export interface DownloadsSelect<T extends boolean = true> {
 export interface KnowledgeDocumentsSelect<T extends boolean = true> {
   sourceTitle?: T;
   sourceType?: T;
+  customerVisible?: T;
   sourceURL?: T;
   sourceFile?: T;
   sourceVersion?: T;
@@ -1290,6 +1298,7 @@ export interface VisitorSessionsSelect<T extends boolean = true> {
   channel?: T;
   locale?: T;
   sourceURL?: T;
+  expiresAt?: T;
   lastSeenAt?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -1306,6 +1315,7 @@ export interface ConversationsSelect<T extends boolean = true> {
   externalThreadId?: T;
   locale?: T;
   handoffStatus?: T;
+  revision?: T;
   assignedTo?: T;
   lead?: T;
   intentLevel?: T;
@@ -1378,6 +1388,7 @@ export interface ConversationCommandsSelect<T extends boolean = true> {
   scope?: T;
   idempotencyKey?: T;
   ownerToken?: T;
+  leaseExpiresAt?: T;
   status?: T;
   conversation?: T;
   result?: T;

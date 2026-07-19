@@ -5238,6 +5238,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "customer_visible": {
+          "name": "customer_visible",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        },
         "source_u_r_l": {
           "name": "source_u_r_l",
           "type": "varchar",
@@ -5326,6 +5333,21 @@
         }
       },
       "indexes": {
+        "knowledge_documents_customer_visible_idx": {
+          "name": "knowledge_documents_customer_visible_idx",
+          "columns": [
+            {
+              "expression": "customer_visible",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "knowledge_documents_source_file_idx": {
           "name": "knowledge_documents_source_file_idx",
           "columns": [
@@ -9781,6 +9803,6 @@
     "tables": {},
     "columns": {}
   },
-  "id": "5a02a5c0-4700-4c55-81e4-2aee79180805",
+  "id": "8359617b-d2c9-4ee6-b8ec-8a7ac7d9acc8",
   "prevId": "00000000-0000-0000-0000-000000000000"
 }

@@ -33,14 +33,25 @@ export const assertAiReplyAllowed = (status: HandoffStatus): void => {
   }
 }
 
-export const allowedActionsFor = (status: HandoffStatus): ChatAllowedAction[] => {
+export type ChatSessionViewer = 'operator' | 'sales' | 'visitor'
+
+/**
+ * A snapshot only advertises commands the current caller can issue. The visitor and
+ * operator views intentionally differ so browser UI cannot infer authority from state alone.
+ */
+export const allowedActionsFor = (
+  status: HandoffStatus,
+  viewer: ChatSessionViewer = 'visitor',
+): ChatAllowedAction[] => {
   switch (status) {
     case 'ai_active':
-      return ['send_message', 'request_handoff']
+      return viewer === 'visitor' ? ['send_message', 'request_handoff'] : []
     case 'handoff_requested':
-      return ['take_over']
+      return viewer === 'operator' ? ['take_over'] : []
     case 'human_active':
-      return ['send_message', 'resolve']
+      return viewer === 'operator' || viewer === 'sales'
+        ? ['send_operator_message', 'resolve']
+        : ['send_message']
     case 'resolved':
       return []
   }

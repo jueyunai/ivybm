@@ -21,6 +21,7 @@ export async function up({ db, payload: _payload, req: _req }: MigrateUpArgs): P
     "channel" "enum_visitor_sessions_channel" NOT NULL,
     "locale" "enum_visitor_sessions_locale" NOT NULL,
     "source_u_r_l" varchar,
+    "expires_at" timestamp(3) with time zone NOT NULL,
     "last_seen_at" timestamp(3) with time zone NOT NULL,
     "updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
     "created_at" timestamp(3) with time zone DEFAULT now() NOT NULL
@@ -35,6 +36,7 @@ export async function up({ db, payload: _payload, req: _req }: MigrateUpArgs): P
     "external_thread_id" varchar,
     "locale" "enum_conversations_locale" NOT NULL,
     "handoff_status" "enum_conversations_handoff_status" DEFAULT 'ai_active' NOT NULL,
+    "revision" numeric DEFAULT 1 NOT NULL,
     "assigned_to_id" integer,
     "lead_id" integer,
     "intent_level" "enum_conversations_intent_level" DEFAULT 'unscored' NOT NULL,
@@ -98,6 +100,7 @@ export async function up({ db, payload: _payload, req: _req }: MigrateUpArgs): P
     "scope" varchar NOT NULL,
     "idempotency_key" varchar NOT NULL,
     "owner_token" varchar NOT NULL,
+    "lease_expires_at" timestamp(3) with time zone NOT NULL,
     "status" "enum_conversation_commands_status" DEFAULT 'processing' NOT NULL,
     "conversation_id" integer,
     "result" jsonb,
@@ -124,6 +127,7 @@ export async function up({ db, payload: _payload, req: _req }: MigrateUpArgs): P
   CREATE UNIQUE INDEX "visitor_sessions_session_token_hash_idx" ON "visitor_sessions" USING btree ("session_token_hash");
   CREATE UNIQUE INDEX "visitor_sessions_idempotency_key_idx" ON "visitor_sessions" USING btree ("idempotency_key");
   CREATE INDEX "visitor_sessions_channel_idx" ON "visitor_sessions" USING btree ("channel");
+  CREATE INDEX "visitor_sessions_expires_at_idx" ON "visitor_sessions" USING btree ("expires_at");
   CREATE INDEX "visitor_sessions_last_seen_at_idx" ON "visitor_sessions" USING btree ("last_seen_at");
   CREATE INDEX "visitor_sessions_updated_at_idx" ON "visitor_sessions" USING btree ("updated_at");
   CREATE INDEX "visitor_sessions_created_at_idx" ON "visitor_sessions" USING btree ("created_at");
@@ -151,7 +155,7 @@ export async function up({ db, payload: _payload, req: _req }: MigrateUpArgs): P
   CREATE INDEX "messages_created_at_idx" ON "messages" USING btree ("created_at");
   CREATE UNIQUE INDEX "handoffs_public_id_idx" ON "handoffs" USING btree ("public_id");
   CREATE INDEX "handoffs_conversation_idx" ON "handoffs" USING btree ("conversation_id");
-  CREATE UNIQUE INDEX "handoffs_idempotency_key_idx" ON "handoffs" USING btree ("idempotency_key");
+  CREATE UNIQUE INDEX "handoffs_conversation_id_idempotency_key_idx" ON "handoffs" USING btree ("conversation_id","idempotency_key");
   CREATE UNIQUE INDEX "handoffs_domain_event_id_idx" ON "handoffs" USING btree ("domain_event_id");
   CREATE INDEX "handoffs_status_idx" ON "handoffs" USING btree ("status");
   CREATE INDEX "handoffs_requested_by_idx" ON "handoffs" USING btree ("requested_by_id");
@@ -160,7 +164,8 @@ export async function up({ db, payload: _payload, req: _req }: MigrateUpArgs): P
   CREATE INDEX "handoffs_updated_at_idx" ON "handoffs" USING btree ("updated_at");
   CREATE INDEX "handoffs_created_at_idx" ON "handoffs" USING btree ("created_at");
   CREATE INDEX "conversation_commands_scope_idx" ON "conversation_commands" USING btree ("scope");
-  CREATE UNIQUE INDEX "conversation_commands_idempotency_key_idx" ON "conversation_commands" USING btree ("idempotency_key");
+  CREATE UNIQUE INDEX "conversation_commands_scope_idempotency_key_idx" ON "conversation_commands" USING btree ("scope","idempotency_key");
+  CREATE INDEX "conversation_commands_lease_expires_at_idx" ON "conversation_commands" USING btree ("lease_expires_at");
   CREATE INDEX "conversation_commands_status_idx" ON "conversation_commands" USING btree ("status");
   CREATE INDEX "conversation_commands_conversation_idx" ON "conversation_commands" USING btree ("conversation_id");
   CREATE INDEX "conversation_commands_updated_at_idx" ON "conversation_commands" USING btree ("updated_at");
@@ -175,6 +180,12 @@ export async function up({ db, payload: _payload, req: _req }: MigrateUpArgs): P
   CREATE INDEX "payload_locked_documents_rels_messages_id_idx" ON "payload_locked_documents_rels" USING btree ("messages_id");
   CREATE INDEX "payload_locked_documents_rels_handoffs_id_idx" ON "payload_locked_documents_rels" USING btree ("handoffs_id");
   CREATE INDEX "payload_locked_documents_rels_conversation_commands_id_idx" ON "payload_locked_documents_rels" USING btree ("conversation_commands_id");`)
+
+  await db.execute(sql`
+    INSERT INTO "lead_sources" ("name", "key", "channel", "is_active")
+    VALUES ('AI Chat', 'ai-chat', 'ai-chat', true)
+    ON CONFLICT ("key") DO NOTHING;
+  `)
 }
 
 export async function down({ db, payload: _payload, req: _req }: MigrateDownArgs): Promise<void> {

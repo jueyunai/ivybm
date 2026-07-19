@@ -6,6 +6,7 @@ import * as migration_20260718_015857_cms_media_policy from './20260718_015857_c
 import * as migration_20260718_053459_task8_knowledge_base from './20260718_053459_task8_knowledge_base'
 import * as migration_20260718_143701_task7_inquiry_leads from './20260718_143701_task7_inquiry_leads'
 import * as migration_20260719_014251_task9_conversations from './20260719_014251_task9_conversations'
+import * as migration_20260719_123030_task9_public_knowledge_visibility from './20260719_123030_task9_public_knowledge_visibility'
 
 export const migrations = [
   {
@@ -47,5 +48,10 @@ export const migrations = [
     up: migration_20260719_014251_task9_conversations.up,
     down: migration_20260719_014251_task9_conversations.down,
     name: '20260719_014251_task9_conversations',
+  },
+  {
+    up: migration_20260719_123030_task9_public_knowledge_visibility.up,
+    down: migration_20260719_123030_task9_public_knowledge_visibility.down,
+    name: '20260719_123030_task9_public_knowledge_visibility',
   },
 ]

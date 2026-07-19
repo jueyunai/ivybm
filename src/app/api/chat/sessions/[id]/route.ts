@@ -1,7 +1,14 @@
 import { NextRequest } from 'next/server'
 
-import { authorizeVisitorSession, CHAT_SESSION_COOKIE } from '@/modules/conversations/auth'
-import { chatErrorResponse } from '@/modules/conversations/http'
+import {
+  authenticateOperator,
+  authorizeOperatorConversation,
+  authorizeVisitorSession,
+  CHAT_SESSION_COOKIE,
+  requireChatPublicID,
+} from '@/modules/conversations/auth'
+import { ChatServiceError } from '@/modules/conversations/contracts'
+import { chatErrorResponse, chatJSONResponse } from '@/modules/conversations/http'
 import { createPayloadChatService, getChatPayload } from '@/modules/conversations/runtime'
 
 export const dynamic = 'force-dynamic'
@@ -12,11 +19,23 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   try {
-    const { id } = await params
+    const { id: rawID } = await params
+    const id = requireChatPublicID(rawID)
     const payload = await getChatPayload()
-    await authorizeVisitorSession(payload, id, request.cookies.get(CHAT_SESSION_COOKIE)?.value)
-    const service = await createPayloadChatService()
-    return Response.json(await service.getSession(id))
+    const view = new URL(request.url).searchParams.get('view')
+    if (view && view !== 'operator') {
+      throw new ChatServiceError('invalid_request', 'Unsupported chat session view')
+    }
+    if (view !== 'operator') {
+      const visitorToken = request.cookies.get(CHAT_SESSION_COOKIE)?.value
+      await authorizeVisitorSession(payload, id, visitorToken)
+      const service = await createPayloadChatService()
+      return chatJSONResponse(await service.getSession(id))
+    }
+    const actor = await authenticateOperator(payload, request)
+    await authorizeOperatorConversation(payload, id, actor)
+    const service = await createPayloadChatService({ actor })
+    return chatJSONResponse(await service.getSession(id))
   } catch (error) {
     return chatErrorResponse(error)
   }

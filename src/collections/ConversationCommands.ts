@@ -14,8 +14,11 @@ export const ConversationCommands: CollectionConfig = {
   admin: { hidden: true },
   fields: [
     { name: 'scope', type: 'text', index: true, required: true },
-    { name: 'idempotencyKey', type: 'text', index: true, required: true, unique: true },
+    // Idempotency is scoped by command + conversation, so no broad key-only index
+    // should imply that identifiers can be queried across tenants/sessions.
+    { name: 'idempotencyKey', type: 'text', required: true },
     { name: 'ownerToken', type: 'text', required: true },
+    { name: 'leaseExpiresAt', type: 'date', index: true, required: true },
     {
       name: 'status',
       type: 'select',

@@ -233,6 +233,92 @@ describe.sequential('knowledge retrieval', () => {
     expect(results.some(({ content }) => content.includes('unreviewed'))).toBe(false)
   })
 
+  it('requires an explicit customer-visible review boundary for website-chat retrieval', async () => {
+    const suffix = randomUUID()
+    const internal = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'Internal sales margin guidance must never reach customers.',
+        customerVisible: false,
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Internal briefing ${suffix}`,
+        sourceType: 'sales-script',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    const customer = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'Customers can request a finish sample after engineering review.',
+        customerVisible: true,
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Customer FAQ ${suffix}`,
+        sourceType: 'faq',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(internal.id, customer.id)
+    const internalChunk = await payload.create({
+      collection: 'knowledge-chunks',
+      data: {
+        content: internal.content,
+        document: internal.id,
+        index: 0,
+        locale: 'en',
+        sourceTitle: internal.sourceTitle,
+        sourceVersion: internal.sourceVersion,
+        stableId: `internal-visible-boundary-${suffix}`,
+      },
+      overrideAccess: true,
+    })
+    const customerChunk = await payload.create({
+      collection: 'knowledge-chunks',
+      data: {
+        content: customer.content,
+        document: customer.id,
+        index: 0,
+        locale: 'en',
+        sourceTitle: customer.sourceTitle,
+        sourceVersion: customer.sourceVersion,
+        stableId: `customer-visible-boundary-${suffix}`,
+      },
+      overrideAccess: true,
+    })
+    chunkIDs.push(internalChunk.id, customerChunk.id)
+    const pool = getDatabase().pool
+    await Promise.all([
+      setKnowledgeChunkEmbedding({ chunkId: internalChunk.id, embedding: [1, 0, 0], model: 'public-boundary-model', pool }),
+      setKnowledgeChunkEmbedding({ chunkId: customerChunk.id, embedding: [1, 0, 0], model: 'public-boundary-model', pool }),
+      payload.update({
+        collection: 'knowledge-documents',
+        data: { embeddingModel: 'public-boundary-model', indexStatus: 'ready' },
+        id: internal.id,
+        overrideAccess: true,
+      }),
+      payload.update({
+        collection: 'knowledge-documents',
+        data: { embeddingModel: 'public-boundary-model', indexStatus: 'ready' },
+        id: customer.id,
+        overrideAccess: true,
+      }),
+    ])
+
+    const results = await retrieveKnowledge({
+      customerVisible: true,
+      embedding: [1, 0, 0],
+      locale: 'en',
+      model: 'public-boundary-model',
+      pool,
+    })
+    expect(results.map(({ id }) => id)).toEqual([customerChunk.id])
+  })
+
   it('indexes reviewed documents and invalidates approval when source content changes', async () => {
     const suffix = randomUUID()
     const document = await payload.create({

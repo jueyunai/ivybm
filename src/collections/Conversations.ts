@@ -2,10 +2,9 @@ import type { CollectionConfig } from 'payload'
 
 import {
   conversationsAdmin,
-  conversationsCreate,
-  conversationsDelete,
   conversationsRead,
-  conversationsUpdate,
+  conversationInternalFieldWrite,
+  conversationInternalWrite,
 } from '../access/conversations'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 
@@ -13,10 +12,10 @@ export const Conversations: CollectionConfig = {
   slug: 'conversations',
   access: {
     admin: conversationsAdmin,
-    create: conversationsCreate,
-    delete: conversationsDelete,
+    create: conversationInternalWrite,
+    delete: conversationInternalWrite,
     read: conversationsRead,
-    update: conversationsUpdate,
+    update: conversationInternalWrite,
   },
   admin: {
     defaultColumns: ['publicId', 'channel', 'handoffStatus', 'intentLevel', 'assignedTo', 'lastMessageAt'],
@@ -24,8 +23,14 @@ export const Conversations: CollectionConfig = {
     useAsTitle: 'publicId',
   },
   fields: [
-    { name: 'publicId', type: 'text', index: true, required: true, unique: true },
-    { name: 'requestId', type: 'text', index: true, required: true, unique: true },
+    {
+      name: 'publicId', type: 'text', index: true, required: true, unique: true,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
+    {
+      name: 'requestId', type: 'text', index: true, required: true, unique: true,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
     {
       name: 'visitorSession',
       type: 'relationship',
@@ -33,6 +38,7 @@ export const Conversations: CollectionConfig = {
       relationTo: 'visitor-sessions',
       required: true,
       unique: true,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
     },
     {
       name: 'channel',
@@ -40,8 +46,12 @@ export const Conversations: CollectionConfig = {
       index: true,
       options: ['website', 'whatsapp', 'facebook', 'instagram'],
       required: true,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
     },
-    { name: 'externalThreadId', type: 'text', index: true },
+    {
+      name: 'externalThreadId', type: 'text', index: true,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
     {
       name: 'locale',
       type: 'select',
@@ -50,6 +60,7 @@ export const Conversations: CollectionConfig = {
         { label: 'العربية', value: 'ar' },
       ],
       required: true,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
     },
     {
       name: 'handoffStatus',
@@ -58,9 +69,24 @@ export const Conversations: CollectionConfig = {
       index: true,
       options: ['ai_active', 'handoff_requested', 'human_active', 'resolved'],
       required: true,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
     },
-    { name: 'assignedTo', type: 'relationship', index: true, relationTo: 'users' },
-    { name: 'lead', type: 'relationship', index: true, relationTo: 'leads' },
+    {
+      name: 'revision',
+      type: 'number',
+      defaultValue: 1,
+      min: 1,
+      required: true,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
+    {
+      name: 'assignedTo', type: 'relationship', index: true, relationTo: 'users',
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
+    {
+      name: 'lead', type: 'relationship', index: true, relationTo: 'leads',
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
     {
       name: 'intentLevel',
       type: 'select',
@@ -68,10 +94,20 @@ export const Conversations: CollectionConfig = {
       index: true,
       options: ['unscored', 'a', 'b', 'c'],
       required: true,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
     },
-    { name: 'intentScore', type: 'number', max: 100, min: 0 },
-    { name: 'summary', type: 'textarea', maxLength: 10_000 },
-    { name: 'lastMessageAt', type: 'date', index: true },
+    {
+      name: 'intentScore', type: 'number', max: 100, min: 0,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
+    {
+      name: 'summary', type: 'textarea', maxLength: 10_000,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
+    {
+      name: 'lastMessageAt', type: 'date', index: true,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
   ],
   hooks: {
     afterChange: [writeAuditLogAfterChange],

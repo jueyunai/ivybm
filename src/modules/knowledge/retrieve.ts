@@ -8,6 +8,8 @@ import type { KnowledgeLocale } from './chunk'
 type KnowledgePool = Pick<PostgresAdapter['pool'], 'query'>
 
 export type RetrieveKnowledgeInput = {
+  /** Restrict retrieval to documents explicitly approved for customer chat. */
+  customerVisible?: boolean
   embedding: number[]
   limit?: number
   locale: KnowledgeLocale
@@ -51,6 +53,7 @@ export type RetrievedKnowledge = {
 }
 
 export const retrieveKnowledge = async ({
+  customerVisible = false,
   embedding,
   limit = 5,
   locale,
@@ -90,6 +93,7 @@ export const retrieveKnowledge = async ({
           AND kc.embedding_model = $4
           AND kc.embedding_dimensions = $3
           AND kc.embedding_vector IS NOT NULL
+          AND ($6::boolean = false OR kd.customer_visible = true)
      )
      SELECT id,
             stable_id AS "stableId",
@@ -103,8 +107,8 @@ export const retrieveKnowledge = async ({
        FROM eligible_chunks
       WHERE (1 - (embedding_vector <=> $1::vector)) >= $5
       ORDER BY embedding_vector <=> $1::vector, id
-      LIMIT $6`,
-    [vector, locale, embedding.length, model, minScore, limit],
+      LIMIT $7`,
+    [vector, locale, embedding.length, model, minScore, customerVisible, limit],
   )
 
   return result.rows.map((row) => ({

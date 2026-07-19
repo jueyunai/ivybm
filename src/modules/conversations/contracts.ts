@@ -12,11 +12,13 @@ export type ChatChannel = (typeof CHAT_CHANNELS)[number]
 export type HandoffStatus = (typeof HANDOFF_STATUSES)[number]
 export type HandoffSource = 'ai_policy' | 'operator' | 'visitor'
 export type ChatMessageAuthor = 'ai' | 'operator' | 'system' | 'visitor'
+export type ChatMessageStatus = 'pending' | 'sent' | 'failed'
 export type ChatAllowedAction =
   | 'request_handoff'
   | 'resolve'
   | 'retry_message'
   | 'send_message'
+  | 'send_operator_message'
   | 'take_over'
 
 export type ChatErrorCode =
@@ -43,9 +45,11 @@ export type ChatMessage = {
   content: string
   createdAt: string
   estimatedCostUSD?: number | null
+  errorCode?: ChatErrorCode
   id: number | string
   model?: string
   promptVersion?: number
+  status: ChatMessageStatus
   tokenUsage?: { inputTokens: number; outputTokens?: number; totalTokens: number }
 }
 
@@ -57,7 +61,24 @@ export type ChatSession = {
   id: number | string
   locale: ChatLocale
   messages: ChatMessage[]
+  /** Optimistic-concurrency token maintained by the authoritative service. */
+  revision: number
   requestId: string
+}
+
+/**
+ * The operator inbox deliberately returns a bounded summary rather than complete
+ * conversation transcripts. Fetch the selected session by ID for its messages.
+ */
+export type ChatSessionSummary = Omit<ChatSession, 'messages'> & {
+  lastMessageAt?: string
+}
+
+export type ChatSessionList = {
+  docs: ChatSessionSummary[]
+  page: number
+  totalDocs: number
+  totalPages: number
 }
 
 export type StartChatSessionInput = {
