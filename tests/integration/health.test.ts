@@ -22,7 +22,7 @@ describe('health routes', () => {
     await expect(response.json()).resolves.toEqual({
       name: 'ivybm',
       status: 'ok',
-      version: packageJson.version,
+      version: process.env.APP_VERSION || packageJson.version,
     })
   })
 

@@ -16,7 +16,7 @@ describe('application foundation', () => {
     expect(getHealth()).toEqual({
       name: 'ivybm',
       status: 'ok',
-      version: packageJson.version,
+      version: process.env.APP_VERSION || packageJson.version,
     })
   })
 })
