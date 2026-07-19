@@ -32,6 +32,7 @@ const openWidget = async () => {
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   window.sessionStorage.clear()
 })
@@ -114,6 +115,129 @@ describe('ChatWidget', () => {
     expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
     expect(commandKeys).toHaveLength(2)
     expect(commandKeys[1]).toBe(commandKeys[0])
+  })
+
+  it('reuses a start command key after a session was committed but its response was lost', async () => {
+    const fake = new FakeChatService()
+    const commandKeys: string[] = []
+    const service: ChatService = {
+      getSession: fake.getSession.bind(fake),
+      requestHandoff: fake.requestHandoff.bind(fake),
+      resolve: fake.resolve.bind(fake),
+      retryMessage: fake.retryMessage.bind(fake),
+      sendMessage: fake.sendMessage.bind(fake),
+      sendOperatorMessage: fake.sendOperatorMessage.bind(fake),
+      startSession: async (input) => {
+        commandKeys.push(input.idempotencyKey)
+        const session = await fake.startSession(input)
+        if (commandKeys.length === 1) throw new TypeError('Response lost after commit')
+        return session
+      },
+      takeOver: fake.takeOver.bind(fake),
+    }
+    renderWidget(service)
+    fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
+
+    expect(await screen.findByRole('alert')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveProperty('disabled', false))
+    expect(commandKeys).toHaveLength(2)
+    expect(commandKeys[1]).toBe(commandKeys[0])
+  })
+
+  it('reuses a handoff command key when the first response and recovery read are lost', async () => {
+    const fake = new FakeChatService()
+    const commandKeys: string[] = []
+    let failRecoveryRead = true
+    const service: ChatService = {
+      getSession: async (sessionId) => {
+        if (failRecoveryRead) {
+          failRecoveryRead = false
+          throw new TypeError('Recovery read lost')
+        }
+        return fake.getSession(sessionId)
+      },
+      requestHandoff: async (input) => {
+        commandKeys.push(input.idempotencyKey)
+        const session = await fake.requestHandoff(input)
+        if (commandKeys.length === 1) throw new TypeError('Response lost after commit')
+        return session
+      },
+      resolve: fake.resolve.bind(fake),
+      retryMessage: fake.retryMessage.bind(fake),
+      sendMessage: fake.sendMessage.bind(fake),
+      sendOperatorMessage: fake.sendOperatorMessage.bind(fake),
+      startSession: fake.startSession.bind(fake),
+      takeOver: fake.takeOver.bind(fake),
+    }
+    renderWidget(service)
+    await openWidget()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Talk to a specialist' }))
+    expect(await screen.findByRole('alert')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Talk to a specialist' }))
+
+    expect(await screen.findByTestId('chat-handoff-pending')).not.toBeNull()
+    expect(commandKeys).toHaveLength(2)
+    expect(commandKeys[1]).toBe(commandKeys[0])
+  })
+
+  it('reuses a persisted failed-message key and removes its retry action after success', async () => {
+    const failedSession: ChatSession = {
+      ...browserSession,
+      allowedActions: ['retry_message'],
+      id: 'failed-session',
+      messages: [{
+        author: 'visitor',
+        content: 'Please retry this question.',
+        createdAt: '2026-07-20T00:00:00.000Z',
+        id: 'failed-message',
+        status: 'failed',
+      }],
+      requestId: 'failed-request',
+    }
+    const commandKeys: string[] = []
+    const service: ChatService = {
+      getSession: async () => failedSession,
+      requestHandoff: async () => failedSession,
+      resolve: async () => failedSession,
+      retryMessage: async (input) => {
+        commandKeys.push(input.idempotencyKey)
+        if (commandKeys.length === 1) throw new TypeError('Response lost after retry commit')
+        return failedSession
+      },
+      sendMessage: async () => failedSession,
+      sendOperatorMessage: async () => failedSession,
+      startSession: async () => failedSession,
+      takeOver: async () => failedSession,
+    }
+    renderWidget(service)
+    fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
+    await screen.findByRole('dialog')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry message' }))
+    expect(await screen.findByRole('alert')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry message' }))
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Retry message' })).toBeNull())
+    expect(commandKeys).toHaveLength(2)
+    expect(commandKeys[1]).toBe(commandKeys[0])
+  })
+
+  it('keeps an in-memory session when browser storage rejects writes', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage unavailable', 'SecurityError')
+    })
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(browserSession), { status: 201 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(React.createElement(ChatWidget, { locale: 'en' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
+
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveProperty('disabled', false))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('does not offer a resend action for a non-retryable server error', async () => {
@@ -200,6 +324,55 @@ describe('ChatWidget', () => {
     })
     expect(screen.queryByRole('alert')).toBeNull()
     expect(refreshAttempts).toBe(2)
+  })
+
+  it('does not overwrite a newer handoff snapshot when an older poll response arrives late', async () => {
+    const fake = new FakeChatService()
+    const fakeGetSession = fake.getSession.bind(fake)
+    const pollResolvers: Array<(session: ChatSession) => void> = []
+    const service: ChatService = {
+      getSession: () => new Promise((resolve) => {
+        pollResolvers.push(resolve)
+      }),
+      requestHandoff: fake.requestHandoff.bind(fake),
+      resolve: fake.resolve.bind(fake),
+      retryMessage: fake.retryMessage.bind(fake),
+      sendMessage: fake.sendMessage.bind(fake),
+      sendOperatorMessage: fake.sendOperatorMessage.bind(fake),
+      startSession: fake.startSession.bind(fake),
+      takeOver: fake.takeOver.bind(fake),
+    }
+    renderWidget(service)
+    await openWidget()
+    vi.useFakeTimers()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Talk to a specialist' }))
+      await Promise.resolve()
+    })
+
+    const handoffRequested = await fakeGetSession('fake-session-1')
+    const humanActive: ChatSession = {
+      ...handoffRequested,
+      allowedActions: ['send_message'],
+      handoffStatus: 'human_active',
+      revision: handoffRequested.revision + 1,
+    }
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(24_000)
+    })
+    expect(pollResolvers).toHaveLength(2)
+
+    await act(async () => {
+      pollResolvers[1](humanActive)
+      await Promise.resolve()
+    })
+    expect(screen.getAllByText('A project specialist has joined this conversation.')).not.toHaveLength(0)
+
+    await act(async () => {
+      pollResolvers[0](handoffRequested)
+      await Promise.resolve()
+    })
+    expect(screen.getAllByText('A project specialist has joined this conversation.')).not.toHaveLength(0)
   })
 
   it('renders one startup error surface instead of duplicating the same failure', async () => {

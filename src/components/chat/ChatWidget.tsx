@@ -66,6 +66,33 @@ const formatTime = (createdAt: string, locale: Locale): string =>
 const operationPending = (status: WidgetStatus): boolean =>
   status === 'loading' || status === 'sending'
 
+const readPersistedSessionID = (key: string): string | null => {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.sessionStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+const writePersistedSessionID = (key: string, sessionID: number | string): void => {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(key, String(sessionID))
+  } catch {
+    // Storage can be unavailable in private or restricted browsing contexts.
+  }
+}
+
+const removePersistedSessionID = (key: string): void => {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.removeItem(key)
+  } catch {
+    // The in-memory session remains usable when storage is blocked.
+  }
+}
+
 export function ChatWidget({ locale, service }: ChatWidgetProps) {
   const copy = getWebsiteCopy(locale).chat
   const browserService = useMemo(() => createBrowserChatService(), [])
@@ -79,17 +106,41 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
   const [error, setError] = useState('')
   const [status, setStatus] = useState<WidgetStatus>('idle')
   const [lastFailedAttempt, setLastFailedAttempt] = useState<FailedChatAttempt | null>(null)
+  const [retriedMessageIDs, setRetriedMessageIDs] = useState<Set<string>>(() => new Set())
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const launcherRef = useRef<HTMLButtonElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const hasOpenedRef = useRef(false)
+  const handoffCommandKeyRef = useRef<string | null>(null)
+  const persistedRetryCommandKeysRef = useRef(new Map<string, string>())
+  const sessionRef = useRef<ChatSession | null>(null)
+  const startCommandKeyRef = useRef<string | null>(null)
   const startPromiseRef = useRef<Promise<ChatSession | null> | null>(null)
 
   const commitSession = useCallback((next: ChatSession) => {
-    setSession(next)
-    if (persistSession && typeof window !== 'undefined') {
-      window.sessionStorage.setItem(sessionStorageKey, String(next.id))
+    const current = sessionRef.current
+    if (
+      current &&
+      String(current.id) === String(next.id) &&
+      current.revision > next.revision
+    ) {
+      return false
     }
+    sessionRef.current = next
+    setSession(next)
+    if (persistSession) writePersistedSessionID(sessionStorageKey, next.id)
+    return true
+  }, [persistSession, sessionStorageKey])
+
+  const discardSession = useCallback(() => {
+    handoffCommandKeyRef.current = null
+    persistedRetryCommandKeysRef.current.clear()
+    sessionRef.current = null
+    startCommandKeyRef.current = null
+    setLastFailedAttempt(null)
+    setRetriedMessageIDs(new Set())
+    setSession(null)
+    if (persistSession) removePersistedSessionID(sessionStorageKey)
   }, [persistSession, sessionStorageKey])
 
   useEffect(() => {
@@ -121,21 +172,14 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
     ) return undefined
     const timer = window.setInterval(() => {
       void activeService.getSession(session.id).then((next) => {
-        commitSession(next)
-        setError('')
+        if (commitSession(next)) setError('')
       }).catch((caught: unknown) => {
-        if (shouldDiscardPersistedSession(caught)) {
-          setSession(null)
-          setLastFailedAttempt(null)
-          if (persistSession && typeof window !== 'undefined') {
-            window.sessionStorage.removeItem(sessionStorageKey)
-          }
-        }
+        if (shouldDiscardPersistedSession(caught)) discardSession()
         setError(getErrorMessage(caught, copy))
       })
     }, 12_000)
     return () => window.clearInterval(timer)
-  }, [activeService, commitSession, copy, isOpen, persistSession, session, sessionStorageKey])
+  }, [activeService, commitSession, copy, discardSession, isOpen, session])
 
   const startSession = useCallback((forceNew = false): Promise<ChatSession | null> => {
     if (!forceNew && session) return Promise.resolve(session)
@@ -145,8 +189,8 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
       setError('')
       setStatus('loading')
       try {
-        if (!forceNew && persistSession && typeof window !== 'undefined') {
-          const persistedID = window.sessionStorage.getItem(sessionStorageKey)
+        if (!forceNew && persistSession) {
+          const persistedID = readPersistedSessionID(sessionStorageKey)
           if (persistedID) {
             try {
               const restored = await activeService.getSession(persistedID)
@@ -154,18 +198,23 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
               return restored
             } catch (caught) {
               if (!shouldDiscardPersistedSession(caught)) throw caught
-              window.sessionStorage.removeItem(sessionStorageKey)
+              removePersistedSessionID(sessionStorageKey)
             }
           }
         }
+        const idempotencyKey = forceNew || !startCommandKeyRef.current
+          ? chatCommandKey()
+          : startCommandKeyRef.current
+        startCommandKeyRef.current = idempotencyKey
         const input: StartChatSessionInput = {
           channel: 'website',
-          idempotencyKey: chatCommandKey(),
+          idempotencyKey,
           locale,
           sourceURL: typeof window === 'undefined' ? undefined : window.location.href,
         }
         const next = await activeService.startSession(input)
         commitSession(next)
+        startCommandKeyRef.current = null
         return next
       } catch (caught) {
         setError(getErrorMessage(caught, copy))
@@ -209,6 +258,11 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
       commitSession(next)
       setDraft('')
     } catch (caught) {
+      if (shouldDiscardPersistedSession(caught)) {
+        discardSession()
+        setError(getErrorMessage(caught, copy))
+        return
+      }
       const failed: ChatMessage = {
         author: 'visitor',
         content: text,
@@ -232,15 +286,28 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
     if (!session || !hasAction(session, 'request_handoff') || operationPending(status)) return
     setStatus('sending')
     setError('')
+    const idempotencyKey = handoffCommandKeyRef.current || chatCommandKey()
+    handoffCommandKeyRef.current = idempotencyKey
     try {
       const input: RequestHandoffInput = {
-        idempotencyKey: chatCommandKey(),
+        idempotencyKey,
         reason: 'visitor_requested_assistance',
         sessionId: session.id,
         source: 'visitor',
       }
       commitSession(await activeService.requestHandoff(input))
+      handoffCommandKeyRef.current = null
     } catch (caught) {
+      try {
+        const recovered = await activeService.getSession(session.id)
+        commitSession(recovered)
+        if (recovered.handoffStatus !== 'ai_active') {
+          handoffCommandKeyRef.current = null
+          return
+        }
+      } catch (recoveryError) {
+        if (shouldDiscardPersistedSession(recoveryError)) discardSession()
+      }
       setError(getErrorMessage(caught, copy))
     } finally {
       setStatus('idle')
@@ -263,6 +330,11 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
       setLastFailedAttempt(null)
       setDraft('')
     } catch (caught) {
+      if (shouldDiscardPersistedSession(caught)) {
+        discardSession()
+        setError(getErrorMessage(caught, copy))
+        return
+      }
       setLastFailedAttempt((previous) => previous && {
         ...previous,
         message: {
@@ -281,14 +353,24 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
     if (!session || operationPending(status)) return
     setStatus('sending')
     setError('')
+    const messageID = String(message.id)
+    const idempotencyKey = persistedRetryCommandKeysRef.current.get(messageID) || chatCommandKey()
+    persistedRetryCommandKeysRef.current.set(messageID, idempotencyKey)
     try {
       const input: RetryChatMessageInput = {
-        idempotencyKey: chatCommandKey(),
+        idempotencyKey,
         messageId: message.id,
         sessionId: session.id,
       }
       commitSession(await activeService.retryMessage(input))
+      persistedRetryCommandKeysRef.current.delete(messageID)
+      setRetriedMessageIDs((previous) => new Set(previous).add(messageID))
     } catch (caught) {
+      if (shouldDiscardPersistedSession(caught)) {
+        discardSession()
+        setError(getErrorMessage(caught, copy))
+        return
+      }
       setError(getErrorMessage(caught, copy))
     } finally {
       setStatus('idle')
@@ -298,11 +380,7 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
   const startNewConversation = () => {
     setDraft('')
     setError('')
-    setLastFailedAttempt(null)
-    setSession(null)
-    if (persistSession && typeof window !== 'undefined') {
-      window.sessionStorage.removeItem(sessionStorageKey)
-    }
+    discardSession()
     void startSession(true)
   }
 
@@ -399,7 +477,11 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
                 locale={locale}
                 message={message}
                 onRetry={() => retryPersistedMessage(message)}
-                retryAllowed={hasAction(session, 'retry_message') && message.status === 'failed'}
+                retryAllowed={
+                  hasAction(session, 'retry_message') &&
+                  message.status === 'failed' &&
+                  !retriedMessageIDs.has(String(message.id))
+                }
               />
             ))}
             {session?.handoffStatus === 'handoff_requested' ? (
