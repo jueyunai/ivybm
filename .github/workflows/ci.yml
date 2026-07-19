@@ -104,6 +104,9 @@ jobs:
           --build-arg NEXT_PUBLIC_SERVER_URL=http://localhost:3000
           --tag ivybm:ci .
 
+      - name: Build job worker image
+        run: docker build --target worker --tag ivybm-worker:ci .
+
       - name: Validate staging Compose configuration
         env:
           # Config validation must satisfy required interpolation without exposing real AI credentials.

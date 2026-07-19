@@ -86,6 +86,7 @@ export interface Config {
     messages: Message;
     handoffs: Handoff;
     'conversation-commands': ConversationCommand;
+    jobs: Job;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -112,6 +113,7 @@ export interface Config {
     messages: MessagesSelect<false> | MessagesSelect<true>;
     handoffs: HandoffsSelect<false> | HandoffsSelect<true>;
     'conversation-commands': ConversationCommandsSelect<false> | ConversationCommandsSelect<true>;
+    jobs: JobsSelect<false> | JobsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -789,6 +791,36 @@ export interface ConversationCommand {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "jobs".
+ */
+export interface Job {
+  id: number;
+  type: string;
+  idempotencyKey?: string | null;
+  payload:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'dead';
+  attempts: number;
+  maxAttempts: number;
+  nextRunAt?: string | null;
+  leaseExpiresAt?: string | null;
+  ownerToken?: string | null;
+  lastError?: string | null;
+  completedAt?: string | null;
+  deadAt?: string | null;
+  manualRetryCount: number;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -886,6 +918,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'conversation-commands';
         value: number | ConversationCommand;
+      } | null)
+    | ({
+        relationTo: 'jobs';
+        value: number | Job;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -1393,6 +1429,27 @@ export interface ConversationCommandsSelect<T extends boolean = true> {
   conversation?: T;
   result?: T;
   errorCode?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "jobs_select".
+ */
+export interface JobsSelect<T extends boolean = true> {
+  type?: T;
+  idempotencyKey?: T;
+  payload?: T;
+  status?: T;
+  attempts?: T;
+  maxAttempts?: T;
+  nextRunAt?: T;
+  leaseExpiresAt?: T;
+  ownerToken?: T;
+  lastError?: T;
+  completedAt?: T;
+  deadAt?: T;
+  manualRetryCount?: T;
   updatedAt?: T;
   createdAt?: T;
 }

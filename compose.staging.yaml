@@ -81,5 +81,16 @@ services:
       - media_data:/app/media
     logging: *app-logging
 
+  worker:
+    environment:
+      <<: *app-environment
+      NODE_ENV: production
+      WORKER_HEARTBEAT_INTERVAL_MS: ${WORKER_HEARTBEAT_INTERVAL_MS:-5000}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-1000}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    logging: *app-logging
+
 volumes:
   media_data:

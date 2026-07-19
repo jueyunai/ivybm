@@ -20,7 +20,7 @@ AI 客服不使用 mock。官网 ChatWidget 只接入双方冻结的真实 `Chat
 ## 部署顺序
 
 1. 在服务器的 staging 环境文件中配置强 PostgreSQL 密码、`DATABASE_URL`、32 字符以上 `PAYLOAD_SECRET`、绝对 HTTPS `NEXT_PUBLIC_SERVER_URL` 和演示管理员凭据。
-2. 运行 `docker compose -f compose.yaml -f compose.staging.yaml up -d --build db migrate app`。
+2. 运行 `docker compose -f compose.yaml -f compose.staging.yaml up -d --build db migrate app worker`。
 3. 首次或需要重置演示数据时，显式运行 `docker compose -f compose.yaml -f compose.staging.yaml --profile tools run --rm seed`。
 4. OpenResty 只代理本机 app 端口，并覆盖 `X-Real-IP` / `X-Forwarded-For`；不得把 app 或 PostgreSQL 端口直接暴露到公网。
 

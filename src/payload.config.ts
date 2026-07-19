@@ -10,6 +10,7 @@ import { Downloads } from './collections/Downloads'
 import { Conversations } from './collections/Conversations'
 import { ConversationCommands } from './collections/ConversationCommands'
 import { Handoffs } from './collections/Handoffs'
+import { Jobs } from './collections/Jobs'
 import { KnowledgeChunks } from './collections/KnowledgeChunks'
 import { KnowledgeDocuments } from './collections/KnowledgeDocuments'
 import { Leads } from './collections/Leads'
@@ -61,6 +62,7 @@ export default buildConfig({
     Messages,
     Handoffs,
     ConversationCommands,
+    Jobs,
   ],
   editor: lexicalEditor(),
   globals: [SiteSettings],

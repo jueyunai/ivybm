@@ -23,5 +23,37 @@ services:
         max-size: 10m
         max-file: '5'
 
+  worker:
+    build:
+      context: .
+      target: worker
+    command: ['pnpm', 'worker']
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@db:5432/ivybm}
+      PAYLOAD_SECRET: ${PAYLOAD_SECRET:-local-development-only-secret-change-me}
+      WORKER_HEARTBEAT_INTERVAL_MS: ${WORKER_HEARTBEAT_INTERVAL_MS:-5000}
+      WORKER_HEARTBEAT_PATH: /tmp/ivybm-worker-heartbeat
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-1000}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "const fs = require('node:fs'); try { const stat = fs.statSync(process.env.WORKER_HEARTBEAT_PATH || '/tmp/ivybm-worker-heartbeat'); if (Date.now() - stat.mtimeMs > 30000) process.exit(1) } catch { process.exit(1) }"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: '5'
+
 volumes:
   postgres_data:
