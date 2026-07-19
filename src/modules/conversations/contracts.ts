@@ -1,0 +1,138 @@
+export const CHAT_LOCALES = ['en', 'ar'] as const
+export const CHAT_CHANNELS = ['website', 'whatsapp', 'facebook', 'instagram'] as const
+export const HANDOFF_STATUSES = [
+  'ai_active',
+  'handoff_requested',
+  'human_active',
+  'resolved',
+] as const
+
+export type ChatLocale = (typeof CHAT_LOCALES)[number]
+export type ChatChannel = (typeof CHAT_CHANNELS)[number]
+export type HandoffStatus = (typeof HANDOFF_STATUSES)[number]
+export type HandoffSource = 'ai_policy' | 'operator' | 'visitor'
+export type ChatMessageAuthor = 'ai' | 'operator' | 'system' | 'visitor'
+export type ChatAllowedAction =
+  | 'request_handoff'
+  | 'resolve'
+  | 'retry_message'
+  | 'send_message'
+  | 'take_over'
+
+export type ChatErrorCode =
+  | 'ai_unavailable'
+  | 'conflict'
+  | 'forbidden'
+  | 'handoff_required'
+  | 'internal_error'
+  | 'invalid_request'
+  | 'knowledge_unavailable'
+  | 'not_found'
+  | 'rate_limited'
+
+export type ChatCitation = {
+  documentId: number | string
+  title: string
+  url?: string
+  version: string
+}
+
+export type ChatMessage = {
+  author: ChatMessageAuthor
+  citations?: ChatCitation[]
+  content: string
+  createdAt: string
+  estimatedCostUSD?: number | null
+  id: number | string
+  model?: string
+  promptVersion?: number
+  tokenUsage?: { inputTokens: number; outputTokens?: number; totalTokens: number }
+}
+
+export type ChatSession = {
+  allowedActions: ChatAllowedAction[]
+  assignedTo?: { id: number | string; name?: string }
+  channel: ChatChannel
+  handoffStatus: HandoffStatus
+  id: number | string
+  locale: ChatLocale
+  messages: ChatMessage[]
+  requestId: string
+}
+
+export type StartChatSessionInput = {
+  channel: ChatChannel
+  idempotencyKey: string
+  locale: ChatLocale
+  sourceURL?: string
+}
+
+export type SendChatMessageInput = {
+  idempotencyKey: string
+  sessionId: number | string
+  text: string
+}
+
+export type RetryChatMessageInput = {
+  idempotencyKey: string
+  messageId: number | string
+  sessionId: number | string
+}
+
+export type RequestHandoffInput = {
+  idempotencyKey: string
+  reason: string
+  sessionId: number | string
+  source: HandoffSource
+}
+
+export type SessionCommandInput = {
+  idempotencyKey: string
+  sessionId: number | string
+}
+
+export type HandoffCreatedEvent = {
+  conversationId: number | string
+  id: string
+  idempotencyKey: string
+  occurredAt: string
+  reason: string
+  source: HandoffSource
+  type: 'handoff.created'
+}
+
+export interface ChatService {
+  getSession(sessionId: number | string): Promise<ChatSession>
+  requestHandoff(input: RequestHandoffInput): Promise<ChatSession>
+  resolve(input: SessionCommandInput): Promise<ChatSession>
+  retryMessage(input: RetryChatMessageInput): Promise<ChatSession>
+  sendMessage(input: SendChatMessageInput): Promise<ChatSession>
+  sendOperatorMessage(input: SendChatMessageInput): Promise<ChatSession>
+  startSession(input: StartChatSessionInput): Promise<ChatSession>
+  takeOver(input: SessionCommandInput): Promise<ChatSession>
+}
+
+export class ChatServiceError extends Error {
+  readonly code: ChatErrorCode
+  readonly requestId?: string
+  readonly retryAfterSeconds?: number
+  readonly retryable: boolean
+
+  constructor(
+    code: ChatErrorCode,
+    message: string,
+    options: {
+      cause?: unknown
+      requestId?: string
+      retryAfterSeconds?: number
+      retryable?: boolean
+    } = {},
+  ) {
+    super(message, { cause: options.cause })
+    this.name = 'ChatServiceError'
+    this.code = code
+    this.requestId = options.requestId
+    this.retryAfterSeconds = options.retryAfterSeconds
+    this.retryable = options.retryable ?? false
+  }
+}

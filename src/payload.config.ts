@@ -7,11 +7,15 @@ import sharp from 'sharp'
 
 import { AuditLogs } from './collections/AuditLogs'
 import { Downloads } from './collections/Downloads'
+import { Conversations } from './collections/Conversations'
+import { ConversationCommands } from './collections/ConversationCommands'
+import { Handoffs } from './collections/Handoffs'
 import { KnowledgeChunks } from './collections/KnowledgeChunks'
 import { KnowledgeDocuments } from './collections/KnowledgeDocuments'
 import { Leads } from './collections/Leads'
 import { LeadSources } from './collections/LeadSources'
 import { Media } from './collections/Media'
+import { Messages } from './collections/Messages'
 import { Pages } from './collections/Pages'
 import { Posts } from './collections/Posts'
 import { ProductCategories } from './collections/ProductCategories'
@@ -19,6 +23,7 @@ import { Products } from './collections/Products'
 import { PromptTemplates } from './collections/PromptTemplates'
 import { Projects } from './collections/Projects'
 import { Users } from './collections/Users'
+import { VisitorSessions } from './collections/VisitorSessions'
 import { SiteSettings } from './globals/SiteSettings'
 
 const filename = fileURLToPath(import.meta.url)
@@ -51,6 +56,11 @@ export default buildConfig({
     PromptTemplates,
     LeadSources,
     Leads,
+    VisitorSessions,
+    Conversations,
+    Messages,
+    Handoffs,
+    ConversationCommands,
   ],
   editor: lexicalEditor(),
   globals: [SiteSettings],
