@@ -4,6 +4,8 @@
 
 一期目标是交付英文 / 阿语铝单板独立站、统一 CMS、AI 客服与知识库、会话管理、飞书 CRM 同步、AI 内容工作台及首批海外平台接入。
 
+当前一期平台范围：会话接入 Facebook Messenger、Instagram DM、TikTok 私信；图文发布接入 Facebook、Instagram、LinkedIn。WhatsApp 不纳入一期系统接入，二期再评估网页插件等替代方案；官网静态外链不代表系统接入。
+
 ## 当前状态
 
 - 已从前期资料目录迁入需求基线、技术架构和必要调研文档。
