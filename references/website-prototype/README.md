@@ -41,6 +41,6 @@ Supported preview routes:
 ## Before Public Launch
 
 - Replace demo images with owned IVYBM factory, production, product, and project photos
-- Replace placeholder contact details with official email, WhatsApp, address, and social links
+- Replace placeholder contact details with official email, address, and social links; any retained WhatsApp link is a static external contact link only, not a phase-one system integration
 - Connect the inquiry form to an email, CRM, database, or backend API
 - Add final certifications, project names, product parameters, and downloadable PDF catalog files

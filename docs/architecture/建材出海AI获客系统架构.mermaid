@@ -1,15 +1,15 @@
-%% 建材出海 AI 获客与运营系统架构图 v2.1
-%% 基于 2026-06-16 初次沟通 + 2026-06-17 需求沟通会
+%% 建材出海 AI 获客与运营系统架构图 v2.2
+%% 平台范围已按 2026-07-20 客户确认冻结；历史渠道事实仅作背景
 graph TB
 
     subgraph "前端获客渠道层"
         A1[谷歌SEO搜索<br/>关键词排第3位]
-        A2[Facebook<br/>广告待启动]
-        A3[LinkedIn领英<br/>主动开发]
-        A4[Instagram]
-        A5[WhatsApp<br/>客户多但疏于跟进]
+        A2[Facebook<br/>一期：Messenger 会话 / 图文发布]
+        A3[LinkedIn领英<br/>一期：仅图文发布]
+        A4[Instagram<br/>一期：DM 会话 / 图文发布]
+        A5[WhatsApp<br/>二期候选，非一期系统接入]
         A6[YouTube<br/>仅展示]
-        A7[TikTok]
+        A7[TikTok<br/>一期：私信会话]
     end
 
     subgraph "目标市场定位"
@@ -28,20 +28,20 @@ graph TB
         B7[甲方自有域名+自有服务器<br/>完全归甲方所有]
         B8[官网CMS后台<br/>产品/案例/参数/文章可维护]
         B9[客户确认原型高保真还原<br/>SEO+GEO/News持续更新]
-        B10[即时联系入口<br/>WhatsApp/社媒私信/AI客服]
+        B10[即时联系入口<br/>社媒私信/AI客服/WhatsApp 外链（非系统接入）]
     end
 
     subgraph "AI智能客服层"
         C1[AI客服机器人<br/>自动回复简单问题]
         C2[意向筛选引擎<br/>高/中/低意向]
         C3[多语言支持<br/>英文/阿拉伯语]
-        C4[多渠道接入<br/>网站/WhatsApp/FB/LinkedIn]
+        C4[多渠道接入<br/>网站/Facebook Messenger/Instagram DM/TikTok 私信]
         C5[客户信息采集]
         C6[业务知识库/话术库<br/>手册/参数/FAQ/历史聊天]
     end
 
     subgraph "社媒消息统一接收层"
-        S1[多平台消息聚合<br/>FB/WhatsApp/LinkedIn/IG]
+        S1[多平台消息聚合<br/>Facebook Messenger/Instagram DM/TikTok 私信]
         S2[AI自动回复初步筛选]
         S3[高意向转人工跟进]
         S4[统一回复工作台<br/>多账号/多语言消息]
@@ -56,9 +56,9 @@ graph TB
     end
 
     subgraph "社媒自动化运营层"
-        E1[社媒发布引擎<br/>脚本化发布/减少接口依赖]
+        E1[社媒发布引擎<br/>官方 API 优先 / 半自动兜底]
         E2[多账号管理<br/>多语言账号]
-        E3[定时发布/一键分发]
+        E3[定时发布/人工确认发布]
         E4[数据分析反馈]
         E5[账号/IP/风控策略<br/>养号/授权/验证码验证]
     end
@@ -115,11 +115,10 @@ graph TB
     %% 官网到AI客服
     B1 --> C1
 
-    %% 社媒渠道消息统一接收
+    %% 一期社媒会话统一接收：Facebook Messenger、Instagram DM、TikTok 私信
     A2 --> S1
-    A3 --> S1
     A4 --> S1
-    A5 --> S1
+    A7 --> S1
     S1 --> S4
     S4 --> S2
     S2 --> S3
@@ -169,15 +168,12 @@ graph TB
     D4 --> B8
     E5 --> E1
 
-    %% 社媒发布到各平台
+    %% 一期图文发布：Facebook、Instagram、LinkedIn
     E1 --> E2
     E2 --> E3
     E3 --> A2
     E3 --> A3
     E3 --> A4
-    E3 --> A5
-    E3 --> A6
-    E3 --> A7
 
     %% 数据分析反馈
     E3 --> E4

@@ -6,7 +6,7 @@ Accepted，2026-07-19。
 
 ## 背景
 
-Task 9 同时包含官网 ChatWidget、统一会话、AI 回复、意向评分和人工接管。官网 UI 由 jueyunai 实现，会话与 AI 服务由 xuemusi 实现；未来 WhatsApp / Meta 等入站消息也需要复用同一套人工接管能力。
+Task 9 同时包含官网 ChatWidget、统一会话、AI 回复、意向评分和人工接管。官网 UI 由 jueyunai 实现，会话与 AI 服务由 xuemusi 实现；一期 Facebook Messenger、Instagram DM 和 TikTok 私信入站消息需要复用同一套人工接管能力。LinkedIn 私信不在一期自动会话范围；WhatsApp 不纳入一期系统 connector，二期再评估网页插件等替代接入。
 
 人工接管不是单一按钮，而是跨官网、社媒、运营后台、AI 服务、任务队列和飞书通知的领域状态。如果把状态判断放在浏览器，前端可以绕过权限、幂等和审计；如果每个渠道各自实现，则无法保证进入人工接管后 AI 在所有渠道停止回复。
 
