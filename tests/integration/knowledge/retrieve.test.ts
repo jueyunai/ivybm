@@ -9,6 +9,7 @@ import { chunkKnowledgeDocument } from '@/modules/knowledge/chunk'
 import config from '@/payload.config'
 
 let payload: Payload
+const TEST_EMBEDDING_SPACE = 'test-embedding-space'
 const documentIDs: Array<number | string> = []
 const chunkIDs: Array<number | string> = []
 const promptIDs: Array<number | string> = []
@@ -112,7 +113,25 @@ describe.sequential('knowledge retrieval', () => {
       },
       overrideAccess: true,
     })
-    documentIDs.push(reviewedDocument.id, draftDocument.id, incompatibleDocument.id)
+    const wrongSpaceDocument = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'Knowledge from a different provider vector space.',
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Wrong vector space ${suffix}`,
+        sourceType: 'product-manual',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(
+      reviewedDocument.id,
+      draftDocument.id,
+      incompatibleDocument.id,
+      wrongSpaceDocument.id,
+    )
 
     const nearest = await payload.create({
       collection: 'knowledge-chunks',
@@ -167,48 +186,91 @@ describe.sequential('knowledge retrieval', () => {
       },
       overrideAccess: true,
     })
-    chunkIDs.push(nearest.id, farther.id, forbiddenDraft.id, incompatible.id)
+    const wrongSpace = await payload.create({
+      collection: 'knowledge-chunks',
+      data: {
+        content: 'This same-model vector belongs to another provider and must be filtered.',
+        document: wrongSpaceDocument.id,
+        index: 0,
+        locale: 'en',
+        sourceTitle: wrongSpaceDocument.sourceTitle,
+        sourceVersion: wrongSpaceDocument.sourceVersion,
+        stableId: `wrong-space-${suffix}`,
+      },
+      overrideAccess: true,
+    })
+    chunkIDs.push(nearest.id, farther.id, forbiddenDraft.id, incompatible.id, wrongSpace.id)
 
     const pool = getDatabase().pool
     await setKnowledgeChunkEmbedding({
       chunkId: nearest.id,
       embedding: [1, 0, 0],
+      embeddingSpace: TEST_EMBEDDING_SPACE,
       model: 'fake-embedding-model',
       pool,
     })
     await payload.update({
       collection: 'knowledge-documents',
-      data: { embeddingModel: 'fake-embedding-model', indexStatus: 'ready' },
+      data: {
+        embeddingModel: 'fake-embedding-model',
+        embeddingSpace: TEST_EMBEDDING_SPACE,
+        indexStatus: 'ready',
+      },
       id: reviewedDocument.id,
+      overrideAccess: true,
+    })
+    await setKnowledgeChunkEmbedding({
+      chunkId: wrongSpace.id,
+      embedding: [1, 0, 0],
+      embeddingSpace: 'provider-b-space',
+      model: 'fake-embedding-model',
+      pool,
+    })
+    await payload.update({
+      collection: 'knowledge-documents',
+      data: {
+        embeddingModel: 'fake-embedding-model',
+        embeddingSpace: 'provider-b-space',
+        indexStatus: 'ready',
+      },
+      id: wrongSpaceDocument.id,
       overrideAccess: true,
     })
     await setKnowledgeChunkEmbedding({
       chunkId: farther.id,
       embedding: [0.7, 0.3, 0],
+      embeddingSpace: TEST_EMBEDDING_SPACE,
       model: 'fake-embedding-model',
       pool,
     })
     await setKnowledgeChunkEmbedding({
       chunkId: forbiddenDraft.id,
       embedding: [1, 0, 0],
+      embeddingSpace: TEST_EMBEDDING_SPACE,
       model: 'fake-embedding-model',
       pool,
     })
     await setKnowledgeChunkEmbedding({
       chunkId: incompatible.id,
       embedding: [1, 0],
+      embeddingSpace: 'different-embedding-space',
       model: 'different-embedding-model',
       pool,
     })
     await payload.update({
       collection: 'knowledge-documents',
-      data: { embeddingModel: 'different-embedding-model', indexStatus: 'ready' },
+      data: {
+        embeddingModel: 'different-embedding-model',
+        embeddingSpace: 'different-embedding-space',
+        indexStatus: 'ready',
+      },
       id: incompatibleDocument.id,
       overrideAccess: true,
     })
 
     const results = await retrieveKnowledge({
       embedding: [1, 0, 0],
+      embeddingSpace: TEST_EMBEDDING_SPACE,
       limit: 5,
       locale: 'en',
       model: 'fake-embedding-model',
@@ -293,24 +355,34 @@ describe.sequential('knowledge retrieval', () => {
       setKnowledgeChunkEmbedding({
         chunkId: internalChunk.id,
         embedding: [1, 0, 0],
+        embeddingSpace: TEST_EMBEDDING_SPACE,
         model: 'public-boundary-model',
         pool,
       }),
       setKnowledgeChunkEmbedding({
         chunkId: customerChunk.id,
         embedding: [1, 0, 0],
+        embeddingSpace: TEST_EMBEDDING_SPACE,
         model: 'public-boundary-model',
         pool,
       }),
       payload.update({
         collection: 'knowledge-documents',
-        data: { embeddingModel: 'public-boundary-model', indexStatus: 'ready' },
+        data: {
+          embeddingModel: 'public-boundary-model',
+          embeddingSpace: TEST_EMBEDDING_SPACE,
+          indexStatus: 'ready',
+        },
         id: internal.id,
         overrideAccess: true,
       }),
       payload.update({
         collection: 'knowledge-documents',
-        data: { embeddingModel: 'public-boundary-model', indexStatus: 'ready' },
+        data: {
+          embeddingModel: 'public-boundary-model',
+          embeddingSpace: TEST_EMBEDDING_SPACE,
+          indexStatus: 'ready',
+        },
         id: customer.id,
         overrideAccess: true,
       }),
@@ -319,6 +391,7 @@ describe.sequential('knowledge retrieval', () => {
     const results = await retrieveKnowledge({
       customerVisible: true,
       embedding: [1, 0, 0],
+      embeddingSpace: TEST_EMBEDDING_SPACE,
       locale: 'en',
       model: 'public-boundary-model',
       pool,
@@ -360,7 +433,7 @@ describe.sequential('knowledge retrieval', () => {
       pool: getDatabase().pool,
     })
 
-    expect(indexed).toEqual({ chunkCount: 2, model: 'fake-index-model' })
+    expect(indexed).toMatchObject({ chunkCount: 2, model: 'fake-index-model' })
     const readyDocument = await payload.findByID({
       collection: 'knowledge-documents',
       id: document.id,
@@ -470,7 +543,7 @@ describe.sequential('knowledge retrieval', () => {
         payload,
         pool,
       }),
-    ).resolves.toEqual({ chunkCount: 1, model: 'embedding-route-old' })
+    ).resolves.toMatchObject({ chunkCount: 1, model: 'embedding-route-old' })
 
     await expect(
       retrieveKnowledgeForQuery({
@@ -488,7 +561,7 @@ describe.sequential('knowledge retrieval', () => {
         payload,
         pool,
       }),
-    ).resolves.toEqual({ chunkCount: 1, model: 'embedding-route-new' })
+    ).resolves.toMatchObject({ chunkCount: 1, model: 'embedding-route-new' })
 
     const results = await retrieveKnowledgeForQuery({
       gateway: newRouteGateway,
@@ -748,7 +821,7 @@ describe.sequential('knowledge retrieval', () => {
     ).rejects.toThrow('Knowledge document is already being indexed')
 
     releaseEmbedding()
-    await expect(first).resolves.toEqual({
+    await expect(first).resolves.toMatchObject({
       chunkCount: 1,
       model: 'fake-concurrent-index-model',
     })
@@ -830,7 +903,7 @@ describe.sequential('knowledge retrieval', () => {
         payload,
         pool,
       }),
-    ).resolves.toEqual({ chunkCount: 1, model: 'fake-large-reindex-model' })
+    ).resolves.toMatchObject({ chunkCount: 1, model: 'fake-large-reindex-model' })
 
     const remaining = await payload.find({
       collection: 'knowledge-chunks',
@@ -888,7 +961,7 @@ describe.sequential('knowledge retrieval', () => {
         payload,
         pool: getDatabase().pool,
       }),
-    ).resolves.toEqual({ chunkCount: 5, model: 'fake-batched-model' })
+    ).resolves.toMatchObject({ chunkCount: 5, model: 'fake-batched-model' })
 
     expect(batches.map((batch) => batch.length)).toEqual([2, 2, 1])
     expect(

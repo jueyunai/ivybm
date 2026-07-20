@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 export type AiErrorCode =
   | 'authentication'
   | 'invalid_request'
@@ -122,6 +124,8 @@ export type AiUsageRecord = {
 
 export type AiGatewayEmbeddingOperationConfig = {
   dimensions?: number
+  /** Stable provider endpoint/protocol identity; never include credentials. */
+  embeddingSpaceIdentity?: string
   model: string
   provider: AiProvider
   timeoutMs?: number
@@ -153,7 +157,15 @@ type GatewayOptions = {
 }
 
 type GenerateTextInput = Omit<ProviderGenerateTextInput, 'model' | 'signal'> & { model?: string }
-type EmbedInput = Omit<ProviderEmbedInput, 'model' | 'signal'> & { model?: string }
+export type AiGatewayEmbedInput = Omit<ProviderEmbedInput, 'model' | 'signal'> & {
+  model?: string
+}
+
+export type AiGatewayEmbedResult = ProviderEmbedResult & {
+  cost: { currency: 'USD'; estimated: number | null }
+  embeddingSpace: string
+  provider: string
+}
 
 const estimateCost = (
   usage: AiTokenUsage,
@@ -266,8 +278,24 @@ const requireProvider = (provider: AiProvider | undefined): AiProvider => {
   return provider
 }
 
+export const createEmbeddingSpaceFingerprint = (...parts: Array<number | string>): string =>
+  createHash('sha256')
+    .update(['ivybm-embedding-space-v1', ...parts].join('\0'))
+    .digest('hex')
+
 export const createAiGateway = (options: GatewayOptions) => ({
-  embed: async (input: EmbedInput) => {
+  embeddingConfigurationKey: (() => {
+    const operation = options.operations?.embedding
+    const model = operation?.model ?? options.models?.embedding
+    const provider = operation?.provider ?? options.providers?.embedding ?? options.provider
+    if (!model?.trim() || !provider) return undefined
+    return createEmbeddingSpaceFingerprint(
+      operation?.embeddingSpaceIdentity ?? `provider-name:${provider.name}`,
+      model,
+      operation?.dimensions ?? 'provider-default',
+    )
+  })(),
+  embed: async (input: AiGatewayEmbedInput): Promise<AiGatewayEmbedResult> => {
     if (input.input.length === 0 || input.input.some((value) => !value.trim())) {
       throw new AiGatewayError('invalid_request', 'Embedding input must contain non-empty text')
     }
@@ -292,6 +320,14 @@ export const createAiGateway = (options: GatewayOptions) => ({
       )
       validateUsage(result.usage)
       validateEmbeddings(result.embeddings, input.input.length)
+      const dimensions = result.embeddings[0].length
+      const embeddingSpace = createEmbeddingSpaceFingerprint(
+        operation?.embeddingSpaceIdentity ?? `provider-name:${provider.name}`,
+        model,
+        input.dimensions ?? operation?.dimensions ?? 'provider-default',
+        result.model,
+        dimensions,
+      )
       const cost = estimateCost(result.usage, options.pricing?.[result.model])
       const record: AiUsageRecord = {
         cost,
@@ -304,7 +340,7 @@ export const createAiGateway = (options: GatewayOptions) => ({
       }
       await reportUsage(options, record)
 
-      return { ...result, cost, provider: provider.name }
+      return { ...result, cost, embeddingSpace, provider: provider.name }
     } catch (error) {
       throw normalizeError(error)
     }

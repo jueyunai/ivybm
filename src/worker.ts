@@ -5,6 +5,7 @@ import { getPayload } from 'payload'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import type { JobHandler } from '@/modules/jobs/contracts'
 import { DEFAULT_JOB_POLL_INTERVAL_MS, JobWorker } from '@/modules/jobs/worker'
+import { createKnowledgeIndexJobHandler, KNOWLEDGE_INDEX_JOB_TYPE } from '@/modules/knowledge/jobs'
 import config from '@/payload.config'
 
 const readPositiveInteger = (name: string, fallback: number): number => {
@@ -22,8 +23,10 @@ const readPositiveInteger = (name: string, fallback: number): number => {
 const heartbeatPath = process.env.WORKER_HEARTBEAT_PATH ?? '/tmp/ivybm-worker-heartbeat'
 const heartbeatIntervalMs = readPositiveInteger('WORKER_HEARTBEAT_INTERVAL_MS', 5_000)
 const pollIntervalMs = readPositiveInteger('WORKER_POLL_INTERVAL_MS', DEFAULT_JOB_POLL_INTERVAL_MS)
-const handlers: Record<string, JobHandler> = {}
 const payload = await getPayload({ config, disableOnInit: true, key: 'job-worker' })
+const handlers: Record<string, JobHandler> = {
+  [KNOWLEDGE_INDEX_JOB_TYPE]: createKnowledgeIndexJobHandler({ payload }),
+}
 const worker = new JobWorker({
   handlers,
   idleDelayMs: pollIntervalMs,

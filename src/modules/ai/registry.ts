@@ -107,6 +107,8 @@ const normalizeRuntimeBaseURL = (value: string, environment: Environment): strin
   }
 }
 
+const embeddingSpaceIdentity = (baseURL: string): string => `openai-compatible:${baseURL}`
+
 const routeConfigurationError = (usageKey: string, reason: string): AiConfigurationError =>
   new AiConfigurationError(`AI route ${usageKey} ${reason}`)
 
@@ -155,12 +157,13 @@ const resolveCmsRoute = (
   if (timeoutMs === undefined) {
     throw routeConfigurationError(request.usageKey, 'timeout is invalid')
   }
+  const baseURL = normalizeRuntimeBaseURL(
+    requiredString(provider.baseURL, 'provider endpoint'),
+    environment,
+  )
   const resolvedProvider = createProvider({
     apiKey,
-    baseURL: normalizeRuntimeBaseURL(
-      requiredString(provider.baseURL, 'provider endpoint'),
-      environment,
-    ),
+    baseURL,
     name: requiredString(provider.name, 'provider name'),
   })
 
@@ -180,6 +183,7 @@ const resolveCmsRoute = (
 
     return {
       dimensions: optionalNumber(parameters.dimensions, 'embedding dimensions', 1, 16_384, true),
+      embeddingSpaceIdentity: embeddingSpaceIdentity(baseURL),
       model,
       provider: resolvedProvider,
       timeoutMs,
@@ -225,9 +229,10 @@ const resolveEnvironmentRoute = (
   const fallback = readAIConfigurationOperation(operation, environment)
   if (!fallback) return undefined
 
+  const baseURL = normalizeRuntimeBaseURL(fallback.baseURL, environment)
   const provider = createProvider({
     apiKey: fallback.apiKey,
-    baseURL: normalizeRuntimeBaseURL(fallback.baseURL, environment),
+    baseURL,
     name: `environment-${operation}`,
   })
 
@@ -240,7 +245,12 @@ const resolveEnvironmentRoute = (
     }
   }
 
-  return { model: fallback.model, provider, timeoutMs: fallback.timeoutMs }
+  return {
+    embeddingSpaceIdentity: embeddingSpaceIdentity(baseURL),
+    model: fallback.model,
+    provider,
+    timeoutMs: fallback.timeoutMs,
+  }
 }
 
 /**

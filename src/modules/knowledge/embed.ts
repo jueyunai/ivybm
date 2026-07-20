@@ -1,16 +1,27 @@
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 
-import type { AiGateway } from '@/modules/ai/gateway'
+import {
+  createEmbeddingSpaceFingerprint,
+  type AiGatewayEmbedInput,
+  type AiGatewayEmbedResult,
+} from '@/modules/ai/gateway'
 import type { KnowledgeChunk as KnowledgeChunkRecord } from '@/payload-types'
 
 import { chunkKnowledgeDocument } from './chunk'
 
 type KnowledgePool = Pick<PostgresAdapter['pool'], 'query'>
 
+export type KnowledgeEmbeddingGateway = {
+  embed: (
+    input: AiGatewayEmbedInput,
+  ) => Promise<Omit<AiGatewayEmbedResult, 'embeddingSpace'> & { embeddingSpace?: string }>
+}
+
 type SetKnowledgeChunkEmbeddingInput = {
   chunkId: number | string
   embedding: number[]
+  embeddingSpace: string
   model: string
   pool: KnowledgePool
 }
@@ -18,8 +29,9 @@ type SetKnowledgeChunkEmbeddingInput = {
 type IndexKnowledgeDocumentInput = {
   chunkOptions?: { maxCharacters?: number }
   documentId: number | string
-  gateway: Pick<AiGateway, 'embed'>
+  gateway: KnowledgeEmbeddingGateway
   limits?: Partial<KnowledgeIndexLimits>
+  onEmbeddingBatchComplete?: () => Promise<void>
   payload: Payload
   pool: KnowledgePool
 }
@@ -50,10 +62,7 @@ const validateLimits = (limits: KnowledgeIndexLimits): void => {
   }
 }
 
-const createEmbeddingBatches = (
-  inputs: string[],
-  limits: KnowledgeIndexLimits,
-): string[][] => {
+const createEmbeddingBatches = (inputs: string[], limits: KnowledgeIndexLimits): string[][] => {
   const batches: string[][] = []
   let batch: string[] = []
   let batchTokens = 0
@@ -116,6 +125,7 @@ export const formatVector = (embedding: number[]): string => {
 export const setKnowledgeChunkEmbedding = async ({
   chunkId,
   embedding,
+  embeddingSpace,
   model,
   pool,
 }: SetKnowledgeChunkEmbeddingInput): Promise<void> => {
@@ -124,10 +134,11 @@ export const setKnowledgeChunkEmbedding = async ({
        SET embedding_vector = $1::vector,
            embedding_model = $2,
            embedding_dimensions = $3,
+           embedding_space = $4,
            embedded_at = NOW(),
            updated_at = NOW()
-     WHERE id = $4`,
-    [formatVector(embedding), model, embedding.length, chunkId],
+     WHERE id = $5`,
+    [formatVector(embedding), model, embedding.length, embeddingSpace, chunkId],
   )
 
   if (result.rowCount !== 1) {
@@ -140,9 +151,14 @@ export const indexKnowledgeDocument = async ({
   documentId,
   gateway,
   limits: limitOverrides,
+  onEmbeddingBatchComplete,
   payload,
   pool,
-}: IndexKnowledgeDocumentInput): Promise<{ chunkCount: number; model: string }> => {
+}: IndexKnowledgeDocumentInput): Promise<{
+  chunkCount: number
+  embeddingSpace: string
+  model: string
+}> => {
   const limits = { ...DEFAULT_KNOWLEDGE_INDEX_LIMITS, ...limitOverrides }
   validateLimits(limits)
   const claim = await pool.query<{ updated_at: Date }>(
@@ -206,6 +222,7 @@ export const indexKnowledgeDocument = async ({
     const embeddings: number[][] = []
     let embeddingModel: string | undefined
     let embeddingDimensions: number | undefined
+    let embeddingSpace: string | undefined
     for (const batch of createEmbeddingBatches(
       chunks.map(({ content }) => content),
       limits,
@@ -215,7 +232,10 @@ export const indexKnowledgeDocument = async ({
         throw new Error('Embedding provider returned an unexpected result count')
       }
       const batchDimensions = embedded.embeddings[0]?.length
-      if (!batchDimensions || embedded.embeddings.some((value) => value.length !== batchDimensions)) {
+      if (
+        !batchDimensions ||
+        embedded.embeddings.some((value) => value.length !== batchDimensions)
+      ) {
         throw new Error('Embedding provider returned inconsistent vector dimensions')
       }
       if (embeddingModel && embedded.model !== embeddingModel) {
@@ -224,17 +244,27 @@ export const indexKnowledgeDocument = async ({
       if (embeddingDimensions && batchDimensions !== embeddingDimensions) {
         throw new Error('Embedding provider changed vector dimensions during document indexing')
       }
+      const batchEmbeddingSpace =
+        embedded.embeddingSpace ??
+        createEmbeddingSpaceFingerprint(
+          `provider-name:${embedded.provider}`,
+          embedded.model,
+          batchDimensions,
+        )
+      if (embeddingSpace && batchEmbeddingSpace !== embeddingSpace) {
+        throw new Error('Embedding provider changed vector space during document indexing')
+      }
       embeddingModel = embedded.model
       embeddingDimensions = batchDimensions
+      embeddingSpace = batchEmbeddingSpace
       embeddings.push(...embedded.embeddings)
+      await onEmbeddingBatchComplete?.()
     }
-    if (!embeddingModel) throw new Error('Knowledge document produced no embeddings')
+    if (!embeddingModel || !embeddingSpace) {
+      throw new Error('Knowledge document produced no embeddings')
+    }
 
-    const existing = await findAllDocumentChunks(
-      payload,
-      document.id,
-      limits.existingChunkPageSize,
-    )
+    const existing = await findAllDocumentChunks(payload, document.id, limits.existingChunkPageSize)
     const existingByStableID = new Map(existing.map((chunk) => [chunk.stableId, chunk]))
     const activeIDs = new Set<number | string>()
 
@@ -267,6 +297,7 @@ export const indexKnowledgeDocument = async ({
       await setKnowledgeChunkEmbedding({
         chunkId: stored.id,
         embedding: embeddings[index],
+        embeddingSpace,
         model: embeddingModel,
         pool,
       })
@@ -284,20 +315,21 @@ export const indexKnowledgeDocument = async ({
     const ready = await pool.query(
       `UPDATE knowledge_documents
           SET embedding_model = $1,
+              embedding_space = $2,
               indexed_at = NOW(),
               index_status = 'ready',
               updated_at = NOW()
-        WHERE id = $2
+        WHERE id = $3
           AND review_status = 'reviewed'
           AND index_status = 'processing'
-          AND updated_at = $3`,
-      [embeddingModel, document.id, claimToken],
+          AND updated_at = $4`,
+      [embeddingModel, embeddingSpace, document.id, claimToken],
     )
     if (ready.rowCount !== 1) {
       throw new Error('Knowledge document changed while it was being indexed')
     }
 
-    return { chunkCount: chunks.length, model: embeddingModel }
+    return { chunkCount: chunks.length, embeddingSpace, model: embeddingModel }
   } catch (error) {
     await pool
       .query(

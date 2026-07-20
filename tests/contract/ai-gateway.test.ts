@@ -101,6 +101,37 @@ describe('AI gateway contract', () => {
     expect(embedded.provider).toBe('embedding-provider')
   })
 
+  it('fingerprints the provider endpoint even when model and dimensions are identical', async () => {
+    const createGateway = (embeddingSpaceIdentity: string) =>
+      createAiGateway({
+        operations: {
+          embedding: {
+            dimensions: 3,
+            embeddingSpaceIdentity,
+            model: 'shared-model-name',
+            provider: fakeProvider,
+          },
+        },
+      })
+
+    const providerA = createGateway('openai-compatible:https://provider-a.example.invalid/v1')
+    const renamedProviderA = createGateway(
+      'openai-compatible:https://provider-a.example.invalid/v1',
+    )
+    const providerB = createGateway('openai-compatible:https://provider-b.example.invalid/v1')
+
+    const [a, renamedA, b] = await Promise.all([
+      providerA.embed({ input: ['same input'] }),
+      renamedProviderA.embed({ input: ['same input'] }),
+      providerB.embed({ input: ['same input'] }),
+    ])
+
+    expect(a.embeddingSpace).toBe(renamedA.embeddingSpace)
+    expect(a.embeddingSpace).not.toBe(b.embeddingSpace)
+    expect(providerA.embeddingConfigurationKey).toBe(renamedProviderA.embeddingConfigurationKey)
+    expect(providerA.embeddingConfigurationKey).not.toBe(providerB.embeddingConfigurationKey)
+  })
+
   it('applies per-operation model defaults and reports an absent operation as recoverable', async () => {
     const generateText = vi.fn(fakeProvider.generateText)
     const gateway = createAiGateway({

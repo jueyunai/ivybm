@@ -651,6 +651,7 @@ export interface KnowledgeDocument {
   indexStatus: 'pending' | 'processing' | 'ready' | 'failed';
   indexedAt?: string | null;
   embeddingModel?: string | null;
+  embeddingSpace?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -669,6 +670,7 @@ export interface KnowledgeChunk {
   sourceVersion: string;
   sourceURL?: string | null;
   embeddingModel?: string | null;
+  embeddingSpace?: string | null;
   embeddingDimensions?: number | null;
   embeddedAt?: string | null;
   updatedAt: string;
@@ -1380,6 +1382,7 @@ export interface KnowledgeDocumentsSelect<T extends boolean = true> {
   indexStatus?: T;
   indexedAt?: T;
   embeddingModel?: T;
+  embeddingSpace?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1397,6 +1400,7 @@ export interface KnowledgeChunksSelect<T extends boolean = true> {
   sourceVersion?: T;
   sourceURL?: T;
   embeddingModel?: T;
+  embeddingSpace?: T;
   embeddingDimensions?: T;
   embeddedAt?: T;
   updatedAt?: T;
