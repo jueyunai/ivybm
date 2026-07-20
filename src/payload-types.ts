@@ -70,6 +70,9 @@ export interface Config {
     users: User;
     media: Media;
     'audit-logs': AuditLog;
+    'ai-providers': AiProvider;
+    'ai-model-profiles': AiModelProfile;
+    'ai-usage-routes': AiUsageRoute;
     pages: Page;
     'product-categories': ProductCategory;
     products: Product;
@@ -97,6 +100,9 @@ export interface Config {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     'audit-logs': AuditLogsSelect<false> | AuditLogsSelect<true>;
+    'ai-providers': AiProvidersSelect<false> | AiProvidersSelect<true>;
+    'ai-model-profiles': AiModelProfilesSelect<false> | AiModelProfilesSelect<true>;
+    'ai-usage-routes': AiUsageRoutesSelect<false> | AiUsageRoutesSelect<true>;
     pages: PagesSelect<false> | PagesSelect<true>;
     'product-categories': ProductCategoriesSelect<false> | ProductCategoriesSelect<true>;
     products: ProductsSelect<false> | ProductsSelect<true>;
@@ -246,6 +252,78 @@ export interface AuditLog {
   resource: string;
   documentId: string;
   actor?: (number | null) | User;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-providers".
+ */
+export interface AiProvider {
+  id: number;
+  name: string;
+  enabled: boolean;
+  protocol: 'openai-compatible';
+  /**
+   * Include the API version prefix, for example https://api.openai.com/v1.
+   */
+  baseURL: string;
+  /**
+   * Write-only. Enter a value to set or replace the key; leave blank to retain it.
+   */
+  apiKey?: string | null;
+  /**
+   * This indicator never reveals the key.
+   */
+  apiKeyConfigured: boolean;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-model-profiles".
+ */
+export interface AiModelProfile {
+  id: number;
+  name: string;
+  enabled: boolean;
+  provider: number | AiProvider;
+  capability: 'text' | 'embedding';
+  /**
+   * Exact model identifier accepted by the selected provider.
+   */
+  model: string;
+  parameters: {
+    timeoutMs: number;
+    maxOutputTokens?: number | null;
+    reasoningEnabled?: boolean | null;
+    reasoningEffort?: ('none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max') | null;
+    /**
+     * Optional sampling temperature, from 0 to 2.
+     */
+    temperature?: number | null;
+    /**
+     * Optional nucleus-sampling top-p value, from 0 to 1.
+     */
+    topP?: number | null;
+    dimensions?: number | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-usage-routes".
+ */
+export interface AiUsageRoute {
+  id: number;
+  /**
+   * Stable internal key, for example chat.reply or knowledge.embedding.
+   */
+  usageKey: string;
+  enabled: boolean;
+  operation: 'text' | 'embedding';
+  profile: number | AiModelProfile;
   updatedAt: string;
   createdAt: string;
 }
@@ -856,6 +934,18 @@ export interface PayloadLockedDocument {
         value: number | AuditLog;
       } | null)
     | ({
+        relationTo: 'ai-providers';
+        value: number | AiProvider;
+      } | null)
+    | ({
+        relationTo: 'ai-model-profiles';
+        value: number | AiModelProfile;
+      } | null)
+    | ({
+        relationTo: 'ai-usage-routes';
+        value: number | AiUsageRoute;
+      } | null)
+    | ({
         relationTo: 'pages';
         value: number | Page;
       } | null)
@@ -1051,6 +1141,56 @@ export interface AuditLogsSelect<T extends boolean = true> {
   resource?: T;
   documentId?: T;
   actor?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-providers_select".
+ */
+export interface AiProvidersSelect<T extends boolean = true> {
+  name?: T;
+  enabled?: T;
+  protocol?: T;
+  baseURL?: T;
+  apiKey?: T;
+  apiKeyConfigured?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-model-profiles_select".
+ */
+export interface AiModelProfilesSelect<T extends boolean = true> {
+  name?: T;
+  enabled?: T;
+  provider?: T;
+  capability?: T;
+  model?: T;
+  parameters?:
+    | T
+    | {
+        timeoutMs?: T;
+        maxOutputTokens?: T;
+        reasoningEnabled?: T;
+        reasoningEffort?: T;
+        temperature?: T;
+        topP?: T;
+        dimensions?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-usage-routes_select".
+ */
+export interface AiUsageRoutesSelect<T extends boolean = true> {
+  usageKey?: T;
+  enabled?: T;
+  operation?: T;
+  profile?: T;
   updatedAt?: T;
   createdAt?: T;
 }

@@ -24,10 +24,7 @@ DATABASE_URL=postgresql://ivybm:operation-password@db:5432/ivybm
 PAYLOAD_SECRET=operation-test-payload-secret-at-least-32-characters
 NEXT_PUBLIC_SERVER_URL=https://ivybm.com
 TRUST_PROXY_HEADERS=true
-AI_PROVIDER_BASE_URL=https://api.example.invalid/v1
-AI_PROVIDER_API_KEY=operation-placeholder-api-key
-AI_TEXT_MODEL=operation-text-model
-AI_EMBEDDING_MODEL=operation-embedding-model
+AI_CONFIG_ENCRYPTION_KEY=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 `
 
 const runPreflight = (environment: string) => {
@@ -51,7 +48,9 @@ describe('production environment preflight', () => {
 
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('Production environment preflight passed')
-    expect(result.stdout).not.toContain('operation-placeholder-api-key')
+    expect(result.stdout).not.toContain(
+      'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+    )
     expect(result.stdout).not.toContain('operation-test-postgres-password')
   })
 
@@ -81,5 +80,54 @@ describe('production environment preflight', () => {
     expect(databaseResult.stderr).toContain('Compose db:5432 host')
     expect(tagResult.status).not.toBe(0)
     expect(tagResult.stderr).toContain('IMAGE_TAG')
+  })
+
+  it('rejects malformed optional reasoning configuration', () => {
+    const invalidSwitch = runPreflight(`${productionEnvironment}AI_REASONING_ENABLED=sometimes\n`)
+    const invalidEffort = runPreflight(`${productionEnvironment}AI_REASONING_EFFORT=ultra\n`)
+
+    expect(invalidSwitch.status).not.toBe(0)
+    expect(invalidSwitch.stderr).toContain('AI_REASONING_ENABLED')
+    expect(invalidEffort.status).not.toBe(0)
+    expect(invalidEffort.stderr).toContain('AI_REASONING_EFFORT')
+  })
+
+  it('accepts a supported optional reasoning configuration', () => {
+    const result = runPreflight(
+      `${productionEnvironment}AI_REASONING_ENABLED=true\nAI_REASONING_EFFORT=high\n`,
+    )
+
+    expect(result.status).toBe(0)
+  })
+
+  it('accepts a per-operation environment fallback and rejects missing or invalid encryption keys', () => {
+    const fallbackResult =
+      runPreflight(`${productionEnvironment}AI_PROVIDER_BASE_URL=https://api.example.invalid/v1
+AI_PROVIDER_API_KEY=operation-placeholder-api-key
+AI_TEXT_MODEL=operation-text-model
+`)
+    const missingKeyResult = runPreflight(
+      productionEnvironment.replace(
+        'AI_CONFIG_ENCRYPTION_KEY=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\n',
+        '',
+      ),
+    )
+    const partialFallbackResult = runPreflight(
+      `${productionEnvironment}AI_PROVIDER_API_KEY=operation-placeholder-api-key\n`,
+    )
+    const invalidKeyResult = runPreflight(
+      productionEnvironment.replace(
+        'AI_CONFIG_ENCRYPTION_KEY=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+        'AI_CONFIG_ENCRYPTION_KEY=too-short',
+      ),
+    )
+
+    expect(fallbackResult.status).toBe(0)
+    expect(missingKeyResult.status).not.toBe(0)
+    expect(missingKeyResult.stderr).toContain('AI_CONFIG_ENCRYPTION_KEY')
+    expect(partialFallbackResult.status).not.toBe(0)
+    expect(partialFallbackResult.stderr).toContain('AI bootstrap endpoint and API key')
+    expect(invalidKeyResult.status).not.toBe(0)
+    expect(invalidKeyResult.stderr).toContain('AI_CONFIG_ENCRYPTION_KEY')
   })
 })

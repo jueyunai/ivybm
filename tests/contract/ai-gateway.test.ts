@@ -56,6 +56,84 @@ describe('AI gateway contract', () => {
     expect(onUsage).toHaveBeenCalledTimes(2)
   })
 
+  it('applies the deployment reasoning default while allowing trusted internal overrides', async () => {
+    const generateText = vi.fn(fakeProvider.generateText)
+    const gateway = createAiGateway({
+      defaultReasoning: { effort: 'low' },
+      models: { embedding: 'fake-embedding', text: 'fake-text' },
+      provider: { ...fakeProvider, generateText },
+    })
+
+    await gateway.generateText({ input: 'use deployment default' })
+    await gateway.generateText({ input: 'use trusted override', reasoning: { effort: 'high' } })
+
+    expect(generateText).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ reasoning: { effort: 'low' } }),
+    )
+    expect(generateText).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ reasoning: { effort: 'high' } }),
+    )
+  })
+
+  it('uses separately configured providers for text and embedding operations', async () => {
+    const textProvider: AiProvider = {
+      ...fakeProvider,
+      name: 'text-provider',
+    }
+    const embeddingProvider: AiProvider = {
+      ...fakeProvider,
+      name: 'embedding-provider',
+    }
+    const gateway = createAiGateway({
+      models: { embedding: 'embedding-model', text: 'text-model' },
+      provider: fakeProvider,
+      providers: { embedding: embeddingProvider, text: textProvider },
+    })
+
+    const [generated, embedded] = await Promise.all([
+      gateway.generateText({ input: 'text request' }),
+      gateway.embed({ input: ['embedding request'] }),
+    ])
+
+    expect(generated.provider).toBe('text-provider')
+    expect(embedded.provider).toBe('embedding-provider')
+  })
+
+  it('applies per-operation model defaults and reports an absent operation as recoverable', async () => {
+    const generateText = vi.fn(fakeProvider.generateText)
+    const gateway = createAiGateway({
+      operations: {
+        text: {
+          defaultReasoning: { effort: 'medium' },
+          maxOutputTokens: 256,
+          model: 'profile-text-model',
+          provider: { ...fakeProvider, generateText },
+          temperature: 0.4,
+          timeoutMs: 20_000,
+          topP: 0.9,
+        },
+      },
+    })
+
+    await gateway.generateText({ input: 'profile defaults' })
+
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxOutputTokens: 256,
+        model: 'profile-text-model',
+        reasoning: { effort: 'medium' },
+        temperature: 0.4,
+        topP: 0.9,
+      }),
+    )
+    await expect(gateway.embed({ input: ['missing embedding route'] })).rejects.toMatchObject({
+      code: 'provider_unavailable',
+      retryable: true,
+    } satisfies Partial<AiGatewayError>)
+  })
+
   it('does not turn successful provider calls into failures when usage reporting fails', async () => {
     const provider = {
       ...fakeProvider,
@@ -83,12 +161,20 @@ describe('AI gateway contract', () => {
     expect(provider.embed).toHaveBeenCalledTimes(1)
     expect(onUsage).toHaveBeenCalledTimes(2)
     expect(onUsageError).toHaveBeenCalledTimes(2)
-    expect(onUsageError).toHaveBeenNthCalledWith(1, usageFailure, expect.objectContaining({
-      operation: 'generateText',
-    }))
-    expect(onUsageError).toHaveBeenNthCalledWith(2, usageFailure, expect.objectContaining({
-      operation: 'embed',
-    }))
+    expect(onUsageError).toHaveBeenNthCalledWith(
+      1,
+      usageFailure,
+      expect.objectContaining({
+        operation: 'generateText',
+      }),
+    )
+    expect(onUsageError).toHaveBeenNthCalledWith(
+      2,
+      usageFailure,
+      expect.objectContaining({
+        operation: 'embed',
+      }),
+    )
   })
 
   it('normalizes timeout and provider errors without exposing credentials', async () => {
@@ -203,6 +289,47 @@ describe('AI gateway contract', () => {
       'https://ai.example.invalid/v1/embeddings',
       expect.objectContaining({ method: 'POST' }),
     )
+  })
+
+  it('sends the standard Responses reasoning object only when configured', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(responsesFixture), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(responsesFixture), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        }),
+      )
+    const provider = createOpenAICompatibleProvider({
+      apiKey: 'fixture-key-never-sent-to-network',
+      baseURL: 'https://ai.example.invalid/v1',
+      fetch: fetchMock,
+    })
+
+    await provider.generateText({
+      input: 'reasoning request',
+      model: 'fixture-text-model',
+      reasoning: { effort: 'medium' },
+    })
+    await provider.generateText({
+      input: 'ordinary request',
+      model: 'fixture-text-model',
+    })
+
+    const enabledBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    const disabledBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))
+
+    expect(enabledBody).toMatchObject({
+      model: 'fixture-text-model',
+      reasoning: { effort: 'medium' },
+    })
+    expect(disabledBody).not.toHaveProperty('reasoning')
   })
 
   it('normalizes compatible HTTP errors without copying provider secrets', async () => {

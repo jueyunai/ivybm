@@ -109,11 +109,8 @@ jobs:
 
       - name: Validate local runtime Compose configuration
         env:
-          # Config validation must satisfy required interpolation without exposing real AI credentials.
-          AI_EMBEDDING_MODEL: ci-embedding-model
-          AI_PROVIDER_API_KEY: ci-config-validation-placeholder
-          AI_PROVIDER_BASE_URL: https://api.example.invalid/v1
-          AI_TEXT_MODEL: ci-text-model
+          # Config validation must satisfy required interpolation without exposing real credentials.
+          AI_CONFIG_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           APP_VERSION: ci
           DATABASE_URL: postgres://postgres:postgres@db:5432/ivybm_ci
           NEXT_PUBLIC_SERVER_URL: http://localhost:3000

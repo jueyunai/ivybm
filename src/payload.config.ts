@@ -6,6 +6,9 @@ import { fileURLToPath } from 'url'
 import sharp from 'sharp'
 
 import { AuditLogs } from './collections/AuditLogs'
+import { AiModelProfiles } from './collections/AiModelProfiles'
+import { AiProviders } from './collections/AiProviders'
+import { AiUsageRoutes } from './collections/AiUsageRoutes'
 import { Downloads } from './collections/Downloads'
 import { Conversations } from './collections/Conversations'
 import { ConversationCommands } from './collections/ConversationCommands'
@@ -46,6 +49,9 @@ export default buildConfig({
     Users,
     Media,
     AuditLogs,
+    AiProviders,
+    AiModelProfiles,
+    AiUsageRoutes,
     Pages,
     ProductCategories,
     Products,

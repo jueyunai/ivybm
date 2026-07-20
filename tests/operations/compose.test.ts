@@ -28,10 +28,7 @@ const imageTag = '0123456789abcdef0123456789abcdef01234567'
 const runtimeDigest = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 const workerDigest = 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 const requiredEnvironment = {
-  AI_EMBEDDING_MODEL: 'operation-embedding-model',
-  AI_PROVIDER_API_KEY: 'operation-placeholder-api-key',
-  AI_PROVIDER_BASE_URL: 'https://api.example.invalid/v1',
-  AI_TEXT_MODEL: 'operation-text-model',
+  AI_CONFIG_ENCRYPTION_KEY: 'c'.repeat(64),
   APP_PORT: '3000',
   APP_VERSION: 'operation-test',
   DATABASE_URL: 'postgres://operation:operation@db:5432/ivybm',
@@ -119,6 +116,15 @@ describe('production Compose configuration', () => {
     expect(config.services.app.mem_limit).toBe('805306368')
     expect(config.services.worker.mem_limit).toBe('402653184')
     expect(config.services.db.mem_limit).toBe('805306368')
+    expect(config.services.app.environment).toMatchObject({
+      AI_CONFIG_ENCRYPTION_KEY: 'c'.repeat(64),
+      AI_REASONING_EFFORT: 'medium',
+      AI_REASONING_ENABLED: 'false',
+    })
+    expect(config.services.worker.environment).toMatchObject({
+      AI_CONFIG_ENCRYPTION_KEY: 'c'.repeat(64),
+    })
+    expect(config.services.migrate.environment).not.toHaveProperty('AI_CONFIG_ENCRYPTION_KEY')
     expect(config.services.app.healthcheck?.test?.join(' ')).toContain('/api/health/ready')
 
     for (const service of ['app', 'db', 'migrate', 'worker']) {

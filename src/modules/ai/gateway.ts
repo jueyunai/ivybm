@@ -47,12 +47,35 @@ export type AiTokenUsage = {
   totalTokens: number
 }
 
+/**
+ * OpenAI Responses reasoning effort values. Individual compatible providers and
+ * models can support a subset; the deployment selects the value, never a visitor.
+ */
+export const AI_REASONING_EFFORTS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const
+
+export type AiReasoningEffort = (typeof AI_REASONING_EFFORTS)[number]
+
+export type AiReasoning = {
+  effort: AiReasoningEffort
+}
+
 export type ProviderGenerateTextInput = {
   input: string
   instructions?: string
   maxOutputTokens?: number
   model: string
+  reasoning?: AiReasoning
   signal?: AbortSignal
+  temperature?: number
+  topP?: number
 }
 
 export type ProviderGenerateTextResult = {
@@ -97,12 +120,35 @@ export type AiUsageRecord = {
   usage: AiTokenUsage
 }
 
+export type AiGatewayEmbeddingOperationConfig = {
+  dimensions?: number
+  model: string
+  provider: AiProvider
+  timeoutMs?: number
+}
+
+export type AiGatewayTextOperationConfig = {
+  defaultReasoning?: AiReasoning
+  maxOutputTokens?: number
+  model: string
+  provider: AiProvider
+  temperature?: number
+  timeoutMs?: number
+  topP?: number
+}
+
 type GatewayOptions = {
-  models: { embedding: string; text: string }
+  defaultReasoning?: AiReasoning
+  models?: Partial<{ embedding: string; text: string }>
   onUsage?: (record: AiUsageRecord) => Promise<void> | void
   onUsageError?: (error: unknown, record: AiUsageRecord) => Promise<void> | void
+  operations?: Partial<{
+    embedding: AiGatewayEmbeddingOperationConfig
+    text: AiGatewayTextOperationConfig
+  }>
   pricing?: Record<string, ModelPricing>
-  provider: AiProvider
+  provider?: AiProvider
+  providers?: Partial<{ embedding: AiProvider; text: AiProvider }>
   timeouts?: { embedMs?: number; generateTextMs?: number }
 }
 
@@ -200,17 +246,49 @@ const reportUsage = async (options: GatewayOptions, record: AiUsageRecord): Prom
   }
 }
 
+const requireModel = (model: string | undefined): string => {
+  if (!model?.trim()) {
+    throw new AiGatewayError('provider_unavailable', 'AI provider is not configured', {
+      retryable: true,
+    })
+  }
+
+  return model
+}
+
+const requireProvider = (provider: AiProvider | undefined): AiProvider => {
+  if (!provider) {
+    throw new AiGatewayError('provider_unavailable', 'AI provider is not configured', {
+      retryable: true,
+    })
+  }
+
+  return provider
+}
+
 export const createAiGateway = (options: GatewayOptions) => ({
   embed: async (input: EmbedInput) => {
     if (input.input.length === 0 || input.input.some((value) => !value.trim())) {
       throw new AiGatewayError('invalid_request', 'Embedding input must contain non-empty text')
     }
-    const model = input.model ?? options.models.embedding
+    const operation = options.operations?.embedding
+    const model = requireModel(input.model ?? operation?.model ?? options.models?.embedding)
+    const provider = requireProvider(
+      operation?.provider ?? options.providers?.embedding ?? options.provider,
+    )
     const startedAt = Date.now()
 
     try {
-      const result = await withTimeout(options.timeouts?.embedMs ?? 15_000, (signal) =>
-        options.provider.embed({ ...input, input: input.input, model, signal }),
+      const result = await withTimeout(
+        operation?.timeoutMs ?? options.timeouts?.embedMs ?? 15_000,
+        (signal) =>
+          provider.embed({
+            ...input,
+            dimensions: input.dimensions ?? operation?.dimensions,
+            input: input.input,
+            model,
+            signal,
+          }),
       )
       validateUsage(result.usage)
       validateEmbeddings(result.embeddings, input.input.length)
@@ -220,13 +298,13 @@ export const createAiGateway = (options: GatewayOptions) => ({
         durationMs: Date.now() - startedAt,
         model: result.model,
         operation: 'embed',
-        provider: options.provider.name,
+        provider: provider.name,
         requestId: result.requestId,
         usage: result.usage,
       }
       await reportUsage(options, record)
 
-      return { ...result, cost, provider: options.provider.name }
+      return { ...result, cost, provider: provider.name }
     } catch (error) {
       throw normalizeError(error)
     }
@@ -235,12 +313,27 @@ export const createAiGateway = (options: GatewayOptions) => ({
     if (!input.input.trim()) {
       throw new AiGatewayError('invalid_request', 'Text generation input is required')
     }
-    const model = input.model ?? options.models.text
+    const operation = options.operations?.text
+    const model = requireModel(input.model ?? operation?.model ?? options.models?.text)
+    const reasoning = input.reasoning ?? operation?.defaultReasoning ?? options.defaultReasoning
+    const provider = requireProvider(
+      operation?.provider ?? options.providers?.text ?? options.provider,
+    )
     const startedAt = Date.now()
 
     try {
-      const result = await withTimeout(options.timeouts?.generateTextMs ?? 30_000, (signal) =>
-        options.provider.generateText({ ...input, model, signal }),
+      const result = await withTimeout(
+        operation?.timeoutMs ?? options.timeouts?.generateTextMs ?? 30_000,
+        (signal) =>
+          provider.generateText({
+            ...input,
+            maxOutputTokens: input.maxOutputTokens ?? operation?.maxOutputTokens,
+            model,
+            reasoning,
+            signal,
+            temperature: input.temperature ?? operation?.temperature,
+            topP: input.topP ?? operation?.topP,
+          }),
       )
       if (!result.text.trim()) {
         throw new AiGatewayError('invalid_response', 'AI provider returned empty text')
@@ -252,13 +345,13 @@ export const createAiGateway = (options: GatewayOptions) => ({
         durationMs: Date.now() - startedAt,
         model: result.model,
         operation: 'generateText',
-        provider: options.provider.name,
+        provider: provider.name,
         requestId: result.requestId,
         usage: result.usage,
       }
       await reportUsage(options, record)
 
-      return { ...result, cost, provider: options.provider.name }
+      return { ...result, cost, provider: provider.name }
     } catch (error) {
       throw normalizeError(error)
     }

@@ -8,6 +8,7 @@ import * as migration_20260718_143701_task7_inquiry_leads from './20260718_14370
 import * as migration_20260719_014251_task9_conversations from './20260719_014251_task9_conversations'
 import * as migration_20260719_123030_task9_public_knowledge_visibility from './20260719_123030_task9_public_knowledge_visibility'
 import * as migration_20260719_174106_task10_jobs from './20260719_174106_task10_jobs'
+import * as migration_20260720_034519_ai_control_plane from './20260720_034519_ai_control_plane'
 
 export const migrations = [
   {
@@ -59,5 +60,10 @@ export const migrations = [
     up: migration_20260719_174106_task10_jobs.up,
     down: migration_20260719_174106_task10_jobs.down,
     name: '20260719_174106_task10_jobs',
+  },
+  {
+    up: migration_20260720_034519_ai_control_plane.up,
+    down: migration_20260720_034519_ai_control_plane.down,
+    name: '20260720_034519_ai_control_plane',
   },
 ]

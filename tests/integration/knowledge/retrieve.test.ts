@@ -3,10 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { getPayload, type Payload } from 'payload'
 
-import {
-  retrieveKnowledge,
-  retrieveKnowledgeForQuery,
-} from '@/modules/knowledge/retrieve'
+import { retrieveKnowledge, retrieveKnowledgeForQuery } from '@/modules/knowledge/retrieve'
 import { indexKnowledgeDocument, setKnowledgeChunkEmbedding } from '@/modules/knowledge/embed'
 import { chunkKnowledgeDocument } from '@/modules/knowledge/chunk'
 import config from '@/payload.config'
@@ -293,8 +290,18 @@ describe.sequential('knowledge retrieval', () => {
     chunkIDs.push(internalChunk.id, customerChunk.id)
     const pool = getDatabase().pool
     await Promise.all([
-      setKnowledgeChunkEmbedding({ chunkId: internalChunk.id, embedding: [1, 0, 0], model: 'public-boundary-model', pool }),
-      setKnowledgeChunkEmbedding({ chunkId: customerChunk.id, embedding: [1, 0, 0], model: 'public-boundary-model', pool }),
+      setKnowledgeChunkEmbedding({
+        chunkId: internalChunk.id,
+        embedding: [1, 0, 0],
+        model: 'public-boundary-model',
+        pool,
+      }),
+      setKnowledgeChunkEmbedding({
+        chunkId: customerChunk.id,
+        embedding: [1, 0, 0],
+        model: 'public-boundary-model',
+        pool,
+      }),
       payload.update({
         collection: 'knowledge-documents',
         data: { embeddingModel: 'public-boundary-model', indexStatus: 'ready' },
@@ -417,6 +424,89 @@ describe.sequential('knowledge retrieval', () => {
         pool: getDatabase().pool,
       }),
     ).rejects.toThrow('Only reviewed knowledge documents can be indexed')
+  })
+
+  it('requires reindexing before a changed embedding route can retrieve existing knowledge', async () => {
+    const suffix = randomUUID()
+    const document = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'A reviewed finish specification requires an engineering confirmation.',
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Embedding route change ${suffix}`,
+        sourceType: 'technical-specification',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(document.id)
+    const pool = getDatabase().pool
+
+    const oldRouteGateway = {
+      embed: async ({ input }: { input: string[] }) => ({
+        cost: { currency: 'USD' as const, estimated: 0 },
+        embeddings: input.map(() => [1, 0, 0]),
+        model: 'embedding-route-old',
+        provider: 'old-route-fixture',
+        usage: { inputTokens: input.length * 3, totalTokens: input.length * 3 },
+      }),
+    }
+    const newRouteGateway = {
+      embed: async ({ input }: { input: string[] }) => ({
+        cost: { currency: 'USD' as const, estimated: 0 },
+        embeddings: input.map(() => [0, 1, 0]),
+        model: 'embedding-route-new',
+        provider: 'new-route-fixture',
+        usage: { inputTokens: input.length * 3, totalTokens: input.length * 3 },
+      }),
+    }
+
+    await expect(
+      indexKnowledgeDocument({
+        documentId: document.id,
+        gateway: oldRouteGateway,
+        payload,
+        pool,
+      }),
+    ).resolves.toEqual({ chunkCount: 1, model: 'embedding-route-old' })
+
+    await expect(
+      retrieveKnowledgeForQuery({
+        gateway: newRouteGateway,
+        locale: 'en',
+        pool,
+        query: 'Which finish specification needs engineering confirmation?',
+      }),
+    ).resolves.toEqual([])
+
+    await expect(
+      indexKnowledgeDocument({
+        documentId: document.id,
+        gateway: newRouteGateway,
+        payload,
+        pool,
+      }),
+    ).resolves.toEqual({ chunkCount: 1, model: 'embedding-route-new' })
+
+    const results = await retrieveKnowledgeForQuery({
+      gateway: newRouteGateway,
+      locale: 'en',
+      pool,
+      query: 'Which finish specification needs engineering confirmation?',
+    })
+    expect(results).toHaveLength(1)
+    expect(results[0].citation.documentId).toBe(document.id)
+
+    const chunks = await payload.find({
+      collection: 'knowledge-chunks',
+      overrideAccess: true,
+      where: { document: { equals: document.id } },
+    })
+    chunkIDs.push(...chunks.docs.map(({ id }) => id))
+    expect(chunks.docs).toHaveLength(1)
+    expect(chunks.docs[0]).toMatchObject({ embeddingModel: 'embedding-route-new' })
   })
 
   it('allows operators to manage knowledge while denying sales and enforces prompt versions', async () => {
@@ -803,7 +893,8 @@ describe.sequential('knowledge retrieval', () => {
     expect(batches.map((batch) => batch.length)).toEqual([2, 2, 1])
     expect(
       batches.every(
-        (batch) => batch.reduce((tokens, text) => tokens + Math.ceil(Buffer.byteLength(text) / 4), 0) <= 30,
+        (batch) =>
+          batch.reduce((tokens, text) => tokens + Math.ceil(Buffer.byteLength(text) / 4), 0) <= 30,
       ),
     ).toBe(true)
 
@@ -899,7 +990,9 @@ describe.sequential('knowledge retrieval', () => {
     })
     const pool = getDatabase().pool
 
-    await expect(pool.query('DELETE FROM knowledge_documents WHERE id = $1', [document.id])).resolves.toMatchObject({
+    await expect(
+      pool.query('DELETE FROM knowledge_documents WHERE id = $1', [document.id]),
+    ).resolves.toMatchObject({
       rowCount: 1,
     })
     const remaining = await pool.query<{ count: string }>(
