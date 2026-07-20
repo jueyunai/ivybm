@@ -2,9 +2,12 @@ import { postgresAdapter } from '@payloadcms/db-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import path from 'path'
 import { buildConfig } from 'payload'
+import { en } from 'payload/i18n/en'
+import { zh } from 'payload/i18n/zh'
 import { fileURLToPath } from 'url'
 import sharp from 'sharp'
 
+import { localizeAdminCollections, localizeAdminGlobals } from './admin/localizeConfig'
 import { AuditLogs } from './collections/AuditLogs'
 import { AiModelProfiles } from './collections/AiModelProfiles'
 import { AiProviders } from './collections/AiProviders'
@@ -45,7 +48,7 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [
+  collections: localizeAdminCollections([
     Users,
     Media,
     AuditLogs,
@@ -69,9 +72,13 @@ export default buildConfig({
     Handoffs,
     ConversationCommands,
     Jobs,
-  ],
+  ]),
   editor: lexicalEditor(),
-  globals: [SiteSettings],
+  globals: localizeAdminGlobals([SiteSettings]),
+  i18n: {
+    fallbackLanguage: 'zh',
+    supportedLanguages: { zh, en },
+  },
   localization: {
     defaultLocale: 'en',
     fallback: true,
