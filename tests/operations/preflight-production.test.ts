@@ -82,4 +82,22 @@ describe('production environment preflight', () => {
     expect(tagResult.status).not.toBe(0)
     expect(tagResult.stderr).toContain('IMAGE_TAG')
   })
+
+  it('rejects malformed optional reasoning configuration', () => {
+    const invalidSwitch = runPreflight(`${productionEnvironment}AI_REASONING_ENABLED=sometimes\n`)
+    const invalidEffort = runPreflight(`${productionEnvironment}AI_REASONING_EFFORT=ultra\n`)
+
+    expect(invalidSwitch.status).not.toBe(0)
+    expect(invalidSwitch.stderr).toContain('AI_REASONING_ENABLED')
+    expect(invalidEffort.status).not.toBe(0)
+    expect(invalidEffort.stderr).toContain('AI_REASONING_EFFORT')
+  })
+
+  it('accepts a supported optional reasoning configuration', () => {
+    const result = runPreflight(
+      `${productionEnvironment}AI_REASONING_ENABLED=true\nAI_REASONING_EFFORT=high\n`,
+    )
+
+    expect(result.status).toBe(0)
+  })
 })

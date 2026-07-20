@@ -47,11 +47,32 @@ export type AiTokenUsage = {
   totalTokens: number
 }
 
+/**
+ * OpenAI Responses reasoning effort values. Individual compatible providers and
+ * models can support a subset; the deployment selects the value, never a visitor.
+ */
+export const AI_REASONING_EFFORTS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const
+
+export type AiReasoningEffort = (typeof AI_REASONING_EFFORTS)[number]
+
+export type AiReasoning = {
+  effort: AiReasoningEffort
+}
+
 export type ProviderGenerateTextInput = {
   input: string
   instructions?: string
   maxOutputTokens?: number
   model: string
+  reasoning?: AiReasoning
   signal?: AbortSignal
 }
 
@@ -98,6 +119,7 @@ export type AiUsageRecord = {
 }
 
 type GatewayOptions = {
+  defaultReasoning?: AiReasoning
   models: { embedding: string; text: string }
   onUsage?: (record: AiUsageRecord) => Promise<void> | void
   onUsageError?: (error: unknown, record: AiUsageRecord) => Promise<void> | void
@@ -236,11 +258,12 @@ export const createAiGateway = (options: GatewayOptions) => ({
       throw new AiGatewayError('invalid_request', 'Text generation input is required')
     }
     const model = input.model ?? options.models.text
+    const reasoning = input.reasoning ?? options.defaultReasoning
     const startedAt = Date.now()
 
     try {
       const result = await withTimeout(options.timeouts?.generateTextMs ?? 30_000, (signal) =>
-        options.provider.generateText({ ...input, model, signal }),
+        options.provider.generateText({ ...input, model, reasoning, signal }),
       )
       if (!result.text.trim()) {
         throw new AiGatewayError('invalid_response', 'AI provider returned empty text')

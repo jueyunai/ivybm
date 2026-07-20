@@ -119,6 +119,10 @@ describe('production Compose configuration', () => {
     expect(config.services.app.mem_limit).toBe('805306368')
     expect(config.services.worker.mem_limit).toBe('402653184')
     expect(config.services.db.mem_limit).toBe('805306368')
+    expect(config.services.app.environment).toMatchObject({
+      AI_REASONING_EFFORT: 'medium',
+      AI_REASONING_ENABLED: 'false',
+    })
     expect(config.services.app.healthcheck?.test?.join(' ')).toContain('/api/health/ready')
 
     for (const service of ['app', 'db', 'migrate', 'worker']) {

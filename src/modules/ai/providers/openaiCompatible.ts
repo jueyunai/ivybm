@@ -123,6 +123,7 @@ export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProv
           instructions: input.instructions,
           max_output_tokens: input.maxOutputTokens,
           model: input.model,
+          ...(input.reasoning ? { reasoning: input.reasoning } : {}),
           store: false,
         }),
         headers,

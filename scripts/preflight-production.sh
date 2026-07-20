@@ -35,6 +35,21 @@ read_env_value() {
   printf '%s' "$value"
 }
 
+read_optional_env_value() {
+  local key="$1"
+  local line
+  local value
+
+  line="$(grep -E "^[[:space:]]*${key}=" "$env_file" | tail -n 1 || true)"
+  if [[ -z "$line" ]]; then
+    return 0
+  fi
+
+  value="${line#*=}"
+  value="${value%$'\r'}"
+  printf '%s' "$value"
+}
+
 require_pattern() {
   local key="$1"
   local value="$2"
@@ -57,6 +72,8 @@ database_url="$(read_env_value DATABASE_URL)"
 payload_secret="$(read_env_value PAYLOAD_SECRET)"
 public_url="$(read_env_value NEXT_PUBLIC_SERVER_URL)"
 trust_proxy_headers="$(read_env_value TRUST_PROXY_HEADERS)"
+reasoning_enabled="$(read_optional_env_value AI_REASONING_ENABLED)"
+reasoning_effort="$(read_optional_env_value AI_REASONING_EFFORT)"
 
 for key in POSTGRES_DB POSTGRES_USER AI_PROVIDER_BASE_URL AI_PROVIDER_API_KEY AI_TEXT_MODEL AI_EMBEDDING_MODEL; do
   read_env_value "$key" >/dev/null
@@ -97,6 +114,19 @@ if [[ "$trust_proxy_headers" != 'true' ]]; then
   echo 'TRUST_PROXY_HEADERS must be true behind the sole OpenResty ingress' >&2
   exit 1
 fi
+
+if [[ -n "$reasoning_enabled" && "$reasoning_enabled" != 'true' && "$reasoning_enabled" != 'false' ]]; then
+  echo 'AI_REASONING_ENABLED must be true or false when set' >&2
+  exit 1
+fi
+
+case "$reasoning_effort" in
+  ''|none|minimal|low|medium|high|xhigh|max) ;;
+  *)
+    echo 'AI_REASONING_EFFORT must be one of none, minimal, low, medium, high, xhigh or max when set' >&2
+    exit 1
+    ;;
+esac
 
 if grep -Eq '^[[:space:]]*SEED_ADMIN_(EMAIL|PASSWORD)=' "$env_file"; then
   echo 'Production environment must not contain demo seed credentials' >&2

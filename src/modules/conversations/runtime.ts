@@ -3,6 +3,7 @@ import { getPayload, type Payload } from 'payload'
 
 import config from '@/payload.config'
 import type { User } from '@/payload-types'
+import { readAIConfiguration } from '@/modules/ai/config'
 import { createAiGateway } from '@/modules/ai/gateway'
 import { createOpenAICompatibleProvider } from '@/modules/ai/providers/openaiCompatible'
 import { retrieveKnowledgeForQuery } from '@/modules/knowledge/retrieve'
@@ -21,16 +22,14 @@ export const getChatPayload = (): Promise<Payload> => {
 }
 
 const requiredAIConfig = () => {
-  const apiKey = process.env.AI_PROVIDER_API_KEY
-  const baseURL = process.env.AI_PROVIDER_BASE_URL
-  const embedding = process.env.AI_EMBEDDING_MODEL
-  const text = process.env.AI_TEXT_MODEL
-  if (!apiKey || !baseURL || !embedding || !text) {
+  try {
+    return readAIConfiguration()
+  } catch (error) {
     throw new ChatServiceError('ai_unavailable', 'AI service is not configured', {
+      cause: error,
       retryable: true,
     })
   }
-  return { apiKey, baseURL, embedding, text }
 }
 
 type ChatRuntimeOptions = {
@@ -43,6 +42,7 @@ export const createPayloadChatService = async (options: ChatRuntimeOptions = {})
   const getGateway = () => {
     const ai = requiredAIConfig()
     return createAiGateway({
+      defaultReasoning: ai.reasoning,
       models: { embedding: ai.embedding, text: ai.text },
       provider: createOpenAICompatibleProvider({ apiKey: ai.apiKey, baseURL: ai.baseURL }),
       timeouts: {
