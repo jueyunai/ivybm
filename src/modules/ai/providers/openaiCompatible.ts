@@ -99,6 +99,8 @@ const requestJSON = async (
   return { body, requestId: response.headers.get('x-request-id') ?? undefined }
 }
 
+export type OpenAICompatibleProviderOptions = ProviderOptions
+
 export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProvider => {
   if (!options.apiKey) throw new Error('AI provider API key is required')
 
@@ -125,6 +127,8 @@ export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProv
           model: input.model,
           ...(input.reasoning ? { reasoning: input.reasoning } : {}),
           store: false,
+          temperature: input.temperature,
+          top_p: input.topP,
         }),
         headers,
         method: 'POST',

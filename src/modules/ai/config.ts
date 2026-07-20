@@ -2,6 +2,16 @@ import { AI_REASONING_EFFORTS, type AiReasoning, type AiReasoningEffort } from '
 
 type Environment = Readonly<Record<string, string | undefined>>
 
+export type AiConfigurationOperation = 'text' | 'embedding'
+
+export type AiOperationConfiguration = {
+  apiKey: string
+  baseURL: string
+  model: string
+  reasoning?: AiReasoning
+  timeoutMs: number
+}
+
 export type AIConfiguration = {
   apiKey: string
   baseURL: string
@@ -23,14 +33,29 @@ const requiredValue = (environment: Environment, key: string): string => {
   return value
 }
 
+const optionalValue = (environment: Environment, key: string): string | undefined => {
+  const value = environment[key]?.trim()
+  return value || undefined
+}
+
 const isReasoningEffort = (value: string): value is AiReasoningEffort =>
   AI_REASONING_EFFORTS.some((effort) => effort === value)
 
-/**
- * Parse server-only AI configuration once per gateway construction. Keeping this
- * separate from request data prevents visitors from choosing models or reasoning.
- */
-export const readAIConfiguration = (environment: Environment = process.env): AIConfiguration => {
+const operationModelKey = (operation: AiConfigurationOperation): string =>
+  operation === 'text' ? 'AI_TEXT_MODEL' : 'AI_EMBEDDING_MODEL'
+
+const operationTimeout = (
+  operation: AiConfigurationOperation,
+  environment: Environment,
+): number => {
+  const fallback = operation === 'text' ? 30_000 : 15_000
+  const value = Number(
+    environment[operation === 'text' ? 'AI_TEXT_TIMEOUT_MS' : 'AI_EMBEDDING_TIMEOUT_MS'],
+  )
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+const parseTextReasoning = (environment: Environment): AiReasoning | undefined => {
   const enabled = (environment.AI_REASONING_ENABLED ?? 'false').trim()
   if (enabled !== 'true' && enabled !== 'false') {
     throw new AiConfigurationError('AI_REASONING_ENABLED must be true or false')
@@ -42,11 +67,57 @@ export const readAIConfiguration = (environment: Environment = process.env): AIC
     throw new AiConfigurationError('AI_REASONING_EFFORT is not supported')
   }
 
+  return enabled === 'true' ? { effort } : undefined
+}
+
+/**
+ * Resolve one optional environment fallback operation. All values for an
+ * operation must be absent or present, so a partial legacy configuration
+ * cannot result in a request being sent to an unintended endpoint.
+ */
+export const readAIConfigurationOperation = (
+  operation: AiConfigurationOperation,
+  environment: Environment = process.env,
+): AiOperationConfiguration | undefined => {
+  const keys = [
+    'AI_PROVIDER_API_KEY',
+    'AI_PROVIDER_BASE_URL',
+    operationModelKey(operation),
+  ] as const
+  const values = keys.map((key) => optionalValue(environment, key))
+
+  if (values.every((value) => value === undefined)) {
+    return undefined
+  }
+
+  for (const key of keys) {
+    requiredValue(environment, key)
+  }
+
   return {
     apiKey: requiredValue(environment, 'AI_PROVIDER_API_KEY'),
     baseURL: requiredValue(environment, 'AI_PROVIDER_BASE_URL'),
-    embedding: requiredValue(environment, 'AI_EMBEDDING_MODEL'),
-    reasoning: enabled === 'true' ? { effort } : undefined,
-    text: requiredValue(environment, 'AI_TEXT_MODEL'),
+    model: requiredValue(environment, operationModelKey(operation)),
+    ...(operation === 'text' ? { reasoning: parseTextReasoning(environment) } : {}),
+    timeoutMs: operationTimeout(operation, environment),
+  }
+}
+
+/**
+ * Parse server-only AI configuration once per gateway construction. Keeping this
+ * separate from request data prevents visitors from choosing models or reasoning.
+ */
+export const readAIConfiguration = (environment: Environment = process.env): AIConfiguration => {
+  const text = readAIConfigurationOperation('text', environment)
+  const embedding = readAIConfigurationOperation('embedding', environment)
+  if (!text) requiredValue(environment, 'AI_TEXT_MODEL')
+  if (!embedding) requiredValue(environment, 'AI_EMBEDDING_MODEL')
+
+  return {
+    apiKey: text!.apiKey,
+    baseURL: text!.baseURL,
+    embedding: embedding!.model,
+    reasoning: text!.reasoning,
+    text: text!.model,
   }
 }

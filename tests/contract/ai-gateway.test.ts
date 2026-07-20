@@ -77,6 +77,63 @@ describe('AI gateway contract', () => {
     )
   })
 
+  it('uses separately configured providers for text and embedding operations', async () => {
+    const textProvider: AiProvider = {
+      ...fakeProvider,
+      name: 'text-provider',
+    }
+    const embeddingProvider: AiProvider = {
+      ...fakeProvider,
+      name: 'embedding-provider',
+    }
+    const gateway = createAiGateway({
+      models: { embedding: 'embedding-model', text: 'text-model' },
+      provider: fakeProvider,
+      providers: { embedding: embeddingProvider, text: textProvider },
+    })
+
+    const [generated, embedded] = await Promise.all([
+      gateway.generateText({ input: 'text request' }),
+      gateway.embed({ input: ['embedding request'] }),
+    ])
+
+    expect(generated.provider).toBe('text-provider')
+    expect(embedded.provider).toBe('embedding-provider')
+  })
+
+  it('applies per-operation model defaults and reports an absent operation as recoverable', async () => {
+    const generateText = vi.fn(fakeProvider.generateText)
+    const gateway = createAiGateway({
+      operations: {
+        text: {
+          defaultReasoning: { effort: 'medium' },
+          maxOutputTokens: 256,
+          model: 'profile-text-model',
+          provider: { ...fakeProvider, generateText },
+          temperature: 0.4,
+          timeoutMs: 20_000,
+          topP: 0.9,
+        },
+      },
+    })
+
+    await gateway.generateText({ input: 'profile defaults' })
+
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxOutputTokens: 256,
+        model: 'profile-text-model',
+        reasoning: { effort: 'medium' },
+        temperature: 0.4,
+        topP: 0.9,
+      }),
+    )
+    await expect(gateway.embed({ input: ['missing embedding route'] })).rejects.toMatchObject({
+      code: 'provider_unavailable',
+      retryable: true,
+    } satisfies Partial<AiGatewayError>)
+  })
+
   it('does not turn successful provider calls into failures when usage reporting fails', async () => {
     const provider = {
       ...fakeProvider,

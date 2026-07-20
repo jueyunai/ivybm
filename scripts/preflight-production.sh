@@ -72,10 +72,15 @@ database_url="$(read_env_value DATABASE_URL)"
 payload_secret="$(read_env_value PAYLOAD_SECRET)"
 public_url="$(read_env_value NEXT_PUBLIC_SERVER_URL)"
 trust_proxy_headers="$(read_env_value TRUST_PROXY_HEADERS)"
+ai_configuration_encryption_key="$(read_env_value AI_CONFIG_ENCRYPTION_KEY)"
 reasoning_enabled="$(read_optional_env_value AI_REASONING_ENABLED)"
 reasoning_effort="$(read_optional_env_value AI_REASONING_EFFORT)"
+ai_provider_base_url="$(read_optional_env_value AI_PROVIDER_BASE_URL)"
+ai_provider_api_key="$(read_optional_env_value AI_PROVIDER_API_KEY)"
+ai_text_model="$(read_optional_env_value AI_TEXT_MODEL)"
+ai_embedding_model="$(read_optional_env_value AI_EMBEDDING_MODEL)"
 
-for key in POSTGRES_DB POSTGRES_USER AI_PROVIDER_BASE_URL AI_PROVIDER_API_KEY AI_TEXT_MODEL AI_EMBEDDING_MODEL; do
+for key in POSTGRES_DB POSTGRES_USER; do
   read_env_value "$key" >/dev/null
 done
 
@@ -84,6 +89,7 @@ require_pattern RUNTIME_IMAGE "$runtime_image" '^ghcr\.io/[a-z0-9][a-z0-9._/-]*[
 require_pattern WORKER_IMAGE "$worker_image" '^ghcr\.io/[a-z0-9][a-z0-9._/-]*[a-z0-9]$'
 require_pattern RUNTIME_IMAGE_DIGEST "$runtime_digest" '^sha256:[0-9a-f]{64}$'
 require_pattern WORKER_IMAGE_DIGEST "$worker_digest" '^sha256:[0-9a-f]{64}$'
+require_pattern AI_CONFIG_ENCRYPTION_KEY "$ai_configuration_encryption_key" '^[a-fA-F0-9]{64}$'
 
 if [[ "$app_version" != "$image_tag" ]]; then
   echo 'APP_VERSION must match IMAGE_TAG for release traceability' >&2
@@ -112,6 +118,28 @@ fi
 
 if [[ "$trust_proxy_headers" != 'true' ]]; then
   echo 'TRUST_PROXY_HEADERS must be true behind the sole OpenResty ingress' >&2
+  exit 1
+fi
+
+for value in "$ai_provider_base_url" "$ai_provider_api_key" "$ai_text_model" "$ai_embedding_model"; do
+  if [[ -n "$value" ]]; then
+    if [[ "$value" == *'REPLACE_'* || "$value" == *'replace-with'* ]]; then
+      echo 'AI bootstrap variables must not use template placeholders' >&2
+      exit 1
+    fi
+  fi
+done
+if [[ -n "$ai_provider_base_url" && -z "$ai_provider_api_key" ]] || \
+  [[ -z "$ai_provider_base_url" && -n "$ai_provider_api_key" ]]; then
+  echo 'AI bootstrap endpoint and API key must be configured together' >&2
+  exit 1
+fi
+if [[ -z "$ai_provider_base_url" && ( -n "$ai_text_model" || -n "$ai_embedding_model" ) ]]; then
+  echo 'AI bootstrap models require an endpoint and API key' >&2
+  exit 1
+fi
+if [[ -n "$ai_provider_base_url" && -z "$ai_text_model" && -z "$ai_embedding_model" ]]; then
+  echo 'AI bootstrap endpoint and API key require a text or embedding model' >&2
   exit 1
 fi
 

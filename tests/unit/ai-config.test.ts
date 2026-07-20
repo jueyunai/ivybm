@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { AiConfigurationError, readAIConfiguration } from '@/modules/ai/config'
+import {
+  AiConfigurationError,
+  readAIConfiguration,
+  readAIConfigurationOperation,
+} from '@/modules/ai/config'
 
 const requiredEnvironment = {
   AI_EMBEDDING_MODEL: 'text-embedding-3-small',
@@ -36,6 +40,18 @@ describe('AI deployment configuration', () => {
     ).toThrow(AiConfigurationError)
     expect(() =>
       readAIConfiguration({ ...requiredEnvironment, AI_REASONING_EFFORT: 'ultra' }),
+    ).toThrow(AiConfigurationError)
+  })
+
+  it('allows each environment fallback operation to be absent while rejecting partial values', () => {
+    expect(readAIConfigurationOperation('text', {})).toBeUndefined()
+    expect(readAIConfigurationOperation('embedding', {})).toBeUndefined()
+
+    expect(() =>
+      readAIConfigurationOperation('text', {
+        AI_PROVIDER_BASE_URL: 'https://api.example.invalid/v1',
+        AI_TEXT_MODEL: 'gpt-5-mini',
+      }),
     ).toThrow(AiConfigurationError)
   })
 })

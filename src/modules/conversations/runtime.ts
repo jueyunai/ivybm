@@ -3,9 +3,8 @@ import { getPayload, type Payload } from 'payload'
 
 import config from '@/payload.config'
 import type { User } from '@/payload-types'
-import { readAIConfiguration } from '@/modules/ai/config'
-import { createAiGateway } from '@/modules/ai/gateway'
-import { createOpenAICompatibleProvider } from '@/modules/ai/providers/openaiCompatible'
+import { AI_USAGE_KEYS, resolveAiGateway } from '@/modules/ai/registry'
+import type { AiGateway } from '@/modules/ai/gateway'
 import { retrieveKnowledgeForQuery } from '@/modules/knowledge/retrieve'
 import { PayloadConversationLeadSink } from '@/modules/leads/conversationLeadSink'
 
@@ -21,17 +20,6 @@ export const getChatPayload = (): Promise<Payload> => {
   return payloadPromise
 }
 
-const requiredAIConfig = () => {
-  try {
-    return readAIConfiguration()
-  } catch (error) {
-    throw new ChatServiceError('ai_unavailable', 'AI service is not configured', {
-      cause: error,
-      retryable: true,
-    })
-  }
-}
-
 type ChatRuntimeOptions = {
   actor?: User
   sessionTokenHash?: string
@@ -39,20 +27,24 @@ type ChatRuntimeOptions = {
 
 export const createPayloadChatService = async (options: ChatRuntimeOptions = {}) => {
   const payload = await getChatPayload()
+  let gatewayPromise: Promise<AiGateway> | undefined
   const getGateway = () => {
-    const ai = requiredAIConfig()
-    return createAiGateway({
-      defaultReasoning: ai.reasoning,
-      models: { embedding: ai.embedding, text: ai.text },
-      provider: createOpenAICompatibleProvider({ apiKey: ai.apiKey, baseURL: ai.baseURL }),
-      timeouts: {
-        embedMs: Number(process.env.AI_EMBEDDING_TIMEOUT_MS) || 15_000,
-        generateTextMs: Number(process.env.AI_TEXT_TIMEOUT_MS) || 30_000,
-      },
+    gatewayPromise ??= resolveAiGateway({
+      payload,
+      routes: [
+        { operation: 'text', usageKey: AI_USAGE_KEYS.chatReply },
+        { operation: 'embedding', usageKey: AI_USAGE_KEYS.knowledgeEmbedding },
+      ],
+    }).catch((error) => {
+      throw new ChatServiceError('ai_unavailable', 'AI service is not configured', {
+        cause: error,
+        retryable: true,
+      })
     })
+    return gatewayPromise
   }
   const responder = createKnowledgeConversationResponder({
-    generateText: async (input) => getGateway().generateText(input),
+    generateText: async (input) => (await getGateway()).generateText(input),
     getPrompt: async (locale) => {
       const result = await payload.find({
         collection: 'prompt-templates',
@@ -73,7 +65,7 @@ export const createPayloadChatService = async (options: ChatRuntimeOptions = {})
     retrieve: async ({ locale, query }) =>
       retrieveKnowledgeForQuery({
         customerVisible: true,
-        gateway: getGateway(),
+        gateway: await getGateway(),
         locale,
         minScore: 0.2,
         pool: (payload.db as unknown as PostgresAdapter).pool,
