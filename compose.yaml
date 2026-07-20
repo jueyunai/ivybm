@@ -24,9 +24,7 @@ services:
         max-file: '5'
 
   worker:
-    build:
-      context: .
-      target: worker
+    image: ${WORKER_IMAGE:-ivybm-worker:local}
     command: ['pnpm', 'worker']
     restart: unless-stopped
     mem_limit: 512m

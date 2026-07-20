@@ -24,10 +24,11 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 FROM dependencies AS builder
 
 ARG NEXT_PUBLIC_SERVER_URL=http://localhost:3000
-ARG PAYLOAD_SECRET=build-only-secret-at-least-32-characters
 
 ENV NEXT_PUBLIC_SERVER_URL=$NEXT_PUBLIC_SERVER_URL
-ENV PAYLOAD_SECRET=$PAYLOAD_SECRET
+# Payload validates this value while Next generates static routes. It is not a
+# runtime secret and is deliberately scoped to the disposable builder stage.
+ENV PAYLOAD_SECRET=build-only-placeholder-not-a-runtime-secret
 
 COPY . .
 RUN mkdir -p public \

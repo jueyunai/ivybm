@@ -97,7 +97,7 @@ jobs:
       - name: ChatWidget browser E2E
         run: pnpm test:e2e -- tests/e2e/chat-handoff.spec.ts
 
-      - name: Build staging runtime image
+      - name: Build runtime image
         run: >-
           docker build
           --target runtime
@@ -107,7 +107,7 @@ jobs:
       - name: Build job worker image
         run: docker build --target worker --tag ivybm-worker:ci .
 
-      - name: Validate staging Compose configuration
+      - name: Validate local runtime Compose configuration
         env:
           # Config validation must satisfy required interpolation without exposing real AI credentials.
           AI_EMBEDDING_MODEL: ci-embedding-model
@@ -116,10 +116,13 @@ jobs:
           AI_TEXT_MODEL: ci-text-model
           APP_VERSION: ci
           DATABASE_URL: postgres://postgres:postgres@db:5432/ivybm_ci
-          NEXT_PUBLIC_SERVER_URL: https://dev.ivybm.com
+          NEXT_PUBLIC_SERVER_URL: http://localhost:3000
           POSTGRES_DB: ivybm_ci
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
           SEED_ADMIN_EMAIL: admin@example.invalid
           SEED_ADMIN_PASSWORD: ci-demo-admin-password
         run: docker compose -f compose.yaml -f compose.staging.yaml config >/dev/null
+
+      - name: Validate production operations configuration
+        run: pnpm test:operations

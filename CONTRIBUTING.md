@@ -51,11 +51,11 @@ Payload / PostgreSQL 的 migration 按时间线性生成，两人各自本地生
 
 1. **接口 / 纯逻辑阶段**：允许使用 TypeScript port/interface、fake repository、mock 和官方结构 fixture 并行开发。Task 9 前端先使用 `ChatService` mock，Task 12 前端先使用 `PublishingService` mock；Task 13 在这一阶段可实现连接器接口、Webhook 验签、时间戳、事件幂等、payload 归一化和 Meta / WhatsApp mock；不创建临时 `Leads`、`Conversations`、`Messages`、`PublishJobs` 或 `PublishLogs`，不生成替代 migration。
 2. **数据库集成阶段**：必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`，再从最新 `origin/main` 更新分支并实现 adapter。Task 9 服务读写 Task 7 的 `Leads`；Task 13 会话侧读写 Task 9 的 `Conversations` / `Messages`，发布侧读写 Task 12 的 `PublishJobs` / `PublishLogs`。Task 13 的真实 Webhook 异步处理、发布执行、失败重试、dead job 和人工补偿还必须等待 Task 10 的 `Jobs` Collection、worker、migration、Payload 注册和生成类型合并；纯连接器和 fixture 测试不依赖 Task 10。
-3. **外部平台联调阶段**：需要甲方账号资产、平台授权或 staging 环境。条件满足时实测 Webhook、入站消息和测试发布；条件缺失时以 fixture 契约测试、模拟记录、配置说明和阻塞证据按 P1 / P2 口径验收。fixture / mock 通过只代表接口契约完成，不得据此把平台标记为 `available`。
+3. **外部平台联调阶段**：需要甲方账号资产、平台授权和 production 的受控发布窗口。条件满足时实测 Webhook、入站消息和测试发布；条件缺失时以 fixture 契约测试、模拟记录、配置说明和阻塞证据按 P1 / P2 口径验收。fixture / mock 通过只代表接口契约完成，不得据此把平台标记为 `available`。
 
 ## 发布
 
-CI/CD 与发布回滚流程见架构文档 [16.8 节](docs/architecture/一期技术选型与部署架构规划.md#L523)：CI 构建镜像 → staging 验证 → 人工批准 → production。协作分工不改变这部分设计，production 发布审批人固定为 jueyunai；一期上线验收仍需两人共同确认，不适用负责人自检合并规则。
+CI/CD 与发布回滚流程见架构文档 [16.8 节](docs/architecture/一期技术选型与部署架构规划.md#L543)：CI 构建并推送 SHA tag + digest 镜像 → 负责人通过 1Panel 手动 pull / redeploy production → 健康检查与 smoke test。协作分工不改变这部分设计，production 发布审批人固定为 jueyunai；一期上线验收仍需两人共同确认，不适用负责人自检合并规则。
 
 ## 分工速查
 
