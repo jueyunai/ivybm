@@ -138,14 +138,10 @@ const profileBeforeChange: CollectionBeforeChangeHook = async ({ data, originalD
       'parameters.reasoningEnabled',
     )
   }
-  if (
-    parameters.dimensions !== undefined &&
-    parameters.dimensions !== null &&
-    !isIntegerInRange(parameters.dimensions, 1, 16_384)
-  ) {
+  if (!isIntegerInRange(parameters.dimensions, 1, 16_384)) {
     throw validationError(
       req,
-      'Embedding dimensions must be an integer between 1 and 16384',
+      'Embedding models require fixed dimensions between 1 and 16384',
       'parameters.dimensions',
     )
   }
@@ -260,6 +256,8 @@ export const AiModelProfiles: CollectionConfig = {
           type: 'number',
           admin: {
             condition: (data) => data.capability === 'embedding',
+            description:
+              'Required fixed output dimensions. Provider responses with a different size are rejected.',
           },
           max: 16_384,
           min: 1,

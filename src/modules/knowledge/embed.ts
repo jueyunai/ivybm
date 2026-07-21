@@ -177,15 +177,41 @@ export const indexKnowledgeDocument = async ({
   validateLimits(limits)
   assertNotAborted(signal)
   const claim = await pool.query<{ updated_at: Date }>(
-    `UPDATE knowledge_documents
+    `UPDATE knowledge_documents AS document
         SET index_status = 'processing',
             indexed_at = NULL,
+            index_job_id = $2,
+            index_owner_token = $3,
             updated_at = clock_timestamp()
-      WHERE id = $1
-        AND review_status = 'reviewed'
-        AND index_status <> 'processing'
+      WHERE document.id = $1
+        AND document.review_status = 'reviewed'
+        AND (
+          $2::integer IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM jobs AS current_job
+            WHERE current_job.id = $2
+              AND current_job.owner_token = $3
+              AND current_job.status = 'processing'
+              AND current_job.lease_expires_at > NOW()
+          )
+        )
+        AND (
+          document.index_status <> 'processing'
+          OR (
+            $2::integer IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM jobs AS previous_job
+              WHERE previous_job.id = document.index_job_id
+                AND previous_job.owner_token = document.index_owner_token
+                AND previous_job.status = 'processing'
+                AND previous_job.lease_expires_at > NOW()
+            )
+          )
+        )
     RETURNING updated_at`,
-    [documentId],
+    [documentId, leaseFence?.jobId ?? null, leaseFence?.ownerToken ?? null],
   )
   if (claim.rowCount !== 1) {
     const current = await payload.findByID({
@@ -213,7 +239,10 @@ export const indexKnowledgeDocument = async ({
     if (
       document.reviewStatus !== 'reviewed' ||
       document.indexStatus !== 'processing' ||
-      new Date(document.updatedAt).getTime() !== claimToken.getTime()
+      new Date(document.updatedAt).getTime() !== claimToken.getTime() ||
+      (leaseFence !== undefined &&
+        (document.indexJobId !== leaseFence.jobId ||
+          document.indexOwnerToken !== leaseFence.ownerToken))
     ) {
       throw new Error('Knowledge document changed while it was being indexed')
     }
@@ -344,6 +373,8 @@ export const indexKnowledgeDocument = async ({
       `UPDATE knowledge_documents
           SET embedding_model = $1,
               embedding_space = $2,
+              index_job_id = NULL,
+              index_owner_token = NULL,
               indexed_at = NOW(),
               index_status = 'ready',
               updated_at = NOW()
@@ -352,14 +383,22 @@ export const indexKnowledgeDocument = async ({
           AND index_status = 'processing'
           AND updated_at = $4
           AND (
-            $5::integer IS NULL
-            OR EXISTS (
-              SELECT 1
-              FROM jobs
-              WHERE id = $5
-                AND owner_token = $6
-                AND status = 'processing'
-                AND lease_expires_at > NOW()
+            (
+              $5::integer IS NULL
+              AND index_job_id IS NULL
+              AND index_owner_token IS NULL
+            )
+            OR (
+              index_job_id = $5
+              AND index_owner_token = $6
+              AND EXISTS (
+                SELECT 1
+                FROM jobs
+                WHERE id = $5
+                  AND owner_token = $6
+                  AND status = 'processing'
+                  AND lease_expires_at > NOW()
+              )
             )
           )`,
       [
@@ -380,12 +419,33 @@ export const indexKnowledgeDocument = async ({
     await pool
       .query(
         `UPDATE knowledge_documents
-            SET index_status = 'failed', updated_at = NOW()
+            SET index_status = 'failed',
+                index_job_id = NULL,
+                index_owner_token = NULL,
+                updated_at = NOW()
           WHERE id = $1
             AND review_status = 'reviewed'
             AND index_status = 'processing'
-            AND updated_at = $2`,
-        [documentId, claimToken],
+            AND updated_at = $2
+            AND (
+              (
+                $3::integer IS NULL
+                AND index_job_id IS NULL
+                AND index_owner_token IS NULL
+              )
+              OR (
+                index_job_id = $3
+                AND index_owner_token = $4
+                AND EXISTS (
+                  SELECT 1
+                  FROM jobs
+                  WHERE id = $3
+                    AND owner_token = $4
+                    AND status = 'processing'
+                )
+              )
+            )`,
+        [documentId, claimToken, leaseFence?.jobId ?? null, leaseFence?.ownerToken ?? null],
       )
       .catch(() => undefined)
     throw error

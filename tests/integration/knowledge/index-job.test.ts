@@ -6,7 +6,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { getPayload, type Payload } from 'payload'
 
 import { POST as requestKnowledgeIndex } from '@/app/api/knowledge/documents/[id]/index/route'
-import { createAiGateway, type AiProvider } from '@/modules/ai/gateway'
+import {
+  createAiGateway,
+  createEmbeddingSpaceFingerprint,
+  type AiProvider,
+} from '@/modules/ai/gateway'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import { JobWorker } from '@/modules/jobs/worker'
 import {
@@ -449,7 +453,7 @@ describe.sequential('knowledge index job', () => {
         id: document.id,
         overrideAccess: true,
       }),
-    ).resolves.toMatchObject({ indexStatus: 'failed' })
+    ).resolves.toMatchObject({ indexStatus: 'processing' })
 
     const controller = new AbortController()
     await handler(reclaimed, {
@@ -458,6 +462,209 @@ describe.sequential('knowledge index job', () => {
       signal: controller.signal,
     })
     await queueB.complete(reclaimed)
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-documents',
+        id: document.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ indexStatus: 'ready' })
+    expect(embed).toHaveBeenCalledTimes(2)
+  })
+
+  it('marks a final-attempt failure after lease expiry instead of stranding processing', async () => {
+    const suffix = randomUUID()
+    const document = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'A final indexing attempt must leave an actionable failed document.',
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Expired failure knowledge ${suffix}`,
+        sourceType: 'faq',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(document.id)
+
+    let releaseEmbedding: (() => void) | undefined
+    let markEmbeddingStarted: (() => void) | undefined
+    const embeddingStarted = new Promise<void>((resolve) => {
+      markEmbeddingStarted = resolve
+    })
+    const blockedEmbedding = new Promise<void>((resolve) => {
+      releaseEmbedding = resolve
+    })
+    const fakeGateway = createAiGateway({
+      operations: {
+        embedding: {
+          dimensions: 3,
+          embeddingSpaceIdentity: 'openai-compatible:https://knowledge-provider.example.invalid/v1',
+          model: 'knowledge-test-embedding',
+          provider: {
+            embed: async () => {
+              markEmbeddingStarted?.()
+              await blockedEmbedding
+              throw new Error('final embedding attempt failed')
+            },
+            generateText: async () => {
+              throw new Error('Text generation is not used by knowledge indexing')
+            },
+            name: 'expired-failure-provider',
+          },
+        },
+      },
+    })
+    const created = await enqueueKnowledgeIndexJob({
+      documentId: document.id,
+      payload,
+      requestedBy: operator.id,
+      resolveGateway: async () => fakeGateway,
+    })
+    jobIDs.push(created.job.id)
+
+    const pool = (payload.db as unknown as PostgresAdapter).pool
+    await pool.query('UPDATE jobs SET max_attempts = 1 WHERE id = $1', [created.job.id])
+    const queue = new PayloadJobQueue({ leaseMs: 1_000, payload })
+    const claimed = await queue.claimNext()
+    if (!claimed) throw new Error('Expected the final indexing claim')
+    const handler = createKnowledgeIndexJobHandler({
+      payload,
+      resolveGateway: async () => fakeGateway,
+    })
+    const execution = handler(claimed, {
+      assertLease: () => undefined,
+      renewLease: () => queue.renew(claimed),
+      signal: new AbortController().signal,
+    })
+    await embeddingStarted
+    await pool.query(
+      "UPDATE jobs SET lease_expires_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+      [claimed.id],
+    )
+    releaseEmbedding?.()
+
+    await expect(execution).rejects.toThrow('AI provider request failed')
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-documents',
+        id: document.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ indexStatus: 'failed' })
+    await expect(
+      queue.fail({ error: new Error('final embedding attempt failed'), job: claimed }),
+    ).resolves.toMatchObject({ status: 'dead' })
+  })
+
+  it('reclaims a document left processing when the prior worker dies without cleanup', async () => {
+    const suffix = randomUUID()
+    const document = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'A reclaimed indexing lease must recover a document after process termination.',
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Crash recovery knowledge ${suffix}`,
+        sourceType: 'faq',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(document.id)
+
+    let releaseEmbedding: (() => void) | undefined
+    let markEmbeddingStarted: (() => void) | undefined
+    const embeddingStarted = new Promise<void>((resolve) => {
+      markEmbeddingStarted = resolve
+    })
+    const blockedEmbedding = new Promise<void>((resolve) => {
+      releaseEmbedding = resolve
+    })
+    const embed = vi
+      .fn<AiProvider['embed']>()
+      .mockImplementationOnce(async ({ input, model }) => {
+        markEmbeddingStarted?.()
+        await blockedEmbedding
+        return {
+          embeddings: input.map(() => [1, 0, 0]),
+          model,
+          usage: { inputTokens: input.length, totalTokens: input.length },
+        }
+      })
+      .mockImplementation(async ({ input, model }) => ({
+        embeddings: input.map(() => [0, 1, 0]),
+        model,
+        usage: { inputTokens: input.length, totalTokens: input.length },
+      }))
+    const fakeGateway = createAiGateway({
+      operations: {
+        embedding: {
+          dimensions: 3,
+          embeddingSpaceIdentity: 'openai-compatible:https://knowledge-provider.example.invalid/v1',
+          model: 'knowledge-test-embedding',
+          provider: {
+            embed,
+            generateText: async () => {
+              throw new Error('Text generation is not used by knowledge indexing')
+            },
+            name: 'crash-recovery-provider',
+          },
+        },
+      },
+    })
+    const created = await enqueueKnowledgeIndexJob({
+      documentId: document.id,
+      payload,
+      requestedBy: operator.id,
+      resolveGateway: async () => fakeGateway,
+    })
+    jobIDs.push(created.job.id)
+
+    let now = new Date(Date.now() + 2_000)
+    const queueA = new PayloadJobQueue({ clock: () => now, leaseMs: 1_000, payload })
+    const queueB = new PayloadJobQueue({ clock: () => now, leaseMs: 1_000, payload })
+    const first = await queueA.claimNext()
+    if (!first) throw new Error('Expected the first indexing claim')
+    const handler = createKnowledgeIndexJobHandler({
+      payload,
+      resolveGateway: async () => fakeGateway,
+    })
+    const firstController = new AbortController()
+    const firstExecution = handler(first, {
+      assertLease: () => undefined,
+      renewLease: () => queueA.renew(first),
+      signal: firstController.signal,
+    })
+    await embeddingStarted
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-documents',
+        id: document.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ indexStatus: 'processing' })
+
+    now = new Date(now.getTime() + 1_001)
+    const reclaimed = await queueB.claimNext()
+    if (!reclaimed) throw new Error('Expected the indexing job lease to be reclaimed')
+
+    try {
+      await handler(reclaimed, {
+        assertLease: () => undefined,
+        renewLease: () => queueB.renew(reclaimed),
+        signal: new AbortController().signal,
+      })
+      await queueB.complete(reclaimed)
+    } finally {
+      firstController.abort(new Error('simulated worker process termination'))
+      releaseEmbedding?.()
+      await firstExecution.catch(() => undefined)
+    }
+
     await expect(
       payload.findByID({
         collection: 'knowledge-documents',
@@ -500,22 +707,29 @@ describe.sequential('knowledge index job', () => {
       overrideAccess: true,
     })
     const pool = (payload.db as unknown as PostgresAdapter).pool
+    const legacyEmbeddingSpace = createEmbeddingSpaceFingerprint(
+      'openai-compatible:https://knowledge-provider.example.invalid/v1',
+      'knowledge-test-embedding',
+      'provider-default',
+      'knowledge-test-embedding',
+      3,
+    )
     await pool.query(
       `UPDATE knowledge_chunks
           SET embedding_vector = $1::vector,
               embedding_model = $2,
               embedding_dimensions = 3,
-              embedding_space = NULL
-        WHERE id = $3`,
-      ['[1,0,0]', 'knowledge-test-embedding', chunk.id],
+              embedding_space = $3
+        WHERE id = $4`,
+      ['[1,0,0]', 'knowledge-test-embedding', legacyEmbeddingSpace, chunk.id],
     )
     await pool.query(
       `UPDATE knowledge_documents
           SET index_status = 'ready',
               embedding_model = $1,
-              embedding_space = NULL
-        WHERE id = $2`,
-      ['knowledge-test-embedding', document.id],
+              embedding_space = $2
+        WHERE id = $3`,
+      ['knowledge-test-embedding', legacyEmbeddingSpace, document.id],
     )
 
     const fakeGateway = createAiGateway({
@@ -540,6 +754,7 @@ describe.sequential('knowledge index job', () => {
     })
     const probe = await fakeGateway.embed({ input: ['probe'] })
     if (!probe.embeddingSpace) throw new Error('Expected the gateway embedding space')
+    expect(fakeGateway.embeddingConfigurationKey).toBe(probe.embeddingSpace)
     await expect(
       retrieveKnowledge({
         customerVisible: true,

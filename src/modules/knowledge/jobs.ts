@@ -198,7 +198,12 @@ export const enqueueLegacyKnowledgeRebuilds = async ({
         and: [
           { reviewStatus: { equals: 'reviewed' } },
           { indexStatus: { equals: 'ready' } },
-          { embeddingSpace: { exists: false } },
+          {
+            or: [
+              { embeddingSpace: { exists: false } },
+              { embeddingSpace: { not_equals: embeddingConfigurationKey } },
+            ],
+          },
         ],
       },
     })

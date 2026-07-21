@@ -130,6 +130,7 @@ describe('AI control-plane registry', () => {
     const gateway = await resolveAiGateway({
       createProvider: createFakeProvider(calls),
       environment: {
+        AI_EMBEDDING_DIMENSIONS: '3',
         AI_EMBEDDING_MODEL: 'environment-embedding-model',
         AI_PROVIDER_API_KEY: 'environment-api-key',
         AI_PROVIDER_BASE_URL: 'https://environment.example.invalid/v1',
@@ -144,6 +145,7 @@ describe('AI control-plane registry', () => {
 
     await gateway.generateText({ input: 'Fallback text' })
     await gateway.embed({ input: ['Fallback embedding'] })
+    expect(gateway.embeddingConfigurationKey).toBeTypeOf('string')
 
     expect(calls).toEqual(
       expect.arrayContaining([
@@ -195,6 +197,7 @@ describe('AI control-plane registry', () => {
       resolveAiGateway({
         createProvider,
         environment: {
+          AI_EMBEDDING_DIMENSIONS: '3',
           AI_EMBEDDING_MODEL: 'environment-embedding-model',
           AI_PROVIDER_API_KEY: 'environment-api-key',
           AI_PROVIDER_BASE_URL: 'https://environment.example.invalid/v1',

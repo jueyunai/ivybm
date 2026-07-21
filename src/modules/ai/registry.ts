@@ -181,8 +181,19 @@ const resolveCmsRoute = (
       throw routeConfigurationError(request.usageKey, 'contains text-only sampling settings')
     }
 
+    const dimensions = optionalNumber(
+      parameters.dimensions,
+      'embedding dimensions',
+      1,
+      16_384,
+      true,
+    )
+    if (dimensions === undefined) {
+      throw routeConfigurationError(request.usageKey, 'requires fixed embedding dimensions')
+    }
+
     return {
-      dimensions: optionalNumber(parameters.dimensions, 'embedding dimensions', 1, 16_384, true),
+      dimensions,
       embeddingSpaceIdentity: embeddingSpaceIdentity(baseURL),
       model,
       provider: resolvedProvider,
@@ -246,6 +257,7 @@ const resolveEnvironmentRoute = (
   }
 
   return {
+    dimensions: fallback.dimensions,
     embeddingSpaceIdentity: embeddingSpaceIdentity(baseURL),
     model: fallback.model,
     provider,

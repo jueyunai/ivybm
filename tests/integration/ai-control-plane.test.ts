@@ -310,6 +310,7 @@ describe.sequential('AI control plane', () => {
         model: 'embedding-model',
         name: `Embedding model ${suffix}`,
         parameters: {
+          dimensions: 3,
           reasoningEffort: 'medium',
           reasoningEnabled: false,
           timeoutMs: 15_000,

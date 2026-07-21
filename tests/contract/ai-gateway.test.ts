@@ -128,8 +128,52 @@ describe('AI gateway contract', () => {
 
     expect(a.embeddingSpace).toBe(renamedA.embeddingSpace)
     expect(a.embeddingSpace).not.toBe(b.embeddingSpace)
+    expect(providerA.embeddingConfigurationKey).toBe(a.embeddingSpace)
     expect(providerA.embeddingConfigurationKey).toBe(renamedProviderA.embeddingConfigurationKey)
     expect(providerA.embeddingConfigurationKey).not.toBe(providerB.embeddingConfigurationKey)
+  })
+
+  it('fails closed when an embedding provider drifts from the configured model or dimensions', async () => {
+    const gatewayFor = (result: { dimensions: number; model: string }) =>
+      createAiGateway({
+        operations: {
+          embedding: {
+            dimensions: 3,
+            embeddingSpaceIdentity: 'openai-compatible:https://provider-drift.example.invalid/v1',
+            model: 'configured-embedding-model',
+            provider: {
+              ...fakeProvider,
+              embed: async ({ input }) => ({
+                embeddings: input.map(() => Array.from({ length: result.dimensions }, () => 1)),
+                model: result.model,
+                usage: { inputTokens: input.length, totalTokens: input.length },
+              }),
+            },
+          },
+        },
+      })
+
+    await expect(
+      gatewayFor({ dimensions: 3, model: 'provider-resolved-model-v2' }).embed({
+        input: ['model drift'],
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_response' } satisfies Partial<AiGatewayError>)
+    await expect(
+      gatewayFor({ dimensions: 4, model: 'configured-embedding-model' }).embed({
+        input: ['dimension drift'],
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_response' } satisfies Partial<AiGatewayError>)
+
+    const unfixedDimensions = createAiGateway({
+      operations: {
+        embedding: {
+          embeddingSpaceIdentity: 'openai-compatible:https://provider.example.invalid/v1',
+          model: 'configured-embedding-model',
+          provider: fakeProvider,
+        },
+      },
+    })
+    expect(unfixedDimensions.embeddingConfigurationKey).toBeUndefined()
   })
 
   it('applies per-operation model defaults and reports an absent operation as recoverable', async () => {

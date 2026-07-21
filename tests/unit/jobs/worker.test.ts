@@ -109,4 +109,20 @@ describe('JobWorker lease heartbeat', () => {
     await expect(worker.runOnce()).resolves.toBe('failed')
     expect(queue.fail).not.toHaveBeenCalled()
   })
+
+  it('treats an unknown-handler failure conflict as a fenced outcome', async () => {
+    const job = { ...claimedJob(), type: 'unknown.job' }
+    const queue = queueFor(job)
+    vi.mocked(queue.fail).mockRejectedValue(
+      new JobQueueError('conflict', 'lease was reclaimed before unknown handler failure'),
+    )
+    const worker = new JobWorker({
+      handlers: {},
+      heartbeatIntervalMs: 60_000,
+      queue,
+    })
+
+    await expect(worker.runOnce()).resolves.toBe('failed')
+    expect(queue.fail).toHaveBeenCalledTimes(1)
+  })
 })

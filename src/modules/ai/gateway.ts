@@ -314,11 +314,22 @@ export const createAiGateway = (options: GatewayOptions) => ({
     const operation = options.operations?.embedding
     const model = operation?.model ?? options.models?.embedding
     const provider = operation?.provider ?? options.providers?.embedding ?? options.provider
-    if (!model?.trim() || !provider) return undefined
+    const dimensions = operation?.dimensions
+    if (
+      !model?.trim() ||
+      !provider ||
+      typeof dimensions !== 'number' ||
+      !Number.isInteger(dimensions) ||
+      dimensions <= 0
+    ) {
+      return undefined
+    }
     return createEmbeddingSpaceFingerprint(
       operation?.embeddingSpaceIdentity ?? `provider-name:${provider.name}`,
       model,
-      operation?.dimensions ?? 'provider-default',
+      dimensions,
+      model,
+      dimensions,
     )
   })(),
   embed: async (input: AiGatewayEmbedInput): Promise<AiGatewayEmbedResult> => {
@@ -333,12 +344,13 @@ export const createAiGateway = (options: GatewayOptions) => ({
     const startedAt = Date.now()
 
     try {
+      const configuredDimensions = operation?.dimensions ?? input.dimensions
       const result = await withTimeout(
         operation?.timeoutMs ?? options.timeouts?.embedMs ?? 15_000,
         (signal) =>
           provider.embed({
             ...input,
-            dimensions: input.dimensions ?? operation?.dimensions,
+            dimensions: configuredDimensions,
             input: input.input,
             model,
             signal,
@@ -348,10 +360,22 @@ export const createAiGateway = (options: GatewayOptions) => ({
       validateUsage(result.usage)
       validateEmbeddings(result.embeddings, input.input.length)
       const dimensions = result.embeddings[0].length
+      if (result.model !== model) {
+        throw new AiGatewayError(
+          'invalid_response',
+          'AI provider returned a different embedding model than configured',
+        )
+      }
+      if (configuredDimensions !== undefined && dimensions !== configuredDimensions) {
+        throw new AiGatewayError(
+          'invalid_response',
+          'AI provider returned different embedding dimensions than configured',
+        )
+      }
       const embeddingSpace = createEmbeddingSpaceFingerprint(
         operation?.embeddingSpaceIdentity ?? `provider-name:${provider.name}`,
         model,
-        input.dimensions ?? operation?.dimensions ?? 'provider-default',
+        configuredDimensions ?? 'provider-default',
         result.model,
         dimensions,
       )

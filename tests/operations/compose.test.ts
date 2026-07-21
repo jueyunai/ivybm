@@ -73,6 +73,7 @@ const getLocalComposeConfig = (): ComposeConfig => {
       env: {
         ...process.env,
         AI_CONFIG_ENCRYPTION_KEY: 'd'.repeat(64),
+        AI_EMBEDDING_DIMENSIONS: '3',
         AI_EMBEDDING_MODEL: 'local-embedding-model',
         AI_PROVIDER_API_KEY: 'local-provider-key',
         AI_PROVIDER_BASE_URL: 'https://local-provider.example.invalid/v1',
@@ -170,6 +171,7 @@ describe('local Compose worker configuration', () => {
 
     expect(config.services.worker.environment).toMatchObject({
       AI_CONFIG_ENCRYPTION_KEY: 'd'.repeat(64),
+      AI_EMBEDDING_DIMENSIONS: '3',
       AI_EMBEDDING_MODEL: 'local-embedding-model',
       AI_PROVIDER_API_KEY: 'local-provider-key',
       AI_PROVIDER_BASE_URL: 'https://local-provider.example.invalid/v1',

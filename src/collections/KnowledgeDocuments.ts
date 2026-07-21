@@ -22,6 +22,8 @@ const reviewRelevantFields = [
 const systemManagedFields = [
   'embeddingModel',
   'embeddingSpace',
+  'indexJobId',
+  'indexOwnerToken',
   'indexedAt',
   'indexStatus',
   'reviewedAt',
@@ -70,6 +72,8 @@ const stampReview: CollectionBeforeChangeHook = ({ data, operation, originalDoc,
     data.indexedAt = null
     data.embeddingModel = null
     data.embeddingSpace = null
+    data.indexJobId = null
+    data.indexOwnerToken = null
   }
 
   return data
@@ -206,6 +210,26 @@ export const KnowledgeDocuments: CollectionConfig = {
       name: 'embeddingSpace',
       type: 'text',
       admin: { readOnly: true },
+    },
+    {
+      name: 'indexJobId',
+      type: 'number',
+      access: {
+        create: () => false,
+        read: () => false,
+        update: () => false,
+      },
+      admin: { hidden: true, readOnly: true },
+    },
+    {
+      name: 'indexOwnerToken',
+      type: 'text',
+      access: {
+        create: () => false,
+        read: () => false,
+        update: () => false,
+      },
+      admin: { hidden: true, readOnly: true },
     },
   ],
   hooks: {

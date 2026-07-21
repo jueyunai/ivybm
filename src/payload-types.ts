@@ -306,6 +306,9 @@ export interface AiModelProfile {
      * Optional nucleus-sampling top-p value, from 0 to 1.
      */
     topP?: number | null;
+    /**
+     * Required fixed output dimensions. Provider responses with a different size are rejected.
+     */
     dimensions?: number | null;
   };
   updatedAt: string;
@@ -652,6 +655,8 @@ export interface KnowledgeDocument {
   indexedAt?: string | null;
   embeddingModel?: string | null;
   embeddingSpace?: string | null;
+  indexJobId?: number | null;
+  indexOwnerToken?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -1383,6 +1388,8 @@ export interface KnowledgeDocumentsSelect<T extends boolean = true> {
   indexedAt?: T;
   embeddingModel?: T;
   embeddingSpace?: T;
+  indexJobId?: T;
+  indexOwnerToken?: T;
   updatedAt?: T;
   createdAt?: T;
 }

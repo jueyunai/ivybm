@@ -47,10 +47,14 @@ export class JobWorker {
 
     const handler = this.handlers[job.type]
     if (!handler) {
-      await this.queue.fail({
-        error: new Error(`No handler is registered for job type "${job.type}"`),
-        job,
-      })
+      try {
+        await this.queue.fail({
+          error: new Error(`No handler is registered for job type "${job.type}"`),
+          job,
+        })
+      } catch (error) {
+        if (!(error instanceof JobQueueError) || error.code !== 'conflict') throw error
+      }
       return 'failed'
     }
 

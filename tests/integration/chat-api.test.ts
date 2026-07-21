@@ -41,6 +41,7 @@ describe.sequential('chat HTTP API', () => {
     delete process.env.AI_PROVIDER_API_KEY
     delete process.env.AI_PROVIDER_BASE_URL
     delete process.env.AI_TEXT_MODEL
+    delete process.env.AI_EMBEDDING_DIMENSIONS
     delete process.env.AI_EMBEDDING_MODEL
     delete process.env.AI_CONFIG_ENCRYPTION_KEY
     delete process.env.AI_REASONING_ENABLED
@@ -367,6 +368,7 @@ describe.sequential('chat HTTP API', () => {
       gateway: createAiGateway({
         operations: {
           embedding: {
+            dimensions: 3,
             embeddingSpaceIdentity: 'openai-compatible:https://ai.example.invalid/v1',
             model: 'fake-embedding-model',
             provider: {
@@ -401,6 +403,7 @@ describe.sequential('chat HTTP API', () => {
     process.env.AI_PROVIDER_API_KEY = 'fixture-key'
     process.env.AI_PROVIDER_BASE_URL = 'https://ai.example.invalid/v1'
     process.env.AI_TEXT_MODEL = 'fake-text-model'
+    process.env.AI_EMBEDDING_DIMENSIONS = '3'
     process.env.AI_EMBEDDING_MODEL = 'fake-embedding-model'
     vi.stubGlobal(
       'fetch',
