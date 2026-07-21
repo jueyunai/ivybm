@@ -1,9 +1,12 @@
+import { createHash } from 'node:crypto'
+
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 
 import { resolveAiGateway, AI_USAGE_KEYS } from '@/modules/ai/registry'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
-import type { JobHandler, JobRecord } from '@/modules/jobs/contracts'
+import type { JobExecution, JobHandler, JobRecord } from '@/modules/jobs/contracts'
+import type { KnowledgeDocument } from '@/payload-types'
 
 import { indexKnowledgeDocument } from './embed'
 
@@ -21,10 +24,12 @@ export class KnowledgeIndexRequestError extends Error {
 
 export type KnowledgeIndexJobPayload = {
   documentId: number
-  documentUpdatedAt: string
+  documentRevision: string
   embeddingConfigurationKey: string
   requestedBy: number
 }
+
+export const KNOWLEDGE_INDEX_LEASE_RENEW_EVERY_PROGRESS_EVENTS = 25
 
 type ResolveKnowledgeGateway = typeof resolveAiGateway
 
@@ -43,11 +48,70 @@ const requiredString = (value: unknown, field: string): string => {
   return value
 }
 
+const relationshipID = (value: unknown): number | string | null => {
+  if (typeof value === 'number' || typeof value === 'string') return value
+  if (value && typeof value === 'object' && 'id' in value) {
+    const id = (value as { id?: unknown }).id
+    if (typeof id === 'number' || typeof id === 'string') return id
+  }
+  return null
+}
+
+export const createKnowledgeDocumentRevision = (
+  document: Pick<
+    KnowledgeDocument,
+    | 'content'
+    | 'customerVisible'
+    | 'locale'
+    | 'reviewStatus'
+    | 'reviewedAt'
+    | 'reviewedBy'
+    | 'sourceFile'
+    | 'sourceTitle'
+    | 'sourceType'
+    | 'sourceURL'
+    | 'sourceVersion'
+  >,
+): string =>
+  createHash('sha256')
+    .update(
+      JSON.stringify({
+        content: document.content,
+        customerVisible: document.customerVisible ?? false,
+        locale: document.locale,
+        reviewStatus: document.reviewStatus,
+        reviewedAt: document.reviewedAt ?? null,
+        reviewedBy: relationshipID(document.reviewedBy),
+        sourceFile: relationshipID(document.sourceFile),
+        sourceTitle: document.sourceTitle,
+        sourceType: document.sourceType,
+        sourceURL: document.sourceURL ?? null,
+        sourceVersion: document.sourceVersion,
+      }),
+    )
+    .digest('hex')
+
+export const createLeaseRenewalProgress = (
+  execution: JobExecution,
+  every = KNOWLEDGE_INDEX_LEASE_RENEW_EVERY_PROGRESS_EVENTS,
+): (() => Promise<void>) => {
+  if (!Number.isInteger(every) || every < 1) {
+    throw new RangeError('Knowledge index lease renewal interval must be a positive integer')
+  }
+  let progressEvents = 0
+  return async () => {
+    progressEvents += 1
+    if (progressEvents % every === 0) {
+      await execution.renewLease()
+    }
+  }
+}
+
 export const parseKnowledgeIndexJobPayload = (
   value: Record<string, unknown>,
 ): KnowledgeIndexJobPayload => ({
   documentId: positiveInteger(value.documentId, 'documentId'),
-  documentUpdatedAt: requiredString(value.documentUpdatedAt, 'documentUpdatedAt'),
+  documentRevision: requiredString(value.documentRevision, 'documentRevision'),
   embeddingConfigurationKey: requiredString(
     value.embeddingConfigurationKey,
     'embeddingConfigurationKey',
@@ -97,7 +161,7 @@ export const enqueueKnowledgeIndexJob = async ({
   }
   const jobPayload: KnowledgeIndexJobPayload = {
     documentId,
-    documentUpdatedAt: document.updatedAt,
+    documentRevision: createKnowledgeDocumentRevision(document),
     embeddingConfigurationKey,
     requestedBy,
   }
@@ -105,7 +169,7 @@ export const enqueueKnowledgeIndexJob = async ({
     idempotencyKey: [
       'knowledge-index',
       documentId,
-      document.updatedAt,
+      jobPayload.documentRevision,
       embeddingConfigurationKey,
     ].join(':'),
     payload: jobPayload,
@@ -128,7 +192,10 @@ export const createKnowledgeIndexJobHandler =
       id: input.documentId,
       overrideAccess: true,
     })
-    if (document.updatedAt !== input.documentUpdatedAt || document.reviewStatus !== 'reviewed') {
+    if (
+      document.reviewStatus !== 'reviewed' ||
+      createKnowledgeDocumentRevision(document) !== input.documentRevision
+    ) {
       return
     }
 
@@ -140,9 +207,7 @@ export const createKnowledgeIndexJobHandler =
     await indexKnowledgeDocument({
       documentId: input.documentId,
       gateway,
-      onEmbeddingBatchComplete: async () => {
-        await execution.renewLease()
-      },
+      onProgress: createLeaseRenewalProgress(execution),
       payload,
       pool: (payload.db as unknown as PostgresAdapter).pool,
     })

@@ -8,20 +8,24 @@ import { POST as requestKnowledgeIndex } from '@/app/api/knowledge/documents/[id
 import { createAiGateway, type AiProvider } from '@/modules/ai/gateway'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import { JobWorker } from '@/modules/jobs/worker'
-import { createKnowledgeIndexJobHandler, KNOWLEDGE_INDEX_JOB_TYPE } from '@/modules/knowledge/jobs'
+import {
+  createKnowledgeIndexJobHandler,
+  enqueueKnowledgeIndexJob,
+  KNOWLEDGE_INDEX_JOB_TYPE,
+} from '@/modules/knowledge/jobs'
 import config from '@/payload.config'
 import type { User } from '@/payload-types'
 
 let payload: Payload
 let operator: User
 let sales: User
-let documentID: number
 let providerID: number
 let profileID: number
 let routeID: number
 let originalEncryptionKey: string | undefined
 const userIDs: number[] = []
 const jobIDs: number[] = []
+const documentIDs: number[] = []
 
 const loginHeader = async (user: User, password: string): Promise<string> => {
   const login = await payload.login({
@@ -120,11 +124,11 @@ describe.sequential('knowledge index job', () => {
           where: { id: { in: jobIDs } },
         })
       }
-      if (documentID) {
+      if (documentIDs.length > 0) {
         await payload.delete({
           collection: 'knowledge-documents',
-          id: documentID,
           overrideAccess: true,
+          where: { id: { in: documentIDs } },
         })
       }
       for (const [collection, id] of [
@@ -166,7 +170,7 @@ describe.sequential('knowledge index job', () => {
       },
       overrideAccess: true,
     })
-    documentID = document.id
+    documentIDs.push(document.id)
 
     const salesAuthorization = await loginHeader(sales, 'knowledge-sales-password')
     const forbidden = await requestKnowledgeIndex(
@@ -251,5 +255,102 @@ describe.sequential('knowledge index job', () => {
     })
     expect(chunks.totalDocs).toBeGreaterThan(0)
     expect(chunks.docs.every((chunk) => chunk.embeddingSpace === ready.embeddingSpace)).toBe(true)
+
+    const duplicateAfterSuccess = await createRequest()
+    expect(duplicateAfterSuccess.status).toBe(200)
+    await expect(duplicateAfterSuccess.json()).resolves.toMatchObject({
+      jobId: createdBody.jobId,
+      state: 'duplicate',
+      status: 'succeeded',
+    })
+  })
+
+  it('retries a failed provider call using the stable reviewed-content revision', async () => {
+    const suffix = randomUUID()
+    const document = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'Retryable knowledge remains the same when only index status timestamps change.',
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Retry knowledge ${suffix}`,
+        sourceType: 'faq',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(document.id)
+
+    const embed = vi
+      .fn<AiProvider['embed']>()
+      .mockRejectedValueOnce(new Error('temporary embedding timeout'))
+      .mockImplementation(async ({ input, model }) => ({
+        embeddings: input.map(() => [1, 0, 0]),
+        model,
+        usage: { inputTokens: input.length, totalTokens: input.length },
+      }))
+    const fakeGateway = createAiGateway({
+      operations: {
+        embedding: {
+          dimensions: 3,
+          embeddingSpaceIdentity: 'openai-compatible:https://knowledge-provider.example.invalid/v1',
+          model: 'knowledge-test-embedding',
+          provider: {
+            embed,
+            generateText: async () => {
+              throw new Error('Text generation is not used by knowledge indexing')
+            },
+            name: 'retry-test-provider',
+          },
+        },
+      },
+    })
+    const created = await enqueueKnowledgeIndexJob({
+      documentId: document.id,
+      payload,
+      requestedBy: operator.id,
+      resolveGateway: async () => fakeGateway,
+    })
+    jobIDs.push(created.job.id)
+
+    let now = new Date(Date.now() + 100)
+    const queue = new PayloadJobQueue({ clock: () => now, payload })
+    const worker = new JobWorker({
+      handlers: {
+        [KNOWLEDGE_INDEX_JOB_TYPE]: createKnowledgeIndexJobHandler({
+          payload,
+          resolveGateway: async () => fakeGateway,
+        }),
+      },
+      queue,
+    })
+
+    await expect(worker.runOnce()).resolves.toBe('failed')
+    const failedDocument = await payload.findByID({
+      collection: 'knowledge-documents',
+      id: document.id,
+      overrideAccess: true,
+    })
+    expect(failedDocument.indexStatus).toBe('failed')
+
+    const duplicate = await enqueueKnowledgeIndexJob({
+      documentId: document.id,
+      payload,
+      requestedBy: operator.id,
+      resolveGateway: async () => fakeGateway,
+    })
+    expect(duplicate).toMatchObject({ job: { id: created.job.id }, state: 'duplicate' })
+
+    now = new Date(now.getTime() + 2_000)
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+    expect(embed).toHaveBeenCalledTimes(2)
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-documents',
+        id: document.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ indexStatus: 'ready' })
   })
 })

@@ -31,7 +31,7 @@ type IndexKnowledgeDocumentInput = {
   documentId: number | string
   gateway: KnowledgeEmbeddingGateway
   limits?: Partial<KnowledgeIndexLimits>
-  onEmbeddingBatchComplete?: () => Promise<void>
+  onProgress?: () => Promise<void>
   payload: Payload
   pool: KnowledgePool
 }
@@ -95,6 +95,7 @@ const findAllDocumentChunks = async (
   payload: Payload,
   documentId: number | string,
   pageSize: number,
+  onProgress?: () => Promise<void>,
 ): Promise<KnowledgeChunkRecord[]> => {
   const chunks: KnowledgeChunkRecord[] = []
   let page = 1
@@ -109,6 +110,7 @@ const findAllDocumentChunks = async (
       where: { document: { equals: documentId } },
     })
     chunks.push(...result.docs)
+    await onProgress?.()
     if (!result.hasNextPage) return chunks
     page += 1
   }
@@ -151,7 +153,7 @@ export const indexKnowledgeDocument = async ({
   documentId,
   gateway,
   limits: limitOverrides,
-  onEmbeddingBatchComplete,
+  onProgress,
   payload,
   pool,
 }: IndexKnowledgeDocumentInput): Promise<{
@@ -258,13 +260,18 @@ export const indexKnowledgeDocument = async ({
       embeddingDimensions = batchDimensions
       embeddingSpace = batchEmbeddingSpace
       embeddings.push(...embedded.embeddings)
-      await onEmbeddingBatchComplete?.()
+      await onProgress?.()
     }
     if (!embeddingModel || !embeddingSpace) {
       throw new Error('Knowledge document produced no embeddings')
     }
 
-    const existing = await findAllDocumentChunks(payload, document.id, limits.existingChunkPageSize)
+    const existing = await findAllDocumentChunks(
+      payload,
+      document.id,
+      limits.existingChunkPageSize,
+      onProgress,
+    )
     const existingByStableID = new Map(existing.map((chunk) => [chunk.stableId, chunk]))
     const activeIDs = new Set<number | string>()
 
@@ -301,6 +308,7 @@ export const indexKnowledgeDocument = async ({
         model: embeddingModel,
         pool,
       })
+      await onProgress?.()
     }
 
     const staleIDs = existing.filter((chunk) => !activeIDs.has(chunk.id)).map((chunk) => chunk.id)
