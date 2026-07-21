@@ -1,6 +1,12 @@
-export type PlatformFamily = 'meta'
+export type PlatformFamily = 'linkedin' | 'meta' | 'tiktok'
 
-export type MessagingPlatform = 'facebook-messenger' | 'instagram' | 'whatsapp'
+export type MessagingPlatform = 'facebook-messenger' | 'instagram' | 'tiktok'
+
+export type PublishingPlatform = 'facebook' | 'instagram' | 'linkedin'
+
+export type PlatformAvailability = 'available' | 'blocked' | 'conditional'
+
+export type PublishingMode = 'assisted' | 'automatic'
 
 export type NormalizedAttachment = {
   caption?: string
@@ -43,6 +49,49 @@ export type NormalizedMessageStatus = NormalizedEventBase & {
 }
 
 export type NormalizedPlatformEvent = NormalizedInboundMessage | NormalizedMessageStatus
+
+export type PublicationAsset = {
+  fileName: string
+  id: string
+  mimeType: string
+  sourceUrl?: string
+}
+
+export type PlatformCapability = {
+  availability: PlatformAvailability
+  modes: PublishingMode[]
+  platform: PublishingPlatform
+  reason?: string
+}
+
+export type PlatformPublishRequest = {
+  assets: PublicationAsset[]
+  idempotencyKey: string
+  platform: PublishingPlatform
+  scheduledFor?: string
+  text: string
+}
+
+export type PlatformPublishAcceptance = {
+  idempotencyKey: string
+  platform: PublishingPlatform
+  status: 'accepted' | 'blocked'
+}
+
+export type PlatformPublicationStatus = {
+  errorCode?: string
+  externalPublicationId?: string
+  platform: PublishingPlatform
+  status: 'failed' | 'pending' | 'published' | 'publishing'
+}
+
+export type AssistedPublicationExport = {
+  assets: PublicationAsset[]
+  checklist: string[]
+  copyText: string
+  mode: 'assisted'
+  platform: 'linkedin'
+}
 
 export const platformEventKey = (platform: MessagingPlatform, externalEventId: string): string => {
   if (!externalEventId.trim()) throw new Error('Platform external event ID is required')

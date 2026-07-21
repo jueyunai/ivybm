@@ -1,10 +1,18 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 
-import type { PlatformConnector, PlatformEventRepository, WebhookRateLimiter } from './ports'
+import type {
+  PlatformConnector,
+  PlatformEventRepository,
+  WebhookRateLimiter,
+  WebhookVerifier,
+} from './ports'
 import { platformEventKey } from './types'
 
 export type WebhookValidationCode =
+  | 'future_event'
+  | 'idempotency_conflict'
   | 'invalid_challenge'
+  | 'invalid_content_type'
   | 'invalid_payload'
   | 'invalid_signature'
   | 'payload_too_large'
@@ -27,14 +35,18 @@ type VerifyMetaSignatureInput = {
   signatureHeader?: string
 }
 
-type IngestSignedWebhookInput = VerifyMetaSignatureInput & {
+type IngestSignedWebhookInput = {
   connector: PlatformConnector
+  headers: Readonly<Record<string, string | undefined>>
   maxBodyBytes?: number
   maxEventAgeMs?: number
+  maxFutureSkewMs?: number
   nowMs?: number
   rateLimiter: WebhookRateLimiter
   rateLimitKey: string
+  rawBody: Uint8Array
   repository: PlatformEventRepository
+  verifier: WebhookVerifier
 }
 
 type VerifyMetaChallengeInput = {
@@ -50,14 +62,28 @@ export type WebhookIngestionResult = {
   total: number
 }
 
-const rawBodyBytes = (rawBody: string | Uint8Array): Uint8Array =>
-  typeof rawBody === 'string' ? Buffer.from(rawBody) : rawBody
+const rawBodyBytes = (rawBody: string | Uint8Array): Uint8Array => Buffer.from(rawBody)
 
 const safeStringEqual = (left: string, right: string): boolean => {
   const leftBytes = Buffer.from(left)
   const rightBytes = Buffer.from(right)
   return leftBytes.length === rightBytes.length && timingSafeEqual(leftBytes, rightBytes)
 }
+
+const headerValue = (
+  headers: Readonly<Record<string, string | undefined>>,
+  name: string,
+): string | undefined => {
+  const normalizedName = name.toLowerCase()
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === normalizedName) return value
+  }
+  return undefined
+}
+
+const isJsonContentType = (headers: Readonly<Record<string, string | undefined>>): boolean =>
+  headerValue(headers, 'content-type')?.split(';', 1)[0]?.trim().toLowerCase() ===
+  'application/json'
 
 export const verifyMetaWebhookChallenge = ({
   challenge,
@@ -97,6 +123,15 @@ export const verifyMetaWebhookSignature = ({
   return supplied.length === expected.length && timingSafeEqual(supplied, expected)
 }
 
+export const createMetaWebhookVerifier = (appSecret: string): WebhookVerifier => ({
+  verify: ({ headers, rawBody }) =>
+    verifyMetaWebhookSignature({
+      appSecret,
+      rawBody,
+      signatureHeader: headerValue(headers, 'x-hub-signature-256'),
+    }),
+})
+
 const parsePayload = (rawBody: string | Uint8Array): unknown => {
   try {
     return JSON.parse(Buffer.from(rawBodyBytes(rawBody)).toString('utf8'))
@@ -107,9 +142,23 @@ const parsePayload = (rawBody: string | Uint8Array): unknown => {
   }
 }
 
-const assertFreshEvent = (occurredAt: string, nowMs: number, maxEventAgeMs: number): void => {
+const assertFreshEvent = (
+  occurredAt: string,
+  nowMs: number,
+  maxEventAgeMs: number,
+  maxFutureSkewMs: number,
+): void => {
   const eventTimestamp = Date.parse(occurredAt)
-  if (!Number.isFinite(eventTimestamp) || Math.abs(nowMs - eventTimestamp) > maxEventAgeMs) {
+  if (!Number.isFinite(eventTimestamp)) {
+    throw new WebhookValidationError('stale_event', 'Webhook event timestamp is invalid')
+  }
+  if (eventTimestamp > nowMs + maxFutureSkewMs) {
+    throw new WebhookValidationError(
+      'future_event',
+      'Webhook event timestamp is later than the accepted clock skew',
+    )
+  }
+  if (nowMs - eventTimestamp > maxEventAgeMs) {
     throw new WebhookValidationError(
       'stale_event',
       'Webhook event timestamp is outside the accepted window',
@@ -117,27 +166,57 @@ const assertFreshEvent = (occurredAt: string, nowMs: number, maxEventAgeMs: numb
   }
 }
 
+const sha256 = (value: string | Uint8Array): string =>
+  createHash('sha256').update(value).digest('hex')
+
+const canonicalize = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(canonicalize)
+  if (!value || typeof value !== 'object') return value
+
+  const record = value as Record<string, unknown>
+  return Object.fromEntries(
+    Object.keys(record)
+      .sort()
+      .map((key) => [key, canonicalize(record[key])]),
+  )
+}
+
+const eventDigest = (event: unknown): string => sha256(JSON.stringify(canonicalize(event)))
+
 export const ingestSignedWebhook = async ({
-  appSecret,
   connector,
+  headers,
   maxBodyBytes = 1_000_000,
   maxEventAgeMs = 10 * 60 * 1_000,
+  maxFutureSkewMs = 60_000,
   nowMs = Date.now(),
   rawBody,
   rateLimiter,
   rateLimitKey,
   repository,
-  signatureHeader,
+  verifier,
 }: IngestSignedWebhookInput): Promise<WebhookIngestionResult> => {
   const bytes = rawBodyBytes(rawBody)
   if (bytes.byteLength > maxBodyBytes) {
     throw new WebhookValidationError('payload_too_large', 'Webhook payload exceeds the size limit')
   }
+  if (!isJsonContentType(headers)) {
+    throw new WebhookValidationError(
+      'invalid_content_type',
+      'Webhook content type must be application/json',
+    )
+  }
+  let signatureIsValid = false
+  try {
+    signatureIsValid = await verifier.verify({ headers, rawBody: bytes })
+  } catch {
+    signatureIsValid = false
+  }
+  if (!signatureIsValid) {
+    throw new WebhookValidationError('invalid_signature', 'Webhook signature is invalid')
+  }
   if (!rateLimitKey.trim() || !(await rateLimiter.consume(rateLimitKey))) {
     throw new WebhookValidationError('rate_limited', 'Webhook source is rate limited')
-  }
-  if (!verifyMetaWebhookSignature({ appSecret, rawBody: bytes, signatureHeader })) {
-    throw new WebhookValidationError('invalid_signature', 'Webhook signature is invalid')
   }
 
   let events
@@ -150,8 +229,16 @@ export const ingestSignedWebhook = async ({
     })
   }
   for (const event of events) {
-    assertFreshEvent(event.occurredAt, nowMs, maxEventAgeMs)
-    if (event.idempotencyKey !== platformEventKey(event.platform, event.externalEventId)) {
+    assertFreshEvent(event.occurredAt, nowMs, maxEventAgeMs, maxFutureSkewMs)
+    let expectedKey: string
+    try {
+      expectedKey = platformEventKey(event.platform, event.externalEventId)
+    } catch (error) {
+      throw new WebhookValidationError('invalid_payload', 'Webhook event identifiers are invalid', {
+        cause: error,
+      })
+    }
+    if (event.idempotencyKey !== expectedKey) {
       throw new WebhookValidationError(
         'invalid_payload',
         'Webhook event idempotency key is invalid',
@@ -159,13 +246,22 @@ export const ingestSignedWebhook = async ({
     }
   }
 
-  let accepted = 0
-  let duplicates = 0
-  for (const event of events) {
-    const result = await repository.enqueue(event)
-    if (result === 'accepted') accepted += 1
-    else duplicates += 1
+  const rawPayloadDigest = sha256(bytes)
+  const results = await repository.enqueueBatch(
+    events.map((event) => ({
+      event,
+      eventDigest: eventDigest(event),
+      rawPayloadDigest,
+    })),
+  )
+  if (results.some((result) => result.status === 'conflict')) {
+    throw new WebhookValidationError(
+      'idempotency_conflict',
+      'Webhook event conflicts with an existing idempotency key',
+    )
   }
 
+  const accepted = results.filter((result) => result.status === 'accepted').length
+  const duplicates = results.filter((result) => result.status === 'duplicate').length
   return { accepted, duplicates, total: events.length }
 }

@@ -10,10 +10,10 @@ const inbound: NormalizedInboundMessage = {
   accountExternalId: 'account-1',
   content: { messageType: 'text', text: 'fixture' },
   externalEventId: 'message-1',
-  idempotencyKey: 'whatsapp:message-1',
+  idempotencyKey: 'facebook-messenger:message-1',
   kind: 'inbound-message',
-  occurredAt: '2026-07-18T08:00:00.000Z',
-  platform: 'whatsapp',
+  occurredAt: '2026-07-21T08:00:00.000Z',
+  platform: 'facebook-messenger',
   recipientExternalId: 'account-1',
   senderExternalId: 'sender-1',
 }
@@ -21,11 +21,11 @@ const inbound: NormalizedInboundMessage = {
 const messageStatus: NormalizedMessageStatus = {
   accountExternalId: 'account-1',
   externalEventId: 'outbound-1:delivered:1',
-  idempotencyKey: 'whatsapp:outbound-1:delivered:1',
+  idempotencyKey: 'instagram:outbound-1:delivered:1',
   kind: 'message-status',
   messageExternalId: 'outbound-1',
-  occurredAt: '2026-07-18T08:00:00.000Z',
-  platform: 'whatsapp',
+  occurredAt: '2026-07-21T08:00:00.000Z',
+  platform: 'instagram',
   recipientExternalId: 'recipient-1',
   status: 'delivered',
 }
