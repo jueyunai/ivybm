@@ -1,7 +1,5 @@
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
 
-import { createEmbeddingSpaceFingerprint } from '@/modules/ai/gateway'
-
 import { formatVector, type KnowledgeEmbeddingGateway } from './embed'
 import type { KnowledgeLocale } from './chunk'
 
@@ -144,13 +142,10 @@ export const retrieveKnowledgeForQuery = async ({
 
   const embedded = await gateway.embed({ input: [query] })
   const embedding = embedded.embeddings[0]
-  const embeddingSpace =
-    embedded.embeddingSpace ??
-    createEmbeddingSpaceFingerprint(
-      `provider-name:${embedded.provider}`,
-      embedded.model,
-      embedding.length,
-    )
+  const embeddingSpace = embedded.embeddingSpace
+  if (!embeddingSpace?.trim()) {
+    throw new Error('Knowledge embedding gateway did not return a stable embedding space')
+  }
 
   return retrieveKnowledge({
     ...options,

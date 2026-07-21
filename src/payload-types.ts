@@ -73,6 +73,7 @@ export interface Config {
     'ai-providers': AiProvider;
     'ai-model-profiles': AiModelProfile;
     'ai-usage-routes': AiUsageRoute;
+    'ai-usage-logs': AiUsageLog;
     pages: Page;
     'product-categories': ProductCategory;
     products: Product;
@@ -103,6 +104,7 @@ export interface Config {
     'ai-providers': AiProvidersSelect<false> | AiProvidersSelect<true>;
     'ai-model-profiles': AiModelProfilesSelect<false> | AiModelProfilesSelect<true>;
     'ai-usage-routes': AiUsageRoutesSelect<false> | AiUsageRoutesSelect<true>;
+    'ai-usage-logs': AiUsageLogsSelect<false> | AiUsageLogsSelect<true>;
     pages: PagesSelect<false> | PagesSelect<true>;
     'product-categories': ProductCategoriesSelect<false> | ProductCategoriesSelect<true>;
     products: ProductsSelect<false> | ProductsSelect<true>;
@@ -327,6 +329,24 @@ export interface AiUsageRoute {
   enabled: boolean;
   operation: 'text' | 'embedding';
   profile: number | AiModelProfile;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-usage-logs".
+ */
+export interface AiUsageLog {
+  id: number;
+  operation: 'embed' | 'generateText';
+  provider: string;
+  model: string;
+  requestId?: string | null;
+  inputTokens: number;
+  outputTokens?: number | null;
+  totalTokens: number;
+  estimatedCostUSD?: number | null;
+  durationMs: number;
   updatedAt: string;
   createdAt: string;
 }
@@ -953,6 +973,10 @@ export interface PayloadLockedDocument {
         value: number | AiUsageRoute;
       } | null)
     | ({
+        relationTo: 'ai-usage-logs';
+        value: number | AiUsageLog;
+      } | null)
+    | ({
         relationTo: 'pages';
         value: number | Page;
       } | null)
@@ -1198,6 +1222,23 @@ export interface AiUsageRoutesSelect<T extends boolean = true> {
   enabled?: T;
   operation?: T;
   profile?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-usage-logs_select".
+ */
+export interface AiUsageLogsSelect<T extends boolean = true> {
+  operation?: T;
+  provider?: T;
+  model?: T;
+  requestId?: T;
+  inputTokens?: T;
+  outputTokens?: T;
+  totalTokens?: T;
+  estimatedCostUSD?: T;
+  durationMs?: T;
   updatedAt?: T;
   createdAt?: T;
 }

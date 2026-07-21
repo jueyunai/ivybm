@@ -1,21 +1,13 @@
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 
-import {
-  createEmbeddingSpaceFingerprint,
-  type AiGatewayEmbedInput,
-  type AiGatewayEmbedResult,
-} from '@/modules/ai/gateway'
-import type { KnowledgeChunk as KnowledgeChunkRecord } from '@/payload-types'
-
+import { type AiGatewayEmbedInput, type AiGatewayEmbedResult } from '@/modules/ai/gateway'
 import { chunkKnowledgeDocument } from './chunk'
 
 type KnowledgePool = Pick<PostgresAdapter['pool'], 'query'>
 
 export type KnowledgeEmbeddingGateway = {
-  embed: (
-    input: AiGatewayEmbedInput,
-  ) => Promise<Omit<AiGatewayEmbedResult, 'embeddingSpace'> & { embeddingSpace?: string }>
+  embed: (input: AiGatewayEmbedInput) => Promise<AiGatewayEmbedResult>
 }
 
 type SetKnowledgeChunkEmbeddingInput = {
@@ -23,6 +15,31 @@ type SetKnowledgeChunkEmbeddingInput = {
   embedding: number[]
   embeddingSpace: string
   model: string
+  pool: KnowledgePool
+}
+
+type StoreKnowledgeChunkInput = {
+  chunk: {
+    citation: { title: string; url?: string; version: string }
+    content: string
+    index: number
+    locale: 'ar' | 'en'
+    stableId: string
+  }
+  claimToken: Date
+  documentId: number | string
+  embedding: number[]
+  embeddingSpace: string
+  leaseFence?: { jobId: number; ownerToken: string }
+  model: string
+  pool: KnowledgePool
+}
+
+type DeleteStaleKnowledgeChunksInput = {
+  activeIDs: number[]
+  claimToken: Date
+  documentId: number | string
+  leaseFence?: { jobId: number; ownerToken: string }
   pool: KnowledgePool
 }
 
@@ -95,32 +112,6 @@ const createEmbeddingBatches = (inputs: string[], limits: KnowledgeIndexLimits):
   return batches
 }
 
-const findAllDocumentChunks = async (
-  payload: Payload,
-  documentId: number | string,
-  pageSize: number,
-  signal?: AbortSignal,
-): Promise<KnowledgeChunkRecord[]> => {
-  const chunks: KnowledgeChunkRecord[] = []
-  let page = 1
-
-  while (true) {
-    assertNotAborted(signal)
-    const result = await payload.find({
-      collection: 'knowledge-chunks',
-      limit: pageSize,
-      overrideAccess: true,
-      page,
-      sort: 'id',
-      where: { document: { equals: documentId } },
-    })
-    chunks.push(...result.docs)
-    assertNotAborted(signal)
-    if (!result.hasNextPage) return chunks
-    page += 1
-  }
-}
-
 const assertNotAborted = (signal?: AbortSignal): void => {
   if (!signal?.aborted) return
   if (signal.reason instanceof Error) throw signal.reason
@@ -156,6 +147,183 @@ export const setKnowledgeChunkEmbedding = async ({
 
   if (result.rowCount !== 1) {
     throw new Error(`Knowledge chunk not found: ${String(chunkId)}`)
+  }
+}
+
+/**
+ * Every chunk mutation carries the document/job ownership fence in the same
+ * SQL statement. A worker that resumes after its lease was reclaimed or its
+ * document was dead-letter recovered can therefore never mutate chunks that a
+ * newer attempt may publish.
+ */
+const storeKnowledgeChunk = async ({
+  chunk,
+  claimToken,
+  documentId,
+  embedding,
+  embeddingSpace,
+  leaseFence,
+  model,
+  pool,
+}: StoreKnowledgeChunkInput): Promise<number> => {
+  const result = await pool.query<{ id: number }>(
+    `WITH owned_document AS (
+       SELECT document.id
+       FROM knowledge_documents AS document
+       WHERE document.id = $1
+         AND document.review_status = 'reviewed'
+         AND document.index_status = 'processing'
+         AND document.updated_at = $2
+         AND (
+           (
+             $3::integer IS NULL
+             AND document.index_job_id IS NULL
+             AND document.index_owner_token IS NULL
+           )
+           OR (
+             document.index_job_id = $3
+             AND document.index_owner_token = $4
+             AND EXISTS (
+               SELECT 1
+               FROM jobs AS job
+               WHERE job.id = $3
+                 AND job.owner_token = $4
+                 AND job.status = 'processing'
+                 AND job.lease_expires_at > NOW()
+             )
+           )
+         )
+       FOR SHARE
+     )
+     INSERT INTO knowledge_chunks (
+       document_id,
+       stable_id,
+       "index",
+       locale,
+       content,
+       source_title,
+       source_version,
+       source_u_r_l,
+       embedding_vector,
+       embedding_model,
+       embedding_dimensions,
+       embedding_space,
+       embedded_at,
+       updated_at
+     )
+     SELECT
+       owned_document.id,
+       $5,
+       $6,
+       $7,
+       $8,
+       $9,
+       $10,
+       $11,
+       $12::vector,
+       $13,
+       $14,
+       $15,
+       NOW(),
+       NOW()
+     FROM owned_document
+     ON CONFLICT (stable_id) DO UPDATE
+       SET "index" = EXCLUDED."index",
+           locale = EXCLUDED.locale,
+           content = EXCLUDED.content,
+           source_title = EXCLUDED.source_title,
+           source_version = EXCLUDED.source_version,
+           source_u_r_l = EXCLUDED.source_u_r_l,
+           embedding_vector = EXCLUDED.embedding_vector,
+           embedding_model = EXCLUDED.embedding_model,
+           embedding_dimensions = EXCLUDED.embedding_dimensions,
+           embedding_space = EXCLUDED.embedding_space,
+           embedded_at = EXCLUDED.embedded_at,
+           updated_at = EXCLUDED.updated_at
+       WHERE knowledge_chunks.document_id = $1
+         AND EXISTS (SELECT 1 FROM owned_document)
+     RETURNING id`,
+    [
+      documentId,
+      claimToken,
+      leaseFence?.jobId ?? null,
+      leaseFence?.ownerToken ?? null,
+      chunk.stableId,
+      chunk.index,
+      chunk.locale,
+      chunk.content,
+      chunk.citation.title,
+      chunk.citation.version,
+      chunk.citation.url ?? null,
+      formatVector(embedding),
+      model,
+      embedding.length,
+      embeddingSpace,
+    ],
+  )
+
+  const id = result.rows[0]?.id
+  if (!Number.isInteger(id)) {
+    throw new Error('Knowledge document changed while it was being indexed')
+  }
+  return id
+}
+
+const deleteStaleKnowledgeChunks = async ({
+  activeIDs,
+  claimToken,
+  documentId,
+  leaseFence,
+  pool,
+}: DeleteStaleKnowledgeChunksInput): Promise<void> => {
+  const result = await pool.query<{ owner_count: number | string }>(
+    `WITH owned_document AS (
+       SELECT document.id
+       FROM knowledge_documents AS document
+       WHERE document.id = $1
+         AND document.review_status = 'reviewed'
+         AND document.index_status = 'processing'
+         AND document.updated_at = $2
+         AND (
+           (
+             $3::integer IS NULL
+             AND document.index_job_id IS NULL
+             AND document.index_owner_token IS NULL
+           )
+           OR (
+             document.index_job_id = $3
+             AND document.index_owner_token = $4
+             AND EXISTS (
+               SELECT 1
+               FROM jobs AS job
+               WHERE job.id = $3
+                 AND job.owner_token = $4
+                 AND job.status = 'processing'
+                 AND job.lease_expires_at > NOW()
+             )
+           )
+         )
+       FOR SHARE
+     ),
+     deleted AS (
+       DELETE FROM knowledge_chunks AS chunk
+       WHERE chunk.document_id = $1
+         AND NOT (chunk.id = ANY($5::integer[]))
+         AND EXISTS (SELECT 1 FROM owned_document)
+       RETURNING chunk.id
+     )
+     SELECT (SELECT count(*) FROM owned_document) AS owner_count`,
+    [
+      documentId,
+      claimToken,
+      leaseFence?.jobId ?? null,
+      leaseFence?.ownerToken ?? null,
+      activeIDs,
+    ],
+  )
+
+  if (Number(result.rows[0]?.owner_count) !== 1) {
+    throw new Error('Knowledge document changed while it was being indexed')
   }
 }
 
@@ -291,13 +459,10 @@ export const indexKnowledgeDocument = async ({
       if (embeddingDimensions && batchDimensions !== embeddingDimensions) {
         throw new Error('Embedding provider changed vector dimensions during document indexing')
       }
-      const batchEmbeddingSpace =
-        embedded.embeddingSpace ??
-        createEmbeddingSpaceFingerprint(
-          `provider-name:${embedded.provider}`,
-          embedded.model,
-          batchDimensions,
-        )
+      const batchEmbeddingSpace = embedded.embeddingSpace
+      if (!batchEmbeddingSpace?.trim()) {
+        throw new Error('Knowledge embedding gateway did not return a stable embedding space')
+      }
       if (embeddingSpace && batchEmbeddingSpace !== embeddingSpace) {
         throw new Error('Embedding provider changed vector space during document indexing')
       }
@@ -310,63 +475,32 @@ export const indexKnowledgeDocument = async ({
       throw new Error('Knowledge document produced no embeddings')
     }
 
-    const existing = await findAllDocumentChunks(
-      payload,
-      document.id,
-      limits.existingChunkPageSize,
-      signal,
-    )
-    const existingByStableID = new Map(existing.map((chunk) => [chunk.stableId, chunk]))
-    const activeIDs = new Set<number | string>()
+    const activeIDs: number[] = []
 
     for (const [index, chunk] of chunks.entries()) {
       assertNotAborted(signal)
-      const data = {
-        content: chunk.content,
-        document: document.id,
-        index: chunk.index,
-        locale: chunk.locale,
-        sourceTitle: chunk.citation.title,
-        sourceURL: chunk.citation.url,
-        sourceVersion: chunk.citation.version,
-        stableId: chunk.stableId,
-      }
-      const existingChunk = existingByStableID.get(chunk.stableId)
-      const stored = existingChunk
-        ? await payload.update({
-            collection: 'knowledge-chunks',
-            data,
-            id: existingChunk.id,
-            overrideAccess: true,
-          })
-        : await payload.create({
-            collection: 'knowledge-chunks',
-            data,
-            overrideAccess: true,
-          })
-
-      assertNotAborted(signal)
-      activeIDs.add(stored.id)
-      await setKnowledgeChunkEmbedding({
-        chunkId: stored.id,
+      const storedID = await storeKnowledgeChunk({
+        chunk,
+        claimToken,
+        documentId: document.id,
         embedding: embeddings[index],
         embeddingSpace,
+        leaseFence,
         model: embeddingModel,
         pool,
       })
+      activeIDs.push(storedID)
       assertNotAborted(signal)
     }
 
-    const staleIDs = existing.filter((chunk) => !activeIDs.has(chunk.id)).map((chunk) => chunk.id)
-    if (staleIDs.length > 0) {
-      assertNotAborted(signal)
-      await payload.delete({
-        collection: 'knowledge-chunks',
-        overrideAccess: true,
-        where: { id: { in: staleIDs } },
-      })
-      assertNotAborted(signal)
-    }
+    await deleteStaleKnowledgeChunks({
+      activeIDs,
+      claimToken,
+      documentId: document.id,
+      leaseFence,
+      pool,
+    })
+    assertNotAborted(signal)
 
     assertNotAborted(signal)
     const ready = await pool.query(
@@ -416,6 +550,13 @@ export const indexKnowledgeDocument = async ({
 
     return { chunkCount: chunks.length, embeddingSpace, model: embeddingModel }
   } catch (error) {
+    await deleteStaleKnowledgeChunks({
+      activeIDs: [],
+      claimToken,
+      documentId,
+      leaseFence,
+      pool,
+    }).catch(() => undefined)
     await pool
       .query(
         `UPDATE knowledge_documents

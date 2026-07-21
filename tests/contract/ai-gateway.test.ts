@@ -252,6 +252,29 @@ describe('AI gateway contract', () => {
     )
   })
 
+  it('rejects invalid token accounting before cost or usage persistence', async () => {
+    for (const usage of [
+      { inputTokens: -1, totalTokens: 1 },
+      { inputTokens: 1.5, totalTokens: 2 },
+      { inputTokens: 3, outputTokens: 2, totalTokens: 4 },
+    ]) {
+      const gateway = createAiGateway({
+        models: { text: 'fake-text' },
+        provider: {
+          ...fakeProvider,
+          generateText: async ({ model }) => ({
+            model,
+            text: 'Invalid accounting fixture',
+            usage,
+          }),
+        },
+      })
+      await expect(gateway.generateText({ input: 'validate usage' })).rejects.toMatchObject({
+        code: 'invalid_response',
+      } satisfies Partial<AiGatewayError>)
+    }
+  })
+
   it('normalizes timeout and provider errors without exposing credentials', async () => {
     const timeoutGateway = createAiGateway({
       models: { embedding: 'fake-embedding', text: 'fake-text' },

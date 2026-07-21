@@ -14,6 +14,7 @@ import {
   type AiGatewayTextOperationConfig,
   type AiProvider,
   type AiReasoningEffort,
+  type AiUsageRecord,
 } from './gateway'
 import {
   createOpenAICompatibleProvider,
@@ -265,6 +266,25 @@ const resolveEnvironmentRoute = (
   }
 }
 
+const persistAiUsage = async (payload: Payload, record: AiUsageRecord): Promise<void> => {
+  await payload.create({
+    collection: 'ai-usage-logs',
+    context: { skipAudit: true },
+    data: {
+      durationMs: record.durationMs,
+      estimatedCostUSD: record.cost.estimated ?? undefined,
+      inputTokens: record.usage.inputTokens,
+      model: record.model,
+      operation: record.operation,
+      outputTokens: record.usage.outputTokens ?? undefined,
+      provider: record.provider,
+      requestId: record.requestId,
+      totalTokens: record.usage.totalTokens,
+    },
+    overrideAccess: true,
+  })
+}
+
 /**
  * Loads the requested route records once and returns a request-scoped gateway.
  * An existing CMS route is authoritative: disabled or invalid CMS data fails
@@ -332,5 +352,11 @@ export const resolveAiGateway = async ({
     }
   }
 
-  return createAiGateway({ operations })
+  return createAiGateway({
+    onUsage: (record) => persistAiUsage(payload, record),
+    onUsageError: () => {
+      payload.logger.error('AI usage telemetry persistence failed')
+    },
+    operations,
+  })
 }

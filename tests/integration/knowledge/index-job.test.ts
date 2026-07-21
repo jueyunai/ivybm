@@ -18,6 +18,7 @@ import {
   enqueueKnowledgeIndexJob,
   enqueueLegacyKnowledgeRebuilds,
   KNOWLEDGE_INDEX_JOB_TYPE,
+  recoverDeadKnowledgeIndexDocuments,
 } from '@/modules/knowledge/jobs'
 import { retrieveKnowledge } from '@/modules/knowledge/retrieve'
 import config from '@/payload.config'
@@ -352,6 +353,432 @@ describe.sequential('knowledge index job', () => {
     now = new Date(now.getTime() + 2_000)
     await expect(worker.runOnce()).resolves.toBe('succeeded')
     expect(embed).toHaveBeenCalledTimes(2)
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-documents',
+        id: document.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ indexStatus: 'ready' })
+  })
+
+  it('recovers a document after its final leased job dies without handler cleanup', async () => {
+    const suffix = randomUUID()
+    const document = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'A dead-lettered final job must not leave knowledge permanently processing.',
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Dead-letter recovery knowledge ${suffix}`,
+        sourceType: 'faq',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(document.id)
+
+    let releaseEmbedding: (() => void) | undefined
+    let markEmbeddingStarted: (() => void) | undefined
+    const embeddingStarted = new Promise<void>((resolve) => {
+      markEmbeddingStarted = resolve
+    })
+    const blockedEmbedding = new Promise<void>((resolve) => {
+      releaseEmbedding = resolve
+    })
+    const fakeGateway = createAiGateway({
+      operations: {
+        embedding: {
+          dimensions: 3,
+          embeddingSpaceIdentity: 'openai-compatible:https://knowledge-provider.example.invalid/v1',
+          model: 'knowledge-test-embedding',
+          provider: {
+            embed: async ({ input, model }) => {
+              markEmbeddingStarted?.()
+              await blockedEmbedding
+              return {
+                embeddings: input.map(() => [1, 0, 0]),
+                model,
+                usage: { inputTokens: input.length, totalTokens: input.length },
+              }
+            },
+            generateText: async () => {
+              throw new Error('Text generation is not used by knowledge indexing')
+            },
+            name: 'dead-letter-recovery-provider',
+          },
+        },
+      },
+    })
+    const created = await enqueueKnowledgeIndexJob({
+      documentId: document.id,
+      payload,
+      requestedBy: operator.id,
+      resolveGateway: async () => fakeGateway,
+    })
+    jobIDs.push(created.job.id)
+
+    const pool = (payload.db as unknown as PostgresAdapter).pool
+    await pool.query('UPDATE jobs SET max_attempts = 1 WHERE id = $1', [created.job.id])
+    const queue = new PayloadJobQueue({ leaseMs: 1_000, payload })
+    const claimed = await queue.claimNext()
+    if (!claimed) throw new Error('Expected the final knowledge indexing claim')
+    const controller = new AbortController()
+    const execution = createKnowledgeIndexJobHandler({
+      payload,
+      resolveGateway: async () => fakeGateway,
+    })(claimed, {
+      assertLease: () => undefined,
+      renewLease: () => queue.renew(claimed),
+      signal: controller.signal,
+    })
+    await embeddingStarted
+    await pool.query(
+      "UPDATE jobs SET lease_expires_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+      [claimed.id],
+    )
+
+    await queue.claimNext()
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-documents',
+        id: document.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ indexStatus: 'processing' })
+
+    try {
+      await expect(recoverDeadKnowledgeIndexDocuments({ payload })).resolves.toBe(1)
+      await expect(
+        payload.findByID({
+          collection: 'knowledge-documents',
+          id: document.id,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({
+        indexJobId: null,
+        indexOwnerToken: null,
+        indexStatus: 'failed',
+      })
+      await expect(
+        enqueueKnowledgeIndexJob({
+          documentId: document.id,
+          manualRetryActor: { id: operator.id, role: 'admin' },
+          payload,
+          requestedBy: operator.id,
+          resolveGateway: async () => fakeGateway,
+        }),
+      ).resolves.toMatchObject({
+        job: { id: created.job.id, manualRetryCount: 1, status: 'pending' },
+        state: 'created',
+      })
+    } finally {
+      controller.abort(new Error('simulated worker process termination'))
+      releaseEmbedding?.()
+      await execution.catch(() => undefined)
+      // This test proves an administrator can re-arm a dead idempotent Job.
+      // Remove the pending fixture so following claim-race tests only see
+      // their own Jobs, independent of file execution order.
+      await payload.delete({
+        collection: 'jobs',
+        id: created.job.id,
+        overrideAccess: true,
+      })
+    }
+  })
+
+  it('leaves a recovered document and its chunks untouched when the zombie worker resumes', async () => {
+    const suffix = randomUUID()
+    const document = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'A resumed zombie worker must not mutate recovered knowledge state.',
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Zombie recovery knowledge ${suffix}`,
+        sourceType: 'faq',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(document.id)
+
+    let releaseEmbedding: (() => void) | undefined
+    let markEmbeddingStarted: (() => void) | undefined
+    const embeddingStarted = new Promise<void>((resolve) => {
+      markEmbeddingStarted = resolve
+    })
+    const blockedEmbedding = new Promise<void>((resolve) => {
+      releaseEmbedding = resolve
+    })
+    const embed = vi.fn<AiProvider['embed']>(async ({ input, model }) => {
+      markEmbeddingStarted?.()
+      await blockedEmbedding
+      return {
+        embeddings: input.map(() => [1, 0, 0]),
+        model,
+        usage: { inputTokens: input.length, totalTokens: input.length },
+      }
+    })
+    const fakeGateway = createAiGateway({
+      operations: {
+        embedding: {
+          dimensions: 3,
+          embeddingSpaceIdentity: 'openai-compatible:https://knowledge-provider.example.invalid/v1',
+          model: 'knowledge-test-embedding',
+          provider: {
+            embed,
+            generateText: async () => {
+              throw new Error('Text generation is not used by knowledge indexing')
+            },
+            name: 'zombie-recovery-provider',
+          },
+        },
+      },
+    })
+    const created = await enqueueKnowledgeIndexJob({
+      documentId: document.id,
+      payload,
+      requestedBy: operator.id,
+      resolveGateway: async () => fakeGateway,
+    })
+    jobIDs.push(created.job.id)
+
+    const pool = (payload.db as unknown as PostgresAdapter).pool
+    await pool.query('UPDATE jobs SET max_attempts = 1 WHERE id = $1', [created.job.id])
+    const queue = new PayloadJobQueue({ leaseMs: 1_000, payload })
+    const claimed = await queue.claimNext()
+    if (!claimed) throw new Error('Expected the zombie indexing claim')
+
+    const execution = createKnowledgeIndexJobHandler({
+      payload,
+      resolveGateway: async () => fakeGateway,
+    })(claimed, {
+      assertLease: () => undefined,
+      renewLease: () => queue.renew(claimed),
+      signal: new AbortController().signal,
+    })
+    await embeddingStarted
+
+    await pool.query(
+      "UPDATE jobs SET lease_expires_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+      [claimed.id],
+    )
+    await queue.claimNext()
+    await expect(queue.getByID(claimed.id)).resolves.toMatchObject({
+      ownerToken: null,
+      status: 'dead',
+    })
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-documents',
+        id: document.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      indexJobId: claimed.id,
+      indexOwnerToken: claimed.ownerToken,
+      indexStatus: 'processing',
+    })
+
+    try {
+      await expect(recoverDeadKnowledgeIndexDocuments({ payload })).resolves.toBe(1)
+      const recovered = await payload.findByID({
+        collection: 'knowledge-documents',
+        id: document.id,
+        overrideAccess: true,
+      })
+      expect(recovered).toMatchObject({
+        indexJobId: null,
+        indexOwnerToken: null,
+        indexStatus: 'failed',
+      })
+      const recoveredDocumentSnapshot = {
+        embeddingModel: recovered.embeddingModel,
+        embeddingSpace: recovered.embeddingSpace,
+        indexJobId: recovered.indexJobId,
+        indexOwnerToken: recovered.indexOwnerToken,
+        indexStatus: recovered.indexStatus,
+        indexedAt: recovered.indexedAt,
+        updatedAt: recovered.updatedAt,
+      }
+      const recoveredChunks = await payload.find({
+        collection: 'knowledge-chunks',
+        overrideAccess: true,
+        where: { document: { equals: document.id } },
+      })
+      expect(recoveredChunks.totalDocs).toBe(0)
+
+      releaseEmbedding?.()
+      await execution.catch(() => undefined)
+
+      const afterResume = await payload.findByID({
+        collection: 'knowledge-documents',
+        id: document.id,
+        overrideAccess: true,
+      })
+      expect({
+        embeddingModel: afterResume.embeddingModel,
+        embeddingSpace: afterResume.embeddingSpace,
+        indexJobId: afterResume.indexJobId,
+        indexOwnerToken: afterResume.indexOwnerToken,
+        indexStatus: afterResume.indexStatus,
+        indexedAt: afterResume.indexedAt,
+        updatedAt: afterResume.updatedAt,
+      }).toEqual(recoveredDocumentSnapshot)
+      const chunksAfterResume = await payload.find({
+        collection: 'knowledge-chunks',
+        overrideAccess: true,
+        where: { document: { equals: document.id } },
+      })
+      expect(chunksAfterResume.totalDocs).toBe(0)
+      expect(chunksAfterResume.docs).toEqual([])
+      expect(embed).toHaveBeenCalledTimes(1)
+    } finally {
+      releaseEmbedding?.()
+      await execution.catch(() => undefined)
+      await payload.delete({
+        collection: 'knowledge-chunks',
+        overrideAccess: true,
+        where: { document: { equals: document.id } },
+      })
+    }
+  })
+
+  it('recovers an unfenced processing document left by a pre-upgrade worker', async () => {
+    const suffix = randomUUID()
+    const document = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'A legacy worker can leave processing knowledge without a job ownership fence.',
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Unfenced recovery knowledge ${suffix}`,
+        sourceType: 'faq',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(document.id)
+
+    const pool = (payload.db as unknown as PostgresAdapter).pool
+    await pool.query(
+      `UPDATE knowledge_documents
+          SET index_status = 'processing',
+              index_job_id = NULL,
+              index_owner_token = NULL
+        WHERE id = $1`,
+      [document.id],
+    )
+
+    await expect(recoverDeadKnowledgeIndexDocuments({ payload })).resolves.toBe(1)
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-documents',
+        id: document.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      indexJobId: null,
+      indexOwnerToken: null,
+      indexStatus: 'failed',
+    })
+    await expect(recoverDeadKnowledgeIndexDocuments({ payload })).resolves.toBe(0)
+  })
+
+  it('requeues the current revision when a stale index job is claimed', async () => {
+    const suffix = randomUUID()
+    const document = await payload.create({
+      collection: 'knowledge-documents',
+      data: {
+        content: 'The first revision is obsolete before its job can start.',
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `Stale revision knowledge ${suffix}`,
+        sourceType: 'faq',
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    documentIDs.push(document.id)
+
+    const fakeGateway = createAiGateway({
+      operations: {
+        embedding: {
+          dimensions: 3,
+          embeddingSpaceIdentity: 'openai-compatible:https://knowledge-provider.example.invalid/v1',
+          model: 'knowledge-test-embedding',
+          provider: {
+            embed: async ({ input, model }) => ({
+              embeddings: input.map(() => [1, 0, 0]),
+              model,
+              usage: { inputTokens: input.length, totalTokens: input.length },
+            }),
+            generateText: async () => {
+              throw new Error('Text generation is not used by knowledge indexing')
+            },
+            name: 'stale-revision-provider',
+          },
+        },
+      },
+    })
+    const original = await enqueueKnowledgeIndexJob({
+      documentId: document.id,
+      payload,
+      requestedBy: operator.id,
+      resolveGateway: async () => fakeGateway,
+    })
+    jobIDs.push(original.job.id)
+
+    await payload.update({
+      collection: 'knowledge-documents',
+      data: { content: 'The revised document must be indexed instead of the obsolete revision.' },
+      id: document.id,
+      overrideAccess: true,
+    })
+    await payload.update({
+      collection: 'knowledge-documents',
+      data: { reviewStatus: 'reviewed' },
+      id: document.id,
+      overrideAccess: true,
+    })
+
+    const queue = new PayloadJobQueue({ payload })
+    const obsolete = await queue.claimNext()
+    if (!obsolete) throw new Error('Expected the obsolete indexing job')
+    const handler = createKnowledgeIndexJobHandler({
+      payload,
+      resolveGateway: async () => fakeGateway,
+    })
+    await handler(obsolete, {
+      assertLease: () => undefined,
+      renewLease: () => queue.renew(obsolete),
+      signal: new AbortController().signal,
+    })
+    await queue.complete(obsolete)
+
+    const replacement = await enqueueKnowledgeIndexJob({
+      documentId: document.id,
+      payload,
+      requestedBy: operator.id,
+      resolveGateway: async () => fakeGateway,
+    })
+    expect(replacement).toMatchObject({ state: 'duplicate' })
+    expect(replacement.job.id).not.toBe(original.job.id)
+    jobIDs.push(replacement.job.id)
+
+    const current = await queue.claimNext()
+    if (!current) throw new Error('Expected the replacement indexing job')
+    await handler(current, {
+      assertLease: () => undefined,
+      renewLease: () => queue.renew(current),
+      signal: new AbortController().signal,
+    })
+    await queue.complete(current)
     await expect(
       payload.findByID({
         collection: 'knowledge-documents',

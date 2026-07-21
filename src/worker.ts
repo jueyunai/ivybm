@@ -13,6 +13,7 @@ import {
   createKnowledgeIndexJobHandler,
   enqueueLegacyKnowledgeRebuilds,
   KNOWLEDGE_INDEX_JOB_TYPE,
+  recoverDeadKnowledgeIndexDocuments,
 } from '@/modules/knowledge/jobs'
 import config from '@/payload.config'
 
@@ -35,6 +36,7 @@ const jobHeartbeatIntervalMs = readPositiveInteger(
   DEFAULT_JOB_HEARTBEAT_INTERVAL_MS,
 )
 const pollIntervalMs = readPositiveInteger('WORKER_POLL_INTERVAL_MS', DEFAULT_JOB_POLL_INTERVAL_MS)
+const knowledgeRecoveryIntervalMs = Math.max(pollIntervalMs, heartbeatIntervalMs)
 const payload = await getPayload({ config, disableOnInit: true, key: 'job-worker' })
 const handlers: Record<string, JobHandler> = {
   [KNOWLEDGE_INDEX_JOB_TYPE]: createKnowledgeIndexJobHandler({ payload }),
@@ -50,6 +52,22 @@ const writeHeartbeat = (): void => {
   writeFileSync(heartbeatPath, String(Date.now()))
 }
 
+let nextKnowledgeRecoveryAt = 0
+const recoverDeadKnowledgeDocuments = async (): Promise<void> => {
+  const now = Date.now()
+  if (now < nextKnowledgeRecoveryAt) return
+  nextKnowledgeRecoveryAt = now + knowledgeRecoveryIntervalMs
+
+  try {
+    const recovered = await recoverDeadKnowledgeIndexDocuments({ payload })
+    if (recovered > 0) {
+      payload.logger.warn(`Recovered ${recovered} dead-lettered knowledge index document(s)`)
+    }
+  } catch {
+    payload.logger.error('Dead-letter knowledge index recovery failed; continuing worker loop')
+  }
+}
+
 const stopWorker = (): void => {
   worker.stop()
 }
@@ -63,6 +81,7 @@ let exitCode = 0
 
 try {
   try {
+    await recoverDeadKnowledgeDocuments()
     const legacyRebuilds = await enqueueLegacyKnowledgeRebuilds({
       payload,
       requestedBy: null,
@@ -76,7 +95,7 @@ try {
     payload.logger.error('Legacy knowledge rebuild scan failed; continuing worker startup')
   }
   payload.logger.info('Job worker started')
-  await worker.runUntilStopped()
+  await worker.runUntilStopped(recoverDeadKnowledgeDocuments)
 } catch (error) {
   exitCode = 1
   payload.logger.error(error instanceof Error ? error.message : String(error))

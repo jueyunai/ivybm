@@ -423,6 +423,7 @@ describe.sequential('knowledge retrieval', () => {
       gateway: {
         embed: async ({ input }) => ({
           cost: { currency: 'USD' as const, estimated: 0 },
+          embeddingSpace: 'fixture:fake-index-model',
           embeddings: input.map((_, index) => (index === 0 ? [1, 0, 0] : [0, 1, 0])),
           model: 'fake-index-model',
           provider: 'fake',
@@ -458,6 +459,7 @@ describe.sequential('knowledge retrieval', () => {
       gateway: {
         embed: async ({ input }) => ({
           cost: { currency: 'USD' as const, estimated: 0 },
+          embeddingSpace: 'fixture:fake-index-model',
           embeddings: input.map(() => [1, 0, 0]),
           model: 'fake-index-model',
           provider: 'fake',
@@ -520,6 +522,7 @@ describe.sequential('knowledge retrieval', () => {
     const oldRouteGateway = {
       embed: async ({ input }: { input: string[] }) => ({
         cost: { currency: 'USD' as const, estimated: 0 },
+        embeddingSpace: 'fixture:embedding-route-old',
         embeddings: input.map(() => [1, 0, 0]),
         model: 'embedding-route-old',
         provider: 'old-route-fixture',
@@ -529,6 +532,7 @@ describe.sequential('knowledge retrieval', () => {
     const newRouteGateway = {
       embed: async ({ input }: { input: string[] }) => ({
         cost: { currency: 'USD' as const, estimated: 0 },
+        embeddingSpace: 'fixture:embedding-route-new',
         embeddings: input.map(() => [0, 1, 0]),
         model: 'embedding-route-new',
         provider: 'new-route-fixture',
@@ -737,6 +741,7 @@ describe.sequential('knowledge retrieval', () => {
             })
             return {
               cost: { currency: 'USD' as const, estimated: 0 },
+              embeddingSpace: 'fixture:fake-concurrent-model',
               embeddings: input.map(() => [1, 0, 0]),
               model: 'fake-concurrent-model',
               provider: 'fake',
@@ -795,6 +800,7 @@ describe.sequential('knowledge retrieval', () => {
         await embeddingReleased
         return {
           cost: { currency: 'USD' as const, estimated: 0 },
+          embeddingSpace: 'fixture:fake-concurrent-index-model',
           embeddings: input.map(() => [1, 0, 0]),
           model: 'fake-concurrent-index-model',
           provider: 'fake',
@@ -894,6 +900,7 @@ describe.sequential('knowledge retrieval', () => {
         gateway: {
           embed: async ({ input }) => ({
             cost: { currency: 'USD' as const, estimated: 0 },
+            embeddingSpace: 'fixture:fake-large-reindex-model',
             embeddings: input.map(() => [1, 0, 0]),
             model: 'fake-large-reindex-model',
             provider: 'fake',
@@ -946,6 +953,7 @@ describe.sequential('knowledge retrieval', () => {
             batches.push(input)
             return {
               cost: { currency: 'USD' as const, estimated: 0 },
+              embeddingSpace: 'fixture:fake-batched-model',
               embeddings: input.map(() => [1, 0, 0]),
               model: 'fake-batched-model',
               provider: 'fake',

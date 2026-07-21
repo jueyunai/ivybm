@@ -5,7 +5,7 @@ import type { Payload } from 'payload'
 
 import { resolveAiGateway, AI_USAGE_KEYS } from '@/modules/ai/registry'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
-import type { JobHandler, JobRecord } from '@/modules/jobs/contracts'
+import type { JobHandler, JobRecord, JobRetryActor } from '@/modules/jobs/contracts'
 import type { KnowledgeDocument } from '@/payload-types'
 
 import { indexKnowledgeDocument } from './embed'
@@ -115,11 +115,14 @@ const knowledgeEmbeddingGateway = async (
 
 export const enqueueKnowledgeIndexJob = async ({
   documentId,
+  manualRetryActor,
   payload,
   requestedBy,
   resolveGateway = resolveAiGateway,
 }: {
   documentId: number
+  /** An admin may explicitly re-arm a failed/dead idempotent index job. */
+  manualRetryActor?: JobRetryActor
   payload: Payload
   requestedBy: number | null
   resolveGateway?: ResolveKnowledgeGateway
@@ -150,7 +153,8 @@ export const enqueueKnowledgeIndexJob = async ({
     embeddingConfigurationKey,
     requestedBy,
   }
-  return new PayloadJobQueue({ payload }).enqueue({
+  const queue = new PayloadJobQueue({ payload })
+  const enqueued = await queue.enqueue({
     idempotencyKey: [
       'knowledge-index',
       documentId,
@@ -160,6 +164,14 @@ export const enqueueKnowledgeIndexJob = async ({
     payload: jobPayload,
     type: KNOWLEDGE_INDEX_JOB_TYPE,
   })
+  if (
+    manualRetryActor?.role === 'admin' &&
+    enqueued.state === 'duplicate' &&
+    (enqueued.job.status === 'dead' || enqueued.job.status === 'failed')
+  ) {
+    return { job: await queue.retryManually(enqueued.job.id, manualRetryActor), state: 'created' as const }
+  }
+  return enqueued
 }
 
 export const enqueueLegacyKnowledgeRebuilds = async ({
@@ -242,6 +254,38 @@ export const enqueueLegacyKnowledgeRebuilds = async ({
   return { created, duplicate, failed, jobIDs }
 }
 
+/**
+ * A worker can die after claiming a document, while its job is dead, missing,
+ * expired, or already reclaimed. Any processing document without the exact
+ * live job/owner lease is no longer owned and must be made retryable.
+ */
+export const recoverDeadKnowledgeIndexDocuments = async ({
+  payload,
+}: {
+  payload: Payload
+}): Promise<number> => {
+  const result = await (payload.db as unknown as PostgresAdapter).pool.query(
+    `UPDATE knowledge_documents AS document
+        SET index_status = 'failed',
+            index_job_id = NULL,
+            index_owner_token = NULL,
+            updated_at = NOW()
+      WHERE document.index_status = 'processing'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM jobs AS job
+          WHERE job.id = document.index_job_id
+            AND job.type = $1
+            AND job.owner_token = document.index_owner_token
+            AND job.status = 'processing'
+            AND job.lease_expires_at > NOW()
+        )`,
+    [KNOWLEDGE_INDEX_JOB_TYPE],
+  )
+
+  return result.rowCount ?? 0
+}
+
 export const createKnowledgeIndexJobHandler =
   ({
     payload,
@@ -261,11 +305,25 @@ export const createKnowledgeIndexJobHandler =
       document.reviewStatus !== 'reviewed' ||
       createKnowledgeDocumentRevision(document) !== input.documentRevision
     ) {
+      if (document.reviewStatus === 'reviewed') {
+        await enqueueKnowledgeIndexJob({
+          documentId: input.documentId,
+          payload,
+          requestedBy: input.requestedBy,
+          resolveGateway,
+        })
+      }
       return
     }
 
     const gateway = await knowledgeEmbeddingGateway(payload, resolveGateway)
     if (gateway.embeddingConfigurationKey !== input.embeddingConfigurationKey) {
+      await enqueueKnowledgeIndexJob({
+        documentId: input.documentId,
+        payload,
+        requestedBy: input.requestedBy,
+        resolveGateway,
+      })
       return
     }
 

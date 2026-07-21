@@ -247,10 +247,14 @@ const withTimeout = async <T>(
 }
 
 const validateUsage = (usage: AiTokenUsage): void => {
+  const validTokenCount = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isInteger(value) && value >= 0
+
   if (
-    !Number.isFinite(usage.inputTokens) ||
-    !Number.isFinite(usage.totalTokens) ||
-    (usage.outputTokens !== undefined && !Number.isFinite(usage.outputTokens))
+    !validTokenCount(usage.inputTokens) ||
+    !validTokenCount(usage.totalTokens) ||
+    (usage.outputTokens !== undefined && !validTokenCount(usage.outputTokens)) ||
+    usage.totalTokens < usage.inputTokens + (usage.outputTokens ?? 0)
   ) {
     throw new AiGatewayError('invalid_response', 'AI provider returned invalid token usage')
   }
