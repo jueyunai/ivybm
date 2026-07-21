@@ -1,0 +1,21 @@
+{
+  "id": "resp_fixture_1",
+  "model": "fixture-text-model-2026-07-18",
+  "output": [
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "Use reviewed knowledge and confirm delivery dates with sales."
+        }
+      ]
+    }
+  ],
+  "usage": {
+    "input_tokens": 120,
+    "output_tokens": 30,
+    "total_tokens": 150
+  }
+}

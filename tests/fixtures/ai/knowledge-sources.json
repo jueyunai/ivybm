@@ -1,0 +1,92 @@
+[
+  {
+    "source_id": "after_sales_policy_v1",
+    "title": "After-sales and refund policy boundary",
+    "category": "commercial_policy",
+    "language": "en",
+    "status": "mocked",
+    "owner": "Product/Sales",
+    "external_blocker": "Need approved after-sales and contract policy"
+  },
+  {
+    "source_id": "arabic_terms_v1",
+    "title": "Arabic terminology seed list",
+    "category": "language",
+    "language": "ar",
+    "status": "mocked",
+    "owner": "Product/Sales",
+    "external_blocker": "Need Arabic terminology review"
+  },
+  {
+    "source_id": "brand_compliance_policy_v1",
+    "title": "Brand and competitor claim compliance",
+    "category": "compliance",
+    "language": "en",
+    "status": "mocked",
+    "owner": "Product/Sales",
+    "external_blocker": "Need approved competitor comparison rules"
+  },
+  {
+    "source_id": "certificate_policy_v1",
+    "title": "Certificate claim boundary",
+    "category": "compliance",
+    "language": "en",
+    "status": "mocked",
+    "owner": "Product/Sales",
+    "external_blocker": "Need verified certificate list"
+  },
+  {
+    "source_id": "lead_scoring_policy_v1",
+    "title": "Lead scoring and handoff policy",
+    "category": "lead_ops",
+    "language": "en",
+    "status": "mocked",
+    "owner": "Sales Ops",
+    "external_blocker": "Need sales qualification rules"
+  },
+  {
+    "source_id": "lead_time_policy_v1",
+    "title": "Lead time and shipping commitment boundary",
+    "category": "commercial_policy",
+    "language": "en",
+    "status": "mocked",
+    "owner": "Product/Sales",
+    "external_blocker": "Need approved production and logistics SLA"
+  },
+  {
+    "source_id": "moq_policy_v1",
+    "title": "MOQ boundary",
+    "category": "commercial_policy",
+    "language": "en",
+    "status": "mocked",
+    "owner": "Product/Sales",
+    "external_blocker": "Need approved MOQ policy by product type"
+  },
+  {
+    "source_id": "pricing_policy_v1",
+    "title": "Quotation boundary policy",
+    "category": "commercial_policy",
+    "language": "en",
+    "status": "mocked",
+    "owner": "Product/Sales",
+    "external_blocker": "Need approved pricing boundary and quote factors"
+  },
+  {
+    "source_id": "product_spec_aluminum_panel_v1",
+    "title": "Aluminum panel product specification seed",
+    "category": "product_spec",
+    "language": "en",
+    "status": "mocked",
+    "owner": "Product",
+    "external_blocker": "Need official product manual and technical parameters"
+  },
+  {
+    "source_id": "sales_script_quote_v1",
+    "title": "Sales script for quotation collection",
+    "category": "sales_script",
+    "language": "en",
+    "status": "mocked",
+    "owner": "Sales",
+    "external_blocker": "Need approved sales script"
+  }
+]

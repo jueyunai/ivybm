@@ -1,0 +1,9 @@
+{
+  "id": "session_fixture_001",
+  "requestId": "request_fixture_001",
+  "locale": "en",
+  "channel": "website",
+  "handoffStatus": "ai_active",
+  "allowedActions": ["send_message", "request_handoff"],
+  "messages": []
+}

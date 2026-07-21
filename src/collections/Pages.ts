@@ -8,6 +8,7 @@ import {
   publishedContentRead,
 } from '../access/content'
 import { internalNotesField } from '../fields/internalNotes'
+import { imageMediaFilter } from '../fields/media'
 import { seoField } from '../fields/seo'
 import { stableSlugField } from '../fields/slug'
 import {
@@ -50,6 +51,7 @@ export const Pages: CollectionConfig = {
     {
       name: 'heroImage',
       type: 'upload',
+      filterOptions: imageMediaFilter,
       relationTo: 'media',
     },
     seoField(),

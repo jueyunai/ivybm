@@ -42,7 +42,7 @@ const seed = async (): Promise<void> => {
     })
 
     if (existing.totalDocs > 0) {
-      payload.logger.info(`Demo administrator already exists: ${email}`)
+      payload.logger.info(`Development administrator already exists: ${email}`)
     } else {
       await payload.create({
         collection: 'users',
@@ -54,7 +54,7 @@ const seed = async (): Promise<void> => {
         overrideAccess: true,
       })
 
-      payload.logger.info(`Created demo administrator: ${email}`)
+      payload.logger.info(`Created development administrator: ${email}`)
     }
 
     await seedContent(payload)

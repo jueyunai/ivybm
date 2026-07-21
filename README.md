@@ -4,13 +4,15 @@
 
 一期目标是交付英文 / 阿语铝单板独立站、统一 CMS、AI 客服与知识库、会话管理、飞书 CRM 同步、AI 内容工作台及首批海外平台接入。
 
+当前一期平台范围：会话接入 Facebook Messenger、Instagram DM、TikTok 私信；图文发布接入 Facebook、Instagram、LinkedIn。WhatsApp 不纳入一期系统接入，二期再评估网页插件等替代方案；官网静态外链不代表系统接入。
+
 ## 当前状态
 
 - 已从前期资料目录迁入需求基线、技术架构和必要调研文档。
 - 已将客户提供并确认的官网原型迁入 `references/website-prototype/`，作为正式官网 UI / 交互验收基准；生产实现使用 Next.js / Payload 重写，但必须高保真还原原型效果。
 - Task 1 正式应用工程已初始化，当前具备 Next.js 前台、Payload Admin、REST API、GraphQL API 和基础测试能力。
 - 当前技术栈：Next.js 16.2.6、Payload CMS 3.86.0、React 19.2.6、PostgreSQL Adapter、Node.js 24、pnpm 10.15.1。
-- 后续按实施计划继续接入 PostgreSQL + pgvector、Docker Compose、1Panel OpenResty 及业务模块。
+- 当前已具备 PostgreSQL + pgvector、Docker Compose 和 1Panel OpenResty 的运行时基础；后续按实施计划继续完成 production 镜像发布和业务模块。
 
 ## 本地开发
 
@@ -63,6 +65,10 @@ tests/
 - 不提交数据库、上传文件、备份、浏览器日志和构建产物。
 
 项目进度见 [`docs/开发进度.md`](docs/开发进度.md)。
+
+## 单一 production 发布
+
+GitHub CI 只负责质量门禁与私有镜像发布；1Panel 手动拉取指定 Git SHA + digest 镜像并发布，不使用服务器现场构建或公网 SSH。完整流程见 [`docs/operations/部署手册.md`](docs/operations/部署手册.md)。
 
 一期执行依据：
 

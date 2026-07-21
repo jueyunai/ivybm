@@ -2,18 +2,35 @@ import { postgresAdapter } from '@payloadcms/db-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import path from 'path'
 import { buildConfig } from 'payload'
+import { en } from 'payload/i18n/en'
+import { zh } from 'payload/i18n/zh'
 import { fileURLToPath } from 'url'
 import sharp from 'sharp'
 
+import { localizeAdminCollections, localizeAdminGlobals } from './admin/localizeConfig'
 import { AuditLogs } from './collections/AuditLogs'
+import { AiModelProfiles } from './collections/AiModelProfiles'
+import { AiProviders } from './collections/AiProviders'
+import { AiUsageRoutes } from './collections/AiUsageRoutes'
 import { Downloads } from './collections/Downloads'
+import { Conversations } from './collections/Conversations'
+import { ConversationCommands } from './collections/ConversationCommands'
+import { Handoffs } from './collections/Handoffs'
+import { Jobs } from './collections/Jobs'
+import { KnowledgeChunks } from './collections/KnowledgeChunks'
+import { KnowledgeDocuments } from './collections/KnowledgeDocuments'
+import { Leads } from './collections/Leads'
+import { LeadSources } from './collections/LeadSources'
 import { Media } from './collections/Media'
+import { Messages } from './collections/Messages'
 import { Pages } from './collections/Pages'
 import { Posts } from './collections/Posts'
 import { ProductCategories } from './collections/ProductCategories'
 import { Products } from './collections/Products'
+import { PromptTemplates } from './collections/PromptTemplates'
 import { Projects } from './collections/Projects'
 import { Users } from './collections/Users'
+import { VisitorSessions } from './collections/VisitorSessions'
 import { SiteSettings } from './globals/SiteSettings'
 
 const filename = fileURLToPath(import.meta.url)
@@ -31,19 +48,37 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [
+  collections: localizeAdminCollections([
     Users,
     Media,
     AuditLogs,
+    AiProviders,
+    AiModelProfiles,
+    AiUsageRoutes,
     Pages,
     ProductCategories,
     Products,
     Projects,
     Posts,
     Downloads,
-  ],
+    KnowledgeDocuments,
+    KnowledgeChunks,
+    PromptTemplates,
+    LeadSources,
+    Leads,
+    VisitorSessions,
+    Conversations,
+    Messages,
+    Handoffs,
+    ConversationCommands,
+    Jobs,
+  ]),
   editor: lexicalEditor(),
-  globals: [SiteSettings],
+  globals: localizeAdminGlobals([SiteSettings]),
+  i18n: {
+    fallbackLanguage: 'zh',
+    supportedLanguages: { zh, en },
+  },
   localization: {
     defaultLocale: 'en',
     fallback: true,

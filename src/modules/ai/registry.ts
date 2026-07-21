@@ -1,0 +1,314 @@
+import type { Payload } from 'payload'
+
+import {
+  AiConfigurationError,
+  readAIConfigurationOperation,
+  type AiConfigurationOperation,
+} from './config'
+import { decryptAiCredential, readAiConfigurationEncryptionKey } from './credentials'
+import {
+  AI_REASONING_EFFORTS,
+  createAiGateway,
+  type AiGateway,
+  type AiGatewayEmbeddingOperationConfig,
+  type AiGatewayTextOperationConfig,
+  type AiProvider,
+  type AiReasoningEffort,
+} from './gateway'
+import {
+  createOpenAICompatibleProvider,
+  type OpenAICompatibleProviderOptions,
+} from './providers/openaiCompatible'
+
+type Environment = Readonly<Record<string, string | undefined>>
+type UnknownRecord = Record<string, unknown>
+
+export const AI_USAGE_KEYS = {
+  chatReply: 'chat.reply',
+  knowledgeEmbedding: 'knowledge.embedding',
+} as const
+
+export type AiUsageRouteRequest = {
+  operation: AiConfigurationOperation
+  usageKey: string
+}
+
+type ProviderFactory = (options: OpenAICompatibleProviderOptions) => AiProvider
+
+type ResolveAiGatewayOptions = {
+  createProvider?: ProviderFactory
+  environment?: Environment
+  payload: Payload
+  routes: readonly AiUsageRouteRequest[]
+}
+
+const isRecord = (value: unknown): value is UnknownRecord =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+const requiredRecord = (value: unknown, field: string): UnknownRecord => {
+  if (!isRecord(value)) {
+    throw new AiConfigurationError(`AI route ${field} is unavailable`)
+  }
+
+  return value
+}
+
+const requiredString = (value: unknown, field: string): string => {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new AiConfigurationError(`AI route ${field} is invalid`)
+  }
+
+  return value.trim()
+}
+
+const optionalNumber = (
+  value: unknown,
+  field: string,
+  minimum: number,
+  maximum: number,
+  integer = false,
+): number | undefined => {
+  if (value === undefined || value === null) return undefined
+  if (
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    value < minimum ||
+    value > maximum ||
+    (integer && !Number.isInteger(value))
+  ) {
+    throw new AiConfigurationError(`AI route ${field} is invalid`)
+  }
+
+  return value
+}
+
+const validReasoningEffort = (value: unknown): value is AiReasoningEffort =>
+  typeof value === 'string' && AI_REASONING_EFFORTS.some((effort) => effort === value)
+
+const normalizeRuntimeBaseURL = (value: string, environment: Environment): string => {
+  try {
+    const url = new URL(value)
+    const production =
+      environment.NODE_ENV === 'production' || process.env.NODE_ENV === 'production'
+    if (
+      (url.protocol !== 'https:' && url.protocol !== 'http:') ||
+      (production && url.protocol !== 'https:') ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    ) {
+      throw new Error('invalid URL')
+    }
+
+    return url.toString().replace(/\/+$/, '')
+  } catch {
+    throw new AiConfigurationError('AI route provider endpoint is invalid')
+  }
+}
+
+const routeConfigurationError = (usageKey: string, reason: string): AiConfigurationError =>
+  new AiConfigurationError(`AI route ${usageKey} ${reason}`)
+
+const resolveCmsRoute = (
+  route: UnknownRecord,
+  request: AiUsageRouteRequest,
+  createProvider: ProviderFactory,
+  environment: Environment,
+  encryptionKey: { value?: Buffer },
+): AiGatewayTextOperationConfig | AiGatewayEmbeddingOperationConfig => {
+  if (route.enabled !== true) {
+    throw routeConfigurationError(request.usageKey, 'is disabled')
+  }
+  if (route.operation !== request.operation) {
+    throw routeConfigurationError(request.usageKey, 'has a mismatched operation')
+  }
+
+  const profile = requiredRecord(route.profile, 'profile')
+  if (profile.enabled !== true) {
+    throw routeConfigurationError(request.usageKey, 'references a disabled profile')
+  }
+  if (profile.capability !== request.operation) {
+    throw routeConfigurationError(request.usageKey, 'references an incompatible profile')
+  }
+
+  const provider = requiredRecord(profile.provider, 'provider')
+  if (provider.enabled !== true || provider.apiKeyConfigured !== true) {
+    throw routeConfigurationError(request.usageKey, 'references an unavailable provider')
+  }
+  if (provider.protocol !== 'openai-compatible') {
+    throw routeConfigurationError(request.usageKey, 'uses an unsupported provider protocol')
+  }
+
+  const encryptedCredential = requiredString(provider.apiKey, 'provider credential')
+  let apiKey: string
+  try {
+    encryptionKey.value ??= readAiConfigurationEncryptionKey(environment)
+    apiKey = decryptAiCredential(encryptedCredential, encryptionKey.value)
+  } catch {
+    throw routeConfigurationError(request.usageKey, 'credential is unavailable')
+  }
+
+  const model = requiredString(profile.model, 'model')
+  const parameters = requiredRecord(profile.parameters, 'parameters')
+  const timeoutMs = optionalNumber(parameters.timeoutMs, 'timeout', 1_000, 120_000, true)
+  if (timeoutMs === undefined) {
+    throw routeConfigurationError(request.usageKey, 'timeout is invalid')
+  }
+  const resolvedProvider = createProvider({
+    apiKey,
+    baseURL: normalizeRuntimeBaseURL(
+      requiredString(provider.baseURL, 'provider endpoint'),
+      environment,
+    ),
+    name: requiredString(provider.name, 'provider name'),
+  })
+
+  if (request.operation === 'embedding') {
+    if (parameters.maxOutputTokens !== undefined && parameters.maxOutputTokens !== null) {
+      throw routeConfigurationError(request.usageKey, 'contains text-only token settings')
+    }
+    if (parameters.reasoningEnabled === true) {
+      throw routeConfigurationError(request.usageKey, 'contains text-only reasoning settings')
+    }
+    if (
+      (parameters.temperature !== undefined && parameters.temperature !== null) ||
+      (parameters.topP !== undefined && parameters.topP !== null)
+    ) {
+      throw routeConfigurationError(request.usageKey, 'contains text-only sampling settings')
+    }
+
+    return {
+      dimensions: optionalNumber(parameters.dimensions, 'embedding dimensions', 1, 16_384, true),
+      model,
+      provider: resolvedProvider,
+      timeoutMs,
+    }
+  }
+
+  if (parameters.dimensions !== undefined && parameters.dimensions !== null) {
+    throw routeConfigurationError(request.usageKey, 'contains embedding-only dimensions')
+  }
+
+  const reasoningEnabled = parameters.reasoningEnabled === true
+  let defaultReasoning: AiGatewayTextOperationConfig['defaultReasoning']
+  if (reasoningEnabled) {
+    const effort = parameters.reasoningEffort
+    if (!validReasoningEffort(effort)) {
+      throw routeConfigurationError(request.usageKey, 'reasoning effort is invalid')
+    }
+    defaultReasoning = { effort }
+  }
+
+  return {
+    defaultReasoning,
+    maxOutputTokens: optionalNumber(
+      parameters.maxOutputTokens,
+      'maximum output tokens',
+      1,
+      128_000,
+      true,
+    ),
+    model,
+    provider: resolvedProvider,
+    temperature: optionalNumber(parameters.temperature, 'temperature', 0, 2),
+    timeoutMs,
+    topP: optionalNumber(parameters.topP, 'top-p', 0, 1),
+  }
+}
+
+const resolveEnvironmentRoute = (
+  operation: AiConfigurationOperation,
+  createProvider: ProviderFactory,
+  environment: Environment,
+): AiGatewayTextOperationConfig | AiGatewayEmbeddingOperationConfig | undefined => {
+  const fallback = readAIConfigurationOperation(operation, environment)
+  if (!fallback) return undefined
+
+  const provider = createProvider({
+    apiKey: fallback.apiKey,
+    baseURL: normalizeRuntimeBaseURL(fallback.baseURL, environment),
+    name: `environment-${operation}`,
+  })
+
+  if (operation === 'text') {
+    return {
+      defaultReasoning: fallback.reasoning,
+      model: fallback.model,
+      provider,
+      timeoutMs: fallback.timeoutMs,
+    }
+  }
+
+  return { model: fallback.model, provider, timeoutMs: fallback.timeoutMs }
+}
+
+/**
+ * Loads the requested route records once and returns a request-scoped gateway.
+ * An existing CMS route is authoritative: disabled or invalid CMS data fails
+ * closed, while a missing route uses the legacy environment fallback for only
+ * that operation.
+ */
+export const resolveAiGateway = async ({
+  createProvider = createOpenAICompatibleProvider,
+  environment = process.env,
+  payload,
+  routes,
+}: ResolveAiGatewayOptions): Promise<AiGateway> => {
+  const requestedByOperation = new Map<AiConfigurationOperation, AiUsageRouteRequest>()
+  for (const route of routes) {
+    const existing = requestedByOperation.get(route.operation)
+    if (existing && existing.usageKey !== route.usageKey) {
+      throw new AiConfigurationError(
+        `Only one ${route.operation} AI route can be resolved per request`,
+      )
+    }
+    requestedByOperation.set(route.operation, route)
+  }
+
+  const usageKeys = [...new Set(routes.map(({ usageKey }) => usageKey))]
+  const result =
+    usageKeys.length === 0
+      ? { docs: [] }
+      : await payload.find({
+          collection: 'ai-usage-routes',
+          depth: 2,
+          limit: usageKeys.length,
+          overrideAccess: true,
+          pagination: false,
+          where: { usageKey: { in: usageKeys } },
+        })
+
+  const cmsRoutes = new Map<string, UnknownRecord>()
+  for (const document of result.docs) {
+    if (!isRecord(document)) continue
+    const usageKey = typeof document.usageKey === 'string' ? document.usageKey : undefined
+    if (!usageKey || !usageKeys.includes(usageKey)) continue
+    if (cmsRoutes.has(usageKey)) {
+      throw routeConfigurationError(usageKey, 'is ambiguous')
+    }
+    cmsRoutes.set(usageKey, document)
+  }
+
+  const encryptionKey: { value?: Buffer } = {}
+  const operations: {
+    embedding?: AiGatewayEmbeddingOperationConfig
+    text?: AiGatewayTextOperationConfig
+  } = {}
+
+  for (const [operation, request] of requestedByOperation) {
+    const cmsRoute = cmsRoutes.get(request.usageKey)
+    const configuration = cmsRoute
+      ? resolveCmsRoute(cmsRoute, request, createProvider, environment, encryptionKey)
+      : resolveEnvironmentRoute(operation, createProvider, environment)
+
+    if (!configuration) continue
+    if (operation === 'text') {
+      operations.text = configuration as AiGatewayTextOperationConfig
+    } else {
+      operations.embedding = configuration as AiGatewayEmbeddingOperationConfig
+    }
+  }
+
+  return createAiGateway({ operations })
+}

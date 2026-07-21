@@ -1,4 +1,5 @@
 import { ValidationError, type CollectionBeforeOperationHook, type CollectionConfig } from 'payload'
+import path from 'path'
 
 import {
   contentAdmin,
@@ -97,6 +98,7 @@ export const Media: CollectionConfig = {
   },
   upload: {
     adminThumbnail: 'thumbnail',
+    staticDir: path.resolve(process.cwd(), 'media'),
     focalPoint: true,
     imageSizes: [
       {

@@ -5,6 +5,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "ai:eval:coverage": "node scripts/ai-eval/coverage-report.mjs",
+    "ai:eval:csv": "node scripts/ai-eval/export-csv.mjs",
+    "ai:eval:validate": "node scripts/ai-eval/validate.mjs",
     "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build",
     "db:migrate": "cross-env NODE_OPTIONS=--no-deprecation payload migrate",
     "db:migrate:create": "cross-env NODE_OPTIONS=--no-deprecation payload migrate:create",
@@ -23,16 +26,20 @@
     "payload": "cross-env NODE_OPTIONS=--no-deprecation payload",
     "start": "cross-env NODE_OPTIONS=--no-deprecation next start",
     "test": "pnpm run test:unit",
+    "test:contract": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.contract.config.mts",
     "test:e2e": "cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" playwright test --config=playwright.config.ts",
     "test:integration": "cross-env NODE_OPTIONS=--no-deprecation NODE_ENV=test vitest run --config ./vitest.integration.config.mts",
-    "test:unit": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts tests/unit",
-    "typecheck": "tsc --noEmit"
+    "test:operations": "vitest run --config ./vitest.operations.config.mts",
+    "test:unit": "pnpm run ai:eval:validate && cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts tests/unit",
+    "typecheck": "tsc --noEmit",
+    "worker": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=256\" DISABLE_PAYLOAD_HMR=true tsx src/worker.ts"
   },
   "dependencies": {
     "@payloadcms/db-postgres": "3.86.0",
     "@payloadcms/next": "3.86.0",
     "@payloadcms/richtext-lexical": "3.86.0",
     "@payloadcms/ui": "3.86.0",
+    "@tabler/icons-react": "^3.45.0",
     "cross-env": "^7.0.3",
     "dotenv": "16.4.7",
     "graphql": "^16.8.1",

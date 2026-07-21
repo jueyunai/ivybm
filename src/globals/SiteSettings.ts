@@ -1,6 +1,7 @@
 import type { GlobalConfig } from 'payload'
 
 import { contentUpdate, publicRead } from '../access/content'
+import { imageMediaFilter } from '../fields/media'
 import { seoField } from '../fields/seo'
 import { revalidateSiteSettingsAfterChange } from '../hooks/revalidateContent'
 
@@ -33,6 +34,7 @@ export const SiteSettings: GlobalConfig = {
     {
       name: 'logo',
       type: 'upload',
+      filterOptions: imageMediaFilter,
       relationTo: 'media',
     },
     {

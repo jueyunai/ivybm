@@ -11,11 +11,7 @@ const admin: RoleUser = { id: 1, role: 'admin' }
 const operator: RoleUser = { id: 2, role: 'operator' }
 const sales: RoleUser = { id: 3, role: 'sales' }
 
-const expectAllowed = (
-  user: RoleUser,
-  resource: AccessResource,
-  actions: AccessAction[],
-): void => {
+const expectAllowed = (user: RoleUser, resource: AccessResource, actions: AccessAction[]): void => {
   for (const action of actions) {
     expect(resolveRoleAccess({ action, resource, user })).toBe(true)
   }
@@ -38,6 +34,7 @@ describe('role access matrix', () => {
     const resources: AccessResource[] = [
       'users',
       'content',
+      'knowledge',
       'platformAccounts',
       'conversations',
       'leads',
@@ -52,6 +49,7 @@ describe('role access matrix', () => {
     const resources: AccessResource[] = [
       'users',
       'content',
+      'knowledge',
       'platformAccounts',
       'conversations',
       'leads',
@@ -62,8 +60,9 @@ describe('role access matrix', () => {
     }
   })
 
-  it('allows operators to manage content and work active conversations and leads', () => {
+  it('allows operators to manage content and knowledge and work active conversations and leads', () => {
     expectAllowed(operator, 'content', allActions)
+    expectAllowed(operator, 'knowledge', allActions)
     expectAllowed(operator, 'conversations', ['read', 'update'])
     expectAllowed(operator, 'leads', ['read', 'update'])
 
@@ -95,6 +94,7 @@ describe('role access matrix', () => {
 
     expectDenied(sales, 'users', allActions)
     expectDenied(sales, 'content', allActions)
+    expectDenied(sales, 'knowledge', allActions)
     expectDenied(sales, 'platformAccounts', allActions)
     expectDenied(sales, 'conversations', ['create', 'delete'])
     expectDenied(sales, 'leads', ['create', 'delete'])

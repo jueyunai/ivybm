@@ -68,6 +68,9 @@ jobs:
       - name: Unit tests
         run: pnpm test:unit
 
+      - name: Contract tests
+        run: pnpm test:contract
+
       - name: Apply database migrations
         run: pnpm db:migrate
 
@@ -87,3 +90,36 @@ jobs:
 
       - name: Production build
         run: pnpm build
+
+      - name: Install Chromium for ChatWidget E2E
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: ChatWidget browser E2E
+        run: pnpm test:e2e -- tests/e2e/chat-handoff.spec.ts
+
+      - name: Build runtime image
+        run: >-
+          docker build
+          --target runtime
+          --build-arg NEXT_PUBLIC_SERVER_URL=http://localhost:3000
+          --tag ivybm:ci .
+
+      - name: Build job worker image
+        run: docker build --target worker --tag ivybm-worker:ci .
+
+      - name: Validate local runtime Compose configuration
+        env:
+          # Config validation must satisfy required interpolation without exposing real credentials.
+          AI_CONFIG_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          APP_VERSION: ci
+          DATABASE_URL: postgres://postgres:postgres@db:5432/ivybm_ci
+          NEXT_PUBLIC_SERVER_URL: http://localhost:3000
+          POSTGRES_DB: ivybm_ci
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          SEED_ADMIN_EMAIL: admin@example.invalid
+          SEED_ADMIN_PASSWORD: ci-demo-admin-password
+        run: docker compose -f compose.yaml -f compose.staging.yaml config >/dev/null
+
+      - name: Validate production operations configuration
+        run: pnpm test:operations

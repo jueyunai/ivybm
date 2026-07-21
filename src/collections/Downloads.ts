@@ -7,6 +7,7 @@ import {
   contentDelete,
   contentUpdate,
 } from '../access/content'
+import { imageMediaFilter } from '../fields/media'
 import { seoField } from '../fields/seo'
 import { stableSlugField } from '../fields/slug'
 import {
@@ -61,6 +62,7 @@ export const Downloads: CollectionConfig = {
     {
       name: 'coverImage',
       type: 'upload',
+      filterOptions: imageMediaFilter,
       relationTo: 'media',
     },
     {

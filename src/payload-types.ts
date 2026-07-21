@@ -70,12 +70,26 @@ export interface Config {
     users: User;
     media: Media;
     'audit-logs': AuditLog;
+    'ai-providers': AiProvider;
+    'ai-model-profiles': AiModelProfile;
+    'ai-usage-routes': AiUsageRoute;
     pages: Page;
     'product-categories': ProductCategory;
     products: Product;
     projects: Project;
     posts: Post;
     downloads: Download;
+    'knowledge-documents': KnowledgeDocument;
+    'knowledge-chunks': KnowledgeChunk;
+    'prompt-templates': PromptTemplate;
+    'lead-sources': LeadSource;
+    leads: Lead;
+    'visitor-sessions': VisitorSession;
+    conversations: Conversation;
+    messages: Message;
+    handoffs: Handoff;
+    'conversation-commands': ConversationCommand;
+    jobs: Job;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -86,12 +100,26 @@ export interface Config {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     'audit-logs': AuditLogsSelect<false> | AuditLogsSelect<true>;
+    'ai-providers': AiProvidersSelect<false> | AiProvidersSelect<true>;
+    'ai-model-profiles': AiModelProfilesSelect<false> | AiModelProfilesSelect<true>;
+    'ai-usage-routes': AiUsageRoutesSelect<false> | AiUsageRoutesSelect<true>;
     pages: PagesSelect<false> | PagesSelect<true>;
     'product-categories': ProductCategoriesSelect<false> | ProductCategoriesSelect<true>;
     products: ProductsSelect<false> | ProductsSelect<true>;
     projects: ProjectsSelect<false> | ProjectsSelect<true>;
     posts: PostsSelect<false> | PostsSelect<true>;
     downloads: DownloadsSelect<false> | DownloadsSelect<true>;
+    'knowledge-documents': KnowledgeDocumentsSelect<false> | KnowledgeDocumentsSelect<true>;
+    'knowledge-chunks': KnowledgeChunksSelect<false> | KnowledgeChunksSelect<true>;
+    'prompt-templates': PromptTemplatesSelect<false> | PromptTemplatesSelect<true>;
+    'lead-sources': LeadSourcesSelect<false> | LeadSourcesSelect<true>;
+    leads: LeadsSelect<false> | LeadsSelect<true>;
+    'visitor-sessions': VisitorSessionsSelect<false> | VisitorSessionsSelect<true>;
+    conversations: ConversationsSelect<false> | ConversationsSelect<true>;
+    messages: MessagesSelect<false> | MessagesSelect<true>;
+    handoffs: HandoffsSelect<false> | HandoffsSelect<true>;
+    'conversation-commands': ConversationCommandsSelect<false> | ConversationCommandsSelect<true>;
+    jobs: JobsSelect<false> | JobsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -224,6 +252,78 @@ export interface AuditLog {
   resource: string;
   documentId: string;
   actor?: (number | null) | User;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-providers".
+ */
+export interface AiProvider {
+  id: number;
+  name: string;
+  enabled: boolean;
+  protocol: 'openai-compatible';
+  /**
+   * Include the API version prefix, for example https://api.openai.com/v1.
+   */
+  baseURL: string;
+  /**
+   * Write-only. Enter a value to set or replace the key; leave blank to retain it.
+   */
+  apiKey?: string | null;
+  /**
+   * This indicator never reveals the key.
+   */
+  apiKeyConfigured: boolean;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-model-profiles".
+ */
+export interface AiModelProfile {
+  id: number;
+  name: string;
+  enabled: boolean;
+  provider: number | AiProvider;
+  capability: 'text' | 'embedding';
+  /**
+   * Exact model identifier accepted by the selected provider.
+   */
+  model: string;
+  parameters: {
+    timeoutMs: number;
+    maxOutputTokens?: number | null;
+    reasoningEnabled?: boolean | null;
+    reasoningEffort?: ('none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max') | null;
+    /**
+     * Optional sampling temperature, from 0 to 2.
+     */
+    temperature?: number | null;
+    /**
+     * Optional nucleus-sampling top-p value, from 0 to 1.
+     */
+    topP?: number | null;
+    dimensions?: number | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-usage-routes".
+ */
+export interface AiUsageRoute {
+  id: number;
+  /**
+   * Stable internal key, for example chat.reply or knowledge.embedding.
+   */
+  usageKey: string;
+  enabled: boolean;
+  operation: 'text' | 'embedding';
+  profile: number | AiModelProfile;
   updatedAt: string;
   createdAt: string;
 }
@@ -530,6 +630,275 @@ export interface Download {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-documents".
+ */
+export interface KnowledgeDocument {
+  id: number;
+  sourceTitle: string;
+  sourceType: 'faq' | 'product-manual' | 'technical-specification' | 'sales-script' | 'project-case' | 'other';
+  /**
+   * Only reviewed, indexed documents marked here may be used by the public website chat.
+   */
+  customerVisible?: boolean | null;
+  sourceURL?: string | null;
+  sourceFile?: (number | null) | Media;
+  sourceVersion: string;
+  locale: 'en' | 'ar';
+  content: string;
+  reviewStatus: 'draft' | 'reviewed' | 'archived';
+  reviewedAt?: string | null;
+  reviewedBy?: (number | null) | User;
+  indexStatus: 'pending' | 'processing' | 'ready' | 'failed';
+  indexedAt?: string | null;
+  embeddingModel?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-chunks".
+ */
+export interface KnowledgeChunk {
+  id: number;
+  document: number | KnowledgeDocument;
+  stableId: string;
+  index: number;
+  locale: 'en' | 'ar';
+  content: string;
+  sourceTitle: string;
+  sourceVersion: string;
+  sourceURL?: string | null;
+  embeddingModel?: string | null;
+  embeddingDimensions?: number | null;
+  embeddedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "prompt-templates".
+ */
+export interface PromptTemplate {
+  id: number;
+  key: string;
+  purpose: 'customer-chat' | 'conversation-summary' | 'translation' | 'content-generation';
+  locale: 'all' | 'en' | 'ar';
+  version: number;
+  template: string;
+  variables?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  status: 'draft' | 'active' | 'archived';
+  model?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "lead-sources".
+ */
+export interface LeadSource {
+  id: number;
+  name: string;
+  /**
+   * Stable integration key. Create a new source instead of renaming this value.
+   */
+  key: string;
+  channel: 'website' | 'ai-chat' | 'social' | 'manual';
+  isActive: boolean;
+  description?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "leads".
+ */
+export interface Lead {
+  id: number;
+  requestId: string;
+  idempotencyKey: string;
+  source: number | LeadSource;
+  locale: 'en' | 'ar';
+  status: 'new' | 'contacted' | 'qualified' | 'disqualified';
+  intentLevel: 'unscored' | 'a' | 'b' | 'c';
+  assignedTo?: (number | null) | User;
+  name: string;
+  company?: string | null;
+  country: string;
+  email: string;
+  phone?: string | null;
+  interest?: string | null;
+  message: string;
+  sourceURL?: string | null;
+  utm?: {
+    source?: string | null;
+    medium?: string | null;
+    campaign?: string | null;
+    term?: string | null;
+    content?: string | null;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "visitor-sessions".
+ */
+export interface VisitorSession {
+  id: number;
+  publicId: string;
+  sessionTokenHash: string;
+  idempotencyKey: string;
+  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram';
+  locale: 'en' | 'ar';
+  sourceURL?: string | null;
+  expiresAt: string;
+  lastSeenAt: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "conversations".
+ */
+export interface Conversation {
+  id: number;
+  publicId: string;
+  requestId: string;
+  visitorSession: number | VisitorSession;
+  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram';
+  externalThreadId?: string | null;
+  locale: 'en' | 'ar';
+  handoffStatus: 'ai_active' | 'handoff_requested' | 'human_active' | 'resolved';
+  revision: number;
+  assignedTo?: (number | null) | User;
+  lead?: (number | null) | Lead;
+  intentLevel: 'unscored' | 'a' | 'b' | 'c';
+  intentScore?: number | null;
+  summary?: string | null;
+  lastMessageAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "messages".
+ */
+export interface Message {
+  id: number;
+  conversation: number | Conversation;
+  requestId: string;
+  idempotencyKey: string;
+  externalMessageId?: string | null;
+  author: 'visitor' | 'ai' | 'operator' | 'system';
+  status: 'pending' | 'sent' | 'failed';
+  content: string;
+  citations?:
+    | {
+        documentId: string;
+        title: string;
+        version: string;
+        url?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  promptVersion?: number | null;
+  model?: string | null;
+  tokenUsage?: {
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+    totalTokens?: number | null;
+  };
+  estimatedCostUSD?: number | null;
+  errorCode?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "handoffs".
+ */
+export interface Handoff {
+  id: number;
+  publicId: string;
+  conversation: number | Conversation;
+  idempotencyKey: string;
+  domainEventId: string;
+  status: 'requested' | 'active' | 'resolved';
+  source: 'visitor' | 'ai_policy' | 'operator';
+  reason: string;
+  requestedBy?: (number | null) | User;
+  assignedTo?: (number | null) | User;
+  requestedAt: string;
+  acceptedAt?: string | null;
+  resolvedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "conversation-commands".
+ */
+export interface ConversationCommand {
+  id: number;
+  scope: string;
+  idempotencyKey: string;
+  ownerToken: string;
+  leaseExpiresAt: string;
+  status: 'processing' | 'completed' | 'failed';
+  conversation?: (number | null) | Conversation;
+  result?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  errorCode?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "jobs".
+ */
+export interface Job {
+  id: number;
+  type: string;
+  idempotencyKey?: string | null;
+  payload:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'dead';
+  attempts: number;
+  maxAttempts: number;
+  nextRunAt?: string | null;
+  leaseExpiresAt?: string | null;
+  ownerToken?: string | null;
+  lastError?: string | null;
+  completedAt?: string | null;
+  deadAt?: string | null;
+  manualRetryCount: number;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -565,6 +934,18 @@ export interface PayloadLockedDocument {
         value: number | AuditLog;
       } | null)
     | ({
+        relationTo: 'ai-providers';
+        value: number | AiProvider;
+      } | null)
+    | ({
+        relationTo: 'ai-model-profiles';
+        value: number | AiModelProfile;
+      } | null)
+    | ({
+        relationTo: 'ai-usage-routes';
+        value: number | AiUsageRoute;
+      } | null)
+    | ({
         relationTo: 'pages';
         value: number | Page;
       } | null)
@@ -587,6 +968,50 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'downloads';
         value: number | Download;
+      } | null)
+    | ({
+        relationTo: 'knowledge-documents';
+        value: number | KnowledgeDocument;
+      } | null)
+    | ({
+        relationTo: 'knowledge-chunks';
+        value: number | KnowledgeChunk;
+      } | null)
+    | ({
+        relationTo: 'prompt-templates';
+        value: number | PromptTemplate;
+      } | null)
+    | ({
+        relationTo: 'lead-sources';
+        value: number | LeadSource;
+      } | null)
+    | ({
+        relationTo: 'leads';
+        value: number | Lead;
+      } | null)
+    | ({
+        relationTo: 'visitor-sessions';
+        value: number | VisitorSession;
+      } | null)
+    | ({
+        relationTo: 'conversations';
+        value: number | Conversation;
+      } | null)
+    | ({
+        relationTo: 'messages';
+        value: number | Message;
+      } | null)
+    | ({
+        relationTo: 'handoffs';
+        value: number | Handoff;
+      } | null)
+    | ({
+        relationTo: 'conversation-commands';
+        value: number | ConversationCommand;
+      } | null)
+    | ({
+        relationTo: 'jobs';
+        value: number | Job;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -716,6 +1141,56 @@ export interface AuditLogsSelect<T extends boolean = true> {
   resource?: T;
   documentId?: T;
   actor?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-providers_select".
+ */
+export interface AiProvidersSelect<T extends boolean = true> {
+  name?: T;
+  enabled?: T;
+  protocol?: T;
+  baseURL?: T;
+  apiKey?: T;
+  apiKeyConfigured?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-model-profiles_select".
+ */
+export interface AiModelProfilesSelect<T extends boolean = true> {
+  name?: T;
+  enabled?: T;
+  provider?: T;
+  capability?: T;
+  model?: T;
+  parameters?:
+    | T
+    | {
+        timeoutMs?: T;
+        maxOutputTokens?: T;
+        reasoningEnabled?: T;
+        reasoningEffort?: T;
+        temperature?: T;
+        topP?: T;
+        dimensions?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ai-usage-routes_select".
+ */
+export interface AiUsageRoutesSelect<T extends boolean = true> {
+  usageKey?: T;
+  enabled?: T;
+  operation?: T;
+  profile?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -883,6 +1358,238 @@ export interface DownloadsSelect<T extends boolean = true> {
         ogImage?: T;
         noIndex?: T;
       };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-documents_select".
+ */
+export interface KnowledgeDocumentsSelect<T extends boolean = true> {
+  sourceTitle?: T;
+  sourceType?: T;
+  customerVisible?: T;
+  sourceURL?: T;
+  sourceFile?: T;
+  sourceVersion?: T;
+  locale?: T;
+  content?: T;
+  reviewStatus?: T;
+  reviewedAt?: T;
+  reviewedBy?: T;
+  indexStatus?: T;
+  indexedAt?: T;
+  embeddingModel?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-chunks_select".
+ */
+export interface KnowledgeChunksSelect<T extends boolean = true> {
+  document?: T;
+  stableId?: T;
+  index?: T;
+  locale?: T;
+  content?: T;
+  sourceTitle?: T;
+  sourceVersion?: T;
+  sourceURL?: T;
+  embeddingModel?: T;
+  embeddingDimensions?: T;
+  embeddedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "prompt-templates_select".
+ */
+export interface PromptTemplatesSelect<T extends boolean = true> {
+  key?: T;
+  purpose?: T;
+  locale?: T;
+  version?: T;
+  template?: T;
+  variables?: T;
+  status?: T;
+  model?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "lead-sources_select".
+ */
+export interface LeadSourcesSelect<T extends boolean = true> {
+  name?: T;
+  key?: T;
+  channel?: T;
+  isActive?: T;
+  description?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "leads_select".
+ */
+export interface LeadsSelect<T extends boolean = true> {
+  requestId?: T;
+  idempotencyKey?: T;
+  source?: T;
+  locale?: T;
+  status?: T;
+  intentLevel?: T;
+  assignedTo?: T;
+  name?: T;
+  company?: T;
+  country?: T;
+  email?: T;
+  phone?: T;
+  interest?: T;
+  message?: T;
+  sourceURL?: T;
+  utm?:
+    | T
+    | {
+        source?: T;
+        medium?: T;
+        campaign?: T;
+        term?: T;
+        content?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "visitor-sessions_select".
+ */
+export interface VisitorSessionsSelect<T extends boolean = true> {
+  publicId?: T;
+  sessionTokenHash?: T;
+  idempotencyKey?: T;
+  channel?: T;
+  locale?: T;
+  sourceURL?: T;
+  expiresAt?: T;
+  lastSeenAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "conversations_select".
+ */
+export interface ConversationsSelect<T extends boolean = true> {
+  publicId?: T;
+  requestId?: T;
+  visitorSession?: T;
+  channel?: T;
+  externalThreadId?: T;
+  locale?: T;
+  handoffStatus?: T;
+  revision?: T;
+  assignedTo?: T;
+  lead?: T;
+  intentLevel?: T;
+  intentScore?: T;
+  summary?: T;
+  lastMessageAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "messages_select".
+ */
+export interface MessagesSelect<T extends boolean = true> {
+  conversation?: T;
+  requestId?: T;
+  idempotencyKey?: T;
+  externalMessageId?: T;
+  author?: T;
+  status?: T;
+  content?: T;
+  citations?:
+    | T
+    | {
+        documentId?: T;
+        title?: T;
+        version?: T;
+        url?: T;
+        id?: T;
+      };
+  promptVersion?: T;
+  model?: T;
+  tokenUsage?:
+    | T
+    | {
+        inputTokens?: T;
+        outputTokens?: T;
+        totalTokens?: T;
+      };
+  estimatedCostUSD?: T;
+  errorCode?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "handoffs_select".
+ */
+export interface HandoffsSelect<T extends boolean = true> {
+  publicId?: T;
+  conversation?: T;
+  idempotencyKey?: T;
+  domainEventId?: T;
+  status?: T;
+  source?: T;
+  reason?: T;
+  requestedBy?: T;
+  assignedTo?: T;
+  requestedAt?: T;
+  acceptedAt?: T;
+  resolvedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "conversation-commands_select".
+ */
+export interface ConversationCommandsSelect<T extends boolean = true> {
+  scope?: T;
+  idempotencyKey?: T;
+  ownerToken?: T;
+  leaseExpiresAt?: T;
+  status?: T;
+  conversation?: T;
+  result?: T;
+  errorCode?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "jobs_select".
+ */
+export interface JobsSelect<T extends boolean = true> {
+  type?: T;
+  idempotencyKey?: T;
+  payload?: T;
+  status?: T;
+  attempts?: T;
+  maxAttempts?: T;
+  nextRunAt?: T;
+  leaseExpiresAt?: T;
+  ownerToken?: T;
+  lastError?: T;
+  completedAt?: T;
+  deadAt?: T;
+  manualRetryCount?: T;
   updatedAt?: T;
   createdAt?: T;
 }
