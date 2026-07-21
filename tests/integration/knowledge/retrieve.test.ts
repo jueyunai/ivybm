@@ -1,6 +1,6 @@
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { getPayload, type Payload } from 'payload'
 
 import { retrieveKnowledge, retrieveKnowledgeForQuery } from '@/modules/knowledge/retrieve'
@@ -937,8 +937,6 @@ describe.sequential('knowledge retrieval', () => {
     })
     documentIDs.push(document.id)
     const batches: string[][] = []
-    const onProgress = vi.fn().mockResolvedValue(undefined)
-
     await expect(
       indexKnowledgeDocument({
         chunkOptions: { maxCharacters: 60 },
@@ -959,14 +957,12 @@ describe.sequential('knowledge retrieval', () => {
           embeddingBatchMaxItems: 2,
           embeddingBatchMaxTokens: 30,
         },
-        onProgress,
         payload,
         pool: getDatabase().pool,
       }),
     ).resolves.toMatchObject({ chunkCount: 5, model: 'fake-batched-model' })
 
     expect(batches.map((batch) => batch.length)).toEqual([2, 2, 1])
-    expect(onProgress).toHaveBeenCalledTimes(9)
     expect(
       batches.every(
         (batch) =>

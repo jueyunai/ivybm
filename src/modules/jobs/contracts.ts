@@ -46,7 +46,9 @@ export type JobRetryActor = {
 }
 
 export type JobExecution = {
+  assertLease: () => void
   renewLease: () => Promise<ClaimedJob>
+  signal: AbortSignal
 }
 
 export type JobHandler = (job: ClaimedJob, execution: JobExecution) => Promise<void>
@@ -61,12 +63,19 @@ export interface JobQueue {
 export class JobQueueError extends Error {
   readonly code: 'conflict' | 'forbidden' | 'not_found' | 'validation'
 
-  constructor(
-    code: JobQueueError['code'],
-    message: string,
-  ) {
+  constructor(code: JobQueueError['code'], message: string) {
     super(message)
     this.code = code
     this.name = 'JobQueueError'
+  }
+}
+
+export class JobLeaseLostError extends Error {
+  readonly cause?: unknown
+
+  constructor(message: string, cause?: unknown) {
+    super(message)
+    this.cause = cause
+    this.name = 'JobLeaseLostError'
   }
 }

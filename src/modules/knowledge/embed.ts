@@ -30,10 +30,14 @@ type IndexKnowledgeDocumentInput = {
   chunkOptions?: { maxCharacters?: number }
   documentId: number | string
   gateway: KnowledgeEmbeddingGateway
+  leaseFence?: {
+    jobId: number
+    ownerToken: string
+  }
   limits?: Partial<KnowledgeIndexLimits>
-  onProgress?: () => Promise<void>
   payload: Payload
   pool: KnowledgePool
+  signal?: AbortSignal
 }
 
 export type KnowledgeIndexLimits = {
@@ -95,12 +99,13 @@ const findAllDocumentChunks = async (
   payload: Payload,
   documentId: number | string,
   pageSize: number,
-  onProgress?: () => Promise<void>,
+  signal?: AbortSignal,
 ): Promise<KnowledgeChunkRecord[]> => {
   const chunks: KnowledgeChunkRecord[] = []
   let page = 1
 
   while (true) {
+    assertNotAborted(signal)
     const result = await payload.find({
       collection: 'knowledge-chunks',
       limit: pageSize,
@@ -110,10 +115,16 @@ const findAllDocumentChunks = async (
       where: { document: { equals: documentId } },
     })
     chunks.push(...result.docs)
-    await onProgress?.()
+    assertNotAborted(signal)
     if (!result.hasNextPage) return chunks
     page += 1
   }
+}
+
+const assertNotAborted = (signal?: AbortSignal): void => {
+  if (!signal?.aborted) return
+  if (signal.reason instanceof Error) throw signal.reason
+  throw new Error('Knowledge indexing was aborted')
 }
 
 export const formatVector = (embedding: number[]): string => {
@@ -152,10 +163,11 @@ export const indexKnowledgeDocument = async ({
   chunkOptions,
   documentId,
   gateway,
+  leaseFence,
   limits: limitOverrides,
-  onProgress,
   payload,
   pool,
+  signal,
 }: IndexKnowledgeDocumentInput): Promise<{
   chunkCount: number
   embeddingSpace: string
@@ -163,6 +175,7 @@ export const indexKnowledgeDocument = async ({
 }> => {
   const limits = { ...DEFAULT_KNOWLEDGE_INDEX_LIMITS, ...limitOverrides }
   validateLimits(limits)
+  assertNotAborted(signal)
   const claim = await pool.query<{ updated_at: Date }>(
     `UPDATE knowledge_documents
         SET index_status = 'processing',
@@ -191,6 +204,7 @@ export const indexKnowledgeDocument = async ({
   const claimToken = claim.rows[0].updated_at
 
   try {
+    assertNotAborted(signal)
     const document = await payload.findByID({
       collection: 'knowledge-documents',
       id: documentId,
@@ -229,7 +243,9 @@ export const indexKnowledgeDocument = async ({
       chunks.map(({ content }) => content),
       limits,
     )) {
-      const embedded = await gateway.embed({ input: batch })
+      assertNotAborted(signal)
+      const embedded = await gateway.embed({ input: batch, signal })
+      assertNotAborted(signal)
       if (embedded.embeddings.length !== batch.length) {
         throw new Error('Embedding provider returned an unexpected result count')
       }
@@ -260,7 +276,6 @@ export const indexKnowledgeDocument = async ({
       embeddingDimensions = batchDimensions
       embeddingSpace = batchEmbeddingSpace
       embeddings.push(...embedded.embeddings)
-      await onProgress?.()
     }
     if (!embeddingModel || !embeddingSpace) {
       throw new Error('Knowledge document produced no embeddings')
@@ -270,12 +285,13 @@ export const indexKnowledgeDocument = async ({
       payload,
       document.id,
       limits.existingChunkPageSize,
-      onProgress,
+      signal,
     )
     const existingByStableID = new Map(existing.map((chunk) => [chunk.stableId, chunk]))
     const activeIDs = new Set<number | string>()
 
     for (const [index, chunk] of chunks.entries()) {
+      assertNotAborted(signal)
       const data = {
         content: chunk.content,
         document: document.id,
@@ -300,6 +316,7 @@ export const indexKnowledgeDocument = async ({
             overrideAccess: true,
           })
 
+      assertNotAborted(signal)
       activeIDs.add(stored.id)
       await setKnowledgeChunkEmbedding({
         chunkId: stored.id,
@@ -308,18 +325,21 @@ export const indexKnowledgeDocument = async ({
         model: embeddingModel,
         pool,
       })
-      await onProgress?.()
+      assertNotAborted(signal)
     }
 
     const staleIDs = existing.filter((chunk) => !activeIDs.has(chunk.id)).map((chunk) => chunk.id)
     if (staleIDs.length > 0) {
+      assertNotAborted(signal)
       await payload.delete({
         collection: 'knowledge-chunks',
         overrideAccess: true,
         where: { id: { in: staleIDs } },
       })
+      assertNotAborted(signal)
     }
 
+    assertNotAborted(signal)
     const ready = await pool.query(
       `UPDATE knowledge_documents
           SET embedding_model = $1,
@@ -330,8 +350,26 @@ export const indexKnowledgeDocument = async ({
         WHERE id = $3
           AND review_status = 'reviewed'
           AND index_status = 'processing'
-          AND updated_at = $4`,
-      [embeddingModel, embeddingSpace, document.id, claimToken],
+          AND updated_at = $4
+          AND (
+            $5::integer IS NULL
+            OR EXISTS (
+              SELECT 1
+              FROM jobs
+              WHERE id = $5
+                AND owner_token = $6
+                AND status = 'processing'
+                AND lease_expires_at > NOW()
+            )
+          )`,
+      [
+        embeddingModel,
+        embeddingSpace,
+        document.id,
+        claimToken,
+        leaseFence?.jobId ?? null,
+        leaseFence?.ownerToken ?? null,
+      ],
     )
     if (ready.rowCount !== 1) {
       throw new Error('Knowledge document changed while it was being indexed')

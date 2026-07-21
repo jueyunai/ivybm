@@ -243,6 +243,27 @@ describe('AI gateway contract', () => {
     } satisfies Partial<AiGatewayError>)
   })
 
+  it('stops waiting for an embedding provider when the caller aborts the request', async () => {
+    let providerSignal: AbortSignal | undefined
+    const gateway = createAiGateway({
+      models: { embedding: 'fake-embedding', text: 'fake-text' },
+      provider: {
+        ...fakeProvider,
+        embed: async ({ signal }) => {
+          providerSignal = signal
+          return await new Promise(() => undefined)
+        },
+      },
+    })
+    const controller = new AbortController()
+    const request = gateway.embed({ input: ['slow embedding'], signal: controller.signal })
+
+    controller.abort(new Error('job lease lost'))
+
+    await expect(request).rejects.toMatchObject({ code: 'provider_error' })
+    expect(providerSignal?.aborted).toBe(true)
+  })
+
   it('rejects empty requests before calling a provider', async () => {
     const provider = {
       ...fakeProvider,
