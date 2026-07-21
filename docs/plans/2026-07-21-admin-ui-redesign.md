@@ -4,13 +4,13 @@
 
 **Goal:** 将 Payload 的原生 Collection 导航升级为一个任务导向、可审计、对中小运营团队友好的「AI 获客运营后台」，同时保留 Payload 作为 CMS、认证、权限、审计、多语言与数据模型底座。
 
-**Architecture:** 采用「Payload 原生 Admin shell + 自定义 Dashboard / Custom Views + 项目自有视觉系统」三层结构。原生 Collection 页面继续承载低频配置和受控 CRUD；会话、审核、发布、素材等高频工作使用自定义工作台路由，并通过既有领域服务与权限规则执行命令。`payload-theme` 只在独立试装分支中作为视觉 POC，不能在验证前成为生产依赖或工作流架构基础。
+**Architecture:** 采用「Payload 原生 Admin shell + 自定义 Dashboard / Custom Views + 项目自有视觉系统」三层结构。原生 Collection 页面继续承载低频配置和受控 CRUD；会话、审核、发布、素材等高频工作使用自定义工作台路由，并通过既有领域服务与权限规则执行命令。`payload-theme` 已在独立 worktree 完成 POC 并被拒绝；视觉语言只能作为参考，不能成为生产依赖或工作流架构基础。
 
-**Tech Stack:** Payload CMS 3.86、Next.js 16.2、React 19、TypeScript、Payload Admin Custom Components / Custom Views、SCSS/CSS Layers、Playwright、Vitest；视觉 POC 限定 `payload-theme@0.7.0`。
+**Tech Stack:** Payload CMS 3.86、Next.js 16.2、React 19、TypeScript、Payload Admin Custom Components / Custom Views、SCSS/CSS Layers、Playwright、Vitest；不引入第三方 Payload 全局主题。
 
 ---
 
-**状态：** 设计草案，待产品/视觉审核。批准本文前不安装 `payload-theme`、不改后台代码、不改变数据库结构或对外接口。
+**状态：** 架构决策已批准，2026-07-21。主题 POC 已完成并拒绝；本计划可以开始不依赖未合并发布实体的 Task 1 与 Task 2。后续工作台仍须遵守领域服务、权限和迁移边界。
 
 ## 1. 决策摘要
 
@@ -20,8 +20,8 @@
 | --- | --- | --- |
 | 后台底座 | 保留 Payload Admin | 现有认证、RBAC、草稿、版本、多语言、上传、审计与数据库模型已经可用，重建等于复制高风险基础设施。 |
 | 导航模型 | 从 Collection/数据表改为任务/队列 | 运营人员关心「下一步处理什么」，而不是表名；内容、会话、发布和线索本质上是一条连续工作流。 |
-| 视觉体系 | 项目自有语义 token + shadcn 风格组件语言 | 视觉可以长期可控，且不把业务 UI 锁死在第三方主题的内部 DOM/CSS 类名上。 |
-| `payload-theme` | 单独 POC，结果决定是否保留为基础皮肤 | 包的 peer range 与本项目技术版本兼容，但发布很新、会无条件替换 Nav/Dashboard，必须先做安全、性能、无障碍和回滚验证。 |
+| 视觉体系 | 项目自有语义 token + Payload 公共 UI API | 视觉可以长期可控，且不把业务 UI 锁死在第三方主题的内部 DOM/CSS 类名上。 |
+| `payload-theme` | 不采用 | POC 已确认其无条件替换 Nav/Dashboard、后台国际化不足、Dashboard 查询扇出且当前 Vitest 环境存在 ESM 兼容性失败。 |
 | 独立 Refine/React-admin | 一期不采用 | 会重复实现 Payload 的权限、登录、草稿/版本、REST 映射和领域命令，收益小于整合成本。 |
 
 ### 1.2 第一性原理
@@ -235,40 +235,24 @@ export type OperatorDashboardSummary = {
 
 - `src/app/(payload)/custom.scss` 只负责导入项目的 Admin token 与 shell/workspace 样式；必要时在 Payload 官方 `@layer payload-default` 中覆盖稳定的视觉 token。
 - 新的工作台组件优先使用 CSS Modules 或自有 class namespace（例如 `.ops-*`），避免选择 Payload 深层内部 BEM/DOM 结构。
-- 如果采用 shadcn/ui，仅把组件源码和 token 引入自定义工作台；禁止把 Tailwind preflight/reset 粗暴注入整个 Payload Admin。
+- 一期不引入 shadcn/ui 或 Tailwind reset；若二期评估独立运营端，组件体系只能落在该独立应用内，不能粗暴注入整个 Payload Admin。
 - SCSS 继续使用时将 `sass` 显式声明为开发依赖，不能依赖 transitive dependency。
 
-## 7. `payload-theme` 独立 POC 计划（在本文审核通过后才执行）
+## 7. `payload-theme` 独立 POC 结果：Reject
 
-### 7.1 POC 边界
+POC 已在 `feat/task-admin-ui-theme-poc` 的独立 worktree 中完成；完整可复核记录见 [`docs/research/payload-theme-poc-record.md`](../research/payload-theme-poc-record.md)。本结论不是对 Payload Admin 的否定，而是对该第三方全局主题插件的拒绝。
 
-- 单独新建 `feat/task-admin-ui-theme-poc` 分支，基于最新 `origin/main`；不与本文档分支混合。
-- 精确固定 `payload-theme@0.7.0`，提交 lockfile；不跟随 npm `latest`。
-- 仅改 `package.json`/lockfile、`src/payload.config.ts`、`src/app/(payload)/custom.scss`、生成 import map 和 POC 专属测试；不得修改 Collection schema、migration、服务 contract 或生产部署。
-- POC 不部署 production，不更新生产 secret/CSP；截图、测试和本地构建是决策证据。
+| 结论证据 | 结果 | 对生产方案的影响 |
+| --- | --- | --- |
+| Nav 与 Dashboard 所有权 | 插件无条件覆盖二者，与本计划的任务导航和 OperationsDashboard 冲突 | 保留 Payload 原生壳，仅按公开 Custom Component API 扩展 |
+| 导航稳定性 | 路由切换时重建整个导航组并置换激活项 DOM，视觉上出现闪烁 | 不 fork 修补插件；自有导航保持链接节点稳定并保留预取 |
+| 性能 | 23 个 Collection 最坏约 46 次 Local API 查询，命令面板还会跨集合搜索 | Dashboard 改为角色感知、有界、并行的专用读模型 |
+| 国际化 | 中文 Collection 名称与多处硬编码英文操作文案混排 | 新增 Admin 文案必须维护中文/英文映射 |
+| 测试兼容性 | `payload-theme@0.7.0` 的 ESM 入口在现有 Vitest 环境无法解析内部模块 | 不把不兼容包引入生产依赖或测试基线 |
 
-### 7.2 已知风险与验证项
+允许借鉴其登录页的密度、深青色行动色和小屏单栏处理，但不得复制其 Nav、Dashboard、命令面板、快速删除或依赖内部 DOM/CSS 的实现。浏览器强刷时出现的 Immersive Translate 注入 hydration 提示属于扩展行为，不是本决策的证据，也不能通过主题改动解决。
 
-| 风险 | 验证或约束 |
-| --- | --- |
-| 主题无条件替换 Nav 与 Dashboard | 与未来任务导向自定义 Nav/Dashboard 的冲突必须明确；不允许两个实现重复注册。 |
-| Dashboard 对多个 Collection 顺序 count/find | 记录 TTFB、查询数量和内存；超出本项目预算即拒绝。 |
-| 命令面板每次输入跨集合查询 | 验证请求扇出、索引、节流和权限，不把它当作生产全局搜索。 |
-| List quick delete | 测试 access、CSRF、审计 hook、删除确认和 URL 编码 ID；任一失败则禁用或拒绝主题。 |
-| CSS 依赖 Payload 内部类 | 用浅/深色、桌面/移动、Media/表单/关系字段、升级后截图回归守护。 |
-| CSS variable 原样注入 | `cssVariables` 只写死在受版本控制的可信 config，禁止来自 CMS 或用户输入。 |
-| 无障碍不足 | 键盘、Escape、焦点、屏幕阅读器语义和 reduced-motion 通过后才可继续评估。 |
-
-### 7.3 POC 通过条件
-
-1. `pnpm generate:importmap && pnpm lint && pnpm typecheck && pnpm build` 全部通过。
-2. admin/operator/sales 的登录、退出、可见菜单和 direct URL 权限与当前行为一致。
-3. AI key 写入/脱敏、内容草稿、Media 上传、关系字段、中文/英文后台、英文/阿语内容编辑均无回归。
-4. 浅色/深色在 1600px、1280px、768px 宽度的截图可读，键盘焦点和关键 Dialog 可操作。
-5. Dashboard 与列表性能不劣于现状可接受阈值；出现明显 N+1 / fan-out 时判定失败。
-6. 可通过一次 commit 回滚：移除 plugin、CSS import，重新生成 import map 后恢复原生 Admin。
-
-## 8. 分阶段实施计划（待批准后）
+## 8. 分阶段实施计划
 
 ### Task 1: 建立后台设计 token、导航契约与回归基线
 
@@ -474,48 +458,6 @@ git add src/admin src/payload.config.ts tests
 git commit -m "feat: add content review and publishing workspaces"
 ```
 
-### Task 6: Run the isolated `payload-theme` POC and make the adopt/reject decision
-
-**Files:**
-
-- Modify: `package.json`
-- Modify: `pnpm-lock.yaml`
-- Modify: `src/payload.config.ts`
-- Modify: `src/app/(payload)/custom.scss`
-- Modify: generated `src/app/(payload)/admin/importMap.js` only via command
-- Create: `tests/e2e/payload-theme-poc.spec.ts`
-- Create: `docs/research/payload-theme-poc-record.md`
-
-**Step 1: Create the dedicated POC branch from current `origin/main`.**
-
-Do not run this task on the implementation branch. Record the exact package version, npm integrity, package author/repository, license, and peer versions in the POC record.
-
-**Step 2: Write the failing visual/security test matrix.**
-
-Cover login/logout, per-role navigation visibility, denied/direct destructive delete, Media table/grid, list/edit form, relation field, locale switch, dark mode, 1600/1280/768 screenshots, keyboard command palette and rollback build.
-
-**Step 3: Install only the pinned plugin and configure it.**
-
-Run:
-
-```bash
-pnpm add payload-theme@0.7.0
-pnpm add -D sass
-pnpm generate:importmap
-```
-
-Import its CSS in `custom.scss`, register the plugin in Payload config with a trusted hard-coded accent, and do not use untrusted `cssVariables` or undocumented `preset` options.
-
-**Step 4: Execute acceptance and benchmark.**
-
-Run: `pnpm lint && pnpm typecheck && pnpm test:unit && pnpm test:e2e -- tests/e2e/payload-theme-poc.spec.ts && pnpm build`
-
-Expected: PASS; a before/after screenshot pack and Dashboard/query measurements are attached to `docs/research/payload-theme-poc-record.md`.
-
-**Step 5: Decide and cleanly revert or retain.**
-
-If any security, accessibility, performance or architectural conflict fails, revert the single POC commit. If it passes, retain only the supported visual layer and document the decision before integrating it with custom task views.
-
 ## 9. Global verification and delivery criteria
 
 Before each merge:
@@ -533,14 +475,12 @@ git diff --check
 
 The exact subset is selected by the completed task, but no UI PR may skip typecheck, targeted role/access tests, visual screenshots, keyboard testing, and build/import-map generation.
 
-After each approved implementation phase, append a concise entry to `docs/开发进度.md` that names the completed work, decision evidence, tests run, known deferred dependencies and whether the POC was accepted or reverted. Shared config (`src/payload.config.ts`), public contracts, and any later Collection/migration changes require the other developer's review under `AGENTS.md`.
+After each approved implementation phase, append a concise entry to `docs/开发进度.md` that names the completed work, decision evidence, tests run and known deferred dependencies. Shared config (`src/payload.config.ts`), public contracts, and any later Collection/migration changes require the other developer's review under `AGENTS.md`.
 
 ## 10. Review checklist for this design
 
 - [ ] 「Industrial Precision」视觉方向与品牌预期一致；是否需替换暂定 accent/字体？
 - [ ] 五个一级工作区是否覆盖运营人员的日常顺序？
 - [ ] 会话、审核、发布、飞书仍保持以领域服务为权威边界？
-- [ ] 先试装主题、再决定主题是否留下的顺序是否认可？
-- [ ] 是否接受 POC 中不连接 production、不改变数据库与对外 contract 的范围？
-- [ ] 是否按 Task 1 → Task 6 的节奏实施，且 Task 5 等待发布领域依赖完整合并？
-
+- [x] `payload-theme` POC 已完成并明确拒绝，生产分支不安装该包。
+- [ ] 是否按 Task 1 → Task 5 的节奏实施，且 Task 5 等待发布领域依赖完整合并？
