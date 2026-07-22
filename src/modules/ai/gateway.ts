@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 export type AiErrorCode =
   | 'authentication'
   | 'invalid_request'
@@ -122,6 +124,8 @@ export type AiUsageRecord = {
 
 export type AiGatewayEmbeddingOperationConfig = {
   dimensions?: number
+  /** Stable provider endpoint/protocol identity; never include credentials. */
+  embeddingSpaceIdentity?: string
   model: string
   provider: AiProvider
   timeoutMs?: number
@@ -153,7 +157,15 @@ type GatewayOptions = {
 }
 
 type GenerateTextInput = Omit<ProviderGenerateTextInput, 'model' | 'signal'> & { model?: string }
-type EmbedInput = Omit<ProviderEmbedInput, 'model' | 'signal'> & { model?: string }
+export type AiGatewayEmbedInput = Omit<ProviderEmbedInput, 'model'> & {
+  model?: string
+}
+
+export type AiGatewayEmbedResult = ProviderEmbedResult & {
+  cost: { currency: 'USD'; estimated: number | null }
+  embeddingSpace: string
+  provider: string
+}
 
 const estimateCost = (
   usage: AiTokenUsage,
@@ -186,33 +198,63 @@ const normalizeError = (error: unknown): AiGatewayError => {
 const withTimeout = async <T>(
   timeoutMs: number,
   operation: (signal: AbortSignal) => Promise<T>,
+  externalSignal?: AbortSignal,
 ): Promise<T> => {
   const controller = new AbortController()
+  const signal = externalSignal
+    ? AbortSignal.any([controller.signal, externalSignal])
+    : controller.signal
 
   return await new Promise<T>((resolve, reject) => {
+    let settled = false
+    const finish = (callback: () => void): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      externalSignal?.removeEventListener('abort', onExternalAbort)
+      callback()
+    }
+    const onExternalAbort = (): void => {
+      finish(() => {
+        reject(
+          externalSignal?.reason instanceof Error
+            ? externalSignal.reason
+            : new Error('AI provider request was aborted'),
+        )
+      })
+    }
     const timer = setTimeout(() => {
       controller.abort()
-      reject(new AiGatewayError('timeout', 'AI provider request timed out', { retryable: true }))
+      finish(() => {
+        reject(new AiGatewayError('timeout', 'AI provider request timed out', { retryable: true }))
+      })
     }, timeoutMs)
+    externalSignal?.addEventListener('abort', onExternalAbort, { once: true })
+    if (externalSignal?.aborted) {
+      onExternalAbort()
+      return
+    }
 
-    operation(controller.signal).then(
+    operation(signal).then(
       (value) => {
-        clearTimeout(timer)
-        resolve(value)
+        finish(() => resolve(value))
       },
       (error: unknown) => {
-        clearTimeout(timer)
-        reject(error)
+        finish(() => reject(error))
       },
     )
   })
 }
 
 const validateUsage = (usage: AiTokenUsage): void => {
+  const validTokenCount = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isInteger(value) && value >= 0
+
   if (
-    !Number.isFinite(usage.inputTokens) ||
-    !Number.isFinite(usage.totalTokens) ||
-    (usage.outputTokens !== undefined && !Number.isFinite(usage.outputTokens))
+    !validTokenCount(usage.inputTokens) ||
+    !validTokenCount(usage.totalTokens) ||
+    (usage.outputTokens !== undefined && !validTokenCount(usage.outputTokens)) ||
+    usage.totalTokens < usage.inputTokens + (usage.outputTokens ?? 0)
   ) {
     throw new AiGatewayError('invalid_response', 'AI provider returned invalid token usage')
   }
@@ -266,8 +308,35 @@ const requireProvider = (provider: AiProvider | undefined): AiProvider => {
   return provider
 }
 
+export const createEmbeddingSpaceFingerprint = (...parts: Array<number | string>): string =>
+  createHash('sha256')
+    .update(['ivybm-embedding-space-v1', ...parts].join('\0'))
+    .digest('hex')
+
 export const createAiGateway = (options: GatewayOptions) => ({
-  embed: async (input: EmbedInput) => {
+  embeddingConfigurationKey: (() => {
+    const operation = options.operations?.embedding
+    const model = operation?.model ?? options.models?.embedding
+    const provider = operation?.provider ?? options.providers?.embedding ?? options.provider
+    const dimensions = operation?.dimensions
+    if (
+      !model?.trim() ||
+      !provider ||
+      typeof dimensions !== 'number' ||
+      !Number.isInteger(dimensions) ||
+      dimensions <= 0
+    ) {
+      return undefined
+    }
+    return createEmbeddingSpaceFingerprint(
+      operation?.embeddingSpaceIdentity ?? `provider-name:${provider.name}`,
+      model,
+      dimensions,
+      model,
+      dimensions,
+    )
+  })(),
+  embed: async (input: AiGatewayEmbedInput): Promise<AiGatewayEmbedResult> => {
     if (input.input.length === 0 || input.input.some((value) => !value.trim())) {
       throw new AiGatewayError('invalid_request', 'Embedding input must contain non-empty text')
     }
@@ -279,19 +348,41 @@ export const createAiGateway = (options: GatewayOptions) => ({
     const startedAt = Date.now()
 
     try {
+      const configuredDimensions = operation?.dimensions ?? input.dimensions
       const result = await withTimeout(
         operation?.timeoutMs ?? options.timeouts?.embedMs ?? 15_000,
         (signal) =>
           provider.embed({
             ...input,
-            dimensions: input.dimensions ?? operation?.dimensions,
+            dimensions: configuredDimensions,
             input: input.input,
             model,
             signal,
           }),
+        input.signal,
       )
       validateUsage(result.usage)
       validateEmbeddings(result.embeddings, input.input.length)
+      const dimensions = result.embeddings[0].length
+      if (result.model !== model) {
+        throw new AiGatewayError(
+          'invalid_response',
+          'AI provider returned a different embedding model than configured',
+        )
+      }
+      if (configuredDimensions !== undefined && dimensions !== configuredDimensions) {
+        throw new AiGatewayError(
+          'invalid_response',
+          'AI provider returned different embedding dimensions than configured',
+        )
+      }
+      const embeddingSpace = createEmbeddingSpaceFingerprint(
+        operation?.embeddingSpaceIdentity ?? `provider-name:${provider.name}`,
+        model,
+        configuredDimensions ?? 'provider-default',
+        result.model,
+        dimensions,
+      )
       const cost = estimateCost(result.usage, options.pricing?.[result.model])
       const record: AiUsageRecord = {
         cost,
@@ -304,7 +395,7 @@ export const createAiGateway = (options: GatewayOptions) => ({
       }
       await reportUsage(options, record)
 
-      return { ...result, cost, provider: provider.name }
+      return { ...result, cost, embeddingSpace, provider: provider.name }
     } catch (error) {
       throw normalizeError(error)
     }

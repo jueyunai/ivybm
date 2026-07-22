@@ -74,11 +74,15 @@ describe.sequential('Task 10 durable job worker', () => {
     const queueB = new PayloadJobQueue({ clock: () => now, payload })
     const key = `task10-concurrent-${randomUUID()}`
 
-    const created = trackJob((await queueA.enqueue({
-      idempotencyKey: key,
-      payload: { reference: 'handoff-event-1' },
-      type: 'handoff.notify',
-    })).job)
+    const created = trackJob(
+      (
+        await queueA.enqueue({
+          idempotencyKey: key,
+          payload: { reference: 'handoff-event-1' },
+          type: 'handoff.notify',
+        })
+      ).job,
+    )
     const duplicate = await queueB.enqueue({
       idempotencyKey: key,
       payload: { reference: 'handoff-event-1' },
@@ -105,11 +109,15 @@ describe.sequential('Task 10 durable job worker', () => {
     let now = new Date('2026-07-20T00:00:00.000Z')
     const queueA = new PayloadJobQueue({ clock: () => now, leaseMs: 1_000, payload })
     const queueB = new PayloadJobQueue({ clock: () => now, leaseMs: 1_000, payload })
-    const job = trackJob((await queueA.enqueue({
-      idempotencyKey: `task10-lease-${randomUUID()}`,
-      payload: { reference: 'handoff-event-2' },
-      type: 'handoff.notify',
-    })).job)
+    const job = trackJob(
+      (
+        await queueA.enqueue({
+          idempotencyKey: `task10-lease-${randomUUID()}`,
+          payload: { reference: 'handoff-event-2' },
+          type: 'handoff.notify',
+        })
+      ).job,
+    )
 
     const first = await queueA.claimNext()
     if (!first) throw new Error('Expected the first worker to claim the job')
@@ -126,6 +134,48 @@ describe.sequential('Task 10 durable job worker', () => {
     await expect(queueB.complete(second)).resolves.toMatchObject({ status: 'succeeded' })
   })
 
+  it('stops a slow worker after another worker reclaims its expired lease', async () => {
+    let now = new Date('2026-07-20T01:00:00.000Z')
+    const queueA = new PayloadJobQueue({ clock: () => now, leaseMs: 1_000, payload })
+    const queueB = new PayloadJobQueue({ clock: () => now, leaseMs: 1_000, payload })
+    const job = trackJob(
+      (
+        await queueA.enqueue({
+          idempotencyKey: `task10-worker-fence-${randomUUID()}`,
+          payload: { reference: 'slow-handler' },
+          type: 'handoff.notify',
+        })
+      ).job,
+    )
+    let releaseStarted: (() => void) | undefined
+    const started = new Promise<void>((resolve) => {
+      releaseStarted = resolve
+    })
+    const workerA = new JobWorker({
+      handlers: {
+        'handoff.notify': async (_claimed, execution) => {
+          releaseStarted?.()
+          await new Promise<void>((resolve) => {
+            execution.signal.addEventListener('abort', () => resolve(), { once: true })
+          })
+          execution.assertLease()
+        },
+      },
+      heartbeatIntervalMs: 10,
+      queue: queueA,
+    })
+
+    const firstOutcome = workerA.runOnce()
+    await started
+    now = new Date(now.getTime() + 1_001)
+    const reclaimed = await queueB.claimNext()
+    if (!reclaimed) throw new Error('Expected the second worker to reclaim the slow job')
+
+    await expect(firstOutcome).resolves.toBe('failed')
+    expect(reclaimed).toMatchObject({ attempts: 2, id: job.id, status: 'processing' })
+    await expect(queueB.complete(reclaimed)).resolves.toMatchObject({ status: 'succeeded' })
+  })
+
   it('backs off failures, sends the final failed attempt to dead, and audits an admin retry', async () => {
     let now = new Date('2026-07-20T00:00:00.000Z')
     const queue = new PayloadJobQueue({ clock: () => now, payload })
@@ -136,12 +186,16 @@ describe.sequential('Task 10 durable job worker', () => {
       handlers: { 'handoff.notify': handler },
       queue,
     })
-    const job = trackJob((await queue.enqueue({
-      idempotencyKey: `task10-dead-${randomUUID()}`,
-      maxAttempts: 2,
-      payload: { reference: 'handoff-event-3' },
-      type: 'handoff.notify',
-    })).job)
+    const job = trackJob(
+      (
+        await queue.enqueue({
+          idempotencyKey: `task10-dead-${randomUUID()}`,
+          maxAttempts: 2,
+          payload: { reference: 'handoff-event-3' },
+          type: 'handoff.notify',
+        })
+      ).job,
+    )
 
     await expect(worker.runOnce()).resolves.toBe('failed')
     const firstFailure = await queue.getByID(job.id)
@@ -160,10 +214,14 @@ describe.sequential('Task 10 durable job worker', () => {
     })
     expect(handler).toHaveBeenCalledTimes(2)
 
-    await expect(queue.retryManually(job.id, { id: admin.id, role: 'operator' })).rejects.toMatchObject({
+    await expect(
+      queue.retryManually(job.id, { id: admin.id, role: 'operator' }),
+    ).rejects.toMatchObject({
       code: 'forbidden',
     } satisfies Partial<JobQueueError>)
-    await expect(queue.retryManually(job.id, { id: admin.id, role: 'admin' })).resolves.toMatchObject({
+    await expect(
+      queue.retryManually(job.id, { id: admin.id, role: 'admin' }),
+    ).resolves.toMatchObject({
       attempts: 0,
       manualRetryCount: 1,
       status: 'pending',

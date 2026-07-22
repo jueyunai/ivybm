@@ -1,7 +1,4 @@
-import type {
-  CollectionBeforeChangeHook,
-  CollectionConfig,
-} from 'payload'
+import type { CollectionBeforeChangeHook, CollectionConfig } from 'payload'
 
 import {
   knowledgeAdmin,
@@ -24,6 +21,9 @@ const reviewRelevantFields = [
 
 const systemManagedFields = [
   'embeddingModel',
+  'embeddingSpace',
+  'indexJobId',
+  'indexOwnerToken',
   'indexedAt',
   'indexStatus',
   'reviewedAt',
@@ -71,6 +71,9 @@ const stampReview: CollectionBeforeChangeHook = ({ data, operation, originalDoc,
     data.indexStatus = 'pending'
     data.indexedAt = null
     data.embeddingModel = null
+    data.embeddingSpace = null
+    data.indexJobId = null
+    data.indexOwnerToken = null
   }
 
   return data
@@ -86,7 +89,14 @@ export const KnowledgeDocuments: CollectionConfig = {
     update: knowledgeUpdate,
   },
   admin: {
-    defaultColumns: ['sourceTitle', 'sourceType', 'customerVisible', 'locale', 'sourceVersion', 'reviewStatus'],
+    defaultColumns: [
+      'sourceTitle',
+      'sourceType',
+      'customerVisible',
+      'locale',
+      'sourceVersion',
+      'reviewStatus',
+    ],
     group: 'Knowledge Base',
     useAsTitle: 'sourceTitle',
   },
@@ -115,7 +125,8 @@ export const KnowledgeDocuments: CollectionConfig = {
       defaultValue: false,
       index: true,
       admin: {
-        description: 'Only reviewed, indexed documents marked here may be used by the public website chat.',
+        description:
+          'Only reviewed, indexed documents marked here may be used by the public website chat.',
       },
     },
     {
@@ -194,6 +205,31 @@ export const KnowledgeDocuments: CollectionConfig = {
       name: 'embeddingModel',
       type: 'text',
       admin: { readOnly: true },
+    },
+    {
+      name: 'embeddingSpace',
+      type: 'text',
+      admin: { readOnly: true },
+    },
+    {
+      name: 'indexJobId',
+      type: 'number',
+      access: {
+        create: () => false,
+        read: () => false,
+        update: () => false,
+      },
+      admin: { hidden: true, readOnly: true },
+    },
+    {
+      name: 'indexOwnerToken',
+      type: 'text',
+      access: {
+        create: () => false,
+        read: () => false,
+        update: () => false,
+      },
+      admin: { hidden: true, readOnly: true },
     },
   ],
   hooks: {

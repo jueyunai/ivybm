@@ -130,4 +130,20 @@ AI_TEXT_MODEL=operation-text-model
     expect(invalidKeyResult.status).not.toBe(0)
     expect(invalidKeyResult.stderr).toContain('AI_CONFIG_ENCRYPTION_KEY')
   })
+
+  it('requires fixed dimensions for the legacy embedding fallback', () => {
+    const fallback = `${productionEnvironment}AI_PROVIDER_BASE_URL=https://api.example.invalid/v1
+AI_PROVIDER_API_KEY=operation-placeholder-api-key
+AI_EMBEDDING_MODEL=operation-embedding-model
+`
+    const missingDimensions = runPreflight(fallback)
+    const invalidDimensions = runPreflight(`${fallback}AI_EMBEDDING_DIMENSIONS=dynamic\n`)
+    const fixedDimensions = runPreflight(`${fallback}AI_EMBEDDING_DIMENSIONS=1536\n`)
+
+    expect(missingDimensions.status).not.toBe(0)
+    expect(missingDimensions.stderr).toContain('AI_EMBEDDING_DIMENSIONS')
+    expect(invalidDimensions.status).not.toBe(0)
+    expect(invalidDimensions.stderr).toContain('AI_EMBEDDING_DIMENSIONS')
+    expect(fixedDimensions.status).toBe(0)
+  })
 })

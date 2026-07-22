@@ -79,6 +79,7 @@ ai_provider_base_url="$(read_optional_env_value AI_PROVIDER_BASE_URL)"
 ai_provider_api_key="$(read_optional_env_value AI_PROVIDER_API_KEY)"
 ai_text_model="$(read_optional_env_value AI_TEXT_MODEL)"
 ai_embedding_model="$(read_optional_env_value AI_EMBEDDING_MODEL)"
+ai_embedding_dimensions="$(read_optional_env_value AI_EMBEDDING_DIMENSIONS)"
 
 for key in POSTGRES_DB POSTGRES_USER; do
   read_env_value "$key" >/dev/null
@@ -121,7 +122,7 @@ if [[ "$trust_proxy_headers" != 'true' ]]; then
   exit 1
 fi
 
-for value in "$ai_provider_base_url" "$ai_provider_api_key" "$ai_text_model" "$ai_embedding_model"; do
+for value in "$ai_provider_base_url" "$ai_provider_api_key" "$ai_text_model" "$ai_embedding_model" "$ai_embedding_dimensions"; do
   if [[ -n "$value" ]]; then
     if [[ "$value" == *'REPLACE_'* || "$value" == *'replace-with'* ]]; then
       echo 'AI bootstrap variables must not use template placeholders' >&2
@@ -140,6 +141,16 @@ if [[ -z "$ai_provider_base_url" && ( -n "$ai_text_model" || -n "$ai_embedding_m
 fi
 if [[ -n "$ai_provider_base_url" && -z "$ai_text_model" && -z "$ai_embedding_model" ]]; then
   echo 'AI bootstrap endpoint and API key require a text or embedding model' >&2
+  exit 1
+fi
+if [[ -n "$ai_embedding_model" ]]; then
+  if [[ ! "$ai_embedding_dimensions" =~ ^[0-9]+$ ]] || \
+    ((10#$ai_embedding_dimensions < 1 || 10#$ai_embedding_dimensions > 16384)); then
+    echo 'AI_EMBEDDING_DIMENSIONS must be an integer between 1 and 16384 when AI_EMBEDDING_MODEL is set' >&2
+    exit 1
+  fi
+elif [[ -n "$ai_embedding_dimensions" ]]; then
+  echo 'AI_EMBEDDING_DIMENSIONS requires AI_EMBEDDING_MODEL' >&2
   exit 1
 fi
 

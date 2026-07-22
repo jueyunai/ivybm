@@ -9,6 +9,9 @@ import * as migration_20260719_014251_task9_conversations from './20260719_01425
 import * as migration_20260719_123030_task9_public_knowledge_visibility from './20260719_123030_task9_public_knowledge_visibility'
 import * as migration_20260719_174106_task10_jobs from './20260719_174106_task10_jobs'
 import * as migration_20260720_034519_ai_control_plane from './20260720_034519_ai_control_plane'
+import * as migration_20260720_140906_task8_embedding_indexing from './20260720_140906_task8_embedding_indexing'
+import * as migration_20260721_105212_task8_index_owner_recovery from './20260721_105212_task8_index_owner_recovery'
+import * as migration_20260721_150000_task8_ai_usage_logs from './20260721_150000_task8_ai_usage_logs'
 
 export const migrations = [
   {
@@ -65,5 +68,20 @@ export const migrations = [
     up: migration_20260720_034519_ai_control_plane.up,
     down: migration_20260720_034519_ai_control_plane.down,
     name: '20260720_034519_ai_control_plane',
+  },
+  {
+    up: migration_20260720_140906_task8_embedding_indexing.up,
+    down: migration_20260720_140906_task8_embedding_indexing.down,
+    name: '20260720_140906_task8_embedding_indexing',
+  },
+  {
+    up: migration_20260721_105212_task8_index_owner_recovery.up,
+    down: migration_20260721_105212_task8_index_owner_recovery.down,
+    name: '20260721_105212_task8_index_owner_recovery',
+  },
+  {
+    up: migration_20260721_150000_task8_ai_usage_logs.up,
+    down: migration_20260721_150000_task8_ai_usage_logs.down,
+    name: '20260721_150000_task8_ai_usage_logs',
   },
 ]

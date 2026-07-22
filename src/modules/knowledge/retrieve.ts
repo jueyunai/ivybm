@@ -1,8 +1,6 @@
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
 
-import type { AiGateway } from '@/modules/ai/gateway'
-
-import { formatVector } from './embed'
+import { formatVector, type KnowledgeEmbeddingGateway } from './embed'
 import type { KnowledgeLocale } from './chunk'
 
 type KnowledgePool = Pick<PostgresAdapter['pool'], 'query'>
@@ -11,6 +9,7 @@ export type RetrieveKnowledgeInput = {
   /** Restrict retrieval to documents explicitly approved for customer chat. */
   customerVisible?: boolean
   embedding: number[]
+  embeddingSpace: string
   limit?: number
   locale: KnowledgeLocale
   minScore?: number
@@ -20,9 +19,9 @@ export type RetrieveKnowledgeInput = {
 
 type RetrieveKnowledgeForQueryInput = Omit<
   RetrieveKnowledgeInput,
-  'embedding' | 'model'
+  'embedding' | 'embeddingSpace' | 'model'
 > & {
-  gateway: Pick<AiGateway, 'embed'>
+  gateway: KnowledgeEmbeddingGateway
   query: string
 }
 
@@ -55,6 +54,7 @@ export type RetrievedKnowledge = {
 export const retrieveKnowledge = async ({
   customerVisible = false,
   embedding,
+  embeddingSpace,
   limit = 5,
   locale,
   minScore = 0,
@@ -69,6 +69,9 @@ export const retrieveKnowledge = async ({
   }
   if (!model.trim()) {
     throw new Error('Knowledge retrieval embedding model is required')
+  }
+  if (!embeddingSpace.trim()) {
+    throw new Error('Knowledge retrieval embedding space is required')
   }
 
   const vector = formatVector(embedding)
@@ -91,6 +94,8 @@ export const retrieveKnowledge = async ({
           AND kc.locale::text = $2
           AND kd.embedding_model = $4
           AND kc.embedding_model = $4
+          AND kd.embedding_space = $8
+          AND kc.embedding_space = $8
           AND kc.embedding_dimensions = $3
           AND kc.embedding_vector IS NOT NULL
           AND ($6::boolean = false OR kd.customer_visible = true)
@@ -108,7 +113,7 @@ export const retrieveKnowledge = async ({
       WHERE (1 - (embedding_vector <=> $1::vector)) >= $5
       ORDER BY embedding_vector <=> $1::vector, id
       LIMIT $7`,
-    [vector, locale, embedding.length, model, minScore, customerVisible, limit],
+    [vector, locale, embedding.length, model, minScore, customerVisible, limit, embeddingSpace],
   )
 
   return result.rows.map((row) => ({
@@ -136,10 +141,16 @@ export const retrieveKnowledgeForQuery = async ({
   }
 
   const embedded = await gateway.embed({ input: [query] })
+  const embedding = embedded.embeddings[0]
+  const embeddingSpace = embedded.embeddingSpace
+  if (!embeddingSpace?.trim()) {
+    throw new Error('Knowledge embedding gateway did not return a stable embedding space')
+  }
 
   return retrieveKnowledge({
     ...options,
-    embedding: embedded.embeddings[0],
+    embedding,
+    embeddingSpace,
     model: embedded.model,
   })
 }

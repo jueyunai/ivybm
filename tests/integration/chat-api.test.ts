@@ -12,6 +12,7 @@ import { POST as sendMessage } from '@/app/api/chat/sessions/[id]/messages/route
 import { POST as sendOperatorMessage } from '@/app/api/chat/sessions/[id]/operator-messages/route'
 import { POST as resolveSession } from '@/app/api/chat/sessions/[id]/resolve/route'
 import { POST as takeOverSession } from '@/app/api/chat/sessions/[id]/take-over/route'
+import { createAiGateway } from '@/modules/ai/gateway'
 import { AI_USAGE_KEYS } from '@/modules/ai/registry'
 import { indexKnowledgeDocument } from '@/modules/knowledge/embed'
 import config from '@/payload.config'
@@ -40,6 +41,7 @@ describe.sequential('chat HTTP API', () => {
     delete process.env.AI_PROVIDER_API_KEY
     delete process.env.AI_PROVIDER_BASE_URL
     delete process.env.AI_TEXT_MODEL
+    delete process.env.AI_EMBEDDING_DIMENSIONS
     delete process.env.AI_EMBEDDING_MODEL
     delete process.env.AI_CONFIG_ENCRYPTION_KEY
     delete process.env.AI_REASONING_ENABLED
@@ -363,15 +365,26 @@ describe.sequential('chat HTTP API', () => {
     })
     await indexKnowledgeDocument({
       documentId: document.id,
-      gateway: {
-        embed: async ({ input }) => ({
-          cost: { currency: 'USD' as const, estimated: 0 },
-          embeddings: input.map(() => [1, 0, 0]),
-          model: 'fake-embedding-model',
-          provider: 'fake',
-          usage: { inputTokens: 5, totalTokens: 5 },
-        }),
-      },
+      gateway: createAiGateway({
+        operations: {
+          embedding: {
+            dimensions: 3,
+            embeddingSpaceIdentity: 'openai-compatible:https://ai.example.invalid/v1',
+            model: 'fake-embedding-model',
+            provider: {
+              embed: async ({ input, model }) => ({
+                embeddings: input.map(() => [1, 0, 0]),
+                model,
+                usage: { inputTokens: 5, totalTokens: 5 },
+              }),
+              generateText: async () => {
+                throw new Error('Text generation is not used while indexing')
+              },
+              name: 'index-fixture',
+            },
+          },
+        },
+      }),
       payload,
       pool: (payload.db as unknown as PostgresAdapter).pool,
     })
@@ -390,6 +403,7 @@ describe.sequential('chat HTTP API', () => {
     process.env.AI_PROVIDER_API_KEY = 'fixture-key'
     process.env.AI_PROVIDER_BASE_URL = 'https://ai.example.invalid/v1'
     process.env.AI_TEXT_MODEL = 'fake-text-model'
+    process.env.AI_EMBEDDING_DIMENSIONS = '3'
     process.env.AI_EMBEDDING_MODEL = 'fake-embedding-model'
     vi.stubGlobal(
       'fetch',
@@ -617,15 +631,26 @@ describe.sequential('chat HTTP API', () => {
       documentID = document.id
       await indexKnowledgeDocument({
         documentId: document.id,
-        gateway: {
-          embed: async ({ input }) => ({
-            cost: { currency: 'USD' as const, estimated: 0 },
-            embeddings: input.map(() => [1, 0, 0]),
-            model: 'cms-embedding-model',
-            provider: 'index-fixture',
-            usage: { inputTokens: 3, totalTokens: 3 },
-          }),
-        },
+        gateway: createAiGateway({
+          operations: {
+            embedding: {
+              dimensions: 3,
+              embeddingSpaceIdentity: 'openai-compatible:https://cms.example.invalid/v1',
+              model: 'cms-embedding-model',
+              provider: {
+                embed: async ({ input, model }) => ({
+                  embeddings: input.map(() => [1, 0, 0]),
+                  model,
+                  usage: { inputTokens: 3, totalTokens: 3 },
+                }),
+                generateText: async () => {
+                  throw new Error('Text generation is not used while indexing')
+                },
+                name: 'index-fixture',
+              },
+            },
+          },
+        }),
         payload,
         pool: (payload.db as unknown as PostgresAdapter).pool,
       })

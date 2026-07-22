@@ -1,9 +1,6 @@
 import type { CollectionConfig } from 'payload'
 
-import {
-  knowledgeAdmin,
-  knowledgeRead,
-} from '../access/knowledge'
+import { knowledgeAdmin, knowledgeRead } from '../access/knowledge'
 
 export const KnowledgeChunks: CollectionConfig = {
   slug: 'knowledge-chunks',
@@ -71,6 +68,11 @@ export const KnowledgeChunks: CollectionConfig = {
     },
     {
       name: 'embeddingModel',
+      type: 'text',
+      admin: { readOnly: true },
+    },
+    {
+      name: 'embeddingSpace',
       type: 'text',
       admin: { readOnly: true },
     },

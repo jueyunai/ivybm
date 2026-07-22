@@ -1,0 +1,321 @@
+import { createHmac } from 'node:crypto'
+import { describe, expect, it, vi } from 'vitest'
+
+import type { PlatformConnector, WebhookVerifier } from '../../../src/modules/platforms/ports'
+import {
+  createMetaWebhookVerifier,
+  ingestSignedWebhook,
+  verifyMetaWebhookChallenge,
+  verifyMetaWebhookSignature,
+  WebhookValidationError,
+} from '../../../src/modules/platforms/webhook'
+import type { NormalizedPlatformEvent } from '../../../src/modules/platforms/types'
+import { FakePlatformEventRepository } from '../../fakes/platformEventRepository'
+
+const now = Date.UTC(2026, 6, 21, 8, 0, 0)
+const secret = 'fixture-app-secret'
+
+const event = (
+  externalEventId = 'event-1',
+  occurredAt = now,
+  text = 'fixture message',
+): NormalizedPlatformEvent => ({
+  accountExternalId: 'account-1',
+  content: { messageType: 'text', text },
+  externalEventId,
+  idempotencyKey: `facebook-messenger:${externalEventId}`,
+  kind: 'inbound-message',
+  occurredAt: new Date(occurredAt).toISOString(),
+  platform: 'facebook-messenger',
+  recipientExternalId: 'account-1',
+  senderExternalId: 'sender-1',
+})
+
+const connector = (events: NormalizedPlatformEvent[]): PlatformConnector => ({
+  normalize: () => events,
+  platformFamily: 'meta',
+})
+
+const signatureFor = (rawBody: string | Uint8Array, appSecret = secret): string =>
+  `sha256=${createHmac('sha256', appSecret).update(rawBody).digest('hex')}`
+
+const allowAll = { consume: async () => true }
+
+const signedInput = (
+  rawBody: string,
+  repository: FakePlatformEventRepository,
+  events: NormalizedPlatformEvent[] = [event()],
+) => ({
+  connector: connector(events),
+  headers: {
+    'content-type': 'application/json; charset=utf-8',
+    'x-hub-signature-256': signatureFor(rawBody),
+  },
+  nowMs: now,
+  rateLimiter: allowAll,
+  rateLimitKey: 'fixture-source',
+  rawBody: Buffer.from(rawBody),
+  repository,
+  verifier: createMetaWebhookVerifier(secret),
+})
+
+describe('platform webhook verification and ingestion', () => {
+  it('verifies the exact raw request bytes for strings and byte arrays', () => {
+    const rawBody = JSON.stringify({ fixture: true })
+    const bytes = Buffer.from(rawBody)
+
+    expect(
+      verifyMetaWebhookSignature({
+        appSecret: secret,
+        rawBody,
+        signatureHeader: signatureFor(rawBody),
+      }),
+    ).toBe(true)
+    expect(
+      verifyMetaWebhookSignature({
+        appSecret: secret,
+        rawBody: bytes,
+        signatureHeader: signatureFor(bytes),
+      }),
+    ).toBe(true)
+    expect(
+      verifyMetaWebhookSignature({
+        appSecret: secret,
+        rawBody: `${rawBody} `,
+        signatureHeader: signatureFor(rawBody),
+      }),
+    ).toBe(false)
+    expect(
+      verifyMetaWebhookSignature({
+        appSecret: secret,
+        rawBody,
+        signatureHeader: 'sha256=not-hex',
+      }),
+    ).toBe(false)
+  })
+
+  it('validates the Meta subscription challenge without returning the configured token', () => {
+    expect(
+      verifyMetaWebhookChallenge({
+        challenge: 'fixture-challenge',
+        expectedVerifyToken: 'fixture-verify-token',
+        mode: 'subscribe',
+        verifyToken: 'fixture-verify-token',
+      }),
+    ).toBe('fixture-challenge')
+
+    expect(() =>
+      verifyMetaWebhookChallenge({
+        challenge: 'fixture-challenge',
+        expectedVerifyToken: 'fixture-verify-token',
+        mode: 'subscribe',
+        verifyToken: 'wrong-token',
+      }),
+    ).toThrow('Webhook verification challenge is invalid')
+  })
+
+  it('uses a platform verifier port and rejects invalid signatures before normalization', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture' })
+    const repository = new FakePlatformEventRepository()
+    const normalize = vi.fn(() => [event()])
+    const verify = vi.fn(() => false)
+    const consume = vi.fn(async () => true)
+    const verifier: WebhookVerifier = { verify }
+    const headers = {
+      'content-type': 'application/json',
+      'x-hub-signature-256': signatureFor(rawBody),
+    }
+
+    await expect(
+      ingestSignedWebhook({
+        connector: { normalize, platformFamily: 'meta' },
+        headers,
+        nowMs: now,
+        rateLimiter: { consume },
+        rateLimitKey: 'fixture-source',
+        rawBody: Buffer.from(rawBody),
+        repository,
+        verifier,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_signature' } satisfies Partial<WebhookValidationError>)
+
+    expect(verify).toHaveBeenCalledWith({
+      headers,
+      rawBody: Buffer.from(rawBody),
+    })
+    expect(consume).not.toHaveBeenCalled()
+    expect(normalize).not.toHaveBeenCalled()
+    expect(repository.events.size).toBe(0)
+  })
+
+  it('accepts exact duplicates once under concurrent delivery', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture', version: 1 })
+    const repository = new FakePlatformEventRepository()
+    const input = signedInput(rawBody, repository)
+
+    const results = await Promise.all([ingestSignedWebhook(input), ingestSignedWebhook(input)])
+    expect(results).toEqual(
+      expect.arrayContaining([
+        { accepted: 1, duplicates: 0, total: 1 },
+        { accepted: 0, duplicates: 1, total: 1 },
+      ]),
+    )
+    expect(repository.events.size).toBe(1)
+  })
+
+  it('allows raw-envelope changes but rejects semantic changes for the same event key', async () => {
+    const repository = new FakePlatformEventRepository()
+    const firstBody = JSON.stringify({ object: 'fixture', text: 'first' })
+    const duplicateBody = JSON.stringify({ object: 'fixture', retryEnvelope: true })
+    const secondBody = JSON.stringify({ object: 'fixture', text: 'changed' })
+
+    await expect(
+      ingestSignedWebhook(signedInput(firstBody, repository, [event('event-1', now, 'first')])),
+    ).resolves.toEqual({ accepted: 1, duplicates: 0, total: 1 })
+
+    await expect(
+      ingestSignedWebhook(signedInput(duplicateBody, repository, [event('event-1', now, 'first')])),
+    ).resolves.toEqual({ accepted: 0, duplicates: 1, total: 1 })
+
+    await expect(
+      ingestSignedWebhook(
+        signedInput(secondBody, repository, [
+          event('event-2', now, 'must not be partially stored'),
+          event('event-1', now, 'changed'),
+        ]),
+      ),
+    ).rejects.toMatchObject({
+      code: 'idempotency_conflict',
+      message: 'Webhook event conflicts with an existing idempotency key',
+    } satisfies Partial<WebhookValidationError>)
+
+    expect(repository.events.get('facebook-messenger:event-1')?.event).toMatchObject({
+      content: { text: 'first' },
+    })
+    expect(repository.events.has('facebook-messenger:event-2')).toBe(false)
+  })
+
+  it('accepts a valid empty event batch without repository side effects', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture', echoOnly: true })
+    const repository = new FakePlatformEventRepository()
+
+    await expect(ingestSignedWebhook(signedInput(rawBody, repository, []))).resolves.toEqual({
+      accepted: 0,
+      duplicates: 0,
+      total: 0,
+    })
+    expect(repository.events.size).toBe(0)
+  })
+
+  it('rejects invalid content types before verifying or parsing payloads', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture' })
+    const repository = new FakePlatformEventRepository()
+    const verify = vi.fn(() => true)
+
+    await expect(
+      ingestSignedWebhook({
+        ...signedInput(rawBody, repository),
+        headers: {
+          'content-type': 'text/plain',
+          'x-hub-signature-256': signatureFor(rawBody),
+        },
+        verifier: { verify },
+      }),
+    ).rejects.toMatchObject({
+      code: 'invalid_content_type',
+    } satisfies Partial<WebhookValidationError>)
+
+    expect(verify).not.toHaveBeenCalled()
+    expect(repository.events.size).toBe(0)
+  })
+
+  it('rejects stale and future events outside their accepted windows', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture' })
+    const repository = new FakePlatformEventRepository()
+
+    await expect(
+      ingestSignedWebhook({
+        ...signedInput(rawBody, repository, [event('stale', now - 601_000)]),
+        maxEventAgeMs: 600_000,
+      }),
+    ).rejects.toMatchObject({ code: 'stale_event' } satisfies Partial<WebhookValidationError>)
+
+    await expect(
+      ingestSignedWebhook({
+        ...signedInput(rawBody, repository, [event('future', now + 61_000)]),
+        maxFutureSkewMs: 60_000,
+      }),
+    ).rejects.toMatchObject({ code: 'future_event' } satisfies Partial<WebhookValidationError>)
+
+    expect(repository.events.size).toBe(0)
+  })
+
+  it('rejects invalid JSON and oversized bodies before enqueueing', async () => {
+    const repository = new FakePlatformEventRepository()
+    const invalidJSON = '{'
+
+    await expect(
+      ingestSignedWebhook(signedInput(invalidJSON, repository, [])),
+    ).rejects.toMatchObject({ code: 'invalid_payload' } satisfies Partial<WebhookValidationError>)
+
+    const oversized = JSON.stringify({ value: 'x'.repeat(64) })
+    await expect(
+      ingestSignedWebhook({
+        ...signedInput(oversized, repository, []),
+        maxBodyBytes: 16,
+      }),
+    ).rejects.toMatchObject({ code: 'payload_too_large' } satisfies Partial<WebhookValidationError>)
+
+    expect(repository.events.size).toBe(0)
+  })
+
+  it('normalizes connector failures and rejects inconsistent idempotency keys', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture' })
+    const repository = new FakePlatformEventRepository()
+    const base = signedInput(rawBody, repository)
+
+    await expect(
+      ingestSignedWebhook({
+        ...base,
+        connector: {
+          normalize: () => {
+            throw new Error('fixture parser detail')
+          },
+          platformFamily: 'meta',
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'invalid_payload',
+      message: 'Webhook payload cannot be normalized',
+    } satisfies Partial<WebhookValidationError>)
+
+    await expect(
+      ingestSignedWebhook({
+        ...base,
+        connector: connector([{ ...event(), idempotencyKey: 'incorrect-key' }]),
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_payload' } satisfies Partial<WebhookValidationError>)
+
+    await expect(
+      ingestSignedWebhook({
+        ...base,
+        connector: connector([{ ...event(), externalEventId: '', idempotencyKey: '' }]),
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_payload' } satisfies Partial<WebhookValidationError>)
+    expect(repository.events.size).toBe(0)
+  })
+
+  it('rejects rate-limited sources before parsing or enqueueing events', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture' })
+    const repository = new FakePlatformEventRepository()
+
+    await expect(
+      ingestSignedWebhook({
+        ...signedInput(rawBody, repository),
+        rateLimiter: { consume: async () => false },
+        rateLimitKey: 'limited-source',
+      }),
+    ).rejects.toMatchObject({ code: 'rate_limited' } satisfies Partial<WebhookValidationError>)
+    expect(repository.events.size).toBe(0)
+  })
+})
