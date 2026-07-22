@@ -6,7 +6,10 @@ import { defineConfig, devices } from '@playwright/test'
  */
 import 'dotenv/config'
 
-const baseURL = process.env.BASE_URL || 'http://localhost:3000'
+const isCI = Boolean(process.env.CI)
+const e2ePort = process.env.E2E_PORT || '3000'
+const defaultBaseURL = isCI ? `http://127.0.0.1:${e2ePort}` : 'http://localhost:3000'
+const baseURL = process.env.BASE_URL || defaultBaseURL
 const usesExternalServer = Boolean(process.env.BASE_URL)
 
 /**
@@ -18,9 +21,9 @@ export default defineConfig({
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
+  retries: isCI ? 2 : 0,
   /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  workers: isCI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
@@ -40,8 +43,15 @@ export default defineConfig({
   webServer: usesExternalServer
     ? undefined
     : {
-        command: 'pnpm dev',
-        reuseExistingServer: !process.env.CI,
-        url: baseURL,
+        command: isCI ? 'pnpm e2e:server' : 'pnpm dev',
+        env: isCI
+          ? {
+              HOSTNAME: '127.0.0.1',
+              PORT: e2ePort,
+            }
+          : undefined,
+        reuseExistingServer: !isCI,
+        timeout: 120_000,
+        url: isCI ? `${baseURL}/api/health/ready` : baseURL,
       },
 })

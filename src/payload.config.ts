@@ -44,6 +44,14 @@ if (process.env.NODE_ENV === 'production' && (!payloadSecret || payloadSecret.le
 
 export default buildConfig({
   admin: {
+    components: {
+      Nav: '/admin/components/OperationsNav',
+      views: {
+        dashboard: {
+          Component: '/admin/views/OperationsDashboard',
+        },
+      },
+    },
     user: Users.slug,
     importMap: {
       baseDir: path.resolve(dirname),
