@@ -496,6 +496,7 @@ export class PayloadConversationRepository implements ConversationRepository {
         context: { skipAudit: true },
         data: {
           channel: session.channel,
+          externalThreadId: input.externalThreadId,
           handoffStatus: session.handoffStatus,
           intentLevel: 'unscored',
           locale: session.locale,
@@ -671,6 +672,7 @@ export class PayloadConversationRepository implements ConversationRepository {
       }
 
       for (const message of newMessages) {
+        const metadata = mutation.messageMetadata?.[String(message.id)]
         await this.payload.create({
           collection: 'messages',
           context: { skipAudit: true },
@@ -685,7 +687,8 @@ export class PayloadConversationRepository implements ConversationRepository {
             content: message.content,
             conversation: persistedConversation.id,
             estimatedCostUSD: message.estimatedCostUSD ?? undefined,
-            idempotencyKey: `domain-message:${String(message.id)}`,
+            externalMessageId: metadata?.externalMessageId,
+            idempotencyKey: metadata?.persistedIdempotencyKey ?? `domain-message:${String(message.id)}`,
             model: message.model,
             promptVersion: message.promptVersion,
             requestId: String(message.id),

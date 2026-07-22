@@ -128,9 +128,34 @@ export type AssistedPublicationExport = {
   platform: 'linkedin'
 }
 
+export const MAX_PLATFORM_EVENT_IDEMPOTENCY_KEY_LENGTH = 200
+
+/**
+ * Provider attachment links commonly carry short-lived signatures in their query
+ * string. This connector stage never downloads attachments, so persisting those
+ * credentials would add risk without providing a delivery capability. Keep only
+ * an HTTPS origin and path for bounded operator context.
+ */
+export const sanitizeExternalAttachmentURL = (value: string): string | undefined => {
+  try {
+    const url = new URL(value.trim())
+    if (url.protocol !== 'https:' || url.username || url.password) return undefined
+    url.hash = ''
+    url.search = ''
+    return url.toString()
+  } catch {
+    return undefined
+  }
+}
+
 export const platformEventKey = (platform: MessagingPlatform, externalEventId: string): string => {
-  if (!externalEventId.trim()) throw new Error('Platform external event ID is required')
-  return `${platform}:${externalEventId}`
+  const normalizedEventID = externalEventId.trim()
+  if (!normalizedEventID) throw new Error('Platform external event ID is required')
+  const key = `${platform}:${normalizedEventID}`
+  if (key.length > MAX_PLATFORM_EVENT_IDEMPOTENCY_KEY_LENGTH) {
+    throw new Error('Platform external event ID is too long')
+  }
+  return key
 }
 
 export const platformTimestamp = (value: number, unit: 'milliseconds' | 'seconds'): string => {

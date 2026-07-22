@@ -47,3 +47,23 @@ pnpm test:operations                                            6 files, 23 test
 pnpm build                                                      passed
 git diff --check                                                passed
 ```
+
+## 2026-07-22 Meta durable inbound 阶段
+
+先新增失败测试，确认 provider attachment URL 的 query / fragment 会进入规范化事件和 Job payload；实现 URL 最小化后，Meta connector 与 Job payload parser 均只保留 HTTPS origin/path。新增的集成测试模拟：worker A 已完成会话业务事务、尚未来得及 ACK Job 时被终止，lease 到期后 worker B 重新领取同一 Job；断言只保留一个会话消息并最终标记 Job 为 `succeeded`。
+
+```text
+pnpm install --frozen-lockfile                                passed
+pnpm lint                                                      passed
+pnpm typecheck                                                 passed
+pnpm test:unit                                                 30 files, 154 tests passed
+pnpm test:contract                                             4 files, 35 tests passed
+fresh migration + full down / reapply                          passed
+pnpm db:seed && pnpm db:seed                                  passed, idempotent
+pnpm test:integration                                          15 files, 90 tests passed
+pnpm test:operations                                           6 files, 23 tests passed
+pnpm build (isolated DB + non-secret placeholders)             passed
+git diff --check                                               passed
+```
+
+另新增第二条不同 Meta 消息的状态机回归：第一条无出站授权的消息转为 `handoff_requested` 后，第二条和 resolved 后的后续消息必须分别持久化，不能重启 AI 或重复接管；相同场景同时运行在 real / fake ChatService contract。数据库为隔离 PostgreSQL 18.4 + pgvector 0.8.5。测试仅使用 synthetic fixture、fake responder 与本地数据库；不调用真实 Meta、TikTok、LinkedIn 或付费 AI 网络。

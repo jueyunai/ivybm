@@ -15,6 +15,11 @@ import {
   KNOWLEDGE_INDEX_JOB_TYPE,
   recoverDeadKnowledgeIndexDocuments,
 } from '@/modules/knowledge/jobs'
+import {
+  createPlatformEventJobHandler,
+  PLATFORM_EVENT_JOB_TYPE,
+} from '@/modules/platforms/eventJobs'
+import { PayloadMetaConversationPort } from '@/modules/platforms/payloadConversationPort'
 import config from '@/payload.config'
 
 const readPositiveInteger = (name: string, fallback: number): number => {
@@ -40,6 +45,9 @@ const knowledgeRecoveryIntervalMs = Math.max(pollIntervalMs, heartbeatIntervalMs
 const payload = await getPayload({ config, disableOnInit: true, key: 'job-worker' })
 const handlers: Record<string, JobHandler> = {
   [KNOWLEDGE_INDEX_JOB_TYPE]: createKnowledgeIndexJobHandler({ payload }),
+  [PLATFORM_EVENT_JOB_TYPE]: createPlatformEventJobHandler({
+    conversations: new PayloadMetaConversationPort({ payload }),
+  }),
 }
 const worker = new JobWorker({
   handlers,
