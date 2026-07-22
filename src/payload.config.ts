@@ -44,7 +44,7 @@ if (process.env.NODE_ENV === 'production' && (!payloadSecret || payloadSecret.le
 export default buildConfig({
   admin: {
     components: {
-      beforeNavLinks: ['/admin/components/TaskNavLinks'],
+      Nav: '/admin/components/OperationsNav',
       views: {
         dashboard: {
           Component: '/admin/views/OperationsDashboard',

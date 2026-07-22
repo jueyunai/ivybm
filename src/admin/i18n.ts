@@ -1,7 +1,10 @@
 export type AdminLocale = 'en' | 'zh'
 
-type AdminCopy = {
+export type AdminCopy = {
   activeConversations: string
+  account: string
+  brandKicker: string
+  closeNavigation: string
   conversations: string
   dashboardDescription: string
   dashboardTitle: string
@@ -11,18 +14,24 @@ type AdminCopy = {
   leads: string
   navHeading: string
   newQualifiedLeads: string
+  navSections: {
+    content: string
+    intelligence: string
+    operations: string
+    system: string
+    workspace: string
+  }
   openQueue: string
   queuesHeading: string
   roleAdmin: string
   roleOperator: string
   roleSales: string
-  taskNavLabel: string
+  signOut: string
   urgentConversation: (reference: string) => string
   urgentHeading: string
   urgentJob: (reference: string) => string
   urgentLead: (reference: string) => string
   updatedAt: string
-  workspace: string
   workspaceDescription: string
   workspaceNav: string
   status: {
@@ -35,6 +44,9 @@ type AdminCopy = {
 export const ADMIN_COPY: Record<AdminLocale, AdminCopy> = {
   zh: {
     activeConversations: '人工服务中',
+    account: '账户设置',
+    brandKicker: 'AI 获客运营后台',
+    closeNavigation: '关闭菜单',
     conversations: '会话中心',
     dashboardDescription: '仅展示在当前权限范围内需要关注的运营事项。',
     dashboardTitle: '今日运营要务',
@@ -43,29 +55,38 @@ export const ADMIN_COPY: Record<AdminLocale, AdminCopy> = {
     handoffRequested: '等待人工接管',
     leads: '线索队列',
     navHeading: '任务工作台',
+    navSections: {
+      content: '官网内容',
+      intelligence: '知识库与 AI',
+      operations: '运营记录',
+      system: '系统与设置',
+      workspace: '工作台',
+    },
     newQualifiedLeads: '新增高意向线索',
     openQueue: '查看队列',
     queuesHeading: '待处理队列',
     roleAdmin: '管理员',
     roleOperator: '运营人员',
     roleSales: '销售人员',
+    signOut: '退出登录',
     status: {
       failed: '失败',
       handoffRequested: '等待人工接管',
       highIntent: '高意向',
     },
-    taskNavLabel: '任务快捷导航',
     urgentConversation: (reference) => `会话 ${reference}`,
     urgentHeading: '需要优先关注',
     urgentJob: (reference) => `任务 ${reference}`,
     urgentLead: (reference) => `线索 #${reference}`,
     updatedAt: '更新时间',
-    workspace: '运营总览',
     workspaceDescription: '人工接管、线索和系统异常集中处理。',
     workspaceNav: '运营总览',
   },
   en: {
     activeConversations: 'Human-active conversations',
+    account: 'Account settings',
+    brandKicker: 'AI acquisition operations',
+    closeNavigation: 'Close menu',
     conversations: 'Conversation center',
     dashboardDescription:
       'Only operational work that is visible within your current permissions is shown.',
@@ -75,39 +96,34 @@ export const ADMIN_COPY: Record<AdminLocale, AdminCopy> = {
     handoffRequested: 'Handoff requests',
     leads: 'Lead queue',
     navHeading: 'Task workspace',
+    navSections: {
+      content: 'Website content',
+      intelligence: 'Knowledge and AI',
+      operations: 'Operational records',
+      system: 'System and settings',
+      workspace: 'Workspace',
+    },
     newQualifiedLeads: 'New qualified leads',
     openQueue: 'Open queue',
     queuesHeading: 'Action queues',
     roleAdmin: 'Administrator',
     roleOperator: 'Operator',
     roleSales: 'Sales',
+    signOut: 'Sign out',
     status: {
       failed: 'Failed',
       handoffRequested: 'Handoff requested',
       highIntent: 'High intent',
     },
-    taskNavLabel: 'Task shortcuts',
     urgentConversation: (reference) => `Conversation ${reference}`,
     urgentHeading: 'Needs attention',
     urgentJob: (reference) => `Job ${reference}`,
     urgentLead: (reference) => `Lead #${reference}`,
     updatedAt: 'Updated',
-    workspace: 'Operations overview',
     workspaceDescription: 'One place for handoffs, leads, and system exceptions.',
     workspaceNav: 'Operations overview',
   },
 }
-
-export type TaskNavLabelKey = 'conversations' | 'leads' | 'workspaceNav'
-
-export const TASK_NAV_ITEMS: ReadonlyArray<{
-  href: string
-  labelKey: TaskNavLabelKey
-}> = [
-  { href: '/admin', labelKey: 'workspaceNav' },
-  { href: '/admin/collections/conversations', labelKey: 'conversations' },
-  { href: '/admin/collections/leads', labelKey: 'leads' },
-]
 
 export const getAdminLocale = (language: string | undefined): AdminLocale =>
   language === 'en' ? 'en' : 'zh'

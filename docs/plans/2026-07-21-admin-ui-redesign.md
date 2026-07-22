@@ -4,7 +4,7 @@
 
 **Goal:** 将 Payload 的原生 Collection 导航升级为一个任务导向、可审计、对中小运营团队友好的「AI 获客运营后台」，同时保留 Payload 作为 CMS、认证、权限、审计、多语言与数据模型底座。
 
-**Architecture:** 采用「Payload 原生 Admin shell + 自定义 Dashboard / Custom Views + 项目自有视觉系统」三层结构。原生 Collection 页面继续承载低频配置和受控 CRUD；会话、审核、发布、素材等高频工作使用自定义工作台路由，并通过既有领域服务与权限规则执行命令。`payload-theme` 已在独立 worktree 完成 POC 并被拒绝；视觉语言只能作为参考，不能成为生产依赖或工作流架构基础。
+**Architecture:** 采用「Payload Admin runtime + 项目自有 Nav / Dashboard / Custom Views + 项目自有视觉系统」三层结构。自有 Nav 只接管左侧信息架构和视觉呈现，仍从 Payload 的受限 client config 与当前权限派生链接；原生 Collection 页面继续承载低频配置和受控 CRUD。会话、审核、发布、素材等高频工作使用自定义工作台路由，并通过既有领域服务与权限规则执行命令。`payload-theme` 已在独立 worktree 完成 POC 并被拒绝；视觉语言只能作为参考，不能成为生产依赖或工作流架构基础。
 
 **Tech Stack:** Payload CMS 3.86、Next.js 16.2、React 19、TypeScript、Payload Admin Custom Components / Custom Views、SCSS/CSS Layers、Playwright、Vitest；不引入第三方 Payload 全局主题。
 
@@ -39,8 +39,8 @@
 
 ### 2.1 已知现状
 
-- `src/payload.config.ts` 目前只配置了 admin user 与 import map；没有自定义 Dashboard、导航组件、品牌组件或 Admin custom view。
-- `src/app/(payload)/custom.scss` 已由生成的 Payload layout 引入，但当前为空，是安全的全局后台主题入口。
+- `src/payload.config.ts` 已注册 Operations Dashboard 与任务导航首版；本轮把局部 `beforeNavLinks` 注入升级为 Payload 公开的 `admin.components.Nav`，完整替换导航展示层。
+- `src/app/(payload)/custom.scss` 是安全的全局后台主题入口，只导入项目自有 token、shell 与导航样式。
 - 现有后台文案为中文/英文；公开内容为英文/阿语（阿语 RTL）。后台改造不能把两套语言模型混为一谈。
 - 现有 Collection 已按 Website Content、Knowledge Base、Lead Management、Conversations、AI Management、Operations 等部分分组；Media、Users、AuditLogs 仍可能落在顶层，需要重新收敛。
 - 架构基线已经定义「工作台首页 = Payload 自定义 Dashboard」，并要求会话/发布使用服务端权威状态机。
@@ -178,10 +178,12 @@ AI 获客运营后台
 src/admin/
 ├── components/
 │   ├── BrandMark.tsx
-│   ├── TaskNavLinks.tsx
+│   ├── OperationsNav.tsx
 │   ├── AdminHeaderActions.tsx
 │   ├── StatusBadge.tsx
 │   └── EmptyState.tsx
+├── navigation/
+│   └── getOperationsNavSections.ts
 ├── dashboard/
 │   ├── getDashboardSummary.ts
 │   ├── types.ts
@@ -193,11 +195,12 @@ src/admin/
 │   └── ContentPublishingWorkspace.tsx
 └── styles/
     ├── tokens.css
+    ├── admin-nav.css
     ├── admin-shell.css
     └── workspaces.css
 ```
 
-`src/payload.config.ts` 中通过 `admin.components.views.dashboard` 替换默认 Dashboard；工作台页使用 `admin.components.views.<key> = { Component, path, exact }` 注册。自定义组件默认是 React Server Component；只有需要浏览器状态、焦点管理、快捷键或客户端 fetch 的局部组件才使用 `'use client'`。
+`src/payload.config.ts` 中通过 `admin.components.Nav` 替换侧栏展示层，通过 `admin.components.views.dashboard` 替换默认 Dashboard；工作台页使用 `admin.components.views.<key> = { Component, path, exact }` 注册。`OperationsNav` 是 Client Component，只读取 Payload `useConfig`、`useAuth` 与翻译上下文来生成当前可见链接；不持有权限真相、不请求业务数据、不覆盖 Collection 页面。其他自定义组件默认是 React Server Component；只有需要浏览器状态、焦点管理、快捷键或客户端 fetch 的局部组件才使用 `'use client'`。
 
 组件路径变化后只能执行 `pnpm generate:importmap`，不得手改生成的 `src/app/(payload)/admin/importMap.js` 或生成的 `(payload)` 路由文件。
 
@@ -254,13 +257,15 @@ POC 已在 `feat/task-admin-ui-theme-poc` 的独立 worktree 中完成；完整�
 
 ## 8. 分阶段实施计划
 
-### Task 1: 建立后台设计 token、导航契约与回归基线
+### Task 1: 建立后台设计 token、完整侧栏导航契约与回归基线
 
 **Files:**
 
 - Create: `src/admin/styles/tokens.css`
 - Create: `src/admin/styles/admin-shell.css`
-- Create: `src/admin/components/TaskNavLinks.tsx`
+- Create: `src/admin/styles/admin-nav.css`
+- Create: `src/admin/components/OperationsNav.tsx`
+- Create: `src/admin/navigation/getOperationsNavSections.ts`
 - Create: `src/admin/components/StatusBadge.tsx`
 - Create: `tests/unit/admin-navigation.test.ts`
 - Create: `tests/unit/admin-status-badge.test.ts`
@@ -271,7 +276,7 @@ POC 已在 `feat/task-admin-ui-theme-poc` 的独立 worktree 中完成；完整�
 
 **Step 1: Write failing navigation and token tests.**
 
-Assert that the admin config registers only approved custom navigation/view component paths; assert Chinese and English labels exist for every new task-oriented item; assert status badges map text, icon and semantic status rather than a color-only string.
+Assert that the admin config uses the public `Nav` and Dashboard extension points; assert Chinese and English labels exist for every top-level navigation section; assert unreadable Collection / Global links are omitted, task links do not duplicate their source-of-truth Collection links, and status badges map text, icon and semantic status rather than a color-only string.
 
 **Step 2: Run the targeted tests.**
 
@@ -281,7 +286,7 @@ Expected: FAIL because the components, tokens and config registrations do not ex
 
 **Step 3: Implement the minimal visual foundation.**
 
-Create semantic CSS tokens, namespaced `.ops-*` primitives, localized task navigation links, and a reusable `StatusBadge`. Register only `beforeNavLinks`/`afterNavLinks` needed for the new IA; preserve generated pages and import-map ownership.
+Create semantic CSS tokens, namespaced `.ops-*` primitives, an access-aware `OperationsNav`, and a reusable `StatusBadge`. Register the public `Nav` extension point; derive each visible link from the current Payload client config and permission snapshot, while preserving generated pages and import-map ownership. The custom side bar must group workspaces, website content, knowledge / AI, operational records, and system settings without duplicating `Conversations` or `Leads`.
 
 **Step 4: Generate the import map and verify.**
 
@@ -347,7 +352,7 @@ git commit -m "feat: add permission-safe operations dashboard"
 - Create: `tests/unit/media-workspace.test.ts`
 - Create: `tests/e2e/admin-media-workspace.spec.ts`
 - Modify: `src/payload.config.ts`
-- Modify: `src/admin/components/TaskNavLinks.tsx`
+- Modify: `src/admin/components/OperationsNav.tsx`
 
 **Step 1: Write failing workspace tests.**
 
@@ -386,7 +391,7 @@ git commit -m "feat: add media operations workspace"
 - Create: `src/admin/conversations/ConversationContextPanel.tsx`
 - Create: `tests/e2e/admin-conversation-workspace.spec.ts`
 - Modify: `src/payload.config.ts`
-- Modify: `src/admin/components/TaskNavLinks.tsx`
+- Modify: `src/admin/components/OperationsNav.tsx`
 - Modify: `tests/contract/chat-service.test.ts` only if a read/command contract gap is confirmed
 
 **Step 1: Write failing command-guard E2E tests.**

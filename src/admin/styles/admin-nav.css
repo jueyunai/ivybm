@@ -1,0 +1,221 @@
+.ops-admin-nav {
+  background: var(--ops-surface);
+  block-size: 100dvh;
+  box-sizing: border-box;
+  color: var(--ops-ink);
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100%;
+  min-inline-size: 0;
+  overflow: hidden;
+  padding: 56px 12px 12px;
+  position: relative;
+}
+
+.ops-admin-nav__close {
+  align-items: center;
+  background: var(--ops-surface);
+  border: 1px solid var(--ops-border);
+  border-radius: 6px;
+  color: var(--ops-ink);
+  cursor: pointer;
+  display: none;
+  inline-size: 36px;
+  inset-block-start: 10px;
+  inset-inline-end: 12px;
+  justify-content: center;
+  min-block-size: 36px;
+  padding: 0;
+  position: absolute;
+}
+
+.ops-admin-nav__close svg {
+  block-size: 18px;
+  inline-size: 18px;
+}
+
+.ops-admin-nav__close:hover {
+  background: var(--ops-info-soft);
+  color: var(--ops-accent-strong);
+}
+
+.ops-admin-nav__close:focus-visible {
+  outline: 2px solid var(--ops-focus);
+  outline-offset: 3px;
+}
+
+.ops-admin-nav__brand {
+  align-items: center;
+  border-bottom: 1px solid var(--ops-border);
+  display: flex;
+  gap: 10px;
+  padding: 4px 4px 16px;
+}
+
+.ops-admin-nav__mark {
+  align-items: center;
+  background: var(--ops-ink);
+  border-radius: 8px;
+  color: var(--ops-surface);
+  display: inline-flex;
+  flex: 0 0 34px;
+  font-feature-settings: "tnum" 1;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  inline-size: 34px;
+  justify-content: center;
+  letter-spacing: 0;
+  line-height: 1;
+  min-block-size: 34px;
+}
+
+.ops-admin-nav__brand-copy {
+  display: grid;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.ops-admin-nav__brand-copy strong {
+  color: var(--ops-ink);
+  font-size: 0.875rem;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.ops-admin-nav__brand-copy small {
+  color: var(--ops-muted);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
+.ops-admin-nav__sections {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-block: 12px;
+}
+
+.ops-admin-nav__section {
+  padding-block: 12px;
+}
+
+.ops-admin-nav__section + .ops-admin-nav__section {
+  border-top: 1px solid var(--ops-border);
+}
+
+.ops-admin-nav__section h2 {
+  color: var(--ops-muted);
+  font-size: 0.6875rem;
+  font-weight: 750;
+  letter-spacing: 0;
+  line-height: 1.35;
+  margin: 0 8px 6px;
+  text-transform: uppercase;
+}
+
+.ops-admin-nav__section ul {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ops-admin-nav__link {
+  align-items: center;
+  border-radius: var(--ops-radius-control);
+  color: var(--ops-ink);
+  display: grid;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  gap: 8px;
+  grid-template-columns: 4px minmax(0, 1fr);
+  line-height: 1.3;
+  min-block-size: 36px;
+  padding: 8px;
+  text-decoration: none;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.ops-admin-nav__link:hover {
+  background: var(--ops-info-soft);
+  color: var(--ops-accent-strong);
+}
+
+.ops-admin-nav__link.is-active {
+  background: var(--ops-accent-soft);
+  color: var(--ops-accent-strong);
+}
+
+.ops-admin-nav__link-mark {
+  background: var(--ops-border);
+  block-size: 4px;
+  border-radius: 99px;
+  inline-size: 4px;
+}
+
+.ops-admin-nav__link.is-active .ops-admin-nav__link-mark {
+  background: var(--ops-accent);
+  block-size: 18px;
+}
+
+.ops-admin-nav__link:focus-visible,
+.ops-admin-nav__footer a:focus-visible {
+  outline: 2px solid var(--ops-focus);
+  outline-offset: 3px;
+}
+
+.ops-admin-nav__footer {
+  border-top: 1px solid var(--ops-border);
+  padding: 12px 8px 4px;
+}
+
+.ops-admin-nav__footer p {
+  color: var(--ops-muted);
+  font-feature-settings: "tnum" 1;
+  font-size: 0.75rem;
+  margin: 0 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-admin-nav__footer div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ops-admin-nav__footer a {
+  color: var(--ops-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.ops-admin-nav__footer a:hover {
+  color: var(--ops-accent);
+}
+
+@media (max-width: 768px) {
+  .ops-admin-nav {
+    min-block-size: 100dvh;
+    padding: 60px 10px 12px;
+  }
+
+  .ops-admin-nav__close {
+    display: inline-flex;
+    inset-inline-end: 10px;
+  }
+
+  .ops-admin-nav__section {
+    padding-block: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ops-admin-nav__link {
+    transition: none;
+  }
+}

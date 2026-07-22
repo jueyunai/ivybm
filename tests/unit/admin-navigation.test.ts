@@ -1,48 +1,131 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
+import type { ClientConfig, SanitizedPermissions } from 'payload'
 import { describe, expect, it } from 'vitest'
 
-import { ADMIN_COPY, TASK_NAV_ITEMS } from '@/admin/i18n'
+import { ADMIN_COPY, getAdminCopy } from '@/admin/i18n'
+import { getOperationsNavSections } from '@/admin/navigation/getOperationsNavSections'
 import config from '@/payload.config'
 
+const collection = ({
+  group,
+  label,
+  slug,
+}: {
+  group?: string
+  label: string
+  slug: string
+}) =>
+  ({
+    admin: { group },
+    labels: { plural: label, singular: label },
+    slug,
+  }) as ClientConfig['collections'][number]
+
+const global = ({ label, slug }: { label: string; slug: string }) =>
+  ({
+    admin: {},
+    label,
+    slug,
+  }) as ClientConfig['globals'][number]
+
 describe('task-oriented Admin navigation', () => {
-  it('registers the Operations Dashboard and stable task links without replacing Payload Nav', async () => {
+  it('uses the public Nav and Dashboard extension points', async () => {
     const payloadConfig = await config
     const components = payloadConfig.admin?.components
 
-    expect(components?.Nav).toBeUndefined()
-    expect(components?.beforeNavLinks).toEqual(['/admin/components/TaskNavLinks'])
+    expect(components?.Nav).toEqual('/admin/components/OperationsNav')
+    expect(components?.beforeNavLinks).toBeUndefined()
     expect(components?.views?.dashboard).toMatchObject({
       Component: '/admin/views/OperationsDashboard',
     })
   })
 
-  it('keeps every task navigation item bilingual and rooted in the existing Admin routes', () => {
-    expect(TASK_NAV_ITEMS).toHaveLength(3)
+  it('builds bilingual, access-aware sections without duplicating task collections', () => {
+    const clientConfig = {
+      collections: [
+        collection({ group: 'Conversations', label: 'Conversations', slug: 'conversations' }),
+        collection({ group: 'Lead Management', label: 'Leads', slug: 'leads' }),
+        collection({ group: 'Website Content', label: 'Products', slug: 'products' }),
+        collection({ group: 'Knowledge Base', label: 'Knowledge documents', slug: 'knowledge-documents' }),
+        collection({ group: 'AI 管理', label: 'AI providers', slug: 'ai-providers' }),
+        collection({ group: 'Operations', label: 'Jobs', slug: 'jobs' }),
+        collection({ label: 'Payload migrations', slug: 'payload-migrations' }),
+        collection({ label: 'Users', slug: 'users' }),
+      ],
+      globals: [global({ label: 'Site settings', slug: 'site-settings' })],
+    } as ClientConfig
+    const permissions = {
+      collections: {
+        conversations: { fields: {}, read: true },
+        'ai-providers': { fields: {}, read: true },
+        jobs: { fields: {}, read: true },
+        leads: { fields: {}, read: true },
+        'payload-migrations': { fields: {}, read: true },
+        products: { fields: {}, read: true },
+        users: { fields: {} },
+      },
+      globals: {
+        'site-settings': { fields: {}, read: true },
+      },
+    } as SanitizedPermissions
 
-    for (const item of TASK_NAV_ITEMS) {
-      expect(item.href.startsWith('/admin')).toBe(true)
-      expect(ADMIN_COPY.zh[item.labelKey]).toEqual(expect.any(String))
-      expect(ADMIN_COPY.en[item.labelKey]).toEqual(expect.any(String))
-    }
+    const sections = getOperationsNavSections({
+      config: clientConfig,
+      copy: getAdminCopy('zh'),
+      language: 'zh',
+      permissions,
+    })
+    const allItems = sections.flatMap((section) => section.items)
+
+    expect(sections.map((section) => section.id)).toEqual([
+      'workspace',
+      'content',
+      'intelligence',
+      'operations',
+      'system',
+    ])
+    expect(sections[0]).toMatchObject({
+      label: ADMIN_COPY.zh.navSections.workspace,
+      items: [
+        { href: '/admin', id: 'workspace:overview' },
+        { href: '/admin/collections/conversations', id: 'collection:conversations' },
+        { href: '/admin/collections/leads', id: 'collection:leads' },
+      ],
+    })
+    expect(allItems.filter((item) => item.href === '/admin/collections/conversations')).toHaveLength(1)
+    expect(allItems.filter((item) => item.href === '/admin/collections/leads')).toHaveLength(1)
+    expect(allItems.map((item) => item.href)).toContain('/admin/collections/products')
+    expect(allItems.map((item) => item.href)).toContain('/admin/collections/ai-providers')
+    expect(allItems.map((item) => item.href)).toContain('/admin/collections/jobs')
+    expect(allItems.map((item) => item.href)).toContain('/admin/globals/site-settings')
+    expect(allItems.map((item) => item.href)).not.toContain('/admin/collections/knowledge-documents')
+    expect(allItems.map((item) => item.href)).not.toContain('/admin/collections/users')
+    expect(allItems.map((item) => item.href)).not.toContain('/admin/collections/payload-migrations')
+    expect(ADMIN_COPY.en.navSections.workspace).toEqual(expect.any(String))
+    expect(ADMIN_COPY.en.navSections.system).toEqual(expect.any(String))
   })
 
-  it('defines semantic tokens and avoids direct Payload Nav DOM styling', () => {
-    const tokenStyles = readFileSync(
-      path.join(process.cwd(), 'src/admin/styles/tokens.css'),
+  it('defines an owned navigation shell without targeting Payload internal nav classes', () => {
+    const navSource = readFileSync(
+      path.join(process.cwd(), 'src/admin/components/OperationsNav.tsx'),
       'utf8',
     )
-    const shellStyles = readFileSync(
-      path.join(process.cwd(), 'src/admin/styles/admin-shell.css'),
+    const navStyles = readFileSync(
+      path.join(process.cwd(), 'src/admin/styles/admin-nav.css'),
       'utf8',
     )
 
-    expect(tokenStyles).toContain('--ops-accent')
-    expect(tokenStyles).toContain('html[data-theme="dark"]')
-    expect(shellStyles).toContain('.ops-task-nav')
-    expect(shellStyles).toContain('inline-size: 100%')
-    expect(shellStyles).toContain('position: sticky')
-    expect(shellStyles).not.toMatch(/\.nav__|\.nav-group|\.nav-toggler/)
+    expect(navSource).toContain('useAuth')
+    expect(navSource).toContain('useConfig')
+    expect(navSource).toContain('useNav')
+    expect(navSource).toContain('NavWrapper')
+    expect(navSource).toContain('operations-nav-close')
+    expect(navStyles).toContain('.ops-admin-nav')
+    expect(navStyles).toContain('.ops-admin-nav__close')
+    expect(navStyles).toContain('.ops-admin-nav__section')
+    expect(navStyles).toContain('block-size: 100dvh')
+    expect(navStyles).not.toMatch(/\.nav__|\.nav-group|\.nav-toggler/)
   })
 })
