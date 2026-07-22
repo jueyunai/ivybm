@@ -21,6 +21,10 @@ const COLLECTION_LABELS: Record<string, { plural: AdminText; singular: AdminText
     plural: text('AI 场景路由', 'AI Usage Routes'),
     singular: text('AI 场景路由', 'AI Usage Route'),
   },
+  'ai-usage-logs': {
+    plural: text('AI 用量记录', 'AI Usage Logs'),
+    singular: text('AI 用量记录', 'AI Usage Log'),
+  },
   'audit-logs': { plural: text('审计日志', 'Audit Logs'), singular: text('审计日志', 'Audit Log') },
   'conversation-commands': {
     plural: text('会话指令', 'Conversation Commands'),

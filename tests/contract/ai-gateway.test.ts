@@ -101,6 +101,81 @@ describe('AI gateway contract', () => {
     expect(embedded.provider).toBe('embedding-provider')
   })
 
+  it('fingerprints the provider endpoint even when model and dimensions are identical', async () => {
+    const createGateway = (embeddingSpaceIdentity: string) =>
+      createAiGateway({
+        operations: {
+          embedding: {
+            dimensions: 3,
+            embeddingSpaceIdentity,
+            model: 'shared-model-name',
+            provider: fakeProvider,
+          },
+        },
+      })
+
+    const providerA = createGateway('openai-compatible:https://provider-a.example.invalid/v1')
+    const renamedProviderA = createGateway(
+      'openai-compatible:https://provider-a.example.invalid/v1',
+    )
+    const providerB = createGateway('openai-compatible:https://provider-b.example.invalid/v1')
+
+    const [a, renamedA, b] = await Promise.all([
+      providerA.embed({ input: ['same input'] }),
+      renamedProviderA.embed({ input: ['same input'] }),
+      providerB.embed({ input: ['same input'] }),
+    ])
+
+    expect(a.embeddingSpace).toBe(renamedA.embeddingSpace)
+    expect(a.embeddingSpace).not.toBe(b.embeddingSpace)
+    expect(providerA.embeddingConfigurationKey).toBe(a.embeddingSpace)
+    expect(providerA.embeddingConfigurationKey).toBe(renamedProviderA.embeddingConfigurationKey)
+    expect(providerA.embeddingConfigurationKey).not.toBe(providerB.embeddingConfigurationKey)
+  })
+
+  it('fails closed when an embedding provider drifts from the configured model or dimensions', async () => {
+    const gatewayFor = (result: { dimensions: number; model: string }) =>
+      createAiGateway({
+        operations: {
+          embedding: {
+            dimensions: 3,
+            embeddingSpaceIdentity: 'openai-compatible:https://provider-drift.example.invalid/v1',
+            model: 'configured-embedding-model',
+            provider: {
+              ...fakeProvider,
+              embed: async ({ input }) => ({
+                embeddings: input.map(() => Array.from({ length: result.dimensions }, () => 1)),
+                model: result.model,
+                usage: { inputTokens: input.length, totalTokens: input.length },
+              }),
+            },
+          },
+        },
+      })
+
+    await expect(
+      gatewayFor({ dimensions: 3, model: 'provider-resolved-model-v2' }).embed({
+        input: ['model drift'],
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_response' } satisfies Partial<AiGatewayError>)
+    await expect(
+      gatewayFor({ dimensions: 4, model: 'configured-embedding-model' }).embed({
+        input: ['dimension drift'],
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_response' } satisfies Partial<AiGatewayError>)
+
+    const unfixedDimensions = createAiGateway({
+      operations: {
+        embedding: {
+          embeddingSpaceIdentity: 'openai-compatible:https://provider.example.invalid/v1',
+          model: 'configured-embedding-model',
+          provider: fakeProvider,
+        },
+      },
+    })
+    expect(unfixedDimensions.embeddingConfigurationKey).toBeUndefined()
+  })
+
   it('applies per-operation model defaults and reports an absent operation as recoverable', async () => {
     const generateText = vi.fn(fakeProvider.generateText)
     const gateway = createAiGateway({
@@ -177,6 +252,29 @@ describe('AI gateway contract', () => {
     )
   })
 
+  it('rejects invalid token accounting before cost or usage persistence', async () => {
+    for (const usage of [
+      { inputTokens: -1, totalTokens: 1 },
+      { inputTokens: 1.5, totalTokens: 2 },
+      { inputTokens: 3, outputTokens: 2, totalTokens: 4 },
+    ]) {
+      const gateway = createAiGateway({
+        models: { text: 'fake-text' },
+        provider: {
+          ...fakeProvider,
+          generateText: async ({ model }) => ({
+            model,
+            text: 'Invalid accounting fixture',
+            usage,
+          }),
+        },
+      })
+      await expect(gateway.generateText({ input: 'validate usage' })).rejects.toMatchObject({
+        code: 'invalid_response',
+      } satisfies Partial<AiGatewayError>)
+    }
+  })
+
   it('normalizes timeout and provider errors without exposing credentials', async () => {
     const timeoutGateway = createAiGateway({
       models: { embedding: 'fake-embedding', text: 'fake-text' },
@@ -210,6 +308,27 @@ describe('AI gateway contract', () => {
       retryable: true,
       status: 429,
     } satisfies Partial<AiGatewayError>)
+  })
+
+  it('stops waiting for an embedding provider when the caller aborts the request', async () => {
+    let providerSignal: AbortSignal | undefined
+    const gateway = createAiGateway({
+      models: { embedding: 'fake-embedding', text: 'fake-text' },
+      provider: {
+        ...fakeProvider,
+        embed: async ({ signal }) => {
+          providerSignal = signal
+          return await new Promise(() => undefined)
+        },
+      },
+    })
+    const controller = new AbortController()
+    const request = gateway.embed({ input: ['slow embedding'], signal: controller.signal })
+
+    controller.abort(new Error('job lease lost'))
+
+    await expect(request).rejects.toMatchObject({ code: 'provider_error' })
+    expect(providerSignal?.aborted).toBe(true)
   })
 
   it('rejects empty requests before calling a provider', async () => {

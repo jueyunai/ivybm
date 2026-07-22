@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { getPayload, type Payload } from 'payload'
 import { NextRequest } from 'next/server'
+import type { PostgresAdapter } from '@payloadcms/db-postgres'
 
 import { POST as graphQLPost } from '@/app/(payload)/api/graphql/route'
 import { GET as restGet } from '@/app/(payload)/api/[...slug]/route'
 import type { User } from '@/payload-types'
 import type { AiProvider } from '@/modules/ai/gateway'
+import { AiConfigurationError } from '@/modules/ai/config'
 import { AI_USAGE_KEYS, resolveAiGateway } from '@/modules/ai/registry'
 import type { OpenAICompatibleProviderOptions } from '@/modules/ai/providers/openaiCompatible'
 import config from '@/payload.config'
@@ -24,6 +26,7 @@ let textUsageKey: string
 let originalEncryptionKey: string | undefined
 
 const createdUserIDs: Array<number | string> = []
+const createdUsageLogIDs: Array<number | string> = []
 
 describe.sequential('AI control plane', () => {
   beforeAll(async () => {
@@ -75,6 +78,13 @@ describe.sequential('AI control plane', () => {
 
   afterAll(async () => {
     if (payload) {
+      if (createdUsageLogIDs.length > 0) {
+        await payload.delete({
+          collection: 'ai-usage-logs',
+          overrideAccess: true,
+          where: { id: { in: createdUsageLogIDs } },
+        })
+      }
       for (const [collection, id] of [
         ['ai-usage-routes', routeID],
         ['ai-usage-routes', embeddingRouteID],
@@ -310,6 +320,7 @@ describe.sequential('AI control plane', () => {
         model: 'embedding-model',
         name: `Embedding model ${suffix}`,
         parameters: {
+          dimensions: 3,
           reasoningEffort: 'medium',
           reasoningEnabled: false,
           timeoutMs: 15_000,
@@ -340,6 +351,7 @@ describe.sequential('AI control plane', () => {
         return {
           embeddings: input.map(() => [1, 0, 0]),
           model,
+          requestId: `${suffix}-embed`,
           usage: { inputTokens: 2, totalTokens: 2 },
         }
       },
@@ -347,6 +359,7 @@ describe.sequential('AI control plane', () => {
         calls.push({ model, operation: 'text', provider: options.name })
         return {
           model,
+          requestId: `${suffix}-text`,
           text: 'Configured response',
           usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
         }
@@ -370,6 +383,33 @@ describe.sequential('AI control plane', () => {
         expect.objectContaining({ model: 'embedding-model', operation: 'embedding' }),
       ]),
     )
+    const usage = await payload.find({
+      collection: 'ai-usage-logs',
+      limit: 10,
+      overrideAccess: true,
+      pagination: false,
+      where: { requestId: { in: [`${suffix}-embed`, `${suffix}-text`] } },
+    })
+    createdUsageLogIDs.push(...usage.docs.map(({ id }) => id))
+    expect(usage.docs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          inputTokens: 2,
+          model: 'gpt-test',
+          operation: 'generateText',
+          outputTokens: 1,
+          requestId: `${suffix}-text`,
+          totalTokens: 3,
+        }),
+        expect.objectContaining({
+          inputTokens: 2,
+          model: 'embedding-model',
+          operation: 'embed',
+          requestId: `${suffix}-embed`,
+          totalTokens: 2,
+        }),
+      ]),
+    )
 
     await payload.update({
       collection: 'ai-usage-routes',
@@ -385,5 +425,56 @@ describe.sequential('AI control plane', () => {
         routes: [{ operation: 'text', usageKey: textUsageKey }],
       }),
     ).rejects.toMatchObject({ name: 'AiConfigurationError' })
+  })
+
+  it('rejects an upgraded embedding route whose existing profile has no fixed dimensions', async () => {
+    const suffix = randomUUID()
+    const profile = await payload.create({
+      collection: 'ai-model-profiles',
+      data: {
+        capability: 'embedding',
+        enabled: true,
+        model: 'legacy-embedding-model',
+        name: `Legacy embedding ${suffix}`,
+        parameters: {
+          dimensions: 3,
+          reasoningEffort: 'medium',
+          reasoningEnabled: false,
+          timeoutMs: 15_000,
+        },
+        provider: providerID,
+      },
+      overrideAccess: true,
+    })
+    const route = await payload.create({
+      collection: 'ai-usage-routes',
+      data: {
+        enabled: true,
+        operation: 'embedding',
+        profile: profile.id,
+        usageKey: `legacy.embedding.${suffix.replaceAll('-', '')}`,
+      },
+      overrideAccess: true,
+    })
+
+    try {
+      await (payload.db as unknown as PostgresAdapter).pool.query(
+        'UPDATE ai_model_profiles SET parameters_dimensions = NULL WHERE id = $1',
+        [profile.id],
+      )
+      await expect(
+        resolveAiGateway({
+          payload,
+          routes: [{ operation: 'embedding', usageKey: route.usageKey }],
+        }),
+      ).rejects.toBeInstanceOf(AiConfigurationError)
+    } finally {
+      await payload.delete({ collection: 'ai-usage-routes', id: route.id, overrideAccess: true })
+      await payload.delete({
+        collection: 'ai-model-profiles',
+        id: profile.id,
+        overrideAccess: true,
+      })
+    }
   })
 })

@@ -7,6 +7,7 @@ import {
 } from '@/modules/ai/config'
 
 const requiredEnvironment = {
+  AI_EMBEDDING_DIMENSIONS: '1536',
   AI_EMBEDDING_MODEL: 'text-embedding-3-small',
   AI_PROVIDER_API_KEY: 'test-key',
   AI_PROVIDER_BASE_URL: 'https://api.example.invalid/v1',
@@ -51,6 +52,20 @@ describe('AI deployment configuration', () => {
       readAIConfigurationOperation('text', {
         AI_PROVIDER_BASE_URL: 'https://api.example.invalid/v1',
         AI_TEXT_MODEL: 'gpt-5-mini',
+      }),
+    ).toThrow(AiConfigurationError)
+
+    expect(() =>
+      readAIConfigurationOperation('embedding', {
+        AI_EMBEDDING_MODEL: 'text-embedding-3-small',
+        AI_PROVIDER_API_KEY: 'test-key',
+        AI_PROVIDER_BASE_URL: 'https://api.example.invalid/v1',
+      }),
+    ).toThrow(AiConfigurationError)
+    expect(() =>
+      readAIConfigurationOperation('embedding', {
+        ...requiredEnvironment,
+        AI_EMBEDDING_DIMENSIONS: 'dynamic',
       }),
     ).toThrow(AiConfigurationError)
   })

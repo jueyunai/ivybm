@@ -7,6 +7,7 @@ export type AiConfigurationOperation = 'text' | 'embedding'
 export type AiOperationConfiguration = {
   apiKey: string
   baseURL: string
+  dimensions?: number
   model: string
   reasoning?: AiReasoning
   timeoutMs: number
@@ -43,6 +44,14 @@ const isReasoningEffort = (value: string): value is AiReasoningEffort =>
 
 const operationModelKey = (operation: AiConfigurationOperation): string =>
   operation === 'text' ? 'AI_TEXT_MODEL' : 'AI_EMBEDDING_MODEL'
+
+const embeddingDimensions = (environment: Environment): number => {
+  const value = Number(requiredValue(environment, 'AI_EMBEDDING_DIMENSIONS'))
+  if (!Number.isInteger(value) || value < 1 || value > 16_384) {
+    throw new AiConfigurationError('AI_EMBEDDING_DIMENSIONS must be an integer between 1 and 16384')
+  }
+  return value
+}
 
 const operationTimeout = (
   operation: AiConfigurationOperation,
@@ -83,6 +92,7 @@ export const readAIConfigurationOperation = (
     'AI_PROVIDER_API_KEY',
     'AI_PROVIDER_BASE_URL',
     operationModelKey(operation),
+    ...(operation === 'embedding' ? ['AI_EMBEDDING_DIMENSIONS'] : []),
   ] as const
   const values = keys.map((key) => optionalValue(environment, key))
 
@@ -97,6 +107,7 @@ export const readAIConfigurationOperation = (
   return {
     apiKey: requiredValue(environment, 'AI_PROVIDER_API_KEY'),
     baseURL: requiredValue(environment, 'AI_PROVIDER_BASE_URL'),
+    ...(operation === 'embedding' ? { dimensions: embeddingDimensions(environment) } : {}),
     model: requiredValue(environment, operationModelKey(operation)),
     ...(operation === 'text' ? { reasoning: parseTextReasoning(environment) } : {}),
     timeoutMs: operationTimeout(operation, environment),

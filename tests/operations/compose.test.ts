@@ -63,6 +63,32 @@ const getProductionComposeConfig = (): ComposeConfig => {
   return JSON.parse(result.stdout) as ComposeConfig
 }
 
+const getLocalComposeConfig = (): ComposeConfig => {
+  const result = spawnSync(
+    'docker',
+    ['compose', '-f', 'compose.yaml', 'config', '--format', 'json'],
+    {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        AI_CONFIG_ENCRYPTION_KEY: 'd'.repeat(64),
+        AI_EMBEDDING_DIMENSIONS: '3',
+        AI_EMBEDDING_MODEL: 'local-embedding-model',
+        AI_PROVIDER_API_KEY: 'local-provider-key',
+        AI_PROVIDER_BASE_URL: 'https://local-provider.example.invalid/v1',
+        AI_TEXT_MODEL: 'local-text-model',
+      },
+    },
+  )
+
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || 'local docker compose config failed')
+  }
+
+  return JSON.parse(result.stdout) as ComposeConfig
+}
+
 describe('production Compose configuration', () => {
   it('does not accept PAYLOAD_SECRET as a Docker build argument', () => {
     const dockerfile = readFileSync(resolve(projectRoot, 'Dockerfile'), 'utf8')
@@ -136,5 +162,20 @@ describe('production Compose configuration', () => {
         },
       })
     }
+  })
+})
+
+describe('local Compose worker configuration', () => {
+  it('passes CMS encryption and legacy AI fallback settings to the worker', () => {
+    const config = getLocalComposeConfig()
+
+    expect(config.services.worker.environment).toMatchObject({
+      AI_CONFIG_ENCRYPTION_KEY: 'd'.repeat(64),
+      AI_EMBEDDING_DIMENSIONS: '3',
+      AI_EMBEDDING_MODEL: 'local-embedding-model',
+      AI_PROVIDER_API_KEY: 'local-provider-key',
+      AI_PROVIDER_BASE_URL: 'https://local-provider.example.invalid/v1',
+      AI_TEXT_MODEL: 'local-text-model',
+    })
   })
 })
