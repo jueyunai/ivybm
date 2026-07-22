@@ -11,6 +11,7 @@ let payload: Payload
 let admin: User
 let operator: User
 let sales: User
+let assignedUnscoredLeadID: number
 let createdLeadSourceID: number
 const createdConversationIDs: number[] = []
 const createdJobIDs: number[] = []
@@ -99,24 +100,26 @@ describe.sequential('Operations Dashboard access', () => {
       },
       overrideAccess: true,
     })
-    const unassignedLead = await payload.create({
+    const assignedUnscoredLead = await payload.create({
       collection: 'leads',
       context: { skipAudit: true },
       data: {
+        assignedTo: sales.id,
         country: 'Test Country',
-        email: `unassigned-${suffix}@example.invalid`,
-        idempotencyKey: `admin-dashboard-unassigned-${suffix}`,
+        email: `unscored-${suffix}@example.invalid`,
+        idempotencyKey: `admin-dashboard-unscored-${suffix}`,
         intentLevel: 'unscored',
         locale: 'en',
-        message: 'Other lead details must remain out of sales scope.',
-        name: 'Unassigned lead contact',
-        requestId: `admin-dashboard-unassigned-${suffix}`,
+        message: 'Assigned unscored lead must not be labelled high intent.',
+        name: 'Assigned unscored lead contact',
+        requestId: `admin-dashboard-unscored-${suffix}`,
         source: source.id,
         status: 'new',
       },
       overrideAccess: true,
     })
-    createdLeadIDs.push(assignedLead.id, unassignedLead.id)
+    assignedUnscoredLeadID = assignedUnscoredLead.id
+    createdLeadIDs.push(assignedLead.id, assignedUnscoredLead.id)
 
     const createConversation = async (assignedTo?: number) => {
       const visitor = await payload.create({
@@ -225,7 +228,7 @@ describe.sequential('Operations Dashboard access', () => {
     const summary = await summaryFor(admin)
 
     expect(summary.queues.handoffRequested).toBeGreaterThanOrEqual(2)
-    expect(summary.queues.newQualifiedLeads).toBeGreaterThanOrEqual(2)
+    expect(summary.queues.newQualifiedLeads).toBeGreaterThanOrEqual(1)
     expect(summary.queues.failedJobs).toBeGreaterThanOrEqual(1)
     expect(JSON.stringify(summary)).not.toMatch(/never expose|Sensitive|secret/i)
   })
@@ -234,12 +237,12 @@ describe.sequential('Operations Dashboard access', () => {
     const summary = await summaryFor(operator)
 
     expect(summary.queues.handoffRequested).toBeGreaterThanOrEqual(2)
-    expect(summary.queues.newQualifiedLeads).toBeGreaterThanOrEqual(2)
+    expect(summary.queues.newQualifiedLeads).toBeGreaterThanOrEqual(1)
     expect(summary.queues.failedJobs).toBeUndefined()
     expect(summary.urgentItems.some((item) => item.kind === 'job')).toBe(false)
   })
 
-  it('restricts sales summaries and urgent items to only records assigned to that salesperson', async () => {
+  it('restricts sales summaries to high-intent records assigned to that salesperson', async () => {
     const summary = await summaryFor(sales)
 
     expect(summary.queues.handoffRequested).toBe(1)
@@ -247,5 +250,8 @@ describe.sequential('Operations Dashboard access', () => {
     expect(summary.queues.failedJobs).toBeUndefined()
     expect(summary.urgentItems).toHaveLength(2)
     expect(summary.urgentItems.map((item) => item.kind).sort()).toEqual(['conversation', 'lead'])
+    expect(summary.urgentItems).not.toContainEqual(
+      expect.objectContaining({ id: assignedUnscoredLeadID }),
+    )
   })
 })

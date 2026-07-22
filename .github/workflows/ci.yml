@@ -37,6 +37,8 @@ jobs:
       PAYLOAD_SECRET: ci-build-only-secret-at-least-32-characters
       NEXT_PUBLIC_SERVER_URL: http://localhost:3000
       APP_VERSION: ci
+      E2E_ADMIN_EMAIL: admin@example.invalid
+      E2E_ADMIN_PASSWORD: ci-demo-admin-password
       SEED_ADMIN_EMAIL: admin@example.invalid
       SEED_ADMIN_PASSWORD: ci-demo-admin-password
     steps:
@@ -94,8 +96,8 @@ jobs:
       - name: Install Chromium for ChatWidget E2E
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: ChatWidget browser E2E
-        run: pnpm test:e2e -- tests/e2e/chat-handoff.spec.ts
+      - name: Browser E2E
+        run: pnpm test:e2e -- tests/e2e/chat-handoff.spec.ts tests/e2e/admin-visual.spec.ts
 
       - name: Build runtime image
         run: >-

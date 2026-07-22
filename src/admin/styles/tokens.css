@@ -1,5 +1,6 @@
 :root {
   --ops-accent: #0f766e;
+  --ops-accent-soft: #ccfbf1;
   --ops-accent-strong: #115e59;
   --ops-border: #dce3ec;
   --ops-canvas: #f8fafc;
@@ -20,8 +21,9 @@
   --ops-warning-soft: #fffbeb;
 }
 
-html[data-theme="dark"] {
+html[data-theme='dark'] {
   --ops-accent: #5eead4;
+  --ops-accent-soft: #134e4a;
   --ops-accent-strong: #99f6e4;
   --ops-border: #334155;
   --ops-canvas: #111827;

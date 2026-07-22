@@ -35,7 +35,25 @@ describe('Operations Dashboard read model', () => {
         req,
       }),
     )
-    expect(find).not.toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ summary: true }) }))
+    expect(find).not.toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.objectContaining({ summary: true }) }),
+    )
+    expect(count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'leads',
+        where: {
+          and: [{ status: { in: ['new', 'qualified'] } }, { intentLevel: { equals: 'a' } }],
+        },
+      }),
+    )
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'leads',
+        where: {
+          and: [{ status: { in: ['new', 'qualified'] } }, { intentLevel: { equals: 'a' } }],
+        },
+      }),
+    )
     expect(DASHBOARD_QUERY_BUDGET).toBe(7)
   })
 

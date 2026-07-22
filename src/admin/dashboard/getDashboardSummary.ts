@@ -17,7 +17,8 @@ const emptySummary = (): OperatorDashboardSummary => ({
   urgentItems: [],
 })
 
-const toUpdatedAt = (value: string | null | undefined, fallback: string): string => value || fallback
+const toUpdatedAt = (value: string | null | undefined, fallback: string): string =>
+  value || fallback
 
 const byMostRecent = (left: DashboardUrgentItem, right: DashboardUrgentItem): number =>
   Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
@@ -34,93 +35,88 @@ export const getDashboardSummary = async ({
 
   const handoffWhere: Where = { handoffStatus: { equals: 'handoff_requested' } }
   const activeWhere: Where = { handoffStatus: { equals: 'human_active' } }
-  const qualifiedLeadWhere: Where = { status: { in: ['new', 'qualified'] } }
+  const highIntentLeadWhere: Where = {
+    and: [{ status: { in: ['new', 'qualified'] } }, { intentLevel: { equals: 'a' } }],
+  }
   const failedJobWhere: Where = { status: { in: ['failed', 'dead'] } }
 
-  const [
-    handoffCount,
-    activeCount,
-    leadCount,
-    failedJobCount,
-    handoffItems,
-    leadItems,
-    jobItems,
-  ] = await Promise.all([
-    payload.count({
-      collection: 'conversations',
-      overrideAccess: false,
-      req,
-      where: handoffWhere,
-    }),
-    payload.count({
-      collection: 'conversations',
-      overrideAccess: false,
-      req,
-      where: activeWhere,
-    }),
-    payload.count({
-      collection: 'leads',
-      overrideAccess: false,
-      req,
-      where: qualifiedLeadWhere,
-    }),
-    user.role === 'admin'
-      ? payload.count({
-          collection: 'jobs',
-          overrideAccess: false,
-          req,
-          where: failedJobWhere,
-        })
-      : Promise.resolve(undefined),
-    payload.find({
-      collection: 'conversations',
-      depth: 0,
-      limit: MAX_URGENT_ITEMS_PER_KIND,
-      overrideAccess: false,
-      pagination: false,
-      req,
-      select: {
-        handoffStatus: true,
-        lastMessageAt: true,
-        publicId: true,
-        updatedAt: true,
-      },
-      sort: '-lastMessageAt',
-      where: handoffWhere,
-    }),
-    payload.find({
-      collection: 'leads',
-      depth: 0,
-      limit: MAX_URGENT_ITEMS_PER_KIND,
-      overrideAccess: false,
-      pagination: false,
-      req,
-      select: {
-        intentLevel: true,
-        status: true,
-        updatedAt: true,
-      },
-      sort: '-updatedAt',
-      where: qualifiedLeadWhere,
-    }),
-    user.role === 'admin'
-      ? payload.find({
-          collection: 'jobs',
-          depth: 0,
-          limit: MAX_URGENT_ITEMS_PER_KIND,
-          overrideAccess: false,
-          pagination: false,
-          req,
-          select: {
-            status: true,
-            type: true,
-            updatedAt: true,
-          },
-          sort: '-updatedAt',
-          where: failedJobWhere,
-        })
-      : Promise.resolve(undefined),
-  ])
+  const [handoffCount, activeCount, leadCount, failedJobCount, handoffItems, leadItems, jobItems] =
+    await Promise.all([
+      payload.count({
+        collection: 'conversations',
+        overrideAccess: false,
+        req,
+        where: handoffWhere,
+      }),
+      payload.count({
+        collection: 'conversations',
+        overrideAccess: false,
+        req,
+        where: activeWhere,
+      }),
+      payload.count({
+        collection: 'leads',
+        overrideAccess: false,
+        req,
+        where: highIntentLeadWhere,
+      }),
+      user.role === 'admin'
+        ? payload.count({
+            collection: 'jobs',
+            overrideAccess: false,
+            req,
+            where: failedJobWhere,
+          })
+        : Promise.resolve(undefined),
+      payload.find({
+        collection: 'conversations',
+        depth: 0,
+        limit: MAX_URGENT_ITEMS_PER_KIND,
+        overrideAccess: false,
+        pagination: false,
+        req,
+        select: {
+          handoffStatus: true,
+          lastMessageAt: true,
+          publicId: true,
+          updatedAt: true,
+        },
+        sort: '-lastMessageAt',
+        where: handoffWhere,
+      }),
+      payload.find({
+        collection: 'leads',
+        depth: 0,
+        limit: MAX_URGENT_ITEMS_PER_KIND,
+        overrideAccess: false,
+        pagination: false,
+        req,
+        select: {
+          intentLevel: true,
+          status: true,
+          updatedAt: true,
+        },
+        sort: '-updatedAt',
+        where: highIntentLeadWhere,
+      }),
+      user.role === 'admin'
+        ? payload.find({
+            collection: 'jobs',
+            depth: 0,
+            limit: MAX_URGENT_ITEMS_PER_KIND,
+            overrideAccess: false,
+            pagination: false,
+            req,
+            select: {
+              status: true,
+              type: true,
+              updatedAt: true,
+            },
+            sort: '-updatedAt',
+            where: failedJobWhere,
+          })
+        : Promise.resolve(undefined),
+    ])
 
   const urgentItems: DashboardUrgentItem[] = [
     ...handoffItems.docs.map((item) => ({
@@ -137,7 +133,7 @@ export const getDashboardSummary = async ({
       id: item.id,
       kind: 'lead' as const,
       reference: String(item.id),
-      severity: item.intentLevel === 'a' ? ('warning' as const) : ('info' as const),
+      severity: 'warning' as const,
       status: item.intentLevel,
       updatedAt: item.updatedAt,
     })),

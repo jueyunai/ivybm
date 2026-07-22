@@ -19,7 +19,7 @@ const queueLinks = {
   handoffRequested:
     '/admin/collections/conversations?where%5BhandoffStatus%5D%5Bequals%5D=handoff_requested',
   newQualifiedLeads:
-    '/admin/collections/leads?where%5Bstatus%5D%5Bin%5D%5B0%5D=new&where%5Bstatus%5D%5Bin%5D%5B1%5D=qualified',
+    '/admin/collections/leads?where%5Band%5D%5B0%5D%5Bstatus%5D%5Bin%5D%5B0%5D=new&where%5Band%5D%5B0%5D%5Bstatus%5D%5Bin%5D%5B1%5D=qualified&where%5Band%5D%5B1%5D%5BintentLevel%5D%5Bequals%5D=a',
 }
 
 const getRoleLabel = (

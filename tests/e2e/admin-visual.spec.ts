@@ -14,9 +14,7 @@ const openTaskNavigation = async ({
 
   if ((await openNavigation.count()) === 1) return
 
-  const navToggleClass = mobile
-    ? 'app-header__mobile-nav-toggler'
-    : 'template-default__nav-toggler'
+  const navToggleClass = mobile ? 'app-header__mobile-nav-toggler' : 'template-default__nav-toggler'
   const openMenuButton = page.locator(
     `button.${navToggleClass}[aria-label="打开 菜单"], button.${navToggleClass}[aria-label="Open menu"]`,
   )
@@ -56,6 +54,13 @@ test('operations dashboard and owned navigation remain available after an Admin 
   const operationsNav = page.getByTestId('operations-nav')
   await expect(dashboard).toBeVisible()
   await expect(operationsNav).toBeVisible()
+  const highIntentQueueLink = page.locator('a.ops-queue-card__link[href*="intentLevel"]')
+  await expect(highIntentQueueLink).toHaveCount(1)
+  const highIntentQueueHref = await highIntentQueueLink.getAttribute('href')
+  const highIntentQueueURL = new URL(highIntentQueueHref ?? '', page.url())
+  expect(highIntentQueueURL.searchParams.get('where[and][0][status][in][0]')).toBe('new')
+  expect(highIntentQueueURL.searchParams.get('where[and][0][status][in][1]')).toBe('qualified')
+  expect(highIntentQueueURL.searchParams.get('where[and][1][intentLevel][equals]')).toBe('a')
   await openTaskNavigation({ page })
   await expect(operationsNav.getByTestId('ops-nav-section-workspace')).toBeVisible()
   await expect(operationsNav.getByTestId('ops-nav-section-content')).toBeVisible()

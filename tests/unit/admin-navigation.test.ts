@@ -8,15 +8,7 @@ import { ADMIN_COPY, getAdminCopy } from '@/admin/i18n'
 import { getOperationsNavSections } from '@/admin/navigation/getOperationsNavSections'
 import config from '@/payload.config'
 
-const collection = ({
-  group,
-  label,
-  slug,
-}: {
-  group?: string
-  label: string
-  slug: string
-}) =>
+const collection = ({ group, label, slug }: { group?: string; label: string; slug: string }) =>
   ({
     admin: { group },
     labels: { plural: label, singular: label },
@@ -48,7 +40,11 @@ describe('task-oriented Admin navigation', () => {
         collection({ group: 'Conversations', label: 'Conversations', slug: 'conversations' }),
         collection({ group: 'Lead Management', label: 'Leads', slug: 'leads' }),
         collection({ group: 'Website Content', label: 'Products', slug: 'products' }),
-        collection({ group: 'Knowledge Base', label: 'Knowledge documents', slug: 'knowledge-documents' }),
+        collection({
+          group: 'Knowledge Base',
+          label: 'Knowledge documents',
+          slug: 'knowledge-documents',
+        }),
         collection({ group: 'AI 管理', label: 'AI providers', slug: 'ai-providers' }),
         collection({ group: 'Operations', label: 'Jobs', slug: 'jobs' }),
         collection({ label: 'Payload migrations', slug: 'payload-migrations' }),
@@ -94,13 +90,17 @@ describe('task-oriented Admin navigation', () => {
         { href: '/admin/collections/leads', id: 'collection:leads' },
       ],
     })
-    expect(allItems.filter((item) => item.href === '/admin/collections/conversations')).toHaveLength(1)
+    expect(
+      allItems.filter((item) => item.href === '/admin/collections/conversations'),
+    ).toHaveLength(1)
     expect(allItems.filter((item) => item.href === '/admin/collections/leads')).toHaveLength(1)
     expect(allItems.map((item) => item.href)).toContain('/admin/collections/products')
     expect(allItems.map((item) => item.href)).toContain('/admin/collections/ai-providers')
     expect(allItems.map((item) => item.href)).toContain('/admin/collections/jobs')
     expect(allItems.map((item) => item.href)).toContain('/admin/globals/site-settings')
-    expect(allItems.map((item) => item.href)).not.toContain('/admin/collections/knowledge-documents')
+    expect(allItems.map((item) => item.href)).not.toContain(
+      '/admin/collections/knowledge-documents',
+    )
     expect(allItems.map((item) => item.href)).not.toContain('/admin/collections/users')
     expect(allItems.map((item) => item.href)).not.toContain('/admin/collections/payload-migrations')
     expect(ADMIN_COPY.en.navSections.workspace).toEqual(expect.any(String))
@@ -116,6 +116,10 @@ describe('task-oriented Admin navigation', () => {
       path.join(process.cwd(), 'src/admin/styles/admin-nav.css'),
       'utf8',
     )
+    const tokenStyles = readFileSync(
+      path.join(process.cwd(), 'src/admin/styles/tokens.css'),
+      'utf8',
+    )
 
     expect(navSource).toContain('useAuth')
     expect(navSource).toContain('useConfig')
@@ -126,6 +130,8 @@ describe('task-oriented Admin navigation', () => {
     expect(navStyles).toContain('.ops-admin-nav__close')
     expect(navStyles).toContain('.ops-admin-nav__section')
     expect(navStyles).toContain('block-size: 100dvh')
+    expect(navStyles).toContain('background: var(--ops-accent-soft)')
+    expect(tokenStyles.match(/--ops-accent-soft:/g)).toHaveLength(2)
     expect(navStyles).not.toMatch(/\.nav__|\.nav-group|\.nav-toggler/)
   })
 })
