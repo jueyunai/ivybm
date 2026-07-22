@@ -11,6 +11,7 @@ import { localizeAdminCollections, localizeAdminGlobals } from './admin/localize
 import { AuditLogs } from './collections/AuditLogs'
 import { AiModelProfiles } from './collections/AiModelProfiles'
 import { AiProviders } from './collections/AiProviders'
+import { AiUsageLogs } from './collections/AiUsageLogs'
 import { AiUsageRoutes } from './collections/AiUsageRoutes'
 import { Downloads } from './collections/Downloads'
 import { Conversations } from './collections/Conversations'
@@ -55,6 +56,7 @@ export default buildConfig({
     AiProviders,
     AiModelProfiles,
     AiUsageRoutes,
+    AiUsageLogs,
     Pages,
     ProductCategories,
     Products,

@@ -130,6 +130,7 @@ describe('AI control-plane registry', () => {
     const gateway = await resolveAiGateway({
       createProvider: createFakeProvider(calls),
       environment: {
+        AI_EMBEDDING_DIMENSIONS: '3',
         AI_EMBEDDING_MODEL: 'environment-embedding-model',
         AI_PROVIDER_API_KEY: 'environment-api-key',
         AI_PROVIDER_BASE_URL: 'https://environment.example.invalid/v1',
@@ -144,6 +145,7 @@ describe('AI control-plane registry', () => {
 
     await gateway.generateText({ input: 'Fallback text' })
     await gateway.embed({ input: ['Fallback embedding'] })
+    expect(gateway.embeddingConfigurationKey).toBeTypeOf('string')
 
     expect(calls).toEqual(
       expect.arrayContaining([
@@ -153,6 +155,41 @@ describe('AI control-plane registry', () => {
     )
   })
 
+  it('changes the embedding space when only the provider endpoint changes', async () => {
+    const resolveForBaseURL = async (baseURL: string) => {
+      const calls: Array<Record<string, unknown>> = []
+      const gateway = await resolveAiGateway({
+        createProvider: createFakeProvider(calls),
+        environment: { AI_CONFIG_ENCRYPTION_KEY: encryptionKey },
+        payload: createPayload([
+          {
+            enabled: true,
+            operation: 'embedding',
+            profile: {
+              capability: 'embedding',
+              enabled: true,
+              model: 'same-model',
+              parameters: { dimensions: 3, timeoutMs: 15_000 },
+              provider: createProviderDocument({ baseURL }),
+            },
+            usageKey: AI_USAGE_KEYS.knowledgeEmbedding,
+          },
+        ]),
+        routes: [{ operation: 'embedding', usageKey: AI_USAGE_KEYS.knowledgeEmbedding }],
+      })
+      return gateway.embed({ input: ['same query'] })
+    }
+
+    const [providerA, providerB] = await Promise.all([
+      resolveForBaseURL('https://provider-a.example.invalid/v1'),
+      resolveForBaseURL('https://provider-b.example.invalid/v1'),
+    ])
+
+    expect(providerA.model).toBe(providerB.model)
+    expect(providerA.embeddings[0]).toHaveLength(providerB.embeddings[0].length)
+    expect(providerA.embeddingSpace).not.toBe(providerB.embeddingSpace)
+  })
+
   it('fails closed when an existing CMS route is disabled instead of falling back to env', async () => {
     const createProvider = vi.fn()
 
@@ -160,6 +197,7 @@ describe('AI control-plane registry', () => {
       resolveAiGateway({
         createProvider,
         environment: {
+          AI_EMBEDDING_DIMENSIONS: '3',
           AI_EMBEDDING_MODEL: 'environment-embedding-model',
           AI_PROVIDER_API_KEY: 'environment-api-key',
           AI_PROVIDER_BASE_URL: 'https://environment.example.invalid/v1',

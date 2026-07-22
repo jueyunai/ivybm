@@ -14,6 +14,7 @@ import {
   type AiGatewayTextOperationConfig,
   type AiProvider,
   type AiReasoningEffort,
+  type AiUsageRecord,
 } from './gateway'
 import {
   createOpenAICompatibleProvider,
@@ -107,6 +108,8 @@ const normalizeRuntimeBaseURL = (value: string, environment: Environment): strin
   }
 }
 
+const embeddingSpaceIdentity = (baseURL: string): string => `openai-compatible:${baseURL}`
+
 const routeConfigurationError = (usageKey: string, reason: string): AiConfigurationError =>
   new AiConfigurationError(`AI route ${usageKey} ${reason}`)
 
@@ -155,12 +158,13 @@ const resolveCmsRoute = (
   if (timeoutMs === undefined) {
     throw routeConfigurationError(request.usageKey, 'timeout is invalid')
   }
+  const baseURL = normalizeRuntimeBaseURL(
+    requiredString(provider.baseURL, 'provider endpoint'),
+    environment,
+  )
   const resolvedProvider = createProvider({
     apiKey,
-    baseURL: normalizeRuntimeBaseURL(
-      requiredString(provider.baseURL, 'provider endpoint'),
-      environment,
-    ),
+    baseURL,
     name: requiredString(provider.name, 'provider name'),
   })
 
@@ -178,8 +182,20 @@ const resolveCmsRoute = (
       throw routeConfigurationError(request.usageKey, 'contains text-only sampling settings')
     }
 
+    const dimensions = optionalNumber(
+      parameters.dimensions,
+      'embedding dimensions',
+      1,
+      16_384,
+      true,
+    )
+    if (dimensions === undefined) {
+      throw routeConfigurationError(request.usageKey, 'requires fixed embedding dimensions')
+    }
+
     return {
-      dimensions: optionalNumber(parameters.dimensions, 'embedding dimensions', 1, 16_384, true),
+      dimensions,
+      embeddingSpaceIdentity: embeddingSpaceIdentity(baseURL),
       model,
       provider: resolvedProvider,
       timeoutMs,
@@ -225,9 +241,10 @@ const resolveEnvironmentRoute = (
   const fallback = readAIConfigurationOperation(operation, environment)
   if (!fallback) return undefined
 
+  const baseURL = normalizeRuntimeBaseURL(fallback.baseURL, environment)
   const provider = createProvider({
     apiKey: fallback.apiKey,
-    baseURL: normalizeRuntimeBaseURL(fallback.baseURL, environment),
+    baseURL,
     name: `environment-${operation}`,
   })
 
@@ -240,7 +257,32 @@ const resolveEnvironmentRoute = (
     }
   }
 
-  return { model: fallback.model, provider, timeoutMs: fallback.timeoutMs }
+  return {
+    dimensions: fallback.dimensions,
+    embeddingSpaceIdentity: embeddingSpaceIdentity(baseURL),
+    model: fallback.model,
+    provider,
+    timeoutMs: fallback.timeoutMs,
+  }
+}
+
+const persistAiUsage = async (payload: Payload, record: AiUsageRecord): Promise<void> => {
+  await payload.create({
+    collection: 'ai-usage-logs',
+    context: { skipAudit: true },
+    data: {
+      durationMs: record.durationMs,
+      estimatedCostUSD: record.cost.estimated ?? undefined,
+      inputTokens: record.usage.inputTokens,
+      model: record.model,
+      operation: record.operation,
+      outputTokens: record.usage.outputTokens ?? undefined,
+      provider: record.provider,
+      requestId: record.requestId,
+      totalTokens: record.usage.totalTokens,
+    },
+    overrideAccess: true,
+  })
 }
 
 /**
@@ -310,5 +352,11 @@ export const resolveAiGateway = async ({
     }
   }
 
-  return createAiGateway({ operations })
+  return createAiGateway({
+    onUsage: (record) => persistAiUsage(payload, record),
+    onUsageError: () => {
+      payload.logger.error('AI usage telemetry persistence failed')
+    },
+    operations,
+  })
 }
