@@ -21,6 +21,8 @@
 | Finding | 级别 | 处置 |
 | --- | --- | --- |
 | `repository: await resolveRepository()` 在 HMAC / content-type / 限流前求值，伪造请求可初始化 Payload / DB | P1 | 把 `PlatformEventRepository` 输入扩展为 lazy source；拒绝路径先完成验证，新增 provider spy 回归。 |
-| 默认内存限流以单一 `meta-webhook` bucket 计数，多个 Meta 账号的合法突发会共享额度 | P2 | 当前不信任伪造代理 IP，保留保守全局桶；真实多账号吞吐前，以已验签账号维度或可信 ingress 设计独立容量策略。 |
+| 默认内存限流以单一 `meta-webhook` bucket 计数，多个 Meta 账号的合法突发会共享额度 | P2 | 已改为 HMAC、规范化与 allowlist 后按 `platform + accountExternalId` 分桶；仍需在真实多账号 staging 流量下验证容量。 |
+| Compose 未将 Meta 配置传入 app，且 10 分钟时窗会拒绝 Meta 36 小时重投 | P1 | production / staging app 显式接收三项 Meta 变量，preflight 拒绝半配置；route 使用 48 小时已验签时窗，并覆盖故障后延迟重投仍只产生一条 Job。 |
+| 任何绑定到同一 App 的账号可进入会话 | P2 | POST 现在要求非空 `META_WEBHOOK_ALLOWED_ACCOUNT_IDS`；未列账号在 repository / Payload 初始化前返回稳定 403。 |
 
-P1 修复后，专项 unit、integration、typecheck 和 lint 均通过；完整质量门禁（unit、contract、integration、operations、build）均通过，仍需 jueyunai 跨人 review。
+上述修复完成后重新运行专项与完整质量门禁；仍需 jueyunai 跨人 review 及真实受控环境容量验证。

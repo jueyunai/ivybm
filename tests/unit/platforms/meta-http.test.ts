@@ -15,15 +15,21 @@ const now = Date.UTC(2026, 6, 22, 8, 0, 0)
 const appSecret = 'fixture-meta-app-secret'
 const verifyToken = 'fixture-meta-verify-token'
 
-const inboundEvent = (externalEventId = 'meta-http-event-1'): NormalizedInboundMessage => ({
-  accountExternalId: 'page-fixture-1',
+const inboundEvent = (
+  externalEventId = 'meta-http-event-1',
+  {
+    accountExternalId = 'page-fixture-1',
+    occurredAt = now,
+  }: { accountExternalId?: string; occurredAt?: number } = {},
+): NormalizedInboundMessage => ({
+  accountExternalId,
   content: { messageType: 'text', text: 'Fixture inbound message.' },
   externalEventId,
   idempotencyKey: `facebook-messenger:${externalEventId}`,
   kind: 'inbound-message',
-  occurredAt: new Date(now).toISOString(),
+  occurredAt: new Date(occurredAt).toISOString(),
   platform: 'facebook-messenger',
-  recipientExternalId: 'page-fixture-1',
+  recipientExternalId: accountExternalId,
   senderExternalId: 'sender-fixture-1',
 })
 
@@ -36,6 +42,7 @@ const createConnector = (event = inboundEvent()): PlatformConnector => ({
 })
 
 const createHandlers = ({
+  allowedAccountExternalIds = ['page-fixture-1'],
   appSecret: configuredAppSecret = appSecret,
   connector = createConnector(),
   maxBodyBytes,
@@ -43,6 +50,7 @@ const createHandlers = ({
   repository = new FakePlatformEventRepository(),
   verifyToken: configuredVerifyToken = verifyToken,
 }: {
+  allowedAccountExternalIds?: readonly string[]
   appSecret?: string
   connector?: PlatformConnector
   maxBodyBytes?: number
@@ -51,6 +59,7 @@ const createHandlers = ({
   verifyToken?: string
 } = {}) => ({
   handlers: createMetaWebhookHandlers({
+    allowedAccountExternalIds,
     appSecret: configuredAppSecret,
     connector,
     maxBodyBytes,
@@ -149,7 +158,7 @@ describe('Meta webhook HTTP handlers', () => {
     expect(rateLimited.status).toBe(429)
     expect(rateLimited.headers.get('retry-after')).toBe('60')
     await expect(rateLimited.json()).resolves.toEqual({ error: { code: 'rate_limited' } })
-    expect(consumedKey).toBe('meta-webhook')
+    expect(consumedKey).toBe('meta-webhook:facebook-messenger:page-fixture-1')
 
     const oversized = createHandlers({ maxBodyBytes: 8 })
     const tooLarge = await oversized.handlers.POST(new Request(
@@ -175,6 +184,7 @@ describe('Meta webhook HTTP handlers', () => {
       throw new Error('Payload must not initialize for rejected webhooks')
     })
     const invalidSignature = createMetaWebhookHandlers({
+      allowedAccountExternalIds: ['page-fixture-1'],
       appSecret,
       connector: createConnector(),
       now: () => now,
@@ -191,6 +201,7 @@ describe('Meta webhook HTTP handlers', () => {
     expect(payloadProvider).not.toHaveBeenCalled()
 
     const rateLimited = createMetaWebhookHandlers({
+      allowedAccountExternalIds: ['page-fixture-1'],
       appSecret,
       connector: createConnector(),
       now: () => now,
@@ -212,6 +223,7 @@ describe('Meta webhook HTTP handlers', () => {
   it('redacts unexpected persistence failures', async () => {
     const rawBody = JSON.stringify({ object: 'page', fixture: 'persistence-failure' })
     const handlers = createMetaWebhookHandlers({
+      allowedAccountExternalIds: ['page-fixture-1'],
       appSecret,
       connector: createConnector(),
       now: () => now,
@@ -238,5 +250,63 @@ describe('Meta webhook HTTP handlers', () => {
     expect(JSON.parse(body)).toEqual({ error: { code: 'service_unavailable' } })
     expect(body).not.toContain('postgres://')
     expect(body).not.toContain('secret')
+  })
+
+  it('accepts a Meta retry after the documented delivery window and keeps it idempotent', async () => {
+    const delayed = 36 * 60 * 60 * 1_000
+    const event = inboundEvent('meta-http-delayed-retry', { occurredAt: now - delayed })
+    const { handlers, repository } = createHandlers({ connector: createConnector(event) })
+    const rawBody = JSON.stringify({ object: 'page', fixture: 'delayed-retry' })
+    const request = () => new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+      body: rawBody,
+      headers: {
+        'content-type': 'application/json',
+        'x-hub-signature-256': signatureFor(rawBody),
+      },
+      method: 'POST',
+    })
+
+    await expect(handlers.POST(request())).resolves.toMatchObject({ status: 200 })
+    await expect(handlers.POST(request())).resolves.toMatchObject({ status: 200 })
+    expect(repository.events.size).toBe(1)
+  })
+
+  it('fails closed without an account allowlist and rejects a signed unapproved account before Payload initializes', async () => {
+    const rawBody = JSON.stringify({ object: 'page', fixture: 'account-allowlist' })
+    const payloadProvider = vi.fn(async () => {
+      throw new Error('Payload must not initialize for an unapproved Meta account')
+    })
+    const unconfigured = createMetaWebhookHandlers({
+      allowedAccountExternalIds: [],
+      appSecret,
+      connector: createConnector(),
+      now: () => now,
+      payloadProvider,
+      rateLimiter: { consume: async () => true },
+      verifyToken,
+    })
+    const unauthorized = createMetaWebhookHandlers({
+      allowedAccountExternalIds: ['another-page'],
+      appSecret,
+      connector: createConnector(),
+      now: () => now,
+      payloadProvider,
+      rateLimiter: { consume: async () => true },
+      verifyToken,
+    })
+    const request = () => new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+      body: rawBody,
+      headers: {
+        'content-type': 'application/json',
+        'x-hub-signature-256': signatureFor(rawBody),
+      },
+      method: 'POST',
+    })
+
+    await expect(unconfigured.POST(request())).resolves.toMatchObject({ status: 503 })
+    const response = await unauthorized.POST(request())
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toEqual({ error: { code: 'unauthorized_account' } })
+    expect(payloadProvider).not.toHaveBeenCalled()
   })
 })

@@ -33,12 +33,17 @@ const requiredEnvironment = {
   APP_VERSION: 'operation-test',
   DATABASE_URL: 'postgres://operation:operation@db:5432/ivybm',
   IMAGE_TAG: imageTag,
+  META_WEBHOOK_ALLOWED_ACCOUNT_IDS: '1234567890,9876543210',
+  META_WEBHOOK_APP_SECRET: 'operation-test-meta-app-secret',
+  META_WEBHOOK_VERIFY_TOKEN: 'operation-test-meta-verify-token',
   PAYLOAD_SECRET: 'operation-test-secret-at-least-32-characters',
   POSTGRES_DB: 'ivybm',
   POSTGRES_PASSWORD: 'operation-password',
   POSTGRES_USER: 'operation',
   RUNTIME_IMAGE: 'registry.example.invalid/ivybm-runtime',
   RUNTIME_IMAGE_DIGEST: runtimeDigest,
+  SEED_ADMIN_EMAIL: 'operation-seed@example.invalid',
+  SEED_ADMIN_PASSWORD: 'operation-seed-password',
   NEXT_PUBLIC_SERVER_URL: 'https://ivybm.com',
   TRUST_PROXY_HEADERS: 'true',
   WORKER_IMAGE: 'registry.example.invalid/ivybm-worker',
@@ -84,6 +89,24 @@ const getLocalComposeConfig = (): ComposeConfig => {
 
   if (result.status !== 0) {
     throw new Error(result.stderr || result.stdout || 'local docker compose config failed')
+  }
+
+  return JSON.parse(result.stdout) as ComposeConfig
+}
+
+const getStagingComposeConfig = (): ComposeConfig => {
+  const result = spawnSync(
+    'docker',
+    ['compose', '-f', 'compose.yaml', '-f', 'compose.staging.yaml', 'config', '--format', 'json'],
+    {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      env: { ...process.env, ...requiredEnvironment },
+    },
+  )
+
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || 'staging docker compose config failed')
   }
 
   return JSON.parse(result.stdout) as ComposeConfig
@@ -146,6 +169,9 @@ describe('production Compose configuration', () => {
       AI_CONFIG_ENCRYPTION_KEY: 'c'.repeat(64),
       AI_REASONING_EFFORT: 'medium',
       AI_REASONING_ENABLED: 'false',
+      META_WEBHOOK_ALLOWED_ACCOUNT_IDS: '1234567890,9876543210',
+      META_WEBHOOK_APP_SECRET: 'operation-test-meta-app-secret',
+      META_WEBHOOK_VERIFY_TOKEN: 'operation-test-meta-verify-token',
     })
     expect(config.services.worker.environment).toMatchObject({
       AI_CONFIG_ENCRYPTION_KEY: 'c'.repeat(64),
@@ -161,6 +187,18 @@ describe('production Compose configuration', () => {
           'max-size': '10m',
         },
       })
+    }
+  })
+
+  it('passes optional Meta webhook configuration only to the app in production and staging', () => {
+    for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
+      expect(config.services.app.environment).toMatchObject({
+        META_WEBHOOK_ALLOWED_ACCOUNT_IDS: '1234567890,9876543210',
+        META_WEBHOOK_APP_SECRET: 'operation-test-meta-app-secret',
+        META_WEBHOOK_VERIFY_TOKEN: 'operation-test-meta-verify-token',
+      })
+      expect(config.services.migrate.environment).not.toHaveProperty('META_WEBHOOK_APP_SECRET')
+      expect(config.services.worker.environment).not.toHaveProperty('META_WEBHOOK_APP_SECRET')
     }
   })
 })

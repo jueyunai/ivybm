@@ -39,7 +39,7 @@ describe.sequential('Meta webhook route durable ingress', () => {
     await payload?.destroy()
   })
 
-  it('verifies Meta bytes and creates exactly one durable job across a webhook retry', async () => {
+  it('accepts a 36-hour-delayed Meta retry and creates exactly one durable job', async () => {
     const suffix = randomUUID()
     const accountExternalId = `page-${suffix}`
     const externalEventId = `message-${suffix}`
@@ -53,11 +53,12 @@ describe.sequential('Meta webhook route durable ingress', () => {
           message: { mid: externalEventId, text: 'Please share available finishes.' },
           recipient: { id: accountExternalId },
           sender: { id: `sender-${suffix}` },
-          timestamp: now,
+          timestamp: now - (36 * 60 * 60 * 1_000),
         }],
       }],
     })
     const handlers = createMetaWebhookHandlers({
+      allowedAccountExternalIds: [accountExternalId],
       appSecret,
       now: () => now,
       payloadProvider: async () => payload,

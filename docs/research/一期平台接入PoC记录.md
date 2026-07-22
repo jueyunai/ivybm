@@ -31,7 +31,7 @@ fixture / mock 通过只表示接口契约完成。只有在 production 受控�
 ## 接口 / 纯逻辑阶段证据
 
 - 统一归一化事件、connector、批次原子幂等 repository port、Webhook verifier / rate limiter port、conversation writer port 和 message-status writer port 已在 Task 13 分支实现。
-- Meta Messenger / Instagram 使用合成官方结构 fixture；测试覆盖 raw bytes HMAC、challenge、JSON content type、body 大小、时间窗、重复事件和 digest 冲突，不访问真实平台网络。
+- Meta Messenger / Instagram 使用合成官方结构 fixture；测试覆盖 raw bytes HMAC、challenge、JSON content type、body 大小、48 小时时间窗、延迟重投、账号 allowlist、每账号限流、重复事件和 digest 冲突，不访问真实平台网络。
 - raw body 摘要仅用于审计；幂等冲突按规范化单事件摘要判断，避免同一平台事件因外层批次重组被误判冲突。
 - Meta durable inbound 阶段将规范化事件作为 `Jobs` 的原子 inbox，worker 在租约前后围栏检查后，通过 Task 9 权威会话服务写入会话、消息、接管与审计；已覆盖“业务提交后 worker 死亡、lease 过期重领”的无重复恢复场景。
 - 附件不下载、不访问网络；外部附件 URL 只保留 HTTPS origin/path，查询参数、fragment 和 userinfo 一律不进入 Job payload，避免短期签名或 token 被持久化。
@@ -51,7 +51,7 @@ fixture / mock 通过只表示接口契约完成。只有在 production 受控�
 
 开始受控真实联调前需甲方提供或确认：
 
-- Meta Business、App ID、App Secret 的受控 secret 注入方式；
+- Meta Business、App ID、App Secret 的受控 secret 注入方式，以及 Facebook Page / Instagram Professional Account 的外部 ID allowlist；
 - Facebook 企业 / 商业账号的 Page、Instagram 企业 / 商业账号及绑定关系；
 - TikTok 商业账号、目标地区、开发者应用及私信 API / 审核状态；
 - Webhook callback 域名、verify token 和对应订阅字段；

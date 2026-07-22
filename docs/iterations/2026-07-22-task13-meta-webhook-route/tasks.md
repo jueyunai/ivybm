@@ -7,6 +7,7 @@
 | 单元失败注入 | Codex controller | completed | challenge、签名、限流、流式限制、duplicate、持久化异常脱敏。 |
 | PostgreSQL ingress 集成 | Codex controller | completed | 真实 Job inbox 中同事件只保留一条 pending Job。 |
 | 独立代码 review | 独立 reviewer | completed | 修复拒绝路径提前初始化 Payload 的 P1；全局单桶限流记录为 P2 容量策略。 |
+| PR #31 复审修复 | Codex controller | completed | production / staging secret 映射、48 小时重投窗口、账号 allowlist、按账号限流与 operations 回归。 |
 | Meta 真实联调 | 甲方 + jueyunai | blocked | 账号、授权、secret、HTTPS callback、App Review。 |
 
 ## 路由记录

@@ -18,6 +18,9 @@ import {
 import { createMetaConnector } from './connector'
 
 const DEFAULT_MAX_BODY_BYTES = 1_000_000
+// Meta Graph webhooks retry failed delivery over the following 36 hours.
+// Keep a small clock/queue margin so a legitimate delayed retry reaches Jobs.
+export const META_WEBHOOK_MAX_EVENT_AGE_MS = 48 * 60 * 60 * 1_000
 const META_WEBHOOK_RATE_LIMIT_PER_MINUTE = 120
 const META_WEBHOOK_RATE_LIMIT_RETRY_AFTER_SECONDS = 60
 const NO_STORE_HEADERS = { 'cache-control': 'no-store' }
@@ -25,6 +28,7 @@ const NO_STORE_HEADERS = { 'cache-control': 'no-store' }
 type PayloadProvider = () => Promise<Payload>
 
 export type MetaWebhookHandlerDependencies = {
+  allowedAccountExternalIds?: readonly string[]
   appSecret?: string
   connector?: PlatformConnector
   maxBodyBytes?: number
@@ -67,6 +71,7 @@ const webhookErrorResponse = (error: unknown): Response => {
 
   switch (error.code) {
     case 'invalid_challenge': return safeErrorResponse(error.code, 403)
+    case 'unauthorized_account': return safeErrorResponse(error.code, 403)
     case 'invalid_signature': return safeErrorResponse(error.code, 401)
     case 'invalid_content_type':
     case 'invalid_payload':
@@ -121,6 +126,7 @@ const configuredValue = (value: string | undefined): string | undefined => {
 }
 
 export const createMetaWebhookHandlers = ({
+  allowedAccountExternalIds = process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS?.split(',') ?? [],
   appSecret = process.env.META_WEBHOOK_APP_SECRET,
   connector = createMetaConnector(),
   maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
@@ -132,7 +138,13 @@ export const createMetaWebhookHandlers = ({
 }: MetaWebhookHandlerDependencies = {}): MetaWebhookHandlers => {
   const configuredAppSecret = configuredValue(appSecret)
   const configuredVerifyToken = configuredValue(verifyToken)
-  const isConfigured = Boolean(configuredAppSecret && configuredVerifyToken)
+  const allowedAccounts = new Set(
+    allowedAccountExternalIds
+      .map(configuredValue)
+      .filter((accountExternalId): accountExternalId is string => Boolean(accountExternalId)),
+  )
+  const isChallengeConfigured = Boolean(configuredAppSecret && configuredVerifyToken)
+  const isIngressConfigured = Boolean(isChallengeConfigured && allowedAccounts.size > 0)
 
   const unavailable = (): Response => safeErrorResponse('service_unavailable', 503)
   const resolveRepository = async (): Promise<PlatformEventRepository> =>
@@ -140,7 +152,7 @@ export const createMetaWebhookHandlers = ({
 
   return {
     GET: async (request) => {
-      if (!isConfigured || !configuredVerifyToken) return unavailable()
+      if (!isChallengeConfigured || !configuredVerifyToken) return unavailable()
       try {
         const url = new URL(request.url)
         const challenge = verifyMetaWebhookChallenge({
@@ -158,16 +170,26 @@ export const createMetaWebhookHandlers = ({
       }
     },
     POST: async (request) => {
-      if (!isConfigured || !configuredAppSecret) return unavailable()
+      if (!isIngressConfigured || !configuredAppSecret) return unavailable()
       try {
         const rawBody = await readRawBody(request, maxBodyBytes)
         const result = await ingestSignedWebhook({
           connector,
+          eventAuthorizer: (event) => {
+            if (!allowedAccounts.has(event.accountExternalId)) {
+              throw new WebhookValidationError(
+                'unauthorized_account',
+                'Webhook account is not authorized',
+              )
+            }
+          },
           headers: requestHeaders(request),
           maxBodyBytes,
+          maxEventAgeMs: META_WEBHOOK_MAX_EVENT_AGE_MS,
           nowMs: now(),
           rateLimiter,
-          rateLimitKey: 'meta-webhook',
+          rateLimitKeyForEvent: (event) =>
+            `meta-webhook:${event.platform}:${event.accountExternalId}`,
           rawBody,
           repository: resolveRepository,
           verifier: createMetaWebhookVerifier(configuredAppSecret),

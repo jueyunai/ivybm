@@ -14,10 +14,11 @@ Meta GET/POST
 
 ## 配置与安全
 
-- `META_WEBHOOK_APP_SECRET` 与 `META_WEBHOOK_VERIFY_TOKEN` 只由部署端注入；两者任一缺失时 route 返回脱敏 `503`。
+- `META_WEBHOOK_APP_SECRET`、`META_WEBHOOK_VERIFY_TOKEN` 与逗号分隔的 `META_WEBHOOK_ALLOWED_ACCOUNT_IDS` 只由部署端注入；POST 要求三项同时存在，否则返回脱敏 `503`。GET challenge 只在 secret 与 verify token 已配置时通过。
 - POST 以 raw bytes 做 HMAC，不先 JSON decode；body 限制为 1 MiB。
-- 签名成功后才进入固定的内存限流桶 `meta-webhook`；不信任可伪造客户端 IP header。
-- Payload repository 是 lazy source：错误 content type、错误 HMAC、时间窗、限流或规范化失败不会初始化 Payload / 连接数据库。
+- Meta Graph Webhooks 对失败投递会在后续 36 小时内重试；route 接受 48 小时以内的已验签事件，为平台重投、时钟与队列留余量。重复事件由 Jobs inbox 幂等键安全去重。
+- 先验证签名、规范化、时间窗与 allowlist，再按 `platform + accountExternalId` 使用内存限流桶；不信任可伪造客户端 IP header，也不让一个已授权账号耗尽其他账号的固定额度。
+- Payload repository 是 lazy source：错误 content type、错误 HMAC、时间窗、allowlist、限流或规范化失败不会初始化 Payload / 连接数据库。
 - 错误统一为稳定 code；仅 `rate_limited` 返回固定 `Retry-After: 60`。
 - 不下载附件，不打印 body、token、secret 或内部数据库异常。
 
@@ -27,7 +28,7 @@ Meta GET/POST
 | --- | ---: |
 | challenge 成功 / event accepted / duplicate | 200 |
 | 无效签名 | 401 |
-| 无效 challenge | 403 |
+| 无效 challenge / 未授权 Meta 账号 | 403 |
 | content、payload、时间窗错误 | 400 |
 | body 太大 | 413 |
 | rate limit | 429 |
