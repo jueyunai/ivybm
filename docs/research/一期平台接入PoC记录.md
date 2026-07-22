@@ -1,6 +1,6 @@
 # 一期平台接入 PoC 记录
 
-更新日期：2026-07-21
+更新日期：2026-07-22
 
 > 范围冻结（2026-07-20）：一期会话接入为 Facebook Messenger、Instagram DM、TikTok 私信；一期图文发布为 Facebook、Instagram、LinkedIn。WhatsApp 移出一期，二期再评估网页插件等替代接入；LinkedIn 私信不属于一期自动会话范围。
 >
@@ -21,8 +21,8 @@ fixture / mock 通过只表示接口契约完成。只有在 production 受控�
 
 | 平台 / 能力                   | 当前状态      | 当前仓库证据                                                                                                          | 待联调条件                                                                                  |
 | ----------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Facebook Messenger 入站消息   | `conditional` | Task 13 分支已交付 Meta connector、合成官方结构 fixture、raw-body 验签/时间窗/幂等契约测试；尚无 route / DB adapter   | Facebook 企业 / 商业账号、Page、Meta App、Webhook 订阅、所需权限 / App Review、受控真实环境 |
-| Instagram DM 入站消息         | `conditional` | Task 13 分支已交付 Meta connector、合成官方结构 fixture、raw-body 验签/时间窗/幂等契约测试；尚无 route / DB adapter   | Instagram 企业 / 商业账号、Facebook Page 绑定、Meta App 权限 / App Review、受控真实环境     |
+| Facebook Messenger 入站消息   | `conditional` | Meta connector、合成官方结构 fixture、raw-body 验签/时间窗/幂等契约；后续分支已增加 Jobs inbox、worker handler、Task 9 会话 adapter 与 PostgreSQL 集成测试，尚无公网 webhook route | Facebook 企业 / 商业账号、Page、Meta App、Webhook 订阅、所需权限 / App Review、受控真实环境 |
+| Instagram DM 入站消息         | `conditional` | Meta connector、合成官方结构 fixture、raw-body 验签/时间窗/幂等契约；后续分支已增加 Jobs inbox、worker handler、Task 9 会话 adapter 与 PostgreSQL 集成测试，尚无公网 webhook route | Instagram 企业 / 商业账号、Facebook Page 绑定、Meta App 权限 / App Review、受控真实环境     |
 | TikTok 私信入站消息           | `blocked`     | 当前会话 channel / migration 尚未包含 TikTok，尚未交付 connector、Webhook route 或 fixture 契约测试                   | TikTok 商业账号、目标地区官方私信 API、应用授权 / 审核、受控真实环境                        |
 | Facebook / Instagram 图文发布 | `conditional` | Task 13 分支已冻结 capability / publish / status port；未交付发布 adapter，`PublishJobs` / `PublishLogs` 尚待 Task 12 | Task 12 发布结构、Meta Page / Instagram Content Publishing 权限、App Review、受控真实环境   |
 | LinkedIn 图文发布             | `conditional` | Task 13 分支已交付确定性文案、素材 manifest 与人工发布步骤；自动发布 adapter 尚未交付                                 | Task 12 内容契约；甲方 LinkedIn 账号及应用发布权限证据；有权限后再做自动发布 adapter        |
@@ -33,15 +33,18 @@ fixture / mock 通过只表示接口契约完成。只有在 production 受控�
 - 统一归一化事件、connector、批次原子幂等 repository port、Webhook verifier / rate limiter port、conversation writer port 和 message-status writer port 已在 Task 13 分支实现。
 - Meta Messenger / Instagram 使用合成官方结构 fixture；测试覆盖 raw bytes HMAC、challenge、JSON content type、body 大小、时间窗、重复事件和 digest 冲突，不访问真实平台网络。
 - raw body 摘要仅用于审计；幂等冲突按规范化单事件摘要判断，避免同一平台事件因外层批次重组被误判冲突。
+- Meta durable inbound 阶段将规范化事件作为 `Jobs` 的原子 inbox，worker 在租约前后围栏检查后，通过 Task 9 权威会话服务写入会话、消息、接管与审计；已覆盖“业务提交后 worker 死亡、lease 过期重领”的无重复恢复场景。
+- 附件不下载、不访问网络；外部附件 URL 只保留 HTTPS origin/path，查询参数、fragment 和 userinfo 一律不进入 Job payload，避免短期签名或 token 被持久化。
+- Meta delivery/read callback 当前明确忽略，不进入 Jobs；`message-status` 仅保留未来 adapter 的内部类型，未被标记为已实现的状态回调能力。
 - 发布侧只冻结 Facebook / Instagram / LinkedIn capability、publish、status 接口；LinkedIn assisted export 只生成内存中的文案、素材清单和人工操作步骤。
-- message-status 目前只冻结内部类型和 dispatch port，尚未交付真实平台送达状态 connector 或回调 route。
+- `message-status` 的内部类型 / dispatch port 仅为后续 adapter 预留；当前没有真实平台送达状态 connector、回调 route 或入队路径。
 - TikTok 官方私信事件 schema 仍缺失，不创建猜测字段或伪造 fixture；WhatsApp 一期 connector、fixture 与测试已删除。
 
 ## 数据库集成阻塞
 
-- Task 9 `Conversations` / `Messages` 已合并；连接器仍必须通过权威会话服务写入，不得让外部 Webhook 直接绕过权限、幂等或审计。
+- Task 9 `Conversations` / `Messages` 已合并；Meta durable inbound adapter 通过权威会话服务写入，不让外部事件绕过权限、幂等或审计。当前尚无公网 webhook route。
 - Task 12 `PublishJobs` / `PublishLogs` 尚未合并：不创建临时发布 Collection 或替代 migration。
-- Task 10 Jobs / worker 已合并，可作为后续真实平台异步 handler 的基础；但当前 Task 13 分支尚未实现 Webhook route、Jobs handler、失败重试、dead job 或人工补偿集成，不能视为真实异步链路已完成。
+- Task 10 Jobs / worker 已合并；Meta durable inbound 已注册 `platform.event.dispatch` handler，并由 Jobs 的既有 lease / retry / dead job 机制托管。真实 webhook ingress、平台账号授权、生产受控窗口、人工补偿界面和真实出站仍未实现，不能视为真实平台联调完成。
 - 每个数据库依赖都必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`。随后必须先 `git fetch origin` 并从最新 `origin/main` 更新 Task 13 基线，再实现 Payload / PostgreSQL adapter 与 integration test。
 
 ## 外部资产清单

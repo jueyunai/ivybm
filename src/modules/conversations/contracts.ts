@@ -83,6 +83,8 @@ export type ChatSessionList = {
 
 export type StartChatSessionInput = {
   channel: ChatChannel
+  /** Internal connector identity; never accepted from the public website route. */
+  externalThreadId?: string
   idempotencyKey: string
   locale: ChatLocale
   sourceURL?: string
@@ -92,6 +94,27 @@ export type SendChatMessageInput = {
   idempotencyKey: string
   sessionId: number | string
   text: string
+}
+
+/**
+ * Server-only adapter command for an already-authenticated external platform event.
+ * The external identifiers are persisted for operations, while callers receive only
+ * the same bounded ChatSession shape used by the website contract.
+ */
+export type IngestExternalMessageInput = {
+  /** Current durable connector phase supports Meta only; WhatsApp remains historical-read-only. */
+  channel: Exclude<ChatChannel, 'website' | 'whatsapp'>
+  externalMessageId: string
+  externalThreadId: string
+  idempotencyKey: string
+  locale: ChatLocale
+  sessionIdempotencyKey: string
+  text: string
+}
+
+export type ExternalMessageDelivery = {
+  session: ChatSession
+  status: 'accepted' | 'duplicate'
 }
 
 export type RetryChatMessageInput = {
@@ -131,6 +154,11 @@ export interface ChatService {
   sendOperatorMessage(input: SendChatMessageInput): Promise<ChatSession>
   startSession(input: StartChatSessionInput): Promise<ChatSession>
   takeOver(input: SessionCommandInput): Promise<ChatSession>
+}
+
+/** Server-only extension used by authenticated platform adapters, never by ChatWidget. */
+export interface PlatformConversationService {
+  ingestExternalMessage(input: IngestExternalMessageInput): Promise<ExternalMessageDelivery>
 }
 
 export class ChatServiceError extends Error {

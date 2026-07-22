@@ -4,7 +4,10 @@ import type {
   ChatCitation,
   ChatService,
   ChatSession,
+  ExternalMessageDelivery,
   HandoffCreatedEvent,
+  IngestExternalMessageInput,
+  PlatformConversationService,
   RequestHandoffInput,
   RetryChatMessageInput,
   SendChatMessageInput,
@@ -36,6 +39,10 @@ export type ConversationMutation = {
   base: ChatSession
   handoff?: HandoffCreatedEvent
   leadEvaluation?: ConversationLeadEvaluation
+  messageMetadata?: Record<
+    string,
+    { externalMessageId?: string; persistedIdempotencyKey?: string }
+  >
 }
 
 export interface ConversationRepository {
@@ -99,18 +106,38 @@ type ConversationServiceOptions = {
 const defaultCreateId = (kind: 'event' | 'message' | 'request' | 'session'): string =>
   `${kind}-${crypto.randomUUID()}`
 
+type IdempotentSessionResult = {
+  session: ChatSession
+  state: 'claimed' | 'completed'
+}
+
+type VisitorMessageCommand = SendChatMessageInput & {
+  /** Authenticated platform events are persisted even after AI automation stops. */
+  externalInbound?: boolean
+  externalMessageId?: string
+  persistedIdempotencyKey?: string
+}
+
+const requireExternalIdentifier = (value: string, field: string, maxLength: number): string => {
+  const normalized = value.trim()
+  if (!normalized || normalized.length > maxLength) {
+    throw new ChatServiceError('invalid_request', `${field} is required`)
+  }
+  return normalized
+}
+
 export const createConversationService = ({
   clock = () => new Date(),
   createId = defaultCreateId,
   leadSink,
   repository,
   responder,
-}: ConversationServiceOptions): ChatService => {
+}: ConversationServiceOptions): ChatService & PlatformConversationService => {
   const idempotent = async (
     scope: string,
     idempotencyKey: string,
     operation: (claim: ConversationCommandClaim) => Promise<ChatSession>,
-  ): Promise<ChatSession> => {
+  ): Promise<IdempotentSessionResult> => {
     if (!idempotencyKey.trim() || idempotencyKey.length > 200) {
       throw new ChatServiceError('invalid_request', 'A valid idempotency key is required')
     }
@@ -118,14 +145,16 @@ export const createConversationService = ({
     // Persisting an entire session as the command result leaked a previous viewer's
     // internal snapshot and grew quadratically with the transcript. Rehydrate the
     // durable session for the caller that is replaying this idempotent command.
-    if (result.state === 'completed') return requireSession(result.sessionId)
+    if (result.state === 'completed') {
+      return { session: await requireSession(result.sessionId), state: 'completed' }
+    }
     if (result.state === 'processing') {
       throw new ChatServiceError('conflict', 'The same command is already being processed', {
         retryable: true,
       })
     }
     try {
-      return await operation(result.claim)
+      return { session: await operation(result.claim), state: 'claimed' }
     } catch (error) {
       await repository.failCommand(result.claim, error).catch(() => undefined)
       throw error
@@ -191,75 +220,138 @@ export const createConversationService = ({
     })
   }
 
+  const startSession = async (input: StartChatSessionInput): Promise<ChatSession> => {
+    if (input.externalThreadId !== undefined) {
+      requireExternalIdentifier(input.externalThreadId, 'externalThreadId', 500)
+    }
+    const result = await idempotent('start', input.idempotencyKey, async (claim) => {
+      const session: ChatSession = {
+        allowedActions: allowedActionsFor('ai_active'),
+        channel: input.channel,
+        handoffStatus: 'ai_active',
+        id: createId('session'),
+        locale: input.locale,
+        messages: [],
+        revision: 1,
+        requestId: createId('request'),
+      }
+      return repository.createSession(session, input, claim)
+    })
+    return result.session
+  }
+
+  const sendVisitorMessage = async (
+    input: VisitorMessageCommand,
+  ): Promise<IdempotentSessionResult> =>
+    idempotent(`message:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
+      const session = await requireSession(input.sessionId)
+      const base = structuredClone(session)
+      const text = input.text.trim()
+      if (!text || text.length > 5_000) {
+        throw new ChatServiceError('invalid_request', 'Message must contain 1 to 5000 characters')
+      }
+      if (!session.allowedActions.includes('send_message') && !input.externalInbound) {
+        throw new ChatServiceError('conflict', 'Messages are not allowed in the current state')
+      }
+      const messageID = createId('message')
+      session.messages.push({
+        author: 'visitor',
+        content: text,
+        createdAt: clock().toISOString(),
+        id: messageID,
+        status: 'sent',
+      })
+
+      const messageMetadata =
+        input.externalMessageId || input.persistedIdempotencyKey
+          ? {
+              [messageID]: {
+                ...(input.externalMessageId ? { externalMessageId: input.externalMessageId } : {}),
+                ...(input.persistedIdempotencyKey
+                  ? { persistedIdempotencyKey: input.persistedIdempotencyKey }
+                  : {}),
+              },
+            }
+          : undefined
+      await repository.renewCommand(claim)
+      // Handoff state disables AI automation, not durable recording of messages that
+      // arrived through an authenticated external platform. Website callers retain
+      // the existing state-machine guard above, while later Meta messages remain
+      // visible to the operator without inventing an outbound AI reply or transition.
+      if (input.externalInbound && session.handoffStatus !== 'ai_active') {
+        return repository.saveSession(
+          session,
+          { base, ...(messageMetadata ? { messageMetadata } : {}) },
+          claim,
+        )
+      }
+      const leadEvaluation = await leadSink?.evaluate(session)
+      let handoff: HandoffCreatedEvent | undefined
+      if (leadEvaluation?.handoffReason && session.handoffStatus === 'ai_active') {
+        session.handoffStatus = await transition(session, 'request')
+        session.allowedActions = allowedActionsFor(session.handoffStatus)
+        handoff = createHandoff(session, {
+          idempotencyKey: input.idempotencyKey,
+          reason: leadEvaluation.handoffReason,
+          source: 'ai_policy',
+        })
+      } else if (session.handoffStatus === 'ai_active') {
+        assertAiReplyAllowed(session.handoffStatus)
+        await repository.renewCommand(claim)
+        const reply = await replyOrHandoff(text, session)
+        if ('handoff' in reply) {
+          session.handoffStatus = await transition(session, 'request')
+          session.allowedActions = allowedActionsFor(session.handoffStatus)
+          handoff = createHandoff(session, { ...reply.handoff, idempotencyKey: input.idempotencyKey })
+        } else {
+          appendAiReply(session, reply)
+        }
+      }
+      return repository.saveSession(
+        session,
+        { base, handoff, leadEvaluation, ...(messageMetadata ? { messageMetadata } : {}) },
+        claim,
+      )
+    })
+
   return {
     async getSession(sessionId) {
       return requireSession(sessionId)
     },
 
     async startSession(input: StartChatSessionInput) {
-      return idempotent('start', input.idempotencyKey, async (claim) => {
-        const session: ChatSession = {
-          allowedActions: allowedActionsFor('ai_active'),
-          channel: input.channel,
-          handoffStatus: 'ai_active',
-          id: createId('session'),
-          locale: input.locale,
-          messages: [],
-          revision: 1,
-          requestId: createId('request'),
-        }
-        return repository.createSession(session, input, claim)
+      return startSession(input)
+    },
+
+    async ingestExternalMessage(input: IngestExternalMessageInput): Promise<ExternalMessageDelivery> {
+      if (input.channel !== 'facebook' && input.channel !== 'instagram') {
+        throw new ChatServiceError('invalid_request', 'Unsupported external conversation channel')
+      }
+      const externalThreadId = requireExternalIdentifier(input.externalThreadId, 'externalThreadId', 500)
+      const externalMessageId = requireExternalIdentifier(input.externalMessageId, 'externalMessageId', 200)
+      const session = await startSession({
+        channel: input.channel,
+        externalThreadId,
+        idempotencyKey: input.sessionIdempotencyKey,
+        locale: input.locale,
       })
+      const result = await sendVisitorMessage({
+        externalInbound: true,
+        externalMessageId,
+        idempotencyKey: input.idempotencyKey,
+        persistedIdempotencyKey: `platform-message:${input.idempotencyKey}`,
+        sessionId: session.id,
+        text: input.text,
+      })
+      return { session: result.session, status: result.state === 'completed' ? 'duplicate' : 'accepted' }
     },
 
     async sendMessage(input: SendChatMessageInput) {
-      return idempotent(`message:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
-        const session = await requireSession(input.sessionId)
-        const base = structuredClone(session)
-        const text = input.text.trim()
-        if (!text || text.length > 5_000) {
-          throw new ChatServiceError('invalid_request', 'Message must contain 1 to 5000 characters')
-        }
-        if (!session.allowedActions.includes('send_message')) {
-          throw new ChatServiceError('conflict', 'Messages are not allowed in the current state')
-        }
-        session.messages.push({
-          author: 'visitor',
-          content: text,
-          createdAt: clock().toISOString(),
-          id: createId('message'),
-          status: 'sent',
-        })
-
-        await repository.renewCommand(claim)
-        const leadEvaluation = await leadSink?.evaluate(session)
-        let handoff: HandoffCreatedEvent | undefined
-        if (leadEvaluation?.handoffReason && session.handoffStatus === 'ai_active') {
-          session.handoffStatus = await transition(session, 'request')
-          session.allowedActions = allowedActionsFor(session.handoffStatus)
-          handoff = createHandoff(session, {
-            idempotencyKey: input.idempotencyKey,
-            reason: leadEvaluation.handoffReason,
-            source: 'ai_policy',
-          })
-        } else if (session.handoffStatus === 'ai_active') {
-          assertAiReplyAllowed(session.handoffStatus)
-          await repository.renewCommand(claim)
-          const reply = await replyOrHandoff(text, session)
-          if ('handoff' in reply) {
-            session.handoffStatus = await transition(session, 'request')
-            session.allowedActions = allowedActionsFor(session.handoffStatus)
-            handoff = createHandoff(session, { ...reply.handoff, idempotencyKey: input.idempotencyKey })
-          } else {
-            appendAiReply(session, reply)
-          }
-        }
-        return repository.saveSession(session, { base, handoff, leadEvaluation }, claim)
-      })
+      return (await sendVisitorMessage(input)).session
     },
 
     async sendOperatorMessage(input: SendChatMessageInput) {
-      return idempotent(`operator-message:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
+      const result = await idempotent(`operator-message:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
         const session = await requireSession(input.sessionId)
         const base = structuredClone(session)
         const text = input.text.trim()
@@ -278,10 +370,11 @@ export const createConversationService = ({
         })
         return repository.saveSession(session, { base }, claim)
       })
+      return result.session
     },
 
     async retryMessage(input: RetryChatMessageInput) {
-      return idempotent(`retry:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
+      const result = await idempotent(`retry:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
         const session = await requireSession(input.sessionId)
         const base = structuredClone(session)
         const message = session.messages.find(({ id }) => String(id) === String(input.messageId))
@@ -304,10 +397,11 @@ export const createConversationService = ({
         }
         return repository.saveSession(session, { base, handoff }, claim)
       })
+      return result.session
     },
 
     async requestHandoff(input: RequestHandoffInput) {
-      return idempotent(`handoff:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
+      const result = await idempotent(`handoff:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
         const session = await requireSession(input.sessionId)
         const base = structuredClone(session)
         if (!input.reason.trim()) {
@@ -320,26 +414,29 @@ export const createConversationService = ({
           handoff: createHandoff(session, input),
         }, claim)
       })
+      return result.session
     },
 
     async takeOver(input: SessionCommandInput) {
-      return idempotent(`take-over:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
+      const result = await idempotent(`take-over:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
         const session = await requireSession(input.sessionId)
         const base = structuredClone(session)
         session.handoffStatus = await transition(session, 'take_over')
         session.allowedActions = allowedActionsFor(session.handoffStatus)
         return repository.saveSession(session, { base }, claim)
       })
+      return result.session
     },
 
     async resolve(input: SessionCommandInput) {
-      return idempotent(`resolve:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
+      const result = await idempotent(`resolve:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
         const session = await requireSession(input.sessionId)
         const base = structuredClone(session)
         session.handoffStatus = await transition(session, 'resolve')
         session.allowedActions = allowedActionsFor(session.handoffStatus)
         return repository.saveSession(session, { base }, claim)
       })
+      return result.session
     },
   }
 }

@@ -1,13 +1,17 @@
 import sessionFixture from '../fixtures/chat/session.json'
 import { describe, expect, it } from 'vitest'
 
-import { ChatServiceError, type ChatService } from '@/modules/conversations/contracts'
+import {
+  ChatServiceError,
+  type ChatService,
+  type PlatformConversationService,
+} from '@/modules/conversations/contracts'
 import { createConversationService } from '@/modules/conversations/service'
 
 import { FakeChatService } from '../fakes/chatService'
 import { InMemoryConversationRepository } from '../fakes/conversationRepository'
 
-const exerciseChatContract = (createService: () => ChatService): void => {
+const exerciseChatContract = (createService: () => ChatService & PlatformConversationService): void => {
   it('starts a session and returns a stable client-facing snapshot', async () => {
     const service = createService()
     const session = await service.startSession({
@@ -109,6 +113,58 @@ const exerciseChatContract = (createService: () => ChatService): void => {
     const resolved = await service.resolve({ idempotencyKey: 'resolve-fixture-003', sessionId: session.id })
     expect(resolved).toMatchObject({ allowedActions: [], handoffStatus: 'resolved' })
     await expect(service.getSession(session.id)).resolves.toEqual(resolved)
+  })
+
+  it('preserves external delivery idempotency without exposing connector implementation details', async () => {
+    const service = createService()
+    const input = {
+      channel: 'instagram' as const,
+      externalMessageId: 'instagram-message-fixture-001',
+      externalThreadId: 'instagram-account-fixture:instagram-sender-fixture',
+      idempotencyKey: 'instagram:instagram-message-fixture-001',
+      locale: 'en' as const,
+      sessionIdempotencyKey: 'platform-session:instagram:instagram-account-fixture:instagram-sender-fixture',
+      text: 'Please send your panel specification.',
+    }
+
+    const accepted = await service.ingestExternalMessage(input)
+    const duplicate = await service.ingestExternalMessage(input)
+
+    expect(accepted.status).toBe('accepted')
+    expect(duplicate).toEqual({ session: accepted.session, status: 'duplicate' })
+  })
+
+  it('retains a later external inbound message after automated replies have stopped', async () => {
+    const service = createService()
+    const sessionIdempotencyKey = 'platform-session:facebook-messenger:page-fixture:sender-fixture'
+    const session = await service.startSession({
+      channel: 'facebook',
+      externalThreadId: 'page-fixture:sender-fixture',
+      idempotencyKey: sessionIdempotencyKey,
+      locale: 'en',
+    })
+    await service.requestHandoff({
+      idempotencyKey: 'external-handoff-fixture',
+      reason: 'platform_outbound_not_configured',
+      sessionId: session.id,
+      source: 'ai_policy',
+    })
+
+    const delivery = await service.ingestExternalMessage({
+      channel: 'facebook',
+      externalMessageId: 'facebook-message-after-handoff',
+      externalThreadId: 'page-fixture:sender-fixture',
+      idempotencyKey: 'facebook:facebook-message-after-handoff',
+      locale: 'en',
+      sessionIdempotencyKey,
+      text: 'Please keep this follow-up visible to the operator.',
+    })
+
+    expect(delivery).toMatchObject({
+      status: 'accepted',
+      session: { handoffStatus: 'handoff_requested' },
+    })
+    expect(delivery.session.messages.filter(({ author }) => author === 'visitor')).toHaveLength(1)
   })
 }
 

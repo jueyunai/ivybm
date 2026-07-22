@@ -141,4 +141,116 @@ describe('ConversationService', () => {
     const resolved = await service.resolve({ idempotencyKey: 'resolve-2', sessionId: session.id })
     expect(resolved).toMatchObject({ allowedActions: [], handoffStatus: 'resolved' })
   })
+
+  it('ingests an external message once and reports a replay without a second AI turn', async () => {
+    const { generateReply, service } = createService()
+    const input = {
+      channel: 'facebook' as const,
+      externalMessageId: 'meta-message-1',
+      externalThreadId: 'page-1:sender-1',
+      idempotencyKey: 'facebook-messenger:meta-message-1',
+      locale: 'en' as const,
+      sessionIdempotencyKey: 'platform-session:facebook-messenger:page-1:sender-1',
+      text: 'Please share available facade finishes.',
+    }
+
+    const accepted = await service.ingestExternalMessage(input)
+    const duplicate = await service.ingestExternalMessage(input)
+
+    expect(accepted).toMatchObject({ status: 'accepted' })
+    expect(duplicate).toMatchObject({
+      session: accepted.session,
+      status: 'duplicate',
+    })
+    expect(accepted.session.messages.filter(({ author }) => author === 'visitor')).toHaveLength(1)
+    expect(generateReply).toHaveBeenCalledTimes(1)
+  })
+
+  it('records later external messages after handoff and resolution without restarting AI automation', async () => {
+    let sequence = 0
+    const repository = new InMemoryConversationRepository()
+    const generateReply = vi.fn(async () => ({
+      handoff: { reason: 'platform_outbound_not_configured', source: 'ai_policy' as const },
+    }))
+    const service = createConversationService({
+      createId: (kind) => `${kind}-${++sequence}`,
+      repository,
+      responder: { generateReply },
+    })
+    const base = {
+      channel: 'facebook' as const,
+      externalThreadId: 'page-1:sender-1',
+      locale: 'en' as const,
+      sessionIdempotencyKey: 'platform-session:facebook-messenger:page-1:sender-1',
+    }
+
+    const first = await service.ingestExternalMessage({
+      ...base,
+      externalMessageId: 'meta-message-first',
+      idempotencyKey: 'facebook-messenger:meta-message-first',
+      text: 'First customer message.',
+    })
+    expect(first.session.handoffStatus).toBe('handoff_requested')
+
+    const followUp = await service.ingestExternalMessage({
+      ...base,
+      externalMessageId: 'meta-message-follow-up',
+      idempotencyKey: 'facebook-messenger:meta-message-follow-up',
+      text: 'Second customer message before an operator responds.',
+    })
+    expect(followUp).toMatchObject({
+      status: 'accepted',
+      session: { handoffStatus: 'handoff_requested' },
+    })
+    expect(followUp.session.messages.filter(({ author }) => author === 'visitor')).toHaveLength(2)
+
+    await service.takeOver({ idempotencyKey: 'meta-take-over', sessionId: first.session.id })
+    await service.resolve({ idempotencyKey: 'meta-resolve', sessionId: first.session.id })
+    const afterResolution = await service.ingestExternalMessage({
+      ...base,
+      externalMessageId: 'meta-message-after-resolution',
+      idempotencyKey: 'facebook-messenger:meta-message-after-resolution',
+      text: 'A later customer follow-up must still be retained.',
+    })
+    expect(afterResolution).toMatchObject({
+      status: 'accepted',
+      session: { handoffStatus: 'resolved' },
+    })
+    expect(afterResolution.session.messages.filter(({ author }) => author === 'visitor')).toHaveLength(3)
+    expect(generateReply).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects malformed external thread identity before creating any session', async () => {
+    const { repository, service } = createService()
+
+    await expect(
+      service.ingestExternalMessage({
+        channel: 'facebook',
+        externalMessageId: 'meta-message-invalid',
+        externalThreadId: ' ',
+        idempotencyKey: 'facebook-messenger:meta-message-invalid',
+        locale: 'en',
+        sessionIdempotencyKey: 'platform-session:facebook-messenger:page-1:sender-1',
+        text: 'Please share available facade finishes.',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
+    expect(repository.sessionCount).toBe(0)
+  })
+
+  it('does not allow public website or historical WhatsApp channels through the connector command', async () => {
+    const { repository, service } = createService()
+
+    await expect(
+      service.ingestExternalMessage({
+        channel: 'website' as never,
+        externalMessageId: 'external-message-website',
+        externalThreadId: 'page-1:sender-1',
+        idempotencyKey: 'facebook-messenger:external-message-website',
+        locale: 'en',
+        sessionIdempotencyKey: 'platform-session:facebook-messenger:page-1:sender-1',
+        text: 'Please share available facade finishes.',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
+    expect(repository.sessionCount).toBe(0)
+  })
 })

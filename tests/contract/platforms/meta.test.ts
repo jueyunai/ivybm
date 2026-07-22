@@ -26,8 +26,12 @@ describe('Meta messaging webhook contract', () => {
     ])
   })
 
-  it('normalizes Instagram attachments without fetching their URL', () => {
-    const events = connector.normalize(instagramFixture)
+  it('normalizes Instagram attachments without retaining provider URL query credentials', () => {
+    const fixture = structuredClone(instagramFixture)
+    fixture.entry[0].messaging[0].message.attachments[0].payload.url =
+      'https://example.invalid/fixture-image.jpg?signature=provider-secret#fragment'
+
+    const events = connector.normalize(fixture)
 
     expect(events).toEqual([
       {
@@ -65,5 +69,34 @@ describe('Meta messaging webhook contract', () => {
     expect(() => connector.normalize(mismatched)).toThrow(
       'Meta message recipient does not match the webhook account',
     )
+  })
+
+  it('ignores delivery callbacks until a durable message-status adapter is implemented', () => {
+    expect(connector.normalize({
+      object: 'page',
+      entry: [{
+        id: 'PAGE_FIXTURE_1',
+        messaging: [{
+          delivery: { mids: ['outbound-fixture-1'], watermark: 1 },
+          recipient: { id: 'PAGE_FIXTURE_1' },
+          sender: { id: 'SENDER_FIXTURE_1' },
+          timestamp: 1_710_000_000_000,
+        }],
+      }],
+    })).toEqual([])
+  })
+
+  it('rejects oversized identifiers and malformed attachments before they enter the durable queue', () => {
+    const oversized = structuredClone(metaFixture)
+    oversized.entry[0].messaging[0].message.mid = 'm'.repeat(181)
+    expect(() => connector.normalize(oversized)).toThrow(
+      'Meta message event is missing required identifiers or timestamp',
+    )
+
+    const malformedAttachment = structuredClone(instagramFixture)
+    const malformedMessage = malformedAttachment.entry[0].messaging[0].message as unknown as Record<string, unknown>
+    malformedMessage.attachments = [null]
+    delete malformedMessage.text
+    expect(() => connector.normalize(malformedAttachment)).toThrow('Meta attachment 0 is invalid')
   })
 })
