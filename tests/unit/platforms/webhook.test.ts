@@ -318,4 +318,36 @@ describe('platform webhook verification and ingestion', () => {
     ).rejects.toMatchObject({ code: 'rate_limited' } satisfies Partial<WebhookValidationError>)
     expect(repository.events.size).toBe(0)
   })
+
+  it('resolves a lazy repository exactly once only after a valid event is accepted', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture', lazy: true })
+    const repository = new FakePlatformEventRepository()
+    const repositoryFactory = vi.fn(async () => repository)
+
+    await expect(
+      ingestSignedWebhook({
+        ...signedInput(rawBody, repository),
+        repository: repositoryFactory,
+      }),
+    ).resolves.toEqual({ accepted: 1, duplicates: 0, total: 1 })
+
+    expect(repositoryFactory).toHaveBeenCalledTimes(1)
+    expect(repository.events.size).toBe(1)
+  })
+
+  it('does not resolve a lazy repository for stale normalized events', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture', stale: true })
+    const repository = new FakePlatformEventRepository()
+    const repositoryFactory = vi.fn(async () => repository)
+
+    await expect(
+      ingestSignedWebhook({
+        ...signedInput(rawBody, repository, [event('stale-lazy', now - 601_000)]),
+        repository: repositoryFactory,
+      }),
+    ).rejects.toMatchObject({ code: 'stale_event' } satisfies Partial<WebhookValidationError>)
+
+    expect(repositoryFactory).not.toHaveBeenCalled()
+    expect(repository.events.size).toBe(0)
+  })
 })

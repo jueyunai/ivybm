@@ -35,6 +35,10 @@ type VerifyMetaSignatureInput = {
   signatureHeader?: string
 }
 
+type PlatformEventRepositorySource =
+  | PlatformEventRepository
+  | (() => PlatformEventRepository | Promise<PlatformEventRepository>)
+
 type IngestSignedWebhookInput = {
   connector: PlatformConnector
   headers: Readonly<Record<string, string | undefined>>
@@ -45,7 +49,7 @@ type IngestSignedWebhookInput = {
   rateLimiter: WebhookRateLimiter
   rateLimitKey: string
   rawBody: Uint8Array
-  repository: PlatformEventRepository
+  repository: PlatformEventRepositorySource
   verifier: WebhookVerifier
 }
 
@@ -183,6 +187,11 @@ const canonicalize = (value: unknown): unknown => {
 
 const eventDigest = (event: unknown): string => sha256(JSON.stringify(canonicalize(event)))
 
+const resolveRepository = async (
+  source: PlatformEventRepositorySource,
+): Promise<PlatformEventRepository> =>
+  typeof source === 'function' ? source() : source
+
 export const ingestSignedWebhook = async ({
   connector,
   headers,
@@ -247,7 +256,9 @@ export const ingestSignedWebhook = async ({
   }
 
   const rawPayloadDigest = sha256(bytes)
-  const results = await repository.enqueueBatch(
+  // Do not initialize Payload / acquire a database connection for requests that
+  // fail the cheap ingress checks above. The repository is intentionally lazy.
+  const results = await (await resolveRepository(repository)).enqueueBatch(
     events.map((event) => ({
       event,
       eventDigest: eventDigest(event),
