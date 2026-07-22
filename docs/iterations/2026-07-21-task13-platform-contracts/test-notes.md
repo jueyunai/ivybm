@@ -31,3 +31,19 @@ git diff --check                                        passed
 ```
 
 数据库验证使用独立 PostgreSQL 18.4 + pgvector 0.8.5 临时测试容器，完成后已删除。平台测试仅使用合成 fixture、fake repository 和内存 port，不访问真实平台网络或付费 API。
+
+## 2026-07-22 主线同步与契约加固复验
+
+同步 `origin/main` 后，新增发布错误码 union 及下游 `accepted / duplicate` 投递结果 contract；未接入数据库或真实平台。
+
+```text
+fresh migration + full down / reapply + two idempotent seeds    passed
+pnpm lint                                                       passed
+pnpm typecheck                                                  passed
+pnpm test:unit                                                  29 files, 145 tests passed
+pnpm test:contract                                              4 files, 29 tests passed
+pnpm test:integration                                           14 files, 86 tests passed
+pnpm test:operations                                            6 files, 23 tests passed
+pnpm build                                                      passed
+git diff --check                                                passed
+```

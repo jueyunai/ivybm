@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import { createLinkedInAssistedExport } from '../../../src/modules/platforms/linkedin/export'
 import type { PlatformPublishingPort } from '../../../src/modules/platforms/ports'
-import type { PlatformCapability, PublishingPlatform } from '../../../src/modules/platforms/types'
+import type {
+  PlatformCapability,
+  PlatformPublishErrorCode,
+  PublishingPlatform,
+} from '../../../src/modules/platforms/types'
 
 describe('phase-one publishing contract', () => {
   it('represents Facebook, Instagram, and LinkedIn capability without claiming availability', async () => {
@@ -118,5 +122,53 @@ describe('phase-one publishing contract', () => {
         text: 'Fixture post',
       }),
     ).toThrow('LinkedIn assisted export asset IDs must be unique')
+  })
+
+  it('freezes machine-readable blocked and failed publishing error codes', async () => {
+    const blockedCode: PlatformPublishErrorCode = 'permission_required'
+    const failedCode: PlatformPublishErrorCode = 'rate_limited'
+    const port: PlatformPublishingPort = {
+      getCapability: async (platform) => ({
+        availability: 'conditional',
+        modes: ['automatic'],
+        platform,
+      }),
+      getStatus: async ({ platform }) => ({
+        errorCode: failedCode,
+        platform,
+        retryable: true,
+        status: 'failed',
+      }),
+      publish: async (request) => ({
+        errorCode: blockedCode,
+        idempotencyKey: request.idempotencyKey,
+        platform: request.platform,
+        retryable: false,
+        status: 'blocked',
+      }),
+    }
+
+    await expect(
+      port.publish({
+        assets: [],
+        idempotencyKey: 'blocked-publish-1',
+        platform: 'instagram',
+        text: 'Fixture post',
+      }),
+    ).resolves.toEqual({
+      errorCode: 'permission_required',
+      idempotencyKey: 'blocked-publish-1',
+      platform: 'instagram',
+      retryable: false,
+      status: 'blocked',
+    })
+    await expect(
+      port.getStatus({ externalPublicationId: 'failed-publication-1', platform: 'instagram' }),
+    ).resolves.toEqual({
+      errorCode: 'rate_limited',
+      platform: 'instagram',
+      retryable: true,
+      status: 'failed',
+    })
   })
 })

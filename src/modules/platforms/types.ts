@@ -8,6 +8,23 @@ export type PlatformAvailability = 'available' | 'blocked' | 'conditional'
 
 export type PublishingMode = 'assisted' | 'automatic'
 
+/**
+ * Stable, credential-free error taxonomy consumed by the Task 12 publishing UI.
+ * Provider-specific response bodies stay inside the later platform adapter.
+ */
+export const PLATFORM_PUBLISH_ERROR_CODES = [
+  'account_not_connected',
+  'authorization_required',
+  'invalid_request',
+  'permission_required',
+  'platform_blocked',
+  'provider_unavailable',
+  'rate_limited',
+  'unknown',
+] as const
+
+export type PlatformPublishErrorCode = (typeof PLATFORM_PUBLISH_ERROR_CODES)[number]
+
 export type NormalizedAttachment = {
   caption?: string
   externalId?: string
@@ -72,18 +89,36 @@ export type PlatformPublishRequest = {
   text: string
 }
 
-export type PlatformPublishAcceptance = {
-  idempotencyKey: string
-  platform: PublishingPlatform
-  status: 'accepted' | 'blocked'
-}
+export type PlatformPublishAcceptance =
+  | {
+      idempotencyKey: string
+      platform: PublishingPlatform
+      status: 'accepted'
+    }
+  | {
+      errorCode: PlatformPublishErrorCode
+      idempotencyKey: string
+      platform: PublishingPlatform
+      retryable: boolean
+      status: 'blocked'
+    }
 
-export type PlatformPublicationStatus = {
-  errorCode?: string
+type PlatformPublicationStatusBase = {
   externalPublicationId?: string
   platform: PublishingPlatform
-  status: 'failed' | 'pending' | 'published' | 'publishing'
 }
+
+export type PlatformPublicationStatus =
+  | (PlatformPublicationStatusBase & {
+      errorCode: PlatformPublishErrorCode
+      retryable: boolean
+      status: 'failed'
+    })
+  | (PlatformPublicationStatusBase & {
+      errorCode?: never
+      retryable?: never
+      status: 'pending' | 'published' | 'publishing'
+    })
 
 export type AssistedPublicationExport = {
   assets: PublicationAsset[]

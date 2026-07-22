@@ -29,3 +29,9 @@
 - 本次纯 contract 迭代：**GO**。
 - 真实 Meta / TikTok / LinkedIn 平台可用性：仍为 **conditional / blocked**；没有账号授权和受控实测前不得标记 `available`。
 - 发布数据库 adapter：等待 Task 12 `PublishJobs` / `PublishLogs` 完整合并；TikTok connector：等待官方 schema 和会话 channel 前向 migration。
+
+## 2026-07-22 复验补充
+
+- 同步最新主线后，发布 contract 增加冻结的机器可读错误码与 `blocked / failed` retryable 语义；投递 port 明确后续 adapter 必须按平台事件 `idempotencyKey` 持久去重并报告 `accepted / duplicate`。
+- 独立 PostgreSQL 18.4 + pgvector 0.8.5 复验通过 fresh migrate、完整 reset/reapply 和双次 seed；通过 unit 145/145、contract 29/29、integration 86/86、operations 23/23、lint、typecheck、production build 和 `git diff --check`。
+- Claude Code 只读复核本轮 contract 改动，无 P0/P1；真实账号、Webhook route、Jobs handler、Task 12 发布数据库 adapter 和 TikTok 官方 schema 仍是明确 blocked 依赖。

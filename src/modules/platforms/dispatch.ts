@@ -1,4 +1,8 @@
-import type { ConversationMessagePort, MessageStatusPort } from './ports'
+import type {
+  ConversationMessagePort,
+  MessageStatusPort,
+  PlatformEventDeliveryResult,
+} from './ports'
 import type { NormalizedPlatformEvent } from './types'
 
 type PlatformEventDestinations = {
@@ -9,11 +13,10 @@ type PlatformEventDestinations = {
 export const dispatchPlatformEvent = async (
   event: NormalizedPlatformEvent,
   destinations: PlatformEventDestinations,
-): Promise<void> => {
+): Promise<PlatformEventDeliveryResult> => {
   if (event.kind === 'inbound-message') {
-    await destinations.conversations.writeInboundMessage(event)
-    return
+    return await destinations.conversations.writeInboundMessage(event)
   }
 
-  await destinations.messageStatuses.writeMessageStatus(event)
+  return await destinations.messageStatuses.writeMessageStatus(event)
 }

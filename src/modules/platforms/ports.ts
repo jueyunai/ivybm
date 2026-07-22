@@ -38,12 +38,22 @@ export interface WebhookVerifier {
   verify(input: WebhookVerificationInput): boolean | Promise<boolean>
 }
 
+export type PlatformEventDeliveryResult = {
+  idempotencyKey: string
+  status: 'accepted' | 'duplicate'
+}
+
 export interface ConversationMessagePort {
-  writeInboundMessage(message: NormalizedInboundMessage): Promise<void>
+  /**
+   * Handle at-least-once worker delivery. Persistently deduplicate by
+   * message.idempotencyKey before creating a conversation, message, or lead.
+   */
+  writeInboundMessage(message: NormalizedInboundMessage): Promise<PlatformEventDeliveryResult>
 }
 
 export interface MessageStatusPort {
-  writeMessageStatus(status: NormalizedMessageStatus): Promise<void>
+  /** Persistently deduplicate repeated provider callbacks by status.idempotencyKey. */
+  writeMessageStatus(status: NormalizedMessageStatus): Promise<PlatformEventDeliveryResult>
 }
 
 export interface PlatformConnector {
