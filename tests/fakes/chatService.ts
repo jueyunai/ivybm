@@ -1,8 +1,11 @@
 import {
   ChatServiceError,
+  type ExternalMessageDelivery,
   type ChatMessage,
   type ChatService,
   type ChatSession,
+  type IngestExternalMessageInput,
+  type PlatformConversationService,
   type RequestHandoffInput,
   type RetryChatMessageInput,
   type SendChatMessageInput,
@@ -17,7 +20,7 @@ import {
 
 const createdAt = '2026-07-19T00:00:00.000Z'
 
-export class FakeChatService implements ChatService {
+export class FakeChatService implements ChatService, PlatformConversationService {
   private commandResults = new Map<string, ChatSession>()
   private messageSequence = 0
   private sessionSequence = 0
@@ -40,7 +43,7 @@ export class FakeChatService implements ChatService {
     }
     const commandKey = `${command}:${key}`
     const existing = this.commandResults.get(commandKey)
-    if (existing) return this.snapshot(existing)
+    if (existing) return this.snapshot(this.requireSession(existing.id))
     const result = operation()
     this.commandResults.set(commandKey, structuredClone(result))
     return this.snapshot(result)
@@ -84,6 +87,45 @@ export class FakeChatService implements ChatService {
 
   async getSession(sessionId: number | string): Promise<ChatSession> {
     return this.snapshot(this.requireSession(sessionId))
+  }
+
+  async ingestExternalMessage(input: IngestExternalMessageInput): Promise<ExternalMessageDelivery> {
+    if (!input.externalThreadId.trim() || input.externalThreadId.length > 500) {
+      throw new ChatServiceError('invalid_request', 'externalThreadId is required')
+    }
+    if (!input.externalMessageId.trim() || input.externalMessageId.length > 200) {
+      throw new ChatServiceError('invalid_request', 'externalMessageId is required')
+    }
+    const session = await this.startSession({
+      channel: input.channel,
+      externalThreadId: input.externalThreadId,
+      idempotencyKey: input.sessionIdempotencyKey,
+      locale: input.locale,
+    })
+    const commandKey = `message:${String(session.id)}:${input.idempotencyKey}`
+    const duplicate = this.commandResults.has(commandKey)
+    const updated = session.handoffStatus === 'ai_active'
+      ? await this.sendMessage({
+          idempotencyKey: input.idempotencyKey,
+          sessionId: session.id,
+          text: input.text,
+        })
+      : this.idempotent(`message:${String(session.id)}`, input.idempotencyKey, () => {
+          const persisted = this.requireSession(session.id)
+          const text = this.assertText(input.text)
+          this.messageSequence += 1
+          // External events remain customer records after AI automation has stopped.
+          // This mirrors the authoritative service without creating a fake AI reply.
+          persisted.messages.push({
+            author: 'visitor',
+            content: text,
+            createdAt,
+            id: `fake-message-${this.messageSequence}`,
+            status: 'sent',
+          })
+          return this.commit(persisted)
+        })
+    return { session: updated, status: duplicate ? 'duplicate' : 'accepted' }
   }
 
   async startSession(input: StartChatSessionInput): Promise<ChatSession> {

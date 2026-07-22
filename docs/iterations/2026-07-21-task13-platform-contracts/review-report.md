@@ -25,3 +25,13 @@
 ## 最终建议
 
 Task 13 纯接口 / fixture / mock 阶段达到 GO。由于 `ports.ts` / `types.ts` 是 Task 12 将消费的跨人公共发布契约，PR 合并前仍必须请求 jueyunai review；真实平台联调和数据库 adapter 不在本次完成声明内。
+
+## 2026-07-22 Meta durable inbound 复审
+
+| Finding | 级别 | 处置 |
+| --- | --- | --- |
+| 首条 Meta 入站因未配置出站能力进入 `handoff_requested` 后，同一发送者的下一条不同消息被 visitor action guard 拒绝，worker 会重试至 dead | P1 | `externalInbound` 仅对已验签的 connector command 放宽“记录客户消息”边界；AI 回复、评分、状态转换和重复接管保持关闭。新增 unit、contract 和真实 PostgreSQL integration 回归，覆盖 `handoff_requested`、`resolved`、worker lease reclaim 与 fake/real contract 一致性。 |
+| provider attachment URL 的 query / fragment 可能包含短期签名并被保存在 Job payload | P2 | connector 和 job parser 统一只保留 HTTPS origin/path，拒绝 userinfo / 非 HTTPS；不下载附件。 |
+| resolved 会话目前继续保留后续外部消息，而不是自动创建新会话 | P2 / 产品策略 | 记录消息优先于静默丢失；新会话 rollover / archive 策略待 Task 9 运营规则确认，不在无授权的 Task 13 connector 内猜测。 |
+
+Claude Code 对 P1 修复做了第二次只读复审，结论为 **Approve**：无未解决 P0/P1。`jueyunai` 仍须对跨人会话 contract 和 worker 集成完成 GitHub review。

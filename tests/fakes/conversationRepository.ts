@@ -24,6 +24,10 @@ export class InMemoryConversationRepository implements ConversationRepository {
   readonly handoffEvents: HandoffCreatedEvent[] = []
   private sessions = new Map<number | string, ChatSession>()
 
+  get sessionCount(): number {
+    return this.sessions.size
+  }
+
   private commandKey(scope: string, idempotencyKey: string): string {
     return `${scope}:${idempotencyKey}`
   }
