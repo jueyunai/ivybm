@@ -80,6 +80,9 @@ ai_provider_api_key="$(read_optional_env_value AI_PROVIDER_API_KEY)"
 ai_text_model="$(read_optional_env_value AI_TEXT_MODEL)"
 ai_embedding_model="$(read_optional_env_value AI_EMBEDDING_MODEL)"
 ai_embedding_dimensions="$(read_optional_env_value AI_EMBEDDING_DIMENSIONS)"
+meta_webhook_app_secret="$(read_optional_env_value META_WEBHOOK_APP_SECRET)"
+meta_webhook_verify_token="$(read_optional_env_value META_WEBHOOK_VERIFY_TOKEN)"
+meta_webhook_allowed_account_ids="$(read_optional_env_value META_WEBHOOK_ALLOWED_ACCOUNT_IDS)"
 
 for key in POSTGRES_DB POSTGRES_USER; do
   read_env_value "$key" >/dev/null
@@ -166,6 +169,24 @@ case "$reasoning_effort" in
     exit 1
     ;;
 esac
+
+if [[ -n "$meta_webhook_app_secret" || -n "$meta_webhook_verify_token" || -n "$meta_webhook_allowed_account_ids" ]]; then
+  for key in META_WEBHOOK_APP_SECRET META_WEBHOOK_VERIFY_TOKEN META_WEBHOOK_ALLOWED_ACCOUNT_IDS; do
+    case "$key" in
+      META_WEBHOOK_APP_SECRET) value="$meta_webhook_app_secret" ;;
+      META_WEBHOOK_VERIFY_TOKEN) value="$meta_webhook_verify_token" ;;
+      META_WEBHOOK_ALLOWED_ACCOUNT_IDS) value="$meta_webhook_allowed_account_ids" ;;
+    esac
+    if [[ -z "$value" || "$value" == *'REPLACE_'* || "$value" == *'replace-with'* ]]; then
+      echo "META_WEBHOOK_APP_SECRET, META_WEBHOOK_VERIFY_TOKEN and META_WEBHOOK_ALLOWED_ACCOUNT_IDS must be configured together when Meta ingress is enabled (missing or invalid: $key)" >&2
+      exit 1
+    fi
+  done
+  if [[ "$meta_webhook_allowed_account_ids" == ,* || "$meta_webhook_allowed_account_ids" == *, || "$meta_webhook_allowed_account_ids" == *',,'* ]]; then
+    echo 'META_WEBHOOK_ALLOWED_ACCOUNT_IDS must be a comma-separated list without empty values' >&2
+    exit 1
+  fi
+fi
 
 if grep -Eq '^[[:space:]]*SEED_ADMIN_(EMAIL|PASSWORD)=' "$env_file"; then
   echo 'Production environment must not contain demo seed credentials' >&2

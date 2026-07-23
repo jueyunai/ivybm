@@ -6,7 +6,7 @@ import type {
   WebhookRateLimiter,
   WebhookVerifier,
 } from './ports'
-import { platformEventKey } from './types'
+import { platformEventKey, type NormalizedPlatformEvent } from './types'
 
 export type WebhookValidationCode =
   | 'future_event'
@@ -18,6 +18,7 @@ export type WebhookValidationCode =
   | 'payload_too_large'
   | 'rate_limited'
   | 'stale_event'
+  | 'unauthorized_account'
 
 export class WebhookValidationError extends Error {
   readonly code: WebhookValidationCode
@@ -35,17 +36,23 @@ type VerifyMetaSignatureInput = {
   signatureHeader?: string
 }
 
+type PlatformEventRepositorySource =
+  | PlatformEventRepository
+  | (() => PlatformEventRepository | Promise<PlatformEventRepository>)
+
 type IngestSignedWebhookInput = {
   connector: PlatformConnector
+  eventAuthorizer?: (event: NormalizedPlatformEvent) => void | Promise<void>
   headers: Readonly<Record<string, string | undefined>>
   maxBodyBytes?: number
   maxEventAgeMs?: number
   maxFutureSkewMs?: number
   nowMs?: number
   rateLimiter: WebhookRateLimiter
-  rateLimitKey: string
+  rateLimitKey?: string
+  rateLimitKeyForEvent?: (event: NormalizedPlatformEvent) => string
   rawBody: Uint8Array
-  repository: PlatformEventRepository
+  repository: PlatformEventRepositorySource
   verifier: WebhookVerifier
 }
 
@@ -183,8 +190,14 @@ const canonicalize = (value: unknown): unknown => {
 
 const eventDigest = (event: unknown): string => sha256(JSON.stringify(canonicalize(event)))
 
+const resolveRepository = async (
+  source: PlatformEventRepositorySource,
+): Promise<PlatformEventRepository> =>
+  typeof source === 'function' ? source() : source
+
 export const ingestSignedWebhook = async ({
   connector,
+  eventAuthorizer,
   headers,
   maxBodyBytes = 1_000_000,
   maxEventAgeMs = 10 * 60 * 1_000,
@@ -193,6 +206,7 @@ export const ingestSignedWebhook = async ({
   rawBody,
   rateLimiter,
   rateLimitKey,
+  rateLimitKeyForEvent,
   repository,
   verifier,
 }: IngestSignedWebhookInput): Promise<WebhookIngestionResult> => {
@@ -214,9 +228,6 @@ export const ingestSignedWebhook = async ({
   }
   if (!signatureIsValid) {
     throw new WebhookValidationError('invalid_signature', 'Webhook signature is invalid')
-  }
-  if (!rateLimitKey.trim() || !(await rateLimiter.consume(rateLimitKey))) {
-    throw new WebhookValidationError('rate_limited', 'Webhook source is rate limited')
   }
 
   let events
@@ -244,10 +255,33 @@ export const ingestSignedWebhook = async ({
         'Webhook event idempotency key is invalid',
       )
     }
+    try {
+      await eventAuthorizer?.(event)
+    } catch (error) {
+      if (error instanceof WebhookValidationError) throw error
+      throw new WebhookValidationError('invalid_payload', 'Webhook event authorization failed', {
+        cause: error,
+      })
+    }
+  }
+
+  if (events.length === 0) {
+    return { accepted: 0, duplicates: 0, total: 0 }
+  }
+
+  const rateLimitKeys = new Set(events.map((event) =>
+    rateLimitKeyForEvent ? rateLimitKeyForEvent(event) : rateLimitKey,
+  ))
+  for (const key of rateLimitKeys) {
+    if (!key?.trim() || !(await rateLimiter.consume(key))) {
+      throw new WebhookValidationError('rate_limited', 'Webhook source is rate limited')
+    }
   }
 
   const rawPayloadDigest = sha256(bytes)
-  const results = await repository.enqueueBatch(
+  // Do not initialize Payload / acquire a database connection for requests that
+  // fail the cheap ingress checks above. The repository is intentionally lazy.
+  const results = await (await resolveRepository(repository)).enqueueBatch(
     events.map((event) => ({
       event,
       eventDigest: eventDigest(event),

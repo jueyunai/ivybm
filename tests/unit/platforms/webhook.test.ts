@@ -250,6 +250,31 @@ describe('platform webhook verification and ingestion', () => {
     expect(repository.events.size).toBe(0)
   })
 
+  it('recovers a delayed Meta retry inside the 36-hour delivery window without duplicate jobs', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture', delayedRetry: true })
+    const repository = new FakePlatformEventRepository()
+    let persistenceAvailable = false
+    const flakyRepository = {
+      enqueueBatch: async (...args: Parameters<FakePlatformEventRepository['enqueueBatch']>) => {
+        if (!persistenceAvailable) throw new Error('temporary database outage')
+        return repository.enqueueBatch(...args)
+      },
+    }
+    const initialAttempt = {
+      ...signedInput(rawBody, repository, [event('delayed-retry', now)]),
+      maxEventAgeMs: 48 * 60 * 60 * 1_000,
+      nowMs: now,
+      repository: flakyRepository,
+    }
+
+    await expect(ingestSignedWebhook(initialAttempt)).rejects.toThrow('temporary database outage')
+    persistenceAvailable = true
+    const delayedRetry = { ...initialAttempt, nowMs: now + 36 * 60 * 60 * 1_000 }
+    await expect(ingestSignedWebhook(delayedRetry)).resolves.toEqual({ accepted: 1, duplicates: 0, total: 1 })
+    await expect(ingestSignedWebhook(delayedRetry)).resolves.toEqual({ accepted: 0, duplicates: 1, total: 1 })
+    expect(repository.events.size).toBe(1)
+  })
+
   it('rejects invalid JSON and oversized bodies before enqueueing', async () => {
     const repository = new FakePlatformEventRepository()
     const invalidJSON = '{'
@@ -305,7 +330,7 @@ describe('platform webhook verification and ingestion', () => {
     expect(repository.events.size).toBe(0)
   })
 
-  it('rejects rate-limited sources before parsing or enqueueing events', async () => {
+  it('rejects rate-limited events before enqueueing', async () => {
     const rawBody = JSON.stringify({ object: 'fixture' })
     const repository = new FakePlatformEventRepository()
 
@@ -316,6 +341,69 @@ describe('platform webhook verification and ingestion', () => {
         rateLimitKey: 'limited-source',
       }),
     ).rejects.toMatchObject({ code: 'rate_limited' } satisfies Partial<WebhookValidationError>)
+    expect(repository.events.size).toBe(0)
+  })
+
+  it('uses independent rate-limit keys for each authenticated Meta account', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture', accounts: true })
+    const repository = new FakePlatformEventRepository()
+    const consumedKeys: string[] = []
+    const first = event('account-one')
+    const second = {
+      ...event('account-two'),
+      accountExternalId: 'account-2',
+      recipientExternalId: 'account-2',
+    }
+
+    await expect(
+      ingestSignedWebhook({
+        ...signedInput(rawBody, repository, [first, second]),
+        rateLimiter: {
+          consume: async (key) => {
+            consumedKeys.push(key)
+            return true
+          },
+        },
+        rateLimitKeyForEvent: (normalizedEvent) =>
+          `meta-webhook:${normalizedEvent.platform}:${normalizedEvent.accountExternalId}`,
+      }),
+    ).resolves.toEqual({ accepted: 2, duplicates: 0, total: 2 })
+
+    expect(consumedKeys).toEqual([
+      'meta-webhook:facebook-messenger:account-1',
+      'meta-webhook:facebook-messenger:account-2',
+    ])
+  })
+
+  it('resolves a lazy repository exactly once only after a valid event is accepted', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture', lazy: true })
+    const repository = new FakePlatformEventRepository()
+    const repositoryFactory = vi.fn(async () => repository)
+
+    await expect(
+      ingestSignedWebhook({
+        ...signedInput(rawBody, repository),
+        repository: repositoryFactory,
+      }),
+    ).resolves.toEqual({ accepted: 1, duplicates: 0, total: 1 })
+
+    expect(repositoryFactory).toHaveBeenCalledTimes(1)
+    expect(repository.events.size).toBe(1)
+  })
+
+  it('does not resolve a lazy repository for stale normalized events', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture', stale: true })
+    const repository = new FakePlatformEventRepository()
+    const repositoryFactory = vi.fn(async () => repository)
+
+    await expect(
+      ingestSignedWebhook({
+        ...signedInput(rawBody, repository, [event('stale-lazy', now - 601_000)]),
+        repository: repositoryFactory,
+      }),
+    ).rejects.toMatchObject({ code: 'stale_event' } satisfies Partial<WebhookValidationError>)
+
+    expect(repositoryFactory).not.toHaveBeenCalled()
     expect(repository.events.size).toBe(0)
   })
 })

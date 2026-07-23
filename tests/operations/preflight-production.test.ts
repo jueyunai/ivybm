@@ -146,4 +146,19 @@ AI_EMBEDDING_MODEL=operation-embedding-model
     expect(invalidDimensions.stderr).toContain('AI_EMBEDDING_DIMENSIONS')
     expect(fixedDimensions.status).toBe(0)
   })
+
+  it('requires all Meta webhook settings together when ingress is enabled', () => {
+    const partial = runPreflight(
+      `${productionEnvironment}META_WEBHOOK_APP_SECRET=operation-meta-app-secret\n`,
+    )
+    const complete = runPreflight(`${productionEnvironment}META_WEBHOOK_APP_SECRET=operation-meta-app-secret
+META_WEBHOOK_VERIFY_TOKEN=operation-meta-verify-token
+META_WEBHOOK_ALLOWED_ACCOUNT_IDS=1234567890,9876543210
+`)
+
+    expect(partial.status).not.toBe(0)
+    expect(partial.stderr).toContain('META_WEBHOOK_APP_SECRET')
+    expect(complete.status).toBe(0)
+    expect(complete.stdout).not.toContain('operation-meta-app-secret')
+  })
 })
