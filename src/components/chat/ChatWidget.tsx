@@ -441,11 +441,8 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
           <span aria-live="polite" className="sr-only" role="status">{liveStatus}</span>
           <header className="chat-panel-header">
             <div className="chat-title-wrap">
-              <span aria-hidden className="chat-title-icon"><IconMessageCircle2 size={19} stroke={1.8} /></span>
-              <div>
-                <strong id={`${dialogID}-title`}>{copy.title}</strong>
-                <span className="chat-presence">{session?.handoffStatus === 'human_active' ? copy.humanActive : copy.assistantAvailable}</span>
-              </div>
+              <span aria-hidden className="chat-title-icon"><IconMessageCircle2 size={20} stroke={1.8} /></span>
+              <strong id={`${dialogID}-title`}>{copy.title}</strong>
             </div>
             <button aria-label={copy.close} className="chat-close" onClick={closeChat} ref={closeButtonRef} type="button">
               <IconX aria-hidden size={20} />
@@ -532,7 +529,7 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
                 }
               }}
               placeholder={copy.inputPlaceholder}
-              rows={1}
+              rows={2}
               value={draft}
             />
             <button aria-label={copy.send} disabled={!inputEnabled || !draft.trim()} type="submit">
