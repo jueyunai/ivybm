@@ -1,0 +1,378 @@
+@page {
+  size: A4;
+  margin: 15mm 15mm 17mm;
+}
+
+:root {
+  --navy: #0b2545;
+  --blue: #2e74b5;
+  --ink: #1e293b;
+  --muted: #64748b;
+  --line: #cbd5e1;
+  --blue-pale: #e8eef5;
+  --gray-pale: #f2f4f7;
+  --gold-pale: #fff4d6;
+  --red-pale: #fcebec;
+  --green-pale: #e9f7ef;
+}
+
+html {
+  color: var(--ink);
+  font-family: "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", Arial, sans-serif;
+  font-size: 10.25pt;
+  line-height: 1.52;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+}
+
+header {
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 8.8pt;
+  margin: 0 0 16pt;
+  padding: 0 0 7pt;
+}
+
+h1.title {
+  color: var(--navy);
+  font-size: 27pt;
+  letter-spacing: 0;
+  line-height: 1.16;
+  margin: 0 0 7pt;
+}
+
+h1.title + p.subtitle {
+  color: var(--blue);
+  font-size: 14pt;
+  font-weight: 600;
+  margin: 0 0 18pt;
+}
+
+h1 {
+  break-before: page;
+  color: var(--blue);
+  font-size: 17pt;
+  line-height: 1.24;
+  margin: 0 0 10pt;
+  padding-top: 0;
+}
+
+main > h1:first-child {
+  break-before: auto;
+}
+
+h2 {
+  break-after: avoid;
+  color: var(--blue);
+  font-size: 13pt;
+  line-height: 1.3;
+  margin: 17pt 0 7pt;
+}
+
+h3 {
+  break-after: avoid;
+  color: #1f4d78;
+  font-size: 11.2pt;
+  line-height: 1.35;
+  margin: 12pt 0 5pt;
+}
+
+p {
+  margin: 0 0 7pt;
+}
+
+ul,
+ol {
+  margin: 4pt 0 9pt;
+  padding-left: 1.45em;
+}
+
+li {
+  margin: 0 0 3pt;
+}
+
+li::marker {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+blockquote {
+  background: var(--gold-pale);
+  border-left: 3px solid #d9a52a;
+  break-inside: avoid;
+  color: #634f13;
+  margin: 10pt 0;
+  padding: 9pt 11pt;
+}
+
+blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+table {
+  border-collapse: collapse;
+  break-inside: avoid;
+  font-size: 8.7pt;
+  line-height: 1.38;
+  margin: 9pt 0 12pt;
+  table-layout: fixed;
+  width: 100%;
+}
+
+thead {
+  background: var(--blue-pale);
+  color: var(--navy);
+}
+
+th,
+td {
+  border: 1px solid var(--line);
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  padding: 6pt 7pt;
+  text-align: left;
+  vertical-align: top;
+}
+
+/* The five-column capability matrix needs explicit tracks so platform names remain readable. */
+table:has(th:nth-child(5)) th:nth-child(1),
+table:has(th:nth-child(5)) td:nth-child(1) {
+  width: 12%;
+}
+
+table:has(th:nth-child(5)) th:nth-child(2),
+table:has(th:nth-child(5)) td:nth-child(2) {
+  width: 21%;
+}
+
+table:has(th:nth-child(5)) th:nth-child(3),
+table:has(th:nth-child(5)) td:nth-child(3) {
+  width: 22%;
+}
+
+table:has(th:nth-child(5)) th:nth-child(4),
+table:has(th:nth-child(5)) td:nth-child(4) {
+  width: 23%;
+}
+
+table:has(th:nth-child(5)) th:nth-child(5),
+table:has(th:nth-child(5)) td:nth-child(5) {
+  width: 22%;
+}
+
+th {
+  font-weight: 700;
+}
+
+tr:nth-child(even) td {
+  background: #fbfcfd;
+}
+
+a {
+  color: #1f5e9d;
+  text-decoration: underline;
+  text-underline-offset: 1.5px;
+}
+
+code {
+  background: var(--gray-pale);
+  border-radius: 2px;
+  color: #7a1f2b;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.92em;
+  padding: 1px 3px;
+}
+
+pre {
+  background: var(--gray-pale);
+  border: 1px solid var(--line);
+  overflow-x: auto;
+  padding: 10pt;
+}
+
+figure.official-screenshot {
+  background: #fbfcfd;
+  border: 1px solid var(--line);
+  break-inside: avoid;
+  margin: 10pt 0 13pt;
+  padding: 7pt;
+}
+
+figure.official-screenshot img {
+  display: block;
+  height: auto;
+  max-height: 145mm;
+  object-fit: contain;
+  width: 100%;
+}
+
+figure.official-screenshot figcaption {
+  color: var(--muted);
+  font-size: 8.3pt;
+  line-height: 1.44;
+  margin: 6pt 1pt 0;
+}
+
+.flow {
+  align-items: stretch;
+  break-inside: avoid;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5pt;
+  margin: 10pt 0 12pt;
+}
+
+.flow-item {
+  align-items: center;
+  background: var(--blue-pale);
+  border: 1px solid var(--line);
+  color: var(--navy);
+  display: flex;
+  flex: 1 1 110px;
+  font-size: 9pt;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 38pt;
+  padding: 6pt;
+  text-align: center;
+}
+
+.flow-arrow {
+  align-items: center;
+  color: var(--blue);
+  display: flex;
+  font-size: 16pt;
+  font-weight: 700;
+  justify-content: center;
+}
+
+.flow-item.warning {
+  background: var(--gold-pale);
+}
+
+.flow-item.success {
+  background: var(--green-pale);
+}
+
+/* Keep the TikTok eligibility sequence on one unambiguous row in print. */
+.flow-tiktok {
+  flex-wrap: nowrap;
+  gap: 4pt;
+}
+
+.flow-tiktok .flow-item {
+  flex: 1 1 0;
+  font-size: 8.45pt;
+  min-width: 0;
+  padding: 5pt 4pt;
+}
+
+.flow-tiktok .flow-arrow {
+  flex: 0 0 11pt;
+  font-size: 13pt;
+}
+
+.decision-grid {
+  break-inside: avoid;
+  display: grid;
+  gap: 8pt;
+  grid-template-columns: 1fr 1fr;
+  margin: 10pt 0 12pt;
+}
+
+.decision-card {
+  background: var(--blue-pale);
+  border: 1px solid var(--line);
+  padding: 10pt;
+}
+
+.decision-card h4 {
+  color: var(--navy);
+  font-size: 10pt;
+  margin: 0 0 4pt;
+}
+
+.decision-card p {
+  font-size: 9pt;
+  margin: 0;
+}
+
+.decision-card.blocked {
+  background: var(--red-pale);
+}
+
+.decision-card.available {
+  background: var(--green-pale);
+}
+
+.flow-caption {
+  color: var(--muted);
+  font-size: 8.3pt;
+  margin: -5pt 0 10pt;
+}
+
+.final-checklist {
+  break-inside: avoid;
+  column-gap: 13pt;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  row-gap: 6pt;
+  margin: 8pt 0 12pt;
+}
+
+.final-checklist-item {
+  align-items: flex-start;
+  break-inside: avoid;
+  display: flex;
+  font-size: 8.55pt;
+  line-height: 1.38;
+  min-width: 0;
+}
+
+.final-checklist-item p {
+  margin: 0;
+}
+
+.check-box {
+  border: 1px solid #64748b;
+  border-radius: 2px;
+  flex: 0 0 10pt;
+  height: 10pt;
+  margin: 1.5pt 6pt 0 0;
+}
+
+/* Keep the handoff rules with the final checklist without reducing their meaning. */
+h3#统一交付方式与截图规则 {
+  font-size: 10.6pt;
+  margin: 11pt 0 3pt;
+}
+
+h3#统一交付方式与截图规则 + ol {
+  font-size: 8.55pt;
+  line-height: 1.34;
+  margin: 2pt 0 5pt;
+  padding-left: 1.3em;
+}
+
+h3#统一交付方式与截图规则 + ol li {
+  margin-bottom: 1.5pt;
+}
+
+@media print {
+  a {
+    color: #1f5e9d;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr,
+  td,
+  th {
+    break-inside: avoid;
+  }
+}
