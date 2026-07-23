@@ -197,18 +197,7 @@ export class PayloadConversationRepository implements ConversationRepository {
     conversationID: number,
     session: ChatSession,
   ): Promise<void> {
-    const commandDoc = await this.payload.findByID({
-      collection: 'conversation-commands',
-      id: claim.id,
-      overrideAccess: true,
-      req,
-    })
-    if (!commandDoc || commandDoc.ownerToken !== claim.token || commandDoc.status !== 'processing') {
-      throw new ChatServiceError('conflict', 'Conversation command lease was reclaimed', {
-        retryable: true,
-      })
-    }
-    await this.payload.update({
+    const completed = await this.payload.update({
       collection: 'conversation-commands',
       context: { skipAudit: true },
       data: {
@@ -218,10 +207,21 @@ export class PayloadConversationRepository implements ConversationRepository {
         result: { sessionId: session.id },
         status: 'completed',
       },
-      id: claim.id,
       overrideAccess: true,
       req,
+      where: {
+        and: [
+          { id: { equals: claim.id } },
+          { ownerToken: { equals: claim.token } },
+          { status: { equals: 'processing' } },
+        ],
+      },
     })
+    if (completed.docs.length !== 1) {
+      throw new ChatServiceError('conflict', 'Conversation command lease was reclaimed', {
+        retryable: true,
+      })
+    }
   }
 
   private async requireAiChatLeadSource(req: PayloadRequest): Promise<LeadSource> {
@@ -415,9 +415,8 @@ export class PayloadConversationRepository implements ConversationRepository {
             throw new ChatServiceError('internal_error', 'Conversation command result is invalid')
           }
 
-          const now = this.clock().getTime()
-          const leaseExpiresAtTime = command.leaseExpiresAt ? new Date(command.leaseExpiresAt).getTime() : 0
-          const leaseExpired = !command.leaseExpiresAt || Number.isNaN(leaseExpiresAtTime) || leaseExpiresAtTime <= now
+          const now = this.clock().toISOString()
+          const leaseExpired = !command.leaseExpiresAt || command.leaseExpiresAt <= now
           if (command.status === 'processing' && !leaseExpired) {
             return { state: 'processing' as const }
           }

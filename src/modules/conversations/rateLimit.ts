@@ -5,22 +5,22 @@ import { createFixedWindowRateLimiter, type RateLimiter } from '@/lib/security/r
 import { ChatServiceError } from './contracts'
 
 export const chatSessionStartRateLimiter = createFixedWindowRateLimiter({
-  limit: process.env.NODE_ENV === 'development' ? 200 : 10,
+  limit: 10,
   windowMs: 10 * 60 * 1_000,
 })
 
 export const chatVisitorMessageRateLimiter = createFixedWindowRateLimiter({
-  limit: process.env.NODE_ENV === 'development' ? 500 : 30,
+  limit: 30,
   windowMs: 60 * 1_000,
 })
 
 export const chatVisitorHandoffRateLimiter = createFixedWindowRateLimiter({
-  limit: process.env.NODE_ENV === 'development' ? 100 : 6,
+  limit: 6,
   windowMs: 60 * 1_000,
 })
 
 export const chatOperatorCommandRateLimiter = createFixedWindowRateLimiter({
-  limit: process.env.NODE_ENV === 'development' ? 500 : 60,
+  limit: 60,
   windowMs: 60 * 1_000,
 })
 
