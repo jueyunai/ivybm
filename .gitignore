@@ -50,11 +50,16 @@ playwright-report/
 test-results/
 blob-report/
 playwright/.cache/
+# 本地视觉回归截图与生成输出
+output/
 *.tmp
 *.log
 
 # Payload local media
 media/
+
+# 文档本地素材（截图、草稿图等，生成物通过 deliverables/ 发布）
+docs/operations/assets/
 
 # 客户商务与原始材料不进入源码仓库
 private/
