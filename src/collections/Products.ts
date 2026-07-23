@@ -64,8 +64,13 @@ export const Products: CollectionConfig = {
     {
       name: 'gallery',
       type: 'upload',
+      admin: {
+        description:
+          'Optional product detail images. The cover image is shown first; add up to 12 additional views in display order.',
+      },
       filterOptions: imageMediaFilter,
       hasMany: true,
+      maxRows: 12,
       relationTo: 'media',
     },
     {

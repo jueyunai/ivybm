@@ -471,6 +471,9 @@ export interface Product {
   } | null;
   category: number | ProductCategory;
   coverImage: number | Media;
+  /**
+   * Optional product detail images. The cover image is shown first; add up to 12 additional views in display order.
+   */
   gallery?: (number | Media)[] | null;
   specifications?:
     | {

@@ -549,6 +549,114 @@ html[dir="rtl"] .spec-table td {
   object-fit: cover;
 }
 
+.product-gallery {
+  min-width: 0;
+  outline: none;
+}
+
+.product-gallery:focus-visible {
+  border-radius: 10px;
+  box-shadow: 0 0 0 3px rgba(54, 139, 220, 0.35);
+}
+
+.product-gallery-stage {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f4f6f8;
+}
+
+.product-gallery-main-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.product-gallery-control {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 50%;
+  background: rgba(31, 35, 39, 0.82);
+  color: #fff;
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.product-gallery-control:hover,
+.product-gallery-control:focus-visible {
+  background: var(--blue-dark);
+  outline: none;
+  transform: translateY(-50%) scale(1.04);
+}
+
+.product-gallery-previous {
+  left: 16px;
+}
+
+.product-gallery-next {
+  right: 16px;
+}
+
+.product-gallery-position {
+  margin: 10px 0 8px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.product-gallery-thumbnails {
+  display: grid;
+  grid-auto-columns: 88px;
+  grid-auto-flow: column;
+  overflow-x: auto;
+  padding: 3px 3px 8px;
+  gap: 10px;
+  scrollbar-width: thin;
+}
+
+.product-gallery-thumbnail {
+  overflow: hidden;
+  width: 88px;
+  height: 66px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 7px;
+  background: #f4f6f8;
+  cursor: pointer;
+}
+
+.product-gallery-thumbnail[aria-pressed='true'] {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(54, 139, 220, 0.2);
+}
+
+.product-gallery-thumbnail:focus-visible {
+  border-color: var(--blue-dark);
+  outline: none;
+}
+
+.product-gallery-thumbnail-visual,
+.product-gallery-thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.product-gallery-thumbnail img {
+  object-fit: cover;
+}
+
 .rich-text {
   color: #46515c;
   line-height: 1.8;
