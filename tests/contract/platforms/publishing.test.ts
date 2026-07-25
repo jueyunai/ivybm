@@ -1,98 +1,47 @@
 import { describe, expect, it } from 'vitest'
 
+import { createFakePlatformPublishingPort } from '../../../src/modules/platforms/fakePublishingPort'
 import { createLinkedInAssistedExport } from '../../../src/modules/platforms/linkedin/export'
 import type { PlatformPublishingPort } from '../../../src/modules/platforms/ports'
-import type {
-  PlatformCapability,
-  PlatformPublishAcceptance,
-  PlatformPublishErrorCode,
-  PlatformPublishRequest,
-  PublishingPlatform,
-} from '../../../src/modules/platforms/types'
+import type { PlatformPublishErrorCode } from '../../../src/modules/platforms/types'
 
 describe('phase-one publishing contract', () => {
   it('freezes conditional capability and mock publication correlation semantics', async () => {
-    const capabilities: Record<PublishingPlatform, PlatformCapability> = {
-      facebook: {
+    const port = createFakePlatformPublishingPort()
+
+    await expect(
+      Promise.all(
+        (['facebook', 'instagram', 'linkedin'] as const).map((platform) =>
+          port.getCapability(platform),
+        ),
+      ),
+    ).resolves.toEqual([
+      {
         availability: 'conditional',
         modes: ['automatic'],
         platform: 'facebook',
         reason: 'Meta Content Publishing permission requires controlled verification',
       },
-      instagram: {
+      {
         availability: 'conditional',
         modes: ['automatic'],
         platform: 'instagram',
         reason: 'Instagram business account and publishing permission require verification',
       },
-      linkedin: {
+      {
         availability: 'conditional',
         modes: ['assisted'],
         platform: 'linkedin',
         reason: 'Automatic publishing remains blocked until API permission is verified',
       },
-    }
-    type AcceptedPublication = Extract<PlatformPublishAcceptance, { status: 'accepted' }>
-    const acceptedByCommand = new Map<
-      string,
-      { acceptance: AcceptedPublication; requestFingerprint: string }
-    >()
-    const commandKey = (request: PlatformPublishRequest): string =>
-      `${request.platform}:${request.idempotencyKey}`
-    const requestFingerprint = (request: PlatformPublishRequest): string =>
-      JSON.stringify({
-        assets: request.assets,
-        scheduledFor: request.scheduledFor ?? null,
-        text: request.text,
-      })
-    const port: PlatformPublishingPort = {
-      getCapability: async (platform) => capabilities[platform],
-      getStatus: async ({ externalPublicationId, platform }) => ({
-        externalPublicationId,
-        platform,
-        status: 'published',
-      }),
-      publish: async (request) => {
-        const key = commandKey(request)
-        const fingerprint = requestFingerprint(request)
-        const known = acceptedByCommand.get(key)
-        if (known) {
-          if (known.requestFingerprint !== fingerprint) {
-            return {
-              errorCode: 'invalid_request',
-              idempotencyKey: request.idempotencyKey,
-              platform: request.platform,
-              retryable: false,
-              status: 'blocked',
-            }
-          }
-          return known.acceptance
-        }
-
-        const acceptance: AcceptedPublication = {
-          externalPublicationId: `mock:${request.platform}:${request.idempotencyKey}`,
-          idempotencyKey: request.idempotencyKey,
-          platform: request.platform,
-          status: 'accepted',
-        }
-        acceptedByCommand.set(key, { acceptance, requestFingerprint: fingerprint })
-        return acceptance
-      },
-    }
-
-    await expect(
-      Promise.all(
-        Object.keys(capabilities).map((key) => port.getCapability(key as PublishingPlatform)),
-      ),
-    ).resolves.toEqual([capabilities.facebook, capabilities.instagram, capabilities.linkedin])
+    ])
     const request = {
       assets: [],
       idempotencyKey: 'fixture-publish-1',
       platform: 'facebook' as const,
       text: 'Fixture post',
     }
-    const accepted = await port.publish(request)
-    const duplicate = await port.publish(request)
+    const [accepted, duplicate] = await Promise.all([port.publish(request), port.publish(request)])
 
     expect(accepted).toEqual({
       externalPublicationId: 'mock:facebook:fixture-publish-1',
@@ -135,10 +84,10 @@ describe('phase-one publishing contract', () => {
         externalPublicationId: accepted.externalPublicationId,
         platform: accepted.platform,
       }),
-    ).resolves.toMatchObject({
+    ).resolves.toEqual({
       externalPublicationId: 'mock:facebook:fixture-publish-1',
       platform: 'facebook',
-      status: 'published',
+      status: 'pending',
     })
   })
 
