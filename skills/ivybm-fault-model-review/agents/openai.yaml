@@ -1,0 +1,4 @@
+interface:
+  display_name: "IVYBM 故障模型审查"
+  short_description: "审查 IVYBM 异步任务、向量身份、迁移与发布故障路径"
+  default_prompt: "Use $ivybm-fault-model-review to audit this IVYBM PR before approval."

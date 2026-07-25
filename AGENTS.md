@@ -37,6 +37,10 @@ bash scripts/install-git-hooks.sh
 - production 发布仍由 jueyunai 审批，一期上线验收必须由两人共同确认。
 - `main` 上的紧急修复只能在用户明确授权后使用 `IVYBM_ALLOW_MAIN_PUSH=1` 绕过本地 hook；完成后必须补建 PR 或事故记录。
 
+## 高风险 PR 审查
+
+- 审查涉及异步 Jobs / worker、AI Gateway / RAG 向量检索、Payload Collection、PostgreSQL migration、Docker Compose 或 production 发布步骤的 PR 前，必须阅读并遵守 [`skills/ivybm-fault-model-review/SKILL.md`](skills/ivybm-fault-model-review/SKILL.md)。不得只以 CI 通过或 happy-path 测试作为可合并结论。
+
 ## 分工与依赖
 
 - jueyunai：Task 1-7、10-12、14-15；官网/CMS、SEO、飞书、内容工作台、部署收尾。Task 9 由 jueyunai 负责官网 ChatWidget 前端；Task 12 由 jueyunai 负责内容工作台前端、内容生成/审核工作流，以及 `PublishJobs` / `PublishLogs` 共享结构和发布任务创建。
