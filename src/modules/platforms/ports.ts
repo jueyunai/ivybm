@@ -3,6 +3,8 @@ import type {
   NormalizedMessageStatus,
   NormalizedPlatformEvent,
   PlatformCapability,
+  PlatformConversationOutboundRequest,
+  PlatformConversationOutboundResult,
   PlatformFamily,
   PlatformPublicationStatus,
   PlatformPublishAcceptance,
@@ -68,4 +70,14 @@ export interface PlatformPublishingPort {
     platform: PublishingPlatform
   }): Promise<PlatformPublicationStatus>
   publish(request: PlatformPublishRequest): Promise<PlatformPublishAcceptance>
+}
+
+export interface PlatformConversationOutboundPort {
+  /**
+   * Deliver one automatic conversation reply. `deliveryKey`, scoped by
+   * platform and account, is the idempotency anchor. A real adapter must make
+   * that deduplication atomic across I/O and map it to a provider idempotency
+   * mechanism where available; this port never reports provider delivery.
+   */
+  send(request: PlatformConversationOutboundRequest): Promise<PlatformConversationOutboundResult>
 }

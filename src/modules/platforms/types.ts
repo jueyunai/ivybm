@@ -1,6 +1,14 @@
+import type { HandoffStatus } from '../conversations/contracts'
+
 export type PlatformFamily = 'linkedin' | 'meta' | 'tiktok'
 
 export type MessagingPlatform = 'facebook-messenger' | 'instagram' | 'tiktok'
+
+export const MESSAGING_PLATFORMS: readonly MessagingPlatform[] = [
+  'facebook-messenger',
+  'instagram',
+  'tiktok',
+]
 
 export type PublishingPlatform = 'facebook' | 'instagram' | 'linkedin'
 
@@ -127,6 +135,78 @@ export type AssistedPublicationExport = {
   mode: 'assisted'
   platform: 'linkedin'
 }
+
+/**
+ * Stable, credential-free error taxonomy for phase-one automatic conversation
+ * replies. `handoff_required` and `message_window_closed` are conversation
+ * specific; the rest mirror the publishing taxonomy so operators learn one set.
+ */
+export const PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES = [
+  'account_not_connected',
+  'authorization_required',
+  'handoff_required',
+  'invalid_request',
+  'message_window_closed',
+  'permission_required',
+  'platform_blocked',
+  'provider_unavailable',
+  'rate_limited',
+  'unknown',
+] as const
+
+export type PlatformConversationOutboundErrorCode =
+  (typeof PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES)[number]
+
+/**
+ * Server-only, credential-free command to deliver one automatic conversation
+ * reply. The deliveryKey is the idempotency anchor scoped by platform and
+ * account; the adapter never sees tokens or conversation internals.
+ */
+export type PlatformConversationOutboundRequest = {
+  accountExternalId: string
+  deliveryKey: string
+  externalThreadId: string
+  /**
+   * Authoritative snapshot freshly loaded by ConversationService immediately
+   * before this send. A worker must not reuse the status captured at enqueue.
+   */
+  handoffStatus: HandoffStatus
+  platform: MessagingPlatform
+  recipientExternalId: string
+  text: string
+}
+
+type PlatformConversationOutboundResultBase = {
+  deliveryKey: string
+  platform: MessagingPlatform
+}
+
+/**
+ * Acceptance-only outcome: a reply is accepted (or a known duplicate) or it is
+ * blocked with a machine-readable reason. There is deliberately no `sent` or
+ * `delivered` state; a future reviewed provider-status callback must record
+ * verified delivery separately.
+ */
+type PlatformConversationOutboundBlockedResult = PlatformConversationOutboundResultBase & {
+  errorCode: PlatformConversationOutboundErrorCode
+  status: 'blocked'
+} & (
+    | { retryAfterSeconds?: never; retryable: false }
+    | { retryAfterSeconds?: number; retryable: true }
+  )
+
+export type PlatformConversationOutboundResult =
+  | (PlatformConversationOutboundResultBase & {
+      status: 'accepted' | 'duplicate'
+    })
+  | PlatformConversationOutboundBlockedResult
+
+/**
+ * Automatic platform replies are only allowed while the authoritative
+ * conversation state machine keeps the AI in charge.
+ */
+export const isAutomaticPlatformConversationReplyAllowed = (status: HandoffStatus): boolean =>
+  status === 'ai_active'
 
 export const MAX_PLATFORM_EVENT_IDEMPOTENCY_KEY_LENGTH = 200
 

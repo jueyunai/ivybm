@@ -1,0 +1,250 @@
+import { describe, expect, it, vi } from 'vitest'
+
+import { createFakePlatformConversationOutboundPort } from '../../../src/modules/platforms/fakeConversationOutboundPort'
+import {
+  isAutomaticPlatformConversationReplyAllowed,
+  type PlatformConversationOutboundRequest,
+} from '../../../src/modules/platforms/types'
+
+const request = (
+  overrides: Partial<PlatformConversationOutboundRequest> = {},
+): PlatformConversationOutboundRequest => ({
+  accountExternalId: 'PAGE_FIXTURE_1',
+  deliveryKey: 'conversation-42:reply-7',
+  externalThreadId: 'PAGE_FIXTURE_1:SENDER_FIXTURE_1',
+  handoffStatus: 'ai_active',
+  platform: 'facebook-messenger',
+  recipientExternalId: 'SENDER_FIXTURE_1',
+  text: 'Thank you. Which finish and approximate quantity do you need?',
+  ...overrides,
+})
+
+describe('fake platform conversation outbound port', () => {
+  it('accepts an AI-active request without network I/O and returns a duplicate for the same delivery key', async () => {
+    const port = createFakePlatformConversationOutboundPort()
+    const fetchSpy = vi.fn(async () => {
+      throw new Error('network access is forbidden in the fake')
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    try {
+      const [first, duplicate] = await Promise.all([port.send(request()), port.send(request())])
+
+      expect(first).toEqual({
+        deliveryKey: 'conversation-42:reply-7',
+        platform: 'facebook-messenger',
+        status: 'accepted',
+      })
+      expect(duplicate).toEqual({
+        deliveryKey: 'conversation-42:reply-7',
+        platform: 'facebook-messenger',
+        status: 'duplicate',
+      })
+      expect(fetchSpy).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('rejects a conflicting payload for a previously accepted delivery key', async () => {
+    const port = createFakePlatformConversationOutboundPort()
+    await port.send(request())
+
+    await expect(
+      port.send(request({ text: 'Changed reply must not be sent twice.' })),
+    ).resolves.toEqual({
+      deliveryKey: 'conversation-42:reply-7',
+      errorCode: 'invalid_request',
+      platform: 'facebook-messenger',
+      retryable: false,
+      status: 'blocked',
+    })
+  })
+
+  it('copies accepted input and returned inspection snapshots', async () => {
+    const port = createFakePlatformConversationOutboundPort()
+    const input = request({ deliveryKey: 'clone-safety-1' })
+    await port.send(input)
+    input.text = 'Caller mutation must not alter the fake state.'
+
+    const stored = port.getAcceptedRequest({
+      accountExternalId: input.accountExternalId,
+      deliveryKey: input.deliveryKey,
+      platform: input.platform,
+    })
+    expect(stored?.text).toBe('Thank you. Which finish and approximate quantity do you need?')
+    if (stored) stored.text = 'Returned mutation must not alter the fake state either.'
+
+    expect(
+      port.getAcceptedRequest({
+        accountExternalId: input.accountExternalId,
+        deliveryKey: input.deliveryKey,
+        platform: input.platform,
+      })?.text,
+    ).toBe('Thank you. Which finish and approximate quantity do you need?')
+  })
+
+  it('suppresses automatic delivery outside ai_active without consuming a queued provider failure', async () => {
+    const port = createFakePlatformConversationOutboundPort()
+    port.failNextSend({
+      errorCode: 'provider_unavailable',
+      platform: 'facebook-messenger',
+      retryable: true,
+    })
+
+    await expect(port.send(request({ handoffStatus: 'human_active' }))).resolves.toEqual({
+      deliveryKey: 'conversation-42:reply-7',
+      errorCode: 'handoff_required',
+      platform: 'facebook-messenger',
+      retryable: false,
+      status: 'blocked',
+    })
+    await expect(port.send(request({ deliveryKey: 'provider-failure-1' }))).resolves.toEqual({
+      deliveryKey: 'provider-failure-1',
+      errorCode: 'provider_unavailable',
+      platform: 'facebook-messenger',
+      retryable: true,
+      status: 'blocked',
+    })
+  })
+
+  it('fails closed for an invalid handoff snapshot or oversized text before consuming a queued failure', async () => {
+    const port = createFakePlatformConversationOutboundPort()
+    port.failNextSend({
+      errorCode: 'provider_unavailable',
+      platform: 'facebook-messenger',
+      retryable: true,
+    })
+
+    await expect(port.send(request({ handoffStatus: 'invented-state' as never }))).resolves.toEqual(
+      {
+        deliveryKey: 'conversation-42:reply-7',
+        errorCode: 'invalid_request',
+        platform: 'facebook-messenger',
+        retryable: false,
+        status: 'blocked',
+      },
+    )
+    await expect(
+      port.send(request({ deliveryKey: 'oversized-text-1', text: 'x'.repeat(5_001) })),
+    ).resolves.toEqual({
+      deliveryKey: 'oversized-text-1',
+      errorCode: 'invalid_request',
+      platform: 'facebook-messenger',
+      retryable: false,
+      status: 'blocked',
+    })
+    await expect(port.send(request({ deliveryKey: 'queued-failure-survives-1' }))).resolves.toEqual(
+      {
+        deliveryKey: 'queued-failure-survives-1',
+        errorCode: 'provider_unavailable',
+        platform: 'facebook-messenger',
+        retryable: true,
+        status: 'blocked',
+      },
+    )
+  })
+
+  it('models retryable rate limiting, preserves platform isolation, and validates state eligibility', async () => {
+    const port = createFakePlatformConversationOutboundPort()
+    port.failNextSend({
+      errorCode: 'rate_limited',
+      platform: 'instagram',
+      retryAfterSeconds: 45,
+      retryable: true,
+    })
+
+    await expect(port.send(request({ platform: 'instagram' }))).resolves.toEqual({
+      deliveryKey: 'conversation-42:reply-7',
+      errorCode: 'rate_limited',
+      platform: 'instagram',
+      retryAfterSeconds: 45,
+      retryable: true,
+      status: 'blocked',
+    })
+    await expect(port.send(request({ deliveryKey: 'facebook-isolated-1' }))).resolves.toMatchObject(
+      {
+        platform: 'facebook-messenger',
+        status: 'accepted',
+      },
+    )
+
+    expect(isAutomaticPlatformConversationReplyAllowed('ai_active')).toBe(true)
+    expect(isAutomaticPlatformConversationReplyAllowed('handoff_requested')).toBe(false)
+    expect(isAutomaticPlatformConversationReplyAllowed('human_active')).toBe(false)
+    expect(isAutomaticPlatformConversationReplyAllowed('resolved')).toBe(false)
+  })
+
+  it('fails closed for malformed runtime input and unsupported messaging platforms', async () => {
+    const port = createFakePlatformConversationOutboundPort()
+
+    await expect(port.send(request({ platform: 'linkedin' as never }))).rejects.toThrow(
+      'Fake messaging platform is unsupported',
+    )
+    await expect(port.send(request({ deliveryKey: '   ' }))).resolves.toMatchObject({
+      errorCode: 'invalid_request',
+      retryable: false,
+      status: 'blocked',
+    })
+    await expect(port.send(null as never)).rejects.toThrow(
+      'Fake conversation outbound request must be an object',
+    )
+    expect(() =>
+      port.failNextSend({
+        errorCode: 'provider_unavailable',
+        platform: 'linkedin' as never,
+        retryable: true,
+      }),
+    ).toThrow('Fake messaging platform is unsupported')
+  })
+
+  it('rejects malformed fake failure controls before they can affect a later send', async () => {
+    const port = createFakePlatformConversationOutboundPort()
+
+    expect(() => port.failNextSend(null as never)).toThrow(
+      'Fake conversation outbound failure must be an object',
+    )
+    expect(() =>
+      port.failNextSend({
+        errorCode: 'invented_error' as never,
+        platform: 'facebook-messenger',
+        retryable: true,
+      }),
+    ).toThrow('Fake conversation outbound error code is unsupported')
+    expect(() =>
+      port.failNextSend({
+        errorCode: 'rate_limited',
+        platform: 'facebook-messenger',
+        retryAfterSeconds: 0.5,
+        retryable: true,
+      }),
+    ).toThrow('Fake conversation outbound failure retryAfterSeconds must be a positive integer')
+    expect(() =>
+      port.failNextSend({
+        errorCode: 'permission_required',
+        platform: 'facebook-messenger',
+        retryAfterSeconds: 30,
+        retryable: false,
+      }),
+    ).toThrow('Fake conversation outbound failure retryAfterSeconds requires a retryable failure')
+
+    port.failNextSend({
+      errorCode: 'permission_required',
+      platform: 'facebook-messenger',
+      retryable: false,
+    })
+    await expect(port.send(request({ deliveryKey: 'terminal-failure-1' }))).resolves.toEqual({
+      deliveryKey: 'terminal-failure-1',
+      errorCode: 'permission_required',
+      platform: 'facebook-messenger',
+      retryable: false,
+      status: 'blocked',
+    })
+
+    await expect(
+      port.send(request({ deliveryKey: 'unpoisoned-after-invalid-failure-1' })),
+    ).resolves.toMatchObject({
+      status: 'accepted',
+    })
+  })
+})
