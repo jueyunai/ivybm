@@ -1,4 +1,10 @@
-import { ValidationError, type CollectionBeforeChangeHook, type CollectionConfig } from 'payload'
+import { sql, type PostgresAdapter } from '@payloadcms/db-postgres'
+import {
+  ValidationError,
+  type CollectionBeforeChangeHook,
+  type CollectionBeforeOperationHook,
+  type CollectionConfig,
+} from 'payload'
 
 import { accessFor, admins } from '../access/roles'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
@@ -41,6 +47,46 @@ const validationError = (
     errors: [{ message, path }],
     req,
   })
+
+const transactionDB = async (req: Parameters<CollectionBeforeChangeHook>[0]['req']) => {
+  const transactionID = await req.transactionID
+  const adapter = req.payload.db as unknown as PostgresAdapter
+  const database = transactionID ? adapter.sessions[transactionID]?.db : undefined
+  if (!database) {
+    throw validationError(
+      req,
+      'Platform account updates require an active database transaction',
+      'id',
+    )
+  }
+  return database
+}
+
+// Payload starts the update transaction before running beforeOperation, while
+// originalDoc is read afterwards. The lock must therefore live here rather than
+// in beforeChange: a beforeChange lock would serialize the write but still merge
+// an originalDoc that was read before a concurrent credential update committed.
+const lockPlatformAccountBeforeUpdate: CollectionBeforeOperationHook = async ({
+  args,
+  operation,
+  req,
+}) => {
+  if (operation !== 'update') return args
+
+  const id = 'id' in args ? args.id : undefined
+  if (id === undefined || id === null) {
+    throw validationError(
+      req,
+      'Platform accounts do not support bulk updates because credentials require row serialization',
+      'id',
+    )
+  }
+
+  await (await transactionDB(req)).execute(sql`
+    SELECT "id" FROM "platform_accounts" WHERE "id" = ${id} FOR UPDATE
+  `)
+  return args
+}
 
 const retainOrReplaceCredential = ({
   clear,
@@ -201,6 +247,7 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
 }
 
 export const PlatformAccounts: CollectionConfig = {
+  disableBulkEdit: true,
   slug: 'platform-accounts',
   access: {
     admin: admins,
@@ -349,5 +396,6 @@ export const PlatformAccounts: CollectionConfig = {
     afterChange: [writeAuditLogAfterChange],
     afterDelete: [writeAuditLogAfterDelete],
     beforeChange: [normalizeAccountBeforeChange],
+    beforeOperation: [lockPlatformAccountBeforeUpdate],
   },
 }

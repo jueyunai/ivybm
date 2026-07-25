@@ -7,6 +7,10 @@ import { NextRequest } from 'next/server'
 import { POST as graphQLPost } from '@/app/(payload)/api/graphql/route'
 import { GET as restGet } from '@/app/(payload)/api/[...slug]/route'
 import { GET as platformReadinessGet } from '@/app/api/platforms/readiness/route'
+import {
+  decryptPlatformCredential,
+  readPlatformCredentialEncryptionKey,
+} from '@/modules/platforms/credentials'
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
 
@@ -58,6 +62,18 @@ const accountData = ({
   notes: null,
   platformFamily: 'meta' as const,
 })
+
+const storedAccessToken = async (accountID: number | string): Promise<string | null> => {
+  const stored = await payload.findByID({
+    collection: 'platform-accounts',
+    id: accountID,
+    overrideAccess: true,
+  })
+  const ciphertext = stored.authorization?.accessToken
+  return typeof ciphertext === 'string'
+    ? decryptPlatformCredential(ciphertext, readPlatformCredentialEncryptionKey())
+    : null
+}
 
 describe.sequential('platform accounts', () => {
   beforeAll(async () => {
@@ -590,5 +606,180 @@ describe.sequential('platform accounts', () => {
       overrideAccess: false,
       user: admin,
     })).rejects.toBeDefined()
+  })
+
+  it('serializes credential, revocation, and identity updates with concurrent metadata writes', async () => {
+    const suffix = randomUUID()
+    const attempts = 12
+
+    const replacement = await payload.create({
+      collection: 'platform-accounts',
+      data: accountData({
+        accountKind: 'facebook-page',
+        accessToken: `initial-replacement-token-${suffix}`,
+        externalAccountId: `replacement-page-${suffix}`,
+        name: `Replacement race ${suffix}`,
+        state: 'connected',
+      }),
+      overrideAccess: false,
+      user: admin,
+    })
+    createdAccountIDs.push(replacement.id)
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const replacementToken = `replacement-token-${attempt}-${suffix}`
+      await Promise.all([
+        payload.update({
+          collection: 'platform-accounts',
+          data: { authorization: { accessToken: replacementToken } },
+          id: replacement.id,
+          overrideAccess: false,
+          user: admin,
+        }),
+        payload.update({
+          collection: 'platform-accounts',
+          data: { notes: `metadata-replacement-${attempt}` },
+          id: replacement.id,
+          overrideAccess: false,
+          user: admin,
+        }),
+      ])
+      await expect(storedAccessToken(replacement.id)).resolves.toBe(replacementToken)
+    }
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const revocation = await payload.create({
+        collection: 'platform-accounts',
+        data: accountData({
+          accountKind: 'facebook-page',
+          accessToken: `initial-revocation-token-${attempt}-${suffix}`,
+          externalAccountId: `revocation-page-${attempt}-${suffix}`,
+          name: `Revocation race ${attempt} ${suffix}`,
+          state: 'connected',
+        }),
+        overrideAccess: false,
+        user: admin,
+      })
+      createdAccountIDs.push(revocation.id)
+
+      await Promise.all([
+        payload.update({
+          collection: 'platform-accounts',
+          data: {
+            authorization: {
+              clearAccessToken: true,
+              clearRefreshToken: true,
+              state: 'disabled',
+            },
+          },
+          id: revocation.id,
+          overrideAccess: false,
+          user: admin,
+        }),
+        payload.update({
+          collection: 'platform-accounts',
+          data: { notes: `metadata-revocation-${attempt}` },
+          id: revocation.id,
+          overrideAccess: false,
+          user: admin,
+        }),
+      ])
+
+      await expect(payload.findByID({
+        collection: 'platform-accounts',
+        id: revocation.id,
+        overrideAccess: true,
+      })).resolves.toMatchObject({
+        authorization: {
+          accessToken: null,
+          accessTokenConfigured: false,
+          refreshToken: null,
+          refreshTokenConfigured: false,
+          state: 'disabled',
+        },
+      })
+    }
+
+    const identity = await payload.create({
+      collection: 'platform-accounts',
+      data: accountData({
+        accountKind: 'linkedin-member',
+        accessToken: `initial-identity-token-${suffix}`,
+        externalAccountId: `identity-member-${suffix}`,
+        name: `Identity race ${suffix}`,
+        state: 'pending',
+      }),
+      overrideAccess: false,
+      user: admin,
+    })
+    createdAccountIDs.push(identity.id)
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const externalAccountId = `identity-replacement-${attempt}-${suffix}`
+      const replacementToken = `identity-replacement-token-${attempt}-${suffix}`
+      await Promise.all([
+        payload.update({
+          collection: 'platform-accounts',
+          data: {
+            authorization: { accessToken: replacementToken },
+            externalAccountId,
+          },
+          id: identity.id,
+          overrideAccess: false,
+          user: admin,
+        }),
+        payload.update({
+          collection: 'platform-accounts',
+          data: { notes: `metadata-identity-${attempt}` },
+          id: identity.id,
+          overrideAccess: false,
+          user: admin,
+        }),
+      ])
+
+      await expect(payload.findByID({
+        collection: 'platform-accounts',
+        id: identity.id,
+        overrideAccess: true,
+      })).resolves.toMatchObject({
+        connectionKey: `linkedin-member:${externalAccountId}`,
+        externalAccountId,
+      })
+      await expect(storedAccessToken(identity.id)).resolves.toBe(replacementToken)
+    }
+  })
+
+  it('rejects update paths that would bypass platform account row serialization', async () => {
+    const suffix = randomUUID()
+    const account = await payload.create({
+      collection: 'platform-accounts',
+      data: accountData({
+        accountKind: 'facebook-page',
+        accessToken: `serialization-token-${suffix}`,
+        externalAccountId: `serialization-page-${suffix}`,
+        name: `Serialization guard ${suffix}`,
+        state: 'connected',
+      }),
+      overrideAccess: false,
+      user: admin,
+    })
+    createdAccountIDs.push(account.id)
+
+    await expect(payload.update({
+      collection: 'platform-accounts',
+      data: { notes: 'A bulk write must not bypass the account lock.' },
+      overrideAccess: true,
+      where: { id: { equals: account.id } },
+    })).rejects.toBeDefined()
+
+    await expect(payload.update({
+      collection: 'platform-accounts',
+      data: { notes: 'A transactionless write must fail closed.' },
+      disableTransaction: true,
+      id: account.id,
+      overrideAccess: true,
+    })).rejects.toBeDefined()
+
+    await expect(storedAccessToken(account.id)).resolves.toBe(`serialization-token-${suffix}`)
   })
 })
