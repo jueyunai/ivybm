@@ -83,6 +83,7 @@ export type PlatformCapability = {
 
 export type PlatformPublishRequest = {
   assets: PublicationAsset[]
+  /** Stable caller command key. Idempotency is scoped to one target platform. */
   idempotencyKey: string
   platform: PublishingPlatform
   scheduledFor?: string
@@ -91,6 +92,12 @@ export type PlatformPublishRequest = {
 
 export type PlatformPublishAcceptance =
   | {
+      /**
+       * Stable adapter-issued correlation handle (normally a provider publication
+       * or asynchronous job ID) that can be passed back to `getStatus`. This is
+       * never a Task 12 persistence primary key.
+       */
+      externalPublicationId: string
       idempotencyKey: string
       platform: PublishingPlatform
       status: 'accepted'
@@ -104,7 +111,8 @@ export type PlatformPublishAcceptance =
     }
 
 type PlatformPublicationStatusBase = {
-  externalPublicationId?: string
+  /** The same adapter-issued handle supplied to `getStatus`. */
+  externalPublicationId: string
   platform: PublishingPlatform
 }
 

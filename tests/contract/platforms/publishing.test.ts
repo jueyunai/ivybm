@@ -4,12 +4,14 @@ import { createLinkedInAssistedExport } from '../../../src/modules/platforms/lin
 import type { PlatformPublishingPort } from '../../../src/modules/platforms/ports'
 import type {
   PlatformCapability,
+  PlatformPublishAcceptance,
   PlatformPublishErrorCode,
+  PlatformPublishRequest,
   PublishingPlatform,
 } from '../../../src/modules/platforms/types'
 
 describe('phase-one publishing contract', () => {
-  it('represents Facebook, Instagram, and LinkedIn capability without claiming availability', async () => {
+  it('freezes conditional capability and mock publication correlation semantics', async () => {
     const capabilities: Record<PublishingPlatform, PlatformCapability> = {
       facebook: {
         availability: 'conditional',
@@ -30,6 +32,19 @@ describe('phase-one publishing contract', () => {
         reason: 'Automatic publishing remains blocked until API permission is verified',
       },
     }
+    type AcceptedPublication = Extract<PlatformPublishAcceptance, { status: 'accepted' }>
+    const acceptedByCommand = new Map<
+      string,
+      { acceptance: AcceptedPublication; requestFingerprint: string }
+    >()
+    const commandKey = (request: PlatformPublishRequest): string =>
+      `${request.platform}:${request.idempotencyKey}`
+    const requestFingerprint = (request: PlatformPublishRequest): string =>
+      JSON.stringify({
+        assets: request.assets,
+        scheduledFor: request.scheduledFor ?? null,
+        text: request.text,
+      })
     const port: PlatformPublishingPort = {
       getCapability: async (platform) => capabilities[platform],
       getStatus: async ({ externalPublicationId, platform }) => ({
@@ -37,11 +52,32 @@ describe('phase-one publishing contract', () => {
         platform,
         status: 'published',
       }),
-      publish: async (request) => ({
-        idempotencyKey: request.idempotencyKey,
-        platform: request.platform,
-        status: 'accepted',
-      }),
+      publish: async (request) => {
+        const key = commandKey(request)
+        const fingerprint = requestFingerprint(request)
+        const known = acceptedByCommand.get(key)
+        if (known) {
+          if (known.requestFingerprint !== fingerprint) {
+            return {
+              errorCode: 'invalid_request',
+              idempotencyKey: request.idempotencyKey,
+              platform: request.platform,
+              retryable: false,
+              status: 'blocked',
+            }
+          }
+          return known.acceptance
+        }
+
+        const acceptance: AcceptedPublication = {
+          externalPublicationId: `mock:${request.platform}:${request.idempotencyKey}`,
+          idempotencyKey: request.idempotencyKey,
+          platform: request.platform,
+          status: 'accepted',
+        }
+        acceptedByCommand.set(key, { acceptance, requestFingerprint: fingerprint })
+        return acceptance
+      },
     }
 
     await expect(
@@ -49,18 +85,58 @@ describe('phase-one publishing contract', () => {
         Object.keys(capabilities).map((key) => port.getCapability(key as PublishingPlatform)),
       ),
     ).resolves.toEqual([capabilities.facebook, capabilities.instagram, capabilities.linkedin])
+    const request = {
+      assets: [],
+      idempotencyKey: 'fixture-publish-1',
+      platform: 'facebook' as const,
+      text: 'Fixture post',
+    }
+    const accepted = await port.publish(request)
+    const duplicate = await port.publish(request)
+
+    expect(accepted).toEqual({
+      externalPublicationId: 'mock:facebook:fixture-publish-1',
+      idempotencyKey: 'fixture-publish-1',
+      platform: 'facebook',
+      status: 'accepted',
+    })
+    expect(duplicate).toEqual(accepted)
+
+    const conflicting = await port.publish({ ...request, text: 'Changed fixture post' })
+    expect(conflicting).toEqual({
+      errorCode: 'invalid_request',
+      idempotencyKey: 'fixture-publish-1',
+      platform: 'facebook',
+      retryable: false,
+      status: 'blocked',
+    })
     await expect(
       port.publish({
-        assets: [],
-        idempotencyKey: 'fixture-publish-1',
-        platform: 'facebook',
-        text: 'Fixture post',
+        ...request,
+        assets: [{ fileName: 'changed.jpg', id: 'asset-1', mimeType: 'image/jpeg' }],
       }),
-    ).resolves.toMatchObject({ platform: 'facebook', status: 'accepted' })
+    ).resolves.toEqual(conflicting)
     await expect(
-      port.getStatus({ externalPublicationId: 'fixture-publication-1', platform: 'facebook' }),
+      port.publish({ ...request, scheduledFor: '2026-08-01T00:00:00.000Z' }),
+    ).resolves.toEqual(conflicting)
+
+    const sameKeyOnInstagram = await port.publish({ ...request, platform: 'instagram' })
+    expect(sameKeyOnInstagram).toEqual({
+      externalPublicationId: 'mock:instagram:fixture-publish-1',
+      idempotencyKey: 'fixture-publish-1',
+      platform: 'instagram',
+      status: 'accepted',
+    })
+
+    if (accepted.status !== 'accepted') throw new Error('Expected a fixture acceptance')
+
+    await expect(
+      port.getStatus({
+        externalPublicationId: accepted.externalPublicationId,
+        platform: accepted.platform,
+      }),
     ).resolves.toMatchObject({
-      externalPublicationId: 'fixture-publication-1',
+      externalPublicationId: 'mock:facebook:fixture-publish-1',
       platform: 'facebook',
       status: 'published',
     })
@@ -133,8 +209,9 @@ describe('phase-one publishing contract', () => {
         modes: ['automatic'],
         platform,
       }),
-      getStatus: async ({ platform }) => ({
+      getStatus: async ({ externalPublicationId, platform }) => ({
         errorCode: failedCode,
+        externalPublicationId,
         platform,
         retryable: true,
         status: 'failed',
@@ -166,6 +243,7 @@ describe('phase-one publishing contract', () => {
       port.getStatus({ externalPublicationId: 'failed-publication-1', platform: 'instagram' }),
     ).resolves.toEqual({
       errorCode: 'rate_limited',
+      externalPublicationId: 'failed-publication-1',
       platform: 'instagram',
       retryable: true,
       status: 'failed',

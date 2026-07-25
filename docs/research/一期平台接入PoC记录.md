@@ -1,6 +1,6 @@
 # 一期平台接入 PoC 记录
 
-更新日期：2026-07-22
+更新日期：2026-07-25
 
 > 范围冻结（2026-07-20）：一期会话接入为 Facebook Messenger、Instagram DM、TikTok 私信；一期图文发布为 Facebook、Instagram、LinkedIn。WhatsApp 移出一期，二期再评估网页插件等替代接入；LinkedIn 私信不属于一期自动会话范围。
 >
@@ -37,6 +37,7 @@ fixture / mock 通过只表示接口契约完成。只有在 production 受控�
 - 附件不下载、不访问网络；外部附件 URL 只保留 HTTPS origin/path，查询参数、fragment 和 userinfo 一律不进入 Job payload，避免短期签名或 token 被持久化。
 - Meta delivery/read callback 当前明确忽略，不进入 Jobs；`message-status` 仅保留未来 adapter 的内部类型，未被标记为已实现的状态回调能力。
 - 发布侧只冻结 Facebook / Instagram / LinkedIn capability、publish、status 接口；LinkedIn assisted export 只生成内存中的文案、素材清单和人工操作步骤。
+- publish 的 accepted 响应必须提供稳定的 `externalPublicationId`，供后续 status 查询与 Task 12 持久化关联使用；它是 adapter-issued 的平台 publication / async job 或可查询关联句柄，不是 Task 12 数据库主键。mock 将幂等作用域冻结为 `platform + idempotencyKey`，同键不同内容 fail-closed 为不可重试 `invalid_request`。
 - `message-status` 的内部类型 / dispatch port 仅为后续 adapter 预留；当前没有真实平台送达状态 connector、回调 route 或入队路径。
 - TikTok 官方私信事件 schema 仍缺失，不创建猜测字段或伪造 fixture；WhatsApp 一期 connector、fixture 与测试已删除。
 
