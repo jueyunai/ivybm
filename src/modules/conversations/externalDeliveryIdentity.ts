@@ -27,8 +27,15 @@ export const externalMessageCommandKey = (
 
 export const externalMessagePersistenceKey = (
   channel: ExternalConversationChannel,
+  externalAccountId: string,
   externalMessageId: string,
-): string => `platform-message:${externalMessageCommandKey(channel, externalMessageId)}`
+): string => {
+  const platform = platformForChannel(channel)
+  const fingerprint = createHash('sha256')
+    .update(`${platform}\u0000${externalAccountId}\u0000${externalMessageId}`)
+    .digest('hex')
+  return `platform-message:v2:${platform}:${fingerprint}`
+}
 
 export const externalSessionCommandKey = (
   channel: ExternalConversationChannel,

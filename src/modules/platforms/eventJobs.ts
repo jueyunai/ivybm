@@ -7,7 +7,7 @@ import type {
   PlatformEventDeliveryResult,
 } from './ports'
 import {
-  platformEventKey,
+  isRecognizedPlatformEventKey,
   sanitizeExternalAttachmentURL,
   type MessagingPlatform,
   type NormalizedAttachment,
@@ -35,10 +35,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
 const requiredString = (value: unknown, field: string, maxLength = 5_000): string => {
-  if (typeof value !== 'string' || !value.trim() || value.length > maxLength) {
+  if (typeof value !== 'string') {
     throw new PlatformEventJobPayloadError(`Platform event ${field} is invalid`)
   }
-  return value
+  const normalized = value.trim()
+  if (!normalized || normalized.length > maxLength) {
+    throw new PlatformEventJobPayloadError(`Platform event ${field} is invalid`)
+  }
+  return normalized
 }
 
 const optionalString = (value: unknown, field: string, maxLength = 5_000): string | undefined => {
@@ -60,8 +64,9 @@ const parseBase = (value: Record<string, unknown>): ParsedBase => {
     throw new PlatformEventJobPayloadError('Platform event platform is unsupported')
   }
   const externalEventId = requiredString(value.externalEventId, 'externalEventId', 180)
+  const accountExternalId = requiredString(value.accountExternalId, 'accountExternalId', 240)
   const idempotencyKey = requiredString(value.idempotencyKey, 'idempotencyKey', 200)
-  if (idempotencyKey !== platformEventKey(platform, externalEventId)) {
+  if (!isRecognizedPlatformEventKey(platform, accountExternalId, externalEventId, idempotencyKey)) {
     throw new PlatformEventJobPayloadError('Platform event idempotency key is invalid')
   }
   const occurredAt = requiredString(value.occurredAt, 'occurredAt', 64)
@@ -69,7 +74,7 @@ const parseBase = (value: Record<string, unknown>): ParsedBase => {
     throw new PlatformEventJobPayloadError('Platform event occurredAt is invalid')
   }
   return {
-    accountExternalId: requiredString(value.accountExternalId, 'accountExternalId', 240),
+    accountExternalId,
     externalEventId,
     idempotencyKey,
     occurredAt,

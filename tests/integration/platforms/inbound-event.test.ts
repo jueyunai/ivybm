@@ -17,10 +17,16 @@ import {
   createPlatformEventJobHandler,
   PLATFORM_EVENT_JOB_TYPE,
 } from '@/modules/platforms/eventJobs'
+import { externalMessagePersistenceKey } from '@/modules/conversations/externalDeliveryIdentity'
 import { PayloadPlatformConversationPort } from '@/modules/platforms/payloadConversationPort'
 import { PayloadPlatformEventRepository } from '@/modules/platforms/payloadEventRepository'
 import type { PersistedPlatformEvent } from '@/modules/platforms/ports'
-import type { MessagingPlatform, NormalizedInboundMessage } from '@/modules/platforms/types'
+import {
+  platformEventKey,
+  platformEventKeyV2,
+  type MessagingPlatform,
+  type NormalizedInboundMessage,
+} from '@/modules/platforms/types'
 
 let payload: Payload
 const testKeys: string[] = []
@@ -44,7 +50,7 @@ const createInboundEvent = (
     accountExternalId,
     content: { messageType: 'text', text },
     externalEventId: `message-${suffix}`,
-    idempotencyKey: `${platform}:message-${suffix}`,
+    idempotencyKey: platformEventKeyV2(platform, accountExternalId, `message-${suffix}`),
     kind: 'inbound-message',
     occurredAt: '2026-07-22T00:00:00.000Z',
     platform,
@@ -55,6 +61,57 @@ const createInboundEvent = (
     event,
     eventDigest: digest(JSON.stringify(event)),
     rawPayloadDigest: digest(`raw-${suffix}`),
+  }
+  testKeys.push(event.idempotencyKey)
+  testThreads.push(`${event.accountExternalId}:${event.senderExternalId}`)
+  return persisted
+}
+
+const createLegacyInboundEvent = (
+  suffix: string,
+  text = 'Pre-upgrade fixture message.',
+): PersistedInboundEvent => {
+  const persisted = createInboundEvent(suffix, text)
+  const legacyKey = platformEventKey(
+    persisted.event.platform,
+    persisted.event.externalEventId,
+  )
+  persisted.event.idempotencyKey = legacyKey
+  persisted.eventDigest = digest(JSON.stringify(persisted.event))
+  testKeys[testKeys.length - 1] = legacyKey
+  return persisted
+}
+
+const createAccountScopedInboundEvent = ({
+  accountExternalId,
+  externalEventId,
+  senderExternalId,
+  text,
+}: {
+  accountExternalId: string
+  externalEventId: string
+  senderExternalId: string
+  text: string
+}): PersistedInboundEvent => {
+  const event: NormalizedInboundMessage = {
+    accountExternalId,
+    content: { messageType: 'text', text },
+    externalEventId,
+    idempotencyKey: platformEventKeyV2(
+      'facebook-messenger',
+      accountExternalId,
+      externalEventId,
+    ),
+    kind: 'inbound-message',
+    occurredAt: '2026-07-22T00:00:00.000Z',
+    platform: 'facebook-messenger',
+    recipientExternalId: accountExternalId,
+    senderExternalId,
+  }
+  const persisted: PersistedInboundEvent = {
+    event,
+    eventDigest: digest(JSON.stringify(event)),
+    rawPayloadDigest: digest(`raw-${accountExternalId}-${externalEventId}`),
   }
   testKeys.push(event.idempotencyKey)
   testThreads.push(`${event.accountExternalId}:${event.senderExternalId}`)
@@ -152,6 +209,15 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     expect(rows.rows).toEqual([{ idempotency_key: first.event.idempotencyKey }])
   })
 
+  it('rejects a legacy key when it is presented as a new event to the durable queue', async () => {
+    const repository = new PayloadPlatformEventRepository({ payload })
+    const legacy = createLegacyInboundEvent(randomUUID())
+
+    await expect(repository.enqueueBatch([legacy])).rejects.toThrow(
+      'Platform event idempotency key is invalid',
+    )
+  })
+
   it('delivers a queued Meta event once to the authoritative conversation service', async () => {
     const repository = new PayloadPlatformEventRepository({ payload })
     const persisted = createInboundEvent(randomUUID())
@@ -205,7 +271,11 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
         author: 'visitor',
         content: persisted.event.content.text,
         externalMessageId: persisted.event.externalEventId,
-        idempotencyKey: `platform-message:${persisted.event.idempotencyKey}`,
+        idempotencyKey: externalMessagePersistenceKey(
+          'facebook',
+          persisted.event.accountExternalId,
+          persisted.event.externalEventId,
+        ),
       }),
     ])
 
@@ -245,6 +315,115 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     })).resolves.toEqual({ totalDocs: 1 })
     await queue.complete(job)
     await expect(queue.getByID(job.id)).resolves.toMatchObject({ status: 'succeeded' })
+  })
+
+  it('runs a pre-upgrade v1 Job through the current worker without opening v1 ingress', async () => {
+    const persisted = createLegacyInboundEvent(randomUUID())
+    const now = new Date('2026-07-22T00:00:00.000Z').toISOString()
+    await pool().query(
+      `INSERT INTO jobs (
+        type, idempotency_key, payload, status, attempts, max_attempts, next_run_at,
+        manual_retry_count, updated_at, created_at
+      ) VALUES ($1, $2, $3::jsonb, 'pending', 0, 5, $4, 0, $4, $4)`,
+      [
+        PLATFORM_EVENT_JOB_TYPE,
+        persisted.event.idempotencyKey,
+        JSON.stringify(persisted),
+        now,
+      ],
+    )
+    const queue = new PayloadJobQueue({ payload })
+    const conversations = new PayloadPlatformConversationPort({ payload })
+    const handler = createPlatformEventJobHandler({ conversations })
+    const job = await queue.claimNext()
+    if (!job) throw new Error('Expected the pre-upgrade Job to be claimable')
+
+    await handler(job, {
+      assertLease: () => undefined,
+      renewLease: async () => job,
+      signal: new AbortController().signal,
+    })
+    await queue.complete(job)
+
+    const conversation = await payload.find({
+      collection: 'conversations',
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      where: {
+        externalThreadId: {
+          equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}`,
+        },
+      },
+    })
+    expect(conversation.docs[0]).toMatchObject({ channel: 'facebook' })
+    await expect(payload.count({
+      collection: 'messages',
+      overrideAccess: true,
+      where: { conversation: { equals: conversation.docs[0]?.id } },
+    })).resolves.toEqual({ totalDocs: 1 })
+    await expect(queue.getByID(job.id)).resolves.toMatchObject({ status: 'succeeded' })
+  })
+
+  it('delivers same-ID messages from different Meta accounts without cross-account deduplication', async () => {
+    const repository = new PayloadPlatformEventRepository({ payload })
+    const sharedMessageID = `shared-provider-message-${randomUUID()}`
+    const first = createAccountScopedInboundEvent({
+      accountExternalId: `account-a-${randomUUID()}`,
+      externalEventId: sharedMessageID,
+      senderExternalId: 'sender-shared',
+      text: 'First account message.',
+    })
+    const second = createAccountScopedInboundEvent({
+      accountExternalId: `account-b-${randomUUID()}`,
+      externalEventId: sharedMessageID,
+      senderExternalId: 'sender-shared',
+      text: 'Second account message.',
+    })
+    const queue = new PayloadJobQueue({ payload })
+    const conversations = new PayloadPlatformConversationPort({ payload })
+    const handler = createPlatformEventJobHandler({ conversations })
+
+    await expect(Promise.all([
+      repository.enqueueBatch([first]),
+      repository.enqueueBatch([second]),
+    ])).resolves.toEqual(expect.arrayContaining([
+      [{ idempotencyKey: first.event.idempotencyKey, status: 'accepted' }],
+      [{ idempotencyKey: second.event.idempotencyKey, status: 'accepted' }],
+    ]))
+
+    const firstJob = await queue.claimNext()
+    const secondJob = await queue.claimNext()
+    if (!firstJob || !secondJob) throw new Error('Expected both account-scoped events to be claimable')
+    for (const job of [firstJob, secondJob]) {
+      await handler(job, {
+        assertLease: () => undefined,
+        renewLease: async () => job,
+        signal: new AbortController().signal,
+      })
+      await queue.complete(job)
+    }
+
+    const persistedConversations = await payload.find({
+      collection: 'conversations',
+      depth: 0,
+      limit: 10,
+      overrideAccess: true,
+      where: { externalThreadId: { in: testThreads } },
+    })
+    expect(persistedConversations.docs).toHaveLength(2)
+
+    for (const conversation of persistedConversations.docs) {
+      const messages = await payload.find({
+        collection: 'messages',
+        depth: 0,
+        limit: 10,
+        overrideAccess: true,
+        where: { conversation: { equals: conversation.id } },
+      })
+      expect(messages.docs).toHaveLength(1)
+      expect(messages.docs[0]).toMatchObject({ externalMessageId: sharedMessageID })
+    }
   })
 
   it('persists an already-normalized TikTok event through the same durable path', async () => {
@@ -359,11 +538,16 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
   it('persists a distinct follow-up from the same Meta sender after handoff is requested', async () => {
     const repository = new PayloadPlatformEventRepository({ payload })
     const first = createInboundEvent(randomUUID(), 'First customer message.')
+    const followUpExternalEventID = `${first.event.externalEventId}-follow-up`
     const followUpEvent: NormalizedInboundMessage = {
       ...first.event,
       content: { messageType: 'text', text: 'Second customer message before an operator responds.' },
-      externalEventId: `${first.event.externalEventId}-follow-up`,
-      idempotencyKey: `${first.event.idempotencyKey}-follow-up`,
+      externalEventId: followUpExternalEventID,
+      idempotencyKey: platformEventKeyV2(
+        first.event.platform,
+        first.event.accountExternalId,
+        followUpExternalEventID,
+      ),
     }
     const followUp: PersistedInboundEvent = {
       event: followUpEvent,
@@ -417,11 +601,19 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     expect(messages.docs).toEqual(expect.arrayContaining([
       expect.objectContaining({
         externalMessageId: first.event.externalEventId,
-        idempotencyKey: `platform-message:${first.event.idempotencyKey}`,
+        idempotencyKey: externalMessagePersistenceKey(
+          'facebook',
+          first.event.accountExternalId,
+          first.event.externalEventId,
+        ),
       }),
       expect.objectContaining({
         externalMessageId: followUp.event.externalEventId,
-        idempotencyKey: `platform-message:${followUp.event.idempotencyKey}`,
+        idempotencyKey: externalMessagePersistenceKey(
+          'facebook',
+          followUp.event.accountExternalId,
+          followUp.event.externalEventId,
+        ),
       }),
     ]))
     expect(messages.docs).toHaveLength(2)

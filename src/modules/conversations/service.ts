@@ -378,7 +378,11 @@ export const createConversationService = ({
         externalInbound: true,
         externalMessageId,
         idempotencyKey: messageIdempotencyKey,
-        persistedIdempotencyKey: externalMessagePersistenceKey(input.channel, externalMessageId),
+        persistedIdempotencyKey: externalMessagePersistenceKey(
+          input.channel,
+          externalAccountId,
+          externalMessageId,
+        ),
         sessionId: session.id,
         text: input.text,
       })

@@ -8,6 +8,7 @@ import {
   PlatformEventJobPayloadError,
 } from '@/modules/platforms/eventJobs'
 import { JobLeaseLostError, type ClaimedJob } from '@/modules/jobs/contracts'
+import { platformEventKeyV2 } from '@/modules/platforms/types'
 
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex')
 
@@ -48,6 +49,31 @@ const claimedJob = (jobPayload: Record<string, unknown>): ClaimedJob => ({
 })
 
 describe('platform event job payload validation', () => {
+  it('accepts legacy queued events and new account-scoped event identities', () => {
+    const legacy = payload()
+    const accountScoped = payload({
+      event: {
+        ...(legacy.event as Record<string, unknown>),
+        idempotencyKey: platformEventKeyV2(
+          'facebook-messenger',
+          'page-fixture-1',
+          'message-fixture-1',
+        ),
+      },
+    })
+
+    expect(parsePlatformEventJobPayload(legacy).event).toMatchObject({
+      idempotencyKey: 'facebook-messenger:message-fixture-1',
+    })
+    expect(parsePlatformEventJobPayload(accountScoped).event).toMatchObject({
+      idempotencyKey: platformEventKeyV2(
+        'facebook-messenger',
+        'page-fixture-1',
+        'message-fixture-1',
+      ),
+    })
+  })
+
   it('rejects malformed attachment elements before dispatching a durable event', async () => {
     const malformed = payload({
       event: {

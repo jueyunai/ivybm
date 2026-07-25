@@ -7,7 +7,7 @@ import type {
   PlatformConnector,
   WebhookRateLimiter,
 } from '@/modules/platforms/ports'
-import type { NormalizedInboundMessage } from '@/modules/platforms/types'
+import { platformEventKeyV2, type NormalizedInboundMessage } from '@/modules/platforms/types'
 
 import { FakePlatformEventRepository } from '../../fakes/platformEventRepository'
 
@@ -25,7 +25,7 @@ const inboundEvent = (
   accountExternalId,
   content: { messageType: 'text', text: 'Fixture inbound message.' },
   externalEventId,
-  idempotencyKey: `facebook-messenger:${externalEventId}`,
+  idempotencyKey: platformEventKeyV2('facebook-messenger', accountExternalId, externalEventId),
   kind: 'inbound-message',
   occurredAt: new Date(occurredAt).toISOString(),
   platform: 'facebook-messenger',

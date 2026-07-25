@@ -4,7 +4,7 @@ import {
   type NormalizedAttachment,
   type NormalizedMessageContent,
   type NormalizedPlatformEvent,
-  platformEventKey,
+  platformEventKeyV2,
   platformTimestamp,
   sanitizeExternalAttachmentURL,
 } from '../types'
@@ -98,7 +98,7 @@ export const createMetaConnector = (): PlatformConnector => ({
           accountExternalId,
           content: normalizeContent(message),
           externalEventId,
-          idempotencyKey: platformEventKey(platform, externalEventId),
+          idempotencyKey: platformEventKeyV2(platform, accountExternalId, externalEventId),
           kind: 'inbound-message',
           occurredAt: platformTimestamp(timestamp, 'milliseconds'),
           platform,

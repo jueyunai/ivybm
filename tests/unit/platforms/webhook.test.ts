@@ -9,7 +9,12 @@ import {
   verifyMetaWebhookSignature,
   WebhookValidationError,
 } from '../../../src/modules/platforms/webhook'
-import type { NormalizedPlatformEvent } from '../../../src/modules/platforms/types'
+import {
+  platformEventKey,
+  platformEventKeyV2,
+  type NormalizedInboundMessage,
+  type NormalizedPlatformEvent,
+} from '../../../src/modules/platforms/types'
 import { FakePlatformEventRepository } from '../../fakes/platformEventRepository'
 
 const now = Date.UTC(2026, 6, 21, 8, 0, 0)
@@ -19,16 +24,25 @@ const event = (
   externalEventId = 'event-1',
   occurredAt = now,
   text = 'fixture message',
-): NormalizedPlatformEvent => ({
-  accountExternalId: 'account-1',
+  accountExternalId = 'account-1',
+): NormalizedInboundMessage => ({
+  accountExternalId,
   content: { messageType: 'text', text },
   externalEventId,
-  idempotencyKey: `facebook-messenger:${externalEventId}`,
+  idempotencyKey: platformEventKeyV2('facebook-messenger', accountExternalId, externalEventId),
   kind: 'inbound-message',
   occurredAt: new Date(occurredAt).toISOString(),
   platform: 'facebook-messenger',
-  recipientExternalId: 'account-1',
-  senderExternalId: 'sender-1',
+  recipientExternalId: accountExternalId,
+  senderExternalId: `sender-${accountExternalId}`,
+})
+
+const accountScopedEvent = (
+  accountExternalId: string,
+  externalEventId: string,
+  text: string,
+): NormalizedInboundMessage => ({
+  ...event(externalEventId, now, text, accountExternalId),
 })
 
 const connector = (events: NormalizedPlatformEvent[]): PlatformConnector => ({
@@ -163,6 +177,37 @@ describe('platform webhook verification and ingestion', () => {
     expect(repository.events.size).toBe(1)
   })
 
+  it('accepts the same provider message ID for different authenticated accounts', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture', accounts: ['one', 'two'] })
+    const repository = new FakePlatformEventRepository()
+    const first = accountScopedEvent('account-1', 'shared-provider-message', 'First account message')
+    const second = accountScopedEvent('account-2', 'shared-provider-message', 'Second account message')
+
+    await expect(
+      ingestSignedWebhook(signedInput(rawBody, repository, [first, second])),
+    ).resolves.toEqual({ accepted: 2, duplicates: 0, total: 2 })
+
+    expect([...repository.events.keys()]).toEqual(expect.arrayContaining([
+      first.idempotencyKey,
+      second.idempotencyKey,
+    ]))
+    expect(repository.events.size).toBe(2)
+  })
+
+  it('rejects a legacy key at fresh webhook ingress before it can create a cross-account collision', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture', legacy: true })
+    const repository = new FakePlatformEventRepository()
+    const legacy = {
+      ...event('legacy-provider-message'),
+      idempotencyKey: platformEventKey('facebook-messenger', 'legacy-provider-message'),
+    }
+
+    await expect(
+      ingestSignedWebhook(signedInput(rawBody, repository, [legacy])),
+    ).rejects.toMatchObject({ code: 'invalid_payload' } satisfies Partial<WebhookValidationError>)
+    expect(repository.events.size).toBe(0)
+  })
+
   it('allows raw-envelope changes but rejects semantic changes for the same event key', async () => {
     const repository = new FakePlatformEventRepository()
     const firstBody = JSON.stringify({ object: 'fixture', text: 'first' })
@@ -189,7 +234,7 @@ describe('platform webhook verification and ingestion', () => {
       message: 'Webhook event conflicts with an existing idempotency key',
     } satisfies Partial<WebhookValidationError>)
 
-    expect(repository.events.get('facebook-messenger:event-1')?.event).toMatchObject({
+    expect(repository.events.get(event('event-1', now, 'first').idempotencyKey)?.event).toMatchObject({
       content: { text: 'first' },
     })
     expect(repository.events.has('facebook-messenger:event-2')).toBe(false)
@@ -349,11 +394,7 @@ describe('platform webhook verification and ingestion', () => {
     const repository = new FakePlatformEventRepository()
     const consumedKeys: string[] = []
     const first = event('account-one')
-    const second = {
-      ...event('account-two'),
-      accountExternalId: 'account-2',
-      recipientExternalId: 'account-2',
-    }
+    const second = event('account-two', now, 'fixture message', 'account-2')
 
     await expect(
       ingestSignedWebhook({
