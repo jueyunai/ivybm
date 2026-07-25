@@ -1,6 +1,6 @@
 # IVYBM 一期海外社媒账号与 API 开通指南（客户版）
 
-更新日期：2026-07-22
+更新日期：2026-07-26
 适用对象：甲方账号所有人、企业管理员、市场/运营负责人
 用途：为一期 Facebook、Instagram、TikTok、LinkedIn 的受控联调准备客户自有账号资产和授权条件。
 
@@ -71,7 +71,7 @@ flowchart LR
 
 ## 如何使用截图和视频
 
-本手册中的截图均来自平台的**公开官方帮助/文档页**，用于让客户确认入口、页面标题和关键菜单词。它们不是某一家客户的后台，也不包含账号、密码或令牌。客户登录后的菜单名称、顺序和是否显示某个产品，会受到地区、账号资格、角色与平台版本影响；请以登录后的实际页面为准。
+本手册提供的平台**公开官方帮助/文档链接**，用于让客户确认入口、页面标题和关键菜单词；不会嵌入客户后台截图。客户登录后的菜单名称、顺序和是否显示某个产品，会受到地区、账号资格、角色与平台版本影响；请以登录后的实际页面为准。
 
 视频只作为操作前的概念培训或界面熟悉材料，**不会替代**当前 App Dashboard 的权限申请、企业验证或审核结果。尤其 TikTok 的通用 Business/Ads 教程不代表 Business Messaging/DM API 已获批准。
 
@@ -124,12 +124,9 @@ flowchart LR
 
 绑定前请确认：Facebook Page 与 Instagram 专业账号会归入**同一个**客户 Meta Business Portfolio；同一个 Instagram 账号不能同时归属多个 Business Portfolio。不要因临时协作把 Page/Instagram 资产转入我方或其他个人的 Portfolio。
 
-### Meta-2A：官方操作页面截图
+### Meta-2A：官方操作页面
 
-<figure class="official-screenshot">
-  <img src="docs/operations/assets/official-entry-screenshots/meta-ig-page-linking-help-2026-07-21.png" alt="Meta Business 帮助中心，标题为将 Instagram 专业账户与 Facebook 公共主页关联或解除关联，展示前期准备和关联步骤">
-  <figcaption><strong>官方公开页面截图（2026-07-21）。</strong>这是 <a href="https://www.facebook.com/business/help/898752960195806">Meta Business 帮助中心的关联指引</a>，先核对“Instagram 专业账户”“Facebook 公共主页的完全控制权”“同一业务资产组合”三项前期条件，再按页面步骤完成关联。登录后的具体资产列表会因客户账号而不同。</figcaption>
-</figure>
+打开 [Meta Business 帮助中心的关联指引](https://www.facebook.com/business/help/898752960195806)，先核对“Instagram 专业账户”“Facebook 公共主页的完全控制权”“同一业务资产组合”三项前期条件，再按页面步骤完成关联。登录后的具体资产列表会因客户账号而不同。
 
 **完成证据：** Instagram 账号显示为专业/商业账号、已关联 Facebook Page、已开启消息访问（如页面可见）的截图。
 
@@ -254,12 +251,9 @@ flowchart LR
 
 应用、Business Center 与最终授权必须属于客户企业。IVYBM 负责后续 OAuth redirect URI、Webhook、隐私页面、数据删除说明、签名/时间戳/幂等处理和最小权限技术配置。未收到 IVYBM 的书面配置请求前，不要自行填写 redirect URI、Webhook、Client Secret 或任何技术回调地址。
 
-### TikTok-4A：官方操作页面截图
+### TikTok-4A：官方操作页面
 
-<figure class="official-screenshot">
-  <img src="docs/operations/assets/official-entry-screenshots/tiktok-business-account-docs-2026-07-21.png" alt="TikTok for Business Developers 官方文档，标题为 Create a TikTok for Business account，展示注册入口和分步工作流">
-  <figcaption><strong>官方公开页面截图（2026-07-21）。</strong>这是 <a href="https://business-api.tiktok.com/portal/docs/create-a-tiktok-for-business-account/v1.3">TikTok for Business Developers 的企业账号创建文档</a>。左侧的 Step-by-step workflow 依次包含创建企业账号、注册开发者、创建 App、授权和认证。此图只证明通用开发者准备入口可见，<strong>不代表 DM/Business Messaging API 已获资格</strong>。</figcaption>
-</figure>
+打开 [TikTok for Business Developers 的企业账号创建文档](https://business-api.tiktok.com/portal/docs/create-a-tiktok-for-business-account/v1.3)。其通用工作流包含创建企业账号、注册开发者、创建 App、授权和认证；这只证明通用开发者准备入口可见，**不代表 DM/Business Messaging API 已获资格**。
 
 ## 3. TikTok 需要客户确认的材料
 
@@ -326,12 +320,9 @@ flowchart LR
 
 > LinkedIn 官方帮助说明：Super admin 能管理全部主页管理员权限；Content admin 能创建和管理主页内容。企业主页 API 发帖所用授权成员还须具有 `ADMINISTRATOR`、`CONTENT_ADMIN` 或 `DIRECT_SPONSORED_CONTENT_POSTER` 这类合格角色之一。
 
-### LinkedIn-1A：官方操作页面截图
+### LinkedIn-1A：官方操作页面
 
-<figure class="official-screenshot">
-  <img src="docs/operations/assets/official-entry-screenshots/linkedin-page-admin-roles-help-2026-07-21.png" alt="LinkedIn 帮助中心，公司主页管理员角色，展示高级管理员、内容管理员和分析师的职责说明">
-  <figcaption><strong>官方公开页面截图（2026-07-21）。</strong>这是 <a href="https://www.linkedin.com/help/linkedin/answer/a541981">LinkedIn 帮助中心的公司主页管理员角色说明</a>。客户应先确保至少两名长期人员是 Super admin，再视协作需要授予 Content admin；进入 Developer App 和企业主页发布审核前，请先完成这一资产归属检查。</figcaption>
-</figure>
+打开 [LinkedIn 帮助中心的公司主页管理员角色说明](https://www.linkedin.com/help/linkedin/answer/a541981)。客户应先确保至少两名长期人员是 Super admin，再视协作需要授予 Content admin；进入 Developer App 和企业主页发布审核前，请先完成这一资产归属检查。
 
 ### LinkedIn-2：创建客户名下的 Developer App（仅客户自持 App 路径需要；电脑浏览器）
 

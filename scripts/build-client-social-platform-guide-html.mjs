@@ -62,6 +62,10 @@ await mkdir(resolve(root, "tmp"), { recursive: true });
 await mkdir(resolve(root, "deliverables"), { recursive: true });
 
 const [source, css] = await Promise.all([readFile(sourcePath, "utf8"), readFile(cssPath, "utf8")]);
+const documentDate = source.match(/^更新日期：(\d{4}-\d{2}-\d{2})$/m)?.[1];
+if (!documentDate) {
+  throw new Error("客户指南缺少有效的更新日期，已停止构建 HTML。");
+}
 const localScreenshotPaths = [
   ...new Set(
     [...source.matchAll(/<img\s+[^>]*\bsrc="(docs\/operations\/assets\/[^\"]+)"/g)].map((match) => match[1]),
@@ -83,7 +87,7 @@ if (missingScreenshots.length > 0) {
   );
 }
 
-const printSource = `---\ntitle: 一期海外社媒账号与 API 开通指南\nsubtitle: 客户开通包 | Meta · TikTok · LinkedIn\ndate: 2026-07-22\n---\n\n${replaceMermaidBlocks(source)}`;
+const printSource = `---\ntitle: 一期海外社媒账号与 API 开通指南\nsubtitle: 客户开通包 | Meta · TikTok · LinkedIn\ndate: ${documentDate}\n---\n\n${replaceMermaidBlocks(source)}`;
 await writeFile(tempMarkdownPath, printSource, "utf8");
 
 execFileSync(
