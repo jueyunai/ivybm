@@ -324,7 +324,11 @@ export const createConversationService = ({
     },
 
     async ingestExternalMessage(input: IngestExternalMessageInput): Promise<ExternalMessageDelivery> {
-      if (input.channel !== 'facebook' && input.channel !== 'instagram') {
+      if (
+        input.channel !== 'facebook' &&
+        input.channel !== 'instagram' &&
+        input.channel !== 'tiktok'
+      ) {
         throw new ChatServiceError('invalid_request', 'Unsupported external conversation channel')
       }
       const externalThreadId = requireExternalIdentifier(input.externalThreadId, 'externalThreadId', 500)

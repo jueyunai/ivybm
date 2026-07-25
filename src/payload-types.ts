@@ -83,6 +83,7 @@ export interface Config {
     'knowledge-documents': KnowledgeDocument;
     'knowledge-chunks': KnowledgeChunk;
     'prompt-templates': PromptTemplate;
+    'platform-accounts': PlatformAccount;
     'lead-sources': LeadSource;
     leads: Lead;
     'visitor-sessions': VisitorSession;
@@ -114,6 +115,7 @@ export interface Config {
     'knowledge-documents': KnowledgeDocumentsSelect<false> | KnowledgeDocumentsSelect<true>;
     'knowledge-chunks': KnowledgeChunksSelect<false> | KnowledgeChunksSelect<true>;
     'prompt-templates': PromptTemplatesSelect<false> | PromptTemplatesSelect<true>;
+    'platform-accounts': PlatformAccountsSelect<false> | PlatformAccountsSelect<true>;
     'lead-sources': LeadSourcesSelect<false> | LeadSourcesSelect<true>;
     leads: LeadsSelect<false> | LeadsSelect<true>;
     'visitor-sessions': VisitorSessionsSelect<false> | VisitorSessionsSelect<true>;
@@ -731,6 +733,61 @@ export interface PromptTemplate {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-accounts".
+ */
+export interface PlatformAccount {
+  id: number;
+  name: string;
+  accountKind:
+    'facebook-page' | 'instagram-professional' | 'tiktok-business' | 'linkedin-member' | 'linkedin-organization';
+  platformFamily: 'meta' | 'tiktok' | 'linkedin';
+  /**
+   * Provider-side Page, professional account, member, or organization identifier. Leave blank until known.
+   */
+  externalAccountId?: string | null;
+  connectionKey?: string | null;
+  authorization: {
+    state: 'not_started' | 'pending' | 'connected' | 'expired' | 'blocked' | 'disabled';
+    /**
+     * Non-secret provider application ID only. Never enter an App Secret or Client Secret here.
+     */
+    appId?: string | null;
+    /**
+     * Write-only. Enter a value to set or replace the token; leave blank to retain it.
+     */
+    accessToken?: string | null;
+    /**
+     * This indicator never reveals the token.
+     */
+    accessTokenConfigured?: boolean | null;
+    /**
+     * Use only when revoking a credential. A connected account cannot be saved without a token.
+     */
+    clearAccessToken?: boolean | null;
+    /**
+     * Write-only. Enter a value to set or replace the refresh token; leave blank to retain it.
+     */
+    refreshToken?: string | null;
+    refreshTokenConfigured?: boolean | null;
+    clearRefreshToken?: boolean | null;
+    expiresAt?: string | null;
+    scopes?:
+      | {
+          scope: string;
+          id?: string | null;
+        }[]
+      | null;
+  };
+  capabilities?: {
+    messagingInbound?: ('not_started' | 'pending' | 'approved' | 'blocked') | null;
+    publishing?: ('not_started' | 'pending' | 'approved' | 'blocked') | null;
+  };
+  notes?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "lead-sources".
  */
 export interface LeadSource {
@@ -786,7 +843,7 @@ export interface VisitorSession {
   publicId: string;
   sessionTokenHash: string;
   idempotencyKey: string;
-  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram';
+  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram' | 'tiktok';
   locale: 'en' | 'ar';
   sourceURL?: string | null;
   expiresAt: string;
@@ -803,7 +860,7 @@ export interface Conversation {
   publicId: string;
   requestId: string;
   visitorSession: number | VisitorSession;
-  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram';
+  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram' | 'tiktok';
   externalThreadId?: string | null;
   locale: 'en' | 'ar';
   handoffStatus: 'ai_active' | 'handoff_requested' | 'human_active' | 'resolved';
@@ -1014,6 +1071,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'prompt-templates';
         value: number | PromptTemplate;
+      } | null)
+    | ({
+        relationTo: 'platform-accounts';
+        value: number | PlatformAccount;
       } | null)
     | ({
         relationTo: 'lead-sources';
@@ -1470,6 +1531,45 @@ export interface PromptTemplatesSelect<T extends boolean = true> {
   variables?: T;
   status?: T;
   model?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-accounts_select".
+ */
+export interface PlatformAccountsSelect<T extends boolean = true> {
+  name?: T;
+  accountKind?: T;
+  platformFamily?: T;
+  externalAccountId?: T;
+  connectionKey?: T;
+  authorization?:
+    | T
+    | {
+        state?: T;
+        appId?: T;
+        accessToken?: T;
+        accessTokenConfigured?: T;
+        clearAccessToken?: T;
+        refreshToken?: T;
+        refreshTokenConfigured?: T;
+        clearRefreshToken?: T;
+        expiresAt?: T;
+        scopes?:
+          | T
+          | {
+              scope?: T;
+              id?: T;
+            };
+      };
+  capabilities?:
+    | T
+    | {
+        messagingInbound?: T;
+        publishing?: T;
+      };
+  notes?: T;
   updatedAt?: T;
   createdAt?: T;
 }

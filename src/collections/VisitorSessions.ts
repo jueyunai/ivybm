@@ -53,7 +53,7 @@ export const VisitorSessions: CollectionConfig = {
       name: 'channel',
       type: 'select',
       index: true,
-      options: ['website', 'whatsapp', 'facebook', 'instagram'],
+      options: ['website', 'whatsapp', 'facebook', 'instagram', 'tiktok'],
       required: true,
     },
     {

@@ -1,19 +1,26 @@
 import { createHash, randomUUID } from 'node:crypto'
 
-import type { PostgresAdapter } from '@payloadcms/db-postgres'
+import type { MigrateDownArgs, PostgresAdapter } from '@payloadcms/db-postgres'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { getPayload, type Payload } from 'payload'
+import {
+  createLocalReq,
+  getPayload,
+  initTransaction,
+  killTransaction,
+  type Payload,
+} from 'payload'
 
 import config from '@/payload.config'
+import { down as removeTikTokChannel } from '@/migrations/20260725_051208_task13_tiktok_channel'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import {
   createPlatformEventJobHandler,
   PLATFORM_EVENT_JOB_TYPE,
 } from '@/modules/platforms/eventJobs'
-import { PayloadMetaConversationPort } from '@/modules/platforms/payloadConversationPort'
+import { PayloadPlatformConversationPort } from '@/modules/platforms/payloadConversationPort'
 import { PayloadPlatformEventRepository } from '@/modules/platforms/payloadEventRepository'
 import type { PersistedPlatformEvent } from '@/modules/platforms/ports'
-import type { NormalizedInboundMessage } from '@/modules/platforms/types'
+import type { MessagingPlatform, NormalizedInboundMessage } from '@/modules/platforms/types'
 
 let payload: Payload
 const testKeys: string[] = []
@@ -30,16 +37,18 @@ type PersistedInboundEvent = Omit<PersistedPlatformEvent, 'event'> & {
 const createInboundEvent = (
   suffix: string,
   text = 'Please share available facade finishes.',
+  platform: MessagingPlatform = 'facebook-messenger',
 ): PersistedInboundEvent => {
+  const accountExternalId = `account-${suffix}`
   const event: NormalizedInboundMessage = {
-    accountExternalId: `page-${suffix}`,
+    accountExternalId,
     content: { messageType: 'text', text },
     externalEventId: `message-${suffix}`,
-    idempotencyKey: `facebook-messenger:message-${suffix}`,
+    idempotencyKey: `${platform}:message-${suffix}`,
     kind: 'inbound-message',
     occurredAt: '2026-07-22T00:00:00.000Z',
-    platform: 'facebook-messenger',
-    recipientExternalId: `page-${suffix}`,
+    platform,
+    recipientExternalId: accountExternalId,
     senderExternalId: `sender-${suffix}`,
   }
   const persisted: PersistedInboundEvent = {
@@ -147,7 +156,7 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     const repository = new PayloadPlatformEventRepository({ payload })
     const persisted = createInboundEvent(randomUUID())
     const queue = new PayloadJobQueue({ payload })
-    const conversations = new PayloadMetaConversationPort({ payload })
+    const conversations = new PayloadPlatformConversationPort({ payload })
     const handler = createPlatformEventJobHandler({ conversations })
 
     await expect(repository.enqueueBatch([persisted])).resolves.toEqual([
@@ -214,6 +223,115 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     await expect(queue.getByID(job.id)).resolves.toMatchObject({ status: 'succeeded' })
   })
 
+  it('persists an already-normalized TikTok event through the same durable path', async () => {
+    // This exercises only the internal channel and Job contract. It does not
+    // manufacture a TikTok webhook fixture or claim that its DM API is available.
+    const repository = new PayloadPlatformEventRepository({ payload })
+    const persisted = createInboundEvent(
+      randomUUID(),
+      'Please share facade panel samples for our project.',
+      'tiktok',
+    )
+    const queue = new PayloadJobQueue({ payload })
+    const conversations = new PayloadPlatformConversationPort({
+      allowTikTokNormalizedDelivery: true,
+      payload,
+    })
+    const handler = createPlatformEventJobHandler({ conversations })
+
+    await expect(repository.enqueueBatch([persisted])).resolves.toEqual([
+      { idempotencyKey: persisted.event.idempotencyKey, status: 'accepted' },
+    ])
+    const job = await queue.claimNext()
+    if (!job) throw new Error('Expected the TikTok platform event to be claimable')
+
+    await handler(job, {
+      assertLease: () => undefined,
+      renewLease: async () => job,
+      signal: new AbortController().signal,
+    })
+    await queue.complete(job)
+
+    const conversation = await payload.find({
+      collection: 'conversations',
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      where: {
+        externalThreadId: {
+          equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}`,
+        },
+      },
+    })
+    expect(conversation.docs[0]).toMatchObject({
+      channel: 'tiktok',
+      handoffStatus: 'handoff_requested',
+    })
+    await expect(payload.count({
+      collection: 'messages',
+      overrideAccess: true,
+      where: { conversation: { equals: conversation.docs[0]?.id } },
+    })).resolves.toEqual({ totalDocs: 1 })
+  })
+
+  it('fails closed for TikTok delivery unless a future reviewed connector explicitly enables it', async () => {
+    const persisted = createInboundEvent(
+      randomUUID(),
+      'This must not enter a TikTok conversation through the default worker path.',
+      'tiktok',
+    )
+    const conversations = new PayloadPlatformConversationPort({ payload })
+
+    await expect(conversations.writeInboundMessage(persisted.event)).rejects.toThrow(
+      'TikTok normalized delivery is not enabled',
+    )
+  })
+
+  it('refuses a TikTok channel schema downgrade while TikTok conversations exist', async () => {
+    const persisted = createInboundEvent(
+      randomUUID(),
+      'The migration must preserve this TikTok conversation.',
+      'tiktok',
+    )
+    const conversations = new PayloadPlatformConversationPort({
+      allowTikTokNormalizedDelivery: true,
+      payload,
+    })
+    await conversations.writeInboundMessage(persisted.event)
+
+    const request = await createLocalReq({}, payload)
+    await initTransaction(request)
+    const transactionID = await request.transactionID
+    const transaction = transactionID
+      ? (payload.db as unknown as PostgresAdapter).sessions[String(transactionID)]?.db
+      : undefined
+    if (!transaction) throw new Error('Expected an isolated migration transaction')
+
+    try {
+      await expect(
+        removeTikTokChannel({
+          db: transaction as MigrateDownArgs['db'],
+          payload,
+          req: request,
+        }),
+      ).rejects.toThrow('Cannot roll back Task 13 TikTok channel migration')
+    } finally {
+      await killTransaction(request)
+    }
+
+    // The failed downgrade must roll back entirely: the current application can
+    // still read the durable conversation and its message after the refusal.
+    await expect(payload.count({
+      collection: 'conversations',
+      overrideAccess: true,
+      where: {
+        externalThreadId: {
+          equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}`,
+        },
+      },
+    })).resolves.toEqual({ totalDocs: 1 })
+  })
+
   it('persists a distinct follow-up from the same Meta sender after handoff is requested', async () => {
     const repository = new PayloadPlatformEventRepository({ payload })
     const first = createInboundEvent(randomUUID(), 'First customer message.')
@@ -230,7 +348,7 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     }
     testKeys.push(followUp.event.idempotencyKey)
     const queue = new PayloadJobQueue({ payload })
-    const conversations = new PayloadMetaConversationPort({ payload })
+    const conversations = new PayloadPlatformConversationPort({ payload })
     const handler = createPlatformEventJobHandler({ conversations })
 
     await expect(repository.enqueueBatch([first])).resolves.toEqual([
@@ -293,7 +411,7 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     const clock = () => now
     const firstQueue = new PayloadJobQueue({ clock, leaseMs: 1_000, payload })
     const reclaimedQueue = new PayloadJobQueue({ clock, leaseMs: 1_000, payload })
-    const conversations = new PayloadMetaConversationPort({ payload })
+    const conversations = new PayloadPlatformConversationPort({ payload })
     const handler = createPlatformEventJobHandler({ conversations })
 
     await expect(repository.enqueueBatch([persisted])).resolves.toEqual([

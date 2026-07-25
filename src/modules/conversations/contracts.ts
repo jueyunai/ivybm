@@ -1,5 +1,5 @@
 export const CHAT_LOCALES = ['en', 'ar'] as const
-export const CHAT_CHANNELS = ['website', 'whatsapp', 'facebook', 'instagram'] as const
+export const CHAT_CHANNELS = ['website', 'whatsapp', 'facebook', 'instagram', 'tiktok'] as const
 export const HANDOFF_STATUSES = [
   'ai_active',
   'handoff_requested',
@@ -102,7 +102,10 @@ export type SendChatMessageInput = {
  * the same bounded ChatSession shape used by the website contract.
  */
 export type IngestExternalMessageInput = {
-  /** Current durable connector phase supports Meta only; WhatsApp remains historical-read-only. */
+  /**
+   * Server-only normalized platform event. Its connector must authenticate the
+   * provider payload before this command is called; WhatsApp remains historical-read-only.
+   */
   channel: Exclude<ChatChannel, 'website' | 'whatsapp'>
   externalMessageId: string
   externalThreadId: string

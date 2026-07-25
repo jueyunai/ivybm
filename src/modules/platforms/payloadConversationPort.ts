@@ -14,12 +14,23 @@ import type { MessagingPlatform, NormalizedInboundMessage } from './types'
 // guarantees that a worker reclaim can recover after a process dies mid-delivery.
 export const PLATFORM_CONVERSATION_COMMAND_LEASE_MS = 60_000
 
-const metaConversationChannelFor = (platform: MessagingPlatform): 'facebook' | 'instagram' => {
+const conversationChannelFor = (
+  platform: MessagingPlatform,
+  allowTikTokNormalizedDelivery: boolean,
+): 'facebook' | 'instagram' | 'tiktok' => {
   if (platform === 'facebook-messenger') return 'facebook'
   if (platform === 'instagram') return 'instagram'
-  // TikTok remains an explicit Task 13 external-schema / account-authorization block.
-  // Do not guess a channel or persist an invented schema value.
-  throw new Error(`Meta conversation delivery is not configured for ${platform}`)
+  // This is only an internal, already-normalized delivery path. The TikTok raw
+  // webhook connector stays disabled until its official schema and eligibility
+  // are available. Requiring an explicit, code-reviewed opt-in prevents a future
+  // route from accidentally making the currently blocked capability live.
+  if (platform === 'tiktok') {
+    if (!allowTikTokNormalizedDelivery) {
+      throw new Error('TikTok normalized delivery is not enabled')
+    }
+    return 'tiktok'
+  }
+  throw new Error(`Platform conversation delivery is not configured for ${platform}`)
 }
 
 const platformSessionKey = (message: NormalizedInboundMessage): string => {
@@ -50,23 +61,27 @@ const inboundText = (message: NormalizedInboundMessage): string => {
   return `[${messageType} message]`
 }
 
-export class PayloadMetaConversationPort implements ConversationMessagePort {
+export class PayloadPlatformConversationPort implements ConversationMessagePort {
+  private readonly allowTikTokNormalizedDelivery: boolean
   private readonly commandLeaseMs: number
   private readonly payload: Payload
 
   constructor({
+    allowTikTokNormalizedDelivery = false,
     commandLeaseMs = PLATFORM_CONVERSATION_COMMAND_LEASE_MS,
     payload,
   }: {
+    allowTikTokNormalizedDelivery?: boolean
     commandLeaseMs?: number
     payload: Payload
   }) {
+    this.allowTikTokNormalizedDelivery = allowTikTokNormalizedDelivery
     this.commandLeaseMs = commandLeaseMs
     this.payload = payload
   }
 
   async writeInboundMessage(message: NormalizedInboundMessage): Promise<PlatformEventDeliveryResult> {
-    const channel = metaConversationChannelFor(message.platform)
+    const channel = conversationChannelFor(message.platform, this.allowTikTokNormalizedDelivery)
     const externalThreadId = `${message.accountExternalId}:${message.senderExternalId}`
     const service = createConversationService({
       leadSink: new PayloadConversationLeadSink(),

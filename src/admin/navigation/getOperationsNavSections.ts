@@ -48,6 +48,7 @@ const OPERATIONS_COLLECTIONS = new Set([
   'jobs',
   'lead-sources',
   'messages',
+  'platform-accounts',
   'visitor-sessions',
 ])
 
