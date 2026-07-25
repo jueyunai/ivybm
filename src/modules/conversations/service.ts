@@ -14,13 +14,19 @@ import type {
   SessionCommandInput,
   StartChatSessionInput,
 } from './contracts'
-import { ChatServiceError } from './contracts'
+import { ChatServiceError, isCreatableChatChannel } from './contracts'
 import {
   allowedActionsFor,
   assertAiReplyAllowed,
   type HandoffCommand,
   transitionHandoff,
 } from './handoffState'
+import {
+  externalMessageCommandKey,
+  externalMessageIdentifierMaxLength,
+  externalMessagePersistenceKey,
+  externalSessionCommandKey,
+} from './externalDeliveryIdentity'
 
 export type ConversationCommandClaim = {
   id: number | string
@@ -96,6 +102,13 @@ export interface ConversationLeadSink {
 }
 
 type ConversationServiceOptions = {
+  /**
+   * TikTok direct messages are a conditional Task 13 capability.  The generic
+   * conversation service therefore fails closed until a reviewed, already
+   * normalized connector opts in.  Website and Meta callers must never need
+   * this flag.
+   */
+  allowTikTokNormalizedDelivery?: boolean
   clock?: () => Date
   createId?: (kind: 'event' | 'message' | 'request' | 'session') => string
   leadSink?: ConversationLeadSink
@@ -118,8 +131,8 @@ type VisitorMessageCommand = SendChatMessageInput & {
   persistedIdempotencyKey?: string
 }
 
-const requireExternalIdentifier = (value: string, field: string, maxLength: number): string => {
-  const normalized = value.trim()
+const requireExternalIdentifier = (value: unknown, field: string, maxLength: number): string => {
+  const normalized = typeof value === 'string' ? value.trim() : ''
   if (!normalized || normalized.length > maxLength) {
     throw new ChatServiceError('invalid_request', `${field} is required`)
   }
@@ -127,6 +140,7 @@ const requireExternalIdentifier = (value: string, field: string, maxLength: numb
 }
 
 export const createConversationService = ({
+  allowTikTokNormalizedDelivery = false,
   clock = () => new Date(),
   createId = defaultCreateId,
   leadSink,
@@ -221,6 +235,12 @@ export const createConversationService = ({
   }
 
   const startSession = async (input: StartChatSessionInput): Promise<ChatSession> => {
+    if (
+      !isCreatableChatChannel(input.channel) ||
+      (input.channel === 'tiktok' && !allowTikTokNormalizedDelivery)
+    ) {
+      throw new ChatServiceError('invalid_request', 'Unsupported chat channel')
+    }
     if (input.externalThreadId !== undefined) {
       requireExternalIdentifier(input.externalThreadId, 'externalThreadId', 500)
     }
@@ -331,19 +351,34 @@ export const createConversationService = ({
       ) {
         throw new ChatServiceError('invalid_request', 'Unsupported external conversation channel')
       }
+      if (input.channel === 'tiktok' && !allowTikTokNormalizedDelivery) {
+        throw new ChatServiceError('invalid_request', 'TikTok normalized delivery is not enabled')
+      }
+      const externalAccountId = requireExternalIdentifier(input.externalAccountId, 'externalAccountId', 500)
+      const externalSenderId = requireExternalIdentifier(input.externalSenderId, 'externalSenderId', 500)
       const externalThreadId = requireExternalIdentifier(input.externalThreadId, 'externalThreadId', 500)
-      const externalMessageId = requireExternalIdentifier(input.externalMessageId, 'externalMessageId', 200)
+      const externalMessageId = requireExternalIdentifier(
+        input.externalMessageId,
+        'externalMessageId',
+        externalMessageIdentifierMaxLength(input.channel),
+      )
+      const sessionIdempotencyKey = externalSessionCommandKey(
+        input.channel,
+        externalAccountId,
+        externalSenderId,
+      )
+      const messageIdempotencyKey = externalMessageCommandKey(input.channel, externalMessageId)
       const session = await startSession({
         channel: input.channel,
         externalThreadId,
-        idempotencyKey: input.sessionIdempotencyKey,
+        idempotencyKey: sessionIdempotencyKey,
         locale: input.locale,
       })
       const result = await sendVisitorMessage({
         externalInbound: true,
         externalMessageId,
-        idempotencyKey: input.idempotencyKey,
-        persistedIdempotencyKey: `platform-message:${input.idempotencyKey}`,
+        idempotencyKey: messageIdempotencyKey,
+        persistedIdempotencyKey: externalMessagePersistenceKey(input.channel, externalMessageId),
         sessionId: session.id,
         text: input.text,
       })

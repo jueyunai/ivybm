@@ -182,6 +182,17 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       channel: 'facebook',
       handoffStatus: 'handoff_requested',
     })
+    const visitorSessionID = typeof conversation.docs[0]?.visitorSession === 'number'
+      ? conversation.docs[0]?.visitorSession
+      : conversation.docs[0]?.visitorSession?.id
+    const visitor = visitorSessionID
+      ? await payload.findByID({ collection: 'visitor-sessions', id: visitorSessionID, overrideAccess: true })
+      : undefined
+    expect(visitor).toMatchObject({
+      idempotencyKey: `platform-session:${persisted.event.platform}:${digest(
+        `${persisted.event.platform}\u0000${persisted.event.accountExternalId}\u0000${persisted.event.senderExternalId}`,
+      )}`,
+    })
     const messages = await payload.find({
       collection: 'messages',
       depth: 0,
@@ -204,6 +215,19 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       idempotencyKey: persisted.event.idempotencyKey,
       status: 'duplicate',
     })
+    await expect(payload.count({
+      collection: 'messages',
+      overrideAccess: true,
+      where: { conversation: { equals: conversation.docs[0]?.id } },
+    })).resolves.toEqual({ totalDocs: 1 })
+    // A connector or queue may rotate its transport receipt key while retrying the
+    // same authenticated platform message. The conversation service must derive
+    // its own durable identity from the external message and thread instead.
+    const changedTransportKey = `${persisted.event.idempotencyKey}:transport-retry`
+    await expect(conversations.writeInboundMessage({
+      ...persisted.event,
+      idempotencyKey: changedTransportKey,
+    })).resolves.toEqual({ idempotencyKey: changedTransportKey, status: 'duplicate' })
     await expect(payload.count({
       collection: 'messages',
       overrideAccess: true,

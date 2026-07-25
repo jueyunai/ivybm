@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto'
-
 import type { Payload } from 'payload'
 
 import { createVisitorToken, hashVisitorToken } from '@/modules/conversations/auth'
@@ -31,13 +29,6 @@ const conversationChannelFor = (
     return 'tiktok'
   }
   throw new Error(`Platform conversation delivery is not configured for ${platform}`)
-}
-
-const platformSessionKey = (message: NormalizedInboundMessage): string => {
-  const fingerprint = createHash('sha256')
-    .update(`${message.platform}\u0000${message.accountExternalId}\u0000${message.senderExternalId}`)
-    .digest('hex')
-  return `platform-session:${message.platform}:${fingerprint}`
 }
 
 const inboundText = (message: NormalizedInboundMessage): string => {
@@ -84,6 +75,7 @@ export class PayloadPlatformConversationPort implements ConversationMessagePort 
     const channel = conversationChannelFor(message.platform, this.allowTikTokNormalizedDelivery)
     const externalThreadId = `${message.accountExternalId}:${message.senderExternalId}`
     const service = createConversationService({
+      allowTikTokNormalizedDelivery: this.allowTikTokNormalizedDelivery,
       leadSink: new PayloadConversationLeadSink(),
       repository: new PayloadConversationRepository({
         commandLeaseMs: this.commandLeaseMs,
@@ -100,11 +92,11 @@ export class PayloadPlatformConversationPort implements ConversationMessagePort 
     })
     const delivery = await service.ingestExternalMessage({
       channel,
+      externalAccountId: message.accountExternalId,
       externalMessageId: message.externalEventId,
+      externalSenderId: message.senderExternalId,
       externalThreadId,
-      idempotencyKey: message.idempotencyKey,
       locale: 'en',
-      sessionIdempotencyKey: platformSessionKey(message),
       text: inboundText(message),
     })
     return { idempotencyKey: message.idempotencyKey, status: delivery.status }
