@@ -136,6 +136,24 @@ export type AssistedPublicationExport = {
   platform: 'linkedin'
 }
 
+/**
+ * A caller-resolved media asset used to create the LinkedIn manual-delivery ZIP.
+ * The package builder never fetches `sourceUrl`; the caller must explicitly supply
+ * already-authorized bytes from the internal media layer.
+ */
+export type AssistedPublicationPackageAsset = PublicationAsset & {
+  bytes: Uint8Array
+}
+
+/** A browser or route can expose these bytes as a deterministic file download. */
+export type AssistedPublicationPackage = {
+  bytes: Uint8Array
+  fileName: string
+  mimeType: 'application/zip'
+  mode: 'assisted'
+  platform: 'linkedin'
+}
+
 export const MAX_PLATFORM_EVENT_IDEMPOTENCY_KEY_LENGTH = 200
 
 /**

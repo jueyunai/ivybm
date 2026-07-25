@@ -41,7 +41,24 @@ describe('phase-one publishing contract', () => {
       platform: 'facebook' as const,
       text: 'Fixture post',
     }
-    const [accepted, duplicate] = await Promise.all([port.publish(request), port.publish(request)])
+    await expect(port.publish(request)).resolves.toEqual({
+      errorCode: 'account_not_connected',
+      idempotencyKey: 'fixture-publish-1',
+      platform: 'facebook',
+      retryable: false,
+      status: 'blocked',
+    })
+
+    const connectedPort = createFakePlatformPublishingPort({
+      capabilities: {
+        facebook: { availability: 'available', modes: ['automatic'], platform: 'facebook' },
+        instagram: { availability: 'available', modes: ['automatic'], platform: 'instagram' },
+      },
+    })
+    const [accepted, duplicate] = await Promise.all([
+      connectedPort.publish(request),
+      connectedPort.publish(request),
+    ])
 
     expect(accepted).toEqual({
       externalPublicationId: 'mock:facebook:fixture-publish-1',
@@ -51,7 +68,7 @@ describe('phase-one publishing contract', () => {
     })
     expect(duplicate).toEqual(accepted)
 
-    const conflicting = await port.publish({ ...request, text: 'Changed fixture post' })
+    const conflicting = await connectedPort.publish({ ...request, text: 'Changed fixture post' })
     expect(conflicting).toEqual({
       errorCode: 'invalid_request',
       idempotencyKey: 'fixture-publish-1',
@@ -60,16 +77,16 @@ describe('phase-one publishing contract', () => {
       status: 'blocked',
     })
     await expect(
-      port.publish({
+      connectedPort.publish({
         ...request,
         assets: [{ fileName: 'changed.jpg', id: 'asset-1', mimeType: 'image/jpeg' }],
       }),
     ).resolves.toEqual(conflicting)
     await expect(
-      port.publish({ ...request, scheduledFor: '2026-08-01T00:00:00.000Z' }),
+      connectedPort.publish({ ...request, scheduledFor: '2026-08-01T00:00:00.000Z' }),
     ).resolves.toEqual(conflicting)
 
-    const sameKeyOnInstagram = await port.publish({ ...request, platform: 'instagram' })
+    const sameKeyOnInstagram = await connectedPort.publish({ ...request, platform: 'instagram' })
     expect(sameKeyOnInstagram).toEqual({
       externalPublicationId: 'mock:instagram:fixture-publish-1',
       idempotencyKey: 'fixture-publish-1',
@@ -80,7 +97,7 @@ describe('phase-one publishing contract', () => {
     if (accepted.status !== 'accepted') throw new Error('Expected a fixture acceptance')
 
     await expect(
-      port.getStatus({
+      connectedPort.getStatus({
         externalPublicationId: accepted.externalPublicationId,
         platform: accepted.platform,
       }),

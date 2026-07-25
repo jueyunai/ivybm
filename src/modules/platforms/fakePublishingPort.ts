@@ -346,6 +346,12 @@ export const createFakePlatformPublishingPort = (
       if (capability.availability === 'blocked' || !capability.modes.includes('automatic')) {
         return blocked(normalizedRequest, 'platform_blocked', false)
       }
+      // A conditional capability deliberately represents a missing account, OAuth
+      // grant, or external verification. The credential-free fake must not turn it
+      // into a successful provider call merely to make a mock UI look complete.
+      if (capability.availability !== 'available') {
+        return blocked(normalizedRequest, 'account_not_connected', false)
+      }
 
       // An accepted duplicate returned above never reaches a provider call, so it
       // must not consume a failure that models the next new provider invocation.

@@ -22,6 +22,14 @@ const accepted = (
   return value
 }
 
+const createConnectedPort = () =>
+  createFakePlatformPublishingPort({
+    capabilities: {
+      facebook: { availability: 'available', modes: ['automatic'], platform: 'facebook' },
+      instagram: { availability: 'available', modes: ['automatic'], platform: 'instagram' },
+    },
+  })
+
 describe('fake platform publishing port', () => {
   it('exposes conditional capability without claiming a real platform is available', async () => {
     const port = createFakePlatformPublishingPort()
@@ -53,6 +61,32 @@ describe('fake platform publishing port', () => {
     })
   })
 
+  it('fails closed for every default no-account capability', async () => {
+    const port = createFakePlatformPublishingPort()
+
+    await expect(port.publish(facebookRequest())).resolves.toEqual({
+      errorCode: 'account_not_connected',
+      idempotencyKey: 'fixture-facebook-1',
+      platform: 'facebook',
+      retryable: false,
+      status: 'blocked',
+    })
+    await expect(port.publish(facebookRequest({ platform: 'instagram' }))).resolves.toEqual({
+      errorCode: 'account_not_connected',
+      idempotencyKey: 'fixture-facebook-1',
+      platform: 'instagram',
+      retryable: false,
+      status: 'blocked',
+    })
+    await expect(port.publish(facebookRequest({ platform: 'linkedin' }))).resolves.toEqual({
+      errorCode: 'platform_blocked',
+      idempotencyKey: 'fixture-facebook-1',
+      platform: 'linkedin',
+      retryable: false,
+      status: 'blocked',
+    })
+  })
+
   it('isolates capability overrides and returned capabilities from caller mutation', async () => {
     const override: PlatformCapability = {
       availability: 'conditional',
@@ -73,7 +107,7 @@ describe('fake platform publishing port', () => {
   })
 
   it('keeps concurrent duplicate commands stable and isolates platforms', async () => {
-    const port = createFakePlatformPublishingPort()
+    const port = createConnectedPort()
     const request = facebookRequest()
 
     const [first, duplicate] = await Promise.all([port.publish(request), port.publish(request)])
@@ -130,7 +164,7 @@ describe('fake platform publishing port', () => {
   })
 
   it('advances a known publication without terminal state regression', async () => {
-    const port = createFakePlatformPublishingPort()
+    const port = createConnectedPort()
     const result = accepted(await port.publish(facebookRequest()))
     const reference = {
       externalPublicationId: result.externalPublicationId,
@@ -148,7 +182,7 @@ describe('fake platform publishing port', () => {
   })
 
   it('models a retryable provider failure without creating a publication reference', async () => {
-    const port = createFakePlatformPublishingPort()
+    const port = createConnectedPort()
     port.failNextPublish({
       errorCode: 'provider_unavailable',
       platform: 'facebook',
@@ -171,7 +205,7 @@ describe('fake platform publishing port', () => {
   })
 
   it('does not consume a queued provider failure for an already accepted duplicate command', async () => {
-    const port = createFakePlatformPublishingPort()
+    const port = createConnectedPort()
     const firstRequest = facebookRequest({ idempotencyKey: 'failure-queue-duplicate-1' })
     const first = accepted(await port.publish(firstRequest))
 
@@ -257,7 +291,7 @@ describe('fake platform publishing port', () => {
   })
 
   it('allows immediate completion but keeps a failed terminal outcome immutable', async () => {
-    const port = createFakePlatformPublishingPort()
+    const port = createConnectedPort()
     const immediatelyPublished = accepted(
       await port.publish(facebookRequest({ idempotencyKey: 'immediate-publish-1' })),
     )
@@ -293,7 +327,7 @@ describe('fake platform publishing port', () => {
   })
 
   it('rejects unknown references, platform mismatches, and malformed failure states', async () => {
-    const port = createFakePlatformPublishingPort()
+    const port = createConnectedPort()
     const result = accepted(await port.publish(facebookRequest()))
 
     await expect(

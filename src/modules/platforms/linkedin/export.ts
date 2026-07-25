@@ -7,6 +7,13 @@ type CreateLinkedInAssistedExportInput = {
 
 const normalizedText = (text: string): string => text.replace(/\r\n?/g, '\n').trim()
 
+// Do not use localeCompare here: the package promises byte-stable output, while
+// a process default locale can order the same Unicode IDs differently on another
+// developer machine or deployment image. ECMAScript string comparison is a fixed
+// UTF-16 code-unit ordering for a given input.
+const compareAssetIDs = (left: PublicationAsset, right: PublicationAsset): number =>
+  left.id < right.id ? -1 : left.id > right.id ? 1 : 0
+
 const assertAssets = (assets: PublicationAsset[]): void => {
   const ids = new Set<string>()
   for (const asset of assets) {
@@ -29,7 +36,7 @@ export const createLinkedInAssistedExport = ({
   assertAssets(assets)
 
   return {
-    assets: structuredClone(assets).sort((left, right) => left.id.localeCompare(right.id)),
+    assets: structuredClone(assets).sort(compareAssetIDs),
     checklist: [
       'Copy the reviewed text into LinkedIn.',
       'Download and attach the listed assets in manifest order.',

@@ -6,6 +6,8 @@
 2. 任意重复或并发的相同命令不产生第二个 fake publication。
 3. 状态不会从 terminal 回退；错误状态必须保留 error code 与 retryable。
 4. TikTok 不因 TypeScript union 存在而被假装已接入。
+5. 没有账号的 `conditional` capability 不能生成 accepted ID 或 published 状态；成功模拟必须是显式 `available` 测试配置。
+6. LinkedIn 降级包只包含调用方提供的授权素材字节，不能下载或持久化带临时签名的 URL。
 
 ## 独立审查结论
 
@@ -18,6 +20,8 @@
 - fingerprint 忽略 optional `undefined`，让显式 `undefined` 和省略字段保持同一命令语义，同时保留素材数组顺序。
 - 已 accepted 的重复命令在到达 provider 逻辑前返回稳定结果，不能消耗 `failNextPublish` 队列；下一条新的自动发布命令才消费该失败注入。
 - factory、`publish`、`getCapability`、状态读取和 test control 在 runtime 检查未知平台、畸形 typed escape 与 capability override，返回稳定 fake error，而不是泄漏 map lookup / `.trim()` / `.includes()` 的运行时异常。
+- 默认 `conditional + automatic` 曾错误返回 accepted；现已用失败注入回归固定为 `account_not_connected`，并将所有成功模拟改为显式 `available + automatic` override。
+- LinkedIn assisted export 曾只有清单；现已增加确定性 ZIP bytes（README、文案、manifest、素材），且测试确认 manifest 不携带临时 URL query、路径穿越和重复文件名均被拒绝。
 
 ## 残余边界
 

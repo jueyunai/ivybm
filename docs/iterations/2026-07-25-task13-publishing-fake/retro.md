@@ -2,8 +2,9 @@
 
 ## 无账号阶段可以证明的事
 
-- 调用方可使用稳定的 `PlatformPublishingPort`、能力状态、关联 ID、幂等和失败语义完成 UI / contract 开发。
+- 调用方可使用稳定的 `PlatformPublishingPort`、能力状态、关联 ID、幂等和失败语义完成 UI / contract 开发；默认无账号状态不会伪造 accepted / published。
 - fake 的 provider failure、状态推进和跨平台 key 隔离可用确定性 fixture 回归，不需要 token、网络或付费 API。
+- LinkedIn 无 API 权限时可由后续 UI / 受保护路由把纯函数生成的 ZIP bytes 下载给运营人员；包中仅包含调用方提供的素材字节和文案，不触发网络。
 
 ## 不能证明的事
 
