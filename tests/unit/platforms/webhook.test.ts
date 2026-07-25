@@ -194,6 +194,27 @@ describe('platform webhook verification and ingestion', () => {
     expect(repository.events.size).toBe(2)
   })
 
+  it('authorizes every event before a mixed account batch can reach the durable inbox', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture', accounts: ['allowed', 'blocked'] })
+    const durableRepository = new FakePlatformEventRepository()
+    const enqueueBatch = vi.fn(durableRepository.enqueueBatch.bind(durableRepository))
+    const allowed = accountScopedEvent('account-allowed', 'event-allowed', 'Allowed account message')
+    const blocked = accountScopedEvent('account-blocked', 'event-blocked', 'Blocked account message')
+
+    await expect(ingestSignedWebhook({
+      ...signedInput(rawBody, durableRepository, [allowed, blocked]),
+      eventAuthorizer: (candidate) => {
+        if (candidate.accountExternalId === 'account-blocked') {
+          throw new WebhookValidationError('unauthorized_account', 'Webhook account is not authorized')
+        }
+      },
+      repository: { enqueueBatch },
+    })).rejects.toMatchObject({ code: 'unauthorized_account' } satisfies Partial<WebhookValidationError>)
+
+    expect(enqueueBatch).not.toHaveBeenCalled()
+    expect(durableRepository.events.size).toBe(0)
+  })
+
   it('rejects a legacy key at fresh webhook ingress before it can create a cross-account collision', async () => {
     const rawBody = JSON.stringify({ object: 'fixture', legacy: true })
     const repository = new FakePlatformEventRepository()
