@@ -6,6 +6,7 @@ import { getPayload, type Payload } from 'payload'
 
 import { createMetaWebhookHandlers } from '@/modules/platforms/meta/http'
 import { PLATFORM_EVENT_JOB_TYPE } from '@/modules/platforms/eventJobs'
+import { platformEventKeyV2 } from '@/modules/platforms/types'
 import config from '@/payload.config'
 
 const appSecret = 'integration-meta-app-secret'
@@ -43,7 +44,11 @@ describe.sequential('Meta webhook route durable ingress', () => {
     const suffix = randomUUID()
     const accountExternalId = `page-${suffix}`
     const externalEventId = `message-${suffix}`
-    const idempotencyKey = `facebook-messenger:${externalEventId}`
+    const idempotencyKey = platformEventKeyV2(
+      'facebook-messenger',
+      accountExternalId,
+      externalEventId,
+    )
     jobKeys.push(idempotencyKey)
     const rawBody = JSON.stringify({
       object: 'page',

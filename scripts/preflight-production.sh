@@ -73,6 +73,7 @@ payload_secret="$(read_env_value PAYLOAD_SECRET)"
 public_url="$(read_env_value NEXT_PUBLIC_SERVER_URL)"
 trust_proxy_headers="$(read_env_value TRUST_PROXY_HEADERS)"
 ai_configuration_encryption_key="$(read_env_value AI_CONFIG_ENCRYPTION_KEY)"
+platform_credential_encryption_key="$(read_optional_env_value PLATFORM_CREDENTIAL_ENCRYPTION_KEY)"
 reasoning_enabled="$(read_optional_env_value AI_REASONING_ENABLED)"
 reasoning_effort="$(read_optional_env_value AI_REASONING_EFFORT)"
 ai_provider_base_url="$(read_optional_env_value AI_PROVIDER_BASE_URL)"
@@ -94,6 +95,9 @@ require_pattern WORKER_IMAGE "$worker_image" '^ghcr\.io/[a-z0-9][a-z0-9._/-]*[a-
 require_pattern RUNTIME_IMAGE_DIGEST "$runtime_digest" '^sha256:[0-9a-f]{64}$'
 require_pattern WORKER_IMAGE_DIGEST "$worker_digest" '^sha256:[0-9a-f]{64}$'
 require_pattern AI_CONFIG_ENCRYPTION_KEY "$ai_configuration_encryption_key" '^[a-fA-F0-9]{64}$'
+if [[ -n "$platform_credential_encryption_key" ]]; then
+  require_pattern PLATFORM_CREDENTIAL_ENCRYPTION_KEY "$platform_credential_encryption_key" '^[a-fA-F0-9]{64}$'
+fi
 
 if [[ "$app_version" != "$image_tag" ]]; then
   echo 'APP_VERSION must match IMAGE_TAG for release traceability' >&2

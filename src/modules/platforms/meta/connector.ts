@@ -4,7 +4,7 @@ import {
   type NormalizedAttachment,
   type NormalizedMessageContent,
   type NormalizedPlatformEvent,
-  platformEventKey,
+  platformEventKeyV2,
   platformTimestamp,
   sanitizeExternalAttachmentURL,
 } from '../types'
@@ -22,6 +22,9 @@ const stringValue = (value: unknown, maxLength = 5_000): string | undefined => {
 
 const numericValue = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+const isIgnoredControlCallback = (envelope: UnknownRecord): boolean =>
+  isRecord(envelope.delivery) || isRecord(envelope.read)
 
 const normalizeAttachments = (value: unknown): NormalizedAttachment[] => {
   if (value === undefined) return []
@@ -70,12 +73,17 @@ export const createMetaConnector = (): PlatformConnector => ({
 
     const events: NormalizedPlatformEvent[] = []
     for (const entry of payload.entry) {
-      if (!isRecord(entry)) continue
+      if (!isRecord(entry)) throw new Error('Meta webhook entry is invalid')
       const accountExternalId = stringValue(entry.id, 240)
-      if (!accountExternalId || !Array.isArray(entry.messaging)) continue
+      if (!accountExternalId) throw new Error('Meta webhook account identifier is invalid')
+      if (!Array.isArray(entry.messaging)) throw new Error('Meta webhook messaging is invalid')
 
       for (const envelope of entry.messaging) {
-        if (!isRecord(envelope) || !isRecord(envelope.message)) continue
+        if (!isRecord(envelope)) throw new Error('Meta webhook messaging envelope is invalid')
+        if (!isRecord(envelope.message)) {
+          if (isIgnoredControlCallback(envelope)) continue
+          throw new Error('Meta webhook messaging envelope is invalid')
+        }
         const message = envelope.message
         if (message.is_echo === true) continue
 
@@ -98,7 +106,7 @@ export const createMetaConnector = (): PlatformConnector => ({
           accountExternalId,
           content: normalizeContent(message),
           externalEventId,
-          idempotencyKey: platformEventKey(platform, externalEventId),
+          idempotencyKey: platformEventKeyV2(platform, accountExternalId, externalEventId),
           kind: 'inbound-message',
           occurredAt: platformTimestamp(timestamp, 'milliseconds'),
           platform,

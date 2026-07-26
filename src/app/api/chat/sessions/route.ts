@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   CHAT_LOCALES,
   ChatServiceError,
-  type ChatChannel,
   type ChatLocale,
 } from '@/modules/conversations/contracts'
 import {
@@ -42,7 +41,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     const issuedToken = createVisitorToken()
     const service = await createPayloadChatService({ sessionTokenHash: hashVisitorToken(issuedToken) })
     const session = await service.startSession({
-      channel: channel as ChatChannel,
+      channel: 'website',
       idempotencyKey,
       locale: locale as ChatLocale,
       sourceURL: typeof body.sourceURL === 'string' ? body.sourceURL.slice(0, 2_048) : undefined,

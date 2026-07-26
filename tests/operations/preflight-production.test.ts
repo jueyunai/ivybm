@@ -161,4 +161,22 @@ META_WEBHOOK_ALLOWED_ACCOUNT_IDS=1234567890,9876543210
     expect(complete.status).toBe(0)
     expect(complete.stdout).not.toContain('operation-meta-app-secret')
   })
+
+  it('accepts an omitted platform credential key but rejects an invalid configured value', () => {
+    const omitted = runPreflight(productionEnvironment)
+    const invalid = runPreflight(
+      `${productionEnvironment}PLATFORM_CREDENTIAL_ENCRYPTION_KEY=not-a-64-character-hex-key\n`,
+    )
+    const valid = runPreflight(
+      `${productionEnvironment}PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\n`,
+    )
+
+    expect(omitted.status).toBe(0)
+    expect(invalid.status).not.toBe(0)
+    expect(invalid.stderr).toContain('PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
+    expect(valid.status).toBe(0)
+    expect(valid.stdout).not.toContain(
+      'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+    )
+  })
 })

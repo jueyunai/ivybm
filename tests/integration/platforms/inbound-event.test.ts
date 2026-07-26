@@ -1,19 +1,32 @@
 import { createHash, randomUUID } from 'node:crypto'
 
-import type { PostgresAdapter } from '@payloadcms/db-postgres'
+import type { MigrateDownArgs, PostgresAdapter } from '@payloadcms/db-postgres'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { getPayload, type Payload } from 'payload'
+import {
+  createLocalReq,
+  getPayload,
+  initTransaction,
+  killTransaction,
+  type Payload,
+} from 'payload'
 
 import config from '@/payload.config'
+import { down as removeTikTokChannel } from '@/migrations/20260725_051208_task13_tiktok_channel'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import {
   createPlatformEventJobHandler,
   PLATFORM_EVENT_JOB_TYPE,
 } from '@/modules/platforms/eventJobs'
-import { PayloadMetaConversationPort } from '@/modules/platforms/payloadConversationPort'
+import { externalMessagePersistenceKey } from '@/modules/conversations/externalDeliveryIdentity'
+import { PayloadPlatformConversationPort } from '@/modules/platforms/payloadConversationPort'
 import { PayloadPlatformEventRepository } from '@/modules/platforms/payloadEventRepository'
 import type { PersistedPlatformEvent } from '@/modules/platforms/ports'
-import type { NormalizedInboundMessage } from '@/modules/platforms/types'
+import {
+  platformEventKey,
+  platformEventKeyV2,
+  type MessagingPlatform,
+  type NormalizedInboundMessage,
+} from '@/modules/platforms/types'
 
 let payload: Payload
 const testKeys: string[] = []
@@ -30,22 +43,75 @@ type PersistedInboundEvent = Omit<PersistedPlatformEvent, 'event'> & {
 const createInboundEvent = (
   suffix: string,
   text = 'Please share available facade finishes.',
+  platform: MessagingPlatform = 'facebook-messenger',
 ): PersistedInboundEvent => {
+  const accountExternalId = `account-${suffix}`
   const event: NormalizedInboundMessage = {
-    accountExternalId: `page-${suffix}`,
+    accountExternalId,
     content: { messageType: 'text', text },
     externalEventId: `message-${suffix}`,
-    idempotencyKey: `facebook-messenger:message-${suffix}`,
+    idempotencyKey: platformEventKeyV2(platform, accountExternalId, `message-${suffix}`),
     kind: 'inbound-message',
     occurredAt: '2026-07-22T00:00:00.000Z',
-    platform: 'facebook-messenger',
-    recipientExternalId: `page-${suffix}`,
+    platform,
+    recipientExternalId: accountExternalId,
     senderExternalId: `sender-${suffix}`,
   }
   const persisted: PersistedInboundEvent = {
     event,
     eventDigest: digest(JSON.stringify(event)),
     rawPayloadDigest: digest(`raw-${suffix}`),
+  }
+  testKeys.push(event.idempotencyKey)
+  testThreads.push(`${event.accountExternalId}:${event.senderExternalId}`)
+  return persisted
+}
+
+const createLegacyInboundEvent = (
+  suffix: string,
+  text = 'Pre-upgrade fixture message.',
+): PersistedInboundEvent => {
+  const persisted = createInboundEvent(suffix, text)
+  const legacyKey = platformEventKey(
+    persisted.event.platform,
+    persisted.event.externalEventId,
+  )
+  persisted.event.idempotencyKey = legacyKey
+  persisted.eventDigest = digest(JSON.stringify(persisted.event))
+  testKeys[testKeys.length - 1] = legacyKey
+  return persisted
+}
+
+const createAccountScopedInboundEvent = ({
+  accountExternalId,
+  externalEventId,
+  senderExternalId,
+  text,
+}: {
+  accountExternalId: string
+  externalEventId: string
+  senderExternalId: string
+  text: string
+}): PersistedInboundEvent => {
+  const event: NormalizedInboundMessage = {
+    accountExternalId,
+    content: { messageType: 'text', text },
+    externalEventId,
+    idempotencyKey: platformEventKeyV2(
+      'facebook-messenger',
+      accountExternalId,
+      externalEventId,
+    ),
+    kind: 'inbound-message',
+    occurredAt: '2026-07-22T00:00:00.000Z',
+    platform: 'facebook-messenger',
+    recipientExternalId: accountExternalId,
+    senderExternalId,
+  }
+  const persisted: PersistedInboundEvent = {
+    event,
+    eventDigest: digest(JSON.stringify(event)),
+    rawPayloadDigest: digest(`raw-${accountExternalId}-${externalEventId}`),
   }
   testKeys.push(event.idempotencyKey)
   testThreads.push(`${event.accountExternalId}:${event.senderExternalId}`)
@@ -143,11 +209,20 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     expect(rows.rows).toEqual([{ idempotency_key: first.event.idempotencyKey }])
   })
 
+  it('rejects a legacy key when it is presented as a new event to the durable queue', async () => {
+    const repository = new PayloadPlatformEventRepository({ payload })
+    const legacy = createLegacyInboundEvent(randomUUID())
+
+    await expect(repository.enqueueBatch([legacy])).rejects.toThrow(
+      'Platform event idempotency key is invalid',
+    )
+  })
+
   it('delivers a queued Meta event once to the authoritative conversation service', async () => {
     const repository = new PayloadPlatformEventRepository({ payload })
     const persisted = createInboundEvent(randomUUID())
     const queue = new PayloadJobQueue({ payload })
-    const conversations = new PayloadMetaConversationPort({ payload })
+    const conversations = new PayloadPlatformConversationPort({ payload })
     const handler = createPlatformEventJobHandler({ conversations })
 
     await expect(repository.enqueueBatch([persisted])).resolves.toEqual([
@@ -173,6 +248,17 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       channel: 'facebook',
       handoffStatus: 'handoff_requested',
     })
+    const visitorSessionID = typeof conversation.docs[0]?.visitorSession === 'number'
+      ? conversation.docs[0]?.visitorSession
+      : conversation.docs[0]?.visitorSession?.id
+    const visitor = visitorSessionID
+      ? await payload.findByID({ collection: 'visitor-sessions', id: visitorSessionID, overrideAccess: true })
+      : undefined
+    expect(visitor).toMatchObject({
+      idempotencyKey: `platform-session:${persisted.event.platform}:${digest(
+        `${persisted.event.platform}\u0000${persisted.event.accountExternalId}\u0000${persisted.event.senderExternalId}`,
+      )}`,
+    })
     const messages = await payload.find({
       collection: 'messages',
       depth: 0,
@@ -185,7 +271,11 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
         author: 'visitor',
         content: persisted.event.content.text,
         externalMessageId: persisted.event.externalEventId,
-        idempotencyKey: `platform-message:${persisted.event.idempotencyKey}`,
+        idempotencyKey: externalMessagePersistenceKey(
+          'facebook',
+          persisted.event.accountExternalId,
+          persisted.event.externalEventId,
+        ),
       }),
     ])
 
@@ -195,6 +285,19 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       idempotencyKey: persisted.event.idempotencyKey,
       status: 'duplicate',
     })
+    await expect(payload.count({
+      collection: 'messages',
+      overrideAccess: true,
+      where: { conversation: { equals: conversation.docs[0]?.id } },
+    })).resolves.toEqual({ totalDocs: 1 })
+    // A connector or queue may rotate its transport receipt key while retrying the
+    // same authenticated platform message. The conversation service must derive
+    // its own durable identity from the external message and thread instead.
+    const changedTransportKey = `${persisted.event.idempotencyKey}:transport-retry`
+    await expect(conversations.writeInboundMessage({
+      ...persisted.event,
+      idempotencyKey: changedTransportKey,
+    })).resolves.toEqual({ idempotencyKey: changedTransportKey, status: 'duplicate' })
     await expect(payload.count({
       collection: 'messages',
       overrideAccess: true,
@@ -214,14 +317,237 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     await expect(queue.getByID(job.id)).resolves.toMatchObject({ status: 'succeeded' })
   })
 
+  it('runs a pre-upgrade v1 Job through the current worker without opening v1 ingress', async () => {
+    const persisted = createLegacyInboundEvent(randomUUID())
+    const now = new Date('2026-07-22T00:00:00.000Z').toISOString()
+    await pool().query(
+      `INSERT INTO jobs (
+        type, idempotency_key, payload, status, attempts, max_attempts, next_run_at,
+        manual_retry_count, updated_at, created_at
+      ) VALUES ($1, $2, $3::jsonb, 'pending', 0, 5, $4, 0, $4, $4)`,
+      [
+        PLATFORM_EVENT_JOB_TYPE,
+        persisted.event.idempotencyKey,
+        JSON.stringify(persisted),
+        now,
+      ],
+    )
+    const queue = new PayloadJobQueue({ payload })
+    const conversations = new PayloadPlatformConversationPort({ payload })
+    const handler = createPlatformEventJobHandler({ conversations })
+    const job = await queue.claimNext()
+    if (!job) throw new Error('Expected the pre-upgrade Job to be claimable')
+
+    await handler(job, {
+      assertLease: () => undefined,
+      renewLease: async () => job,
+      signal: new AbortController().signal,
+    })
+    await queue.complete(job)
+
+    const conversation = await payload.find({
+      collection: 'conversations',
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      where: {
+        externalThreadId: {
+          equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}`,
+        },
+      },
+    })
+    expect(conversation.docs[0]).toMatchObject({ channel: 'facebook' })
+    await expect(payload.count({
+      collection: 'messages',
+      overrideAccess: true,
+      where: { conversation: { equals: conversation.docs[0]?.id } },
+    })).resolves.toEqual({ totalDocs: 1 })
+    await expect(queue.getByID(job.id)).resolves.toMatchObject({ status: 'succeeded' })
+  })
+
+  it('delivers same-ID messages from different Meta accounts without cross-account deduplication', async () => {
+    const repository = new PayloadPlatformEventRepository({ payload })
+    const sharedMessageID = `shared-provider-message-${randomUUID()}`
+    const first = createAccountScopedInboundEvent({
+      accountExternalId: `account-a-${randomUUID()}`,
+      externalEventId: sharedMessageID,
+      senderExternalId: 'sender-shared',
+      text: 'First account message.',
+    })
+    const second = createAccountScopedInboundEvent({
+      accountExternalId: `account-b-${randomUUID()}`,
+      externalEventId: sharedMessageID,
+      senderExternalId: 'sender-shared',
+      text: 'Second account message.',
+    })
+    const queue = new PayloadJobQueue({ payload })
+    const conversations = new PayloadPlatformConversationPort({ payload })
+    const handler = createPlatformEventJobHandler({ conversations })
+
+    await expect(Promise.all([
+      repository.enqueueBatch([first]),
+      repository.enqueueBatch([second]),
+    ])).resolves.toEqual(expect.arrayContaining([
+      [{ idempotencyKey: first.event.idempotencyKey, status: 'accepted' }],
+      [{ idempotencyKey: second.event.idempotencyKey, status: 'accepted' }],
+    ]))
+
+    const firstJob = await queue.claimNext()
+    const secondJob = await queue.claimNext()
+    if (!firstJob || !secondJob) throw new Error('Expected both account-scoped events to be claimable')
+    for (const job of [firstJob, secondJob]) {
+      await handler(job, {
+        assertLease: () => undefined,
+        renewLease: async () => job,
+        signal: new AbortController().signal,
+      })
+      await queue.complete(job)
+    }
+
+    const persistedConversations = await payload.find({
+      collection: 'conversations',
+      depth: 0,
+      limit: 10,
+      overrideAccess: true,
+      where: { externalThreadId: { in: testThreads } },
+    })
+    expect(persistedConversations.docs).toHaveLength(2)
+
+    for (const conversation of persistedConversations.docs) {
+      const messages = await payload.find({
+        collection: 'messages',
+        depth: 0,
+        limit: 10,
+        overrideAccess: true,
+        where: { conversation: { equals: conversation.id } },
+      })
+      expect(messages.docs).toHaveLength(1)
+      expect(messages.docs[0]).toMatchObject({ externalMessageId: sharedMessageID })
+    }
+  })
+
+  it('persists an already-normalized TikTok event through the same durable path', async () => {
+    // This exercises only the internal channel and Job contract. It does not
+    // manufacture a TikTok webhook fixture or claim that its DM API is available.
+    const repository = new PayloadPlatformEventRepository({ payload })
+    const persisted = createInboundEvent(
+      randomUUID(),
+      'Please share facade panel samples for our project.',
+      'tiktok',
+    )
+    const queue = new PayloadJobQueue({ payload })
+    const conversations = new PayloadPlatformConversationPort({
+      allowTikTokNormalizedDelivery: true,
+      payload,
+    })
+    const handler = createPlatformEventJobHandler({ conversations })
+
+    await expect(repository.enqueueBatch([persisted])).resolves.toEqual([
+      { idempotencyKey: persisted.event.idempotencyKey, status: 'accepted' },
+    ])
+    const job = await queue.claimNext()
+    if (!job) throw new Error('Expected the TikTok platform event to be claimable')
+
+    await handler(job, {
+      assertLease: () => undefined,
+      renewLease: async () => job,
+      signal: new AbortController().signal,
+    })
+    await queue.complete(job)
+
+    const conversation = await payload.find({
+      collection: 'conversations',
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      where: {
+        externalThreadId: {
+          equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}`,
+        },
+      },
+    })
+    expect(conversation.docs[0]).toMatchObject({
+      channel: 'tiktok',
+      handoffStatus: 'handoff_requested',
+    })
+    await expect(payload.count({
+      collection: 'messages',
+      overrideAccess: true,
+      where: { conversation: { equals: conversation.docs[0]?.id } },
+    })).resolves.toEqual({ totalDocs: 1 })
+  })
+
+  it('fails closed for TikTok delivery unless a future reviewed connector explicitly enables it', async () => {
+    const persisted = createInboundEvent(
+      randomUUID(),
+      'This must not enter a TikTok conversation through the default worker path.',
+      'tiktok',
+    )
+    const conversations = new PayloadPlatformConversationPort({ payload })
+
+    await expect(conversations.writeInboundMessage(persisted.event)).rejects.toThrow(
+      'TikTok normalized delivery is not enabled',
+    )
+  })
+
+  it('refuses a TikTok channel schema downgrade while TikTok conversations exist', async () => {
+    const persisted = createInboundEvent(
+      randomUUID(),
+      'The migration must preserve this TikTok conversation.',
+      'tiktok',
+    )
+    const conversations = new PayloadPlatformConversationPort({
+      allowTikTokNormalizedDelivery: true,
+      payload,
+    })
+    await conversations.writeInboundMessage(persisted.event)
+
+    const request = await createLocalReq({}, payload)
+    await initTransaction(request)
+    const transactionID = await request.transactionID
+    const transaction = transactionID
+      ? (payload.db as unknown as PostgresAdapter).sessions[String(transactionID)]?.db
+      : undefined
+    if (!transaction) throw new Error('Expected an isolated migration transaction')
+
+    try {
+      await expect(
+        removeTikTokChannel({
+          db: transaction as MigrateDownArgs['db'],
+          payload,
+          req: request,
+        }),
+      ).rejects.toThrow('Cannot roll back Task 13 TikTok channel migration')
+    } finally {
+      await killTransaction(request)
+    }
+
+    // The failed downgrade must roll back entirely: the current application can
+    // still read the durable conversation and its message after the refusal.
+    await expect(payload.count({
+      collection: 'conversations',
+      overrideAccess: true,
+      where: {
+        externalThreadId: {
+          equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}`,
+        },
+      },
+    })).resolves.toEqual({ totalDocs: 1 })
+  })
+
   it('persists a distinct follow-up from the same Meta sender after handoff is requested', async () => {
     const repository = new PayloadPlatformEventRepository({ payload })
     const first = createInboundEvent(randomUUID(), 'First customer message.')
+    const followUpExternalEventID = `${first.event.externalEventId}-follow-up`
     const followUpEvent: NormalizedInboundMessage = {
       ...first.event,
       content: { messageType: 'text', text: 'Second customer message before an operator responds.' },
-      externalEventId: `${first.event.externalEventId}-follow-up`,
-      idempotencyKey: `${first.event.idempotencyKey}-follow-up`,
+      externalEventId: followUpExternalEventID,
+      idempotencyKey: platformEventKeyV2(
+        first.event.platform,
+        first.event.accountExternalId,
+        followUpExternalEventID,
+      ),
     }
     const followUp: PersistedInboundEvent = {
       event: followUpEvent,
@@ -230,7 +556,7 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     }
     testKeys.push(followUp.event.idempotencyKey)
     const queue = new PayloadJobQueue({ payload })
-    const conversations = new PayloadMetaConversationPort({ payload })
+    const conversations = new PayloadPlatformConversationPort({ payload })
     const handler = createPlatformEventJobHandler({ conversations })
 
     await expect(repository.enqueueBatch([first])).resolves.toEqual([
@@ -275,11 +601,19 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     expect(messages.docs).toEqual(expect.arrayContaining([
       expect.objectContaining({
         externalMessageId: first.event.externalEventId,
-        idempotencyKey: `platform-message:${first.event.idempotencyKey}`,
+        idempotencyKey: externalMessagePersistenceKey(
+          'facebook',
+          first.event.accountExternalId,
+          first.event.externalEventId,
+        ),
       }),
       expect.objectContaining({
         externalMessageId: followUp.event.externalEventId,
-        idempotencyKey: `platform-message:${followUp.event.idempotencyKey}`,
+        idempotencyKey: externalMessagePersistenceKey(
+          'facebook',
+          followUp.event.accountExternalId,
+          followUp.event.externalEventId,
+        ),
       }),
     ]))
     expect(messages.docs).toHaveLength(2)
@@ -293,7 +627,7 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     const clock = () => now
     const firstQueue = new PayloadJobQueue({ clock, leaseMs: 1_000, payload })
     const reclaimedQueue = new PayloadJobQueue({ clock, leaseMs: 1_000, payload })
-    const conversations = new PayloadMetaConversationPort({ payload })
+    const conversations = new PayloadPlatformConversationPort({ payload })
     const handler = createPlatformEventJobHandler({ conversations })
 
     await expect(repository.enqueueBatch([persisted])).resolves.toEqual([

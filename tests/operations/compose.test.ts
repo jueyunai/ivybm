@@ -36,6 +36,7 @@ const requiredEnvironment = {
   META_WEBHOOK_ALLOWED_ACCOUNT_IDS: '1234567890,9876543210',
   META_WEBHOOK_APP_SECRET: 'operation-test-meta-app-secret',
   META_WEBHOOK_VERIFY_TOKEN: 'operation-test-meta-verify-token',
+  PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'e'.repeat(64),
   PAYLOAD_SECRET: 'operation-test-secret-at-least-32-characters',
   POSTGRES_DB: 'ivybm',
   POSTGRES_PASSWORD: 'operation-password',
@@ -83,6 +84,7 @@ const getLocalComposeConfig = (): ComposeConfig => {
         AI_PROVIDER_API_KEY: 'local-provider-key',
         AI_PROVIDER_BASE_URL: 'https://local-provider.example.invalid/v1',
         AI_TEXT_MODEL: 'local-text-model',
+        PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'f'.repeat(64),
       },
     },
   )
@@ -201,6 +203,20 @@ describe('production Compose configuration', () => {
       expect(config.services.worker.environment).not.toHaveProperty('META_WEBHOOK_APP_SECRET')
     }
   })
+
+  it('passes the platform credential master key only to app and worker processes', () => {
+    for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
+      expect(config.services.app.environment).toMatchObject({
+        PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'e'.repeat(64),
+      })
+      expect(config.services.worker.environment).toMatchObject({
+        PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'e'.repeat(64),
+      })
+      expect(config.services.migrate.environment).not.toHaveProperty(
+        'PLATFORM_CREDENTIAL_ENCRYPTION_KEY',
+      )
+    }
+  })
 })
 
 describe('local Compose worker configuration', () => {
@@ -214,6 +230,7 @@ describe('local Compose worker configuration', () => {
       AI_PROVIDER_API_KEY: 'local-provider-key',
       AI_PROVIDER_BASE_URL: 'https://local-provider.example.invalid/v1',
       AI_TEXT_MODEL: 'local-text-model',
+      PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'f'.repeat(64),
     })
   })
 })
