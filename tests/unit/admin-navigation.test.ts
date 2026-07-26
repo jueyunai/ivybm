@@ -32,6 +32,11 @@ describe('task-oriented Admin navigation', () => {
     expect(components?.views?.dashboard).toMatchObject({
       Component: '/admin/views/OperationsDashboard',
     })
+    expect(components?.views?.platformOperations).toMatchObject({
+      Component: '/admin/views/PlatformOperations',
+      exact: true,
+      path: '/platforms',
+    })
   })
 
   it('builds bilingual, access-aware sections without duplicating task collections', () => {
@@ -47,6 +52,11 @@ describe('task-oriented Admin navigation', () => {
         }),
         collection({ group: 'AI 管理', label: 'AI providers', slug: 'ai-providers' }),
         collection({ group: 'Operations', label: 'Jobs', slug: 'jobs' }),
+        collection({
+          group: 'Platform Accounts',
+          label: 'Platform accounts',
+          slug: 'platform-accounts',
+        }),
         collection({ label: 'Payload migrations', slug: 'payload-migrations' }),
         collection({ label: 'Users', slug: 'users' }),
       ],
@@ -58,6 +68,7 @@ describe('task-oriented Admin navigation', () => {
         'ai-providers': { fields: {}, read: true },
         jobs: { fields: {}, read: true },
         leads: { fields: {}, read: true },
+        'platform-accounts': { fields: {}, read: true },
         'payload-migrations': { fields: {}, read: true },
         products: { fields: {}, read: true },
         users: { fields: {} },
@@ -97,6 +108,7 @@ describe('task-oriented Admin navigation', () => {
     expect(allItems.map((item) => item.href)).toContain('/admin/collections/products')
     expect(allItems.map((item) => item.href)).toContain('/admin/collections/ai-providers')
     expect(allItems.map((item) => item.href)).toContain('/admin/collections/jobs')
+    expect(allItems.map((item) => item.href)).toContain('/admin/platforms')
     expect(allItems.map((item) => item.href)).toContain('/admin/globals/site-settings')
     expect(allItems.map((item) => item.href)).not.toContain(
       '/admin/collections/knowledge-documents',

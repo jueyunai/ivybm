@@ -11,6 +11,7 @@ const e2ePort = process.env.E2E_PORT || '3000'
 const defaultBaseURL = isCI ? `http://127.0.0.1:${e2ePort}` : 'http://localhost:3000'
 const baseURL = process.env.BASE_URL || defaultBaseURL
 const usesExternalServer = Boolean(process.env.BASE_URL)
+const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -37,7 +38,12 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(chromiumExecutablePath
+          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+          : {}),
+      },
     },
   ],
   webServer: usesExternalServer

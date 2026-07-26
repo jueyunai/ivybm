@@ -1,6 +1,6 @@
 # 一期平台接入 PoC 记录
 
-更新日期：2026-07-25
+更新日期：2026-07-26
 
 > 范围冻结（2026-07-20）：一期会话接入为 Facebook Messenger、Instagram DM、TikTok 私信；一期图文发布为 Facebook、Instagram、LinkedIn。WhatsApp 移出一期，二期再评估网页插件等替代接入；LinkedIn 私信不属于一期自动会话范围。
 >
@@ -17,17 +17,25 @@
 
 fixture / mock 通过只表示接口契约完成。只有在 production 受控窗口或等价真实环境完成账号授权、Webhook 和目标操作实测后，平台能力才能标记为 `available`。
 
+## 无账号本地演练
+
+- admin-only `/admin/platforms` 平台联调中心把账号 readiness、无凭据 fixture 演练和外部阻塞集中到一个可点击界面；管理员可从状态矩阵进入 `PlatformAccounts` CRUD，后续取得账号后在既有结构中补录非敏感 ID、授权 / 审核状态和只写 token，不需要重做 UI 或纯请求 seam。
+- admin-only `POST /api/platforms/simulations` 提供 8 个确定性场景：Meta 入站归一化、Meta 回复请求、Facebook 图片发布请求、Instagram 发布序列、LinkedIn 初始化 / PUT 上传 / 发帖 / 状态、TikTok 官方签名验证、无账号发布降级和未知结果人工补偿。所有场景禁止网络访问，不读取平台凭据，不把 fixture 成功解释为平台 accepted / published。
+- 演练 route 限制 4KB JSON，请求鉴权与错误状态覆盖 `401 / 403 / 400 / 413 / 415`；响应只暴露稳定的内部步骤、方法和不含凭据的路径。TikTok 验签与 LinkedIn 辅助发布包可显示为 `ready-for-controlled-test + implemented`，但 TikTok Business DM 与 LinkedIn 自动发布仍分别读取 blocked 的官方 / readiness 条件。
+- 故障模型回归覆盖未知外部结果停止自动重发、重复发布键冲突、凭据 / URL 查询参数不泄漏、签名缺失或畸形、请求过期、长 URL、4KB body 和 UTF-8 多字节长度。production standalone Chrome 已验证桌面 / 移动状态矩阵、键盘 Tab 切换、Mock 执行和阻塞视图。
+- 隔离 PostgreSQL fresh reset 后直接运行 integration 会因缺少 8 条 showcase media 前置而在 `seed-media.test.ts` 得到 `0 / 8`，与平台代码无关；按正式门禁先完整 seed 两次后，integration `111/111` 通过。其余门禁为 unit `341/341`、contract `47/47`、operations `27/27`、production build 和 production E2E `2/2`。
+
 ## 当前能力矩阵
 
-| 平台 / 能力                   | 当前状态      | 当前仓库证据                                                                                                          | 待联调条件                                                                                  |
-| ----------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Facebook Messenger 入站消息   | `conditional` | Meta connector、合成 fixture、raw HMAC / 时间窗 / 幂等、Jobs inbox、worker、Task 9 adapter、平台账号预检，以及公网 route 的 fake / PostgreSQL 测试 | Facebook 企业 / 商业账号、Page、Meta App、Webhook 订阅、所需权限 / App Review、受控真实环境 |
-| Instagram DM 入站消息         | `conditional` | Meta connector、合成 fixture、raw HMAC / 时间窗 / 幂等、Jobs inbox、worker、Task 9 adapter、平台账号预检，以及公网 route 的 fake / PostgreSQL 测试 | Instagram 企业 / 商业账号、Facebook Page 绑定、Meta App 权限 / App Review、受控真实环境     |
-| TikTok 私信入站消息           | `blocked`     | 可安全记录商业账号/授权状态和缺口；内部 `tiktok` 会话 channel、Job dispatch 与幂等入库已验证，但默认 worker fail-closed，只有未来经代码 review 的官方 connector 才能显式启用该内部路径；未交付 raw connector、Webhook route 或猜测性 fixture 契约测试 | TikTok 商业账号、目标地区官方私信 API、官方事件 schema、应用授权 / 审核、受控真实环境        |
-| 社媒会话 AI 出站回复          | `blocked`     | server-only contract / fake 已冻结未知结果恢复语义；无出站授权时入站 adapter 持久化人工接管，不伪造已发送 AI 回复      | 对应账号 / 权限 / 消息窗口、持久 Job handler、平台 adapter、受控真实入站与出站验证          |
-| Facebook / Instagram 图文发布 | `conditional` | 平台账号预检 + Task 13 capability / publish / status port；未交付发布数据库 adapter，`PublishJobs` / `PublishLogs` 尚待 Task 12 | Task 12 发布结构、Meta Page / Instagram Content Publishing 权限、App Review、受控真实环境   |
-| LinkedIn 图文发布             | `conditional` | 平台账号预检、确定性文案、素材 manifest、调用方提供已授权素材字节时的离线 ZIP package 与人工发布步骤；自动发布 adapter 尚未交付 | Task 12 内容契约；甲方 LinkedIn 账号及应用发布权限证据；有权限后再做自动发布 adapter        |
-| WhatsApp 系统接入             | `phase-2`     | 不在一期开发或验收范围                                                                                                | 二期再评估网页插件等替代接入、成本、合规与账号资产                                          |
+| 平台 / 能力                   | 当前状态      | 当前仓库证据                                                                                                                                                                                                                                          | 待联调条件                                                                                  |
+| ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Facebook Messenger 入站消息   | `conditional` | Meta connector、合成 fixture、raw HMAC / 时间窗 / 幂等、Jobs inbox、worker、Task 9 adapter、平台账号预检，以及公网 route 的 fake / PostgreSQL 测试                                                                                                    | Facebook 企业 / 商业账号、Page、Meta App、Webhook 订阅、所需权限 / App Review、受控真实环境 |
+| Instagram DM 入站消息         | `conditional` | Meta connector、合成 fixture、raw HMAC / 时间窗 / 幂等、Jobs inbox、worker、Task 9 adapter、平台账号预检，以及公网 route 的 fake / PostgreSQL 测试                                                                                                    | Instagram 企业 / 商业账号、Facebook Page 绑定、Meta App 权限 / App Review、受控真实环境     |
+| TikTok 私信入站消息           | `blocked`     | 可安全记录商业账号/授权状态和缺口；内部 `tiktok` 会话 channel、Job dispatch 与幂等入库已验证，但默认 worker fail-closed，只有未来经代码 review 的官方 connector 才能显式启用该内部路径；未交付 raw connector、Webhook route 或猜测性 fixture 契约测试 | TikTok 商业账号、目标地区官方私信 API、官方事件 schema、应用授权 / 审核、受控真实环境       |
+| 社媒会话 AI 出站回复          | `blocked`     | server-only contract / fake 已冻结未知结果恢复语义；无出站授权时入站 adapter 持久化人工接管，不伪造已发送 AI 回复                                                                                                                                     | 对应账号 / 权限 / 消息窗口、持久 Job handler、平台 adapter、受控真实入站与出站验证          |
+| Facebook / Instagram 图文发布 | `conditional` | 平台账号预检 + Task 13 capability / publish / status port；未交付发布数据库 adapter，`PublishJobs` / `PublishLogs` 尚待 Task 12                                                                                                                       | Task 12 发布结构、Meta Page / Instagram Content Publishing 权限、App Review、受控真实环境   |
+| LinkedIn 图文发布             | `conditional` | 平台账号预检、确定性文案、素材 manifest、调用方提供已授权素材字节时的离线 ZIP package 与人工发布步骤；自动发布 adapter 尚未交付                                                                                                                       | Task 12 内容契约；甲方 LinkedIn 账号及应用发布权限证据；有权限后再做自动发布 adapter        |
+| WhatsApp 系统接入             | `phase-2`     | 不在一期开发或验收范围                                                                                                                                                                                                                                | 二期再评估网页插件等替代接入、成本、合规与账号资产                                          |
 
 ## 接口 / 纯逻辑阶段证据
 

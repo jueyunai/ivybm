@@ -22,6 +22,7 @@ export type AdminCopy = {
     workspace: string
   }
   openQueue: string
+  platformOperationsNav: string
   queuesHeading: string
   roleAdmin: string
   roleOperator: string
@@ -64,6 +65,7 @@ export const ADMIN_COPY: Record<AdminLocale, AdminCopy> = {
     },
     newQualifiedLeads: '新增高意向线索',
     openQueue: '查看队列',
+    platformOperationsNav: '平台联调中心',
     queuesHeading: '待处理队列',
     roleAdmin: '管理员',
     roleOperator: '运营人员',
@@ -105,6 +107,7 @@ export const ADMIN_COPY: Record<AdminLocale, AdminCopy> = {
     },
     newQualifiedLeads: 'New qualified leads',
     openQueue: 'Open queue',
+    platformOperationsNav: 'Platform operations',
     queuesHeading: 'Action queues',
     roleAdmin: 'Administrator',
     roleOperator: 'Operator',

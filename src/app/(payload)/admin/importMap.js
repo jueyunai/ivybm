@@ -24,6 +24,7 @@ import { BoldFeatureClient as BoldFeatureClient_e70f5e05f09f93e00b997edb1ef0c864
 import { ItalicFeatureClient as ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { default as default_41b46242f1c6803b112f706342fd9b41 } from '../../../admin/components/OperationsNav'
 import { default as default_3fa7a7e39163aa3e1bba593eb53d72b8 } from '../../../admin/views/OperationsDashboard'
+import { default as default_0852a820c06b1f4d16fc3214a03e1258 } from '../../../admin/views/PlatformOperations'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
 /** @type import('payload').ImportMap */
@@ -54,5 +55,6 @@ export const importMap = {
   "@payloadcms/richtext-lexical/client#ItalicFeatureClient": ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "/admin/components/OperationsNav#default": default_41b46242f1c6803b112f706342fd9b41,
   "/admin/views/OperationsDashboard#default": default_3fa7a7e39163aa3e1bba593eb53d72b8,
+  "/admin/views/PlatformOperations#default": default_0852a820c06b1f4d16fc3214a03e1258,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
 }

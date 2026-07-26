@@ -51,6 +51,11 @@ export default buildConfig({
         dashboard: {
           Component: '/admin/views/OperationsDashboard',
         },
+        platformOperations: {
+          Component: '/admin/views/PlatformOperations',
+          exact: true,
+          path: '/platforms',
+        },
       },
     },
     user: Users.slug,
