@@ -202,6 +202,65 @@ export type PlatformConversationOutboundResult =
   | PlatformConversationOutboundBlockedResult
 
 /**
+ * A worker may lose its own result after a provider accepts a delivery. These
+ * actions tell the delivery service how it may safely converge; they do not
+ * assert that a customer has received a message.
+ */
+export const PLATFORM_CONVERSATION_OUTBOUND_RECOVERY_ACTIONS = [
+  'delivery_unknown',
+  'provider_accepted',
+  'retry_same_delivery_key',
+] as const
+
+export type PlatformConversationOutboundRecoveryAction =
+  (typeof PLATFORM_CONVERSATION_OUTBOUND_RECOVERY_ACTIONS)[number]
+
+declare const PROVIDER_ACCEPTANCE_EVIDENCE: unique symbol
+
+/**
+ * A non-empty, opaque reference returned by a provider lookup. Adapters must
+ * construct it only from provider-issued acceptance evidence, never from an
+ * internal delivery key.
+ */
+export type ProviderAcceptanceEvidence = string & {
+  readonly [PROVIDER_ACCEPTANCE_EVIDENCE]: true
+}
+
+/**
+ * Narrow an externally returned provider reference before a recovery result
+ * can claim provider acceptance. Empty or whitespace-only evidence must fail
+ * closed to `delivery_unknown`.
+ */
+export const createProviderAcceptanceEvidence = ({
+  deliveryKey,
+  providerReference,
+}: {
+  deliveryKey: unknown
+  providerReference: unknown
+}): ProviderAcceptanceEvidence | undefined => {
+  if (typeof deliveryKey !== 'string' || typeof providerReference !== 'string') return undefined
+  const normalizedReference = providerReference.trim()
+  return normalizedReference && normalizedReference !== deliveryKey.trim()
+    ? (normalizedReference as ProviderAcceptanceEvidence)
+    : undefined
+}
+
+export type PlatformConversationOutboundRecoveryResult =
+  | (PlatformConversationOutboundResultBase & {
+      providerReference?: never
+      status: 'delivery_unknown' | 'retry_same_delivery_key'
+    })
+  | (PlatformConversationOutboundResultBase & {
+      /**
+       * Opaque provider-issued acceptance evidence obtained by an explicit
+       * lookup. It is not the internal deliveryKey and does not claim that the
+       * recipient has received the message.
+       */
+      providerReference: ProviderAcceptanceEvidence
+      status: 'provider_accepted'
+    })
+
+/**
  * Automatic platform replies are only allowed while the authoritative
  * conversation state machine keeps the AI in charge.
  */

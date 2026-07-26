@@ -2,12 +2,14 @@ import { HANDOFF_STATUSES, type HandoffStatus } from '../conversations/contracts
 
 import type { PlatformConversationOutboundPort } from './ports'
 import {
+  createProviderAcceptanceEvidence,
   isAutomaticPlatformConversationReplyAllowed,
   MESSAGING_PLATFORMS,
   PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES,
   type MessagingPlatform,
   type PlatformConversationOutboundErrorCode,
   type PlatformConversationOutboundRequest,
+  type PlatformConversationOutboundRecoveryResult,
   type PlatformConversationOutboundResult,
 } from './types'
 
@@ -24,9 +26,39 @@ export type FakeConversationOutboundInspectionKey = {
   platform: MessagingPlatform
 }
 
+export type FakeConversationOutboundRecoveryMode =
+  'manual_compensation' | 'provider_delivery_lookup' | 'provider_idempotency_key'
+
+export type FakePlatformConversationOutboundProviderState = {
+  accepted: Map<string, PlatformConversationOutboundRequest>
+  acceptedResultLosses: Map<MessagingPlatform, number>
+  providerReferences: Map<string, string>
+  recoveryMode: FakeConversationOutboundRecoveryMode
+}
+
+export const createFakePlatformConversationOutboundProviderState = ({
+  recoveryMode = 'provider_idempotency_key',
+}: {
+  recoveryMode?: FakeConversationOutboundRecoveryMode
+} = {}): FakePlatformConversationOutboundProviderState => ({
+  accepted: new Map(),
+  acceptedResultLosses: new Map(),
+  providerReferences: new Map(),
+  recoveryMode,
+})
+
+export class FakeConversationOutboundAcceptedResultLostError extends Error {
+  constructor() {
+    super('Fake provider acceptance was lost before the worker could persist it')
+    this.name = 'FakeConversationOutboundAcceptedResultLostError'
+  }
+}
+
 export type FakePlatformConversationOutboundPort = PlatformConversationOutboundPort & {
   /** Queue a platform-scoped failure consumed by the next eligible send. */
   failNextSend(failure: FakeConversationOutboundFailure): void
+  /** Simulate a provider accepting the next send while the worker loses its result. */
+  loseAcceptedResultNext(input: { platform: MessagingPlatform }): void
   /** Return a defensive copy of the stored request, or undefined. */
   getAcceptedRequest(
     key: FakeConversationOutboundInspectionKey,
@@ -105,114 +137,210 @@ const blocked = (
  * contract. It never calls fetch or a provider SDK, never touches conversation
  * storage, and keeps all state in memory so tests stay deterministic.
  */
-export const createFakePlatformConversationOutboundPort =
-  (): FakePlatformConversationOutboundPort => {
-    const accepted = new Map<string, PlatformConversationOutboundRequest>()
-    const queuedFailures = new Map<MessagingPlatform, FakeConversationOutboundFailure[]>()
+export const createFakePlatformConversationOutboundPort = ({
+  providerState = createFakePlatformConversationOutboundProviderState(),
+}: {
+  providerState?: FakePlatformConversationOutboundProviderState
+} = {}): FakePlatformConversationOutboundPort => {
+  const accepted = providerState.accepted
+  const queuedFailures = new Map<MessagingPlatform, FakeConversationOutboundFailure[]>()
 
-    const send = async (
-      input: PlatformConversationOutboundRequest,
-    ): Promise<PlatformConversationOutboundResult> => {
-      if (!input || typeof input !== 'object' || Array.isArray(input)) {
-        throw new Error('Fake conversation outbound request must be an object')
-      }
+  const send = async (
+    input: PlatformConversationOutboundRequest,
+  ): Promise<PlatformConversationOutboundResult> => {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      throw new Error('Fake conversation outbound request must be an object')
+    }
 
-      const platform = assertSupportedMessagingPlatform((input as { platform?: unknown }).platform)
+    const platform = assertSupportedMessagingPlatform((input as { platform?: unknown }).platform)
 
-      const request: PlatformConversationOutboundRequest = {
-        accountExternalId: trimmedString(input.accountExternalId, 240) ?? '',
-        deliveryKey: trimmedString(input.deliveryKey, 200) ?? '',
-        externalThreadId: trimmedString(input.externalThreadId, 500) ?? '',
-        handoffStatus: input.handoffStatus,
-        platform,
-        recipientExternalId: trimmedString(input.recipientExternalId, 240) ?? '',
-        text: trimmedString(input.text, 5_000) ?? '',
-      }
+    const request: PlatformConversationOutboundRequest = {
+      accountExternalId: trimmedString(input.accountExternalId, 240) ?? '',
+      deliveryKey: trimmedString(input.deliveryKey, 200) ?? '',
+      externalThreadId: trimmedString(input.externalThreadId, 500) ?? '',
+      handoffStatus: input.handoffStatus,
+      platform,
+      recipientExternalId: trimmedString(input.recipientExternalId, 240) ?? '',
+      text: trimmedString(input.text, 5_000) ?? '',
+    }
 
-      if (
-        !request.accountExternalId ||
-        !request.deliveryKey ||
-        !request.externalThreadId ||
-        !isHandoffStatus(request.handoffStatus) ||
-        !request.recipientExternalId ||
-        !request.text
-      ) {
-        return blocked(request, { errorCode: 'invalid_request', retryable: false })
-      }
+    if (
+      !request.accountExternalId ||
+      !request.deliveryKey ||
+      !request.externalThreadId ||
+      !isHandoffStatus(request.handoffStatus) ||
+      !request.recipientExternalId ||
+      !request.text
+    ) {
+      return blocked(request, { errorCode: 'invalid_request', retryable: false })
+    }
 
-      // Handoff suppression happens before dedup and before consuming queued
-      // failures: a suppressed reply must not record state or burn a failure.
-      if (!isAutomaticPlatformConversationReplyAllowed(request.handoffStatus)) {
-        return blocked(request, { errorCode: 'handoff_required', retryable: false })
-      }
+    // Handoff suppression happens before dedup and before consuming queued
+    // failures: a suppressed reply must not record state or burn a failure.
+    if (!isAutomaticPlatformConversationReplyAllowed(request.handoffStatus)) {
+      return blocked(request, { errorCode: 'handoff_required', retryable: false })
+    }
 
-      const key = deliveryKey(request)
-      const stored = accepted.get(key)
-      if (stored) {
-        if (samePayload(stored, request)) {
-          return {
-            deliveryKey: request.deliveryKey,
-            platform: request.platform,
-            status: 'duplicate',
-          }
+    const key = deliveryKey(request)
+    const stored = accepted.get(key)
+    if (stored) {
+      if (samePayload(stored, request)) {
+        return {
+          deliveryKey: request.deliveryKey,
+          platform: request.platform,
+          status: 'duplicate',
         }
-        return blocked(request, { errorCode: 'invalid_request', retryable: false })
       }
+      return blocked(request, { errorCode: 'invalid_request', retryable: false })
+    }
 
-      const queue = queuedFailures.get(platform)
-      const failure = queue?.shift()
-      if (failure) return blocked(request, failure)
+    const queue = queuedFailures.get(platform)
+    const failure = queue?.shift()
+    if (failure) return blocked(request, failure)
 
-      accepted.set(key, structuredClone(request))
+    accepted.set(key, structuredClone(request))
+    providerState.providerReferences.set(
+      key,
+      `fake-provider-message-${providerState.providerReferences.size + 1}`,
+    )
+    const acceptedResultLosses = providerState.acceptedResultLosses.get(platform) ?? 0
+    if (acceptedResultLosses > 0) {
+      if (acceptedResultLosses === 1) {
+        providerState.acceptedResultLosses.delete(platform)
+      } else {
+        providerState.acceptedResultLosses.set(platform, acceptedResultLosses - 1)
+      }
+      throw new FakeConversationOutboundAcceptedResultLostError()
+    }
+    return {
+      deliveryKey: request.deliveryKey,
+      platform: request.platform,
+      status: 'accepted',
+    }
+  }
+
+  const failNextSend = (failure: FakeConversationOutboundFailure): void => {
+    if (!isRecord(failure)) {
+      throw new Error('Fake conversation outbound failure must be an object')
+    }
+    const platform = assertSupportedMessagingPlatform(failure.platform)
+    if (
+      !PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES.includes(
+        failure.errorCode as PlatformConversationOutboundErrorCode,
+      )
+    ) {
+      throw new Error(
+        `Fake conversation outbound error code is unsupported: ${String(failure.errorCode)}`,
+      )
+    }
+    if (typeof failure.retryable !== 'boolean') {
+      throw new Error('Fake conversation outbound failure retryable flag must be a boolean')
+    }
+    if (
+      failure.retryAfterSeconds !== undefined &&
+      (!Number.isInteger(failure.retryAfterSeconds) || failure.retryAfterSeconds <= 0)
+    ) {
+      throw new Error(
+        'Fake conversation outbound failure retryAfterSeconds must be a positive integer',
+      )
+    }
+    if (!failure.retryable && failure.retryAfterSeconds !== undefined) {
+      throw new Error(
+        'Fake conversation outbound failure retryAfterSeconds requires a retryable failure',
+      )
+    }
+
+    const queue = queuedFailures.get(platform) ?? []
+    queue.push({ ...failure, platform })
+    queuedFailures.set(platform, queue)
+  }
+
+  const loseAcceptedResultNext = ({ platform }: { platform: MessagingPlatform }): void => {
+    const supportedPlatform = assertSupportedMessagingPlatform(platform)
+    providerState.acceptedResultLosses.set(
+      supportedPlatform,
+      (providerState.acceptedResultLosses.get(supportedPlatform) ?? 0) + 1,
+    )
+  }
+
+  const recoverUnknownOutcome = async (
+    input: PlatformConversationOutboundRequest,
+  ): Promise<PlatformConversationOutboundRecoveryResult> => {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      throw new Error('Fake conversation outbound request must be an object')
+    }
+    const platform = assertSupportedMessagingPlatform((input as { platform?: unknown }).platform)
+    const request: PlatformConversationOutboundRequest = {
+      accountExternalId: trimmedString(input.accountExternalId, 240) ?? '',
+      deliveryKey: trimmedString(input.deliveryKey, 200) ?? '',
+      externalThreadId: trimmedString(input.externalThreadId, 500) ?? '',
+      handoffStatus: input.handoffStatus,
+      platform,
+      recipientExternalId: trimmedString(input.recipientExternalId, 240) ?? '',
+      text: trimmedString(input.text, 5_000) ?? '',
+    }
+    if (
+      !request.accountExternalId ||
+      !request.deliveryKey ||
+      !request.externalThreadId ||
+      !isHandoffStatus(request.handoffStatus) ||
+      !request.recipientExternalId ||
+      !request.text
+    ) {
+      throw new Error('Fake conversation outbound recovery request is invalid')
+    }
+
+    const key = deliveryKey(request)
+    const stored = accepted.get(key)
+    const storedProviderReference = providerState.providerReferences.get(key)
+    const providerReference = storedProviderReference
+      ? createProviderAcceptanceEvidence({
+          deliveryKey: request.deliveryKey,
+          providerReference: storedProviderReference,
+        })
+      : undefined
+    if (providerState.recoveryMode === 'manual_compensation') {
       return {
         deliveryKey: request.deliveryKey,
-        platform: request.platform,
-        status: 'accepted',
+        platform,
+        status: 'delivery_unknown',
       }
     }
-
-    const failNextSend = (failure: FakeConversationOutboundFailure): void => {
-      if (!isRecord(failure)) {
-        throw new Error('Fake conversation outbound failure must be an object')
+    if (stored && !samePayload(stored, request)) {
+      return {
+        deliveryKey: request.deliveryKey,
+        platform,
+        status: 'delivery_unknown',
       }
-      const platform = assertSupportedMessagingPlatform(failure.platform)
-      if (
-        !PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES.includes(
-          failure.errorCode as PlatformConversationOutboundErrorCode,
-        )
-      ) {
-        throw new Error(
-          `Fake conversation outbound error code is unsupported: ${String(failure.errorCode)}`,
-        )
-      }
-      if (typeof failure.retryable !== 'boolean') {
-        throw new Error('Fake conversation outbound failure retryable flag must be a boolean')
-      }
-      if (
-        failure.retryAfterSeconds !== undefined &&
-        (!Number.isInteger(failure.retryAfterSeconds) || failure.retryAfterSeconds <= 0)
-      ) {
-        throw new Error(
-          'Fake conversation outbound failure retryAfterSeconds must be a positive integer',
-        )
-      }
-      if (!failure.retryable && failure.retryAfterSeconds !== undefined) {
-        throw new Error(
-          'Fake conversation outbound failure retryAfterSeconds requires a retryable failure',
-        )
-      }
-
-      const queue = queuedFailures.get(platform) ?? []
-      queue.push({ ...failure, platform })
-      queuedFailures.set(platform, queue)
     }
-
-    const getAcceptedRequest = (
-      key: FakeConversationOutboundInspectionKey,
-    ): PlatformConversationOutboundRequest | undefined => {
-      const stored = accepted.get(deliveryKey(key))
-      return stored ? structuredClone(stored) : undefined
+    if (providerState.recoveryMode === 'provider_delivery_lookup' && stored && providerReference) {
+      return {
+        deliveryKey: request.deliveryKey,
+        platform,
+        providerReference,
+        status: 'provider_accepted',
+      }
     }
-
-    return { failNextSend, getAcceptedRequest, send }
+    if (providerState.recoveryMode === 'provider_delivery_lookup') {
+      return {
+        deliveryKey: request.deliveryKey,
+        platform,
+        status: 'delivery_unknown',
+      }
+    }
+    return {
+      deliveryKey: request.deliveryKey,
+      platform,
+      status: 'retry_same_delivery_key',
+    }
   }
+
+  const getAcceptedRequest = (
+    key: FakeConversationOutboundInspectionKey,
+  ): PlatformConversationOutboundRequest | undefined => {
+    const stored = accepted.get(deliveryKey(key))
+    return stored ? structuredClone(stored) : undefined
+  }
+
+  return { failNextSend, getAcceptedRequest, loseAcceptedResultNext, recoverUnknownOutcome, send }
+}

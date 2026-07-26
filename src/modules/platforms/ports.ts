@@ -4,6 +4,7 @@ import type {
   NormalizedPlatformEvent,
   PlatformCapability,
   PlatformConversationOutboundRequest,
+  PlatformConversationOutboundRecoveryResult,
   PlatformConversationOutboundResult,
   PlatformFamily,
   PlatformPublicationStatus,
@@ -80,4 +81,16 @@ export interface PlatformConversationOutboundPort {
    * mechanism where available; this port never reports provider delivery.
    */
   send(request: PlatformConversationOutboundRequest): Promise<PlatformConversationOutboundResult>
+
+  /**
+   * Reconcile an unknown result after a provider may have accepted a request
+   * but the worker died before it persisted the result. This method must never
+   * blind-send: it only permits same-key retry, returns provider-issued,
+   * opaque acceptance evidence, or declares delivery unknown for manual
+   * compensation. `provider_accepted` must never be returned without that
+   * external evidence.
+   */
+  recoverUnknownOutcome(
+    request: PlatformConversationOutboundRequest,
+  ): Promise<PlatformConversationOutboundRecoveryResult>
 }

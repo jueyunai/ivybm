@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createFakePlatformConversationOutboundPort } from '../../../src/modules/platforms/fakeConversationOutboundPort'
+import {
+  createFakePlatformConversationOutboundPort,
+  createFakePlatformConversationOutboundProviderState,
+} from '../../../src/modules/platforms/fakeConversationOutboundPort'
 import {
   isAutomaticPlatformConversationReplyAllowed,
   type PlatformConversationOutboundRequest,
@@ -245,6 +248,126 @@ describe('fake platform conversation outbound port', () => {
       port.send(request({ deliveryKey: 'unpoisoned-after-invalid-failure-1' })),
     ).resolves.toMatchObject({
       status: 'accepted',
+    })
+  })
+
+  it('recovers a provider acceptance lost with the worker by reusing the same delivery key', async () => {
+    const providerState = createFakePlatformConversationOutboundProviderState()
+    const firstWorker = createFakePlatformConversationOutboundPort({ providerState })
+    firstWorker.loseAcceptedResultNext({ platform: 'facebook-messenger' })
+
+    await expect(
+      firstWorker.send(request({ deliveryKey: 'lost-result-idempotency-1' })),
+    ).rejects.toThrow('provider acceptance was lost before the worker could persist it')
+
+    const reclaimedWorker = createFakePlatformConversationOutboundPort({ providerState })
+    await expect(
+      reclaimedWorker.recoverUnknownOutcome(request({ deliveryKey: 'lost-result-idempotency-1' })),
+    ).resolves.toEqual({
+      deliveryKey: 'lost-result-idempotency-1',
+      platform: 'facebook-messenger',
+      status: 'retry_same_delivery_key',
+    })
+    await expect(
+      reclaimedWorker.send(request({ deliveryKey: 'lost-result-idempotency-1' })),
+    ).resolves.toEqual({
+      deliveryKey: 'lost-result-idempotency-1',
+      platform: 'facebook-messenger',
+      status: 'duplicate',
+    })
+  })
+
+  it('uses provider lookup evidence or stops at delivery_unknown instead of blind resend', async () => {
+    const lookupState = createFakePlatformConversationOutboundProviderState({
+      recoveryMode: 'provider_delivery_lookup',
+    })
+    const lookupWorker = createFakePlatformConversationOutboundPort({ providerState: lookupState })
+    lookupWorker.loseAcceptedResultNext({ platform: 'instagram' })
+    await expect(
+      lookupWorker.send(request({ deliveryKey: 'lost-result-lookup-1', platform: 'instagram' })),
+    ).rejects.toThrow('provider acceptance was lost before the worker could persist it')
+
+    await expect(
+      createFakePlatformConversationOutboundPort({
+        providerState: lookupState,
+      }).recoverUnknownOutcome(
+        request({ deliveryKey: 'lost-result-lookup-1', platform: 'instagram' }),
+      ),
+    ).resolves.toEqual({
+      deliveryKey: 'lost-result-lookup-1',
+      platform: 'instagram',
+      providerReference: 'fake-provider-message-1',
+      status: 'provider_accepted',
+    })
+
+    const lookupWithoutEvidenceState = createFakePlatformConversationOutboundProviderState({
+      recoveryMode: 'provider_delivery_lookup',
+    })
+    const lookupWithoutEvidenceWorker = createFakePlatformConversationOutboundPort({
+      providerState: lookupWithoutEvidenceState,
+    })
+    lookupWithoutEvidenceWorker.loseAcceptedResultNext({ platform: 'instagram' })
+    await expect(
+      lookupWithoutEvidenceWorker.send(
+        request({ deliveryKey: 'missing-lookup-evidence-1', platform: 'instagram' }),
+      ),
+    ).rejects.toThrow('provider acceptance was lost before the worker could persist it')
+    for (const key of lookupWithoutEvidenceState.providerReferences.keys()) {
+      lookupWithoutEvidenceState.providerReferences.set(key, 'missing-lookup-evidence-1')
+    }
+
+    await expect(
+      createFakePlatformConversationOutboundPort({
+        providerState: lookupWithoutEvidenceState,
+      }).recoverUnknownOutcome(
+        request({ deliveryKey: 'missing-lookup-evidence-1', platform: 'instagram' }),
+      ),
+    ).resolves.toEqual({
+      deliveryKey: 'missing-lookup-evidence-1',
+      platform: 'instagram',
+      status: 'delivery_unknown',
+    })
+
+    const unknownState = createFakePlatformConversationOutboundProviderState({
+      recoveryMode: 'manual_compensation',
+    })
+    const unknownWorker = createFakePlatformConversationOutboundPort({
+      providerState: unknownState,
+    })
+    unknownWorker.loseAcceptedResultNext({ platform: 'tiktok' })
+    await expect(
+      unknownWorker.send(request({ deliveryKey: 'lost-result-unknown-1', platform: 'tiktok' })),
+    ).rejects.toThrow('provider acceptance was lost before the worker could persist it')
+
+    await expect(
+      createFakePlatformConversationOutboundPort({
+        providerState: unknownState,
+      }).recoverUnknownOutcome(
+        request({ deliveryKey: 'lost-result-unknown-1', platform: 'tiktok' }),
+      ),
+    ).resolves.toEqual({
+      deliveryKey: 'lost-result-unknown-1',
+      platform: 'tiktok',
+      status: 'delivery_unknown',
+    })
+  })
+
+  it('does not treat a changed payload as recoverable under an existing delivery key', async () => {
+    const providerState = createFakePlatformConversationOutboundProviderState()
+    const firstWorker = createFakePlatformConversationOutboundPort({ providerState })
+    await firstWorker.send(request({ deliveryKey: 'recovery-conflict-1' }))
+
+    await expect(
+      createFakePlatformConversationOutboundPort({ providerState }).recoverUnknownOutcome(
+        request({
+          deliveryKey: 'recovery-conflict-1',
+          text: 'Changed reply must not be recovered.',
+        }),
+      ),
+    ).resolves.toEqual({
+      deliveryKey: 'recovery-conflict-1',
+      platform: 'facebook-messenger',
+      status: 'delivery_unknown',
     })
   })
 })
