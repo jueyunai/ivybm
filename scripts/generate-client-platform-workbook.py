@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 from xml.sax.saxutils import escape
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 
 OUTPUT = Path("docs/client-materials/IVYBM_海外平台账号申请资料收集表.xlsx")
@@ -33,6 +33,10 @@ DEPLOYMENT_CONFIRM_OPTIONS = f'"{DEPLOYMENT_CONFIRM_LABELS}"'
 TIKTOK_PM_BLOCK_LABELS = "待官方确认（conditional）,被阻塞（blocked）"
 TIKTOK_PM_BLOCK_OPTIONS = f'"{TIKTOK_PM_BLOCK_LABELS}"'
 DEFAULT_STATUS = "未开始"
+# Keep generated customer workbooks byte-for-byte reproducible when their
+# source content is unchanged. ZIP metadata otherwise inherits the local clock;
+# stored entries also avoid zlib-version differences across documentation hosts.
+FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 FIELD_STATUS_RULES: dict[str, tuple[str, str]] = {
     "M-05": (AUTHORIZATION_STATE_OPTIONS, DEFAULT_STATUS),
     "M-07": (APPROVAL_STATE_OPTIONS, DEFAULT_STATUS),
@@ -73,6 +77,17 @@ def cell(reference: str, value: str, style: int = 0) -> str:
 def row_xml(number: int, values: Iterable[tuple[str, int]]) -> str:
     cells = "".join(cell(f"{column_name(index)}{number}", value, style) for index, (value, style) in enumerate(values, 1))
     return f'<row r="{number}">{cells}</row>'
+
+
+def write_archive_entry(archive: ZipFile, name: str, content: str) -> None:
+    """Write a deterministic XLSX ZIP entry without local filesystem metadata."""
+    entry = ZipInfo(name, date_time=FIXED_ZIP_TIMESTAMP)
+    entry.compress_type = ZIP_STORED
+    entry.create_system = 3
+    entry.create_version = 20
+    entry.extract_version = 20
+    entry.external_attr = 0o100644 << 16
+    archive.writestr(entry, content, compress_type=ZIP_STORED)
 
 
 def title_sheet(title: str, subtitle: str, sections: list[tuple[str, list[str]]]) -> str:
@@ -236,10 +251,10 @@ SHEETS = [
             "请客户填写黄色单元格。所有密码、App Secret、OAuth Token、银行卡信息均不得填写在本表或通过聊天工具发送。",
             [
                 ("填写原则", [
-                    "1. 没有现成账号时，请在对应工作表填写“需新建”及希望使用的账号名；技术团队代为开设与配置。",
+                    "1. 没有现成账号时，由客户自行注册/创建并保留最终管理员；在对应工作表填写“需新建”及拟用账号名。IVYBM 仅在收到书面授权和前置条件满足后，协助 API/Webhook/App 配置、审核材料与受控联调，不代注册、养号或恢复账号。",
                     "2. 企业主体、品牌、业务账号和主页最终归客户公司所有；开发者 App 的归属按平台与书面授权确认：默认 Meta 使用 IVYBM 受控 App，TikTok / LinkedIn 仅在对应路径确认后由客户自持。",
                     "3. 营业执照、身份证明等高敏感资料请通过受控文件夹或客户指定邮箱提供，只在表中写文件名或交付状态。",
-                    "4. 所有“必填”项会影响账号创建、App Review 或真实联调；“建议”项可后补，但会延长审核时间。",
+                    "4. 所有“必填”项会影响客户资产准备、App Review 或真实联调；“建议”项可后补，但会延长审核时间。",
                     "5. 本表仅收集非密资料：外部账号 ID、授权状态、审批状态、部署确认等，绝对不要填密码、App Secret、Client Secret、OAuth Token、银行卡或验证码。",
                 ]),
                 ("当前一期范围（冻结）", [
@@ -280,7 +295,7 @@ SHEETS = [
                 ("C-09", "负责人", "负责人企业邮箱", "必填", "用于接收授权和审核通知。"),
                 ("C-10", "负责人", "负责人手机号", "必填", "用于验证码 / 二次验证；仅通过受控文件夹或指定企业账号单聊提供，不要写密码。"),
                 ("C-11", "技术联系人", "技术 / 域名联系人及邮箱", "建议", "用于 DNS、HTTPS、部署协调。"),
-                ("C-12", "授权", "书面授权确认人及日期", "必填", "确认可代办平台账号、开发者应用和审核。"),
+                ("C-12", "授权", "书面授权确认人、日期与范围", "必填", "确认客户已创建/将自行创建账号与资产；前置条件满足后，是否书面授权 IVYBM 仅协助 API/Webhook/App 配置及 App Review 技术材料/提交（不含账号注册、养号或恢复）。"),
             ],
         ),
     ),
@@ -311,18 +326,20 @@ SHEETS = [
             "Meta：Facebook Messenger、Instagram DM 与图文发布",
             "平台合约区分 facebook-page 与 instagram-professional。状态列只填枚举；App Secret / Verify Token / OAuth Token 真值不写入本表。",
             [
-                ("M-01", "资产归属", "Meta Business 是否已有 / 需新建", "必填", "填写链接或“需新建”。"),
+                ("M-01", "资产归属", "Meta Business 是否已有 / 需由客户新建", "必填", "填写链接；无账号由客户创建并保留最终 Owner，IVYBM 仅在书面授权后协助集成配置。"),
                 ("M-02", "资产归属", "Meta Business 最终 Owner 姓名与企业邮箱", "必填", "不能用技术服务商个人账号作为最终 Owner。"),
-                ("M-03", "facebook-page", "Facebook Page 是否已有 / 希望创建名称", "必填", "账号类型 = facebook-page；现有 Page 填 URL；新建给英文名称。"),
-                ("M-04", "facebook-page", "facebook-page 外部 Page ID", "必填", "创建后补填；只填公开资产 ID，将进入服务器 allowlist。"),
+                ("M-03", "facebook-page", "Facebook Page 是否已有 / 客户拟用名称", "必填", "账号类型 = facebook-page；现有 Page 填 URL；无 Page 由客户创建并保留最高管理员。"),
+                ("M-04", "facebook-page", "facebook-page 外部 Page ID", "必填", "客户创建/取得后补填；只填公开资产 ID，将进入服务器 allowlist。"),
                 ("M-05", "facebook-page", "facebook-page 授权状态", "必填", f"从枚举中选：{AUTHORIZATION_STATE_LABELS}。"),
-                ("M-06", "facebook-page", "Messenger 内容/订阅授权确认", "必填", "确认 Page 同意接收 Messenger 与 Webhook 订阅。"),
+                ("M-06", "facebook-page", "Facebook Page 消息/内容/管理相关 task 已就绪", "必填", "由客户管理员核对用于授权的 Page task；只记录状态与脱敏证据位置，不填 token。"),
+                ("M-06A", "facebook-page", "facebook-page Page task 权限证据（截图/工单编号/受控路径）", "必填", "提供消息、内容、管理/审核 task 的脱敏证据；只填文件名、记录编号或受控路径。"),
                 ("M-07", "facebook-page", "facebook-page 消息入站审批状态", "必填", f"枚举：{APPROVAL_STATE_LABELS}；等待 App Review 通过才能进入生产。"),
                 ("M-08", "facebook-page", "facebook-page 图文发布审批状态", "必填", f"枚举：{APPROVAL_STATE_LABELS}；当前一期联调以 PublishJobs / PublishLogs / adapter 评审为准。"),
-                ("M-09", "instagram-professional", "Instagram 账号是否已有 / 希望使用的用户名", "必填", "账号类型 = instagram-professional；一期需转为商业账号并绑定 Facebook Page。"),
-                ("M-10", "instagram-professional", "instagram-professional 外部 Account ID", "必填", "创建后补填；只填公开资产 ID，将进入服务器 allowlist。"),
+                ("M-09", "instagram-professional", "Instagram 账号是否已有 / 客户拟用用户名", "必填", "账号类型 = instagram-professional；客户自行创建或转换为商业账号并绑定 Facebook Page。"),
+                ("M-10", "instagram-professional", "instagram-professional 外部 Account ID", "必填", "客户创建/取得后补填；只填公开资产 ID，将进入服务器 allowlist。"),
                 ("M-11", "instagram-professional", "instagram-professional 授权状态", "必填", f"枚举：{AUTHORIZATION_STATE_LABELS}。"),
                 ("M-12", "instagram-professional", "instagram-professional 消息入站审批状态", "必填", f"枚举：{APPROVAL_STATE_LABELS}；等待 App Review。"),
+                ("M-12A", "instagram-professional", "“允许访问消息 / Allow access to messages”证据（截图/记录编号/日期）", "条件必填", "当前账号/登录路径显示该开关时，由客户开启并提供脱敏证据；若未显示，提供当前页面截图并标记待官方确认。"),
                 ("M-13", "instagram-professional", "instagram-professional 图文发布审批状态", "必填", f"枚举：{APPROVAL_STATE_LABELS}；以 PublishJobs / PublishLogs / adapter 评审为准。"),
                 ("M-14", "Meta App", "Meta App 归属路径", "必填", "默认填写“IVYBM 受控 App”；只有合同或 IVYBM 书面操作单明确要求时才填写“客户自持 App”。"),
                 ("M-15", "Meta App", "客户自持 Meta App 名称", "条件必填", "仅在 M-14 选择“客户自持 App”时填写；默认 IVYBM 受控 App 路径填“不适用”。"),
@@ -346,8 +363,8 @@ SHEETS = [
                 ("L-01", "linkedin-member", "真实个人管理员姓名 / 企业邮箱", "必填", "账号类型 = linkedin-member；必须由真实员工或负责人本人持有。"),
                 ("L-02", "linkedin-member", "linkedin-member Profile URL 与外部 Member ID", "必填", "现有账号填写 URL / ID；无账号填写“需由本人新建”，不要创建或转交虚假个人账号。"),
                 ("L-03", "linkedin-member", "linkedin-member 授权状态", "必填", f"枚举：{AUTHORIZATION_STATE_LABELS}；只填状态，不填 OAuth Token。"),
-                ("L-04", "linkedin-organization", "企业主页 URL 或希望创建的英文名", "必填", "账号类型 = linkedin-organization；新建 Page 需品牌、官网、Logo、简介。"),
-                ("L-05", "linkedin-organization", "linkedin-organization 外部 Organization ID", "必填", "创建后补填；只填公开组织 ID。"),
+                ("L-04", "linkedin-organization", "企业主页 URL 或客户拟用英文名", "必填", "账号类型 = linkedin-organization；无主页由客户创建并保留 Super Admin，新建 Page 需品牌、官网、Logo、简介。"),
+                ("L-05", "linkedin-organization", "linkedin-organization 外部 Organization ID", "必填", "客户创建/取得后补填；只填公开组织 ID。"),
                 ("L-06", "linkedin-organization", "linkedin-organization 授权状态", "必填", f"枚举：{AUTHORIZATION_STATE_LABELS}；只填状态，不填 OAuth Token。"),
                 ("L-07", "企业主页", "客户侧最终 Super Admin", "必填", "由客户侧负责人保留最高权限，技术团队只保留获授权的有限角色。"),
                 ("L-08", "Developer App", "客户自持 Developer App 名称与最终管理员", "条件必填", "仅在 IVYBM 书面确认采用客户自持 App 或企业主页自动发布路径时填写；个人账号受控 App 路径填“不适用”。"),
@@ -364,13 +381,13 @@ SHEETS = [
             "TikTok：商业账号与私信资格确认",
             "TikTok 私信 API 受目标地区、商业账号资格、官方 schema 与审核影响；当前仅记录阻塞与申请状态，不承诺自动接入。",
             [
-                ("T-01", "tiktok-business", "TikTok Business Account 是否已有 / 需新建", "必填", "账号类型 = tiktok-business；提供链接或填写“需新建”。"),
-                ("T-02", "tiktok-business", "tiktok-business 外部 Account ID", "必填", "创建后补填；只填公开账号 ID。"),
+                ("T-01", "tiktok-business", "TikTok Business Account 是否已有 / 需由客户新建", "必填", "账号类型 = tiktok-business；提供链接；无账号由客户自行注册/转换并保留 Owner。"),
+                ("T-02", "tiktok-business", "tiktok-business 外部 Account ID", "必填", "客户创建/取得后补填；只填公开账号 ID。"),
                 ("T-03", "tiktok-business", "tiktok-business 授权状态", "必填", f"枚举：{AUTHORIZATION_STATE_LABELS}；只填状态，不填 access token。"),
                 ("T-04", "商业账号", "Business Account 最终 Owner 姓名 / 企业邮箱", "必填", "客户保留最高管理员和恢复方式。"),
                 ("T-05", "地区", "目标运营国家 / 地区", "必填", "决定官方能力是否可能开放。"),
                 ("T-06", "主体", "是否可提供企业认证资料", "必填", "通常需营业执照、主体名称、地址等；证件通过受控方式提供。"),
-                ("T-07", "开发者", "TikTok for Developers 账号是否已有 / 需新建", "条件必填", "仅在 TikTok-3 私信资格决策门已有“可申请”或“已批准”证据后填写；技术团队可协助，客户保留最终管理员。"),
+                ("T-07", "开发者", "TikTok for Developers 账号是否已有 / 需由客户新建", "条件必填", "仅在 TikTok-3 私信资格决策门已有“可申请”或“已批准”证据后填写；客户 Owner 自行创建并保留最终管理员。IVYBM 仅在书面授权后协助 App/API/Webhook 配置，不代注册。"),
                 ("T-08", "资格", "TikTok 客户经理 / 官方支持工单", "建议", "提供联系人或工单号，不要提供密码。"),
                 ("T-09", "官方 schema", "私信入站 event schema 官方证据状态", "必填", f"当前口径：{TIKTOK_PM_BLOCK_LABELS}；填写官方文档链接、工单号或“待官方确认”，未确认时保持 blocked。"),
                 ("T-10", "API 资格", "目标地区与商业账号私信 API eligibility 状态", "必填", f"当前口径：{TIKTOK_PM_BLOCK_LABELS}；未通过不得要求实现猜测 payload 或自动接入。"),
@@ -392,7 +409,7 @@ SHEETS = [
                 ("H-06", "审核", "App Review 业务用途说明负责人", "必填", "需说明客户如何使用消息和发布能力。"),
                 ("H-07", "审核", "可提供审核录屏 / 截图的联系人", "必填", "Meta / LinkedIn 可能要求。"),
                 ("H-08", "内容", "测试消息与测试发布内容确认人", "必填", "避免未经确认的公开发布。"),
-                ("H-09", "交接", "客户最终接收企业邮箱、2FA、管理员权限的人", "必填", "账号开通后由其改密并保留恢复方式。"),
+                ("H-09", "交接", "客户最终持有企业邮箱、2FA、管理员权限与恢复方式的负责人", "必填", "客户自行创建/持有账号后，由其保留恢复方式；IVYBM 不代注册、养号或恢复账号。"),
                 ("H-10", "交接", "技术团队保留的角色与有效期", "建议", "例如 Developer / Technical admin，便于后续维护。"),
                 ("H-11", "确认", "客户确认不向技术团队索要 / 提供密码、token、银行卡", "必填", "填写“确认”。"),
                 ("H-12", "授权记录", "授权申请 / 变更记录编号", "建议", "仅填工单、邮件或审批记录编号，不填授权码、密码或 token。"),
@@ -413,15 +430,15 @@ def main() -> None:
     now = f"{DOCUMENT_LAST_UPDATED}T00:00:00Z"
     sheet_names = [name for name, _ in SHEETS]
 
-    with ZipFile(OUTPUT, "w", ZIP_DEFLATED) as archive:
-        archive.writestr("[Content_Types].xml", content_types(len(SHEETS)))
-        archive.writestr("_rels/.rels", '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    with ZipFile(OUTPUT, mode="w", compression=ZIP_STORED, strict_timestamps=True) as archive:
+        write_archive_entry(archive, "[Content_Types].xml", content_types(len(SHEETS)))
+        write_archive_entry(archive, "_rels/.rels", '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
 </Relationships>''')
-        archive.writestr("docProps/core.xml", f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        write_archive_entry(archive, "docProps/core.xml", f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <dc:title>IVYBM 海外平台账号申请资料收集表</dc:title>
   <dc:subject>海外平台账号申请资料收集</dc:subject>
@@ -433,7 +450,7 @@ def main() -> None:
   <dcterms:created xsi:type="dcterms:W3CDTF">{now}</dcterms:created>
   <dcterms:modified xsi:type="dcterms:W3CDTF">{now}</dcterms:modified>
 </cp:coreProperties>''')
-        archive.writestr("docProps/app.xml", f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        write_archive_entry(archive, "docProps/app.xml", f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
   <Application>IVYBM</Application>
   <Company>IVYBM</Company>
@@ -444,11 +461,11 @@ def main() -> None:
   <SharedDoc>false</SharedDoc>
   <TitlesOfParts><vt:vector size="{len(SHEETS)}" baseType="lpstr">{''.join(f'<vt:lpstr>{escape(name)}</vt:lpstr>' for name in sheet_names)}</vt:vector></TitlesOfParts>
 </Properties>''')
-        archive.writestr("xl/workbook.xml", workbook_xml(sheet_names))
-        archive.writestr("xl/_rels/workbook.xml.rels", workbook_relationships(len(SHEETS)))
-        archive.writestr("xl/styles.xml", STYLES)
+        write_archive_entry(archive, "xl/workbook.xml", workbook_xml(sheet_names))
+        write_archive_entry(archive, "xl/_rels/workbook.xml.rels", workbook_relationships(len(SHEETS)))
+        write_archive_entry(archive, "xl/styles.xml", STYLES)
         for index, (_, content) in enumerate(SHEETS, 1):
-            archive.writestr(f"xl/worksheets/sheet{index}.xml", content)
+            write_archive_entry(archive, f"xl/worksheets/sheet{index}.xml", content)
 
     print(OUTPUT)
 

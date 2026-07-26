@@ -67,6 +67,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Documentation delivery contracts
+        run: pnpm test:docs
+
       - name: Unit tests
         run: pnpm test:unit
 

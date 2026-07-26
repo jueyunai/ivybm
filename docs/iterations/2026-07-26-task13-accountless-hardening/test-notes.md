@@ -3,11 +3,12 @@
 已运行：
 
 ```text
-python3 -m py_compile scripts/generate-client-platform-workbook.py
-python3 scripts/generate-client-platform-workbook.py
-unzip -t docs/client-materials/IVYBM_海外平台账号申请资料收集表.xlsx
+pnpm install --frozen-lockfile
+pnpm docs:client-platform-workbook
+pnpm docs:client-social-guide:pdf
+pnpm docs:client-social-guide:verify
 ```
 
-并解析生成的 XLSX：7 个工作表存在；Meta、LinkedIn、TikTok、部署字段的 `dataValidation` 使用对应下拉公式；TikTok T-09/T-10 默认 `被阻塞（blocked）`。同步 HTML 已检查更新日期为 `2026-07-26`，且不再引用移除的本地截图；headless Chrome 由该 HTML 重建 PDF，产物为有效 8 页 PDF。
+XLSX 验证脚本确认 7 个工作表、字段级 `dataValidation`、TikTok T-09/T-10 默认 `被阻塞（blocked）`、客户资产归属边界、Meta Page task 和 Instagram“Allow access to messages”证据字段；在两个临时目录重建的 SHA-256 均为 `5113cb4b3f78ddfb5e9a1f78544934a26cb8df86ef7e6e3c6b9ebb20325febca`。
 
-本机没有 `pandoc`，因此源 HTML 生成脚本未在本机完整运行；同步的 HTML 经静态检查无本地缺失截图路径，PDF 由本地 headless Chrome 从同步 HTML 重新生成。CI/有 pandoc 的文档环境应再次执行 HTML 生成脚本。
+同步 HTML 的静态契约验证确认更新日期为 `2026-07-26`、无受控外的本地截图路径；Playwright Chromium 1.58.2 已从该 HTML 重建 PDF，并验证 PDF 文件签名。当前机器没有 `pandoc`，因此**没有**运行 `pnpm docs:client-social-guide:html`，不能声称 Markdown → HTML 已在本机重新生成；有 `pandoc` 的文档环境须运行该命令，再运行 `pnpm docs:client-social-guide:pdf` 与 `pnpm docs:client-social-guide:verify`。

@@ -90,23 +90,32 @@ if (missingScreenshots.length > 0) {
 const printSource = `---\ntitle: 一期海外社媒账号与 API 开通指南\nsubtitle: 客户开通包 | Meta · TikTok · LinkedIn\ndate: ${documentDate}\n---\n\n${replaceMermaidBlocks(source)}`;
 await writeFile(tempMarkdownPath, printSource, "utf8");
 
-execFileSync(
-  "pandoc",
-  [
-    "--standalone",
-    "--from=gfm+raw_html",
-    "--to=html5",
-    "--resource-path",
-    root,
-    "--embed-resources",
-    "--toc",
-    "--toc-depth=2",
-    "--output",
-    tempHtmlPath,
-    tempMarkdownPath,
-  ],
-  { cwd: root, stdio: "inherit" },
-);
+try {
+  execFileSync(
+    "pandoc",
+    [
+      "--standalone",
+      "--from=gfm+raw_html",
+      "--to=html5",
+      "--resource-path",
+      root,
+      "--embed-resources",
+      "--toc",
+      "--toc-depth=2",
+      "--output",
+      tempHtmlPath,
+      tempMarkdownPath,
+    ],
+    { cwd: root, stdio: "inherit" },
+  );
+} catch (error) {
+  if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+    throw new Error(
+      "需要 pandoc 才能从 Markdown 重建客户 HTML；请安装 pandoc 后重新运行 pnpm docs:client-social-guide:html。现有交付物未被改写。",
+    );
+  }
+  throw error;
+}
 
 const html = await readFile(tempHtmlPath, "utf8");
 const withStyle = html.replace("</head>", `<style>\n${css}\n</style>\n</head>`);

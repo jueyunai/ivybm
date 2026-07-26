@@ -45,6 +45,8 @@ backups/
 
 # 临时文件、测试与浏览器日志
 tmp/
+__pycache__/
+.omc/
 .playwright-cli/
 playwright-report/
 test-results/
