@@ -26,8 +26,7 @@ export const PLATFORM_CAPABILITY_APPROVAL_STATES = [
   'blocked',
 ] as const
 
-export type PlatformCapabilityApprovalState =
-  (typeof PLATFORM_CAPABILITY_APPROVAL_STATES)[number]
+export type PlatformCapabilityApprovalState = (typeof PLATFORM_CAPABILITY_APPROVAL_STATES)[number]
 
 export type PlatformAccountFamily = 'linkedin' | 'meta' | 'tiktok'
 export type PlatformAccountCapability = 'messaging-inbound' | 'publishing'
@@ -62,6 +61,7 @@ const PLATFORM_ACCOUNT_DEFINITIONS: Record<PlatformAccountKind, PlatformAccountD
 
 export type PlatformReadinessRequirement =
   | 'access_token'
+  | 'access_token_expired'
   | 'approval'
   | 'authorization'
   | 'credential_decryption'
@@ -71,24 +71,26 @@ export type PlatformReadinessRequirement =
   | 'meta_verify_token'
   | 'official_tiktok_dm_schema'
   | 'publishing_job_adapter'
+  | 'refresh_token'
+  | 'refresh_token_decryption'
   | 'tiktok_dm_api_eligibility'
 
 export type PlatformConnectionReadinessStatus = 'action-required' | 'ready-for-controlled-test'
 
 export type PlatformCapabilityReadinessStatus =
-  | 'action-required'
-  | 'blocked'
-  | 'ready-for-controlled-test'
+  'action-required' | 'blocked' | 'ready-for-controlled-test'
 
 export type PlatformCapabilityImplementation = 'blocked' | 'implemented'
 
 export type PlatformCapabilityReasonCode =
   | 'official_tiktok_dm_schema_unavailable'
+  | 'platform_capability_blocked'
   | 'publishing_job_adapter_pending'
 
 export type PlatformAccountReadinessInput = {
   account: {
     accessTokenConfigured: boolean
+    accessTokenExpiresAt?: string | null
     // The caller must prove that a configured encrypted credential can be
     // authenticated by the current process. This prevents a future endpoint
     // from treating a stored-token flag as equivalent to a usable token.
@@ -100,8 +102,11 @@ export type PlatformAccountReadinessInput = {
       publishing: PlatformCapabilityApprovalState
     }>
     externalAccountId?: string | null
+    refreshTokenConfigured: boolean
+    refreshTokenReadable: boolean
   }
   environment?: Readonly<Record<string, string | undefined>>
+  nowMilliseconds?: number
 }
 
 export type PlatformAccountReadiness = {
@@ -138,8 +143,9 @@ export const isPlatformCapabilityApprovalState = (
 ): value is PlatformCapabilityApprovalState =>
   typeof value === 'string' && PLATFORM_CAPABILITY_APPROVAL_STATES.some((state) => state === value)
 
-export const getPlatformAccountDefinition = (kind: PlatformAccountKind): PlatformAccountDefinition =>
-  PLATFORM_ACCOUNT_DEFINITIONS[kind]
+export const getPlatformAccountDefinition = (
+  kind: PlatformAccountKind,
+): PlatformAccountDefinition => PLATFORM_ACCOUNT_DEFINITIONS[kind]
 
 export const platformFamilyForAccountKind = (kind: PlatformAccountKind): PlatformAccountFamily =>
   getPlatformAccountDefinition(kind).family
@@ -162,12 +168,18 @@ const configuredMetaAllowlist = (
       .filter(Boolean),
   )
 
-const connectionMissing = ({
-  accessTokenConfigured,
-  accessTokenReadable,
-  authorizationState,
-  externalAccountId,
-}: PlatformAccountReadinessInput['account']): PlatformReadinessRequirement[] => {
+const connectionMissing = (
+  {
+    accessTokenConfigured,
+    accessTokenExpiresAt,
+    accessTokenReadable,
+    authorizationState,
+    externalAccountId,
+    refreshTokenConfigured,
+    refreshTokenReadable,
+  }: PlatformAccountReadinessInput['account'],
+  nowMilliseconds: number,
+): PlatformReadinessRequirement[] => {
   const missing: PlatformReadinessRequirement[] = []
   if (!nonEmpty(externalAccountId)) missing.push('external_account_id')
   if (authorizationState !== 'connected') missing.push('authorization')
@@ -175,20 +187,32 @@ const connectionMissing = ({
   if (accessTokenConfigured && accessTokenReadable === false) {
     missing.push('credential_decryption')
   }
+  const expiresAt = nonEmpty(accessTokenExpiresAt)
+  const expiresAtMilliseconds = expiresAt ? Date.parse(expiresAt) : undefined
+  const accessTokenExpired =
+    expiresAtMilliseconds !== undefined &&
+    (!Number.isFinite(expiresAtMilliseconds) || expiresAtMilliseconds <= nowMilliseconds)
+  if (accessTokenExpired) missing.push('access_token_expired')
+  if (accessTokenExpired && !refreshTokenConfigured) missing.push('refresh_token')
+  if (refreshTokenConfigured && !refreshTokenReadable) {
+    missing.push('refresh_token_decryption')
+  }
   return missing
 }
 
 export const assessPlatformAccountReadiness = ({
   account,
   environment = {},
+  nowMilliseconds = Date.now(),
 }: PlatformAccountReadinessInput): PlatformAccountReadiness => {
   const definition = getPlatformAccountDefinition(account.accountKind)
-  const connection = connectionMissing(account)
+  const connection = connectionMissing(account, nowMilliseconds)
   const externalAccountId = nonEmpty(account.externalAccountId)
   const metaAllowlist = configuredMetaAllowlist(environment)
   const metaEnvironmentMissing: PlatformReadinessRequirement[] = []
   if (!nonEmpty(environment.META_WEBHOOK_APP_SECRET)) metaEnvironmentMissing.push('meta_app_secret')
-  if (!nonEmpty(environment.META_WEBHOOK_VERIFY_TOKEN)) metaEnvironmentMissing.push('meta_verify_token')
+  if (!nonEmpty(environment.META_WEBHOOK_VERIFY_TOKEN))
+    metaEnvironmentMissing.push('meta_verify_token')
   if (!externalAccountId || !metaAllowlist.has(externalAccountId)) {
     metaEnvironmentMissing.push('meta_account_allowlist')
   }
@@ -225,6 +249,17 @@ export const assessPlatformAccountReadiness = ({
         productionRequirements:
           approval === 'approved' ? [] : (['approval'] as PlatformReadinessRequirement[]),
         reasonCode: 'publishing_job_adapter_pending' as const,
+        status: 'blocked' as const,
+      }
+    }
+
+    if (approval === 'blocked') {
+      return {
+        capability,
+        implementation: 'implemented' as const,
+        missing: unique([...connection, 'approval' as const]),
+        productionRequirements: ['approval'] as PlatformReadinessRequirement[],
+        reasonCode: 'platform_capability_blocked' as const,
         status: 'blocked' as const,
       }
     }

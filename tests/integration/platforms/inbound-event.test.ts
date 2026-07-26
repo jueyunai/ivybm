@@ -2,13 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 
 import type { MigrateDownArgs, PostgresAdapter } from '@payloadcms/db-postgres'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import {
-  createLocalReq,
-  getPayload,
-  initTransaction,
-  killTransaction,
-  type Payload,
-} from 'payload'
+import { createLocalReq, getPayload, initTransaction, killTransaction, type Payload } from 'payload'
 
 import config from '@/payload.config'
 import { down as removeTikTokChannel } from '@/migrations/20260725_051208_task13_tiktok_channel'
@@ -19,6 +13,7 @@ import {
 } from '@/modules/platforms/eventJobs'
 import { externalMessagePersistenceKey } from '@/modules/conversations/externalDeliveryIdentity'
 import { PayloadPlatformConversationPort } from '@/modules/platforms/payloadConversationPort'
+import { PayloadPlatformMessagingAccountAuthorizer } from '@/modules/platforms/payloadMessagingAccountAuthorizer'
 import { PayloadPlatformEventRepository } from '@/modules/platforms/payloadEventRepository'
 import type { PersistedPlatformEvent } from '@/modules/platforms/ports'
 import {
@@ -29,6 +24,7 @@ import {
 } from '@/modules/platforms/types'
 
 let payload: Payload
+const allowAllAccounts = { assertCanReceive: async () => undefined }
 const testKeys: string[] = []
 const testThreads: string[] = []
 
@@ -72,10 +68,7 @@ const createLegacyInboundEvent = (
   text = 'Pre-upgrade fixture message.',
 ): PersistedInboundEvent => {
   const persisted = createInboundEvent(suffix, text)
-  const legacyKey = platformEventKey(
-    persisted.event.platform,
-    persisted.event.externalEventId,
-  )
+  const legacyKey = platformEventKey(persisted.event.platform, persisted.event.externalEventId)
   persisted.event.idempotencyKey = legacyKey
   persisted.eventDigest = digest(JSON.stringify(persisted.event))
   testKeys[testKeys.length - 1] = legacyKey
@@ -97,11 +90,7 @@ const createAccountScopedInboundEvent = ({
     accountExternalId,
     content: { messageType: 'text', text },
     externalEventId,
-    idempotencyKey: platformEventKeyV2(
-      'facebook-messenger',
-      accountExternalId,
-      externalEventId,
-    ),
+    idempotencyKey: platformEventKeyV2('facebook-messenger', accountExternalId, externalEventId),
     kind: 'inbound-message',
     occurredAt: '2026-07-22T00:00:00.000Z',
     platform: 'facebook-messenger',
@@ -142,17 +131,24 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       `SELECT id FROM jobs WHERE type = $1 AND idempotency_key = ANY($2::text[])`,
       [PLATFORM_EVENT_JOB_TYPE, testKeys],
     )
-    const documentIDs = [...conversationIDs, ...visitorIDs, ...jobs.rows.map(({ id }) => id)].map(String)
+    const documentIDs = [...conversationIDs, ...visitorIDs, ...jobs.rows.map(({ id }) => id)].map(
+      String,
+    )
 
     if (conversationIDs.length > 0) {
-      await pool().query('DELETE FROM conversation_commands WHERE conversation_id = ANY($1::int[])', [conversationIDs])
+      await pool().query(
+        'DELETE FROM conversation_commands WHERE conversation_id = ANY($1::int[])',
+        [conversationIDs],
+      )
       await pool().query('DELETE FROM conversations WHERE id = ANY($1::int[])', [conversationIDs])
     }
     if (visitorIDs.length > 0) {
       await pool().query('DELETE FROM visitor_sessions WHERE id = ANY($1::int[])', [visitorIDs])
     }
     if (jobs.rows.length > 0) {
-      await pool().query('DELETE FROM jobs WHERE id = ANY($1::int[])', [jobs.rows.map(({ id }) => id)])
+      await pool().query('DELETE FROM jobs WHERE id = ANY($1::int[])', [
+        jobs.rows.map(({ id }) => id),
+      ])
     }
     if (documentIDs.length > 0) {
       await pool().query(
@@ -184,18 +180,17 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       eventDigest: digest(`changed-${suffix}`),
     }
 
-    await expect(Promise.all([
-      repository.enqueueBatch([first]),
-      repository.enqueueBatch([first]),
-    ])).resolves.toEqual(expect.arrayContaining([
-      [{ idempotencyKey: first.event.idempotencyKey, status: 'accepted' }],
-      [{ idempotencyKey: first.event.idempotencyKey, status: 'duplicate' }],
-    ]))
-    await expect(repository.enqueueBatch([
-      { ...first, rawPayloadDigest: digest(`raw-retry-${suffix}`) },
-    ])).resolves.toEqual([
-      { idempotencyKey: first.event.idempotencyKey, status: 'duplicate' },
-    ])
+    await expect(
+      Promise.all([repository.enqueueBatch([first]), repository.enqueueBatch([first])]),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        [{ idempotencyKey: first.event.idempotencyKey, status: 'accepted' }],
+        [{ idempotencyKey: first.event.idempotencyKey, status: 'duplicate' }],
+      ]),
+    )
+    await expect(
+      repository.enqueueBatch([{ ...first, rawPayloadDigest: digest(`raw-retry-${suffix}`) }]),
+    ).resolves.toEqual([{ idempotencyKey: first.event.idempotencyKey, status: 'duplicate' }])
     await expect(repository.enqueueBatch([second, conflicting])).resolves.toEqual([
       { idempotencyKey: first.event.idempotencyKey, status: 'conflict' },
     ])
@@ -223,7 +218,10 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     const persisted = createInboundEvent(randomUUID())
     const queue = new PayloadJobQueue({ payload })
     const conversations = new PayloadPlatformConversationPort({ payload })
-    const handler = createPlatformEventJobHandler({ conversations })
+    const handler = createPlatformEventJobHandler({
+      accountAuthorizer: allowAllAccounts,
+      conversations,
+    })
 
     await expect(repository.enqueueBatch([persisted])).resolves.toEqual([
       { idempotencyKey: persisted.event.idempotencyKey, status: 'accepted' },
@@ -242,17 +240,26 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       depth: 0,
       limit: 1,
       overrideAccess: true,
-      where: { externalThreadId: { equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}` } },
+      where: {
+        externalThreadId: {
+          equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}`,
+        },
+      },
     })
     expect(conversation.docs[0]).toMatchObject({
       channel: 'facebook',
       handoffStatus: 'handoff_requested',
     })
-    const visitorSessionID = typeof conversation.docs[0]?.visitorSession === 'number'
-      ? conversation.docs[0]?.visitorSession
-      : conversation.docs[0]?.visitorSession?.id
+    const visitorSessionID =
+      typeof conversation.docs[0]?.visitorSession === 'number'
+        ? conversation.docs[0]?.visitorSession
+        : conversation.docs[0]?.visitorSession?.id
     const visitor = visitorSessionID
-      ? await payload.findByID({ collection: 'visitor-sessions', id: visitorSessionID, overrideAccess: true })
+      ? await payload.findByID({
+          collection: 'visitor-sessions',
+          id: visitorSessionID,
+          overrideAccess: true,
+        })
       : undefined
     expect(visitor).toMatchObject({
       idempotencyKey: `platform-session:${persisted.event.platform}:${digest(
@@ -285,34 +292,42 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       idempotencyKey: persisted.event.idempotencyKey,
       status: 'duplicate',
     })
-    await expect(payload.count({
-      collection: 'messages',
-      overrideAccess: true,
-      where: { conversation: { equals: conversation.docs[0]?.id } },
-    })).resolves.toEqual({ totalDocs: 1 })
+    await expect(
+      payload.count({
+        collection: 'messages',
+        overrideAccess: true,
+        where: { conversation: { equals: conversation.docs[0]?.id } },
+      }),
+    ).resolves.toEqual({ totalDocs: 1 })
     // A connector or queue may rotate its transport receipt key while retrying the
     // same authenticated platform message. The conversation service must derive
     // its own durable identity from the external message and thread instead.
     const changedTransportKey = `${persisted.event.idempotencyKey}:transport-retry`
-    await expect(conversations.writeInboundMessage({
-      ...persisted.event,
-      idempotencyKey: changedTransportKey,
-    })).resolves.toEqual({ idempotencyKey: changedTransportKey, status: 'duplicate' })
-    await expect(payload.count({
-      collection: 'messages',
-      overrideAccess: true,
-      where: { conversation: { equals: conversation.docs[0]?.id } },
-    })).resolves.toEqual({ totalDocs: 1 })
-    await expect(payload.count({
-      collection: 'audit-logs',
-      overrideAccess: true,
-      where: {
-        and: [
-          { documentId: { equals: String(conversation.docs[0]?.id) } },
-          { resource: { equals: 'conversation.handoff.handoff_requested' } },
-        ],
-      },
-    })).resolves.toEqual({ totalDocs: 1 })
+    await expect(
+      conversations.writeInboundMessage({
+        ...persisted.event,
+        idempotencyKey: changedTransportKey,
+      }),
+    ).resolves.toEqual({ idempotencyKey: changedTransportKey, status: 'duplicate' })
+    await expect(
+      payload.count({
+        collection: 'messages',
+        overrideAccess: true,
+        where: { conversation: { equals: conversation.docs[0]?.id } },
+      }),
+    ).resolves.toEqual({ totalDocs: 1 })
+    await expect(
+      payload.count({
+        collection: 'audit-logs',
+        overrideAccess: true,
+        where: {
+          and: [
+            { documentId: { equals: String(conversation.docs[0]?.id) } },
+            { resource: { equals: 'conversation.handoff.handoff_requested' } },
+          ],
+        },
+      }),
+    ).resolves.toEqual({ totalDocs: 1 })
     await queue.complete(job)
     await expect(queue.getByID(job.id)).resolves.toMatchObject({ status: 'succeeded' })
   })
@@ -325,16 +340,14 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
         type, idempotency_key, payload, status, attempts, max_attempts, next_run_at,
         manual_retry_count, updated_at, created_at
       ) VALUES ($1, $2, $3::jsonb, 'pending', 0, 5, $4, 0, $4, $4)`,
-      [
-        PLATFORM_EVENT_JOB_TYPE,
-        persisted.event.idempotencyKey,
-        JSON.stringify(persisted),
-        now,
-      ],
+      [PLATFORM_EVENT_JOB_TYPE, persisted.event.idempotencyKey, JSON.stringify(persisted), now],
     )
     const queue = new PayloadJobQueue({ payload })
     const conversations = new PayloadPlatformConversationPort({ payload })
-    const handler = createPlatformEventJobHandler({ conversations })
+    const handler = createPlatformEventJobHandler({
+      accountAuthorizer: allowAllAccounts,
+      conversations,
+    })
     const job = await queue.claimNext()
     if (!job) throw new Error('Expected the pre-upgrade Job to be claimable')
 
@@ -357,12 +370,96 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       },
     })
     expect(conversation.docs[0]).toMatchObject({ channel: 'facebook' })
-    await expect(payload.count({
-      collection: 'messages',
-      overrideAccess: true,
-      where: { conversation: { equals: conversation.docs[0]?.id } },
-    })).resolves.toEqual({ totalDocs: 1 })
+    await expect(
+      payload.count({
+        collection: 'messages',
+        overrideAccess: true,
+        where: { conversation: { equals: conversation.docs[0]?.id } },
+      }),
+    ).resolves.toEqual({ totalDocs: 1 })
     await expect(queue.getByID(job.id)).resolves.toMatchObject({ status: 'succeeded' })
+  })
+
+  it('rejects an account disabled after the event is claimed but before dispatch', async () => {
+    const persisted = createInboundEvent(randomUUID())
+    const repository = new PayloadPlatformEventRepository({ payload })
+    const queue = new PayloadJobQueue({ payload })
+    const originalEncryptionKey = process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY
+    process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY = 'b'.repeat(64)
+    let accountID: number | string | undefined
+    let dispatched = false
+    const handler = createPlatformEventJobHandler({
+      accountAuthorizer: new PayloadPlatformMessagingAccountAuthorizer({ payload }),
+      conversations: {
+        writeInboundMessage: async () => {
+          dispatched = true
+          return { idempotencyKey: persisted.event.idempotencyKey, status: 'accepted' }
+        },
+      },
+    })
+
+    try {
+      const account = await payload.create({
+        collection: 'platform-accounts',
+        context: { skipAudit: true },
+        data: {
+          accountKind: 'facebook-page',
+          authorization: {
+            accessToken: `worker-state-change-token-${randomUUID()}`,
+            accessTokenConfigured: false,
+            appId: null,
+            clearAccessToken: false,
+            clearRefreshToken: false,
+            expiresAt: null,
+            refreshToken: null,
+            refreshTokenConfigured: false,
+            scopes: [],
+            state: 'connected',
+          },
+          capabilities: { messagingInbound: 'pending', publishing: 'not_started' },
+          connectionKey: null,
+          externalAccountId: persisted.event.accountExternalId,
+          name: `Worker state-change Page ${randomUUID()}`,
+          notes: null,
+          platformFamily: 'meta',
+        },
+        overrideAccess: true,
+      })
+      accountID = account.id
+      await repository.enqueueBatch([persisted])
+      const job = await queue.claimNext()
+      if (!job) throw new Error('Expected the connected-account event to be claimable')
+      await payload.update({
+        collection: 'platform-accounts',
+        context: { skipAudit: true },
+        data: { authorization: { state: 'disabled' } },
+        id: account.id,
+        overrideAccess: true,
+      })
+
+      await expect(
+        handler(job, {
+          assertLease: () => undefined,
+          renewLease: async () => job,
+          signal: new AbortController().signal,
+        }),
+      ).rejects.toMatchObject({ code: 'account_blocked' })
+      expect(dispatched).toBe(false)
+    } finally {
+      if (accountID !== undefined) {
+        await payload.delete({
+          collection: 'platform-accounts',
+          context: { skipAudit: true },
+          id: accountID,
+          overrideAccess: true,
+        })
+      }
+      if (originalEncryptionKey === undefined) {
+        delete process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY
+      } else {
+        process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+      }
+    }
   })
 
   it('delivers same-ID messages from different Meta accounts without cross-account deduplication', async () => {
@@ -382,19 +479,24 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     })
     const queue = new PayloadJobQueue({ payload })
     const conversations = new PayloadPlatformConversationPort({ payload })
-    const handler = createPlatformEventJobHandler({ conversations })
+    const handler = createPlatformEventJobHandler({
+      accountAuthorizer: allowAllAccounts,
+      conversations,
+    })
 
-    await expect(Promise.all([
-      repository.enqueueBatch([first]),
-      repository.enqueueBatch([second]),
-    ])).resolves.toEqual(expect.arrayContaining([
-      [{ idempotencyKey: first.event.idempotencyKey, status: 'accepted' }],
-      [{ idempotencyKey: second.event.idempotencyKey, status: 'accepted' }],
-    ]))
+    await expect(
+      Promise.all([repository.enqueueBatch([first]), repository.enqueueBatch([second])]),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        [{ idempotencyKey: first.event.idempotencyKey, status: 'accepted' }],
+        [{ idempotencyKey: second.event.idempotencyKey, status: 'accepted' }],
+      ]),
+    )
 
     const firstJob = await queue.claimNext()
     const secondJob = await queue.claimNext()
-    if (!firstJob || !secondJob) throw new Error('Expected both account-scoped events to be claimable')
+    if (!firstJob || !secondJob)
+      throw new Error('Expected both account-scoped events to be claimable')
     for (const job of [firstJob, secondJob]) {
       await handler(job, {
         assertLease: () => undefined,
@@ -440,7 +542,10 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       allowTikTokNormalizedDelivery: true,
       payload,
     })
-    const handler = createPlatformEventJobHandler({ conversations })
+    const handler = createPlatformEventJobHandler({
+      accountAuthorizer: allowAllAccounts,
+      conversations,
+    })
 
     await expect(repository.enqueueBatch([persisted])).resolves.toEqual([
       { idempotencyKey: persisted.event.idempotencyKey, status: 'accepted' },
@@ -470,11 +575,13 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       channel: 'tiktok',
       handoffStatus: 'handoff_requested',
     })
-    await expect(payload.count({
-      collection: 'messages',
-      overrideAccess: true,
-      where: { conversation: { equals: conversation.docs[0]?.id } },
-    })).resolves.toEqual({ totalDocs: 1 })
+    await expect(
+      payload.count({
+        collection: 'messages',
+        overrideAccess: true,
+        where: { conversation: { equals: conversation.docs[0]?.id } },
+      }),
+    ).resolves.toEqual({ totalDocs: 1 })
   })
 
   it('fails closed for TikTok delivery unless a future reviewed connector explicitly enables it', async () => {
@@ -524,15 +631,64 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
 
     // The failed downgrade must roll back entirely: the current application can
     // still read the durable conversation and its message after the refusal.
-    await expect(payload.count({
-      collection: 'conversations',
-      overrideAccess: true,
-      where: {
-        externalThreadId: {
-          equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}`,
+    await expect(
+      payload.count({
+        collection: 'conversations',
+        overrideAccess: true,
+        where: {
+          externalThreadId: {
+            equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}`,
+          },
         },
-      },
-    })).resolves.toEqual({ totalDocs: 1 })
+      }),
+    ).resolves.toEqual({ totalDocs: 1 })
+  })
+
+  it('refuses a TikTok channel schema downgrade while a TikTok Job remains actionable', async () => {
+    const repository = new PayloadPlatformEventRepository({ payload })
+    const persisted = createInboundEvent(
+      randomUUID(),
+      'The migration must preserve this pending TikTok delivery.',
+      'tiktok',
+    )
+    await repository.enqueueBatch([persisted])
+
+    const attemptDown = async (): Promise<void> => {
+      const request = await createLocalReq({}, payload)
+      await initTransaction(request)
+      const transactionID = await request.transactionID
+      const transaction = transactionID
+        ? (payload.db as unknown as PostgresAdapter).sessions[String(transactionID)]?.db
+        : undefined
+      if (!transaction) throw new Error('Expected an isolated migration transaction')
+      try {
+        await removeTikTokChannel({
+          db: transaction as MigrateDownArgs['db'],
+          payload,
+          req: request,
+        })
+      } finally {
+        await killTransaction(request)
+      }
+    }
+
+    for (const status of ['pending', 'processing', 'failed', 'dead']) {
+      await pool().query('UPDATE jobs SET status = $1 WHERE type = $2 AND idempotency_key = $3', [
+        status,
+        PLATFORM_EVENT_JOB_TYPE,
+        persisted.event.idempotencyKey,
+      ])
+      await expect(attemptDown()).rejects.toThrow(
+        'TikTok sessions, conversations, or actionable Jobs exist',
+      )
+    }
+
+    await pool().query('UPDATE jobs SET status = $1 WHERE type = $2 AND idempotency_key = $3', [
+      'succeeded',
+      PLATFORM_EVENT_JOB_TYPE,
+      persisted.event.idempotencyKey,
+    ])
+    await expect(attemptDown()).resolves.toBeUndefined()
   })
 
   it('persists a distinct follow-up from the same Meta sender after handoff is requested', async () => {
@@ -541,7 +697,10 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     const followUpExternalEventID = `${first.event.externalEventId}-follow-up`
     const followUpEvent: NormalizedInboundMessage = {
       ...first.event,
-      content: { messageType: 'text', text: 'Second customer message before an operator responds.' },
+      content: {
+        messageType: 'text',
+        text: 'Second customer message before an operator responds.',
+      },
       externalEventId: followUpExternalEventID,
       idempotencyKey: platformEventKeyV2(
         first.event.platform,
@@ -557,7 +716,10 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     testKeys.push(followUp.event.idempotencyKey)
     const queue = new PayloadJobQueue({ payload })
     const conversations = new PayloadPlatformConversationPort({ payload })
-    const handler = createPlatformEventJobHandler({ conversations })
+    const handler = createPlatformEventJobHandler({
+      accountAuthorizer: allowAllAccounts,
+      conversations,
+    })
 
     await expect(repository.enqueueBatch([first])).resolves.toEqual([
       { idempotencyKey: first.event.idempotencyKey, status: 'accepted' },
@@ -576,11 +738,13 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     ])
     const followUpJob = await queue.claimNext()
     if (!followUpJob) throw new Error('Expected the follow-up platform event to be claimable')
-    await expect(handler(followUpJob, {
-      assertLease: () => undefined,
-      renewLease: async () => followUpJob,
-      signal: new AbortController().signal,
-    })).resolves.toBeUndefined()
+    await expect(
+      handler(followUpJob, {
+        assertLease: () => undefined,
+        renewLease: async () => followUpJob,
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toBeUndefined()
     await queue.complete(followUpJob)
 
     const conversation = await payload.find({
@@ -588,7 +752,11 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       depth: 0,
       limit: 1,
       overrideAccess: true,
-      where: { externalThreadId: { equals: `${first.event.accountExternalId}:${first.event.senderExternalId}` } },
+      where: {
+        externalThreadId: {
+          equals: `${first.event.accountExternalId}:${first.event.senderExternalId}`,
+        },
+      },
     })
     expect(conversation.docs[0]).toMatchObject({ handoffStatus: 'handoff_requested' })
     const messages = await payload.find({
@@ -598,24 +766,26 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       overrideAccess: true,
       where: { conversation: { equals: conversation.docs[0]?.id } },
     })
-    expect(messages.docs).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        externalMessageId: first.event.externalEventId,
-        idempotencyKey: externalMessagePersistenceKey(
-          'facebook',
-          first.event.accountExternalId,
-          first.event.externalEventId,
-        ),
-      }),
-      expect.objectContaining({
-        externalMessageId: followUp.event.externalEventId,
-        idempotencyKey: externalMessagePersistenceKey(
-          'facebook',
-          followUp.event.accountExternalId,
-          followUp.event.externalEventId,
-        ),
-      }),
-    ]))
+    expect(messages.docs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalMessageId: first.event.externalEventId,
+          idempotencyKey: externalMessagePersistenceKey(
+            'facebook',
+            first.event.accountExternalId,
+            first.event.externalEventId,
+          ),
+        }),
+        expect.objectContaining({
+          externalMessageId: followUp.event.externalEventId,
+          idempotencyKey: externalMessagePersistenceKey(
+            'facebook',
+            followUp.event.accountExternalId,
+            followUp.event.externalEventId,
+          ),
+        }),
+      ]),
+    )
     expect(messages.docs).toHaveLength(2)
     await expect(queue.getByID(followUpJob.id)).resolves.toMatchObject({ status: 'succeeded' })
   })
@@ -628,7 +798,10 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     const firstQueue = new PayloadJobQueue({ clock, leaseMs: 1_000, payload })
     const reclaimedQueue = new PayloadJobQueue({ clock, leaseMs: 1_000, payload })
     const conversations = new PayloadPlatformConversationPort({ payload })
-    const handler = createPlatformEventJobHandler({ conversations })
+    const handler = createPlatformEventJobHandler({
+      accountAuthorizer: allowAllAccounts,
+      conversations,
+    })
 
     await expect(repository.enqueueBatch([persisted])).resolves.toEqual([
       { idempotencyKey: persisted.event.idempotencyKey, status: 'accepted' },
@@ -645,7 +818,8 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
 
     now = new Date(now.getTime() + 1_001)
     const reclaimedAttempt = await reclaimedQueue.claimNext()
-    if (!reclaimedAttempt) throw new Error('Expected the expired platform event lease to be reclaimed')
+    if (!reclaimedAttempt)
+      throw new Error('Expected the expired platform event lease to be reclaimed')
     expect(reclaimedAttempt).toMatchObject({ attempts: 2, id: firstAttempt.id })
 
     await handler(reclaimedAttempt, {
@@ -660,13 +834,19 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       depth: 0,
       limit: 1,
       overrideAccess: true,
-      where: { externalThreadId: { equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}` } },
+      where: {
+        externalThreadId: {
+          equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}`,
+        },
+      },
     })
-    await expect(payload.count({
-      collection: 'messages',
-      overrideAccess: true,
-      where: { conversation: { equals: conversation.docs[0]?.id } },
-    })).resolves.toEqual({ totalDocs: 1 })
+    await expect(
+      payload.count({
+        collection: 'messages',
+        overrideAccess: true,
+        where: { conversation: { equals: conversation.docs[0]?.id } },
+      }),
+    ).resolves.toEqual({ totalDocs: 1 })
     await expect(reclaimedQueue.getByID(reclaimedAttempt.id)).resolves.toMatchObject({
       attempts: 2,
       status: 'succeeded',

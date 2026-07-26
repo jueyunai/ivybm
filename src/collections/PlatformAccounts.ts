@@ -26,6 +26,8 @@ import {
 
 type UnknownRecord = Record<string, unknown>
 
+const requestedAuthorizationContextKey = '__platformAccountRequestedAuthorization'
+
 const isRecord = (value: unknown): value is UnknownRecord =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
@@ -73,6 +75,9 @@ const lockPlatformAccountBeforeUpdate: CollectionBeforeOperationHook = async ({
 }) => {
   if (operation !== 'update') return args
 
+  const requestedData = 'data' in args ? asRecord(args.data) : {}
+  req.context[requestedAuthorizationContextKey] = asRecord(requestedData.authorization)
+
   const id = 'id' in args ? args.id : undefined
   if (id === undefined || id === null) {
     throw validationError(
@@ -82,7 +87,9 @@ const lockPlatformAccountBeforeUpdate: CollectionBeforeOperationHook = async ({
     )
   }
 
-  await (await transactionDB(req)).execute(sql`
+  await (
+    await transactionDB(req)
+  ).execute(sql`
     SELECT "id" FROM "platform_accounts" WHERE "id" = ${id} FOR UPDATE
   `)
   return args
@@ -130,7 +137,9 @@ const retainOrReplaceCredential = ({
 }
 
 const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
+  context,
   data,
+  operation,
   originalDoc,
   req,
 }) => {
@@ -151,6 +160,9 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
 
   const existingAuthorization = asRecord(originalDoc?.authorization)
   const submittedAuthorization = asRecord(candidate.authorization)
+  const requestedAuthorization = asRecord(
+    context[requestedAuthorizationContextKey] ?? req.data?.authorization,
+  )
   const authorization = { ...existingAuthorization, ...submittedAuthorization }
   const submittedAccessToken = nonEmpty(submittedAuthorization.accessToken)
   const existingAccessToken = nonEmpty(existingAuthorization.accessToken)
@@ -158,8 +170,8 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
   const existingRefreshToken = nonEmpty(existingAuthorization.refreshToken)
   const connectionIdentityChanged = Boolean(
     originalDoc &&
-      (accountKind !== originalDoc.accountKind ||
-        externalAccountId !== nonEmpty(originalDoc.externalAccountId)),
+    (accountKind !== originalDoc.accountKind ||
+      externalAccountId !== nonEmpty(originalDoc.externalAccountId)),
   )
 
   const accessToken = retainOrReplaceCredential({
@@ -192,6 +204,15 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
   const replacesRefreshToken = Boolean(
     submittedRefreshToken && submittedRefreshToken !== existingRefreshToken,
   )
+  if (!accessToken.configured || submittedAuthorization.clearAccessToken === true) {
+    authorization.expiresAt = null
+  } else if (
+    operation === 'update' &&
+    replacesAccessToken &&
+    !Object.prototype.hasOwnProperty.call(requestedAuthorization, 'expiresAt')
+  ) {
+    authorization.expiresAt = null
+  }
   const retainsAccessToken = accessToken.configured && !replacesAccessToken
   const retainsRefreshToken = refreshToken.configured && !replacesRefreshToken
   if (connectionIdentityChanged && (retainsAccessToken || retainsRefreshToken)) {
@@ -239,6 +260,13 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
         )
       }
       decryptPlatformCredential(configuredCredential, readPlatformCredentialEncryptionKey())
+      const configuredRefreshCredential = refreshToken.value
+      if (refreshToken.configured && configuredRefreshCredential) {
+        decryptPlatformCredential(
+          configuredRefreshCredential,
+          readPlatformCredentialEncryptionKey(),
+        )
+      }
     }
   }
 
@@ -317,7 +345,8 @@ export const PlatformAccounts: CollectionConfig = {
           name: 'appId',
           type: 'text',
           admin: {
-            description: 'Non-secret provider application ID. Never enter an App Secret or Client Secret here.',
+            description:
+              'Non-secret provider application ID. Never enter an App Secret or Client Secret here.',
           },
           maxLength: 240,
         },
@@ -340,7 +369,8 @@ export const PlatformAccounts: CollectionConfig = {
           name: 'clearAccessToken',
           type: 'checkbox',
           admin: {
-            description: 'Use only when revoking a credential. A connected account cannot be saved without a token.',
+            description:
+              'Use only when revoking a credential. A connected account cannot be saved without a token.',
           },
           defaultValue: false,
         },

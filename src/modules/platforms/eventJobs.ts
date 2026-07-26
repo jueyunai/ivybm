@@ -6,6 +6,7 @@ import type {
   MessageStatusPort,
   PlatformEventDeliveryResult,
 } from './ports'
+import type { PlatformMessagingAccountAuthorizer } from './payloadMessagingAccountAuthorizer'
 import {
   isRecognizedPlatformEventKey,
   sanitizeExternalAttachmentURL,
@@ -118,7 +119,8 @@ const parseInboundMessage = (
   base: ParsedBase,
   recipientExternalId: string,
 ): NormalizedInboundMessage => {
-  if (!isRecord(value.content)) throw new PlatformEventJobPayloadError('Platform inbound content is invalid')
+  if (!isRecord(value.content))
+    throw new PlatformEventJobPayloadError('Platform inbound content is invalid')
   const messageType = requiredString(value.content.messageType, 'content.messageType', 100)
   const text = optionalString(value.content.text, 'content.text', 5_000)
   const attachments = parseAttachments(value.content.attachments)
@@ -149,25 +151,28 @@ const parseMessageStatus = (
   if (!['delivered', 'failed', 'read', 'sent'].includes(status)) {
     throw new PlatformEventJobPayloadError('Platform message status is invalid')
   }
-  const errors = value.errors === undefined
-    ? undefined
-    : (() => {
-        if (!Array.isArray(value.errors) || value.errors.length > 10) {
-          throw new PlatformEventJobPayloadError('Platform message-status errors are invalid')
-        }
-        return value.errors.map((error, index) => {
-          if (!isRecord(error)) {
-            throw new PlatformEventJobPayloadError(`Platform message-status error ${index} is invalid`)
+  const errors =
+    value.errors === undefined
+      ? undefined
+      : (() => {
+          if (!Array.isArray(value.errors) || value.errors.length > 10) {
+            throw new PlatformEventJobPayloadError('Platform message-status errors are invalid')
           }
-          const code = optionalString(error.code, `errors.${index}.code`, 240)
-          const title = optionalString(error.title, `errors.${index}.title`, 240)
-          return {
-            ...(code ? { code } : {}),
-            message: requiredString(error.message, `errors.${index}.message`, 1_000),
-            ...(title ? { title } : {}),
-          }
-        })
-      })()
+          return value.errors.map((error, index) => {
+            if (!isRecord(error)) {
+              throw new PlatformEventJobPayloadError(
+                `Platform message-status error ${index} is invalid`,
+              )
+            }
+            const code = optionalString(error.code, `errors.${index}.code`, 240)
+            const title = optionalString(error.title, `errors.${index}.title`, 240)
+            return {
+              ...(code ? { code } : {}),
+              message: requiredString(error.message, `errors.${index}.message`, 1_000),
+              ...(title ? { title } : {}),
+            }
+          })
+        })()
   return {
     ...base,
     ...(errors ? { errors } : {}),
@@ -194,7 +199,9 @@ const parseEvent = (value: unknown): NormalizedPlatformEvent => {
   throw new PlatformEventJobPayloadError('Platform event kind is unsupported')
 }
 
-export const parsePlatformEventJobPayload = (value: Record<string, unknown>): PlatformEventJobPayload => {
+export const parsePlatformEventJobPayload = (
+  value: Record<string, unknown>,
+): PlatformEventJobPayload => {
   const eventDigest = requiredString(value.eventDigest, 'eventDigest', 64)
   const rawPayloadDigest = requiredString(value.rawPayloadDigest, 'rawPayloadDigest', 64)
   if (!/^[a-f0-9]{64}$/i.test(eventDigest) || !/^[a-f0-9]{64}$/i.test(rawPayloadDigest)) {
@@ -211,15 +218,21 @@ const unsupportedMessageStatusPort: MessageStatusPort = {
   },
 }
 
-export const createPlatformEventJobHandler = ({
-  conversations,
-  messageStatuses = unsupportedMessageStatusPort,
-}: {
-  conversations: ConversationMessagePort
-  messageStatuses?: MessageStatusPort
-}): JobHandler => async (job, execution) => {
-  const { event } = parsePlatformEventJobPayload(job.payload)
-  execution.assertLease()
-  await dispatchPlatformEvent(event, { conversations, messageStatuses })
-  execution.assertLease()
-}
+export const createPlatformEventJobHandler =
+  ({
+    accountAuthorizer,
+    conversations,
+    messageStatuses = unsupportedMessageStatusPort,
+  }: {
+    accountAuthorizer: PlatformMessagingAccountAuthorizer
+    conversations: ConversationMessagePort
+    messageStatuses?: MessageStatusPort
+  }): JobHandler =>
+  async (job, execution) => {
+    const { event } = parsePlatformEventJobPayload(job.payload)
+    execution.assertLease()
+    await accountAuthorizer.assertCanReceive(event)
+    execution.assertLease()
+    await dispatchPlatformEvent(event, { conversations, messageStatuses })
+    execution.assertLease()
+  }

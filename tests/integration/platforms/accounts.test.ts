@@ -140,7 +140,8 @@ describe.sequential('platform accounts', () => {
 
     if (originalEncryptionKey === undefined) delete process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY
     else process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
-    if (originalMetaAllowedAccountIDs === undefined) delete process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS
+    if (originalMetaAllowedAccountIDs === undefined)
+      delete process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS
     else process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS = originalMetaAllowedAccountIDs
     if (originalMetaAppSecret === undefined) delete process.env.META_WEBHOOK_APP_SECRET
     else process.env.META_WEBHOOK_APP_SECRET = originalMetaAppSecret
@@ -299,15 +300,46 @@ describe.sequential('platform accounts', () => {
       ]),
     })
 
+    await payload.update({
+      collection: 'platform-accounts',
+      data: { capabilities: { messagingInbound: 'blocked' } },
+      id: created.id,
+      overrideAccess: false,
+      user: admin,
+    })
+    const blockedReadiness = await platformReadinessGet(
+      new NextRequest('http://localhost/api/platforms/readiness', {
+        headers: { authorization },
+      }),
+    )
+    await expect(blockedReadiness.json()).resolves.toMatchObject({
+      accounts: expect.arrayContaining([
+        expect.objectContaining({
+          id: created.id,
+          readiness: expect.objectContaining({
+            capabilities: expect.arrayContaining([
+              expect.objectContaining({
+                capability: 'messaging-inbound',
+                reasonCode: 'platform_capability_blocked',
+                status: 'blocked',
+              }),
+            ]),
+          }),
+        }),
+      ]),
+    })
+
     const operatorLogin = await payload.login({
       collection: 'users',
       data: { email: operator.email, password: 'platform-accounts-operator-password' },
     })
-    await expect(platformReadinessGet(
-      new NextRequest('http://localhost/api/platforms/readiness', {
-        headers: { authorization: `JWT ${operatorLogin.token}` },
-      }),
-    )).resolves.toMatchObject({ status: 403 })
+    await expect(
+      platformReadinessGet(
+        new NextRequest('http://localhost/api/platforms/readiness', {
+          headers: { authorization: `JWT ${operatorLogin.token}` },
+        }),
+      ),
+    ).resolves.toMatchObject({ status: 403 })
 
     const renamed = await payload.update({
       collection: 'platform-accounts',
@@ -344,7 +376,9 @@ describe.sequential('platform accounts', () => {
         overrideAccess: true,
       })
       expect(afterMetadataUpdate.authorization?.accessToken).toBe(stored.authorization?.accessToken)
-      expect(afterMetadataUpdate.authorization?.refreshToken).toBe(stored.authorization?.refreshToken)
+      expect(afterMetadataUpdate.authorization?.refreshToken).toBe(
+        stored.authorization?.refreshToken,
+      )
 
       const unreadableReadinessResponse = await platformReadinessGet(
         new NextRequest('http://localhost/api/platforms/readiness', {
@@ -361,7 +395,7 @@ describe.sequential('platform accounts', () => {
             id: created.id,
             readiness: expect.objectContaining({
               connection: {
-                missing: ['credential_decryption'],
+                missing: ['credential_decryption', 'refresh_token_decryption'],
                 status: 'action-required',
               },
             }),
@@ -373,13 +407,15 @@ describe.sequential('platform accounts', () => {
       else process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY = configuredKey
     }
 
-    await expect(payload.update({
-      collection: 'platform-accounts',
-      data: { authorization: { clearAccessToken: true } },
-      id: created.id,
-      overrideAccess: false,
-      user: admin,
-    })).rejects.toBeDefined()
+    await expect(
+      payload.update({
+        collection: 'platform-accounts',
+        data: { authorization: { clearAccessToken: true } },
+        id: created.id,
+        overrideAccess: false,
+        user: admin,
+      }),
+    ).rejects.toBeDefined()
     const revoked = await payload.update({
       collection: 'platform-accounts',
       data: {
@@ -399,13 +435,120 @@ describe.sequential('platform accounts', () => {
       state: 'disabled',
     })
 
-    await expect(payload.update({
+    await expect(
+      payload.update({
+        collection: 'platform-accounts',
+        data: { name: `Operator update ${suffix}` },
+        id: created.id,
+        overrideAccess: false,
+        user: operator,
+      }),
+    ).rejects.toMatchObject({ status: 403 })
+  })
+
+  it('clears stale access-token expiry when the access token is replaced or revoked', async () => {
+    const suffix = randomUUID()
+    const firstExpiry = '2099-01-01T00:00:00.000Z'
+    const secondExpiry = '2099-02-01T00:00:00.000Z'
+    const base = accountData({
+      accountKind: 'facebook-page',
+      accessToken: `initial-expiry-token-${suffix}`,
+      externalAccountId: `expiry-page-${suffix}`,
+      name: `Expiry Page ${suffix}`,
+      state: 'connected',
+    })
+    const account = await payload.create({
       collection: 'platform-accounts',
-      data: { name: `Operator update ${suffix}` },
-      id: created.id,
+      data: {
+        ...base,
+        authorization: { ...base.authorization, expiresAt: firstExpiry },
+      },
       overrideAccess: false,
-      user: operator,
-    })).rejects.toMatchObject({ status: 403 })
+      user: admin,
+    })
+    createdAccountIDs.push(account.id)
+    expect(account.authorization?.expiresAt).toBe(firstExpiry)
+
+    const replacedWithoutExpiry = await payload.update({
+      collection: 'platform-accounts',
+      data: { authorization: { accessToken: `replacement-expiry-token-${suffix}` } },
+      id: account.id,
+      overrideAccess: false,
+      user: admin,
+    })
+    expect(replacedWithoutExpiry.authorization?.expiresAt).toBeNull()
+
+    const replacedWithExpiry = await payload.update({
+      collection: 'platform-accounts',
+      data: {
+        authorization: {
+          accessToken: `second-expiry-token-${suffix}`,
+          expiresAt: secondExpiry,
+        },
+      },
+      id: account.id,
+      overrideAccess: false,
+      user: admin,
+    })
+    expect(replacedWithExpiry.authorization?.expiresAt).toBe(secondExpiry)
+
+    const revoked = await payload.update({
+      collection: 'platform-accounts',
+      data: { authorization: { clearAccessToken: true, state: 'disabled' } },
+      id: account.id,
+      overrideAccess: false,
+      user: admin,
+    })
+    expect(revoked.authorization).toMatchObject({
+      accessTokenConfigured: false,
+      expiresAt: null,
+      state: 'disabled',
+    })
+  })
+
+  it('reports an expired access token while proving a configured refresh token is readable', async () => {
+    const suffix = randomUUID()
+    const externalAccountId = `expired-page-${suffix}`
+    const base = accountData({
+      accountKind: 'facebook-page',
+      accessToken: `expired-access-token-${suffix}`,
+      externalAccountId,
+      name: `Expired Page ${suffix}`,
+      refreshToken: `readable-refresh-token-${suffix}`,
+      state: 'connected',
+    })
+    const account = await payload.create({
+      collection: 'platform-accounts',
+      data: {
+        ...base,
+        authorization: { ...base.authorization, expiresAt: '2000-01-01T00:00:00.000Z' },
+        capabilities: { messagingInbound: 'pending', publishing: 'not_started' },
+      },
+      overrideAccess: false,
+      user: admin,
+    })
+    createdAccountIDs.push(account.id)
+    process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS = externalAccountId
+    process.env.META_WEBHOOK_APP_SECRET = `meta-app-secret-${suffix}`
+    process.env.META_WEBHOOK_VERIFY_TOKEN = `meta-verify-token-${suffix}`
+    const login = await payload.login({
+      collection: 'users',
+      data: { email: admin.email, password: 'platform-accounts-admin-password' },
+    })
+
+    const response = await platformReadinessGet(
+      new NextRequest('http://localhost/api/platforms/readiness', {
+        headers: { authorization: `JWT ${login.token}` },
+      }),
+    )
+    const body = (await response.json()) as {
+      accounts: Array<{ id: number | string; readiness: { connection: unknown } }>
+    }
+    expect(response.status).toBe(200)
+    expect(body.accounts.find(({ id }) => id === account.id)?.readiness.connection).toEqual({
+      missing: ['access_token_expired'],
+      status: 'action-required',
+    })
   })
 
   it('allows an administrator to stage an unconnected account before a credential key exists', async () => {
@@ -457,23 +600,27 @@ describe.sequential('platform accounts', () => {
     const configuredKey = process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY
     delete process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY
     try {
-      await expect(payload.update({
-        collection: 'platform-accounts',
-        data: { authorization: { state: 'connected' } },
-        id: pending.id,
-        overrideAccess: false,
-        user: admin,
-      })).rejects.toBeDefined()
+      await expect(
+        payload.update({
+          collection: 'platform-accounts',
+          data: { authorization: { state: 'connected' } },
+          id: pending.id,
+          overrideAccess: false,
+          user: admin,
+        }),
+      ).rejects.toBeDefined()
     } finally {
       if (configuredKey === undefined) delete process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY
       else process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY = configuredKey
     }
 
-    await expect(payload.findByID({
-      collection: 'platform-accounts',
-      id: pending.id,
-      overrideAccess: true,
-    })).resolves.toMatchObject({ authorization: { state: 'pending' } })
+    await expect(
+      payload.findByID({
+        collection: 'platform-accounts',
+        id: pending.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ authorization: { state: 'pending' } })
   })
 
   it('requires a fresh access token before a connected record can point to another provider account', async () => {
@@ -492,19 +639,23 @@ describe.sequential('platform accounts', () => {
     })
     createdAccountIDs.push(connected.id)
 
-    await expect(payload.update({
-      collection: 'platform-accounts',
-      data: { externalAccountId: `replacement-page-${suffix}` },
-      id: connected.id,
-      overrideAccess: false,
-      user: admin,
-    })).rejects.toBeDefined()
+    await expect(
+      payload.update({
+        collection: 'platform-accounts',
+        data: { externalAccountId: `replacement-page-${suffix}` },
+        id: connected.id,
+        overrideAccess: false,
+        user: admin,
+      }),
+    ).rejects.toBeDefined()
 
-    await expect(payload.findByID({
-      collection: 'platform-accounts',
-      id: connected.id,
-      overrideAccess: true,
-    })).resolves.toMatchObject({
+    await expect(
+      payload.findByID({
+        collection: 'platform-accounts',
+        id: connected.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
       connectionKey: `facebook-page:original-page-${suffix}`,
       externalAccountId: `original-page-${suffix}`,
     })
@@ -544,33 +695,39 @@ describe.sequential('platform accounts', () => {
     })
     createdAccountIDs.push(staged.id)
 
-    await expect(payload.update({
-      collection: 'platform-accounts',
-      data: { externalAccountId: `first-page-${suffix}` },
-      id: staged.id,
-      overrideAccess: false,
-      user: admin,
-    })).rejects.toBeDefined()
+    await expect(
+      payload.update({
+        collection: 'platform-accounts',
+        data: { externalAccountId: `first-page-${suffix}` },
+        id: staged.id,
+        overrideAccess: false,
+        user: admin,
+      }),
+    ).rejects.toBeDefined()
 
-    await expect(payload.findByID({
-      collection: 'platform-accounts',
-      id: staged.id,
-      overrideAccess: true,
-    })).resolves.toMatchObject({
+    await expect(
+      payload.findByID({
+        collection: 'platform-accounts',
+        id: staged.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
       connectionKey: null,
       externalAccountId: null,
     })
 
-    await expect(payload.update({
-      collection: 'platform-accounts',
-      data: {
-        authorization: { accessToken: `first-page-token-${suffix}` },
-        externalAccountId: `first-page-${suffix}`,
-      },
-      id: staged.id,
-      overrideAccess: false,
-      user: admin,
-    })).resolves.toMatchObject({
+    await expect(
+      payload.update({
+        collection: 'platform-accounts',
+        data: {
+          authorization: { accessToken: `first-page-token-${suffix}` },
+          externalAccountId: `first-page-${suffix}`,
+        },
+        id: staged.id,
+        overrideAccess: false,
+        user: admin,
+      }),
+    ).resolves.toMatchObject({
       connectionKey: `facebook-page:first-page-${suffix}`,
       externalAccountId: `first-page-${suffix}`,
     })
@@ -592,13 +749,15 @@ describe.sequential('platform accounts', () => {
     })
     createdAccountIDs.push(staged.id)
 
-    await expect(payload.update({
-      collection: 'platform-accounts',
-      data: { externalAccountId: `replacement-member-${suffix}` },
-      id: staged.id,
-      overrideAccess: false,
-      user: admin,
-    })).rejects.toBeDefined()
+    await expect(
+      payload.update({
+        collection: 'platform-accounts',
+        data: { externalAccountId: `replacement-member-${suffix}` },
+        id: staged.id,
+        overrideAccess: false,
+        user: admin,
+      }),
+    ).rejects.toBeDefined()
 
     const cleared = await payload.update({
       collection: 'platform-accounts',
@@ -619,17 +778,19 @@ describe.sequential('platform accounts', () => {
 
   it('rejects an invalid connected state and duplicate provider account identity', async () => {
     const suffix = randomUUID()
-    await expect(payload.create({
-      collection: 'platform-accounts',
-      data: accountData({
-        accountKind: 'linkedin-member',
-        externalAccountId: `member-${suffix}`,
-        name: `Invalid LinkedIn ${suffix}`,
-        state: 'connected',
+    await expect(
+      payload.create({
+        collection: 'platform-accounts',
+        data: accountData({
+          accountKind: 'linkedin-member',
+          externalAccountId: `member-${suffix}`,
+          name: `Invalid LinkedIn ${suffix}`,
+          state: 'connected',
+        }),
+        overrideAccess: false,
+        user: admin,
       }),
-      overrideAccess: false,
-      user: admin,
-    })).rejects.toBeDefined()
+    ).rejects.toBeDefined()
 
     const first = await payload.create({
       collection: 'platform-accounts',
@@ -645,18 +806,20 @@ describe.sequential('platform accounts', () => {
     })
     createdAccountIDs.push(first.id)
 
-    await expect(payload.create({
-      collection: 'platform-accounts',
-      data: accountData({
-        accountKind: 'linkedin-member',
-        accessToken: `duplicate-token-${suffix}`,
-        externalAccountId: `member-${suffix}`,
-        name: `Duplicate LinkedIn ${suffix}`,
-        state: 'connected',
+    await expect(
+      payload.create({
+        collection: 'platform-accounts',
+        data: accountData({
+          accountKind: 'linkedin-member',
+          accessToken: `duplicate-token-${suffix}`,
+          externalAccountId: `member-${suffix}`,
+          name: `Duplicate LinkedIn ${suffix}`,
+          state: 'connected',
+        }),
+        overrideAccess: false,
+        user: admin,
       }),
-      overrideAccess: false,
-      user: admin,
-    })).rejects.toBeDefined()
+    ).rejects.toBeDefined()
   })
 
   it('serializes credential, revocation, and identity updates with concurrent metadata writes', async () => {
@@ -736,11 +899,13 @@ describe.sequential('platform accounts', () => {
         }),
       ])
 
-      await expect(payload.findByID({
-        collection: 'platform-accounts',
-        id: revocation.id,
-        overrideAccess: true,
-      })).resolves.toMatchObject({
+      await expect(
+        payload.findByID({
+          collection: 'platform-accounts',
+          id: revocation.id,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({
         authorization: {
           accessToken: null,
           accessTokenConfigured: false,
@@ -788,11 +953,13 @@ describe.sequential('platform accounts', () => {
         }),
       ])
 
-      await expect(payload.findByID({
-        collection: 'platform-accounts',
-        id: identity.id,
-        overrideAccess: true,
-      })).resolves.toMatchObject({
+      await expect(
+        payload.findByID({
+          collection: 'platform-accounts',
+          id: identity.id,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({
         connectionKey: `linkedin-member:${externalAccountId}`,
         externalAccountId,
       })
@@ -816,20 +983,24 @@ describe.sequential('platform accounts', () => {
     })
     createdAccountIDs.push(account.id)
 
-    await expect(payload.update({
-      collection: 'platform-accounts',
-      data: { notes: 'A bulk write must not bypass the account lock.' },
-      overrideAccess: true,
-      where: { id: { equals: account.id } },
-    })).rejects.toBeDefined()
+    await expect(
+      payload.update({
+        collection: 'platform-accounts',
+        data: { notes: 'A bulk write must not bypass the account lock.' },
+        overrideAccess: true,
+        where: { id: { equals: account.id } },
+      }),
+    ).rejects.toBeDefined()
 
-    await expect(payload.update({
-      collection: 'platform-accounts',
-      data: { notes: 'A transactionless write must fail closed.' },
-      disableTransaction: true,
-      id: account.id,
-      overrideAccess: true,
-    })).rejects.toBeDefined()
+    await expect(
+      payload.update({
+        collection: 'platform-accounts',
+        data: { notes: 'A transactionless write must fail closed.' },
+        disableTransaction: true,
+        id: account.id,
+        overrideAccess: true,
+      }),
+    ).rejects.toBeDefined()
 
     await expect(storedAccessToken(account.id)).resolves.toBe(`serialization-token-${suffix}`)
   })

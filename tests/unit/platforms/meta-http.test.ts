@@ -12,6 +12,7 @@ import { FakePlatformEventRepository } from '../../fakes/platformEventRepository
 const now = Date.UTC(2026, 6, 22, 8, 0, 0)
 const appSecret = 'fixture-meta-app-secret'
 const verifyToken = 'fixture-meta-verify-token'
+const allowAllAccounts = { assertCanReceive: async () => undefined }
 
 const inboundEvent = (
   externalEventId = 'meta-http-event-1',
@@ -40,6 +41,7 @@ const createConnector = (event = inboundEvent()): PlatformConnector => ({
 })
 
 const createHandlers = ({
+  accountAuthorizer = allowAllAccounts,
   allowedAccountExternalIds = ['page-fixture-1'],
   appSecret: configuredAppSecret = appSecret,
   connector = createConnector(),
@@ -48,6 +50,7 @@ const createHandlers = ({
   repository = new FakePlatformEventRepository(),
   verifyToken: configuredVerifyToken = verifyToken,
 }: {
+  accountAuthorizer?: { assertCanReceive: (event: NormalizedInboundMessage) => Promise<void> }
   allowedAccountExternalIds?: readonly string[]
   appSecret?: string
   connector?: PlatformConnector
@@ -57,6 +60,7 @@ const createHandlers = ({
   verifyToken?: string
 } = {}) => ({
   handlers: createMetaWebhookHandlers({
+    accountAuthorizer,
     allowedAccountExternalIds,
     appSecret: configuredAppSecret,
     connector,
@@ -123,6 +127,32 @@ describe('Meta webhook HTTP handlers', () => {
     expect(duplicate.status).toBe(200)
     await expect(duplicate.json()).resolves.toEqual({ accepted: 0, duplicates: 1, total: 1 })
     expect(repository.events.size).toBe(1)
+  })
+
+  it('rejects an account blocked by PlatformAccounts before durable enqueue', async () => {
+    const assertCanReceive = vi.fn(async () => {
+      throw new Error('Platform messaging account is blocked')
+    })
+    const { handlers, repository } = createHandlers({
+      accountAuthorizer: { assertCanReceive },
+    })
+    const rawBody = JSON.stringify({ object: 'page', fixture: 'blocked-account' })
+
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toEqual({ error: { code: 'unauthorized_account' } })
+    expect(assertCanReceive).toHaveBeenCalledTimes(1)
+    expect(repository.events.size).toBe(0)
   })
 
   it('rejects invalid signatures, rate-limited sources and oversized streams without enqueueing', async () => {
@@ -324,6 +354,7 @@ describe('Meta webhook HTTP handlers', () => {
   it('redacts unexpected persistence failures', async () => {
     const rawBody = JSON.stringify({ object: 'page', fixture: 'persistence-failure' })
     const handlers = createMetaWebhookHandlers({
+      accountAuthorizer: allowAllAccounts,
       allowedAccountExternalIds: ['page-fixture-1'],
       appSecret,
       connector: createConnector(),

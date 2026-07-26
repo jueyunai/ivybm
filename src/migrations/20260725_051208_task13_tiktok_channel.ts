@@ -10,8 +10,14 @@ export async function down({ db, payload: _payload, req: _req }: MigrateDownArgs
   await db.execute(sql`
    DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM "visitor_sessions" WHERE "channel" = 'tiktok')
-      OR EXISTS (SELECT 1 FROM "conversations" WHERE "channel" = 'tiktok') THEN
-      RAISE EXCEPTION 'Cannot roll back Task 13 TikTok channel migration while TikTok sessions or conversations exist';
+      OR EXISTS (SELECT 1 FROM "conversations" WHERE "channel" = 'tiktok')
+      OR EXISTS (
+        SELECT 1 FROM "jobs"
+        WHERE "type" = 'platform.event.dispatch'
+          AND "status" IN ('pending', 'processing', 'failed', 'dead')
+          AND "payload" -> 'event' ->> 'platform' = 'tiktok'
+      ) THEN
+      RAISE EXCEPTION 'Cannot roll back Task 13 TikTok channel migration while TikTok sessions, conversations, or actionable Jobs exist';
     END IF;
    END $$;
   ALTER TABLE "visitor_sessions" ALTER COLUMN "channel" SET DATA TYPE text;

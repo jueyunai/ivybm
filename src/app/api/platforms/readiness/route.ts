@@ -41,15 +41,22 @@ const asReadinessAccount = (account: PlatformAccount) => {
     readiness: assessPlatformAccountReadiness({
       account: {
         accessTokenConfigured,
+        accessTokenExpiresAt: authorization.expiresAt,
         accessTokenReadable:
           accessTokenConfigured && canDecryptPlatformCredential(authorization.accessToken),
         accountKind: account.accountKind,
         authorizationState: authorization.state,
         capabilityApprovals: {
-          ...(capabilities?.messagingInbound ? { messagingInbound: capabilities.messagingInbound } : {}),
+          ...(capabilities?.messagingInbound
+            ? { messagingInbound: capabilities.messagingInbound }
+            : {}),
           ...(capabilities?.publishing ? { publishing: capabilities.publishing } : {}),
         },
         externalAccountId: account.externalAccountId,
+        refreshTokenConfigured: authorization.refreshTokenConfigured === true,
+        refreshTokenReadable:
+          authorization.refreshTokenConfigured === true &&
+          canDecryptPlatformCredential(authorization.refreshToken),
       },
       environment: process.env,
     }),
