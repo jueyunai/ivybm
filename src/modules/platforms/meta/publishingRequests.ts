@@ -13,8 +13,11 @@
  * - POST /{IG_ID}/media_publish with creation_id
  * - GET  /{CONTAINER_ID}?fields=status_code
  *
- * No idempotency support is proven for any of these endpoints, so the adapter
- * layer that consumes this module owns the deduplication story.
+ * No idempotency support or provider lookup by IVYBM idempotencyKey is proven
+ * for any of these endpoints. These helpers therefore MUST NOT be used to
+ * implement a blind retry after an unknown transport outcome. The adapter that
+ * consumes this module must fence the command before network I/O and stop for
+ * manual reconciliation when it cannot prove whether the provider accepted it.
  */
 
 export type MetaPublishingHttpRequest = {
@@ -67,7 +70,6 @@ const MAX_META_IDENTIFIER_LENGTH = 32
 const MAX_FACEBOOK_POST_IDENTIFIER_LENGTH = MAX_META_IDENTIFIER_LENGTH * 2 + 1
 const MAX_FACEBOOK_CAPTION_LENGTH = 5_000
 const MAX_INSTAGRAM_CAPTION_LENGTH = 2_200
-const MAX_PUBLISHING_URL_LENGTH = 2_048
 const DECIMAL_IDENTIFIER_PATTERN = /^[0-9]+$/
 const FACEBOOK_POST_IDENTIFIER_PATTERN = /^([0-9]+)_([0-9]+)$/
 
@@ -125,9 +127,6 @@ const requirePublishingUrl = (value: unknown, fieldName: string): string => {
   }
   const trimmed = value.trim()
   if (!trimmed.length) {
-    throw new Error('Meta publishing URL must be an HTTPS URL without credentials or fragments')
-  }
-  if (trimmed.length > MAX_PUBLISHING_URL_LENGTH) {
     throw new Error('Meta publishing URL must be an HTTPS URL without credentials or fragments')
   }
   let parsed: URL

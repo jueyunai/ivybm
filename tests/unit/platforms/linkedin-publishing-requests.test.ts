@@ -529,7 +529,7 @@ describe('LinkedIn publishing request builders', () => {
     ).toThrow('LinkedIn image alt text must be a string')
   })
 
-  it('validates binary upload URLs as HTTPS without credentials, fragments, or oversized input', () => {
+  it('validates binary upload URLs as HTTPS without credentials or fragments', () => {
     const invalidUrls = [
       'http://upload.linkedin.com/facade',
       'ftp://upload.linkedin.com/facade',
@@ -541,7 +541,6 @@ describe('LinkedIn publishing request builders', () => {
       'https://:secret@upload.linkedin.com/facade',
       'https://user@upload.linkedin.com/facade',
       'https://upload.linkedin.com/facade#section-2',
-      `https://upload.linkedin.com/${'a'.repeat(2_040)}`,
     ]
 
     for (const uploadUrl of invalidUrls) {
@@ -555,7 +554,7 @@ describe('LinkedIn publishing request builders', () => {
     }
   })
 
-  it('rejects non-Uint8Array, empty, or oversized binary bytes', () => {
+  it('rejects non-Uint8Array or empty binary bytes without inventing a provider size cap', () => {
     expect(() =>
       buildLinkedInImageBinaryUploadPayload({
         bytes: 'not bytes' as never,
@@ -572,21 +571,13 @@ describe('LinkedIn publishing request builders', () => {
       }),
     ).toThrow('LinkedIn image upload bytes must be non-empty')
 
-    expect(() =>
-      buildLinkedInImageBinaryUploadPayload({
-        bytes: new Uint8Array(50 * 1024 * 1024 + 1),
-        contentType: 'image/png',
-        uploadUrl: 'https://upload.linkedin.com/facade',
-      }),
-    ).toThrow('LinkedIn image upload bytes must be 52428800 bytes or fewer')
-
-    const atLimit = new Uint8Array(50 * 1024 * 1024)
+    const bytes = new Uint8Array(1024)
     const payload = buildLinkedInImageBinaryUploadPayload({
-      bytes: atLimit,
+      bytes,
       contentType: 'image/png',
       uploadUrl: 'https://upload.linkedin.com/facade',
     })
-    expect(payload.bytes.byteLength).toBe(50 * 1024 * 1024)
+    expect(payload.bytes).toBe(bytes)
   })
 
   it('accepts only the JPEG, PNG, and GIF formats documented by LinkedIn', () => {
@@ -639,6 +630,19 @@ describe('LinkedIn publishing request builders', () => {
       uploadUrl: 'https://upload.linkedin.com/facade',
     })
     expect(Object.isFrozen(payload)).toBe(true)
+    expect(payload.method).toBe('PUT')
+  })
+
+  it('preserves a long provider-issued signed upload URL instead of applying an invented 2048-character cap', () => {
+    const uploadUrl = `https://upload.linkedin.com/facade?signature=${'a'.repeat(4_096)}`
+
+    expect(
+      buildLinkedInImageBinaryUploadPayload({
+        bytes: new Uint8Array([0x01]),
+        contentType: 'image/png',
+        uploadUrl,
+      }).uploadUrl,
+    ).toBe(uploadUrl)
   })
 
   it('never calls fetch and never opens a network socket when building any LinkedIn request', () => {

@@ -246,7 +246,7 @@ describe('Meta publishing request builders', () => {
     ).toBe(`/${'9'.repeat(32)}/photos`)
   })
 
-  it('requires HTTPS image URLs without username, password, fragments, or oversized input', () => {
+  it('requires HTTPS image URLs without username, password, or fragments', () => {
     const invalidUrls = [
       'http://cdn.example.invalid/assets/facade-panel.jpg',
       'ftp://cdn.example.invalid/assets/facade-panel.jpg',
@@ -258,7 +258,6 @@ describe('Meta publishing request builders', () => {
       'https://:secret@cdn.example.invalid/assets/facade-panel.jpg',
       'https://user@cdn.example.invalid/assets/facade-panel.jpg',
       'https://cdn.example.invalid/assets/facade-panel.jpg#section-2',
-      `https://cdn.example.invalid/${'a'.repeat(2_040)}`,
     ]
 
     for (const url of invalidUrls) {
@@ -278,6 +277,27 @@ describe('Meta publishing request builders', () => {
 
     expect((facebook.body as Record<string, unknown>).url).toBe(url)
     expect((instagram.body as Record<string, unknown>).image_url).toBe(url)
+  })
+
+  it('does not invent a provider URL limit for long signed asset URLs', () => {
+    const url = `https://cdn.example.invalid/assets/facade-panel.jpg?signature=${'a'.repeat(4_096)}`
+
+    expect(
+      (
+        buildFacebookPagePhotoRequest({ ...validFacebookInput(), url }).body as Record<
+          string,
+          unknown
+        >
+      ).url,
+    ).toBe(url)
+    expect(
+      (
+        buildInstagramMediaRequest({ ...validInstagramMediaInput(), imageUrl: url }).body as Record<
+          string,
+          unknown
+        >
+      ).image_url,
+    ).toBe(url)
   })
 
   it('never calls fetch and never opens a network socket when building a request', () => {

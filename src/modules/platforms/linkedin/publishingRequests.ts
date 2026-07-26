@@ -21,17 +21,21 @@
  * - POST /rest/images?action=initializeUpload with body
  *     {initializeUploadRequest:{owner:<person or organization URN>}}.
  *     Response {value:{uploadUrl, uploadUrlExpiresAt, image:'urn:li:image:<opaque-id>'}}.
- *     The binary upload HTTP method and headers are not part of the page we
- *     verified, so the binary upload is exposed as an opaque payload seam:
- *     uploadUrl, bytes, contentType. The adapter chooses the method.
+ *     The Images API links to the official Vector Assets upload instructions,
+ *     which require PUT to the returned uploadUrl. The credential-bearing
+ *     Authorization header remains the responsibility of the transport
+ *     adapter and is never represented by these pure helpers.
  *
  * Required headers for every JSON request:
  *   Linkedin-Version: YYYYMM
  *   X-Restli-Protocol-Version: 2.0.0
  *   Content-Type: application/json
  *
- * No idempotency support is proven for any of these endpoints, so the
- * adapter layer that consumes this module owns the deduplication story.
+ * No idempotency support or provider lookup by IVYBM idempotencyKey is proven
+ * for any of these endpoints. These helpers therefore MUST NOT be used to
+ * implement a blind retry after an unknown transport outcome. The adapter that
+ * consumes this module must fence the command before network I/O and stop for
+ * manual reconciliation when it cannot prove whether the provider accepted it.
  */
 
 export type LinkedInVisibility = 'PUBLIC'
@@ -82,16 +86,19 @@ export type LinkedInImageInitializeUploadBody = {
   }
 }
 
-export type LinkedInImageBinaryUploadPayload = {
+export type LinkedInImageBinaryUploadInput = {
   /**
    * Pre-signed upload URL returned by /rest/images?action=initializeUpload.
-   * The HTTP method, framing, and any extra headers required to PUT/POST
-   * the bytes are deliberately NOT specified here — the verified LinkedIn
-   * documentation does not document them, so guessing would be unsafe.
+   * The Authorization header is deliberately omitted so the payload remains
+   * credential-free; the transport adapter attaches it immediately before I/O.
    */
   contentType: string
   bytes: Uint8Array
   uploadUrl: string
+}
+
+export type LinkedInImageBinaryUploadPayload = LinkedInImageBinaryUploadInput & {
+  method: 'PUT'
 }
 
 export type LinkedInPostStatusRequestInput = {
@@ -148,8 +155,6 @@ const MAX_LINKED_IN_NUMERIC_LENGTH = 32
 const MAX_COMMENTARY_LENGTH = 3_000
 const MAX_ALT_TEXT_LENGTH = 300
 const MAX_VERSION_LENGTH = 6
-const MAX_PUBLISHING_URL_LENGTH = 2_048
-const MAX_BINARY_UPLOAD_BYTES = 50 * 1024 * 1024
 const MIN_EPOCH_MILLISECONDS = 1_000_000_000_000
 
 const LINKED_IN_RESTLI_PROTOCOL_VERSION = '2.0.0'
@@ -319,7 +324,7 @@ const requireUploadUrl = (value: unknown): string => {
     )
   }
   const trimmed = value.trim()
-  if (!trimmed.length || trimmed.length > MAX_PUBLISHING_URL_LENGTH) {
+  if (!trimmed.length) {
     throw new Error(
       'LinkedIn image upload URL must be an HTTPS URL without credentials or fragments',
     )
@@ -351,9 +356,6 @@ const requireBinaryUploadBytes = (value: unknown): Uint8Array => {
   }
   if (!value.byteLength) {
     throw new Error('LinkedIn image upload bytes must be non-empty')
-  }
-  if (value.byteLength > MAX_BINARY_UPLOAD_BYTES) {
-    throw new Error(`LinkedIn image upload bytes must be ${MAX_BINARY_UPLOAD_BYTES} bytes or fewer`)
   }
   return value
 }
@@ -493,11 +495,11 @@ export const buildLinkedInImageInitializeUploadRequest = (
  * Validate a candidate LinkedIn image binary upload. This is an opaque
  * payload seam: the adapter supplies the pre-signed uploadUrl from the
  * initializeUpload response, the rendered bytes, and the binary content
- * type. The HTTP method and any extra upload headers are not part of the
- * verified LinkedIn documentation, so this module does not pick them.
+ * type. Official LinkedIn upload instructions require PUT; credentials stay
+ * outside this value and are attached by the transport adapter.
  */
 export const buildLinkedInImageBinaryUploadPayload = (
-  input: LinkedInImageBinaryUploadPayload,
+  input: LinkedInImageBinaryUploadInput,
 ): LinkedInImageBinaryUploadPayload => {
   const uploadUrl = requireUploadUrl(input?.uploadUrl)
   const bytes = requireBinaryUploadBytes(input?.bytes)
@@ -505,6 +507,7 @@ export const buildLinkedInImageBinaryUploadPayload = (
   return Object.freeze({
     bytes,
     contentType,
+    method: 'PUT' as const,
     uploadUrl,
   })
 }
