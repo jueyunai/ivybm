@@ -25,6 +25,10 @@ export const PLATFORM_PUBLISH_ERROR_CODES = [
   'unknown',
 ] as const
 
+// `unknown` means the provider may already have accepted the request. Until a
+// real adapter proves provider idempotency or lookup evidence, it must be
+// surfaced as non-retryable for manual reconciliation.
+
 export type PlatformPublishErrorCode = (typeof PLATFORM_PUBLISH_ERROR_CODES)[number]
 
 export type NormalizedAttachment = {
@@ -85,6 +89,7 @@ export type PlatformCapability = {
 
 export type PlatformPublishRequest = {
   assets: PublicationAsset[]
+  /** Stable caller command key. Idempotency is scoped to one target platform. */
   idempotencyKey: string
   platform: PublishingPlatform
   scheduledFor?: string
@@ -93,6 +98,12 @@ export type PlatformPublishRequest = {
 
 export type PlatformPublishAcceptance =
   | {
+      /**
+       * Stable adapter-issued correlation handle (normally a provider publication
+       * or asynchronous job ID) that can be passed back to `getStatus`. This is
+       * never a Task 12 persistence primary key.
+       */
+      externalPublicationId: string
       idempotencyKey: string
       platform: PublishingPlatform
       status: 'accepted'
@@ -106,7 +117,8 @@ export type PlatformPublishAcceptance =
     }
 
 type PlatformPublicationStatusBase = {
-  externalPublicationId?: string
+  /** The same adapter-issued handle supplied to `getStatus`. */
+  externalPublicationId: string
   platform: PublishingPlatform
 }
 
@@ -126,6 +138,24 @@ export type AssistedPublicationExport = {
   assets: PublicationAsset[]
   checklist: string[]
   copyText: string
+  mode: 'assisted'
+  platform: 'linkedin'
+}
+
+/**
+ * A caller-resolved media asset used to create the LinkedIn manual-delivery ZIP.
+ * The package builder never fetches `sourceUrl`; the caller must explicitly supply
+ * already-authorized bytes from the internal media layer.
+ */
+export type AssistedPublicationPackageAsset = PublicationAsset & {
+  bytes: Uint8Array
+}
+
+/** A browser or route can expose these bytes as a deterministic file download. */
+export type AssistedPublicationPackage = {
+  bytes: Uint8Array
+  fileName: string
+  mimeType: 'application/zip'
   mode: 'assisted'
   platform: 'linkedin'
 }
