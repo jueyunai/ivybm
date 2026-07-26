@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 export type PlatformFamily = 'linkedin' | 'meta' | 'tiktok'
 
 export type MessagingPlatform = 'facebook-messenger' | 'instagram' | 'tiktok'
@@ -157,6 +159,59 @@ export const platformEventKey = (platform: MessagingPlatform, externalEventId: s
   }
   return key
 }
+
+/**
+ * New external events must be scoped to the connected provider account as well
+ * as the provider event ID. The old key remains exported only so the worker can
+ * execute pre-upgrade Jobs; new ingress and durable queue writes must use v2,
+ * because v1 cannot safely identify an event across two accounts when the
+ * provider has not documented global ID scope.
+ */
+export const platformEventKeyV2 = (
+  platform: MessagingPlatform,
+  accountExternalId: string,
+  externalEventId: string,
+): string => {
+  const normalizedAccountID = accountExternalId.trim()
+  const normalizedEventID = externalEventId.trim()
+  if (!normalizedAccountID) throw new Error('Platform account external ID is required')
+  if (!normalizedEventID) throw new Error('Platform external event ID is required')
+  if (normalizedAccountID !== accountExternalId || normalizedEventID !== externalEventId) {
+    throw new Error('Platform event identity must not contain surrounding whitespace')
+  }
+
+  const fingerprint = createHash('sha256')
+    .update(`${platform}\u0000${normalizedAccountID}\u0000${normalizedEventID}`)
+    .digest('hex')
+  const key = `platform-event:v2:${platform}:${fingerprint}`
+  if (key.length > MAX_PLATFORM_EVENT_IDEMPOTENCY_KEY_LENGTH) {
+    throw new Error('Platform event ID is too long')
+  }
+  return key
+}
+
+export const isPlatformEventKeyV2 = (
+  platform: MessagingPlatform,
+  accountExternalId: string,
+  externalEventId: string,
+  idempotencyKey: string,
+): boolean => {
+  try {
+    return idempotencyKey === platformEventKeyV2(platform, accountExternalId, externalEventId)
+  } catch {
+    return false
+  }
+}
+
+/** Accept v1 only for already-persisted Jobs; connectors must emit v2. */
+export const isRecognizedPlatformEventKey = (
+  platform: MessagingPlatform,
+  accountExternalId: string,
+  externalEventId: string,
+  idempotencyKey: string,
+): boolean =>
+  idempotencyKey === platformEventKey(platform, externalEventId) ||
+  isPlatformEventKeyV2(platform, accountExternalId, externalEventId, idempotencyKey)
 
 export const platformTimestamp = (value: number, unit: 'milliseconds' | 'seconds'): string => {
   const timestamp = unit === 'seconds' ? value * 1_000 : value

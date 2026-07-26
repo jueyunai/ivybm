@@ -22,6 +22,12 @@ const exerciseChatContract = (createService: () => ChatService & PlatformConvers
     await expect(service.startSession({
       channel: 'website', idempotencyKey: ' ', locale: 'en',
     })).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
+    await expect(service.startSession({
+      channel: 'whatsapp' as never, idempotencyKey: 'historical-whatsapp', locale: 'en',
+    })).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
+    await expect(service.startSession({
+      channel: 'tiktok', idempotencyKey: 'blocked-tiktok-start', locale: 'en',
+    })).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
 
     expect(session).toMatchObject({
       allowedActions: sessionFixture.allowedActions,
@@ -119,11 +125,11 @@ const exerciseChatContract = (createService: () => ChatService & PlatformConvers
     const service = createService()
     const input = {
       channel: 'instagram' as const,
+      externalAccountId: 'instagram-account-fixture',
       externalMessageId: 'instagram-message-fixture-001',
+      externalSenderId: 'instagram-sender-fixture',
       externalThreadId: 'instagram-account-fixture:instagram-sender-fixture',
-      idempotencyKey: 'instagram:instagram-message-fixture-001',
       locale: 'en' as const,
-      sessionIdempotencyKey: 'platform-session:instagram:instagram-account-fixture:instagram-sender-fixture',
       text: 'Please send your panel specification.',
     }
 
@@ -134,29 +140,68 @@ const exerciseChatContract = (createService: () => ChatService & PlatformConvers
     expect(duplicate).toEqual({ session: accepted.session, status: 'duplicate' })
   })
 
+  it('rejects website, historical-only, and blocked conditional channels from the authenticated connector command', async () => {
+    const service = createService()
+
+    for (const channel of ['website', 'whatsapp', 'tiktok'] as const) {
+      await expect(
+        service.ingestExternalMessage({
+          channel: channel as never,
+          externalAccountId: `unsupported-${channel}-account`,
+          externalMessageId: `unsupported-${channel}-message`,
+          externalSenderId: `unsupported-${channel}-sender`,
+          externalThreadId: `unsupported-${channel}-thread`,
+          locale: 'en',
+          text: 'This must not be treated as a platform message.',
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
+    }
+  })
+
+  it('rejects malformed connector identity fields without throwing implementation errors', async () => {
+    const service = createService()
+
+    await expect(
+      service.ingestExternalMessage({
+        channel: 'facebook',
+        externalAccountId: 42 as never,
+        externalMessageId: 'malformed-identity-message',
+        externalSenderId: 'sender-fixture',
+        externalThreadId: 'page-fixture:sender-fixture',
+        locale: 'en',
+        text: 'This typed escape must fail as a stable request error.',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
+  })
+
   it('retains a later external inbound message after automated replies have stopped', async () => {
     const service = createService()
-    const sessionIdempotencyKey = 'platform-session:facebook-messenger:page-fixture:sender-fixture'
-    const session = await service.startSession({
+    const first = await service.ingestExternalMessage({
       channel: 'facebook',
+      externalAccountId: 'page-fixture',
+      externalMessageId: 'facebook-message-before-handoff',
+      externalSenderId: 'sender-fixture',
       externalThreadId: 'page-fixture:sender-fixture',
-      idempotencyKey: sessionIdempotencyKey,
       locale: 'en',
+      text: 'Please create the durable handoff first.',
     })
-    await service.requestHandoff({
-      idempotencyKey: 'external-handoff-fixture',
-      reason: 'platform_outbound_not_configured',
-      sessionId: session.id,
-      source: 'ai_policy',
-    })
+    const handoff = first.session.handoffStatus === 'ai_active'
+      ? await service.requestHandoff({
+          idempotencyKey: 'external-handoff-fixture',
+          reason: 'platform_outbound_not_configured',
+          sessionId: first.session.id,
+          source: 'ai_policy',
+        })
+      : first.session
+    expect(handoff.handoffStatus).toBe('handoff_requested')
 
     const delivery = await service.ingestExternalMessage({
       channel: 'facebook',
+      externalAccountId: 'page-fixture',
       externalMessageId: 'facebook-message-after-handoff',
+      externalSenderId: 'sender-fixture',
       externalThreadId: 'page-fixture:sender-fixture',
-      idempotencyKey: 'facebook:facebook-message-after-handoff',
       locale: 'en',
-      sessionIdempotencyKey,
       text: 'Please keep this follow-up visible to the operator.',
     })
 
@@ -164,7 +209,7 @@ const exerciseChatContract = (createService: () => ChatService & PlatformConvers
       status: 'accepted',
       session: { handoffStatus: 'handoff_requested' },
     })
-    expect(delivery.session.messages.filter(({ author }) => author === 'visitor')).toHaveLength(1)
+    expect(delivery.session.messages.filter(({ author }) => author === 'visitor')).toHaveLength(2)
   })
 }
 
@@ -180,6 +225,25 @@ describe('ChatService contract', () => {
     await expect(service.getSession(session.id)).resolves.toMatchObject({
       allowedActions: ['take_over'], handoffStatus: 'handoff_requested',
     })
+  })
+
+  it('models platform inbound as a durable handoff until outbound delivery is configured', async () => {
+    const service = new FakeChatService()
+    const delivery = await service.ingestExternalMessage({
+      channel: 'facebook',
+      externalAccountId: 'page-fixture',
+      externalMessageId: 'facebook-inbound-no-outbound',
+      externalSenderId: 'sender-fixture',
+      externalThreadId: 'page-fixture:sender-fixture',
+      locale: 'en',
+      text: 'Please send a quotation.',
+    })
+
+    expect(delivery.session).toMatchObject({ handoffStatus: 'handoff_requested' })
+    expect(delivery.session.messages).toEqual([
+      expect.objectContaining({ author: 'visitor', status: 'sent' }),
+    ])
+    expect(delivery.session.messages.some(({ author }) => author === 'ai')).toBe(false)
   })
 
   describe('FakeChatService', () => {

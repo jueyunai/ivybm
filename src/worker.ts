@@ -19,7 +19,8 @@ import {
   createPlatformEventJobHandler,
   PLATFORM_EVENT_JOB_TYPE,
 } from '@/modules/platforms/eventJobs'
-import { PayloadMetaConversationPort } from '@/modules/platforms/payloadConversationPort'
+import { PayloadPlatformConversationPort } from '@/modules/platforms/payloadConversationPort'
+import { PayloadPlatformMessagingAccountAuthorizer } from '@/modules/platforms/payloadMessagingAccountAuthorizer'
 import config from '@/payload.config'
 
 const readPositiveInteger = (name: string, fallback: number): number => {
@@ -46,7 +47,8 @@ const payload = await getPayload({ config, disableOnInit: true, key: 'job-worker
 const handlers: Record<string, JobHandler> = {
   [KNOWLEDGE_INDEX_JOB_TYPE]: createKnowledgeIndexJobHandler({ payload }),
   [PLATFORM_EVENT_JOB_TYPE]: createPlatformEventJobHandler({
-    conversations: new PayloadMetaConversationPort({ payload }),
+    accountAuthorizer: new PayloadPlatformMessagingAccountAuthorizer({ payload }),
+    conversations: new PayloadPlatformConversationPort({ payload }),
   }),
 }
 const worker = new JobWorker({

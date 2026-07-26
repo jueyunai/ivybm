@@ -5,6 +5,7 @@ import {
   type ChatService,
   type ChatSession,
   type IngestExternalMessageInput,
+  isCreatableChatChannel,
   type PlatformConversationService,
   type RequestHandoffInput,
   type RetryChatMessageInput,
@@ -12,6 +13,11 @@ import {
   type SessionCommandInput,
   type StartChatSessionInput,
 } from '@/modules/conversations/contracts'
+import {
+  externalMessageCommandKey,
+  externalMessageIdentifierMaxLength,
+  externalSessionCommandKey,
+} from '@/modules/conversations/externalDeliveryIdentity'
 import {
   allowedActionsFor,
   type ChatSessionViewer,
@@ -21,13 +27,22 @@ import {
 const createdAt = '2026-07-19T00:00:00.000Z'
 
 export class FakeChatService implements ChatService, PlatformConversationService {
+  private readonly allowTikTokNormalizedDelivery: boolean
   private commandResults = new Map<string, ChatSession>()
   private messageSequence = 0
   private sessionSequence = 0
   private sessions = new Map<number | string, ChatSession>()
   private readonly viewer: ChatSessionViewer
 
-  constructor({ viewer = 'visitor' }: { viewer?: ChatSessionViewer } = {}) {
+  constructor({
+    allowTikTokNormalizedDelivery = false,
+    viewer = 'visitor',
+  }: {
+    /** Mirrors the reviewed internal opt-in used by PayloadPlatformConversationPort. */
+    allowTikTokNormalizedDelivery?: boolean
+    viewer?: ChatSessionViewer
+  } = {}) {
+    this.allowTikTokNormalizedDelivery = allowTikTokNormalizedDelivery
     this.viewer = viewer
   }
 
@@ -63,6 +78,14 @@ export class FakeChatService implements ChatService, PlatformConversationService
     return text
   }
 
+  private externalIdentifier(value: unknown, field: string, maxLength: number): string {
+    const normalized = typeof value === 'string' ? value.trim() : ''
+    if (!normalized || normalized.length > maxLength) {
+      throw new ChatServiceError('invalid_request', `${field} is required`)
+    }
+    return normalized
+  }
+
   private commit(session: ChatSession): ChatSession {
     session.revision += 1
     this.sessions.set(session.id, session)
@@ -90,45 +113,69 @@ export class FakeChatService implements ChatService, PlatformConversationService
   }
 
   async ingestExternalMessage(input: IngestExternalMessageInput): Promise<ExternalMessageDelivery> {
-    if (!input.externalThreadId.trim() || input.externalThreadId.length > 500) {
-      throw new ChatServiceError('invalid_request', 'externalThreadId is required')
+    if (
+      input.channel !== 'facebook' &&
+      input.channel !== 'instagram' &&
+      input.channel !== 'tiktok'
+    ) {
+      throw new ChatServiceError('invalid_request', 'Unsupported external conversation channel')
     }
-    if (!input.externalMessageId.trim() || input.externalMessageId.length > 200) {
-      throw new ChatServiceError('invalid_request', 'externalMessageId is required')
+    if (input.channel === 'tiktok' && !this.allowTikTokNormalizedDelivery) {
+      throw new ChatServiceError('invalid_request', 'TikTok normalized delivery is not enabled')
     }
+    const externalAccountId = this.externalIdentifier(input.externalAccountId, 'externalAccountId', 500)
+    const externalSenderId = this.externalIdentifier(input.externalSenderId, 'externalSenderId', 500)
+    const externalThreadId = this.externalIdentifier(input.externalThreadId, 'externalThreadId', 500)
+    const externalMessageId = this.externalIdentifier(
+      input.externalMessageId,
+      'externalMessageId',
+      externalMessageIdentifierMaxLength(input.channel),
+    )
+    const sessionIdempotencyKey = externalSessionCommandKey(
+      input.channel,
+      externalAccountId,
+      externalSenderId,
+    )
+    const messageIdempotencyKey = externalMessageCommandKey(input.channel, externalMessageId)
     const session = await this.startSession({
       channel: input.channel,
-      externalThreadId: input.externalThreadId,
-      idempotencyKey: input.sessionIdempotencyKey,
+      externalThreadId,
+      idempotencyKey: sessionIdempotencyKey,
       locale: input.locale,
     })
-    const commandKey = `message:${String(session.id)}:${input.idempotencyKey}`
+    const commandKey = `message:${String(session.id)}:${messageIdempotencyKey}`
     const duplicate = this.commandResults.has(commandKey)
-    const updated = session.handoffStatus === 'ai_active'
-      ? await this.sendMessage({
-          idempotencyKey: input.idempotencyKey,
-          sessionId: session.id,
-          text: input.text,
-        })
-      : this.idempotent(`message:${String(session.id)}`, input.idempotencyKey, () => {
-          const persisted = this.requireSession(session.id)
-          const text = this.assertText(input.text)
-          this.messageSequence += 1
-          // External events remain customer records after AI automation has stopped.
-          // This mirrors the authoritative service without creating a fake AI reply.
-          persisted.messages.push({
-            author: 'visitor',
-            content: text,
-            createdAt,
-            id: `fake-message-${this.messageSequence}`,
-            status: 'sent',
-          })
-          return this.commit(persisted)
-        })
+    const updated = this.idempotent(`message:${String(session.id)}`, messageIdempotencyKey, () => {
+      const persisted = this.requireSession(session.id)
+      const text = this.assertText(input.text)
+      this.messageSequence += 1
+      // The real platform port has no approved outbound adapter in phase one.
+      // Its first inbound message therefore creates a durable handoff rather than
+      // persisting an AI reply that was never delivered. Keep this UI fake honest
+      // about that boundary; normal website sendMessage calls still use fake AI.
+      persisted.messages.push({
+        author: 'visitor',
+        content: text,
+        createdAt,
+        id: `fake-message-${this.messageSequence}`,
+        status: 'sent',
+      })
+      if (persisted.handoffStatus === 'ai_active') {
+        persisted.handoffStatus = transitionHandoff(persisted.handoffStatus, 'request')
+        persisted.allowedActions = allowedActionsFor(persisted.handoffStatus, this.viewer)
+      }
+      return this.commit(persisted)
+    })
     return { session: updated, status: duplicate ? 'duplicate' : 'accepted' }
   }
 
   async startSession(input: StartChatSessionInput): Promise<ChatSession> {
+    if (
+      !isCreatableChatChannel(input.channel) ||
+      (input.channel === 'tiktok' && !this.allowTikTokNormalizedDelivery)
+    ) {
+      throw new ChatServiceError('invalid_request', 'Unsupported chat channel')
+    }
     return this.idempotent('start', input.idempotencyKey, () => {
       this.sessionSequence += 1
       const id = `fake-session-${this.sessionSequence}`
