@@ -180,12 +180,12 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
   authorization.refreshToken = refreshToken.value
   authorization.refreshTokenConfigured = refreshToken.configured
 
-  // A token is scoped to a concrete provider-side account identity. Allow an
-  // unconnected record to be corrected freely, but never silently carry a
-  // retained token over to a different Page, professional account, member, or
-  // organization. The administrator must explicitly replace it or clear it and
-  // stage the account again; otherwise later promotion to connected could make a
-  // stale authorization look valid.
+  // A token is scoped to a concrete provider-side account identity. A record
+  // without retained credentials can be corrected freely, but never silently
+  // carry a retained token over to a different Page, professional account,
+  // member, or organization. The administrator must explicitly replace it or
+  // clear it and stage the account again; otherwise later promotion to
+  // connected could make a stale authorization look valid.
   const replacesAccessToken = Boolean(
     submittedAccessToken && submittedAccessToken !== existingAccessToken,
   )

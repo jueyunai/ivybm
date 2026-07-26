@@ -525,6 +525,57 @@ describe.sequential('platform accounts', () => {
     })
   })
 
+  it('does not attach a staged access token to its first external account without reauthorization', async () => {
+    const suffix = randomUUID()
+    const staged = await payload.create({
+      collection: 'platform-accounts',
+      data: {
+        ...accountData({
+          accountKind: 'facebook-page',
+          accessToken: `staged-page-token-${suffix}`,
+          externalAccountId: `placeholder-page-${suffix}`,
+          name: `Staged identity Page ${suffix}`,
+          state: 'pending',
+        }),
+        externalAccountId: null,
+      },
+      overrideAccess: false,
+      user: admin,
+    })
+    createdAccountIDs.push(staged.id)
+
+    await expect(payload.update({
+      collection: 'platform-accounts',
+      data: { externalAccountId: `first-page-${suffix}` },
+      id: staged.id,
+      overrideAccess: false,
+      user: admin,
+    })).rejects.toBeDefined()
+
+    await expect(payload.findByID({
+      collection: 'platform-accounts',
+      id: staged.id,
+      overrideAccess: true,
+    })).resolves.toMatchObject({
+      connectionKey: null,
+      externalAccountId: null,
+    })
+
+    await expect(payload.update({
+      collection: 'platform-accounts',
+      data: {
+        authorization: { accessToken: `first-page-token-${suffix}` },
+        externalAccountId: `first-page-${suffix}`,
+      },
+      id: staged.id,
+      overrideAccess: false,
+      user: admin,
+    })).resolves.toMatchObject({
+      connectionKey: `facebook-page:first-page-${suffix}`,
+      externalAccountId: `first-page-${suffix}`,
+    })
+  })
+
   it('does not carry a retained refresh token to another provider account identity', async () => {
     const suffix = randomUUID()
     const staged = await payload.create({
