@@ -28,20 +28,38 @@
 
 - `ConversationService` 是是否可由 AI 回复的唯一权威来源。`handoff_requested`、`human_active` 和 `resolved` 状态均不得自动出站；在入队前和 worker 真正调用 adapter 前都必须再次检查这一条件。
 - 自动投递不得在 webhook HTTP handler、浏览器 Route 或同一入站数据库事务内同步调用平台。它必须先以稳定 `deliveryKey` 持久化为 Job / outbox，再由 Task 10 worker 处理。
-- `deliveryKey` 由调用方以平台、平台账号和稳定的内部回复身份构造；adapter 只消费该 key 并确保重复执行不重复发送。平台 provider 的具体幂等字段只能在官方 schema 已确认后映射。
+- `deliveryKey` 由 `ConversationService` 以平台、平台账号和稳定的内部回复身份构造；adapter 只消费该 key。只有平台官方 schema 确认支持请求幂等键时，adapter 才能映射该 key 并把重试声明为安全；其他平台必须遵循第 5 节的查询或未知结果语义。
 - `sent`、`delivered`、`read` 等状态只表示 adapter 已取得对应的真实 provider 证据。真实 provider 证据必须由经 review 的平台 delivery 状态 / callback 路径保存；共享 `ChatMessage.status` 不能单独作为 provider 已投递的断言。fake 的测试结果不得写入 production 会话或改变共享 `ChatMessage` 状态语义。
 
-### 4. 分阶段门槛
+### 4. 调用方向与状态所有权
+
+- `ConversationService` 在同一权威命令/事务内决定是否生成自动回复、分配稳定内部回复身份，并创建对应的 delivery intent / outbox。连接器、Webhook HTTP handler、浏览器 Route 和平台 adapter 都不能自行创建投递 intent 或直接调用 provider。
+- AI 文本生成和平台 transport 都不得持有该数据库事务；事务只原子持久化已决定的内部回复身份、delivery intent / outbox 与权威状态变化，随后才由 worker 调用外部平台。
+- delivery intent / outbox 持有业务投递生命周期：`queued`、`retrying`、`blocked`、`failed`、`dead`、`delivery_unknown`。Task 10 的 Job 行只持有抢占、lease、attempt 与 worker 执行状态；不得把 Job 的 `succeeded` 等同于平台已送达，也不得把共享消息状态当作 delivery lifecycle。
+- worker 只能领取由该 intent 创建的 Job；每次调用 adapter 前先重新读取 `ConversationService` 的权威状态并验证仍为 `ai_active`。adapter 只做受控 transport：接受 `deliveryKey`、返回规范化 provider 证据或错误，不能直接写会话、消息、handoff、审计或 delivery 状态。
+- worker 将 adapter 的结果回传给 `ConversationService` 的受信内部命令，由它以内部回复身份和 `deliveryKey` 围栏更新 delivery intent / provider 证据并产生后续领域事件。平台送达 callback 也必须经同一受信命令归并，不能绕过会话状态机。
+
+### 5. Provider 已接受但结果未知
+
+当 provider 已接受发送、但 worker 在持久化结果前崩溃、超时或失去 lease 时，结果不是自动重试，而是按已审核的平台能力收敛：
+
+1. 平台支持请求幂等键时，adapter 必须把同一 `deliveryKey` 映射到该字段；重领 worker 只能用相同 key 重试。
+2. 平台不支持幂等键、但支持按稳定外部 ID 查询结果时，重领 worker 必须先查询并归并真实证据，确认未发送后才允许再次发送。
+3. 两者都不支持或无法确认结果时，delivery intent 必须进入 `delivery_unknown`，停止自动重发并提供人工补偿 / 核对入口；不得猜测为 `sent`、`failed` 或盲目重发。
+
+`delivery_unknown` 是业务投递状态，不是普通 Job retry。只有经人工核对、平台 callback 或受控查询取得证据后，才可由权威会话命令转为已知状态或创建新的人工补偿 intent。
+
+### 6. 分阶段门槛
 
 | 阶段                 | 允许的工作                                                        | 必须满足的条件                                                                                                                    |
 | -------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | 接口 / 纯逻辑        | 出站 port、fake adapter、fixture、契约和失败注入测试              | 不创建 / 修改共享 Collection、migration 或 Payload 配置；无网络、无 token；跨人 port 先 review                                    |
 | 数据库 / worker 集成 | outbox / Job handler、会话状态二次检查、重试、dead job 和人工补偿 | `Conversations` / `Messages`、Task 10 Jobs / worker、`PlatformAccounts` 及其 migration / Payload 注册 / 类型均已合并到最新 `main` |
-| 外部平台联调         | Meta 或 TikTok adapter、Webhook / 送达回调、受控测试消息          | 平台账号、允许的权限 / App Review、受控 production 窗口、官方目标 schema 和部署 secret 已就绪                                     |
+| 外部平台联调         | Meta 或 TikTok adapter、Webhook / 送达回调、受控测试消息          | 平台账号、允许的权限 / App Review、production 或等价受控真实环境、官方目标 schema 和部署 secret 已就绪                            |
 
 ## 测试与验收
 
-纯逻辑测试至少覆盖：重复 `deliveryKey`、retryable 与不可重试错误、限流重试提示、人工接管后的出站抑制、worker 重领后的不重复投递，以及 fake 不触发网络。真实平台能力只能在受控环境完成授权与目标操作实测后标记为 `available`。
+纯逻辑测试至少覆盖：重复 `deliveryKey`、retryable 与不可重试错误、限流重试提示、人工接管后的出站抑制、worker 重领后的不重复投递、provider 已接受后进程死亡 / 结果未持久化，以及 fake 不触发网络。未知结果必须分别覆盖 provider 幂等键重试、状态查询归并和 `delivery_unknown` 人工补偿三条路径。真实平台能力只能在 production 或等价受控真实环境完成授权与目标操作实测后标记为 `available`。
 
 ## 后果
 

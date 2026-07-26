@@ -49,7 +49,7 @@ bash scripts/install-git-hooks.sh
 - Task 13 会话侧数据库集成必须等待 Task 9 的 `Conversations` / `Messages`；发布侧数据库集成必须等待 Task 12 的 `PublishJobs` / `PublishLogs`；真实 Webhook 异步处理、社媒 AI 自动出站、发布执行、失败重试和人工补偿必须等待 Task 10 的 `Jobs`、worker 及其 migration 合并到 `main`，并要求 `PlatformAccounts`、migration、Payload 注册和生成类型已合并。纯连接器接口和 fixture 契约测试不依赖 Task 10。
 - 依赖未合并时，Task 13 可并行开发连接器接口、Webhook 验签、事件幂等、payload 归一化，以及 Facebook Messenger / Instagram DM / TikTok 私信和 Facebook / Instagram / LinkedIn 图文发布的官方 fixture 契约测试与 mock；也可按 [ADR-0003](docs/architecture/adr/0003-social-conversation-outbound-delivery.md) 冻结 server-only 社媒会话出站 port / fake / 失败注入测试。必须使用 TypeScript port/interface 与 fake repository，不得创建临时替代 Collection 或替代 migration；fake 结果不得被标为平台已发送或 `available`。
 - 任何数据库 adapter 开发都必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`，仅有接口定义或 Collection 代码不视为依赖已满足。
-- 外部平台联调需要对应账号、授权和 staging；条件不足时以官方 fixture 契约测试、配置说明和阻塞记录按一期 P1 口径验收。WhatsApp 与其他未列平台作为二期项，不进入一期验收。
+- 外部平台联调需要对应账号、授权和 production 或等价受控真实环境；条件不足时以官方 fixture 契约测试、配置说明和阻塞记录按一期 P1 口径验收。WhatsApp 与其他未列平台作为二期项，不进入一期验收。
 - migration 以先合并到 `main` 的历史为准；未合并分支在同步最新 `main` 后重新生成，不修改已合并 migration。
 
 ## 安全与资料边界
