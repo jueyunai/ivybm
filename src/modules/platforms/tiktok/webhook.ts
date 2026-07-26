@@ -34,7 +34,12 @@ const nonNegativeInteger = (value: number): boolean => Number.isSafeInteger(valu
 const parseTikTokSignatureHeader = (
   signatureHeader: string | undefined,
 ): ParsedTikTokSignature | undefined => {
-  if (!signatureHeader || signatureHeader.length > MAX_SIGNATURE_HEADER_LENGTH) return undefined
+  if (
+    !signatureHeader ||
+    Buffer.byteLength(signatureHeader, 'utf8') > MAX_SIGNATURE_HEADER_LENGTH
+  ) {
+    return undefined
+  }
 
   let timestamp: string | undefined
   let signatureHex: string | undefined
@@ -98,6 +103,7 @@ const headerValue = (
  * HMAC-SHA256(client_secret, `${timestamp}.${rawBody}`). The timestamp is
  * checked only after the MAC succeeds, so malformed or forged requests do not
  * gain a distinguishable freshness path.
+ * Reference: https://developers.tiktok.com/doc/webhooks-verification/
  *
  * This is intentionally only the reusable ingress security seam. TikTok's
  * public developer documentation still does not expose the phase-one Business

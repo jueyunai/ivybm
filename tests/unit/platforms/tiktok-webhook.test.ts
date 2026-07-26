@@ -144,6 +144,22 @@ describe('TikTok webhook signature verification', () => {
     }
   })
 
+  it('applies the local signature header ceiling to UTF-8 bytes, not UTF-16 code units', () => {
+    const rawBody = '{"fixture":true}'
+    const paddedWithUnicodeWhitespace = `${'\u2003'.repeat(60)}${signatureFor(rawBody)}`
+
+    expect(paddedWithUnicodeWhitespace.length).toBeLessThan(256)
+    expect(Buffer.byteLength(paddedWithUnicodeWhitespace, 'utf8')).toBeGreaterThan(256)
+    expect(
+      verifyTikTokWebhookSignature({
+        clientSecret,
+        nowSeconds,
+        rawBody,
+        signatureHeader: paddedWithUnicodeWhitespace,
+      }),
+    ).toBe(false)
+  })
+
   it('rejects replayed and excessively future-dated requests after a valid MAC', () => {
     const rawBody = '{"fixture":true}'
     const oldestAccepted = nowSeconds - 300
