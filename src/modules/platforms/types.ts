@@ -1,8 +1,16 @@
 import { createHash } from 'node:crypto'
 
+import type { HandoffStatus } from '../conversations/contracts'
+
 export type PlatformFamily = 'linkedin' | 'meta' | 'tiktok'
 
 export type MessagingPlatform = 'facebook-messenger' | 'instagram' | 'tiktok'
+
+export const MESSAGING_PLATFORMS: readonly MessagingPlatform[] = [
+  'facebook-messenger',
+  'instagram',
+  'tiktok',
+]
 
 export type PublishingPlatform = 'facebook' | 'instagram' | 'linkedin'
 
@@ -159,6 +167,137 @@ export type AssistedPublicationPackage = {
   mode: 'assisted'
   platform: 'linkedin'
 }
+
+/**
+ * Stable, credential-free error taxonomy for phase-one automatic conversation
+ * replies. `handoff_required` and `message_window_closed` are conversation
+ * specific; the rest mirror the publishing taxonomy so operators learn one set.
+ */
+export const PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES = [
+  'account_not_connected',
+  'authorization_required',
+  'handoff_required',
+  'invalid_request',
+  'message_window_closed',
+  'permission_required',
+  'platform_blocked',
+  'provider_unavailable',
+  'rate_limited',
+  'unknown',
+] as const
+
+export type PlatformConversationOutboundErrorCode =
+  (typeof PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES)[number]
+
+/**
+ * Server-only, credential-free command to deliver one automatic conversation
+ * reply. The deliveryKey is the idempotency anchor scoped by platform and
+ * account; the adapter never sees tokens or conversation internals.
+ */
+export type PlatformConversationOutboundRequest = {
+  accountExternalId: string
+  deliveryKey: string
+  externalThreadId: string
+  /**
+   * Authoritative snapshot freshly loaded by ConversationService immediately
+   * before this send. A worker must not reuse the status captured at enqueue.
+   */
+  handoffStatus: HandoffStatus
+  platform: MessagingPlatform
+  recipientExternalId: string
+  text: string
+}
+
+type PlatformConversationOutboundResultBase = {
+  deliveryKey: string
+  platform: MessagingPlatform
+}
+
+/**
+ * Acceptance-only outcome: a reply is accepted (or a known duplicate) or it is
+ * blocked with a machine-readable reason. There is deliberately no `sent` or
+ * `delivered` state; a future reviewed provider-status callback must record
+ * verified delivery separately.
+ */
+type PlatformConversationOutboundBlockedResult = PlatformConversationOutboundResultBase & {
+  errorCode: PlatformConversationOutboundErrorCode
+  status: 'blocked'
+} & (
+    | { retryAfterSeconds?: never; retryable: false }
+    | { retryAfterSeconds?: number; retryable: true }
+  )
+
+export type PlatformConversationOutboundResult =
+  | (PlatformConversationOutboundResultBase & {
+      status: 'accepted' | 'duplicate'
+    })
+  | PlatformConversationOutboundBlockedResult
+
+/**
+ * A worker may lose its own result after a provider accepts a delivery. These
+ * actions tell the delivery service how it may safely converge; they do not
+ * assert that a customer has received a message.
+ */
+export const PLATFORM_CONVERSATION_OUTBOUND_RECOVERY_ACTIONS = [
+  'delivery_unknown',
+  'provider_accepted',
+  'retry_same_delivery_key',
+] as const
+
+export type PlatformConversationOutboundRecoveryAction =
+  (typeof PLATFORM_CONVERSATION_OUTBOUND_RECOVERY_ACTIONS)[number]
+
+declare const PROVIDER_ACCEPTANCE_EVIDENCE: unique symbol
+
+/**
+ * A non-empty, opaque reference returned by a provider lookup. Adapters must
+ * construct it only from provider-issued acceptance evidence, never from an
+ * internal delivery key.
+ */
+export type ProviderAcceptanceEvidence = string & {
+  readonly [PROVIDER_ACCEPTANCE_EVIDENCE]: true
+}
+
+/**
+ * Narrow an externally returned provider reference before a recovery result
+ * can claim provider acceptance. Empty or whitespace-only evidence must fail
+ * closed to `delivery_unknown`.
+ */
+export const createProviderAcceptanceEvidence = ({
+  deliveryKey,
+  providerReference,
+}: {
+  deliveryKey: unknown
+  providerReference: unknown
+}): ProviderAcceptanceEvidence | undefined => {
+  if (typeof deliveryKey !== 'string' || typeof providerReference !== 'string') return undefined
+  const normalizedReference = providerReference.trim()
+  return normalizedReference && normalizedReference !== deliveryKey.trim()
+    ? (normalizedReference as ProviderAcceptanceEvidence)
+    : undefined
+}
+
+export type PlatformConversationOutboundRecoveryResult =
+  | (PlatformConversationOutboundResultBase & {
+      providerReference?: never
+      status: 'delivery_unknown' | 'retry_same_delivery_key'
+    })
+  | (PlatformConversationOutboundResultBase & {
+      /**
+       * Opaque provider-issued acceptance evidence obtained by an explicit
+       * lookup. It is not the internal deliveryKey and does not claim that the
+       * recipient has received the message.
+       */
+      providerReference: ProviderAcceptanceEvidence
+      status: 'provider_accepted'
+    })
+
+/**
+ * Automatic platform replies are only allowed while the authoritative
+ * conversation state machine keeps the AI in charge.
+ */
+export const isAutomaticPlatformConversationReplyAllowed = (status: HandoffStatus): boolean =>
+  status === 'ai_active'
 
 export const MAX_PLATFORM_EVENT_IDEMPOTENCY_KEY_LENGTH = 200
 

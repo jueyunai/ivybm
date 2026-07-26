@@ -3,6 +3,9 @@ import type {
   NormalizedMessageStatus,
   NormalizedPlatformEvent,
   PlatformCapability,
+  PlatformConversationOutboundRequest,
+  PlatformConversationOutboundRecoveryResult,
+  PlatformConversationOutboundResult,
   PlatformFamily,
   PlatformPublicationStatus,
   PlatformPublishAcceptance,
@@ -68,4 +71,26 @@ export interface PlatformPublishingPort {
     platform: PublishingPlatform
   }): Promise<PlatformPublicationStatus>
   publish(request: PlatformPublishRequest): Promise<PlatformPublishAcceptance>
+}
+
+export interface PlatformConversationOutboundPort {
+  /**
+   * Deliver one automatic conversation reply. `deliveryKey`, scoped by
+   * platform and account, is the idempotency anchor. A real adapter must make
+   * that deduplication atomic across I/O and map it to a provider idempotency
+   * mechanism where available; this port never reports provider delivery.
+   */
+  send(request: PlatformConversationOutboundRequest): Promise<PlatformConversationOutboundResult>
+
+  /**
+   * Reconcile an unknown result after a provider may have accepted a request
+   * but the worker died before it persisted the result. This method must never
+   * blind-send: it only permits same-key retry, returns provider-issued,
+   * opaque acceptance evidence, or declares delivery unknown for manual
+   * compensation. `provider_accepted` must never be returned without that
+   * external evidence.
+   */
+  recoverUnknownOutcome(
+    request: PlatformConversationOutboundRequest,
+  ): Promise<PlatformConversationOutboundRecoveryResult>
 }
