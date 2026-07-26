@@ -94,10 +94,17 @@ export type LinkedInImageBinaryUploadInput = {
    */
   contentType: string
   bytes: Uint8Array
+  /** Provider-issued expiry retained so the transport can re-check it at I/O time. */
+  uploadUrlExpiresAt: number
+  /** Injectable clock used by the pure pre-dispatch validation. */
+  nowMilliseconds?: number
   uploadUrl: string
 }
 
-export type LinkedInImageBinaryUploadPayload = LinkedInImageBinaryUploadInput & {
+export type LinkedInImageBinaryUploadPayload = Omit<
+  LinkedInImageBinaryUploadInput,
+  'nowMilliseconds'
+> & {
   method: 'PUT'
 }
 
@@ -160,6 +167,7 @@ const MIN_EPOCH_MILLISECONDS = 1_000_000_000_000
 const LINKED_IN_RESTLI_PROTOCOL_VERSION = '2.0.0'
 const LINKED_IN_JSON_CONTENT_TYPE = 'application/json'
 const LINKED_IN_IMAGE_CONTENT_TYPES = new Set(['image/gif', 'image/jpeg', 'image/png'])
+const FORBIDDEN_RAW_URL_CHARACTER_PATTERN = /[\u0000-\u0020\u007F]/
 
 const DECIMAL_URN_ID_PATTERN = /^[0-9]+$/
 const OPAQUE_URN_ID_PATTERN = /^[A-Za-z0-9_-]+$/
@@ -298,7 +306,7 @@ const requireCommentary = (value: unknown): string => {
   if (!trimmed.length) {
     throw new Error('LinkedIn commentary must not be empty')
   }
-  if (trimmed.length > MAX_COMMENTARY_LENGTH) {
+  if (Array.from(trimmed).length > MAX_COMMENTARY_LENGTH) {
     throw new Error(`LinkedIn commentary must be ${MAX_COMMENTARY_LENGTH} characters or fewer`)
   }
   return trimmed
@@ -311,7 +319,7 @@ const normalizeAltText = (value: unknown): string | undefined => {
   }
   const trimmed = value.trim()
   if (!trimmed.length) return undefined
-  if (trimmed.length > MAX_ALT_TEXT_LENGTH) {
+  if (Array.from(trimmed).length > MAX_ALT_TEXT_LENGTH) {
     throw new Error(`LinkedIn image alt text must be ${MAX_ALT_TEXT_LENGTH} characters or fewer`)
   }
   return trimmed
@@ -324,7 +332,7 @@ const requireUploadUrl = (value: unknown): string => {
     )
   }
   const trimmed = value.trim()
-  if (!trimmed.length) {
+  if (!trimmed.length || FORBIDDEN_RAW_URL_CHARACTER_PATTERN.test(trimmed)) {
     throw new Error(
       'LinkedIn image upload URL must be an HTTPS URL without credentials or fragments',
     )
@@ -356,6 +364,23 @@ const requireBinaryUploadBytes = (value: unknown): Uint8Array => {
   }
   if (!value.byteLength) {
     throw new Error('LinkedIn image upload bytes must be non-empty')
+  }
+  return value
+}
+
+const requireUploadExpiry = (value: unknown, nowMilliseconds: unknown): number => {
+  if (
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value < MIN_EPOCH_MILLISECONDS ||
+    typeof nowMilliseconds !== 'number' ||
+    !Number.isSafeInteger(nowMilliseconds) ||
+    nowMilliseconds < MIN_EPOCH_MILLISECONDS
+  ) {
+    throw new Error('LinkedIn image upload expiry timestamp is invalid')
+  }
+  if (value <= nowMilliseconds) {
+    throw new Error('LinkedIn image upload URL has expired')
   }
   return value
 }
@@ -504,11 +529,16 @@ export const buildLinkedInImageBinaryUploadPayload = (
   const uploadUrl = requireUploadUrl(input?.uploadUrl)
   const bytes = requireBinaryUploadBytes(input?.bytes)
   const contentType = requireImageContentType(input?.contentType)
+  const uploadUrlExpiresAt = requireUploadExpiry(
+    input?.uploadUrlExpiresAt,
+    input?.nowMilliseconds ?? Date.now(),
+  )
   return Object.freeze({
     bytes,
     contentType,
     method: 'PUT' as const,
     uploadUrl,
+    uploadUrlExpiresAt,
   })
 }
 

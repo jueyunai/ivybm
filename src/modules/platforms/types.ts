@@ -23,6 +23,10 @@ export const PLATFORM_PUBLISH_ERROR_CODES = [
   'unknown',
 ] as const
 
+// `unknown` means the provider may already have accepted the request. Until a
+// real adapter proves provider idempotency or lookup evidence, it must be
+// surfaced as non-retryable for manual reconciliation.
+
 export type PlatformPublishErrorCode = (typeof PLATFORM_PUBLISH_ERROR_CODES)[number]
 
 export type NormalizedAttachment = {

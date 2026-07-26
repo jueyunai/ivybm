@@ -72,6 +72,7 @@ const MAX_FACEBOOK_CAPTION_LENGTH = 5_000
 const MAX_INSTAGRAM_CAPTION_LENGTH = 2_200
 const DECIMAL_IDENTIFIER_PATTERN = /^[0-9]+$/
 const FACEBOOK_POST_IDENTIFIER_PATTERN = /^([0-9]+)_([0-9]+)$/
+const FORBIDDEN_RAW_URL_CHARACTER_PATTERN = /[\u0000-\u0020\u007F]/
 
 const INSTAGRAM_MEDIA_STATUS_CODES: readonly InstagramMediaStatusCode[] = [
   'EXPIRED',
@@ -115,7 +116,7 @@ const normalizeCaption = (value: unknown, maxLength: number): string | undefined
   }
   const trimmed = value.trim()
   if (!trimmed.length) return undefined
-  if (trimmed.length > maxLength) {
+  if (Array.from(trimmed).length > maxLength) {
     throw new Error(`Meta caption must be ${maxLength} characters or fewer`)
   }
   return trimmed
@@ -126,7 +127,7 @@ const requirePublishingUrl = (value: unknown, fieldName: string): string => {
     throw new Error(`Meta ${fieldName} must be a string`)
   }
   const trimmed = value.trim()
-  if (!trimmed.length) {
+  if (!trimmed.length || FORBIDDEN_RAW_URL_CHARACTER_PATTERN.test(trimmed)) {
     throw new Error('Meta publishing URL must be an HTTPS URL without credentials or fragments')
   }
   let parsed: URL

@@ -129,6 +129,37 @@ describe('Meta publishing request builders', () => {
     expect((instagramRequest.body as Record<string, unknown>).caption).toBe(instagramAtLimit)
   })
 
+  it('counts multibyte captions as Unicode characters instead of UTF-16 code units', () => {
+    const facebookAtLimit = '😀'.repeat(5_000)
+    const instagramAtLimit = '😀'.repeat(2_200)
+
+    expect(
+      (
+        buildFacebookPagePhotoRequest({ ...validFacebookInput(), caption: facebookAtLimit })
+          .body as Record<string, unknown>
+      ).caption,
+    ).toBe(facebookAtLimit)
+    expect(() =>
+      buildFacebookPagePhotoRequest({
+        ...validFacebookInput(),
+        caption: `${facebookAtLimit}😀`,
+      }),
+    ).toThrow('Meta caption must be 5000 characters or fewer')
+
+    expect(
+      (
+        buildInstagramMediaRequest({ ...validInstagramMediaInput(), caption: instagramAtLimit })
+          .body as Record<string, unknown>
+      ).caption,
+    ).toBe(instagramAtLimit)
+    expect(() =>
+      buildInstagramMediaRequest({
+        ...validInstagramMediaInput(),
+        caption: `${instagramAtLimit}😀`,
+      }),
+    ).toThrow('Meta caption must be 2200 characters or fewer')
+  })
+
   it('builds an Instagram /media container request with the trimmed caption and HTTPS URL', () => {
     const request = buildInstagramMediaRequest(validInstagramMediaInput())
 
@@ -258,6 +289,8 @@ describe('Meta publishing request builders', () => {
       'https://:secret@cdn.example.invalid/assets/facade-panel.jpg',
       'https://user@cdn.example.invalid/assets/facade-panel.jpg',
       'https://cdn.example.invalid/assets/facade-panel.jpg#section-2',
+      'https://cdn.example.invalid/assets/facade panel.jpg',
+      'https://cdn.example.invalid/assets/facade\npanel.jpg',
     ]
 
     for (const url of invalidUrls) {

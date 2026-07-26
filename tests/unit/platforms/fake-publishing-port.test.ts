@@ -7,7 +7,9 @@ import type {
   PlatformPublishRequest,
 } from '../../../src/modules/platforms/types'
 
-const facebookRequest = (overrides: Partial<PlatformPublishRequest> = {}): PlatformPublishRequest => ({
+const facebookRequest = (
+  overrides: Partial<PlatformPublishRequest> = {},
+): PlatformPublishRequest => ({
   assets: [],
   idempotencyKey: 'fixture-facebook-1',
   platform: 'facebook',
@@ -189,7 +191,9 @@ describe('fake platform publishing port', () => {
       retryable: true,
     })
 
-    await expect(port.publish(facebookRequest({ idempotencyKey: 'provider-failure-1' }))).resolves.toEqual({
+    await expect(
+      port.publish(facebookRequest({ idempotencyKey: 'provider-failure-1' })),
+    ).resolves.toEqual({
       errorCode: 'provider_unavailable',
       idempotencyKey: 'provider-failure-1',
       platform: 'facebook',
@@ -202,6 +206,33 @@ describe('fake platform publishing port', () => {
         platform: 'facebook',
       }),
     ).rejects.toThrow('Fake platform publication is not known')
+  })
+
+  it('never models an unknown external result as blindly retryable', async () => {
+    const port = createConnectedPort()
+
+    expect(() =>
+      port.failNextPublish({
+        errorCode: 'unknown',
+        platform: 'facebook',
+        retryable: true,
+      }),
+    ).toThrow('Fake unknown publish failure cannot be retryable')
+
+    port.failNextPublish({
+      errorCode: 'unknown',
+      platform: 'facebook',
+      retryable: false,
+    })
+    await expect(
+      port.publish(facebookRequest({ idempotencyKey: 'unknown-result-1' })),
+    ).resolves.toEqual({
+      errorCode: 'unknown',
+      idempotencyKey: 'unknown-result-1',
+      platform: 'facebook',
+      retryable: false,
+      status: 'blocked',
+    })
   })
 
   it('does not consume a queued provider failure for an already accepted duplicate command', async () => {
@@ -273,17 +304,24 @@ describe('fake platform publishing port', () => {
         } as never,
       }),
     ).toThrow('Fake platform capability requires valid modes')
-    expect(() => createFakePlatformPublishingPort({ capabilities: { facebook: null } as never })).toThrow(
-      'Fake platform capability must be an object',
-    )
+    expect(() =>
+      createFakePlatformPublishingPort({ capabilities: { facebook: null } as never }),
+    ).toThrow('Fake platform capability must be an object')
     await expect(
-      port.publish({ ...facebookRequest(), idempotencyKey: null } as unknown as PlatformPublishRequest),
+      port.publish({
+        ...facebookRequest(),
+        idempotencyKey: null,
+      } as unknown as PlatformPublishRequest),
     ).rejects.toThrow('Fake publish request has invalid fields')
     await expect(
       port.publish({ ...facebookRequest(), assets: [1n] } as unknown as PlatformPublishRequest),
     ).rejects.toThrow('Fake publication asset must be an object')
-    await expect(port.publish(null as never)).rejects.toThrow('Fake publish request must be an object')
-    expect(() => port.failNextPublish(null as never)).toThrow('Fake publish failure must be an object')
+    await expect(port.publish(null as never)).rejects.toThrow(
+      'Fake publish request must be an object',
+    )
+    expect(() => port.failNextPublish(null as never)).toThrow(
+      'Fake publish failure must be an object',
+    )
     await expect(port.getStatus(null as never)).rejects.toThrow(
       'Fake publication reference must be an object',
     )
@@ -305,7 +343,9 @@ describe('fake platform publishing port', () => {
       status: 'published',
     })
 
-    const failed = accepted(await port.publish(facebookRequest({ idempotencyKey: 'terminal-failure-1' })))
+    const failed = accepted(
+      await port.publish(facebookRequest({ idempotencyKey: 'terminal-failure-1' })),
+    )
     const failedReference = {
       externalPublicationId: failed.externalPublicationId,
       platform: failed.platform,
@@ -318,9 +358,9 @@ describe('fake platform publishing port', () => {
     }
     port.setStatus(failure)
     expect(() => port.setStatus(failure)).not.toThrow()
-    expect(() =>
-      port.setStatus({ ...failure, errorCode: 'provider_unavailable' }),
-    ).toThrow('Fake platform publication cannot replace failed failure metadata')
+    expect(() => port.setStatus({ ...failure, errorCode: 'provider_unavailable' })).toThrow(
+      'Fake platform publication cannot replace failed failure metadata',
+    )
     expect(() => port.setStatus({ ...failedReference, status: 'published' })).toThrow(
       'Fake platform publication cannot transition from failed to published',
     )
@@ -331,7 +371,10 @@ describe('fake platform publishing port', () => {
     const result = accepted(await port.publish(facebookRequest()))
 
     await expect(
-      port.getStatus({ externalPublicationId: result.externalPublicationId, platform: 'instagram' }),
+      port.getStatus({
+        externalPublicationId: result.externalPublicationId,
+        platform: 'instagram',
+      }),
     ).rejects.toThrow('Fake platform publication is not known')
     expect(() =>
       port.setStatus({
@@ -341,5 +384,14 @@ describe('fake platform publishing port', () => {
         status: 'failed',
       } as never),
     ).toThrow('Fake failed publication requires retryable')
+    expect(() =>
+      port.setStatus({
+        errorCode: 'unknown',
+        externalPublicationId: result.externalPublicationId,
+        platform: 'facebook',
+        retryable: true,
+        status: 'failed',
+      }),
+    ).toThrow('Fake unknown publication outcome cannot be retryable')
   })
 })

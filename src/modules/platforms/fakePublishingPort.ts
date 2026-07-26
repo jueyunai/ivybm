@@ -192,7 +192,10 @@ const blocked = (
   status: 'blocked',
 })
 
-const transitionTargets: Record<PlatformPublicationStatus['status'], PlatformPublicationStatus['status'][]> = {
+const transitionTargets: Record<
+  PlatformPublicationStatus['status'],
+  PlatformPublicationStatus['status'][]
+> = {
   failed: ['failed'],
   pending: ['failed', 'pending', 'published', 'publishing'],
   published: ['published'],
@@ -209,15 +212,14 @@ const normalizePublicationStatus = (
   }
 
   if (candidate.status === 'failed') {
-    if (
-      !PLATFORM_PUBLISH_ERROR_CODES.includes(
-        candidate.errorCode as PlatformPublishErrorCode,
-      )
-    ) {
+    if (!PLATFORM_PUBLISH_ERROR_CODES.includes(candidate.errorCode as PlatformPublishErrorCode)) {
       throw new Error('Fake failed publication requires a known errorCode')
     }
     if (typeof candidate.retryable !== 'boolean') {
       throw new Error('Fake failed publication requires retryable')
+    }
+    if (candidate.errorCode === 'unknown' && candidate.retryable) {
+      throw new Error('Fake unknown publication outcome cannot be retryable')
     }
     return {
       errorCode: candidate.errorCode as PlatformPublishErrorCode,
@@ -246,7 +248,9 @@ const assertCapability = (
   if (candidate.platform !== platform) {
     throw new Error(`Fake platform capability override must match ${platform}`)
   }
-  if (!platformAvailabilities.includes(candidate.availability as PlatformCapability['availability'])) {
+  if (
+    !platformAvailabilities.includes(candidate.availability as PlatformCapability['availability'])
+  ) {
     throw new Error('Fake platform capability requires a known availability')
   }
   if (
@@ -263,9 +267,7 @@ const assertCapability = (
     modes: [...candidate.modes] as PlatformCapability['modes'],
     platform,
   }
-  return candidate.reason === undefined
-    ? normalized
-    : { ...normalized, reason: candidate.reason }
+  return candidate.reason === undefined ? normalized : { ...normalized, reason: candidate.reason }
 }
 
 const capabilityOverrides = (
@@ -276,9 +278,7 @@ const capabilityOverrides = (
   return requireRecord(candidate.capabilities, 'platform capability overrides')
 }
 
-const normalizePublishFailure = (
-  input: FakePlatformPublishFailure,
-): FakePlatformPublishFailure => {
+const normalizePublishFailure = (input: FakePlatformPublishFailure): FakePlatformPublishFailure => {
   const candidate = requireRecord(input, 'publish failure')
   assertPublishingPlatform(candidate.platform)
   if (!PLATFORM_PUBLISH_ERROR_CODES.includes(candidate.errorCode as PlatformPublishErrorCode)) {
@@ -286,6 +286,9 @@ const normalizePublishFailure = (
   }
   if (typeof candidate.retryable !== 'boolean') {
     throw new Error('Fake publish failure requires retryable')
+  }
+  if (candidate.errorCode === 'unknown' && candidate.retryable) {
+    throw new Error('Fake unknown publish failure cannot be retryable')
   }
   return {
     errorCode: candidate.errorCode as PlatformPublishErrorCode,

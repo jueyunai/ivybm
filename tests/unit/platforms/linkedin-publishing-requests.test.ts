@@ -7,6 +7,7 @@ import {
   buildLinkedInJsonRequestHeaders,
   buildLinkedInPostStatusRequest,
   buildLinkedInTextPostRequest,
+  type LinkedInImageBinaryUploadInput,
   type LinkedInImageInitializeUploadResponse,
   type LinkedInPostCreationResponse,
   type LinkedInPostStatusResponse,
@@ -81,6 +82,18 @@ const validInitializeUploadInput = () => ({
 const validStatusInput = () => ({
   linkedInVersion: '202607',
   postUrn: 'urn:li:share:7123456789012345678',
+})
+
+const binaryUploadNow = 1_753_600_000_000
+const validBinaryUploadInput = (
+  overrides: Partial<LinkedInImageBinaryUploadInput> = {},
+): LinkedInImageBinaryUploadInput => ({
+  bytes: new Uint8Array([0x01, 0x02, 0x03]),
+  contentType: 'image/png',
+  nowMilliseconds: binaryUploadNow,
+  uploadUrl: 'https://upload.linkedin.com/facade',
+  uploadUrlExpiresAt: binaryUploadNow + 60_000,
+  ...overrides,
 })
 
 const containsSensitiveErrorText = (value: string): boolean => {
@@ -504,6 +517,37 @@ describe('LinkedIn publishing request builders', () => {
     ).toBe(atLimit)
   })
 
+  it('counts multibyte commentary and alt text as Unicode characters', () => {
+    const commentaryAtLimit = '😀'.repeat(3_000)
+    const altTextAtLimit = '😀'.repeat(300)
+
+    expect(
+      (
+        buildLinkedInTextPostRequest({ ...validTextInput(), commentary: commentaryAtLimit })
+          .body as Record<string, unknown>
+      ).commentary,
+    ).toBe(commentaryAtLimit)
+    expect(() =>
+      buildLinkedInTextPostRequest({
+        ...validTextInput(),
+        commentary: `${commentaryAtLimit}😀`,
+      }),
+    ).toThrow('LinkedIn commentary must be 3000 characters or fewer')
+
+    expect(
+      buildLinkedInImagePostRequest({
+        ...validImageInput(),
+        image: { ...validImageInput().image, altText: altTextAtLimit },
+      }).body,
+    ).toMatchObject({ content: { media: { altText: altTextAtLimit } } })
+    expect(() =>
+      buildLinkedInImagePostRequest({
+        ...validImageInput(),
+        image: { ...validImageInput().image, altText: `${altTextAtLimit}😀` },
+      }),
+    ).toThrow('LinkedIn image alt text must be 300 characters or fewer')
+  })
+
   it('rejects non-string commentary inputs and an oversized alt text', () => {
     for (const value of [null, 12, { text: 'x' }, true]) {
       expect(() =>
@@ -541,13 +585,14 @@ describe('LinkedIn publishing request builders', () => {
       'https://:secret@upload.linkedin.com/facade',
       'https://user@upload.linkedin.com/facade',
       'https://upload.linkedin.com/facade#section-2',
+      'https://upload.linkedin.com/facade image',
+      'https://upload.linkedin.com/facade\nimage',
     ]
 
     for (const uploadUrl of invalidUrls) {
       expect(() =>
         buildLinkedInImageBinaryUploadPayload({
-          bytes: new Uint8Array([0x01, 0x02, 0x03]),
-          contentType: 'image/png',
+          ...validBinaryUploadInput(),
           uploadUrl,
         }),
       ).toThrow('LinkedIn image upload URL must be an HTTPS URL without credentials or fragments')
@@ -557,25 +602,22 @@ describe('LinkedIn publishing request builders', () => {
   it('rejects non-Uint8Array or empty binary bytes without inventing a provider size cap', () => {
     expect(() =>
       buildLinkedInImageBinaryUploadPayload({
+        ...validBinaryUploadInput(),
         bytes: 'not bytes' as never,
-        contentType: 'image/png',
-        uploadUrl: 'https://upload.linkedin.com/facade',
       }),
     ).toThrow('LinkedIn image upload bytes must be a Uint8Array')
 
     expect(() =>
       buildLinkedInImageBinaryUploadPayload({
+        ...validBinaryUploadInput(),
         bytes: new Uint8Array(0),
-        contentType: 'image/png',
-        uploadUrl: 'https://upload.linkedin.com/facade',
       }),
     ).toThrow('LinkedIn image upload bytes must be non-empty')
 
     const bytes = new Uint8Array(1024)
     const payload = buildLinkedInImageBinaryUploadPayload({
+      ...validBinaryUploadInput(),
       bytes,
-      contentType: 'image/png',
-      uploadUrl: 'https://upload.linkedin.com/facade',
     })
     expect(payload.bytes).toBe(bytes)
   })
@@ -601,9 +643,8 @@ describe('LinkedIn publishing request builders', () => {
     for (const contentType of invalidTypes) {
       expect(() =>
         buildLinkedInImageBinaryUploadPayload({
-          bytes: new Uint8Array([0x01, 0x02]),
+          ...validBinaryUploadInput(),
           contentType: contentType as never,
-          uploadUrl: 'https://upload.linkedin.com/facade',
         }),
       ).toThrow('LinkedIn image upload content type must be JPEG, PNG, or GIF')
     }
@@ -614,9 +655,8 @@ describe('LinkedIn publishing request builders', () => {
       ['image/gif', 'image/gif'],
     ]) {
       const accepted = buildLinkedInImageBinaryUploadPayload({
-        bytes: new Uint8Array([0x01, 0x02]),
+        ...validBinaryUploadInput(),
         contentType,
-        uploadUrl: 'https://upload.linkedin.com/facade',
       })
       expect(accepted.contentType).toBe(expected)
     }
@@ -625,12 +665,38 @@ describe('LinkedIn publishing request builders', () => {
   it('freezes the binary upload envelope without claiming the typed-array contents are immutable', () => {
     const bytes = new Uint8Array([0x01, 0x02, 0x03])
     const payload = buildLinkedInImageBinaryUploadPayload({
+      ...validBinaryUploadInput(),
       bytes,
       contentType: 'image/jpeg',
-      uploadUrl: 'https://upload.linkedin.com/facade',
     })
     expect(Object.isFrozen(payload)).toBe(true)
     expect(payload.method).toBe('PUT')
+    expect(payload.uploadUrlExpiresAt).toBe(binaryUploadNow + 60_000)
+  })
+
+  it('rejects expired or malformed provider upload expiry evidence', () => {
+    for (const uploadUrlExpiresAt of [
+      binaryUploadNow,
+      binaryUploadNow - 1,
+      0,
+      1.5,
+      Number.NaN,
+      '1753600060000',
+    ]) {
+      expect(() =>
+        buildLinkedInImageBinaryUploadPayload({
+          ...validBinaryUploadInput(),
+          uploadUrlExpiresAt: uploadUrlExpiresAt as never,
+        }),
+      ).toThrow(/LinkedIn image upload (URL has expired|expiry timestamp is invalid)/)
+    }
+
+    expect(() =>
+      buildLinkedInImageBinaryUploadPayload({
+        ...validBinaryUploadInput(),
+        nowMilliseconds: Number.NaN,
+      }),
+    ).toThrow('LinkedIn image upload expiry timestamp is invalid')
   })
 
   it('preserves a long provider-issued signed upload URL instead of applying an invented 2048-character cap', () => {
@@ -638,8 +704,7 @@ describe('LinkedIn publishing request builders', () => {
 
     expect(
       buildLinkedInImageBinaryUploadPayload({
-        bytes: new Uint8Array([0x01]),
-        contentType: 'image/png',
+        ...validBinaryUploadInput(),
         uploadUrl,
       }).uploadUrl,
     ).toBe(uploadUrl)
@@ -658,9 +723,7 @@ describe('LinkedIn publishing request builders', () => {
       buildLinkedInImagePostRequest(validImageInput())
       buildLinkedInImageInitializeUploadRequest(validInitializeUploadInput())
       buildLinkedInImageBinaryUploadPayload({
-        bytes: new Uint8Array([0x01]),
-        contentType: 'image/png',
-        uploadUrl: 'https://upload.linkedin.com/facade',
+        ...validBinaryUploadInput(),
       })
       buildLinkedInPostStatusRequest(validStatusInput())
     } finally {
