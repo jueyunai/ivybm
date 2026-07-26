@@ -230,6 +230,11 @@ describe('fake platform conversation outbound port', () => {
         retryable: false,
       }),
     ).toThrow('Fake conversation outbound failure retryAfterSeconds requires a retryable failure')
+    expect(() =>
+      createFakePlatformConversationOutboundProviderState({
+        recoveryMode: 'invented-recovery' as never,
+      }),
+    ).toThrow('Fake conversation outbound recovery mode is unsupported')
 
     port.failNextSend({
       errorCode: 'permission_required',
@@ -252,7 +257,9 @@ describe('fake platform conversation outbound port', () => {
   })
 
   it('recovers a provider acceptance lost with the worker by reusing the same delivery key', async () => {
-    const providerState = createFakePlatformConversationOutboundProviderState()
+    const providerState = createFakePlatformConversationOutboundProviderState({
+      recoveryMode: 'provider_idempotency_key',
+    })
     const firstWorker = createFakePlatformConversationOutboundPort({ providerState })
     firstWorker.loseAcceptedResultNext({ platform: 'facebook-messenger' })
 
@@ -274,6 +281,25 @@ describe('fake platform conversation outbound port', () => {
       deliveryKey: 'lost-result-idempotency-1',
       platform: 'facebook-messenger',
       status: 'duplicate',
+    })
+  })
+
+  it('defaults an unknown Meta result to manual compensation instead of blind retry', async () => {
+    const providerState = createFakePlatformConversationOutboundProviderState()
+    const firstWorker = createFakePlatformConversationOutboundPort({ providerState })
+    firstWorker.loseAcceptedResultNext({ platform: 'facebook-messenger' })
+
+    await expect(
+      firstWorker.send(request({ deliveryKey: 'meta-default-unknown-1' })),
+    ).rejects.toThrow('provider acceptance was lost before the worker could persist it')
+    await expect(
+      createFakePlatformConversationOutboundPort({ providerState }).recoverUnknownOutcome(
+        request({ deliveryKey: 'meta-default-unknown-1' }),
+      ),
+    ).resolves.toEqual({
+      deliveryKey: 'meta-default-unknown-1',
+      platform: 'facebook-messenger',
+      status: 'delivery_unknown',
     })
   })
 

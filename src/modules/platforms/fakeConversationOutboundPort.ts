@@ -29,6 +29,12 @@ export type FakeConversationOutboundInspectionKey = {
 export type FakeConversationOutboundRecoveryMode =
   'manual_compensation' | 'provider_delivery_lookup' | 'provider_idempotency_key'
 
+const FAKE_CONVERSATION_OUTBOUND_RECOVERY_MODES: readonly FakeConversationOutboundRecoveryMode[] = [
+  'manual_compensation',
+  'provider_delivery_lookup',
+  'provider_idempotency_key',
+]
+
 export type FakePlatformConversationOutboundProviderState = {
   accepted: Map<string, PlatformConversationOutboundRequest>
   acceptedResultLosses: Map<MessagingPlatform, number>
@@ -37,15 +43,20 @@ export type FakePlatformConversationOutboundProviderState = {
 }
 
 export const createFakePlatformConversationOutboundProviderState = ({
-  recoveryMode = 'provider_idempotency_key',
+  recoveryMode = 'manual_compensation',
 }: {
   recoveryMode?: FakeConversationOutboundRecoveryMode
-} = {}): FakePlatformConversationOutboundProviderState => ({
-  accepted: new Map(),
-  acceptedResultLosses: new Map(),
-  providerReferences: new Map(),
-  recoveryMode,
-})
+} = {}): FakePlatformConversationOutboundProviderState => {
+  if (!FAKE_CONVERSATION_OUTBOUND_RECOVERY_MODES.includes(recoveryMode)) {
+    throw new Error('Fake conversation outbound recovery mode is unsupported')
+  }
+  return {
+    accepted: new Map(),
+    acceptedResultLosses: new Map(),
+    providerReferences: new Map(),
+    recoveryMode,
+  }
+}
 
 export class FakeConversationOutboundAcceptedResultLostError extends Error {
   constructor() {
