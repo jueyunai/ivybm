@@ -5,7 +5,7 @@ import { createConversationService } from '@/modules/conversations/service'
 
 import { InMemoryConversationRepository } from '../../fakes/conversationRepository'
 
-const createService = () => {
+const createService = ({ allowTikTokNormalizedDelivery = false } = {}) => {
   let sequence = 0
   const repository = new InMemoryConversationRepository()
   const generateReply = vi.fn(async () => ({
@@ -16,6 +16,7 @@ const createService = () => {
     tokenUsage: { inputTokens: 5, outputTokens: 3, totalTokens: 8 },
   }))
   const service = createConversationService({
+    allowTikTokNormalizedDelivery,
     clock: () => new Date('2026-07-19T00:00:00.000Z'),
     createId: (kind) => `${kind}-${++sequence}`,
     repository,
@@ -25,6 +26,40 @@ const createService = () => {
 }
 
 describe('ConversationService', () => {
+  it('fails closed for TikTok until a reviewed normalized connector explicitly opts in', async () => {
+    const { repository, service } = createService()
+
+    await expect(service.startSession({
+      channel: 'tiktok',
+      idempotencyKey: 'blocked-tiktok-session',
+      locale: 'en',
+    })).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
+    await expect(service.ingestExternalMessage({
+      channel: 'tiktok',
+      externalAccountId: 'business-fixture',
+      externalMessageId: 'blocked-tiktok-message',
+      externalSenderId: 'sender-fixture',
+      externalThreadId: 'business-fixture:sender-fixture',
+      locale: 'en',
+      text: 'This must not create a default TikTok conversation.',
+    })).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
+    expect(repository.sessionCount).toBe(0)
+
+    const { service: optedIn } = createService({ allowTikTokNormalizedDelivery: true })
+    await expect(optedIn.ingestExternalMessage({
+      channel: 'tiktok',
+      externalAccountId: 'business-fixture',
+      externalMessageId: 'opted-in-tiktok-message',
+      externalSenderId: 'sender-fixture',
+      externalThreadId: 'business-fixture:sender-fixture',
+      locale: 'en',
+      text: 'This is an explicitly normalized internal delivery.',
+    })).resolves.toMatchObject({
+      session: { channel: 'tiktok' },
+      status: 'accepted',
+    })
+  })
+
   it('persists one authoritative handoff state for duplicate requests and blocks subsequent AI replies', async () => {
     const { generateReply, repository, service } = createService()
     const session = await service.startSession({
@@ -142,20 +177,29 @@ describe('ConversationService', () => {
     expect(resolved).toMatchObject({ allowedActions: [], handoffStatus: 'resolved' })
   })
 
-  it('ingests an external message once and reports a replay without a second AI turn', async () => {
-    const { generateReply, service } = createService()
+  it('derives external delivery identity from platform identifiers, not caller keys', async () => {
+    const { generateReply, repository, service } = createService()
     const input = {
       channel: 'facebook' as const,
+      externalAccountId: 'page-1',
       externalMessageId: 'meta-message-1',
+      externalSenderId: 'sender-1',
       externalThreadId: 'page-1:sender-1',
-      idempotencyKey: 'facebook-messenger:meta-message-1',
       locale: 'en' as const,
-      sessionIdempotencyKey: 'platform-session:facebook-messenger:page-1:sender-1',
       text: 'Please share available facade finishes.',
     }
 
     const accepted = await service.ingestExternalMessage(input)
-    const duplicate = await service.ingestExternalMessage(input)
+    // Simulate a pre-hardening connector retry that still includes its old
+    // caller-controlled receipt fields. Structural TypeScript compatibility must
+    // not let those values choose a new durable session or message command.
+    const legacyTransportRetry = {
+      ...input,
+      idempotencyKey: 'changed-transport-receipt',
+      sessionIdempotencyKey: 'changed-session-receipt',
+      text: 'Mutated retry content.',
+    }
+    const duplicate = await service.ingestExternalMessage(legacyTransportRetry)
 
     expect(accepted).toMatchObject({ status: 'accepted' })
     expect(duplicate).toMatchObject({
@@ -163,6 +207,7 @@ describe('ConversationService', () => {
       status: 'duplicate',
     })
     expect(accepted.session.messages.filter(({ author }) => author === 'visitor')).toHaveLength(1)
+    expect(repository.sessionCount).toBe(1)
     expect(generateReply).toHaveBeenCalledTimes(1)
   })
 
@@ -179,15 +224,15 @@ describe('ConversationService', () => {
     })
     const base = {
       channel: 'facebook' as const,
+      externalAccountId: 'page-1',
+      externalSenderId: 'sender-1',
       externalThreadId: 'page-1:sender-1',
       locale: 'en' as const,
-      sessionIdempotencyKey: 'platform-session:facebook-messenger:page-1:sender-1',
     }
 
     const first = await service.ingestExternalMessage({
       ...base,
       externalMessageId: 'meta-message-first',
-      idempotencyKey: 'facebook-messenger:meta-message-first',
       text: 'First customer message.',
     })
     expect(first.session.handoffStatus).toBe('handoff_requested')
@@ -195,7 +240,6 @@ describe('ConversationService', () => {
     const followUp = await service.ingestExternalMessage({
       ...base,
       externalMessageId: 'meta-message-follow-up',
-      idempotencyKey: 'facebook-messenger:meta-message-follow-up',
       text: 'Second customer message before an operator responds.',
     })
     expect(followUp).toMatchObject({
@@ -209,7 +253,6 @@ describe('ConversationService', () => {
     const afterResolution = await service.ingestExternalMessage({
       ...base,
       externalMessageId: 'meta-message-after-resolution',
-      idempotencyKey: 'facebook-messenger:meta-message-after-resolution',
       text: 'A later customer follow-up must still be retained.',
     })
     expect(afterResolution).toMatchObject({
@@ -220,18 +263,42 @@ describe('ConversationService', () => {
     expect(generateReply).toHaveBeenCalledTimes(1)
   })
 
-  it('rejects malformed external thread identity before creating any session', async () => {
+  it('rejects malformed external identities before creating any session', async () => {
     const { repository, service } = createService()
 
     await expect(
       service.ingestExternalMessage({
         channel: 'facebook',
+        externalAccountId: 'page-1',
         externalMessageId: 'meta-message-invalid',
+        externalSenderId: 'sender-1',
         externalThreadId: ' ',
-        idempotencyKey: 'facebook-messenger:meta-message-invalid',
         locale: 'en',
-        sessionIdempotencyKey: 'platform-session:facebook-messenger:page-1:sender-1',
         text: 'Please share available facade finishes.',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
+    await expect(
+      service.ingestExternalMessage({
+        channel: 'facebook',
+        externalAccountId: 42 as never,
+        externalMessageId: 'meta-message-invalid-account',
+        externalSenderId: 'sender-1',
+        externalThreadId: 'page-1:sender-1',
+        locale: 'en',
+        text: 'Malformed typed escape must not reach persistence.',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
+    expect(repository.sessionCount).toBe(0)
+  })
+
+  it('does not create new historical WhatsApp sessions', async () => {
+    const { repository, service } = createService()
+
+    await expect(
+      service.startSession({
+        channel: 'whatsapp' as never,
+        idempotencyKey: 'historical-whatsapp-start',
+        locale: 'en',
       }),
     ).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
     expect(repository.sessionCount).toBe(0)
@@ -243,12 +310,23 @@ describe('ConversationService', () => {
     await expect(
       service.ingestExternalMessage({
         channel: 'website' as never,
+        externalAccountId: 'page-1',
         externalMessageId: 'external-message-website',
+        externalSenderId: 'sender-1',
         externalThreadId: 'page-1:sender-1',
-        idempotencyKey: 'facebook-messenger:external-message-website',
         locale: 'en',
-        sessionIdempotencyKey: 'platform-session:facebook-messenger:page-1:sender-1',
         text: 'Please share available facade finishes.',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
+    await expect(
+      service.ingestExternalMessage({
+        channel: 'whatsapp' as never,
+        externalAccountId: 'account-1',
+        externalMessageId: 'external-message-whatsapp',
+        externalSenderId: 'sender-1',
+        externalThreadId: 'account-1:sender-1',
+        locale: 'en',
+        text: 'This phase must not create a WhatsApp conversation.',
       }),
     ).rejects.toMatchObject({ code: 'invalid_request' } satisfies Partial<ChatServiceError>)
     expect(repository.sessionCount).toBe(0)

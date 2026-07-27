@@ -1,5 +1,7 @@
 export const CHAT_LOCALES = ['en', 'ar'] as const
-export const CHAT_CHANNELS = ['website', 'whatsapp', 'facebook', 'instagram'] as const
+/** Includes historical persisted values. New phase-one writes use CREATABLE_CHAT_CHANNELS. */
+export const CHAT_CHANNELS = ['website', 'whatsapp', 'facebook', 'instagram', 'tiktok'] as const
+export const CREATABLE_CHAT_CHANNELS = ['website', 'facebook', 'instagram', 'tiktok'] as const
 export const HANDOFF_STATUSES = [
   'ai_active',
   'handoff_requested',
@@ -9,6 +11,7 @@ export const HANDOFF_STATUSES = [
 
 export type ChatLocale = (typeof CHAT_LOCALES)[number]
 export type ChatChannel = (typeof CHAT_CHANNELS)[number]
+export type CreatableChatChannel = (typeof CREATABLE_CHAT_CHANNELS)[number]
 export type HandoffStatus = (typeof HANDOFF_STATUSES)[number]
 export type HandoffSource = 'ai_policy' | 'operator' | 'visitor'
 export type ChatMessageAuthor = 'ai' | 'operator' | 'system' | 'visitor'
@@ -82,7 +85,8 @@ export type ChatSessionList = {
 }
 
 export type StartChatSessionInput = {
-  channel: ChatChannel
+  /** WhatsApp remains readable as a historical channel but cannot start a new phase-one session. */
+  channel: CreatableChatChannel
   /** Internal connector identity; never accepted from the public website route. */
   externalThreadId?: string
   idempotencyKey: string
@@ -102,13 +106,19 @@ export type SendChatMessageInput = {
  * the same bounded ChatSession shape used by the website contract.
  */
 export type IngestExternalMessageInput = {
-  /** Current durable connector phase supports Meta only; WhatsApp remains historical-read-only. */
-  channel: Exclude<ChatChannel, 'website' | 'whatsapp'>
+  /**
+   * Server-only normalized platform event. Its connector must authenticate the
+   * provider payload before this command is called; WhatsApp remains historical-read-only.
+   * The service derives its durable session and message identities from channel plus
+   * external identifiers, so a caller cannot change delivery semantics with a
+   * transport-level idempotency key.
+   */
+  channel: Exclude<CreatableChatChannel, 'website'>
+  externalAccountId: string
   externalMessageId: string
+  externalSenderId: string
   externalThreadId: string
-  idempotencyKey: string
   locale: ChatLocale
-  sessionIdempotencyKey: string
   text: string
 }
 
@@ -160,6 +170,9 @@ export interface ChatService {
 export interface PlatformConversationService {
   ingestExternalMessage(input: IngestExternalMessageInput): Promise<ExternalMessageDelivery>
 }
+
+export const isCreatableChatChannel = (value: unknown): value is CreatableChatChannel =>
+  typeof value === 'string' && CREATABLE_CHAT_CHANNELS.some((channel) => channel === value)
 
 export class ChatServiceError extends Error {
   readonly code: ChatErrorCode

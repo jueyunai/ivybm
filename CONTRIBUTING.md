@@ -45,14 +45,14 @@ Payload / PostgreSQL 的 migration 按时间线性生成，两人各自本地生
 | Task 9  | 官网 `ChatWidget`、运营会话/接管界面、交互状态、前端 E2E；使用 `ChatService` mock                                                 | 会话/AI 服务、接管状态机/幂等/权限/审计/领域事件、`Conversations` / `Messages` / `Handoffs` 集成；提供 contract fixture |
 | Task 12 | 内容工作台页面、内容生成/审核 UI、内部状态流、`PublishJobs` / `PublishLogs` 共享结构和发布任务创建；使用 `PublishingService` mock | 第三方平台 capability / publish / status API、平台 adapter、发布结果回调；不把平台 SDK / token 暴露给前端               |
 
-跨边界开发必须先提交并 review TypeScript port/interface、请求响应 schema、错误码、状态枚举和 mock 行为。消费者先用 fake service 开发，服务提供者先用 fake repository / 官方 fixture 实现；真实数据库和平台 adapter 在对应 Collection、migration、Payload 类型和 staging 条件满足后接入。
+跨边界开发必须先提交并 review TypeScript port/interface、请求响应 schema、错误码、状态枚举和 mock 行为。消费者先用 fake service 开发，服务提供者先用 fake repository / 官方 fixture 实现；真实数据库和平台 adapter 在对应 Collection、migration、Payload 类型和 production 或等价受控真实环境条件满足后接入。
 
-人工接管由服务端维护权威状态，官网、运营后台和社媒连接器只能通过 `ChatService` 命令接口表达请求。前端不得直接修改 `handoffStatus`、`assignedTo` 或审计字段；服务端进入 `human_active` 后必须阻止 AI 自动回复，并通过领域事件把通知和补偿交给 Task 10 / 11。完整决策见 [`ADR-0001`](docs/architecture/adr/0001-human-handoff-domain-boundary.md)。
+人工接管由服务端维护权威状态，官网、运营后台和社媒连接器只能通过 `ChatService` 命令接口表达请求。前端不得直接修改 `handoffStatus`、`assignedTo` 或审计字段；服务端进入 `human_active` 后必须阻止 AI 自动回复，并通过领域事件把通知和补偿交给 Task 10 / 11。完整决策见 [`ADR-0001`](docs/architecture/adr/0001-human-handoff-domain-boundary.md)。社媒 AI 出站投递的分阶段边界见 [`ADR-0003`](docs/architecture/adr/0003-social-conversation-outbound-delivery.md)：无授权时只能持久人工接管，不能伪造已发送回复。
 
 依赖分三个阶段处理：
 
-1. **接口 / 纯逻辑阶段**：允许使用 TypeScript port/interface、fake repository、mock 和官方结构 fixture 并行开发。Task 9 前端先使用 `ChatService` mock，Task 12 前端先使用 `PublishingService` mock；Task 13 在这一阶段可实现连接器接口、Webhook 验签、时间戳、事件幂等、payload 归一化，以及 Facebook Messenger / Instagram DM / TikTok 私信与 Facebook / Instagram / LinkedIn 图文发布的 mock；不创建临时 `Leads`、`Conversations`、`Messages`、`PublishJobs` 或 `PublishLogs`，不生成替代 migration。
-2. **数据库集成阶段**：必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`，再从最新 `origin/main` 更新分支并实现 adapter。Task 9 服务读写 Task 7 的 `Leads`；Task 13 会话侧读写 Task 9 的 `Conversations` / `Messages`，发布侧读写 Task 12 的 `PublishJobs` / `PublishLogs`。Task 13 的真实 Webhook 异步处理、发布执行、失败重试、dead job 和人工补偿还必须等待 Task 10 的 `Jobs` Collection、worker、migration、Payload 注册和生成类型合并；纯连接器和 fixture 测试不依赖 Task 10。
+1. **接口 / 纯逻辑阶段**：允许使用 TypeScript port/interface、fake repository、mock 和官方结构 fixture 并行开发。Task 9 前端先使用 `ChatService` mock，Task 12 前端先使用 `PublishingService` mock；Task 13 在这一阶段可实现连接器接口、Webhook 验签、时间戳、事件幂等、payload 归一化，以及 Facebook Messenger / Instagram DM / TikTok 私信与 Facebook / Instagram / LinkedIn 图文发布的 mock。社媒会话可额外冻结 server-only outbound port、fake 与失败注入契约，但不得发网络请求、写入“已发送”状态或创建临时 `Leads`、`Conversations`、`Messages`、`PublishJobs` 或 `PublishLogs`，不生成替代 migration。
+2. **数据库集成阶段**：必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`，再从最新 `origin/main` 更新分支并实现 adapter。Task 9 服务读写 Task 7 的 `Leads`；Task 13 会话侧读写 Task 9 的 `Conversations` / `Messages`，发布侧读写 Task 12 的 `PublishJobs` / `PublishLogs`。社媒自动回复由 `ConversationService` 创建稳定内部回复身份和 delivery intent；在入队和 worker 发送前由权威会话状态二次允许。delivery intent / outbox 持有 `queued`、`retrying`、`blocked`、`failed`、`dead`、`delivery_unknown` 等业务状态，adapter 结果只能回到权威服务归并。它和真实 Webhook 异步处理、发布执行、失败重试、dead job 和人工补偿都必须等待 Task 10 的 `Jobs` Collection、worker、migration、Payload 注册和生成类型合并，且需要已合并的 `PlatformAccounts` / 凭据结构。纯连接器和 fixture 测试不依赖 Task 10。
 3. **外部平台联调阶段**：需要甲方账号资产、平台授权和 production 的受控发布窗口。条件满足时实测 Facebook Messenger / Instagram DM / TikTok 私信 Webhook、入站消息和 Facebook / Instagram / LinkedIn 图文测试发布；条件缺失时以 fixture 契约测试、模拟记录、配置说明和阻塞证据按一期 P1 口径验收。WhatsApp 与其他未列平台为二期，不进入一期状态矩阵。fixture / mock 通过只代表接口契约完成，不得据此把平台标记为 `available`。
 
 ## 发布

@@ -6,7 +6,7 @@ import type {
   WebhookRateLimiter,
   WebhookVerifier,
 } from './ports'
-import { platformEventKey, type NormalizedPlatformEvent } from './types'
+import { isPlatformEventKeyV2, type NormalizedPlatformEvent } from './types'
 
 export type WebhookValidationCode =
   | 'future_event'
@@ -241,19 +241,19 @@ export const ingestSignedWebhook = async ({
   }
   for (const event of events) {
     assertFreshEvent(event.occurredAt, nowMs, maxEventAgeMs, maxFutureSkewMs)
-    let expectedKey: string
     try {
-      expectedKey = platformEventKey(event.platform, event.externalEventId)
+      if (!isPlatformEventKeyV2(
+        event.platform,
+        event.accountExternalId,
+        event.externalEventId,
+        event.idempotencyKey,
+      )) {
+        throw new Error('Platform event idempotency key is invalid')
+      }
     } catch (error) {
       throw new WebhookValidationError('invalid_payload', 'Webhook event identifiers are invalid', {
         cause: error,
       })
-    }
-    if (event.idempotencyKey !== expectedKey) {
-      throw new WebhookValidationError(
-        'invalid_payload',
-        'Webhook event idempotency key is invalid',
-      )
     }
     try {
       await eventAuthorizer?.(event)

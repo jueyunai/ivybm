@@ -12,6 +12,8 @@ import * as migration_20260720_034519_ai_control_plane from './20260720_034519_a
 import * as migration_20260720_140906_task8_embedding_indexing from './20260720_140906_task8_embedding_indexing'
 import * as migration_20260721_105212_task8_index_owner_recovery from './20260721_105212_task8_index_owner_recovery'
 import * as migration_20260721_150000_task8_ai_usage_logs from './20260721_150000_task8_ai_usage_logs'
+import * as migration_20260725_044748_task13_platform_accounts from './20260725_044748_task13_platform_accounts'
+import * as migration_20260725_051208_task13_tiktok_channel from './20260725_051208_task13_tiktok_channel'
 
 export const migrations = [
   {
@@ -83,5 +85,15 @@ export const migrations = [
     up: migration_20260721_150000_task8_ai_usage_logs.up,
     down: migration_20260721_150000_task8_ai_usage_logs.down,
     name: '20260721_150000_task8_ai_usage_logs',
+  },
+  {
+    up: migration_20260725_044748_task13_platform_accounts.up,
+    down: migration_20260725_044748_task13_platform_accounts.down,
+    name: '20260725_044748_task13_platform_accounts',
+  },
+  {
+    up: migration_20260725_051208_task13_tiktok_channel.up,
+    down: migration_20260725_051208_task13_tiktok_channel.down,
+    name: '20260725_051208_task13_tiktok_channel',
   },
 ]

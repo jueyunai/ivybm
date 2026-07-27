@@ -44,7 +44,7 @@ export const Conversations: CollectionConfig = {
       name: 'channel',
       type: 'select',
       index: true,
-      options: ['website', 'whatsapp', 'facebook', 'instagram'],
+      options: ['website', 'whatsapp', 'facebook', 'instagram', 'tiktok'],
       required: true,
       access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
     },

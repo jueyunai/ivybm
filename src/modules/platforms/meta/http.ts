@@ -4,11 +4,11 @@ import { createFixedWindowRateLimiter, type RateLimiter } from '@/lib/security/r
 import config from '@/payload.config'
 
 import { PayloadPlatformEventRepository } from '../payloadEventRepository'
-import type {
-  PlatformConnector,
-  PlatformEventRepository,
-  WebhookRateLimiter,
-} from '../ports'
+import {
+  PayloadPlatformMessagingAccountAuthorizer,
+  type PlatformMessagingAccountAuthorizer,
+} from '../payloadMessagingAccountAuthorizer'
+import type { PlatformConnector, PlatformEventRepository, WebhookRateLimiter } from '../ports'
 import {
   createMetaWebhookVerifier,
   ingestSignedWebhook,
@@ -28,6 +28,7 @@ const NO_STORE_HEADERS = { 'cache-control': 'no-store' }
 type PayloadProvider = () => Promise<Payload>
 
 export type MetaWebhookHandlerDependencies = {
+  accountAuthorizer?: PlatformMessagingAccountAuthorizer
   allowedAccountExternalIds?: readonly string[]
   appSecret?: string
   connector?: PlatformConnector
@@ -51,10 +52,12 @@ const createWebhookRateLimiter = (limiter: RateLimiter): WebhookRateLimiter => (
   consume: async (key) => limiter.consume(key).allowed,
 })
 
-const defaultRateLimiter = createWebhookRateLimiter(createFixedWindowRateLimiter({
-  limit: META_WEBHOOK_RATE_LIMIT_PER_MINUTE,
-  windowMs: META_WEBHOOK_RATE_LIMIT_RETRY_AFTER_SECONDS * 1_000,
-}))
+const defaultRateLimiter = createWebhookRateLimiter(
+  createFixedWindowRateLimiter({
+    limit: META_WEBHOOK_RATE_LIMIT_PER_MINUTE,
+    windowMs: META_WEBHOOK_RATE_LIMIT_RETRY_AFTER_SECONDS * 1_000,
+  }),
+)
 
 const safeErrorResponse = (code: string, status: number, headers: HeadersInit = {}): Response => {
   const responseHeaders = new Headers({ ...NO_STORE_HEADERS, ...headers })
@@ -70,16 +73,23 @@ const webhookErrorResponse = (error: unknown): Response => {
   }
 
   switch (error.code) {
-    case 'invalid_challenge': return safeErrorResponse(error.code, 403)
-    case 'unauthorized_account': return safeErrorResponse(error.code, 403)
-    case 'invalid_signature': return safeErrorResponse(error.code, 401)
+    case 'invalid_challenge':
+      return safeErrorResponse(error.code, 403)
+    case 'unauthorized_account':
+      return safeErrorResponse(error.code, 403)
+    case 'invalid_signature':
+      return safeErrorResponse(error.code, 401)
     case 'invalid_content_type':
     case 'invalid_payload':
     case 'future_event':
-    case 'stale_event': return safeErrorResponse(error.code, 400)
-    case 'payload_too_large': return safeErrorResponse(error.code, 413)
-    case 'rate_limited': return safeErrorResponse(error.code, 429)
-    case 'idempotency_conflict': return safeErrorResponse(error.code, 409)
+    case 'stale_event':
+      return safeErrorResponse(error.code, 400)
+    case 'payload_too_large':
+      return safeErrorResponse(error.code, 413)
+    case 'rate_limited':
+      return safeErrorResponse(error.code, 429)
+    case 'idempotency_conflict':
+      return safeErrorResponse(error.code, 409)
   }
 }
 
@@ -100,7 +110,10 @@ const readRawBody = async (request: Request, maxBodyBytes: number): Promise<Uint
       byteLength += value.byteLength
       if (byteLength > maxBodyBytes) {
         await reader.cancel().catch(() => undefined)
-        throw new WebhookValidationError('payload_too_large', 'Webhook payload exceeds the size limit')
+        throw new WebhookValidationError(
+          'payload_too_large',
+          'Webhook payload exceeds the size limit',
+        )
       }
       chunks.push(value)
     }
@@ -126,6 +139,7 @@ const configuredValue = (value: string | undefined): string | undefined => {
 }
 
 export const createMetaWebhookHandlers = ({
+  accountAuthorizer,
   allowedAccountExternalIds = process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS?.split(',') ?? [],
   appSecret = process.env.META_WEBHOOK_APP_SECRET,
   connector = createMetaConnector(),
@@ -147,8 +161,41 @@ export const createMetaWebhookHandlers = ({
   const isIngressConfigured = Boolean(isChallengeConfigured && allowedAccounts.size > 0)
 
   const unavailable = (): Response => safeErrorResponse('service_unavailable', 503)
-  const resolveRepository = async (): Promise<PlatformEventRepository> =>
-    repository ?? new PayloadPlatformEventRepository({ payload: await payloadProvider() })
+  const resolveRepository = async (): Promise<PlatformEventRepository> => {
+    let resolvedPayload: Payload | undefined
+    const getResolvedPayload = async (): Promise<Payload> => {
+      resolvedPayload ??= await payloadProvider()
+      return resolvedPayload
+    }
+    const resolvedRepository =
+      repository ?? new PayloadPlatformEventRepository({ payload: await getResolvedPayload() })
+    const resolvedAccountAuthorizer =
+      accountAuthorizer ??
+      new PayloadPlatformMessagingAccountAuthorizer({ payload: await getResolvedPayload() })
+
+    return {
+      async enqueueBatch(events) {
+        const checks = new Map<string, Promise<void>>()
+        try {
+          for (const { event } of events) {
+            const key = `${event.platform}\u0000${event.accountExternalId}`
+            let check = checks.get(key)
+            if (!check) {
+              check = resolvedAccountAuthorizer.assertCanReceive(event)
+              checks.set(key, check)
+            }
+            await check
+          }
+        } catch {
+          throw new WebhookValidationError(
+            'unauthorized_account',
+            'Webhook account is not authorized',
+          )
+        }
+        return resolvedRepository.enqueueBatch(events)
+      },
+    }
+  }
 
   return {
     GET: async (request) => {

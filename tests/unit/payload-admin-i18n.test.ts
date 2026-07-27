@@ -44,6 +44,7 @@ const PROJECT_COLLECTION_SLUGS = new Set([
   'messages',
   'pages',
   'posts',
+  'platform-accounts',
   'product-categories',
   'products',
   'prompt-templates',
