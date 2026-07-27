@@ -7,7 +7,7 @@ import type {
   PersistedPlatformEvent,
   PlatformEventRepository,
 } from './ports'
-import { platformEventKey } from './types'
+import { isPlatformEventKeyV2 } from './types'
 
 const PLATFORM_EVENT_JOB_MAX_ATTEMPTS = 5
 
@@ -17,11 +17,12 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined =>
     : undefined
 
 const assertPersistedEvent = (persisted: PersistedPlatformEvent): void => {
-  const expectedKey = platformEventKey(
+  if (!isPlatformEventKeyV2(
     persisted.event.platform,
+    persisted.event.accountExternalId,
     persisted.event.externalEventId,
-  )
-  if (persisted.event.idempotencyKey !== expectedKey) {
+    persisted.event.idempotencyKey,
+  )) {
     throw new Error('Platform event idempotency key is invalid')
   }
   if (!/^[a-f0-9]{64}$/i.test(persisted.eventDigest) || !/^[a-f0-9]{64}$/i.test(persisted.rawPayloadDigest)) {

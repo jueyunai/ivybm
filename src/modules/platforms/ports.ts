@@ -2,16 +2,12 @@ import type {
   NormalizedInboundMessage,
   NormalizedMessageStatus,
   NormalizedPlatformEvent,
-  PlatformCapability,
   PlatformConversationOutboundRequest,
   PlatformConversationOutboundRecoveryResult,
   PlatformConversationOutboundResult,
   PlatformFamily,
-  PlatformPublicationStatus,
-  PlatformPublishAcceptance,
-  PlatformPublishRequest,
-  PublishingPlatform,
 } from './types'
+import type { PublishingService } from '../publishing/contracts'
 
 export type PersistedPlatformEvent = {
   event: NormalizedPlatformEvent
@@ -64,14 +60,7 @@ export interface PlatformConnector {
   platformFamily: PlatformFamily
 }
 
-export interface PlatformPublishingPort {
-  getCapability(platform: PublishingPlatform): Promise<PlatformCapability>
-  getStatus(input: {
-    externalPublicationId: string
-    platform: PublishingPlatform
-  }): Promise<PlatformPublicationStatus>
-  publish(request: PlatformPublishRequest): Promise<PlatformPublishAcceptance>
-}
+export type PlatformPublishingPort = PublishingService
 
 export interface PlatformConversationOutboundPort {
   /**

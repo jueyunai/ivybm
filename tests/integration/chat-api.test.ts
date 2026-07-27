@@ -194,18 +194,20 @@ describe.sequential('chat HTTP API', () => {
 
   it('accepts only the website channel and rejects an expired server-side visitor credential', async () => {
     const suffix = randomUUID()
-    const unsupported = await startSession(
-      new NextRequest('http://localhost/api/chat/sessions', {
-        body: JSON.stringify({
-          channel: 'facebook',
-          idempotencyKey: `external-${suffix}`,
-          locale: 'en',
+    for (const channel of ['facebook', 'whatsapp'] as const) {
+      const unsupported = await startSession(
+        new NextRequest('http://localhost/api/chat/sessions', {
+          body: JSON.stringify({
+            channel,
+            idempotencyKey: `external-${channel}-${suffix}`,
+            locale: 'en',
+          }),
+          headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.211' },
+          method: 'POST',
         }),
-        headers: { 'content-type': 'application/json', 'x-real-ip': '198.51.100.211' },
-        method: 'POST',
-      }),
-    )
-    expect(unsupported.status).toBe(400)
+      )
+      expect(unsupported.status).toBe(400)
+    }
 
     const idempotencyKey = `expired-${suffix}`
     const started = await startSession(

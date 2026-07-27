@@ -3,6 +3,7 @@ import metaFixture from '../../fixtures/platforms/meta-message.json'
 import { describe, expect, it } from 'vitest'
 
 import { createMetaConnector } from '../../../src/modules/platforms/meta/connector'
+import { platformEventKeyV2 } from '../../../src/modules/platforms/types'
 
 describe('Meta messaging webhook contract', () => {
   const connector = createMetaConnector()
@@ -16,7 +17,11 @@ describe('Meta messaging webhook contract', () => {
           text: 'Please share the available facade finishes.',
         },
         externalEventId: 'm_fixture_meta_1',
-        idempotencyKey: 'facebook-messenger:m_fixture_meta_1',
+        idempotencyKey: platformEventKeyV2(
+          'facebook-messenger',
+          'PAGE_FIXTURE_1',
+          'm_fixture_meta_1',
+        ),
         kind: 'inbound-message',
         occurredAt: '2024-03-09T16:00:00.123Z',
         platform: 'facebook-messenger',
@@ -46,13 +51,49 @@ describe('Meta messaging webhook contract', () => {
           messageType: 'image',
         },
         externalEventId: 'm_fixture_instagram_1',
-        idempotencyKey: 'instagram:m_fixture_instagram_1',
+        idempotencyKey: platformEventKeyV2(
+          'instagram',
+          'IG_ACCOUNT_FIXTURE_1',
+          'm_fixture_instagram_1',
+        ),
         kind: 'inbound-message',
         occurredAt: '2024-03-09T16:01:40.123Z',
         platform: 'instagram',
         recipientExternalId: 'IG_ACCOUNT_FIXTURE_1',
         senderExternalId: 'IG_SENDER_FIXTURE_1',
       },
+    ])
+  })
+
+  it('does not collapse the same provider message ID across two Meta accounts', () => {
+    const sharedMessageID = 'm_fixture_shared_across_accounts'
+    const events = connector.normalize({
+      entry: [
+        {
+          id: 'PAGE_FIXTURE_A',
+          messaging: [{
+            message: { mid: sharedMessageID, text: 'First account message.' },
+            recipient: { id: 'PAGE_FIXTURE_A' },
+            sender: { id: 'SENDER_FIXTURE_A' },
+            timestamp: 1_710_000_000_000,
+          }],
+        },
+        {
+          id: 'PAGE_FIXTURE_B',
+          messaging: [{
+            message: { mid: sharedMessageID, text: 'Second account message.' },
+            recipient: { id: 'PAGE_FIXTURE_B' },
+            sender: { id: 'SENDER_FIXTURE_B' },
+            timestamp: 1_710_000_000_001,
+          }],
+        },
+      ],
+      object: 'page',
+    })
+
+    expect(events.map(({ idempotencyKey }) => idempotencyKey)).toEqual([
+      platformEventKeyV2('facebook-messenger', 'PAGE_FIXTURE_A', sharedMessageID),
+      platformEventKeyV2('facebook-messenger', 'PAGE_FIXTURE_B', sharedMessageID),
     ])
   })
 
@@ -72,18 +113,97 @@ describe('Meta messaging webhook contract', () => {
   })
 
   it('ignores delivery callbacks until a durable message-status adapter is implemented', () => {
-    expect(connector.normalize({
-      object: 'page',
-      entry: [{
-        id: 'PAGE_FIXTURE_1',
-        messaging: [{
-          delivery: { mids: ['outbound-fixture-1'], watermark: 1 },
-          recipient: { id: 'PAGE_FIXTURE_1' },
-          sender: { id: 'SENDER_FIXTURE_1' },
-          timestamp: 1_710_000_000_000,
-        }],
-      }],
-    })).toEqual([])
+    expect(
+      connector.normalize({
+        object: 'page',
+        entry: [
+          {
+            id: 'PAGE_FIXTURE_1',
+            messaging: [
+              {
+                delivery: { mids: ['outbound-fixture-1'], watermark: 1 },
+                recipient: { id: 'PAGE_FIXTURE_1' },
+                sender: { id: 'SENDER_FIXTURE_1' },
+                timestamp: 1_710_000_000_000,
+              },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([])
+  })
+
+  it('acknowledges only explicit delivery/read control callbacks and preserves mixed inbound messages', () => {
+    expect(
+      connector.normalize({
+        object: 'page',
+        entry: [
+          {
+            id: 'PAGE_FIXTURE_1',
+            messaging: [
+              { delivery: { mids: ['outbound-fixture-1'], watermark: 1 } },
+              { read: { watermark: 2 } },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([])
+
+    expect(
+      connector.normalize({
+        object: 'page',
+        entry: [
+          {
+            id: 'PAGE_FIXTURE_1',
+            messaging: [
+              { delivery: { mids: ['outbound-fixture-1'], watermark: 1 } },
+              {
+                message: {
+                  mid: 'mixed-inbound-fixture-1',
+                  text: 'Need exterior cladding details.',
+                },
+                recipient: { id: 'PAGE_FIXTURE_1' },
+                sender: { id: 'SENDER_FIXTURE_1' },
+                timestamp: 1_710_000_000_123,
+              },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        externalEventId: 'mixed-inbound-fixture-1',
+        idempotencyKey: platformEventKeyV2(
+          'facebook-messenger',
+          'PAGE_FIXTURE_1',
+          'mixed-inbound-fixture-1',
+        ),
+      }),
+    ])
+  })
+
+  it('rejects malformed or unsupported messaging envelopes instead of silently acknowledging them', () => {
+    const malformedPayloads: unknown[] = [
+      { object: 'page', entry: [null] },
+      { object: 'page', entry: [{ id: 'PAGE_FIXTURE_1' }] },
+      { object: 'page', entry: [{ id: 'PAGE_FIXTURE_1', messaging: [null] }] },
+      {
+        object: 'page',
+        entry: [{ id: 'PAGE_FIXTURE_1', messaging: [{ message: null }] }],
+      },
+      {
+        object: 'page',
+        entry: [{ id: 'PAGE_FIXTURE_1', messaging: [{ delivery: null }] }],
+      },
+      {
+        object: 'page',
+        entry: [{ id: 'PAGE_FIXTURE_1', messaging: [{ postback: { title: 'Unsupported' } }] }],
+      },
+    ]
+
+    for (const payload of malformedPayloads) {
+      expect(() => connector.normalize(payload)).toThrow()
+    }
   })
 
   it('rejects oversized identifiers and malformed attachments before they enter the durable queue', () => {
@@ -94,7 +214,10 @@ describe('Meta messaging webhook contract', () => {
     )
 
     const malformedAttachment = structuredClone(instagramFixture)
-    const malformedMessage = malformedAttachment.entry[0].messaging[0].message as unknown as Record<string, unknown>
+    const malformedMessage = malformedAttachment.entry[0].messaging[0].message as unknown as Record<
+      string,
+      unknown
+    >
     malformedMessage.attachments = [null]
     delete malformedMessage.text
     expect(() => connector.normalize(malformedAttachment)).toThrow('Meta attachment 0 is invalid')

@@ -30,6 +30,7 @@ import { ProductCategories } from './collections/ProductCategories'
 import { Products } from './collections/Products'
 import { PromptTemplates } from './collections/PromptTemplates'
 import { Projects } from './collections/Projects'
+import { PlatformAccounts } from './collections/PlatformAccounts'
 import { Users } from './collections/Users'
 import { VisitorSessions } from './collections/VisitorSessions'
 import { SiteSettings } from './globals/SiteSettings'
@@ -74,6 +75,7 @@ export default buildConfig({
     KnowledgeDocuments,
     KnowledgeChunks,
     PromptTemplates,
+    PlatformAccounts,
     LeadSources,
     Leads,
     VisitorSessions,

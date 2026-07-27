@@ -61,6 +61,9 @@ media/
 # 文档本地素材（截图、草稿图等，生成物通过 deliverables/ 发布）
 docs/operations/assets/
 
+# 设计稿导出的预览图（生成物，需要时从 .pen 重新导出）
+designs/exports/
+
 # 客户商务与原始材料不进入源码仓库
 private/
 contracts/
