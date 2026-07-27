@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -620,7 +622,8 @@ describe('LinkedIn publishing request builders', () => {
       ...validBinaryUploadInput(),
       bytes,
     })
-    expect(payload.bytes).toBe(bytes)
+    expect(payload.bytes).not.toBe(bytes)
+    expect(payload.bytes).toEqual(bytes)
   })
 
   it('accepts only the JPEG, PNG, and GIF formats documented by LinkedIn', () => {
@@ -663,7 +666,7 @@ describe('LinkedIn publishing request builders', () => {
     }
   })
 
-  it('freezes the binary upload envelope without claiming the typed-array contents are immutable', () => {
+  it('copies binary upload bytes before freezing the transport envelope', () => {
     const bytes = new Uint8Array([0x01, 0x02, 0x03])
     const payload = buildLinkedInImageBinaryUploadPayload({
       ...validBinaryUploadInput(),
@@ -671,8 +674,34 @@ describe('LinkedIn publishing request builders', () => {
       contentType: 'image/jpeg',
     })
     expect(Object.isFrozen(payload)).toBe(true)
+    expect(payload.bytes).not.toBe(bytes)
+    bytes[0] = 0xff
+    expect(payload.bytes).toEqual(new Uint8Array([0x01, 0x02, 0x03]))
     expect(payload.method).toBe('PUT')
     expect(payload.uploadUrlExpiresAt).toBe(binaryUploadNow + 60_000)
+
+    const buffer = Buffer.from([0x04, 0x05, 0x06])
+    const bufferPayload = buildLinkedInImageBinaryUploadPayload({
+      ...validBinaryUploadInput(),
+      bytes: buffer,
+    })
+    expect(Buffer.isBuffer(bufferPayload.bytes)).toBe(false)
+    buffer[0] = 0xff
+    expect(bufferPayload.bytes).toEqual(new Uint8Array([0x04, 0x05, 0x06]))
+
+    class SharedSliceBytes extends Uint8Array {
+      override slice(): Uint8Array {
+        return this
+      }
+    }
+    const subclass = new SharedSliceBytes([0x07, 0x08, 0x09])
+    const subclassPayload = buildLinkedInImageBinaryUploadPayload({
+      ...validBinaryUploadInput(),
+      bytes: subclass,
+    })
+    expect(subclassPayload.bytes).not.toBe(subclass)
+    subclass[0] = 0xff
+    expect(subclassPayload.bytes).toEqual(new Uint8Array([0x07, 0x08, 0x09]))
   })
 
   it('rejects expired or malformed provider upload expiry evidence', () => {

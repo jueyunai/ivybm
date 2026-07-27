@@ -367,7 +367,7 @@ const requireBinaryUploadBytes = (value: unknown): Uint8Array => {
   if (!value.byteLength) {
     throw new Error('LinkedIn image upload bytes must be non-empty')
   }
-  return value
+  return new Uint8Array(value)
 }
 
 const requireUploadExpiry = (value: unknown, nowMilliseconds: unknown): number => {

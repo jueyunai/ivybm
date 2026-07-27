@@ -120,6 +120,15 @@ describe('LinkedIn assisted package', () => {
         text: 'Fixture post',
       }),
     ).toThrow('LinkedIn assisted package file names must be unique')
+    expect(() =>
+      createLinkedInAssistedPackage({
+        assets: [
+          { bytes: new Uint8Array([1]), fileName: 'Panel.jpg', id: 'asset-1', mimeType: 'image/jpeg' },
+          { bytes: new Uint8Array([2]), fileName: 'panel.jpg', id: 'asset-2', mimeType: 'image/jpeg' },
+        ],
+        text: 'Fixture post',
+      }),
+    ).toThrow('LinkedIn assisted package file names must be unique')
   })
 
   it('rejects file names that are unsafe or ambiguous on common customer desktops', () => {

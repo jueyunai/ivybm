@@ -78,6 +78,48 @@ describe('fake platform publishing port', () => {
         platformAccountId: accountB,
       }),
     ).rejects.toThrow('Fake platform publication is not known')
+
+    const referenceAccountA = 'account-a'
+    const referenceAccountB = 'account-a\u0000key-b'
+    const referencePort = createFakePlatformPublishingPort({
+      capabilities: [capability(referenceAccountA), capability(referenceAccountB)],
+    })
+    referencePort.failNextPublish({
+      errorCode: 'delivery_unknown',
+      externalPublicationId: 'key-b\u0000external-c',
+      platform: 'facebook',
+      platformAccountId: referenceAccountA,
+      retryable: false,
+    })
+    const firstReference = await referencePort.publish(
+      request({ idempotencyKey: 'reference-a', platformAccountId: referenceAccountA }),
+    )
+    referencePort.failNextPublish({
+      errorCode: 'delivery_unknown',
+      externalPublicationId: 'external-c',
+      platform: 'facebook',
+      platformAccountId: referenceAccountB,
+      retryable: false,
+    })
+    const secondReference = await referencePort.publish(
+      request({ idempotencyKey: 'reference-b', platformAccountId: referenceAccountB }),
+    )
+    await expect(
+      referencePort.getStatus({
+        externalPublicationId: 'key-b\u0000external-c',
+        idempotencyKey: 'reference-a',
+        platform: 'facebook',
+        platformAccountId: referenceAccountA,
+      }),
+    ).resolves.toEqual(firstReference)
+    await expect(
+      referencePort.getStatus({
+        externalPublicationId: 'external-c',
+        idempotencyKey: 'reference-b',
+        platform: 'facebook',
+        platformAccountId: referenceAccountB,
+      }),
+    ).resolves.toEqual(secondReference)
   })
 
   it('uses collision-free keys when account IDs and command keys contain control characters', async () => {
@@ -215,20 +257,21 @@ describe('fake platform publishing port', () => {
 
   it('normalizes URLs and rejects unsafe or overlong publishing input', async () => {
     const port = connectedPort()
-    await expect(
-      port.publish(
-        request({
-          assets: [
-            {
-              fileName: 'panel.jpg',
-              id: 'asset-1',
-              mimeType: 'IMAGE/JPEG',
-              sourceUrl: 'https://EXAMPLE.invalid:443/media/panel.jpg?token=secret#preview',
-            },
-          ],
-        }),
-      ),
-    ).resolves.toMatchObject({ status: 'accepted' })
+    const accepted = await port.publish(
+      request({
+        assets: [
+          {
+            fileName: 'panel.jpg',
+            id: 'asset-1',
+            mimeType: 'IMAGE/JPEG',
+            sourceUrl: 'https://EXAMPLE.invalid:443/media/panel.jpg?token=secret#preview',
+          },
+        ],
+      }),
+    )
+    expect(accepted).toMatchObject({ status: 'accepted' })
+    expect(JSON.stringify(accepted)).not.toContain('sourceUrl')
+    expect(JSON.stringify(accepted)).not.toContain('token=secret')
     await expect(
       port.publish(
         request({

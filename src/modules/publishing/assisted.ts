@@ -264,12 +264,13 @@ export const createLinkedInAssistedPackage = ({
   const fileNames = new Set<string>()
   const assetEntries = exportData.assets.map((asset, index) => {
     const fileName = safeBaseName(asset.fileName)
-    if (fileNames.has(fileName)) {
+    const fileNameKey = fileName.toUpperCase()
+    if (fileNames.has(fileNameKey)) {
       throw new PublishingContractValidationError(
         'LinkedIn assisted package file names must be unique',
       )
     }
-    fileNames.add(fileName)
+    fileNames.add(fileNameKey)
     const bytes = bytesByID.get(asset.id)
     if (!bytes) {
       throw new PublishingContractValidationError(

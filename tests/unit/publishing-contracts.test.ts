@@ -16,12 +16,12 @@ const request = (overrides: Record<string, unknown> = {}) => ({
 })
 
 describe('publishing public contract validation', () => {
-  it('normalizes safe asset URLs without retaining credentials or temporary query data', () => {
+  it('normalizes safe asset URLs while preserving signed query data for transport', () => {
     expect(
       normalizePublicationSourceURL(
         ' https://EXAMPLE.invalid:443/media/%E9%9D%A2%E6%9D%BF.jpg?token=secret#preview ',
       ),
-    ).toBe('https://example.invalid/media/%E9%9D%A2%E6%9D%BF.jpg')
+    ).toBe('https://example.invalid/media/%E9%9D%A2%E6%9D%BF.jpg?token=secret')
     expect(() => normalizePublicationSourceURL('http://example.invalid/panel.jpg')).toThrow(
       'Publication asset source URL must be HTTPS',
     )
@@ -65,7 +65,7 @@ describe('publishing public contract validation', () => {
           fileName: 'panel.jpg',
           id: 'é',
           mimeType: 'image/jpeg',
-          sourceUrl: 'https://example.invalid/panel.jpg',
+          sourceUrl: 'https://example.invalid/panel.jpg?token=secret',
         },
       ],
       idempotencyKey: 'fixture-1',

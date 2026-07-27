@@ -39,7 +39,7 @@ export type PublicationAsset = {
   mimeType: string
   /** Optional immutable content identity used to detect content replacement under the same ID. */
   sha256?: string
-  /** Ephemeral transport location. Query and fragment are removed and it is never fingerprinted. */
+  /** Ephemeral transport location. Signed query data is preserved; fragments are removed. */
   sourceUrl?: string
 }
 
@@ -285,7 +285,6 @@ export const normalizePublicationSourceURL = (value: unknown): string => {
       throw new PublishingContractValidationError('Publication asset source URL must be HTTPS')
     }
     url.hash = ''
-    url.search = ''
     const normalized = url.toString()
     if (utf8Length(normalized) > MAX_PUBLICATION_SOURCE_URL_BYTES) {
       throw new PublishingContractValidationError('Publication asset source URL is too long')

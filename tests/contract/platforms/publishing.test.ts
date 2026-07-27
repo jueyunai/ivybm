@@ -143,6 +143,59 @@ describe('PublishingService contract', () => {
         platformAccountId: secondFacebookAccount,
       }),
     ).rejects.toThrow('Fake platform publication is not known')
+
+    const referenceAccountA = 'account-a'
+    const referenceAccountB = 'account-a\u0000key-b'
+    const referenceService = createFakePublishingService({
+      capabilities: [
+        capability(referenceAccountA, 'facebook'),
+        capability(referenceAccountB, 'facebook'),
+      ],
+    })
+    referenceService.failNextPublish({
+      errorCode: 'delivery_unknown',
+      externalPublicationId: 'key-b\u0000external-c',
+      platform: 'facebook',
+      platformAccountId: referenceAccountA,
+      retryable: false,
+    })
+    const firstReference = await referenceService.publish(
+      request({ idempotencyKey: 'reference-a', platformAccountId: referenceAccountA }),
+    )
+    referenceService.failNextPublish({
+      errorCode: 'delivery_unknown',
+      externalPublicationId: 'external-c',
+      platform: 'facebook',
+      platformAccountId: referenceAccountB,
+      retryable: false,
+    })
+    const secondReference = await referenceService.publish(
+      request({ idempotencyKey: 'reference-b', platformAccountId: referenceAccountB }),
+    )
+    expect(firstReference).toMatchObject({
+      externalPublicationId: 'key-b\u0000external-c',
+      status: 'delivery_unknown',
+    })
+    expect(secondReference).toMatchObject({
+      externalPublicationId: 'external-c',
+      status: 'delivery_unknown',
+    })
+    await expect(
+      referenceService.getStatus({
+        externalPublicationId: 'key-b\u0000external-c',
+        idempotencyKey: 'reference-a',
+        platform: 'facebook',
+        platformAccountId: referenceAccountA,
+      }),
+    ).resolves.toEqual(firstReference)
+    await expect(
+      referenceService.getStatus({
+        externalPublicationId: 'external-c',
+        idempotencyKey: 'reference-b',
+        platform: 'facebook',
+        platformAccountId: referenceAccountB,
+      }),
+    ).resolves.toEqual(secondReference)
   })
 
   it('keeps control characters from creating cross-account command or status collisions', async () => {
