@@ -11,6 +11,7 @@ import {
   parseInstagramMediaResponse,
   type MetaPublishingHttpRequest,
 } from '../../../src/modules/platforms/meta/publishingRequests'
+import { ProviderPublicationResultUnknownError } from '../../../src/modules/platforms/publishingResult'
 
 /**
  * The builders are required to be pure and credential-free: every request
@@ -427,7 +428,7 @@ describe('Meta publishing response parsers', () => {
     })
   })
 
-  it('rejects path-unsafe or malformed provider identifiers before adapters can reuse them', () => {
+  it('maps path-unsafe or malformed success identifiers to delivery unknown', () => {
     for (const id of [
       '../123',
       '123/456',
@@ -438,13 +439,13 @@ describe('Meta publishing response parsers', () => {
       '9'.repeat(33),
     ]) {
       expect(() => parseFacebookPagePhotoResponse({ id })).toThrow(
-        'Meta Facebook photo response identifier must be a bounded decimal path segment',
+        ProviderPublicationResultUnknownError,
       )
       expect(() => parseInstagramMediaResponse({ id })).toThrow(
-        'Meta Instagram creation response identifier must be a bounded decimal path segment',
+        ProviderPublicationResultUnknownError,
       )
       expect(() => parseInstagramMediaPublishResponse({ id })).toThrow(
-        'Meta Instagram media response identifier must be a bounded decimal path segment',
+        ProviderPublicationResultUnknownError,
       )
     }
 
@@ -459,7 +460,7 @@ describe('Meta publishing response parsers', () => {
       `${'1'.repeat(33)}_1`,
     ]) {
       expect(() => parseFacebookPagePhotoResponse({ post_id })).toThrow(
-        'Meta Facebook post response identifier is invalid',
+        ProviderPublicationResultUnknownError,
       )
     }
   })
@@ -503,13 +504,13 @@ describe('Meta publishing response parsers', () => {
   it('accepts unknown input shapes and rejects malformed provider responses without echoing raw provider text', () => {
     for (const value of [null, undefined, 'string', 42, true, [], ['id'], () => undefined]) {
       expect(() => parseFacebookPagePhotoResponse(value)).toThrow(
-        'Meta Facebook page photo response is invalid',
+        ProviderPublicationResultUnknownError,
       )
       expect(() => parseInstagramMediaResponse(value)).toThrow(
-        'Meta Instagram media response is invalid',
+        ProviderPublicationResultUnknownError,
       )
       expect(() => parseInstagramMediaPublishResponse(value)).toThrow(
-        'Meta Instagram media publish response is invalid',
+        ProviderPublicationResultUnknownError,
       )
       expect(() => parseInstagramContainerStatusResponse(value)).toThrow(
         'Meta Instagram container status response is invalid',
@@ -518,16 +519,16 @@ describe('Meta publishing response parsers', () => {
 
     for (const value of [{}, { id: '' }, { id: '   ' }, { post_id: '' }, { id: null }]) {
       expect(() => parseFacebookPagePhotoResponse(value)).toThrow(
-        'Meta Facebook page photo response requires a photo id or post id',
+        ProviderPublicationResultUnknownError,
       )
     }
 
     for (const value of [{}, { id: '' }, { id: null }, { id: 42 }]) {
       expect(() => parseInstagramMediaResponse(value)).toThrow(
-        'Meta Instagram media response requires a creation id',
+        ProviderPublicationResultUnknownError,
       )
       expect(() => parseInstagramMediaPublishResponse(value)).toThrow(
-        'Meta Instagram media publish response requires an ig media id',
+        ProviderPublicationResultUnknownError,
       )
     }
 
@@ -541,6 +542,9 @@ describe('Meta publishing response parsers', () => {
         expect(caught).toBeInstanceOf(Error)
         expect(containsSensitiveErrorText(caught.message)).toBe(false)
       }
+      expect((facebookError as ProviderPublicationResultUnknownError).code).toBe('delivery_unknown')
+      expect((mediaError as ProviderPublicationResultUnknownError).code).toBe('delivery_unknown')
+      expect((publishError as ProviderPublicationResultUnknownError).code).toBe('delivery_unknown')
     }
   })
 })

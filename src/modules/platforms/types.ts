@@ -1,35 +1,55 @@
 import { createHash } from 'node:crypto'
 
+import type { PublicationAsset } from '../publishing/contracts'
+
+export {
+  MAX_PUBLICATION_ASSETS,
+  MAX_PUBLICATION_ASSET_ID_BYTES,
+  MAX_PUBLICATION_FILE_NAME_BYTES,
+  MAX_PUBLICATION_IDEMPOTENCY_KEY_BYTES,
+  MAX_PUBLICATION_MIME_TYPE_BYTES,
+  MAX_PUBLICATION_SOURCE_URL_BYTES,
+  MAX_PUBLICATION_TEXT_CODE_POINTS,
+  MAX_PUBLICATION_TEXT_UTF8_BYTES,
+  MAX_PLATFORM_ACCOUNT_ID_BYTES,
+  PLATFORM_PUBLISH_ERROR_CODES,
+  PUBLISHING_PLATFORMS,
+  PublishingContractValidationError,
+  normalizePlatformAccountId,
+  normalizePlatformCapabilityQuery,
+  normalizePlatformPublicationStatusLookup,
+  normalizePlatformPublishRequest,
+  normalizePublicationAsset,
+  normalizePublicationAssets,
+  normalizePublicationIdempotencyKey,
+  normalizePublicationSourceURL,
+  normalizePublicationText,
+  normalizePublishingPlatform,
+} from '../publishing/contracts'
+export type {
+  AcceptedPlatformPublication,
+  BlockedPlatformPublication,
+  ConfirmedPlatformPublishErrorCode,
+  DeliveryUnknownPlatformPublication,
+  FailedPlatformPublication,
+  PlatformAccountId,
+  PlatformAvailability,
+  PlatformCapability,
+  PlatformCapabilityQuery,
+  PlatformPublicationStatus,
+  PlatformPublicationStatusLookup,
+  PlatformPublishAcceptance,
+  PlatformPublishErrorCode,
+  PlatformPublishRequest,
+  PublicationAsset,
+  PublishingMode,
+  PublishingPlatform,
+  PublishingService,
+} from '../publishing/contracts'
+
 export type PlatformFamily = 'linkedin' | 'meta' | 'tiktok'
 
 export type MessagingPlatform = 'facebook-messenger' | 'instagram' | 'tiktok'
-
-export type PublishingPlatform = 'facebook' | 'instagram' | 'linkedin'
-
-export type PlatformAvailability = 'available' | 'blocked' | 'conditional'
-
-export type PublishingMode = 'assisted' | 'automatic'
-
-/**
- * Stable, credential-free error taxonomy consumed by the Task 12 publishing UI.
- * Provider-specific response bodies stay inside the later platform adapter.
- */
-export const PLATFORM_PUBLISH_ERROR_CODES = [
-  'account_not_connected',
-  'authorization_required',
-  'invalid_request',
-  'permission_required',
-  'platform_blocked',
-  'provider_unavailable',
-  'rate_limited',
-  'unknown',
-] as const
-
-// `unknown` means the provider may already have accepted the request. Until a
-// real adapter proves provider idempotency or lookup evidence, it must be
-// surfaced as non-retryable for manual reconciliation.
-
-export type PlatformPublishErrorCode = (typeof PLATFORM_PUBLISH_ERROR_CODES)[number]
 
 export type NormalizedAttachment = {
   caption?: string
@@ -73,69 +93,10 @@ export type NormalizedMessageStatus = NormalizedEventBase & {
 
 export type NormalizedPlatformEvent = NormalizedInboundMessage | NormalizedMessageStatus
 
-export type PublicationAsset = {
-  fileName: string
-  id: string
-  mimeType: string
-  sourceUrl?: string
-}
-
-export type PlatformCapability = {
-  availability: PlatformAvailability
-  modes: PublishingMode[]
-  platform: PublishingPlatform
-  reason?: string
-}
-
-export type PlatformPublishRequest = {
-  assets: PublicationAsset[]
-  /** Stable caller command key. Idempotency is scoped to one target platform. */
-  idempotencyKey: string
-  platform: PublishingPlatform
-  scheduledFor?: string
-  text: string
-}
-
-export type PlatformPublishAcceptance =
-  | {
-      /**
-       * Stable adapter-issued correlation handle (normally a provider publication
-       * or asynchronous job ID) that can be passed back to `getStatus`. This is
-       * never a Task 12 persistence primary key.
-       */
-      externalPublicationId: string
-      idempotencyKey: string
-      platform: PublishingPlatform
-      status: 'accepted'
-    }
-  | {
-      errorCode: PlatformPublishErrorCode
-      idempotencyKey: string
-      platform: PublishingPlatform
-      retryable: boolean
-      status: 'blocked'
-    }
-
-type PlatformPublicationStatusBase = {
-  /** The same adapter-issued handle supplied to `getStatus`. */
-  externalPublicationId: string
-  platform: PublishingPlatform
-}
-
-export type PlatformPublicationStatus =
-  | (PlatformPublicationStatusBase & {
-      errorCode: PlatformPublishErrorCode
-      retryable: boolean
-      status: 'failed'
-    })
-  | (PlatformPublicationStatusBase & {
-      errorCode?: never
-      retryable?: never
-      status: 'pending' | 'published' | 'publishing'
-    })
+export type AssistedPublicationAsset = Omit<PublicationAsset, 'sourceUrl'>
 
 export type AssistedPublicationExport = {
-  assets: PublicationAsset[]
+  assets: AssistedPublicationAsset[]
   checklist: string[]
   copyText: string
   mode: 'assisted'

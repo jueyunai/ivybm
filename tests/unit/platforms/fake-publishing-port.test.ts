@@ -1,397 +1,323 @@
 import { describe, expect, it } from 'vitest'
 
-import { createFakePlatformPublishingPort } from '../../../src/modules/platforms/fakePublishingPort'
+import {
+  createFakePlatformPublishingPort,
+  type FakePlatformPublishingPortOptions,
+} from '@/modules/platforms/fakePublishingPort'
 import type {
   PlatformCapability,
-  PlatformPublishAcceptance,
   PlatformPublishRequest,
-} from '../../../src/modules/platforms/types'
+} from '@/modules/publishing/contracts'
 
-const facebookRequest = (
+const accountA = 101
+const accountB = 102
+
+const capability = (
+  platformAccountId: number,
+  availability: PlatformCapability['availability'] = 'available',
+): PlatformCapability => ({
+  availability,
+  modes: ['automatic'],
+  platform: 'facebook',
+  platformAccountId,
+})
+
+const request = (
   overrides: Partial<PlatformPublishRequest> = {},
 ): PlatformPublishRequest => ({
   assets: [],
   idempotencyKey: 'fixture-facebook-1',
   platform: 'facebook',
+  platformAccountId: accountA,
   text: 'Fixture post',
   ...overrides,
 })
 
-const accepted = (
-  value: PlatformPublishAcceptance,
-): Extract<PlatformPublishAcceptance, { status: 'accepted' }> => {
-  if (value.status !== 'accepted') throw new Error('Expected fake publish acceptance')
-  return value
-}
-
-const createConnectedPort = () =>
+const connectedPort = (options: FakePlatformPublishingPortOptions = {}) =>
   createFakePlatformPublishingPort({
-    capabilities: {
-      facebook: { availability: 'available', modes: ['automatic'], platform: 'facebook' },
-      instagram: { availability: 'available', modes: ['automatic'], platform: 'instagram' },
-    },
+    capabilities: [capability(accountA), capability(accountB), ...(options.capabilities ?? [])],
   })
 
 describe('fake platform publishing port', () => {
-  it('exposes conditional capability without claiming a real platform is available', async () => {
-    const port = createFakePlatformPublishingPort()
+  it('keeps capabilities account-scoped and returns defensive copies', async () => {
+    const port = createFakePlatformPublishingPort({
+      capabilities: [capability(accountA), capability(accountB, 'blocked')],
+    })
+    const first = await port.getCapability({ platform: 'facebook', platformAccountId: accountA })
+    first.modes.push('assisted')
 
-    await expect(port.getCapability('facebook')).resolves.toEqual({
-      availability: 'conditional',
-      modes: ['automatic'],
-      platform: 'facebook',
-      reason: 'Meta Content Publishing permission requires controlled verification',
-    })
-    await expect(port.getCapability('instagram')).resolves.toEqual({
-      availability: 'conditional',
-      modes: ['automatic'],
-      platform: 'instagram',
-      reason: 'Instagram business account and publishing permission require verification',
-    })
-    await expect(port.getCapability('linkedin')).resolves.toEqual({
-      availability: 'conditional',
-      modes: ['assisted'],
-      platform: 'linkedin',
-      reason: 'Automatic publishing remains blocked until API permission is verified',
-    })
-    await expect(port.publish(facebookRequest({ platform: 'linkedin' }))).resolves.toEqual({
-      errorCode: 'platform_blocked',
-      idempotencyKey: 'fixture-facebook-1',
-      platform: 'linkedin',
-      retryable: false,
-      status: 'blocked',
-    })
-  })
-
-  it('fails closed for every default no-account capability', async () => {
-    const port = createFakePlatformPublishingPort()
-
-    await expect(port.publish(facebookRequest())).resolves.toEqual({
-      errorCode: 'account_not_connected',
-      idempotencyKey: 'fixture-facebook-1',
-      platform: 'facebook',
-      retryable: false,
-      status: 'blocked',
-    })
-    await expect(port.publish(facebookRequest({ platform: 'instagram' }))).resolves.toEqual({
-      errorCode: 'account_not_connected',
-      idempotencyKey: 'fixture-facebook-1',
-      platform: 'instagram',
-      retryable: false,
-      status: 'blocked',
-    })
-    await expect(port.publish(facebookRequest({ platform: 'linkedin' }))).resolves.toEqual({
-      errorCode: 'platform_blocked',
-      idempotencyKey: 'fixture-facebook-1',
-      platform: 'linkedin',
-      retryable: false,
-      status: 'blocked',
-    })
-  })
-
-  it('isolates capability overrides and returned capabilities from caller mutation', async () => {
-    const override: PlatformCapability = {
-      availability: 'conditional',
-      modes: ['automatic'],
-      platform: 'facebook',
-    }
-    const port = createFakePlatformPublishingPort({ capabilities: { facebook: override } })
-
-    override.modes[0] = 'assisted'
-    const firstRead = await port.getCapability('facebook')
-    firstRead.modes[0] = 'assisted'
-
-    await expect(port.getCapability('facebook')).resolves.toEqual({
-      availability: 'conditional',
-      modes: ['automatic'],
-      platform: 'facebook',
-    })
-  })
-
-  it('keeps concurrent duplicate commands stable and isolates platforms', async () => {
-    const port = createConnectedPort()
-    const request = facebookRequest()
-
-    const [first, duplicate] = await Promise.all([port.publish(request), port.publish(request)])
-    expect(accepted(first)).toEqual({
-      externalPublicationId: 'mock:facebook:fixture-facebook-1',
-      idempotencyKey: 'fixture-facebook-1',
-      platform: 'facebook',
-      status: 'accepted',
-    })
-    expect(duplicate).toEqual(first)
-
-    await expect(port.publish({ ...request, text: 'Changed fixture post' })).resolves.toEqual({
-      errorCode: 'invalid_request',
-      idempotencyKey: 'fixture-facebook-1',
-      platform: 'facebook',
-      retryable: false,
-      status: 'blocked',
-    })
     await expect(
-      port.publish({
-        ...request,
-        assets: [{ fileName: 'changed.jpg', id: 'asset-1', mimeType: 'image/jpeg' }],
+      port.getCapability({ platform: 'facebook', platformAccountId: accountA }),
+    ).resolves.toEqual(capability(accountA))
+    await expect(
+      port.getCapability({ platform: 'facebook', platformAccountId: accountB }),
+    ).resolves.toEqual(capability(accountB, 'blocked'))
+    await expect(
+      port.getCapability({ platform: 'instagram', platformAccountId: accountA }),
+    ).resolves.toMatchObject({
+      availability: 'conditional',
+      platform: 'instagram',
+      platformAccountId: accountA,
+    })
+  })
+
+  it('isolates same-platform commands and references by platform account', async () => {
+    const port = connectedPort()
+    const first = await port.publish(request())
+    const second = await port.publish(request({ platformAccountId: accountB }))
+    expect(first).toMatchObject({ platformAccountId: accountA, status: 'accepted' })
+    expect(second).toMatchObject({ platformAccountId: accountB, status: 'accepted' })
+    expect(second).not.toEqual(first)
+
+    if (first.status !== 'accepted') throw new Error('Expected accepted publication')
+    await expect(
+      port.getStatus({
+        externalPublicationId: first.externalPublicationId,
+        idempotencyKey: first.idempotencyKey,
+        platform: first.platform,
+        platformAccountId: accountB,
       }),
-    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
-    await expect(
-      port.publish({ ...request, scheduledFor: '2026-08-01T00:00:00.000Z' }),
-    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
+    ).rejects.toThrow('Fake platform publication is not known')
+  })
 
-    await expect(port.publish({ ...request, platform: 'instagram' })).resolves.toEqual({
-      externalPublicationId: 'mock:instagram:fixture-facebook-1',
-      idempotencyKey: 'fixture-facebook-1',
-      platform: 'instagram',
-      status: 'accepted',
-    })
-
-    const canonicalRequest = facebookRequest({
+  it('uses stable asset identity rather than temporary source URLs in the command fingerprint', async () => {
+    const port = connectedPort()
+    const firstRequest = request({
       assets: [
         {
           fileName: 'panel.jpg',
           id: 'asset-1',
           mimeType: 'image/jpeg',
-          sourceUrl: undefined,
+          sha256: 'a'.repeat(64),
+          sourceUrl: 'https://EXAMPLE.invalid:443/media/panel.jpg?token=first#preview',
         },
       ],
-      idempotencyKey: 'canonical-assets-1',
     })
-    const canonicalAcceptance = await port.publish(canonicalRequest)
+    const first = await port.publish(firstRequest)
+
     await expect(
       port.publish({
-        ...canonicalRequest,
-        assets: [{ id: 'asset-1', mimeType: 'image/jpeg', fileName: 'panel.jpg' }],
+        ...firstRequest,
+        assets: [
+          {
+            ...firstRequest.assets[0],
+            fileName: 'renamed-panel.jpg',
+            sourceUrl: 'https://example.invalid/media/panel.jpg?token=second',
+          },
+        ],
       }),
-    ).resolves.toEqual(canonicalAcceptance)
-  })
-
-  it('advances a known publication without terminal state regression', async () => {
-    const port = createConnectedPort()
-    const result = accepted(await port.publish(facebookRequest()))
-    const reference = {
-      externalPublicationId: result.externalPublicationId,
-      platform: result.platform,
-    } as const
-
-    await expect(port.getStatus(reference)).resolves.toEqual({ ...reference, status: 'pending' })
-    port.setStatus({ ...reference, status: 'publishing' })
-    await expect(port.getStatus(reference)).resolves.toEqual({ ...reference, status: 'publishing' })
-    port.setStatus({ ...reference, status: 'published' })
-    await expect(port.getStatus(reference)).resolves.toEqual({ ...reference, status: 'published' })
-    expect(() => port.setStatus({ ...reference, status: 'pending' })).toThrow(
-      'Fake platform publication cannot transition from published to pending',
-    )
-  })
-
-  it('models a retryable provider failure without creating a publication reference', async () => {
-    const port = createConnectedPort()
-    port.failNextPublish({
-      errorCode: 'provider_unavailable',
-      platform: 'facebook',
-      retryable: true,
-    })
-
+    ).resolves.toEqual(first)
     await expect(
-      port.publish(facebookRequest({ idempotencyKey: 'provider-failure-1' })),
-    ).resolves.toEqual({
-      errorCode: 'provider_unavailable',
-      idempotencyKey: 'provider-failure-1',
-      platform: 'facebook',
-      retryable: true,
-      status: 'blocked',
-    })
-    await expect(
-      port.getStatus({
-        externalPublicationId: 'mock:facebook:provider-failure-1',
-        platform: 'facebook',
+      port.publish({
+        ...firstRequest,
+        assets: [{ ...firstRequest.assets[0], sha256: 'b'.repeat(64) }],
       }),
-    ).rejects.toThrow('Fake platform publication is not known')
-  })
+    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
 
-  it('never models an unknown external result as blindly retryable', async () => {
-    const port = createConnectedPort()
-
-    expect(() =>
-      port.failNextPublish({
-        errorCode: 'unknown',
-        platform: 'facebook',
-        retryable: true,
+    const withoutDigest = request({
+      idempotencyKey: 'asset-without-digest-1',
+      assets: [
+        {
+          fileName: 'panel.jpg',
+          id: 'stable-asset-2',
+          mimeType: 'image/jpeg',
+          sourceUrl: 'https://example.invalid/temporary/first.jpg?token=first',
+        },
+      ],
+    })
+    const acceptedWithoutDigest = await port.publish(withoutDigest)
+    await expect(
+      port.publish({
+        ...withoutDigest,
+        assets: [
+          {
+            ...withoutDigest.assets[0],
+            sourceUrl: 'https://example.invalid/temporary/second.jpg?token=second',
+          },
+        ],
       }),
-    ).toThrow('Fake unknown publish failure cannot be retryable')
-
-    port.failNextPublish({
-      errorCode: 'unknown',
-      platform: 'facebook',
-      retryable: false,
-    })
-    await expect(
-      port.publish(facebookRequest({ idempotencyKey: 'unknown-result-1' })),
-    ).resolves.toEqual({
-      errorCode: 'unknown',
-      idempotencyKey: 'unknown-result-1',
-      platform: 'facebook',
-      retryable: false,
-      status: 'blocked',
-    })
+    ).resolves.toEqual(acceptedWithoutDigest)
   })
 
-  it('does not consume a queued provider failure for an already accepted duplicate command', async () => {
-    const port = createConnectedPort()
-    const firstRequest = facebookRequest({ idempotencyKey: 'failure-queue-duplicate-1' })
-    const first = accepted(await port.publish(firstRequest))
-
-    port.failNextPublish({
-      errorCode: 'provider_unavailable',
-      platform: 'facebook',
-      retryable: true,
-    })
-
-    await expect(port.publish(firstRequest)).resolves.toEqual(first)
+  it('normalizes URLs and rejects unsafe or overlong publishing input', async () => {
+    const port = connectedPort()
     await expect(
-      port.publish(facebookRequest({ idempotencyKey: 'failure-queue-next-1' })),
-    ).resolves.toEqual({
-      errorCode: 'provider_unavailable',
-      idempotencyKey: 'failure-queue-next-1',
-      platform: 'facebook',
-      retryable: true,
-      status: 'blocked',
-    })
-  })
-
-  it('fails closed for an empty command key or empty reviewed copy', async () => {
-    const port = createFakePlatformPublishingPort()
-
-    await expect(port.publish(facebookRequest({ idempotencyKey: '   ' }))).resolves.toEqual({
+      port.publish(
+        request({
+          assets: [
+            {
+              fileName: 'panel.jpg',
+              id: 'asset-1',
+              mimeType: 'IMAGE/JPEG',
+              sourceUrl: 'https://EXAMPLE.invalid:443/media/panel.jpg?token=secret#preview',
+            },
+          ],
+        }),
+      ),
+    ).resolves.toMatchObject({ status: 'accepted' })
+    await expect(
+      port.publish(
+        request({
+          idempotencyKey: 'unsafe-url-1',
+          assets: [
+            {
+              fileName: 'panel.jpg',
+              id: 'asset-1',
+              mimeType: 'image/jpeg',
+              sourceUrl: 'https://user:password@example.invalid/panel.jpg',
+            },
+          ],
+        }),
+      ),
+    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
+    await expect(
+      port.publish(
+        request({
+          idempotencyKey: 'long-url-1',
+          assets: [
+            {
+              fileName: 'panel.jpg',
+              id: 'asset-1',
+              mimeType: 'image/jpeg',
+              sourceUrl: `https://example.invalid/${'a'.repeat(2_100)}`,
+            },
+          ],
+        }),
+      ),
+    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
+    await expect(port.publish(request({ idempotencyKey: ' spaced ' }))).resolves.toMatchObject({
       errorCode: 'invalid_request',
-      idempotencyKey: '   ',
-      platform: 'facebook',
-      retryable: false,
       status: 'blocked',
     })
-    await expect(port.publish(facebookRequest({ text: '   ' }))).resolves.toEqual({
-      errorCode: 'invalid_request',
+  })
+
+  it('scopes provider failure injection to one platform account', async () => {
+    const port = connectedPort()
+    port.failNextPublish({
+      errorCode: 'provider_unavailable',
+      platform: 'facebook',
+      platformAccountId: accountA,
+      retryable: true,
+    })
+
+    await expect(port.publish(request())).resolves.toEqual({
+      errorCode: 'provider_unavailable',
       idempotencyKey: 'fixture-facebook-1',
       platform: 'facebook',
-      retryable: false,
+      platformAccountId: accountA,
+      retryable: true,
       status: 'blocked',
     })
+    await expect(port.publish(request({ platformAccountId: accountB }))).resolves.toMatchObject({
+      platformAccountId: accountB,
+      status: 'accepted',
+    })
+    expect(
+      port.getPublishAttemptCount({ platform: 'facebook', platformAccountId: accountA }),
+    ).toBe(1)
+    expect(
+      port.getPublishAttemptCount({ platform: 'facebook', platformAccountId: accountB }),
+    ).toBe(1)
   })
 
-  it('rejects malformed runtime input and unknown publishing platforms predictably', async () => {
-    const port = createFakePlatformPublishingPort()
-
-    await expect(port.getCapability('tiktok' as never)).rejects.toThrow(
-      'Fake publishing platform is unsupported',
-    )
-    await expect(
-      port.publish({ ...facebookRequest(), platform: 'tiktok' as never }),
-    ).rejects.toThrow('Fake publishing platform is unsupported')
+  it('does not resend delivery-unknown commands and supports evidence-based recovery', async () => {
+    const port = connectedPort()
+    const command = request({ idempotencyKey: 'unknown-1' })
     expect(() =>
       port.failNextPublish({
-        errorCode: 'provider_unavailable',
-        platform: 'tiktok' as never,
+        errorCode: 'delivery_unknown',
+        platform: command.platform,
+        platformAccountId: command.platformAccountId,
         retryable: true,
       }),
-    ).toThrow('Fake publishing platform is unsupported')
-    expect(() =>
-      createFakePlatformPublishingPort({
-        capabilities: {
-          facebook: {
-            availability: 'conditional',
-            modes: null,
-            platform: 'facebook',
-          },
-        } as never,
-      }),
-    ).toThrow('Fake platform capability requires valid modes')
-    expect(() =>
-      createFakePlatformPublishingPort({ capabilities: { facebook: null } as never }),
-    ).toThrow('Fake platform capability must be an object')
-    await expect(
-      port.publish({
-        ...facebookRequest(),
-        idempotencyKey: null,
-      } as unknown as PlatformPublishRequest),
-    ).rejects.toThrow('Fake publish request has invalid fields')
-    await expect(
-      port.publish({ ...facebookRequest(), assets: [1n] } as unknown as PlatformPublishRequest),
-    ).rejects.toThrow('Fake publication asset must be an object')
-    await expect(port.publish(null as never)).rejects.toThrow(
-      'Fake publish request must be an object',
-    )
-    expect(() => port.failNextPublish(null as never)).toThrow(
-      'Fake publish failure must be an object',
-    )
-    await expect(port.getStatus(null as never)).rejects.toThrow(
-      'Fake publication reference must be an object',
-    )
-    expect(() => port.setStatus(null as never)).toThrow('Fake publication status must be an object')
-  })
-
-  it('allows immediate completion but keeps a failed terminal outcome immutable', async () => {
-    const port = createConnectedPort()
-    const immediatelyPublished = accepted(
-      await port.publish(facebookRequest({ idempotencyKey: 'immediate-publish-1' })),
-    )
-    const immediateReference = {
-      externalPublicationId: immediatelyPublished.externalPublicationId,
-      platform: immediatelyPublished.platform,
-    } as const
-    port.setStatus({ ...immediateReference, status: 'published' })
-    await expect(port.getStatus(immediateReference)).resolves.toEqual({
-      ...immediateReference,
-      status: 'published',
+    ).toThrow('Fake delivery-unknown result cannot be retryable')
+    port.failNextPublish({
+      errorCode: 'delivery_unknown',
+      platform: command.platform,
+      platformAccountId: command.platformAccountId,
+      retryable: false,
     })
 
-    const failed = accepted(
-      await port.publish(facebookRequest({ idempotencyKey: 'terminal-failure-1' })),
-    )
-    const failedReference = {
-      externalPublicationId: failed.externalPublicationId,
-      platform: failed.platform,
-    } as const
+    const unknown = await port.publish(command)
+    await expect(port.publish(command)).resolves.toEqual(unknown)
+    expect(
+      port.getPublishAttemptCount({
+        platform: command.platform,
+        platformAccountId: command.platformAccountId,
+      }),
+    ).toBe(1)
+    port.setStatus({
+      externalPublicationId: 'provider-recovered-1',
+      idempotencyKey: command.idempotencyKey,
+      platform: command.platform,
+      platformAccountId: command.platformAccountId,
+      status: 'pending',
+    })
+    await expect(port.publish(command)).resolves.toEqual({
+      externalPublicationId: 'provider-recovered-1',
+      idempotencyKey: command.idempotencyKey,
+      platform: command.platform,
+      platformAccountId: command.platformAccountId,
+      status: 'accepted',
+    })
+  })
+
+  it('keeps terminal failed metadata immutable and never returns stale accepted', async () => {
+    const port = connectedPort()
+    const command = request({ idempotencyKey: 'terminal-failure-1' })
+    const accepted = await port.publish(command)
+    if (accepted.status !== 'accepted') throw new Error('Expected accepted publication')
     const failure = {
       errorCode: 'rate_limited' as const,
-      ...failedReference,
+      externalPublicationId: accepted.externalPublicationId,
+      idempotencyKey: accepted.idempotencyKey,
+      platform: accepted.platform,
+      platformAccountId: accepted.platformAccountId,
       retryable: true,
       status: 'failed' as const,
     }
     port.setStatus(failure)
+
+    await expect(port.publish(command)).resolves.toEqual(failure)
     expect(() => port.setStatus(failure)).not.toThrow()
     expect(() => port.setStatus({ ...failure, errorCode: 'provider_unavailable' })).toThrow(
       'Fake platform publication cannot replace failed failure metadata',
     )
-    expect(() => port.setStatus({ ...failedReference, status: 'published' })).toThrow(
-      'Fake platform publication cannot transition from failed to published',
-    )
+    expect(() =>
+      port.setStatus({
+        externalPublicationId: accepted.externalPublicationId,
+        idempotencyKey: accepted.idempotencyKey,
+        platform: accepted.platform,
+        platformAccountId: accepted.platformAccountId,
+        status: 'published',
+      }),
+    ).toThrow('Fake platform publication cannot transition from failed to published')
   })
 
-  it('rejects unknown references, platform mismatches, and malformed failure states', async () => {
-    const port = createConnectedPort()
-    const result = accepted(await port.publish(facebookRequest()))
+  it('rejects malformed runtime inputs and duplicate capability overrides', async () => {
+    expect(() =>
+      createFakePlatformPublishingPort({
+        capabilities: [capability(accountA), capability(accountA)],
+      }),
+    ).toThrow('Fake platform capability overrides must be unique per account')
+    expect(() =>
+      createFakePlatformPublishingPort({ capabilities: {} } as never),
+    ).toThrow('Fake platform capability overrides must be an array')
 
+    const port = connectedPort()
+    await expect(port.getCapability({ platform: 'tiktok' as never, platformAccountId: accountA }))
+      .rejects.toThrow('Publishing platform is unsupported')
+    await expect(port.publish(null as never)).rejects.toThrow('Fake publish request must be an object')
+    await expect(
+      port.publish({ ...request(), platformAccountId: null } as never),
+    ).rejects.toThrow('Platform account ID is invalid')
     await expect(
       port.getStatus({
-        externalPublicationId: result.externalPublicationId,
-        platform: 'instagram',
+        idempotencyKey: 'missing-1',
+        platform: 'facebook',
+        platformAccountId: accountA,
       }),
     ).rejects.toThrow('Fake platform publication is not known')
-    expect(() =>
-      port.setStatus({
-        errorCode: 'rate_limited',
-        externalPublicationId: result.externalPublicationId,
-        platform: 'facebook',
-        status: 'failed',
-      } as never),
-    ).toThrow('Fake failed publication requires retryable')
-    expect(() =>
-      port.setStatus({
-        errorCode: 'unknown',
-        externalPublicationId: result.externalPublicationId,
-        platform: 'facebook',
-        retryable: true,
-        status: 'failed',
-      }),
-    ).toThrow('Fake unknown publication outcome cannot be retryable')
+    expect(() => port.setStatus(null as never)).toThrow('Fake publication status must be an object')
   })
 })

@@ -1,6 +1,6 @@
 # 一期平台接入 PoC 记录
 
-更新日期：2026-07-26
+更新日期：2026-07-27
 
 > 范围冻结（2026-07-20）：一期会话接入为 Facebook Messenger、Instagram DM、TikTok 私信；一期图文发布为 Facebook、Instagram、LinkedIn。WhatsApp 移出一期，二期再评估网页插件等替代接入；LinkedIn 私信不属于一期自动会话范围。
 >
@@ -25,8 +25,8 @@ fixture / mock 通过只表示接口契约完成。只有在 production 受控�
 | Instagram DM 入站消息         | `conditional` | Meta connector、合成 fixture、raw HMAC / 时间窗 / 幂等、Jobs inbox、worker、Task 9 adapter、平台账号 readiness，以及 Webhook / worker 双重账号授权的 fake / PostgreSQL 测试                                                                          | Instagram 企业 / 商业账号、Facebook Page 绑定、Meta App 权限 / App Review、受控真实环境     |
 | TikTok 私信入站消息           | `blocked`     | 可安全记录商业账号/授权状态和缺口；内部 `tiktok` 会话 channel、Job dispatch 与幂等入库已验证，migration down 会拒绝仍可处理或人工重试的 TikTok Jobs；默认 worker fail-closed，只有未来经代码 review 的官方 connector 才能显式启用；未交付 raw connector、Webhook route 或猜测性 fixture 契约测试 | TikTok 商业账号、目标地区官方私信 API、官方事件 schema、应用授权 / 审核、受控真实环境       |
 | 社媒会话 AI 出站回复          | `blocked`     | 入站 adapter 在没有出站授权时会持久人工接管，避免伪造已发送 AI 回复；出站 contract / fake 由 ADR-0003 约束，尚未形成真实 adapter                                                                                                                      | 对应账号 / 权限 / 消息窗口、持久 Job handler、平台 adapter、受控真实入站与出站验证          |
-| Facebook / Instagram 图文发布 | `conditional` | 平台账号预检 + Task 13 capability / publish / status port；未交付发布 adapter，`PublishJobs` / `PublishLogs` 尚待 Task 12                                                                                                                             | Task 12 发布结构、Meta Page / Instagram Content Publishing 权限、App Review、受控真实环境   |
-| LinkedIn 图文发布             | `conditional` | 平台账号预检、确定性文案、素材 manifest、调用方提供已授权素材字节时的离线 ZIP package 与人工发布步骤；自动发布 adapter 尚未交付                                                                                                                       | Task 12 内容契约；甲方 LinkedIn 账号及应用发布权限证据；有权限后再做自动发布 adapter        |
+| Facebook / Instagram 图文发布 | `conditional` | 平台账号预检 + Task 13 账号级 `PublishingService` capability / publish / status contract 与 fake；未交付发布 adapter，`PublishJobs` / `PublishLogs` 尚待 Task 12                                                                                       | Task 12 发布结构、Meta Page / Instagram Content Publishing 权限、App Review、受控真实环境   |
+| LinkedIn 图文发布             | `conditional` | 平台账号预检、账号级发布 contract / fake、确定性文案、无原始 `sourceUrl` 的素材 manifest、调用方提供已授权素材字节时的离线 ZIP package 与人工发布步骤；自动发布 adapter 尚未交付                                                                     | Task 12 内容契约；甲方 LinkedIn 账号及应用发布权限证据；有权限后再做自动发布 adapter        |
 | WhatsApp 系统接入             | `phase-2`     | 不在一期开发或验收范围                                                                                                                                                                                                                                | 二期再评估网页插件等替代接入、成本、合规与账号资产                                          |
 
 ## 接口 / 纯逻辑阶段证据
@@ -40,8 +40,10 @@ fixture / mock 通过只表示接口契约完成。只有在 production 受控�
 - 社媒入站当前在没有外发账号 / adapter 时会明确转人工，不产生未投递的 AI 回复记录。后续出站 port / fake 必须遵循 [ADR-0003](../architecture/adr/0003-social-conversation-outbound-delivery.md)：`ConversationService` 创建稳定内部回复身份和 `deliveryKey`，delivery intent / outbox 持有业务状态，真实发送必须通过持久 Job 且在入队和执行前检查人工接管状态。
 - 附件不下载、不访问网络；外部附件 URL 只保留 HTTPS origin/path，查询参数、fragment 和 userinfo 一律不进入 Job payload，避免短期签名或 token 被持久化。
 - Meta delivery/read callback 当前明确忽略，不进入 Jobs；`message-status` 仅保留未来 adapter 的内部类型，未被标记为已实现的状态回调能力。
-- 发布侧只冻结 Facebook / Instagram / LinkedIn capability、publish、status 接口；默认 `conditional` fake 不会假装 accepted，只有显式测试 override 的 `available` 状态才模拟成功。LinkedIn assisted export 可在调用方提供已授权素材字节时生成内存中的 ZIP package、文案、无敏感 URL 的素材清单和人工操作步骤；它不下载外部 URL 或写入文件。
-- publish 的 accepted 响应必须提供稳定的 `externalPublicationId`，供后续 status 查询与 Task 12 持久化关联使用；它是 adapter-issued 的平台 publication / async job 或可查询关联句柄，不是 Task 12 数据库主键。mock 将幂等作用域冻结为 `platform + idempotencyKey`，同键不同内容 fail-closed 为不可重试 `invalid_request`。
+- 发布侧以 `src/modules/publishing/contracts.ts` 冻结 Task 12 可直接消费的 Facebook / Instagram / LinkedIn `PublishingService` 公共 contract，并由 `tests/fakes/publishingService.ts` 提供不依赖平台私有模块的测试 fake。capability、publish、status 与所有结果均携带 `platformAccountId`；默认 `conditional` fake 不会假装 accepted，只有显式测试 override 的 `available` 状态才模拟成功。
+- LinkedIn assisted export 只投影规范化素材 ID、文件名与 MIME type，不返回原始 `sourceUrl`；在调用方提供已授权素材字节时可生成内存 ZIP package、文案、无敏感 URL 的素材清单和人工操作步骤。通用输入校验限制 URL、正文、幂等键和素材数量；素材 fingerprint 使用稳定 ID 与可选 SHA-256，不使用可能轮换的预签名 URL。实现不下载外部 URL、不写入文件，也不调用平台网络。
+- accepted 响应必须提供稳定的 `externalPublicationId`，供后续 status 查询与 Task 12 持久化关联使用；它是 adapter-issued 的平台 publication / async job 或可查询关联句柄，不是 Task 12 数据库主键。mock 将幂等作用域冻结为 `platform + platformAccountId + idempotencyKey`，同键不同内容 fail-closed 为不可重试 `invalid_request`，同平台不同账号互不去重或错配状态。
+- provider 请求已经越过发送边界、但响应丢失或最终成功标识缺失 / 畸形时，发布 contract 使用一等 `delivery_unknown`，`retryable: false`；同 key 重提只返回既有围栏，不会产生第二次 provider attempt。status 可按账号 + 幂等键查询，并用可选 `externalPublicationId` 交叉检查；fake 支持把未知结果恢复为确定状态。Meta / LinkedIn 纯 parser 只提供稳定、脱敏的 unknown-result 信号，真实 provider 查询、恢复和人工补偿仍待后续 adapter 与 Task 12 / Task 10 状态结构。
 - `message-status` 的内部类型 / dispatch port 仅为后续 adapter 预留；当前没有真实平台送达状态 connector、回调 route 或入队路径。
 - TikTok 官方私信事件 schema 仍缺失，不创建猜测字段、raw webhook parser 或伪造 fixture；在不触达外部平台的前提下，已为已认证、已规范化的未来事件完成 `tiktok` 会话 / Job 存储路径和幂等回归。默认 worker 会拒绝 TikTok 事件；未来 connector 必须在代码中显式启用该路径并通过新的官方 fixture / 契约 review。WhatsApp 一期 connector、fixture 与测试已删除。
 

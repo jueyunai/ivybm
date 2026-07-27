@@ -1,3 +1,5 @@
+import { ProviderPublicationResultUnknownError } from '../publishingResult'
+
 /**
  * Pure, credential-free builders and parsers for the LinkedIn Posts / Images
  * API operations that this codebase issues from the publishing adapter. None of
@@ -621,10 +623,14 @@ export const parseLinkedInPostCreationResponse = (input: {
 }): LinkedInPostCreationResponse => {
   const candidate = input?.xRestliId
   if (typeof candidate !== 'string') {
-    throw new Error('LinkedIn post creation response is invalid')
+    throw new ProviderPublicationResultUnknownError('LinkedIn post creation result is unknown')
   }
-  const postUrn = requireAuthoredPostUrnString(candidate, 'post')
-  return { postUrn }
+  try {
+    const postUrn = requireAuthoredPostUrnString(candidate, 'post')
+    return { postUrn }
+  } catch {
+    throw new ProviderPublicationResultUnknownError('LinkedIn post creation result is unknown')
+  }
 }
 
 /**

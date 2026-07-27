@@ -13,12 +13,13 @@ import {
   type PlatformCapability,
   type PlatformCapabilityQuery,
   type PlatformPublicationStatus,
+  type PlatformPublicationStatusLookup,
   type PlatformPublishAcceptance,
   type PlatformPublishErrorCode,
   type PlatformPublishRequest,
   type PublishingMode,
-} from '../publishing/contracts'
-import type { PlatformPublishingPort } from './ports'
+  type PublishingService,
+} from '@/modules/publishing/contracts'
 
 type StoredPublishResult = AcceptedPlatformPublication | DeliveryUnknownPlatformPublication
 
@@ -28,20 +29,13 @@ type PublicationRecord = {
   status: PlatformPublicationStatus
 }
 
-export type FakePlatformPublishFailure = PlatformCapabilityQuery & {
+export type FakePublishingFailure = PlatformCapabilityQuery & {
   errorCode: PlatformPublishErrorCode
   externalPublicationId?: string
   retryable: boolean
 }
 
-export type FakePlatformPublishingPort = PlatformPublishingPort & {
-  failNextPublish(input: FakePlatformPublishFailure): void
-  getPublishAttemptCount(input: PlatformCapabilityQuery): number
-  setStatus(status: PlatformPublicationStatus): void
-}
-
-export type FakePlatformPublishingPortOptions = {
-  /** Explicit account-scoped overrides for deterministic tests only. */
+export type FakePublishingServiceOptions = {
   capabilities?: PlatformCapability[]
 }
 
@@ -154,7 +148,6 @@ const normalizeCapability = (value: unknown): PlatformCapability => {
   ) {
     throw new Error('Fake platform capability requires valid modes')
   }
-  const modes = [...new Set(candidate.modes)] as PublishingMode[]
   const reason = candidate.reason
   if (reason !== undefined && (typeof reason !== 'string' || reason.length > 1_000)) {
     throw new Error('Fake platform capability reason must be a bounded string')
@@ -162,7 +155,7 @@ const normalizeCapability = (value: unknown): PlatformCapability => {
   return {
     ...query,
     availability: candidate.availability as PlatformCapability['availability'],
-    modes,
+    modes: [...new Set(candidate.modes)] as PublishingMode[],
     ...(reason === undefined ? {} : { reason: reason.trim() }),
   }
 }
@@ -193,7 +186,7 @@ const deliveryUnknown = (
   ...(externalPublicationId ? { externalPublicationId } : {}),
 })
 
-const normalizePublishFailure = (value: unknown): FakePlatformPublishFailure => {
+const normalizePublishFailure = (value: unknown): FakePublishingFailure => {
   const candidate = requireRecord(value, 'publish failure')
   const query = normalizePlatformCapabilityQuery(candidate)
   if (!PLATFORM_PUBLISH_ERROR_CODES.includes(candidate.errorCode as PlatformPublishErrorCode)) {
@@ -238,7 +231,6 @@ const normalizePublicationStatus = (value: unknown): PlatformPublicationStatus =
   if (!publicationStates.includes(candidate.status as PlatformPublicationStatus['status'])) {
     throw new Error('Fake publication status is unsupported')
   }
-
   if (candidate.status === 'delivery_unknown') {
     if (candidate.errorCode !== 'delivery_unknown' || candidate.retryable !== false) {
       throw new Error('Fake delivery-unknown status requires a non-retryable delivery_unknown error')
@@ -250,7 +242,6 @@ const normalizePublicationStatus = (value: unknown): PlatformPublicationStatus =
       status: 'delivery_unknown',
     }
   }
-
   if (candidate.status === 'failed') {
     if (
       !PLATFORM_PUBLISH_ERROR_CODES.includes(candidate.errorCode as PlatformPublishErrorCode) ||
@@ -268,7 +259,6 @@ const normalizePublicationStatus = (value: unknown): PlatformPublicationStatus =
       status: 'failed',
     }
   }
-
   if (!lookup.externalPublicationId) {
     throw new Error('Fake active publication status requires an externalPublicationId')
   }
@@ -290,197 +280,196 @@ const currentPublishResult = (publication: PublicationRecord): PlatformPublishAc
 }
 
 const externalPublicationIdFor = (request: PlatformPublishRequest): string => {
-  const digest = createHash('sha256')
-    .update(commandKey(request))
-    .digest('hex')
-    .slice(0, 32)
+  const digest = createHash('sha256').update(commandKey(request)).digest('hex').slice(0, 32)
   return `mock:${request.platform}:${digest}`
 }
 
-export const createFakePlatformPublishingPort = (
-  options: FakePlatformPublishingPortOptions = {},
-): FakePlatformPublishingPort => {
-  const optionRecord = requireRecord(options, 'publishing port options')
-  if (optionRecord.capabilities !== undefined && !Array.isArray(optionRecord.capabilities)) {
-    throw new Error('Fake platform capability overrides must be an array')
-  }
-  const capabilities = new Map<string, PlatformCapability>()
-  for (const capability of options.capabilities ?? []) {
-    const normalized = normalizeCapability(capability)
-    const key = capabilityKey(normalized)
-    if (capabilities.has(key)) {
-      throw new Error('Fake platform capability overrides must be unique per account')
+export class FakePublishingService implements PublishingService {
+  private readonly capabilities = new Map<string, PlatformCapability>()
+  private readonly nextFailures = new Map<string, FakePublishingFailure[]>()
+  private readonly publicationsByCommand = new Map<string, PublicationRecord>()
+  private readonly publicationsByReference = new Map<string, PublicationRecord>()
+  private readonly publishAttempts = new Map<string, number>()
+
+  constructor(options: FakePublishingServiceOptions = {}) {
+    const optionRecord = requireRecord(options, 'publishing service options')
+    if (optionRecord.capabilities !== undefined && !Array.isArray(optionRecord.capabilities)) {
+      throw new Error('Fake platform capability overrides must be an array')
     }
-    capabilities.set(key, normalized)
+    for (const capability of options.capabilities ?? []) {
+      const normalized = normalizeCapability(capability)
+      const key = capabilityKey(normalized)
+      if (this.capabilities.has(key)) {
+        throw new Error('Fake platform capability overrides must be unique per account')
+      }
+      this.capabilities.set(key, normalized)
+    }
   }
 
-  const publicationsByCommand = new Map<string, PublicationRecord>()
-  const publicationsByReference = new Map<string, PublicationRecord>()
-  const nextFailures = new Map<string, FakePlatformPublishFailure[]>()
-  const publishAttempts = new Map<string, number>()
+  failNextPublish(input: FakePublishingFailure): void {
+    const failure = normalizePublishFailure(input)
+    const scope = capabilityKey(failure)
+    const queued = this.nextFailures.get(scope) ?? []
+    queued.push(failure)
+    this.nextFailures.set(scope, queued)
+  }
 
-  return {
-    async getCapability(input) {
-      const query = normalizePlatformCapabilityQuery(input)
-      return clone(capabilities.get(capabilityKey(query)) ?? defaultCapability(query))
-    },
+  async getCapability(input: PlatformCapabilityQuery): Promise<PlatformCapability> {
+    const query = normalizePlatformCapabilityQuery(input)
+    return clone(this.capabilities.get(capabilityKey(query)) ?? defaultCapability(query))
+  }
 
-    async getStatus(input) {
-      const lookup = normalizePlatformPublicationStatusLookup(input)
-      const publication = publicationsByCommand.get(commandKey(lookup))
-      if (!publication) throw new Error('Fake platform publication is not known')
-      if (lookup.externalPublicationId) {
-        const byReference = publicationsByReference.get(
-          referenceKey({ ...lookup, externalPublicationId: lookup.externalPublicationId }),
-        )
-        if (byReference !== publication) {
-          throw new Error('Fake platform publication is not known')
-        }
+  getPublishAttemptCount(input: PlatformCapabilityQuery): number {
+    const query = normalizePlatformCapabilityQuery(input)
+    return this.publishAttempts.get(capabilityKey(query)) ?? 0
+  }
+
+  async getStatus(input: PlatformPublicationStatusLookup): Promise<PlatformPublicationStatus> {
+    const lookup = normalizePlatformPublicationStatusLookup(input)
+    const publication = this.publicationsByCommand.get(commandKey(lookup))
+    if (!publication) throw new Error('Fake platform publication is not known')
+    if (lookup.externalPublicationId) {
+      const byReference = this.publicationsByReference.get(
+        referenceKey({ ...lookup, externalPublicationId: lookup.externalPublicationId }),
+      )
+      if (byReference !== publication) {
+        throw new Error('Fake platform publication is not known')
       }
-      return clone(publication.status)
-    },
+    }
+    return clone(publication.status)
+  }
 
-    async publish(input) {
-      const candidate = requireRecord(input, 'publish request')
-      const query = normalizePlatformCapabilityQuery(candidate)
-      if (typeof candidate.idempotencyKey !== 'string') {
-        throw new Error('Fake publish request requires an idempotency key')
+  async publish(input: PlatformPublishRequest): Promise<PlatformPublishAcceptance> {
+    const candidate = requireRecord(input, 'publish request')
+    const query = normalizePlatformCapabilityQuery(candidate)
+    if (typeof candidate.idempotencyKey !== 'string') {
+      throw new Error('Fake publish request requires an idempotency key')
+    }
+
+    let request: PlatformPublishRequest
+    try {
+      request = normalizePlatformPublishRequest(candidate)
+    } catch (error) {
+      if (!(error instanceof PublishingContractValidationError)) throw error
+      return blocked(
+        { ...query, idempotencyKey: candidate.idempotencyKey },
+        'invalid_request',
+        false,
+      )
+    }
+
+    const key = commandKey(request)
+    const fingerprint = requestFingerprint(request)
+    const existing = this.publicationsByCommand.get(key)
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) {
+        return blocked(request, 'invalid_request', false)
       }
+      return currentPublishResult(existing)
+    }
 
-      let request: PlatformPublishRequest
-      try {
-        request = normalizePlatformPublishRequest(candidate)
-      } catch (error) {
-        if (!(error instanceof PublishingContractValidationError)) throw error
+    const capability = this.capabilities.get(capabilityKey(request)) ?? defaultCapability(request)
+    if (capability.availability === 'blocked' || !capability.modes.includes('automatic')) {
+      return blocked(request, 'platform_blocked', false)
+    }
+    if (capability.availability !== 'available') {
+      return blocked(request, 'account_not_connected', false)
+    }
+
+    const scope = capabilityKey(request)
+    this.publishAttempts.set(scope, (this.publishAttempts.get(scope) ?? 0) + 1)
+    const queuedFailures = this.nextFailures.get(scope)
+    const nextFailure = queuedFailures?.shift()
+    if (queuedFailures?.length === 0) this.nextFailures.delete(scope)
+    if (nextFailure) {
+      if (nextFailure.errorCode !== 'delivery_unknown') {
         return blocked(
-          { ...query, idempotencyKey: candidate.idempotencyKey },
-          'invalid_request',
-          false,
+          request,
+          nextFailure.errorCode as ConfirmedPlatformPublishErrorCode,
+          nextFailure.retryable,
         )
       }
-
-      const key = commandKey(request)
-      const fingerprint = requestFingerprint(request)
-      const existing = publicationsByCommand.get(key)
-      if (existing) {
-        if (existing.fingerprint !== fingerprint) {
-          return blocked(request, 'invalid_request', false)
-        }
-        return currentPublishResult(existing)
+      const unknown = deliveryUnknown(request, nextFailure.externalPublicationId)
+      const publication = { fingerprint, result: unknown, status: unknown }
+      this.publicationsByCommand.set(key, publication)
+      if (unknown.externalPublicationId) {
+        this.publicationsByReference.set(
+          referenceKey({ ...unknown, externalPublicationId: unknown.externalPublicationId }),
+          publication,
+        )
       }
+      return clone(unknown)
+    }
 
-      const capability = capabilities.get(capabilityKey(request)) ?? defaultCapability(request)
-      if (capability.availability === 'blocked' || !capability.modes.includes('automatic')) {
-        return blocked(request, 'platform_blocked', false)
-      }
-      if (capability.availability !== 'available') {
-        return blocked(request, 'account_not_connected', false)
-      }
+    const acceptance: AcceptedPlatformPublication = {
+      externalPublicationId: externalPublicationIdFor(request),
+      idempotencyKey: request.idempotencyKey,
+      platform: request.platform,
+      platformAccountId: request.platformAccountId,
+      status: 'accepted',
+    }
+    const status: PlatformPublicationStatus = {
+      externalPublicationId: acceptance.externalPublicationId,
+      idempotencyKey: acceptance.idempotencyKey,
+      platform: acceptance.platform,
+      platformAccountId: acceptance.platformAccountId,
+      status: 'pending',
+    }
+    const publication = { fingerprint, result: acceptance, status }
+    this.publicationsByCommand.set(key, publication)
+    this.publicationsByReference.set(referenceKey(acceptance), publication)
+    return clone(acceptance)
+  }
 
-      const scope = capabilityKey(request)
-      publishAttempts.set(scope, (publishAttempts.get(scope) ?? 0) + 1)
-      const queuedFailures = nextFailures.get(scope)
-      const nextFailure = queuedFailures?.shift()
-      if (queuedFailures?.length === 0) nextFailures.delete(scope)
-      if (nextFailure) {
-        if (nextFailure.errorCode !== 'delivery_unknown') {
-          return blocked(
-            request,
-            nextFailure.errorCode as ConfirmedPlatformPublishErrorCode,
-            nextFailure.retryable,
-          )
-        }
-        const unknown = deliveryUnknown(request, nextFailure.externalPublicationId)
-        const publication = { fingerprint, result: unknown, status: unknown }
-        publicationsByCommand.set(key, publication)
-        if (unknown.externalPublicationId) {
-          publicationsByReference.set(
-            referenceKey({ ...unknown, externalPublicationId: unknown.externalPublicationId }),
-            publication,
-          )
-        }
-        return clone(unknown)
-      }
+  setStatus(input: PlatformPublicationStatus): void {
+    const status = normalizePublicationStatus(input)
+    const publication = this.publicationsByCommand.get(commandKey(status))
+    if (!publication) throw new Error('Fake platform publication is not known')
 
-      const acceptance: AcceptedPlatformPublication = {
-        externalPublicationId: externalPublicationIdFor(request),
-        idempotencyKey: request.idempotencyKey,
-        platform: request.platform,
-        platformAccountId: request.platformAccountId,
+    const currentStatus = publication.status.status
+    if (!transitionTargets[currentStatus].includes(status.status)) {
+      throw new Error(
+        `Fake platform publication cannot transition from ${currentStatus} to ${status.status}`,
+      )
+    }
+    if (
+      currentStatus === 'failed' &&
+      status.status === 'failed' &&
+      stableSerialize(publication.status) !== stableSerialize(status)
+    ) {
+      throw new Error('Fake platform publication cannot replace failed failure metadata')
+    }
+
+    const previousReference = publication.status.externalPublicationId
+    const nextReference = status.externalPublicationId
+    if (previousReference && nextReference && previousReference !== nextReference) {
+      throw new Error('Fake platform publication cannot replace its external reference')
+    }
+    if (nextReference) {
+      const key = referenceKey({ ...status, externalPublicationId: nextReference })
+      const existing = this.publicationsByReference.get(key)
+      if (existing && existing !== publication) {
+        throw new Error('Fake platform publication external reference is already in use')
+      }
+      this.publicationsByReference.set(key, publication)
+    }
+
+    if (currentStatus === 'delivery_unknown' && status.status === 'pending') {
+      if (!status.externalPublicationId) {
+        throw new Error('Fake recovered publication requires an externalPublicationId')
+      }
+      publication.result = {
+        externalPublicationId: status.externalPublicationId,
+        idempotencyKey: status.idempotencyKey,
+        platform: status.platform,
+        platformAccountId: status.platformAccountId,
         status: 'accepted',
       }
-      const status: PlatformPublicationStatus = {
-        externalPublicationId: acceptance.externalPublicationId,
-        idempotencyKey: acceptance.idempotencyKey,
-        platform: acceptance.platform,
-        platformAccountId: acceptance.platformAccountId,
-        status: 'pending',
-      }
-      const publication = { fingerprint, result: acceptance, status }
-      publicationsByCommand.set(key, publication)
-      publicationsByReference.set(referenceKey(acceptance), publication)
-      return clone(acceptance)
-    },
-
-    failNextPublish(input) {
-      const failure = normalizePublishFailure(input)
-      const scope = capabilityKey(failure)
-      const queued = nextFailures.get(scope) ?? []
-      queued.push(failure)
-      nextFailures.set(scope, queued)
-    },
-
-    getPublishAttemptCount(input) {
-      const query = normalizePlatformCapabilityQuery(input)
-      return publishAttempts.get(capabilityKey(query)) ?? 0
-    },
-
-    setStatus(input) {
-      const status = normalizePublicationStatus(input)
-      const publication = publicationsByCommand.get(commandKey(status))
-      if (!publication) throw new Error('Fake platform publication is not known')
-
-      const currentStatus = publication.status.status
-      if (!transitionTargets[currentStatus].includes(status.status)) {
-        throw new Error(
-          `Fake platform publication cannot transition from ${currentStatus} to ${status.status}`,
-        )
-      }
-      if (
-        currentStatus === 'failed' &&
-        status.status === 'failed' &&
-        stableSerialize(publication.status) !== stableSerialize(status)
-      ) {
-        throw new Error('Fake platform publication cannot replace failed failure metadata')
-      }
-
-      const previousReference = publication.status.externalPublicationId
-      const nextReference = status.externalPublicationId
-      if (previousReference && nextReference && previousReference !== nextReference) {
-        throw new Error('Fake platform publication cannot replace its external reference')
-      }
-      if (nextReference) {
-        const key = referenceKey({ ...status, externalPublicationId: nextReference })
-        const existing = publicationsByReference.get(key)
-        if (existing && existing !== publication) {
-          throw new Error('Fake platform publication external reference is already in use')
-        }
-        publicationsByReference.set(key, publication)
-      }
-
-      if (currentStatus === 'delivery_unknown' && status.status === 'pending') {
-        if (!status.externalPublicationId) {
-          throw new Error('Fake recovered publication requires an externalPublicationId')
-        }
-        publication.result = {
-          externalPublicationId: status.externalPublicationId,
-          idempotencyKey: status.idempotencyKey,
-          platform: status.platform,
-          platformAccountId: status.platformAccountId,
-          status: 'accepted',
-        }
-      }
-      publication.status = status
-    },
+    }
+    publication.status = status
   }
 }
+
+export const createFakePublishingService = (
+  options: FakePublishingServiceOptions = {},
+): FakePublishingService => new FakePublishingService(options)

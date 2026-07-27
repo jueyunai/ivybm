@@ -1,218 +1,267 @@
 import { describe, expect, it } from 'vitest'
 
-import { createFakePlatformPublishingPort } from '../../../src/modules/platforms/fakePublishingPort'
-import { createLinkedInAssistedExport } from '../../../src/modules/platforms/linkedin/export'
-import type { PlatformPublishingPort } from '../../../src/modules/platforms/ports'
-import type { PlatformPublishErrorCode } from '../../../src/modules/platforms/types'
+import {
+  MAX_PUBLICATION_ASSETS,
+  MAX_PUBLICATION_IDEMPOTENCY_KEY_BYTES,
+  MAX_PUBLICATION_TEXT_CODE_POINTS,
+  PLATFORM_PUBLISH_ERROR_CODES,
+  type PlatformCapability,
+  type PlatformPublishErrorCode,
+  type PlatformPublishRequest,
+  type PublishingService,
+} from '@/modules/publishing/contracts'
+import { createFakePublishingService } from '../../fakes/publishingService'
 
-describe('phase-one publishing contract', () => {
-  it('freezes conditional capability and mock publication correlation semantics', async () => {
-    const port = createFakePlatformPublishingPort()
+const facebookAccount = 101
+const secondFacebookAccount = 102
+const instagramAccount = 201
+
+const capability = (
+  platformAccountId: number,
+  platform: 'facebook' | 'instagram',
+  availability: PlatformCapability['availability'] = 'available',
+): PlatformCapability => ({
+  availability,
+  modes: ['automatic'],
+  platform,
+  platformAccountId,
+})
+
+const request = (
+  overrides: Partial<PlatformPublishRequest> = {},
+): PlatformPublishRequest => ({
+  assets: [],
+  idempotencyKey: 'fixture-publish-1',
+  platform: 'facebook',
+  platformAccountId: facebookAccount,
+  text: 'Fixture post',
+  ...overrides,
+})
+
+const connectedService = () =>
+  createFakePublishingService({
+    capabilities: [
+      capability(facebookAccount, 'facebook'),
+      capability(secondFacebookAccount, 'facebook'),
+      capability(instagramAccount, 'instagram'),
+    ],
+  })
+
+describe('PublishingService contract', () => {
+  it('exposes account-scoped capability without pretending conditional platforms are available', async () => {
+    const service: PublishingService = createFakePublishingService({
+      capabilities: [capability(secondFacebookAccount, 'facebook')],
+    })
 
     await expect(
-      Promise.all(
-        (['facebook', 'instagram', 'linkedin'] as const).map((platform) =>
-          port.getCapability(platform),
-        ),
-      ),
-    ).resolves.toEqual([
-      {
-        availability: 'conditional',
-        modes: ['automatic'],
-        platform: 'facebook',
-        reason: 'Meta Content Publishing permission requires controlled verification',
-      },
-      {
-        availability: 'conditional',
-        modes: ['automatic'],
-        platform: 'instagram',
-        reason: 'Instagram business account and publishing permission require verification',
-      },
-      {
-        availability: 'conditional',
-        modes: ['assisted'],
-        platform: 'linkedin',
-        reason: 'Automatic publishing remains blocked until API permission is verified',
-      },
-    ])
-    const request = {
-      assets: [],
-      idempotencyKey: 'fixture-publish-1',
-      platform: 'facebook' as const,
-      text: 'Fixture post',
-    }
-    await expect(port.publish(request)).resolves.toEqual({
+      service.getCapability({ platform: 'facebook', platformAccountId: facebookAccount }),
+    ).resolves.toMatchObject({
+      availability: 'conditional',
+      modes: ['automatic'],
+      platform: 'facebook',
+      platformAccountId: facebookAccount,
+    })
+    await expect(
+      service.getCapability({ platform: 'facebook', platformAccountId: secondFacebookAccount }),
+    ).resolves.toEqual(capability(secondFacebookAccount, 'facebook'))
+    await expect(
+      service.publish(request()),
+    ).resolves.toEqual({
       errorCode: 'account_not_connected',
       idempotencyKey: 'fixture-publish-1',
       platform: 'facebook',
+      platformAccountId: facebookAccount,
       retryable: false,
       status: 'blocked',
     })
+  })
 
-    const connectedPort = createFakePlatformPublishingPort({
-      capabilities: {
-        facebook: { availability: 'available', modes: ['automatic'], platform: 'facebook' },
-        instagram: { availability: 'available', modes: ['automatic'], platform: 'instagram' },
-      },
-    })
-    const [accepted, duplicate] = await Promise.all([
-      connectedPort.publish(request),
-      connectedPort.publish(request),
-    ])
-
-    expect(accepted).toEqual({
-      externalPublicationId: 'mock:facebook:fixture-publish-1',
+  it('scopes publish idempotency and status to the platform account', async () => {
+    const service = connectedService()
+    const first = await service.publish(request())
+    expect(first).toMatchObject({
       idempotencyKey: 'fixture-publish-1',
       platform: 'facebook',
+      platformAccountId: facebookAccount,
       status: 'accepted',
     })
-    expect(duplicate).toEqual(accepted)
-
-    const conflicting = await connectedPort.publish({ ...request, text: 'Changed fixture post' })
-    expect(conflicting).toEqual({
+    await expect(service.publish(request())).resolves.toEqual(first)
+    await expect(service.publish(request({ text: 'Changed fixture post' }))).resolves.toEqual({
       errorCode: 'invalid_request',
       idempotencyKey: 'fixture-publish-1',
       platform: 'facebook',
+      platformAccountId: facebookAccount,
       retryable: false,
       status: 'blocked',
     })
-    await expect(
-      connectedPort.publish({
-        ...request,
-        assets: [{ fileName: 'changed.jpg', id: 'asset-1', mimeType: 'image/jpeg' }],
-      }),
-    ).resolves.toEqual(conflicting)
-    await expect(
-      connectedPort.publish({ ...request, scheduledFor: '2026-08-01T00:00:00.000Z' }),
-    ).resolves.toEqual(conflicting)
 
-    const sameKeyOnInstagram = await connectedPort.publish({ ...request, platform: 'instagram' })
-    expect(sameKeyOnInstagram).toEqual({
-      externalPublicationId: 'mock:instagram:fixture-publish-1',
+    const secondAccount = await service.publish(
+      request({ platformAccountId: secondFacebookAccount }),
+    )
+    expect(secondAccount).toMatchObject({
+      idempotencyKey: 'fixture-publish-1',
+      platform: 'facebook',
+      platformAccountId: secondFacebookAccount,
+      status: 'accepted',
+    })
+    expect(secondAccount).not.toEqual(first)
+
+    const instagram = await service.publish(
+      request({ platform: 'instagram', platformAccountId: instagramAccount }),
+    )
+    expect(instagram).toMatchObject({
       idempotencyKey: 'fixture-publish-1',
       platform: 'instagram',
+      platformAccountId: instagramAccount,
       status: 'accepted',
     })
 
-    if (accepted.status !== 'accepted') throw new Error('Expected a fixture acceptance')
-
+    if (first.status !== 'accepted') throw new Error('Expected an accepted fixture publish')
     await expect(
-      connectedPort.getStatus({
-        externalPublicationId: accepted.externalPublicationId,
-        platform: accepted.platform,
+      service.getStatus({
+        externalPublicationId: first.externalPublicationId,
+        idempotencyKey: first.idempotencyKey,
+        platform: first.platform,
+        platformAccountId: first.platformAccountId,
       }),
     ).resolves.toEqual({
-      externalPublicationId: 'mock:facebook:fixture-publish-1',
-      platform: 'facebook',
+      externalPublicationId: first.externalPublicationId,
+      idempotencyKey: first.idempotencyKey,
+      platform: first.platform,
+      platformAccountId: first.platformAccountId,
       status: 'pending',
     })
-  })
-
-  it('creates a deterministic LinkedIn assisted-delivery export without network or file writes', () => {
-    expect(
-      createLinkedInAssistedExport({
-        assets: [
-          {
-            fileName: 'facade-panel.jpg',
-            id: 'asset-2',
-            mimeType: 'image/jpeg',
-            sourceUrl: 'https://example.invalid/assets/facade-panel.jpg',
-          },
-          {
-            fileName: 'project-detail.png',
-            id: 'asset-1',
-            mimeType: 'image/png',
-          },
-        ],
-        text: '  Aluminum facade systems\r\nfor global projects.  ',
-      }),
-    ).toEqual({
-      assets: [
-        {
-          fileName: 'project-detail.png',
-          id: 'asset-1',
-          mimeType: 'image/png',
-        },
-        {
-          fileName: 'facade-panel.jpg',
-          id: 'asset-2',
-          mimeType: 'image/jpeg',
-          sourceUrl: 'https://example.invalid/assets/facade-panel.jpg',
-        },
-      ],
-      checklist: [
-        'Copy the reviewed text into LinkedIn.',
-        'Download and attach the listed assets in manifest order.',
-        'Verify the final preview before publishing manually.',
-      ],
-      copyText: 'Aluminum facade systems\nfor global projects.',
-      mode: 'assisted',
-      platform: 'linkedin',
-    })
-  })
-
-  it('rejects empty copy and duplicate asset identities', () => {
-    expect(() => createLinkedInAssistedExport({ assets: [], text: '   ' })).toThrow(
-      'LinkedIn assisted export text is required',
-    )
-    expect(() =>
-      createLinkedInAssistedExport({
-        assets: [
-          { fileName: 'one.jpg', id: 'asset-1', mimeType: 'image/jpeg' },
-          { fileName: 'two.jpg', id: 'asset-1', mimeType: 'image/jpeg' },
-        ],
-        text: 'Fixture post',
-      }),
-    ).toThrow('LinkedIn assisted export asset IDs must be unique')
-  })
-
-  it('freezes machine-readable blocked and failed publishing error codes', async () => {
-    const blockedCode: PlatformPublishErrorCode = 'permission_required'
-    const failedCode: PlatformPublishErrorCode = 'rate_limited'
-    const port: PlatformPublishingPort = {
-      getCapability: async (platform) => ({
-        availability: 'conditional',
-        modes: ['automatic'],
-        platform,
-      }),
-      getStatus: async ({ externalPublicationId, platform }) => ({
-        errorCode: failedCode,
-        externalPublicationId,
-        platform,
-        retryable: true,
-        status: 'failed',
-      }),
-      publish: async (request) => ({
-        errorCode: blockedCode,
-        idempotencyKey: request.idempotencyKey,
-        platform: request.platform,
-        retryable: false,
-        status: 'blocked',
-      }),
-    }
-
     await expect(
-      port.publish({
-        assets: [],
-        idempotencyKey: 'blocked-publish-1',
-        platform: 'instagram',
-        text: 'Fixture post',
+      service.getStatus({
+        externalPublicationId: first.externalPublicationId,
+        idempotencyKey: first.idempotencyKey,
+        platform: first.platform,
+        platformAccountId: secondFacebookAccount,
       }),
-    ).resolves.toEqual({
-      errorCode: 'permission_required',
-      idempotencyKey: 'blocked-publish-1',
-      platform: 'instagram',
+    ).rejects.toThrow('Fake platform publication is not known')
+  })
+
+  it('fences a delivery-unknown outcome and recovers it by the same command key', async () => {
+    const service = connectedService()
+    const command = request({ idempotencyKey: 'unknown-result-1' })
+    service.failNextPublish({
+      errorCode: 'delivery_unknown',
+      platform: command.platform,
+      platformAccountId: command.platformAccountId,
       retryable: false,
-      status: 'blocked',
     })
+
+    const unknown = await service.publish(command)
+    expect(unknown).toEqual({
+      errorCode: 'delivery_unknown',
+      idempotencyKey: command.idempotencyKey,
+      platform: command.platform,
+      platformAccountId: command.platformAccountId,
+      retryable: false,
+      status: 'delivery_unknown',
+    })
+    await expect(service.publish(command)).resolves.toEqual(unknown)
     await expect(
-      port.getStatus({ externalPublicationId: 'failed-publication-1', platform: 'instagram' }),
-    ).resolves.toEqual({
-      errorCode: 'rate_limited',
-      externalPublicationId: 'failed-publication-1',
-      platform: 'instagram',
-      retryable: true,
-      status: 'failed',
+      service.getStatus({
+        idempotencyKey: command.idempotencyKey,
+        platform: command.platform,
+        platformAccountId: command.platformAccountId,
+      }),
+    ).resolves.toEqual(unknown)
+    expect(
+      service.getPublishAttemptCount({
+        platform: command.platform,
+        platformAccountId: command.platformAccountId,
+      }),
+    ).toBe(1)
+
+    service.setStatus({
+      externalPublicationId: 'provider-publication-1',
+      idempotencyKey: command.idempotencyKey,
+      platform: command.platform,
+      platformAccountId: command.platformAccountId,
+      status: 'pending',
     })
+    await expect(service.publish(command)).resolves.toEqual({
+      externalPublicationId: 'provider-publication-1',
+      idempotencyKey: command.idempotencyKey,
+      platform: command.platform,
+      platformAccountId: command.platformAccountId,
+      status: 'accepted',
+    })
+    expect(
+      service.getPublishAttemptCount({
+        platform: command.platform,
+        platformAccountId: command.platformAccountId,
+      }),
+    ).toBe(1)
+  })
+
+  it('returns a failed command snapshot instead of a stale accepted result', async () => {
+    const service = connectedService()
+    const command = request({ idempotencyKey: 'failed-command-1' })
+    const accepted = await service.publish(command)
+    if (accepted.status !== 'accepted') throw new Error('Expected an accepted fixture publish')
+    const failed = {
+      errorCode: 'rate_limited' as const,
+      externalPublicationId: accepted.externalPublicationId,
+      idempotencyKey: accepted.idempotencyKey,
+      platform: accepted.platform,
+      platformAccountId: accepted.platformAccountId,
+      retryable: true,
+      status: 'failed' as const,
+    }
+    service.setStatus(failed)
+
+    await expect(service.publish(command)).resolves.toEqual(failed)
+    expect(
+      service.getPublishAttemptCount({
+        platform: command.platform,
+        platformAccountId: command.platformAccountId,
+      }),
+    ).toBe(1)
+    await expect(
+      service.publish(request({ idempotencyKey: 'failed-command-2' })),
+    ).resolves.toMatchObject({ status: 'accepted' })
+    expect(
+      service.getPublishAttemptCount({
+        platform: command.platform,
+        platformAccountId: command.platformAccountId,
+      }),
+    ).toBe(2)
+  })
+
+  it('freezes bounded public inputs and machine-readable error codes', async () => {
+    const service = connectedService()
+    const atLimit = request({
+      idempotencyKey: 'k'.repeat(MAX_PUBLICATION_IDEMPOTENCY_KEY_BYTES),
+      text: '😀'.repeat(MAX_PUBLICATION_TEXT_CODE_POINTS),
+    })
+    await expect(service.publish(atLimit)).resolves.toMatchObject({ status: 'accepted' })
+    await expect(
+      service.publish(
+        request({ idempotencyKey: 'k'.repeat(MAX_PUBLICATION_IDEMPOTENCY_KEY_BYTES + 1) }),
+      ),
+    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
+    await expect(
+      service.publish(request({ text: '😀'.repeat(MAX_PUBLICATION_TEXT_CODE_POINTS + 1) })),
+    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
+    await expect(
+      service.publish(
+        request({
+          assets: Array.from({ length: MAX_PUBLICATION_ASSETS + 1 }, (_, index) => ({
+            fileName: `asset-${index}.jpg`,
+            id: `asset-${index}`,
+            mimeType: 'image/jpeg',
+          })),
+        }),
+      ),
+    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
+
+    const blockedCode: PlatformPublishErrorCode = 'permission_required'
+    const unknownCode: PlatformPublishErrorCode = 'delivery_unknown'
+    expect(PLATFORM_PUBLISH_ERROR_CODES).toContain(blockedCode)
+    expect(PLATFORM_PUBLISH_ERROR_CODES).toContain(unknownCode)
+    expect(PLATFORM_PUBLISH_ERROR_CODES).not.toContain('unknown')
   })
 })

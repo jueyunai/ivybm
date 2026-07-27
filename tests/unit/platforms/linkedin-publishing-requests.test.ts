@@ -16,6 +16,7 @@ import {
   parseLinkedInPostCreationResponse,
   parseLinkedInPostStatusResponse,
 } from '../../../src/modules/platforms/linkedin/publishingRequests'
+import { ProviderPublicationResultUnknownError } from '../../../src/modules/platforms/publishingResult'
 
 /**
  * The builders are required to be pure and credential-free: every request
@@ -828,13 +829,11 @@ describe('LinkedIn publishing response parsers', () => {
       ['x-restli-id'],
       () => undefined,
     ]) {
-      const matcherPost =
-        /LinkedIn post creation response is invalid|LinkedIn post URN is required|LinkedIn post URN is not allowed|LinkedIn URN id must be a bounded decimal path segment/
       expect(() =>
         parseLinkedInPostCreationResponse({
           xRestliId: value as never,
         }),
-      ).toThrow(matcherPost)
+      ).toThrow(ProviderPublicationResultUnknownError)
       expect(() => parseLinkedInImageInitializeUploadResponse(value)).toThrow(
         'LinkedIn image initialize upload response is invalid',
       )
@@ -844,16 +843,16 @@ describe('LinkedIn publishing response parsers', () => {
     }
 
     expect(() => parseLinkedInPostCreationResponse({})).toThrow(
-      'LinkedIn post creation response is invalid',
+      ProviderPublicationResultUnknownError,
     )
     expect(() => parseLinkedInPostCreationResponse({ xRestliId: '' })).toThrow(
-      /LinkedIn post creation response is invalid|LinkedIn post URN is required/,
+      ProviderPublicationResultUnknownError,
     )
     expect(() => parseLinkedInPostCreationResponse({ xRestliId: 'not-a-urn' })).toThrow(
-      /LinkedIn post URN is not allowed|LinkedIn URN id must be a bounded decimal path segment/,
+      ProviderPublicationResultUnknownError,
     )
     expect(() => parseLinkedInPostCreationResponse({ xRestliId: 'urn:li:share:ABC' })).toThrow(
-      'LinkedIn URN id must be a bounded decimal path segment',
+      ProviderPublicationResultUnknownError,
     )
 
     expect(() => parseLinkedInImageInitializeUploadResponse({})).toThrow(

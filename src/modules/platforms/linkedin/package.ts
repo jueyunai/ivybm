@@ -1,8 +1,8 @@
 import type {
   AssistedPublicationPackage,
   AssistedPublicationPackageAsset,
-  PublicationAsset,
 } from '../types'
+import { normalizePublicationAsset } from '../../publishing/contracts'
 import { createLinkedInAssistedExport } from './export'
 
 const encoder = new TextEncoder()
@@ -107,13 +107,15 @@ const packageAsset = (asset: AssistedPublicationPackageAsset): AssistedPublicati
   if (!(asset.bytes instanceof Uint8Array)) {
     throw new Error('LinkedIn assisted package assets require Uint8Array bytes')
   }
+  const fileName = safeBaseName(asset.fileName)
+  const normalized = normalizePublicationAsset({ ...asset, fileName })
   return {
-    ...asset,
+    ...normalized,
     // The function is synchronous and always copies bytes into the returned ZIP,
     // so retaining this input view cannot leak mutable caller-owned data. Avoid an
     // unnecessary full-size clone before the package-size admission check.
     bytes: asset.bytes,
-    fileName: safeBaseName(asset.fileName),
+    fileName,
   }
 }
 
@@ -215,7 +217,7 @@ export const createLinkedInAssistedPackage = ({
     // The export manifest has no reason to carry raw bytes. Passing only metadata
     // also prevents structuredClone in the export helper from duplicating large
     // input assets before ZIP creation.
-    assets: normalizedAssets.map(({ bytes: _bytes, ...asset }) => asset) as PublicationAsset[],
+    assets: normalizedAssets.map(({ bytes: _bytes, ...asset }) => asset),
     text,
   })
   const bytesByID = new Map(normalizedAssets.map((asset) => [asset.id, asset.bytes]))

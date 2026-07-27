@@ -1,3 +1,5 @@
+import { ProviderPublicationResultUnknownError } from '../publishingResult'
+
 /**
  * Pure, credential-free builders and parsers for the four Meta Graph publishing
  * operations that this codebase issues to Facebook Pages and Instagram
@@ -244,20 +246,26 @@ const readExactString = (record: Record<string, unknown>, key: string): string |
  */
 export const parseFacebookPagePhotoResponse = (value: unknown): FacebookPagePhotoResponse => {
   const record = requireRecord(value)
-  if (!record) throw new Error('Meta Facebook page photo response is invalid')
+  if (!record) {
+    throw new ProviderPublicationResultUnknownError('Meta Facebook page photo result is unknown')
+  }
   const photoIdCandidate = readExactString(record, 'id')
   const postIdCandidate = readExactString(record, 'post_id')
   if (!photoIdCandidate && !postIdCandidate) {
-    throw new Error('Meta Facebook page photo response requires a photo id or post id')
+    throw new ProviderPublicationResultUnknownError('Meta Facebook page photo result is unknown')
   }
-  const photoId = photoIdCandidate
-    ? requireMetaIdentifier(photoIdCandidate, 'Facebook photo response identifier')
-    : undefined
-  const postId = postIdCandidate ? requireFacebookPostIdentifier(postIdCandidate) : undefined
-  if (photoId && postId) return { photoId, postId }
-  if (photoId) return { photoId }
-  if (postId) return { postId }
-  throw new Error('Meta Facebook page photo response requires a photo id or post id')
+  try {
+    const photoId = photoIdCandidate
+      ? requireMetaIdentifier(photoIdCandidate, 'Facebook photo response identifier')
+      : undefined
+    const postId = postIdCandidate ? requireFacebookPostIdentifier(postIdCandidate) : undefined
+    if (photoId && postId) return { photoId, postId }
+    if (photoId) return { photoId }
+    if (postId) return { postId }
+  } catch {
+    throw new ProviderPublicationResultUnknownError('Meta Facebook page photo result is unknown')
+  }
+  throw new ProviderPublicationResultUnknownError('Meta Facebook page photo result is unknown')
 }
 
 /**
@@ -266,14 +274,22 @@ export const parseFacebookPagePhotoResponse = (value: unknown): FacebookPagePhot
  */
 export const parseInstagramMediaResponse = (value: unknown): InstagramMediaResponse => {
   const record = requireRecord(value)
-  if (!record) throw new Error('Meta Instagram media response is invalid')
+  if (!record) {
+    throw new ProviderPublicationResultUnknownError('Meta Instagram media creation result is unknown')
+  }
   const creationIdCandidate = readExactString(record, 'id')
-  if (!creationIdCandidate) throw new Error('Meta Instagram media response requires a creation id')
-  const creationId = requireMetaIdentifier(
-    creationIdCandidate,
-    'Instagram creation response identifier',
-  )
-  return { creationId }
+  if (!creationIdCandidate) {
+    throw new ProviderPublicationResultUnknownError('Meta Instagram media creation result is unknown')
+  }
+  try {
+    const creationId = requireMetaIdentifier(
+      creationIdCandidate,
+      'Instagram creation response identifier',
+    )
+    return { creationId }
+  } catch {
+    throw new ProviderPublicationResultUnknownError('Meta Instagram media creation result is unknown')
+  }
 }
 
 /**
@@ -284,13 +300,22 @@ export const parseInstagramMediaPublishResponse = (
   value: unknown,
 ): InstagramMediaPublishResponse => {
   const record = requireRecord(value)
-  if (!record) throw new Error('Meta Instagram media publish response is invalid')
+  if (!record) {
+    throw new ProviderPublicationResultUnknownError('Meta Instagram publish result is unknown')
+  }
   const igMediaIdCandidate = readExactString(record, 'id')
   if (!igMediaIdCandidate) {
-    throw new Error('Meta Instagram media publish response requires an ig media id')
+    throw new ProviderPublicationResultUnknownError('Meta Instagram publish result is unknown')
   }
-  const igMediaId = requireMetaIdentifier(igMediaIdCandidate, 'Instagram media response identifier')
-  return { igMediaId }
+  try {
+    const igMediaId = requireMetaIdentifier(
+      igMediaIdCandidate,
+      'Instagram media response identifier',
+    )
+    return { igMediaId }
+  } catch {
+    throw new ProviderPublicationResultUnknownError('Meta Instagram publish result is unknown')
+  }
 }
 
 /**
