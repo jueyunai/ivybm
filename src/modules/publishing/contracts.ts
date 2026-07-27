@@ -43,6 +43,30 @@ export type PublicationAsset = {
   sourceUrl?: string
 }
 
+export type AssistedPublicationAsset = Omit<PublicationAsset, 'sourceUrl'>
+
+/** Caller-resolved media; the service never accepts or fetches an external URL. */
+export type AssistedPublicationPackageAsset = AssistedPublicationAsset & {
+  bytes: Uint8Array
+}
+
+export type AssistedPublicationExport = {
+  assets: AssistedPublicationAsset[]
+  checklist: string[]
+  copyText: string
+  mode: 'assisted'
+  platform: 'linkedin'
+}
+
+/** A browser or protected route can expose these bytes as a deterministic download. */
+export type AssistedPublicationPackage = {
+  bytes: Uint8Array
+  fileName: string
+  mimeType: 'application/zip'
+  mode: 'assisted'
+  platform: 'linkedin'
+}
+
 export type PlatformCapabilityQuery = {
   platform: PublishingPlatform
   platformAccountId: PlatformAccountId
@@ -111,6 +135,33 @@ export type PlatformPublicationStatus =
       status: 'pending' | 'published' | 'publishing'
     })
 
+export type AssistedPublicationRequest = {
+  assets: AssistedPublicationPackageAsset[]
+  platform: 'linkedin'
+  platformAccountId: PlatformAccountId
+  text: string
+}
+
+export type PreparedAssistedPublication = {
+  artifact: AssistedPublicationPackage
+  manifest: AssistedPublicationExport
+  mode: 'assisted'
+  platform: 'linkedin'
+  platformAccountId: PlatformAccountId
+  status: 'prepared'
+}
+
+export type BlockedAssistedPublication = PlatformCapabilityQuery & {
+  errorCode: 'invalid_request' | 'platform_blocked'
+  mode: 'assisted'
+  retryable: false
+  status: 'blocked'
+}
+
+export type AssistedPublicationPreparation =
+  | BlockedAssistedPublication
+  | PreparedAssistedPublication
+
 export interface PublishingService {
   getCapability(input: PlatformCapabilityQuery): Promise<PlatformCapability>
   /** Query by the account-scoped command key; the provider handle is an optional cross-check. */
@@ -121,6 +172,10 @@ export interface PublishingService {
    * retrying a recorded failed command requires a new caller command key.
    */
   publish(request: PlatformPublishRequest): Promise<PlatformPublishAcceptance>
+  /** Build a local LinkedIn fallback package without any provider or network call. */
+  prepareAssistedPublication(
+    request: AssistedPublicationRequest,
+  ): Promise<AssistedPublicationPreparation>
 }
 
 export class PublishingContractValidationError extends Error {
@@ -338,6 +393,44 @@ export const normalizePlatformPublishRequest = (value: unknown): PlatformPublish
     assets: normalizePublicationAssets(candidate.assets),
     idempotencyKey: normalizePublicationIdempotencyKey(candidate.idempotencyKey),
     ...(scheduledFor ? { scheduledFor } : {}),
+    text: normalizePublicationText(candidate.text),
+  }
+}
+
+export const normalizeAssistedPublicationRequest = (
+  value: unknown,
+): AssistedPublicationRequest => {
+  const candidate = requireRecord(value, 'Assisted publication request')
+  const base = normalizePlatformCapabilityQuery(candidate)
+  if (base.platform !== 'linkedin') {
+    throw new PublishingContractValidationError('Assisted publishing is only supported for LinkedIn')
+  }
+  if (!Array.isArray(candidate.assets) || candidate.assets.length > MAX_PUBLICATION_ASSETS) {
+    throw new PublishingContractValidationError(
+      `Assisted publication assets must contain at most ${MAX_PUBLICATION_ASSETS} items`,
+    )
+  }
+  const rawAssets = candidate.assets.map((value) => {
+    const asset = requireRecord(value, 'Assisted publication asset')
+    if ('sourceUrl' in asset) {
+      throw new PublishingContractValidationError(
+        'Assisted publication assets must not include sourceUrl',
+      )
+    }
+    if (!(asset.bytes instanceof Uint8Array)) {
+      throw new PublishingContractValidationError(
+        'Assisted publication assets require Uint8Array bytes',
+      )
+    }
+    return asset
+  })
+  const assets = normalizePublicationAssets(
+    rawAssets.map(({ fileName, id, mimeType, sha256 }) => ({ fileName, id, mimeType, sha256 })),
+  ).map((asset, index) => ({ ...asset, bytes: rawAssets[index].bytes as Uint8Array }))
+  return {
+    assets,
+    platform: 'linkedin',
+    platformAccountId: base.platformAccountId,
     text: normalizePublicationText(candidate.text),
   }
 }

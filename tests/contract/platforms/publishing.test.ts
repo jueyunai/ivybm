@@ -5,9 +5,11 @@ import {
   MAX_PUBLICATION_IDEMPOTENCY_KEY_BYTES,
   MAX_PUBLICATION_TEXT_CODE_POINTS,
   PLATFORM_PUBLISH_ERROR_CODES,
+  type AssistedPublicationRequest,
   type PlatformCapability,
   type PlatformPublishErrorCode,
   type PlatformPublishRequest,
+  type PublishingPlatform,
   type PublishingService,
 } from '@/modules/publishing/contracts'
 import { createFakePublishingService } from '../../fakes/publishingService'
@@ -15,14 +17,15 @@ import { createFakePublishingService } from '../../fakes/publishingService'
 const facebookAccount = 101
 const secondFacebookAccount = 102
 const instagramAccount = 201
+const linkedinAccount = 301
 
 const capability = (
-  platformAccountId: number,
-  platform: 'facebook' | 'instagram',
+  platformAccountId: number | string,
+  platform: PublishingPlatform,
   availability: PlatformCapability['availability'] = 'available',
 ): PlatformCapability => ({
   availability,
-  modes: ['automatic'],
+  modes: platform === 'linkedin' ? ['assisted'] : ['automatic'],
   platform,
   platformAccountId,
 })
@@ -44,6 +47,7 @@ const connectedService = () =>
       capability(facebookAccount, 'facebook'),
       capability(secondFacebookAccount, 'facebook'),
       capability(instagramAccount, 'instagram'),
+      capability(linkedinAccount, 'linkedin', 'conditional'),
     ],
   })
 
@@ -139,6 +143,156 @@ describe('PublishingService contract', () => {
         platformAccountId: secondFacebookAccount,
       }),
     ).rejects.toThrow('Fake platform publication is not known')
+  })
+
+  it('keeps control characters from creating cross-account command or status collisions', async () => {
+    const firstAccount = 'account-a'
+    const secondAccount = 'account-a\u0000key-b'
+    const service = createFakePublishingService({
+      capabilities: [
+        capability(firstAccount, 'facebook'),
+        capability(secondAccount, 'facebook'),
+      ],
+    })
+    const first = await service.publish(
+      request({
+        idempotencyKey: 'key-b\u0000command-c',
+        platformAccountId: firstAccount,
+      }),
+    )
+    await expect(
+      service.getStatus({
+        idempotencyKey: 'command-c',
+        platform: 'facebook',
+        platformAccountId: secondAccount,
+      }),
+    ).rejects.toThrow('Fake platform publication is not known')
+    const second = await service.publish(
+      request({ idempotencyKey: 'command-c', platformAccountId: secondAccount }),
+    )
+
+    expect(first).toMatchObject({ platformAccountId: firstAccount, status: 'accepted' })
+    expect(second).toMatchObject({ platformAccountId: secondAccount, status: 'accepted' })
+    if (first.status !== 'accepted' || second.status !== 'accepted') {
+      throw new Error('Expected isolated accepted publications')
+    }
+    expect(second.externalPublicationId).not.toBe(first.externalPublicationId)
+    await expect(
+      service.getStatus({
+        idempotencyKey: 'command-c',
+        platform: 'facebook',
+        platformAccountId: secondAccount,
+      }),
+    ).resolves.toMatchObject({
+      externalPublicationId: second.externalPublicationId,
+      platformAccountId: secondAccount,
+    })
+    await expect(
+      service.getStatus({
+        externalPublicationId: second.externalPublicationId,
+        idempotencyKey: 'command-c',
+        platform: 'facebook',
+        platformAccountId: secondAccount,
+      }),
+    ).resolves.toMatchObject({
+      externalPublicationId: second.externalPublicationId,
+      platformAccountId: secondAccount,
+    })
+    await expect(
+      service.getStatus({
+        externalPublicationId: first.externalPublicationId,
+        idempotencyKey: 'command-c',
+        platform: 'facebook',
+        platformAccountId: secondAccount,
+      }),
+    ).rejects.toThrow('Fake platform publication is not known')
+  })
+
+  it('prepares the LinkedIn assisted package through the public service boundary', async () => {
+    const service = connectedService()
+    const prepared = await service.prepareAssistedPublication({
+      assets: [
+        {
+          bytes: new Uint8Array([1, 2, 3]),
+          fileName: 'panel.jpg',
+          id: 'asset-1',
+          mimeType: 'image/jpeg',
+        },
+      ],
+      platform: 'linkedin',
+      platformAccountId: linkedinAccount,
+      text: '  Reviewed LinkedIn post.  ',
+    })
+
+    expect(prepared).toMatchObject({
+      artifact: {
+        fileName: 'linkedin-assisted-post.zip',
+        mimeType: 'application/zip',
+        platform: 'linkedin',
+      },
+      manifest: {
+        assets: [{ fileName: 'panel.jpg', id: 'asset-1', mimeType: 'image/jpeg' }],
+        copyText: 'Reviewed LinkedIn post.',
+        platform: 'linkedin',
+      },
+      mode: 'assisted',
+      platform: 'linkedin',
+      platformAccountId: linkedinAccount,
+      status: 'prepared',
+    })
+    if (prepared.status !== 'prepared') throw new Error('Expected an assisted package')
+    expect([...prepared.artifact.bytes.slice(0, 2)]).toEqual([0x50, 0x4b])
+    expect(
+      service.getPublishAttemptCount({
+        platform: 'linkedin',
+        platformAccountId: linkedinAccount,
+      }),
+    ).toBe(0)
+
+    const unsafe = {
+      assets: [
+        {
+          bytes: new Uint8Array([1]),
+          fileName: 'panel.jpg',
+          id: 'asset-1',
+          mimeType: 'image/jpeg',
+          sourceUrl: 'https://example.invalid/panel.jpg?token=secret',
+        },
+      ],
+      platform: 'linkedin',
+      platformAccountId: linkedinAccount,
+      text: 'Reviewed LinkedIn post.',
+    } as unknown as AssistedPublicationRequest
+    await expect(service.prepareAssistedPublication(unsafe)).resolves.toEqual({
+      errorCode: 'invalid_request',
+      mode: 'assisted',
+      platform: 'linkedin',
+      platformAccountId: linkedinAccount,
+      retryable: false,
+      status: 'blocked',
+    })
+    expect(JSON.stringify(await service.prepareAssistedPublication(unsafe))).not.toContain('secret')
+
+    await expect(
+      service.prepareAssistedPublication({
+        assets: [],
+        platform: 'facebook',
+        platformAccountId: facebookAccount,
+        text: 'Not supported',
+      } as never),
+    ).resolves.toMatchObject({ errorCode: 'platform_blocked', status: 'blocked' })
+
+    const blocked = createFakePublishingService({
+      capabilities: [capability(linkedinAccount, 'linkedin', 'blocked')],
+    })
+    await expect(
+      blocked.prepareAssistedPublication({
+        assets: [],
+        platform: 'linkedin',
+        platformAccountId: linkedinAccount,
+        text: 'Blocked account',
+      }),
+    ).resolves.toMatchObject({ errorCode: 'platform_blocked', status: 'blocked' })
   })
 
   it('fences a delivery-unknown outcome and recovers it by the same command key', async () => {

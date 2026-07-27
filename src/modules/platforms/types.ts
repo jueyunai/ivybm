@@ -1,7 +1,5 @@
 import { createHash } from 'node:crypto'
 
-import type { PublicationAsset } from '../publishing/contracts'
-
 export {
   MAX_PUBLICATION_ASSETS,
   MAX_PUBLICATION_ASSET_ID_BYTES,
@@ -15,6 +13,7 @@ export {
   PLATFORM_PUBLISH_ERROR_CODES,
   PUBLISHING_PLATFORMS,
   PublishingContractValidationError,
+  normalizeAssistedPublicationRequest,
   normalizePlatformAccountId,
   normalizePlatformCapabilityQuery,
   normalizePlatformPublicationStatusLookup,
@@ -28,7 +27,14 @@ export {
 } from '../publishing/contracts'
 export type {
   AcceptedPlatformPublication,
+  AssistedPublicationAsset,
+  AssistedPublicationExport,
+  AssistedPublicationPackage,
+  AssistedPublicationPackageAsset,
+  AssistedPublicationPreparation,
+  AssistedPublicationRequest,
   BlockedPlatformPublication,
+  BlockedAssistedPublication,
   ConfirmedPlatformPublishErrorCode,
   DeliveryUnknownPlatformPublication,
   FailedPlatformPublication,
@@ -41,6 +47,7 @@ export type {
   PlatformPublishAcceptance,
   PlatformPublishErrorCode,
   PlatformPublishRequest,
+  PreparedAssistedPublication,
   PublicationAsset,
   PublishingMode,
   PublishingPlatform,
@@ -92,34 +99,6 @@ export type NormalizedMessageStatus = NormalizedEventBase & {
 }
 
 export type NormalizedPlatformEvent = NormalizedInboundMessage | NormalizedMessageStatus
-
-export type AssistedPublicationAsset = Omit<PublicationAsset, 'sourceUrl'>
-
-export type AssistedPublicationExport = {
-  assets: AssistedPublicationAsset[]
-  checklist: string[]
-  copyText: string
-  mode: 'assisted'
-  platform: 'linkedin'
-}
-
-/**
- * A caller-resolved media asset used to create the LinkedIn manual-delivery ZIP.
- * The package builder never fetches `sourceUrl`; the caller must explicitly supply
- * already-authorized bytes from the internal media layer.
- */
-export type AssistedPublicationPackageAsset = PublicationAsset & {
-  bytes: Uint8Array
-}
-
-/** A browser or route can expose these bytes as a deterministic file download. */
-export type AssistedPublicationPackage = {
-  bytes: Uint8Array
-  fileName: string
-  mimeType: 'application/zip'
-  mode: 'assisted'
-  platform: 'linkedin'
-}
 
 export const MAX_PLATFORM_EVENT_IDEMPOTENCY_KEY_LENGTH = 200
 

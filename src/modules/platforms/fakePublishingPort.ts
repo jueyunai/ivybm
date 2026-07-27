@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { createLinkedInAssistedPreparation } from '../publishing/assisted'
 import {
   PLATFORM_PUBLISH_ERROR_CODES,
   PublishingContractValidationError,
@@ -7,6 +8,7 @@ import {
   normalizePlatformPublicationStatusLookup,
   normalizePlatformPublishRequest,
   type AcceptedPlatformPublication,
+  type BlockedAssistedPublication,
   type BlockedPlatformPublication,
   type ConfirmedPlatformPublishErrorCode,
   type DeliveryUnknownPlatformPublication,
@@ -64,20 +66,18 @@ const requireRecord = (value: unknown, name: string): Record<string, unknown> =>
   return value as Record<string, unknown>
 }
 
-const accountKey = ({ platformAccountId }: PlatformCapabilityQuery): string =>
-  typeof platformAccountId === 'number'
-    ? `number:${platformAccountId}`
-    : `string:${platformAccountId}`
+const compositeKey = (...parts: Array<number | string>): string =>
+  JSON.stringify(parts.map((part) => [typeof part, part]))
 
 const capabilityKey = (input: PlatformCapabilityQuery): string =>
-  `${input.platform}\u0000${accountKey(input)}`
+  compositeKey('capability', input.platform, input.platformAccountId)
 
 const commandKey = ({
   idempotencyKey,
   platform,
   platformAccountId,
 }: Pick<PlatformPublishRequest, 'idempotencyKey' | 'platform' | 'platformAccountId'>): string =>
-  `${platform}\u0000${accountKey({ platform, platformAccountId })}\u0000${idempotencyKey}`
+  compositeKey('command', platform, platformAccountId, idempotencyKey)
 
 const referenceKey = ({
   externalPublicationId,
@@ -87,7 +87,7 @@ const referenceKey = ({
   AcceptedPlatformPublication,
   'externalPublicationId' | 'platform' | 'platformAccountId'
 >): string =>
-  `${platform}\u0000${accountKey({ platform, platformAccountId })}\u0000${externalPublicationId}`
+  compositeKey('reference', platform, platformAccountId, externalPublicationId)
 
 const stableSerialize = (value: unknown): string => {
   if (value === undefined) return 'null'
@@ -177,6 +177,17 @@ const blocked = (
   platform: identity.platform,
   platformAccountId: identity.platformAccountId,
   retryable,
+  status: 'blocked',
+})
+
+const blockedAssisted = (
+  identity: PlatformCapabilityQuery,
+  errorCode: BlockedAssistedPublication['errorCode'],
+): BlockedAssistedPublication => ({
+  ...identity,
+  errorCode,
+  mode: 'assisted',
+  retryable: false,
   status: 'blocked',
 })
 
@@ -420,6 +431,24 @@ export const createFakePlatformPublishingPort = (
       publicationsByCommand.set(key, publication)
       publicationsByReference.set(referenceKey(acceptance), publication)
       return clone(acceptance)
+    },
+
+    async prepareAssistedPublication(input) {
+      const query = normalizePlatformCapabilityQuery(input)
+      const capability = capabilities.get(capabilityKey(query)) ?? defaultCapability(query)
+      if (
+        query.platform !== 'linkedin' ||
+        capability.availability === 'blocked' ||
+        !capability.modes.includes('assisted')
+      ) {
+        return blockedAssisted(query, 'platform_blocked')
+      }
+      try {
+        return createLinkedInAssistedPreparation(input)
+      } catch (error) {
+        if (!(error instanceof PublishingContractValidationError)) throw error
+        return blockedAssisted(query, 'invalid_request')
+      }
     },
 
     failNextPublish(input) {

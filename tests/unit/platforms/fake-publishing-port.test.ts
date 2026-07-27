@@ -13,7 +13,7 @@ const accountA = 101
 const accountB = 102
 
 const capability = (
-  platformAccountId: number,
+  platformAccountId: number | string,
   availability: PlatformCapability['availability'] = 'available',
 ): PlatformCapability => ({
   availability,
@@ -78,6 +78,80 @@ describe('fake platform publishing port', () => {
         platformAccountId: accountB,
       }),
     ).rejects.toThrow('Fake platform publication is not known')
+  })
+
+  it('uses collision-free keys when account IDs and command keys contain control characters', async () => {
+    const firstAccount = 'account-a'
+    const secondAccount = 'account-a\u0000key-b'
+    const port = createFakePlatformPublishingPort({
+      capabilities: [capability(firstAccount), capability(secondAccount)],
+    })
+    const first = await port.publish(
+      request({
+        idempotencyKey: 'key-b\u0000command-c',
+        platformAccountId: firstAccount,
+      }),
+    )
+    await expect(
+      port.getStatus({
+        idempotencyKey: 'command-c',
+        platform: 'facebook',
+        platformAccountId: secondAccount,
+      }),
+    ).rejects.toThrow('Fake platform publication is not known')
+    const second = await port.publish(
+      request({ idempotencyKey: 'command-c', platformAccountId: secondAccount }),
+    )
+
+    expect(first).toMatchObject({ platformAccountId: firstAccount, status: 'accepted' })
+    expect(second).toMatchObject({ platformAccountId: secondAccount, status: 'accepted' })
+    if (first.status !== 'accepted' || second.status !== 'accepted') {
+      throw new Error('Expected isolated accepted publications')
+    }
+    expect(second.externalPublicationId).not.toBe(first.externalPublicationId)
+    await expect(
+      port.getStatus({
+        idempotencyKey: second.idempotencyKey,
+        platform: second.platform,
+        platformAccountId: second.platformAccountId,
+      }),
+    ).resolves.toMatchObject({
+      externalPublicationId: second.externalPublicationId,
+      platformAccountId: secondAccount,
+    })
+    await expect(
+      port.getStatus({
+        externalPublicationId: first.externalPublicationId,
+        idempotencyKey: second.idempotencyKey,
+        platform: second.platform,
+        platformAccountId: second.platformAccountId,
+      }),
+    ).rejects.toThrow('Fake platform publication is not known')
+  })
+
+  it('exposes LinkedIn assisted packaging without a provider publish attempt', async () => {
+    const port = createFakePlatformPublishingPort()
+    const result = await port.prepareAssistedPublication({
+      assets: [
+        {
+          bytes: new Uint8Array([1, 2, 3]),
+          fileName: 'panel.jpg',
+          id: 'asset-1',
+          mimeType: 'image/jpeg',
+        },
+      ],
+      platform: 'linkedin',
+      platformAccountId: 'linkedin-account-1',
+      text: 'Reviewed post',
+    })
+
+    expect(result).toMatchObject({ platformAccountId: 'linkedin-account-1', status: 'prepared' })
+    expect(
+      port.getPublishAttemptCount({
+        platform: 'linkedin',
+        platformAccountId: 'linkedin-account-1',
+      }),
+    ).toBe(0)
   })
 
   it('uses stable asset identity rather than temporary source URLs in the command fingerprint', async () => {

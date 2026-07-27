@@ -34,7 +34,6 @@ describe('LinkedIn assisted package', () => {
           fileName: 'facade-panel.jpg',
           id: 'asset-2',
           mimeType: 'image/jpeg',
-          sourceUrl: 'https://example.invalid/assets/facade-panel.jpg?temporary=token',
           bytes: new Uint8Array([2, 4, 6]),
         },
         {
@@ -87,7 +86,6 @@ describe('LinkedIn assisted package', () => {
       },
     ])
     expect(JSON.stringify(manifest)).not.toContain('sourceUrl')
-    expect(JSON.stringify(manifest)).not.toContain('temporary=token')
   })
 
   it('orders non-ASCII asset identities by a locale-independent code-unit comparator', () => {
