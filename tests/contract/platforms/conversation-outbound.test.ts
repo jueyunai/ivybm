@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { PlatformConversationOutboundPort } from '../../../src/modules/platforms/ports'
 import {
   createProviderAcceptanceEvidence,
+  PlatformConversationOutboundOutcomeUnknownError,
   PLATFORM_CONVERSATION_OUTBOUND_RECOVERY_ACTIONS,
   PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES,
   type PlatformConversationOutboundErrorCode,
@@ -15,8 +16,6 @@ const request = (
 ): PlatformConversationOutboundRequest => ({
   accountExternalId: 'PAGE_FIXTURE_1',
   deliveryKey: 'conversation-42:reply-7',
-  externalThreadId: 'PAGE_FIXTURE_1:SENDER_FIXTURE_1',
-  handoffStatus: 'ai_active',
   platform: 'facebook-messenger',
   recipientExternalId: 'SENDER_FIXTURE_1',
   text: 'Thank you. Which finish and approximate quantity do you need?',
@@ -36,6 +35,7 @@ describe('phase-one platform conversation outbound contract', () => {
     expect(PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES).toEqual([
       'account_not_connected',
       'authorization_required',
+      'delivery_unknown',
       'handoff_required',
       'invalid_request',
       'message_window_closed',
@@ -43,7 +43,6 @@ describe('phase-one platform conversation outbound contract', () => {
       'platform_blocked',
       'provider_unavailable',
       'rate_limited',
-      'unknown',
     ])
   })
 
@@ -67,6 +66,13 @@ describe('phase-one platform conversation outbound contract', () => {
       status: 'accepted',
     })
     expect(received).toEqual(request())
+    expect(Object.keys(received ?? {}).sort()).toEqual([
+      'accountExternalId',
+      'deliveryKey',
+      'platform',
+      'recipientExternalId',
+      'text',
+    ])
   })
 
   it('freezes machine-readable, retry-aware blocked outcomes without a sent state', async () => {
@@ -139,6 +145,18 @@ describe('phase-one platform conversation outbound contract', () => {
         providerReference: 'conversation-42:reply-7',
       }),
     ).toBeUndefined()
+    expect(
+      createProviderAcceptanceEvidence({
+        deliveryKey: 'conversation-42:reply-7',
+        providerReference: 'provider\nmessage',
+      }),
+    ).toBeUndefined()
+    expect(
+      createProviderAcceptanceEvidence({
+        deliveryKey: 'conversation-42:reply-7',
+        providerReference: '凭'.repeat(200),
+      }),
+    ).toBeUndefined()
 
     const providerReference = createProviderAcceptanceEvidence({
       deliveryKey: 'conversation-42:reply-7',
@@ -169,5 +187,21 @@ describe('phase-one platform conversation outbound contract', () => {
       providerReference: 'provider-message-opaque-7',
       status: 'provider_accepted',
     })
+  })
+
+  it('exposes a stable non-retryable signal after crossing the send boundary', () => {
+    const error = new PlatformConversationOutboundOutcomeUnknownError({
+      deliveryKey: 'conversation-42:reply-7',
+      platform: 'facebook-messenger',
+    })
+
+    expect(error).toMatchObject({
+      code: 'delivery_unknown',
+      deliveryKey: 'conversation-42:reply-7',
+      name: 'PlatformConversationOutboundOutcomeUnknownError',
+      platform: 'facebook-messenger',
+      retryable: false,
+    })
+    expect(error.message).not.toContain('token')
   })
 })

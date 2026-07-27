@@ -2,6 +2,9 @@ import type {
   NormalizedInboundMessage,
   NormalizedMessageStatus,
   NormalizedPlatformEvent,
+  PlatformConversationDeliveryClaim,
+  PlatformConversationDeliveryIntent,
+  PlatformConversationDeliveryOutcome,
   PlatformConversationOutboundRequest,
   PlatformConversationOutboundRecoveryResult,
   PlatformConversationOutboundResult,
@@ -82,4 +85,26 @@ export interface PlatformConversationOutboundPort {
   recoverUnknownOutcome(
     request: PlatformConversationOutboundRequest,
   ): Promise<PlatformConversationOutboundRecoveryResult>
+}
+
+/**
+ * Authority used to atomically fence a queued AI reply before provider I/O.
+ * The same authority must serialize handoff transitions against active claims,
+ * so `human_active` cannot commit and then be followed by an automatic send.
+ */
+export interface PlatformConversationDeliveryAuthorityPort {
+  claimDelivery(
+    intent: PlatformConversationDeliveryIntent,
+  ): Promise<PlatformConversationDeliveryClaim | undefined>
+  /** Atomically fence this generation immediately before provider I/O. */
+  markProviderIOStarted(claim: PlatformConversationDeliveryClaim): Promise<boolean>
+  releaseDelivery(
+    claim: PlatformConversationDeliveryClaim,
+    outcome?: PlatformConversationDeliveryOutcome,
+  ): Promise<void>
+}
+
+/** Public application contract consumed by a future reviewed Task 10 handler. */
+export interface PlatformConversationDeliveryService {
+  deliver(intent: PlatformConversationDeliveryIntent): Promise<PlatformConversationDeliveryOutcome>
 }

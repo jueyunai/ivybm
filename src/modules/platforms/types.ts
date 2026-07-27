@@ -3,6 +3,12 @@ import { createHash } from 'node:crypto'
 import type { HandoffStatus } from '../conversations/contracts'
 
 export {
+  PlatformConversationOutboundOutcomeUnknownError,
+  PlatformConversationOutboundTransportError,
+  isPlatformConversationOutboundOutcomeUnknownError,
+} from './conversationOutboundResult'
+
+export {
   MAX_PUBLICATION_ASSETS,
   MAX_PUBLICATION_ASSET_ID_BYTES,
   MAX_PUBLICATION_FILE_NAME_BYTES,
@@ -115,6 +121,7 @@ export type NormalizedPlatformEvent = NormalizedInboundMessage | NormalizedMessa
 export const PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES = [
   'account_not_connected',
   'authorization_required',
+  'delivery_unknown',
   'handoff_required',
   'invalid_request',
   'message_window_closed',
@@ -122,29 +129,57 @@ export const PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES = [
   'platform_blocked',
   'provider_unavailable',
   'rate_limited',
-  'unknown',
 ] as const
 
 export type PlatformConversationOutboundErrorCode =
   (typeof PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES)[number]
+export type ConfirmedPlatformConversationOutboundErrorCode = Exclude<
+  PlatformConversationOutboundErrorCode,
+  'delivery_unknown'
+>
 
 /**
- * Server-only, credential-free command to deliver one automatic conversation
- * reply. The deliveryKey is the idempotency anchor scoped by platform and
- * account; the adapter never sees tokens or conversation internals.
+ * Credential-free transport command for one automatic conversation reply. The
+ * adapter sees only provider-routing fields plus the delivery correlation key;
+ * conversation, reply, revision and handoff state remain above this boundary.
  */
 export type PlatformConversationOutboundRequest = {
-  accountExternalId: string
-  deliveryKey: string
-  externalThreadId: string
-  /**
-   * Authoritative snapshot freshly loaded by ConversationService immediately
-   * before this send. A worker must not reuse the status captured at enqueue.
-   */
-  handoffStatus: HandoffStatus
-  platform: MessagingPlatform
-  recipientExternalId: string
-  text: string
+  readonly accountExternalId: string
+  readonly deliveryKey: string
+  readonly platform: MessagingPlatform
+  readonly recipientExternalId: string
+  readonly text: string
+}
+
+/**
+ * Internal, stable delivery intent created while ConversationService is
+ * authoritative. A worker must atomically claim expectedRevision immediately
+ * before passing the nested transport request to an adapter.
+ */
+export type PlatformConversationDeliveryIntent = {
+  readonly conversationId: number | string
+  readonly expectedRevision: number
+  readonly replyId: number | string
+  readonly transport: PlatformConversationOutboundRequest
+}
+
+export type PlatformConversationDeliverySnapshot = {
+  readonly conversationId: number | string
+  readonly handoffStatus: HandoffStatus
+  readonly revision: number
+}
+
+/**
+ * Opaque logical fence acquired by a worker before provider I/O. Handoff
+ * transitions must use the same authority and may not commit while a claim for
+ * that conversation is active.
+ */
+export type PlatformConversationDeliveryClaim = {
+  readonly claimId: string
+  readonly fencingGeneration: number
+  readonly intent: PlatformConversationDeliveryIntent
+  /** Reclaimed attempts reconcile first and never call send before evidence. */
+  readonly mode: 'recover' | 'send'
 }
 
 type PlatformConversationOutboundResultBase = {
@@ -159,7 +194,7 @@ type PlatformConversationOutboundResultBase = {
  * verified delivery separately.
  */
 type PlatformConversationOutboundBlockedResult = PlatformConversationOutboundResultBase & {
-  errorCode: PlatformConversationOutboundErrorCode
+  errorCode: ConfirmedPlatformConversationOutboundErrorCode
   status: 'blocked'
 } & (
     | { retryAfterSeconds?: never; retryable: false }
@@ -211,7 +246,14 @@ export const createProviderAcceptanceEvidence = ({
 }): ProviderAcceptanceEvidence | undefined => {
   if (typeof deliveryKey !== 'string' || typeof providerReference !== 'string') return undefined
   const normalizedReference = providerReference.trim()
-  return normalizedReference && normalizedReference !== deliveryKey.trim()
+  const isBoundedOpaqueIdentifier =
+    normalizedReference === providerReference &&
+    new TextEncoder().encode(normalizedReference).byteLength <= 512 &&
+    !/[\u0000-\u001F\u007F-\u009F]/u.test(normalizedReference) &&
+    !/\s/u.test(normalizedReference)
+  return normalizedReference &&
+    isBoundedOpaqueIdentifier &&
+    normalizedReference !== deliveryKey.trim()
     ? (normalizedReference as ProviderAcceptanceEvidence)
     : undefined
 }
@@ -230,6 +272,10 @@ export type PlatformConversationOutboundRecoveryResult =
       providerReference: ProviderAcceptanceEvidence
       status: 'provider_accepted'
     })
+
+export type PlatformConversationDeliveryOutcome =
+  | PlatformConversationOutboundRecoveryResult
+  | PlatformConversationOutboundResult
 
 /**
  * Automatic platform replies are only allowed while the authoritative

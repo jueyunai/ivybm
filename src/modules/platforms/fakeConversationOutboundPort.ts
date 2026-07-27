@@ -1,20 +1,18 @@
-import { HANDOFF_STATUSES, type HandoffStatus } from '../conversations/contracts'
-
 import type { PlatformConversationOutboundPort } from './ports'
+import { PlatformConversationOutboundOutcomeUnknownError } from './conversationOutboundResult'
 import {
   createProviderAcceptanceEvidence,
-  isAutomaticPlatformConversationReplyAllowed,
   MESSAGING_PLATFORMS,
   PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES,
+  type ConfirmedPlatformConversationOutboundErrorCode,
   type MessagingPlatform,
-  type PlatformConversationOutboundErrorCode,
   type PlatformConversationOutboundRequest,
   type PlatformConversationOutboundRecoveryResult,
   type PlatformConversationOutboundResult,
 } from './types'
 
 export type FakeConversationOutboundFailure = {
-  errorCode: PlatformConversationOutboundErrorCode
+  errorCode: ConfirmedPlatformConversationOutboundErrorCode
   platform: MessagingPlatform
   retryAfterSeconds?: number
   retryable: boolean
@@ -58,13 +56,6 @@ export const createFakePlatformConversationOutboundProviderState = ({
   }
 }
 
-export class FakeConversationOutboundAcceptedResultLostError extends Error {
-  constructor() {
-    super('Fake provider acceptance was lost before the worker could persist it')
-    this.name = 'FakeConversationOutboundAcceptedResultLostError'
-  }
-}
-
 export type FakePlatformConversationOutboundPort = PlatformConversationOutboundPort & {
   /** Queue a platform-scoped failure consumed by the next eligible send. */
   failNextSend(failure: FakeConversationOutboundFailure): void
@@ -87,16 +78,19 @@ const deliveryKey = (request: {
   accountExternalId: string
   deliveryKey: string
   platform: MessagingPlatform
-}): string => `${request.platform}\u0000${request.accountExternalId}\u0000${request.deliveryKey}`
+}): string =>
+  JSON.stringify(
+    [request.platform, request.accountExternalId, request.deliveryKey].map((part) => [
+      typeof part,
+      part,
+    ]),
+  )
 
 const trimmedString = (value: unknown, maxLength: number): string | undefined => {
   if (typeof value !== 'string') return undefined
   const normalized = value.trim()
   return normalized && normalized.length <= maxLength ? normalized : undefined
 }
-
-const isHandoffStatus = (value: unknown): value is HandoffStatus =>
-  typeof value === 'string' && HANDOFF_STATUSES.includes(value as HandoffStatus)
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -107,8 +101,6 @@ const samePayload = (
 ): boolean =>
   stored.accountExternalId === request.accountExternalId &&
   stored.deliveryKey === request.deliveryKey &&
-  stored.externalThreadId === request.externalThreadId &&
-  stored.handoffStatus === request.handoffStatus &&
   stored.platform === request.platform &&
   stored.recipientExternalId === request.recipientExternalId &&
   stored.text === request.text
@@ -116,7 +108,7 @@ const samePayload = (
 const blocked = (
   request: { deliveryKey: string; platform: MessagingPlatform },
   failure: {
-    errorCode: PlatformConversationOutboundErrorCode
+    errorCode: ConfirmedPlatformConversationOutboundErrorCode
     retryAfterSeconds?: number
     retryable: boolean
   },
@@ -168,8 +160,6 @@ export const createFakePlatformConversationOutboundPort = ({
     const request: PlatformConversationOutboundRequest = {
       accountExternalId: trimmedString(input.accountExternalId, 240) ?? '',
       deliveryKey: trimmedString(input.deliveryKey, 200) ?? '',
-      externalThreadId: trimmedString(input.externalThreadId, 500) ?? '',
-      handoffStatus: input.handoffStatus,
       platform,
       recipientExternalId: trimmedString(input.recipientExternalId, 240) ?? '',
       text: trimmedString(input.text, 5_000) ?? '',
@@ -178,18 +168,10 @@ export const createFakePlatformConversationOutboundPort = ({
     if (
       !request.accountExternalId ||
       !request.deliveryKey ||
-      !request.externalThreadId ||
-      !isHandoffStatus(request.handoffStatus) ||
       !request.recipientExternalId ||
       !request.text
     ) {
       return blocked(request, { errorCode: 'invalid_request', retryable: false })
-    }
-
-    // Handoff suppression happens before dedup and before consuming queued
-    // failures: a suppressed reply must not record state or burn a failure.
-    if (!isAutomaticPlatformConversationReplyAllowed(request.handoffStatus)) {
-      return blocked(request, { errorCode: 'handoff_required', retryable: false })
     }
 
     const key = deliveryKey(request)
@@ -221,7 +203,10 @@ export const createFakePlatformConversationOutboundPort = ({
       } else {
         providerState.acceptedResultLosses.set(platform, acceptedResultLosses - 1)
       }
-      throw new FakeConversationOutboundAcceptedResultLostError()
+      throw new PlatformConversationOutboundOutcomeUnknownError({
+        deliveryKey: request.deliveryKey,
+        platform: request.platform,
+      })
     }
     return {
       deliveryKey: request.deliveryKey,
@@ -236,8 +221,9 @@ export const createFakePlatformConversationOutboundPort = ({
     }
     const platform = assertSupportedMessagingPlatform(failure.platform)
     if (
+      (failure as { errorCode?: unknown }).errorCode === 'delivery_unknown' ||
       !PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES.includes(
-        failure.errorCode as PlatformConversationOutboundErrorCode,
+        failure.errorCode as ConfirmedPlatformConversationOutboundErrorCode,
       )
     ) {
       throw new Error(
@@ -284,8 +270,6 @@ export const createFakePlatformConversationOutboundPort = ({
     const request: PlatformConversationOutboundRequest = {
       accountExternalId: trimmedString(input.accountExternalId, 240) ?? '',
       deliveryKey: trimmedString(input.deliveryKey, 200) ?? '',
-      externalThreadId: trimmedString(input.externalThreadId, 500) ?? '',
-      handoffStatus: input.handoffStatus,
       platform,
       recipientExternalId: trimmedString(input.recipientExternalId, 240) ?? '',
       text: trimmedString(input.text, 5_000) ?? '',
@@ -293,8 +277,6 @@ export const createFakePlatformConversationOutboundPort = ({
     if (
       !request.accountExternalId ||
       !request.deliveryKey ||
-      !request.externalThreadId ||
-      !isHandoffStatus(request.handoffStatus) ||
       !request.recipientExternalId ||
       !request.text
     ) {

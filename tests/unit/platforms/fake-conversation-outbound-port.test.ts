@@ -5,7 +5,7 @@ import {
   createFakePlatformConversationOutboundProviderState,
 } from '../../../src/modules/platforms/fakeConversationOutboundPort'
 import {
-  isAutomaticPlatformConversationReplyAllowed,
+  PlatformConversationOutboundOutcomeUnknownError,
   type PlatformConversationOutboundRequest,
 } from '../../../src/modules/platforms/types'
 
@@ -14,8 +14,6 @@ const request = (
 ): PlatformConversationOutboundRequest => ({
   accountExternalId: 'PAGE_FIXTURE_1',
   deliveryKey: 'conversation-42:reply-7',
-  externalThreadId: 'PAGE_FIXTURE_1:SENDER_FIXTURE_1',
-  handoffStatus: 'ai_active',
   platform: 'facebook-messenger',
   recipientExternalId: 'SENDER_FIXTURE_1',
   text: 'Thank you. Which finish and approximate quantity do you need?',
@@ -64,11 +62,33 @@ describe('fake platform conversation outbound port', () => {
     })
   })
 
+  it('keeps send idempotency isolated across adversarial account and delivery keys', async () => {
+    const port = createFakePlatformConversationOutboundPort()
+    const accountBoundary = request({
+      accountExternalId: 'acct\u0000delivery',
+      deliveryKey: 'key',
+      recipientExternalId: 'RECIPIENT_A',
+      text: 'Reply for account boundary A.',
+    })
+    const deliveryBoundary = request({
+      accountExternalId: 'acct',
+      deliveryKey: 'delivery\u0000key',
+      recipientExternalId: 'RECIPIENT_B',
+      text: 'Reply for account boundary B.',
+    })
+
+    await expect(port.send(accountBoundary)).resolves.toMatchObject({ status: 'accepted' })
+    await expect(port.send(deliveryBoundary)).resolves.toMatchObject({ status: 'accepted' })
+    await expect(port.send(accountBoundary)).resolves.toMatchObject({ status: 'duplicate' })
+    await expect(port.send(deliveryBoundary)).resolves.toMatchObject({ status: 'duplicate' })
+  })
+
   it('copies accepted input and returned inspection snapshots', async () => {
     const port = createFakePlatformConversationOutboundPort()
     const input = request({ deliveryKey: 'clone-safety-1' })
     await port.send(input)
-    input.text = 'Caller mutation must not alter the fake state.'
+    const mutableInput = input as { text: string }
+    mutableInput.text = 'Caller mutation must not alter the fake state.'
 
     const stored = port.getAcceptedRequest({
       accountExternalId: input.accountExternalId,
@@ -76,7 +96,10 @@ describe('fake platform conversation outbound port', () => {
       platform: input.platform,
     })
     expect(stored?.text).toBe('Thank you. Which finish and approximate quantity do you need?')
-    if (stored) stored.text = 'Returned mutation must not alter the fake state either.'
+    if (stored) {
+      const mutableStored = stored as { text: string }
+      mutableStored.text = 'Returned mutation must not alter the fake state either.'
+    }
 
     expect(
       port.getAcceptedRequest({
@@ -87,31 +110,45 @@ describe('fake platform conversation outbound port', () => {
     ).toBe('Thank you. Which finish and approximate quantity do you need?')
   })
 
-  it('suppresses automatic delivery outside ai_active without consuming a queued provider failure', async () => {
+  it('does not expose another account through an adversarial inspection key', async () => {
     const port = createFakePlatformConversationOutboundPort()
-    port.failNextSend({
-      errorCode: 'provider_unavailable',
-      platform: 'facebook-messenger',
-      retryable: true,
+    const accountBoundary = request({
+      accountExternalId: 'acct\u0000delivery',
+      deliveryKey: 'key',
+      recipientExternalId: 'RECIPIENT_A',
+      text: 'Private reply A.',
     })
+    const collidingInspectionKey = {
+      accountExternalId: 'acct',
+      deliveryKey: 'delivery\u0000key',
+      platform: 'facebook-messenger' as const,
+    }
 
-    await expect(port.send(request({ handoffStatus: 'human_active' }))).resolves.toEqual({
-      deliveryKey: 'conversation-42:reply-7',
-      errorCode: 'handoff_required',
-      platform: 'facebook-messenger',
-      retryable: false,
-      status: 'blocked',
-    })
-    await expect(port.send(request({ deliveryKey: 'provider-failure-1' }))).resolves.toEqual({
-      deliveryKey: 'provider-failure-1',
-      errorCode: 'provider_unavailable',
-      platform: 'facebook-messenger',
-      retryable: true,
-      status: 'blocked',
+    await port.send(accountBoundary)
+    expect(port.getAcceptedRequest(collidingInspectionKey)).toBeUndefined()
+
+    await port.send(
+      request({
+        ...collidingInspectionKey,
+        recipientExternalId: 'RECIPIENT_B',
+        text: 'Private reply B.',
+      }),
+    )
+    expect(
+      port.getAcceptedRequest({
+        accountExternalId: accountBoundary.accountExternalId,
+        deliveryKey: accountBoundary.deliveryKey,
+        platform: accountBoundary.platform,
+      }),
+    ).toEqual(accountBoundary)
+    expect(port.getAcceptedRequest(collidingInspectionKey)).toMatchObject({
+      accountExternalId: 'acct',
+      deliveryKey: 'delivery\u0000key',
+      text: 'Private reply B.',
     })
   })
 
-  it('fails closed for an invalid handoff snapshot or oversized text before consuming a queued failure', async () => {
+  it('fails closed for oversized text before consuming a queued failure', async () => {
     const port = createFakePlatformConversationOutboundPort()
     port.failNextSend({
       errorCode: 'provider_unavailable',
@@ -119,15 +156,6 @@ describe('fake platform conversation outbound port', () => {
       retryable: true,
     })
 
-    await expect(port.send(request({ handoffStatus: 'invented-state' as never }))).resolves.toEqual(
-      {
-        deliveryKey: 'conversation-42:reply-7',
-        errorCode: 'invalid_request',
-        platform: 'facebook-messenger',
-        retryable: false,
-        status: 'blocked',
-      },
-    )
     await expect(
       port.send(request({ deliveryKey: 'oversized-text-1', text: 'x'.repeat(5_001) })),
     ).resolves.toEqual({
@@ -148,7 +176,7 @@ describe('fake platform conversation outbound port', () => {
     )
   })
 
-  it('models retryable rate limiting, preserves platform isolation, and validates state eligibility', async () => {
+  it('models retryable rate limiting and preserves platform isolation', async () => {
     const port = createFakePlatformConversationOutboundPort()
     port.failNextSend({
       errorCode: 'rate_limited',
@@ -171,11 +199,6 @@ describe('fake platform conversation outbound port', () => {
         status: 'accepted',
       },
     )
-
-    expect(isAutomaticPlatformConversationReplyAllowed('ai_active')).toBe(true)
-    expect(isAutomaticPlatformConversationReplyAllowed('handoff_requested')).toBe(false)
-    expect(isAutomaticPlatformConversationReplyAllowed('human_active')).toBe(false)
-    expect(isAutomaticPlatformConversationReplyAllowed('resolved')).toBe(false)
   })
 
   it('fails closed for malformed runtime input and unsupported messaging platforms', async () => {
@@ -265,7 +288,12 @@ describe('fake platform conversation outbound port', () => {
 
     await expect(
       firstWorker.send(request({ deliveryKey: 'lost-result-idempotency-1' })),
-    ).rejects.toThrow('provider acceptance was lost before the worker could persist it')
+    ).rejects.toMatchObject({
+      code: 'delivery_unknown',
+      deliveryKey: 'lost-result-idempotency-1',
+      platform: 'facebook-messenger',
+      retryable: false,
+    })
 
     const reclaimedWorker = createFakePlatformConversationOutboundPort({ providerState })
     await expect(
@@ -291,7 +319,7 @@ describe('fake platform conversation outbound port', () => {
 
     await expect(
       firstWorker.send(request({ deliveryKey: 'meta-default-unknown-1' })),
-    ).rejects.toThrow('provider acceptance was lost before the worker could persist it')
+    ).rejects.toBeInstanceOf(PlatformConversationOutboundOutcomeUnknownError)
     await expect(
       createFakePlatformConversationOutboundPort({ providerState }).recoverUnknownOutcome(
         request({ deliveryKey: 'meta-default-unknown-1' }),
@@ -311,7 +339,7 @@ describe('fake platform conversation outbound port', () => {
     lookupWorker.loseAcceptedResultNext({ platform: 'instagram' })
     await expect(
       lookupWorker.send(request({ deliveryKey: 'lost-result-lookup-1', platform: 'instagram' })),
-    ).rejects.toThrow('provider acceptance was lost before the worker could persist it')
+    ).rejects.toBeInstanceOf(PlatformConversationOutboundOutcomeUnknownError)
 
     await expect(
       createFakePlatformConversationOutboundPort({
@@ -337,7 +365,7 @@ describe('fake platform conversation outbound port', () => {
       lookupWithoutEvidenceWorker.send(
         request({ deliveryKey: 'missing-lookup-evidence-1', platform: 'instagram' }),
       ),
-    ).rejects.toThrow('provider acceptance was lost before the worker could persist it')
+    ).rejects.toBeInstanceOf(PlatformConversationOutboundOutcomeUnknownError)
     for (const key of lookupWithoutEvidenceState.providerReferences.keys()) {
       lookupWithoutEvidenceState.providerReferences.set(key, 'missing-lookup-evidence-1')
     }
@@ -363,7 +391,7 @@ describe('fake platform conversation outbound port', () => {
     unknownWorker.loseAcceptedResultNext({ platform: 'tiktok' })
     await expect(
       unknownWorker.send(request({ deliveryKey: 'lost-result-unknown-1', platform: 'tiktok' })),
-    ).rejects.toThrow('provider acceptance was lost before the worker could persist it')
+    ).rejects.toBeInstanceOf(PlatformConversationOutboundOutcomeUnknownError)
 
     await expect(
       createFakePlatformConversationOutboundPort({
@@ -395,5 +423,44 @@ describe('fake platform conversation outbound port', () => {
       platform: 'facebook-messenger',
       status: 'delivery_unknown',
     })
+  })
+
+  it('keeps provider lookup recovery isolated across adversarial account and delivery keys', async () => {
+    const providerState = createFakePlatformConversationOutboundProviderState({
+      recoveryMode: 'provider_delivery_lookup',
+    })
+    const sender = createFakePlatformConversationOutboundPort({ providerState })
+    const accountBoundary = request({
+      accountExternalId: 'acct\u0000delivery',
+      deliveryKey: 'key',
+      recipientExternalId: 'RECIPIENT_A',
+      text: 'Recovery reply A.',
+    })
+    const deliveryBoundary = request({
+      accountExternalId: 'acct',
+      deliveryKey: 'delivery\u0000key',
+      recipientExternalId: 'RECIPIENT_B',
+      text: 'Recovery reply B.',
+    })
+    sender.loseAcceptedResultNext({ platform: 'facebook-messenger' })
+    sender.loseAcceptedResultNext({ platform: 'facebook-messenger' })
+
+    await expect(sender.send(accountBoundary)).rejects.toBeInstanceOf(
+      PlatformConversationOutboundOutcomeUnknownError,
+    )
+    await expect(sender.send(deliveryBoundary)).rejects.toBeInstanceOf(
+      PlatformConversationOutboundOutcomeUnknownError,
+    )
+
+    const recovery = createFakePlatformConversationOutboundPort({ providerState })
+    const recoveredA = await recovery.recoverUnknownOutcome(accountBoundary)
+    const recoveredB = await recovery.recoverUnknownOutcome(deliveryBoundary)
+    expect(recoveredA).toMatchObject({ status: 'provider_accepted' })
+    expect(recoveredB).toMatchObject({ status: 'provider_accepted' })
+    expect(recoveredA).not.toEqual(recoveredB)
+    if (recoveredA.status !== 'provider_accepted' || recoveredB.status !== 'provider_accepted') {
+      throw new Error('Both adversarial fixtures must recover with provider evidence')
+    }
+    expect(recoveredA.providerReference).not.toBe(recoveredB.providerReference)
   })
 })

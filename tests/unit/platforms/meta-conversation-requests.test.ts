@@ -38,7 +38,7 @@ describe('meta conversation reply request builder', () => {
     expect(request.body.message.text).toBe('Hello there.')
   })
 
-  it('contains no credentials, tokens, deliveryKey or externalThreadId', () => {
+  it('contains no credentials, delivery identity, revision or conversation state', () => {
     const request = buildMetaConversationReplyRequest(input())
     const serialized = JSON.stringify(request)
 
@@ -47,6 +47,11 @@ describe('meta conversation reply request builder', () => {
     expect(serialized).not.toContain('access_token')
     expect(serialized).not.toContain('deliveryKey')
     expect(serialized).not.toContain('externalThreadId')
+    expect(serialized).not.toContain('handoffStatus')
+    expect(serialized).not.toContain('revision')
+    expect(serialized).not.toContain('conversationId')
+    expect(serialized).not.toContain('replyId')
+    expect(serialized).not.toContain('intentId')
   })
 
   it.each(['tiktok', 'facebook', '', ' facebook-messenger'])(

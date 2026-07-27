@@ -79,7 +79,7 @@ const decimalId = (value: unknown, label: string): string => {
 
 /**
  * Build the exact Send API request for one text reply. The output contains no
- * Authorization header, access_token, deliveryKey or externalThreadId.
+ * Authorization header, token, delivery key, conversation state or intent ID.
  */
 export const buildMetaConversationReplyRequest = (
   input: MetaConversationReplyInput,
