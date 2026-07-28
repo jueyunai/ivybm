@@ -3,6 +3,7 @@ import { getPayload, type Payload } from 'payload'
 
 import config from '@/payload.config'
 import { seedContent } from '@/seed/content'
+import { OLD_SITE_POSTS, OLD_SITE_PROJECTS, PRODUCT_ASSET_FILENAMES } from '@/seed/oldSiteContent'
 
 const showcaseFilenames = [
   'ivybm-showcase-hero-1.jpg',
@@ -84,7 +85,9 @@ describe.sequential('showcase media seed', () => {
     await payload?.destroy()
   })
 
-  it('keeps tracked showcase media and all seeded references stable across repeated runs', async () => {
+  it('keeps repository placeholders stable without importing customer media', async () => {
+    await seedContent(payload)
+
     const before = await payload.find({ collection: 'media', limit: 100, overrideAccess: true })
     const beforeShowcase = before.docs.filter((doc) =>
       doc.source?.startsWith('IVYBM seed asset: showcase:'),
@@ -98,6 +101,9 @@ describe.sequential('showcase media seed', () => {
       ).toBe(true)
     }
 
+    const beforeCustomerMedia = before.docs.filter((doc) =>
+      doc.source?.startsWith('IVYBM customer-owned legacy website asset;'),
+    )
     const beforeIDs = new Map(beforeShowcase.map((doc) => [doc.source, doc.id]))
     await seedContent(payload)
 
@@ -108,6 +114,11 @@ describe.sequential('showcase media seed', () => {
         .filter((doc) => doc.source?.startsWith('IVYBM seed asset: showcase:'))
         .map((doc) => [doc.source, doc.id]),
     ).toEqual(expect.arrayContaining([...beforeIDs.entries()]))
+    expect(
+      after.docs.filter((doc) =>
+        doc.source?.startsWith('IVYBM customer-owned legacy website asset;'),
+      ),
+    ).toHaveLength(beforeCustomerMedia.length)
     expect(
       after.docs.filter((doc) => legacyFilenames.includes(doc.filename as never)),
     ).toHaveLength(0)
@@ -123,20 +134,64 @@ describe.sequential('showcase media seed', () => {
     })
     expect(pages.docs).toHaveLength(3)
     expect(pages.docs.every((page) => showcaseIDs.has(relationID(page.heroImage) ?? -1))).toBe(true)
+    const about = pages.docs.find((page) => page.slug === 'about')
+    const aboutRoot = about?.body?.root as
+      { children?: Array<{ type?: string }>; direction?: string } | undefined
+    expect(aboutRoot?.direction).toBe('ltr')
+    expect(aboutRoot?.children?.filter((node) => node.type === 'upload')).toHaveLength(4)
 
-    for (const collection of ['products', 'projects'] as const) {
-      const documents = await payload.find({
-        collection,
-        depth: 0,
-        limit: 20,
-        locale: 'en',
-        overrideAccess: true,
-      })
-      expect(documents.docs.length).toBeGreaterThan(0)
-      expect(
-        documents.docs.every((document) => showcaseIDs.has(relationID(document.coverImage) ?? -1)),
-      ).toBe(true)
-    }
+    const arabicAbout = await payload.find({
+      collection: 'pages',
+      depth: 0,
+      fallbackLocale: false,
+      limit: 1,
+      locale: 'ar',
+      overrideAccess: true,
+      where: { slug: { equals: 'about' } },
+    })
+    expect(arabicAbout.docs[0]?.body?.root).toMatchObject({ direction: 'rtl' })
+
+    const products = await payload.find({
+      collection: 'products',
+      depth: 0,
+      limit: 10,
+      locale: 'en',
+      overrideAccess: true,
+      where: { slug: { in: Object.keys(PRODUCT_ASSET_FILENAMES) } },
+    })
+    expect(products.docs).toHaveLength(3)
+    expect(
+      products.docs.every((product) => showcaseIDs.has(relationID(product.coverImage) ?? -1)),
+    ).toBe(true)
+    expect(products.docs.every((product) => product.gallery?.length === 4)).toBe(true)
+    expect(products.docs.every((product) => Boolean(product.description))).toBe(true)
+
+    const arabicProducts = await payload.find({
+      collection: 'products',
+      depth: 0,
+      fallbackLocale: false,
+      limit: 10,
+      locale: 'ar',
+      overrideAccess: true,
+      where: { slug: { in: Object.keys(PRODUCT_ASSET_FILENAMES) } },
+    })
+    expect(arabicProducts.docs).toHaveLength(3)
+    expect(arabicProducts.docs.every((product) => Boolean(product.description))).toBe(true)
+
+    const projects = await payload.find({
+      collection: 'projects',
+      depth: 0,
+      limit: 10,
+      locale: 'en',
+      overrideAccess: true,
+      where: { slug: { in: OLD_SITE_PROJECTS.map((project) => project.slug) } },
+    })
+    expect(projects.docs).toHaveLength(OLD_SITE_PROJECTS.length)
+    expect(
+      projects.docs.every((project) => showcaseIDs.has(relationID(project.coverImage) ?? -1)),
+    ).toBe(true)
+    expect(projects.docs.every((project) => Boolean(project.description))).toBe(true)
+    expect(projects.docs.every((project) => (project.gallery?.length ?? 0) >= 3)).toBe(true)
 
     const posts = await payload.find({
       collection: 'posts',
@@ -144,11 +199,13 @@ describe.sequential('showcase media seed', () => {
       limit: 20,
       locale: 'en',
       overrideAccess: true,
+      where: { slug: { in: OLD_SITE_POSTS.map((post) => post.slug) } },
     })
-    expect(posts.docs.length).toBeGreaterThan(0)
+    expect(posts.docs).toHaveLength(OLD_SITE_POSTS.length)
     expect(posts.docs.every((post) => showcaseIDs.has(relationID(post.featuredImage) ?? -1))).toBe(
       true,
     )
+    expect(posts.docs.every((post) => Boolean(post.content))).toBe(true)
 
     const downloads = await payload.find({
       collection: 'downloads',
@@ -169,6 +226,57 @@ describe.sequential('showcase media seed', () => {
       slug: 'site-settings',
     })
     expect(showcaseIDs.has(relationID(settings.logo) ?? -1)).toBe(true)
+    expect(settings.contact).toMatchObject({
+      email: 'ivy@ivymetalglass.com',
+      phone: '+8618520040515',
+      whatsapp: '+8618520040515',
+    })
+
+    const arabicSettings = await payload.findGlobal({
+      depth: 0,
+      fallbackLocale: false,
+      locale: 'ar',
+      overrideAccess: true,
+      slug: 'site-settings',
+    })
+    expect(arabicSettings.contact).toMatchObject({
+      email: 'ivy@ivymetalglass.com',
+      phone: '+8618520040515',
+      whatsapp: '+8618520040515',
+    })
+    expect(arabicSettings.contact?.address).toContain('المصنع')
+
+    const manualProject = await payload.create({
+      collection: 'projects',
+      context: { disableRevalidate: true, skipAudit: true },
+      data: {
+        _status: 'published',
+        coverImage: beforeShowcase[0].id,
+        slug: 'commercial-complex-facade',
+        title: 'Human-edited project using a former seed slug',
+      },
+      draft: false,
+      locale: 'en',
+      overrideAccess: true,
+    })
+
+    await seedContent(payload)
+
+    const protectedManualProject = await payload.findByID({
+      collection: 'projects',
+      fallbackLocale: false,
+      id: manualProject.id,
+      locale: 'en',
+      overrideAccess: true,
+    })
+    expect(protectedManualProject.title).toBe('Human-edited project using a former seed slug')
+
+    await payload.delete({
+      collection: 'projects',
+      context: { disableRevalidate: true, skipAudit: true },
+      id: manualProject.id,
+      overrideAccess: true,
+    })
   })
 
   it('replaces the legacy technical PDF without clearing the active download file', async () => {
