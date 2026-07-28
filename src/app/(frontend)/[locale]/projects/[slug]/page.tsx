@@ -3,9 +3,10 @@ import { notFound } from 'next/navigation'
 import React from 'react'
 
 import { PageHero } from '@/components/website/PageHero'
+import { ProductGallery } from '@/components/website/ProductGallery'
 import { RichText } from '@/components/website/RichText'
-import { WebsiteImage } from '@/components/website/WebsiteImage'
 import { isPublicLocale } from '@/lib/i18n'
+import { normalizeProductGallery } from '@/lib/product-gallery'
 import { buildPageMetadata } from '@/lib/seo'
 import { getProjectBySlug, getSiteSettings } from '@/lib/website-data'
 
@@ -27,5 +28,25 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   if (!isPublicLocale(locale)) notFound()
   const { project } = await loadProject(locale, slug)
   if (!project) notFound()
-  return <><PageHero image={project.coverImage} subtitle={project.summary} title={project.title} /><section className="section"><div className="container detail-grid"><WebsiteImage className="detail-image" media={project.coverImage} sizes="(max-width: 920px) 100vw, 50vw" type="large" /><div><h2>{project.title}</h2><p className="muted pre-line">{[project.location, project.application].filter(Boolean).join('\n')}</p><RichText data={project.description} /></div></div></section></>
+  const gallery = normalizeProductGallery(project.coverImage, project.gallery)
+
+  return (
+    <>
+      <PageHero image={project.coverImage} subtitle={project.summary} title={project.title} />
+      <section className="section">
+        <div className="container detail-grid">
+          <div className="detail-media">
+            <ProductGallery images={gallery} locale={locale} productTitle={project.title} />
+          </div>
+          <div>
+            <h2>{project.title}</h2>
+            <p className="muted pre-line">
+              {[project.location, project.application].filter(Boolean).join('\n')}
+            </p>
+            <RichText data={project.description} />
+          </div>
+        </div>
+      </section>
+    </>
+  )
 }

@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 
 import { ProductCard } from '@/components/website/Cards'
 import { getWebsiteCopy, type Locale } from '@/lib/i18n'
+import { selectProductCategories } from '@/lib/product-categories'
 import type { Product, ProductCategory } from '@/payload-types'
 
 export function ProductFilter({
@@ -17,22 +18,33 @@ export function ProductFilter({
 }) {
   const copy = getWebsiteCopy(locale)
   const [active, setActive] = useState('all')
+  const availableCategories = selectProductCategories(categories, products)
   const filtered =
     active === 'all'
       ? products
       : products.filter((product) => {
-          const category = typeof product.category === 'object' ? product.category.slug : String(product.category)
+          const category =
+            typeof product.category === 'object' ? product.category.slug : String(product.category)
           return category === active
         })
 
   return (
     <>
-      <div className="tabs" role="group" aria-label={copy.navigation.products}>
-        <button className="tab" data-active={active === 'all'} onClick={() => setActive('all')} type="button">
+      <div className="tabs product-tabs" role="group" aria-label={copy.navigation.products}>
+        <button
+          aria-controls="product-grid"
+          aria-pressed={active === 'all'}
+          className="tab"
+          data-active={active === 'all'}
+          onClick={() => setActive('all')}
+          type="button"
+        >
           {copy.tabs.all}
         </button>
-        {categories.map((category) => (
+        {availableCategories.map((category) => (
           <button
+            aria-controls="product-grid"
+            aria-pressed={active === category.slug}
             className="tab"
             data-active={active === category.slug}
             key={category.id}

@@ -26,6 +26,7 @@ export const getMediaSource = (
 }
 
 export function WebsiteImage({
+  alt,
   className,
   fill = false,
   media,
@@ -33,6 +34,7 @@ export function WebsiteImage({
   sizes,
   type = 'original',
 }: {
+  alt?: string
   className?: string
   fill?: boolean
   media: Media | number | null | undefined
@@ -46,7 +48,7 @@ export function WebsiteImage({
 
   return fill ? (
     <Image
-      alt={source.alt}
+      alt={alt ?? source.alt}
       className={className}
       fill
       priority={priority}
@@ -55,7 +57,7 @@ export function WebsiteImage({
     />
   ) : (
     <Image
-      alt={source.alt}
+      alt={alt ?? source.alt}
       className={className}
       height={source.height}
       priority={priority}

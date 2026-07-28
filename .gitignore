@@ -69,3 +69,7 @@ private/
 contracts/
 quotes/
 customer-inputs/
+
+# 正式客户媒体只进入受控资料目录和 Payload Media，不进入 Git
+src/seed/assets/oldsite/
+src/seed/assets/products/

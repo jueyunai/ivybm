@@ -14,7 +14,8 @@ playwright-report
 test-results
 tmp
 uploads
+src/seed/assets/oldsite
+src/seed/assets/products
 *.log
 *.sqlite
 *.sqlite3
-

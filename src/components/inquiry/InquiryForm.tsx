@@ -46,9 +46,11 @@ const formInput = (
 
 export function InquiryForm({
   initialIdempotencyKey,
+  initialInterest = '',
   locale,
 }: {
   initialIdempotencyKey: string
+  initialInterest?: string
   locale: Locale
 }) {
   const copy = getWebsiteCopy(locale)
@@ -149,7 +151,13 @@ export function InquiryForm({
         <Field error={errors.name} label={copy.contact.name} name="name" />
         <Field error={errors.email} label={copy.contact.email} name="email" type="email" />
         <Field label={copy.contact.company} name="company" required={false} />
-        <Field error={errors.phone} label={copy.contact.phone} name="phone" required={false} type="tel" />
+        <Field
+          error={errors.phone}
+          label={copy.contact.phone}
+          name="phone"
+          required={false}
+          type="tel"
+        />
         <SelectField
           error={errors.country}
           label={copy.contact.country}
@@ -157,9 +165,10 @@ export function InquiryForm({
           options={[...copy.contact.countryOptions]}
         />
         <SelectField
+          defaultValue={initialInterest}
           label={copy.contact.interest}
           name="interest"
-          options={copy.contact.productOptions.map((option) => [option, option])}
+          options={copy.contact.productOptions}
           required={false}
         />
         <Field
@@ -175,18 +184,12 @@ export function InquiryForm({
         <IconSend aria-hidden size={19} />
         {status === 'submitting' ? copy.contact.sending : copy.contact.send}
       </button>
-      <div
-        aria-live="polite"
-        className="form-status"
-        data-error={status === 'error'}
-        role="status"
-      >
+      <div aria-live="polite" className="form-status" data-error={status === 'error'} role="status">
         {statusMessage}
         {requestId ? (
           <>
             {' '}
-            {copy.contact.reference}:{' '}
-            <span data-testid="inquiry-request-id">{requestId}</span>
+            {copy.contact.reference}: <span data-testid="inquiry-request-id">{requestId}</span>
           </>
         ) : null}
       </div>
@@ -241,18 +244,22 @@ function Field({
           type={type}
         />
       )}
-      <div className="error-text" id={errorID}>{error}</div>
+      <div className="error-text" id={errorID}>
+        {error}
+      </div>
     </div>
   )
 }
 
 function SelectField({
+  defaultValue = '',
   error,
   label,
   name,
   options,
   required = true,
 }: {
+  defaultValue?: string
   error?: string
   label: string
   name: string
@@ -267,7 +274,7 @@ function SelectField({
       <select
         aria-describedby={error ? errorID : undefined}
         aria-invalid={Boolean(error)}
-        defaultValue=""
+        defaultValue={defaultValue}
         id={name}
         name={name}
         required={required}
@@ -276,10 +283,14 @@ function SelectField({
           —
         </option>
         {options.map(([value, optionLabel]) => (
-          <option key={value} value={value}>{optionLabel}</option>
+          <option key={value} value={value}>
+            {optionLabel}
+          </option>
         ))}
       </select>
-      <div className="error-text" id={errorID}>{error}</div>
+      <div className="error-text" id={errorID}>
+        {error}
+      </div>
     </div>
   )
 }
