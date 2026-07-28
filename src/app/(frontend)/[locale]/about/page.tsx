@@ -8,8 +8,10 @@ import { RichText } from '@/components/website/RichText'
 import { SectionHeader } from '@/components/website/SectionHeader'
 import { WebsiteImage } from '@/components/website/WebsiteImage'
 import { getWebsiteCopy, isPublicLocale, localePath, type Locale } from '@/lib/i18n'
+import { isImageMedia } from '@/lib/media'
 import { buildPageMetadata } from '@/lib/seo'
 import { getPageBySlug, getProducts, getProjects, getSiteSettings } from '@/lib/website-data'
+import type { Media } from '@/payload-types'
 
 const loadAbout = async (locale: Locale) => {
   const [page, home, products, projects, settings] = await Promise.all([
@@ -20,6 +22,42 @@ const loadAbout = async (locale: Locale) => {
     getSiteSettings(locale),
   ])
   return { home, page, products, projects, settings }
+}
+
+type RichTextData = Record<string, unknown> | null | undefined
+
+const splitBodyMedia = (data: RichTextData): { content: RichTextData; images: Media[] } => {
+  if (!data || !('root' in data)) return { content: data, images: [] }
+
+  const root = (data as { root?: unknown }).root
+  if (!root || typeof root !== 'object' || !('children' in root)) {
+    return { content: data, images: [] }
+  }
+
+  const children = (root as { children?: unknown }).children
+  if (!Array.isArray(children)) return { content: data, images: [] }
+
+  const images: Media[] = []
+  const contentChildren = children.filter((node) => {
+    if (!node || typeof node !== 'object' || !('type' in node) || node.type !== 'upload') {
+      return true
+    }
+
+    const value = 'value' in node ? node.value : undefined
+    if (isImageMedia(value as Media | number | null | undefined)) images.push(value)
+    return false
+  })
+
+  return {
+    content: {
+      ...data,
+      root: {
+        ...root,
+        children: contentChildren,
+      },
+    },
+    images,
+  }
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
@@ -45,9 +83,13 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
   const { home, page, products, projects } = await loadAbout(value)
   if (!page) notFound()
   const copy = getWebsiteCopy(value)
-  const gallery = [home?.heroImage, ...products.map((item) => item.coverImage), ...projects.map((item) => item.coverImage)]
-    .filter(Boolean)
-    .slice(0, 4)
+  const { content, images: bodyImages } = splitBodyMedia(page.body)
+  const fallbackGallery = [
+    home?.heroImage,
+    ...products.map((item) => item.coverImage),
+    ...projects.map((item) => item.coverImage),
+  ].filter(Boolean)
+  const gallery = (bodyImages.length ? bodyImages : fallbackGallery).slice(0, 4)
 
   return (
     <>
@@ -58,7 +100,7 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
             <div className="section-kicker">{copy.about.kicker}</div>
             <h2>{copy.about.title}</h2>
             <p className="muted">{copy.about.body}</p>
-            <RichText data={page.body} />
+            <RichText data={content} />
             <div className="stats">
               {copy.about.stats.map(([valueText, label]) => (
                 <div className="stat" key={label}>

@@ -33,7 +33,10 @@ test('root redirects to English and unknown public content returns 404', async (
   const arabicResponse = await page.goto('/ar/products/not-a-real-product')
   expect(arabicResponse?.status()).toBe(404)
   await expect(page.getByRole('heading', { name: 'الصفحة غير موجودة' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'العودة إلى الرئيسية' })).toHaveAttribute('href', '/ar')
+  await expect(page.getByRole('link', { name: 'العودة إلى الرئيسية' })).toHaveAttribute(
+    'href',
+    '/ar',
+  )
 })
 
 test('sitemap and robots expose locale-prefixed public routes', async ({ request }) => {
@@ -44,21 +47,25 @@ test('sitemap and robots expose locale-prefixed public routes', async ({ request
   expect(sitemapBody).toContain('/ar/products')
   expect(sitemapBody).toContain('hreflang="en"')
   expect(sitemapBody).toContain('hreflang="ar"')
-  expect(sitemapBody).not.toContain('middle-east-export-support')
+  expect(sitemapBody).toContain('/en/news/what-is-double-curved-aluminum-panel')
 
   const robots = await request.get('/robots.txt')
   expect(robots.ok()).toBe(true)
   expect(await robots.text()).toContain('Sitemap:')
 })
 
-test('anonymous website APIs expose the complete published seed without demo copy', async ({ request }) => {
+test('anonymous website APIs expose the complete published seed without demo copy', async ({
+  request,
+}) => {
   for (const [collection, expectedCount] of [
     ['product-categories', 3],
     ['products', 3],
-    ['projects', 6],
+    ['projects', 3],
     ['posts', 3],
   ] as const) {
-    const response = await request.get(`/api/${collection}?locale=en&fallback-locale=none&limit=100`)
+    const response = await request.get(
+      `/api/${collection}?locale=en&fallback-locale=none&limit=100`,
+    )
     expect(response.ok()).toBe(true)
     const body = await response.json()
     expect(body.totalDocs).toBe(expectedCount)
@@ -84,6 +91,20 @@ test('mobile navigation, locale switch, carousel and product filtering work', as
   await expect(activeSlide).not.toHaveAttribute('data-slide-id', firstSlideID ?? '')
 
   await page.goto('/en/products')
+  await expect(page.locator('.product-tabs .tab')).toHaveText([
+    'All',
+    'Double-Curved',
+    'Single-Curved',
+    'Standard Facade',
+  ])
+  await expect(page.locator('[data-testid="product-card"]')).toHaveCount(3)
+  expect(
+    await page
+      .locator('.product-card-image')
+      .evaluateAll((images) =>
+        images.every((image) => getComputedStyle(image).objectFit === 'contain'),
+      ),
+  ).toBe(true)
   await page.getByRole('button', { exact: true, name: 'Double-Curved' }).click()
   await expect(page.locator('[data-testid="product-card"]:visible')).toHaveCount(1)
   await expect(page.getByRole('heading', { name: 'Double-Curved Aluminum Panel' })).toBeVisible()
@@ -100,7 +121,9 @@ test('contact form exposes accessible validation without simulated success', asy
   await expect(page.getByText(/Thank you|success/i)).toHaveCount(0)
 })
 
-test('dynamic detail pages expose localized metadata and noIndex directives', async ({ page }) => {
+test('dynamic detail pages expose localized metadata and migrated project and article content', async ({
+  page,
+}) => {
   await page.goto('/ar/products/double-curved-aluminum-panel')
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl')
   await expect(page.locator('head link[rel="canonical"]')).toHaveAttribute(
@@ -108,7 +131,99 @@ test('dynamic detail pages expose localized metadata and noIndex directives', as
     /\/ar\/products\/double-curved-aluminum-panel$/,
   )
   await expect(page.locator('script[type="application/ld+json"]')).toHaveCount(2)
+  await expect(page.getByRole('heading', { name: 'لوح منحن في اتجاهين' })).toBeVisible()
+  await expect(page.locator('.product-quote-button')).toHaveAttribute(
+    'href',
+    '/ar/contact?product=double-curved-aluminum-panel',
+  )
+  await expect(
+    page.getByRole('img', { name: 'ألواح ألمنيوم مزدوجة الانحناء — الصورة 1 من 5' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'صور المشاريع والتصنيع من الموقع السابق' }),
+  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'مرجع المنتج التاريخي' })).toBeVisible()
 
-  await page.goto('/en/news/middle-east-export-support')
-  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/i)
+  const mainFit = await page.locator('.product-gallery-main-image').evaluate((image) => {
+    const stage = image.closest('.product-gallery-stage')?.getBoundingClientRect()
+    const rect = image.getBoundingClientRect()
+    const element = image as HTMLImageElement
+    return {
+      height: rect.height,
+      fit: getComputedStyle(element).objectFit,
+      source: element.currentSrc,
+      stageHeight: stage?.height ?? 0,
+      stageWidth: stage?.width ?? 0,
+      width: rect.width,
+    }
+  })
+  expect(Math.abs(mainFit.width - mainFit.stageWidth)).toBeLessThanOrEqual(2)
+  expect(Math.abs(mainFit.height - mainFit.stageHeight)).toBeLessThanOrEqual(2)
+  expect(mainFit.fit).toBe('contain')
+  expect(mainFit.source).not.toBe('')
+
+  await page.getByRole('button', { name: /فتح الصورة بالحجم الكامل/ }).click()
+  await expect(
+    page.getByRole('dialog', { name: 'صور ألواح ألمنيوم مزدوجة الانحناء بالحجم الكامل' }),
+  ).toBeVisible()
+  const lightboxFit = await page.locator('.product-gallery-lightbox-image').evaluate((image) => {
+    const stage = image.closest('.product-gallery-lightbox-stage')?.getBoundingClientRect()
+    const rect = image.getBoundingClientRect()
+    const element = image as HTMLImageElement
+    return {
+      height: rect.height,
+      fit: getComputedStyle(element).objectFit,
+      source: element.currentSrc,
+      stageHeight: stage?.height ?? 0,
+      stageWidth: stage?.width ?? 0,
+      width: rect.width,
+    }
+  })
+  expect(Math.abs(lightboxFit.width - lightboxFit.stageWidth)).toBeLessThanOrEqual(2)
+  expect(Math.abs(lightboxFit.height - lightboxFit.stageHeight)).toBeLessThanOrEqual(2)
+  expect(lightboxFit.fit).toBe('contain')
+  expect(lightboxFit.source).not.toBe('')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  await page.goto('/en/contact?product=double-curved-aluminum-panel')
+  await expect(page.getByLabel('Product Interest')).toHaveValue('double-curved-aluminum-panel')
+
+  await page.goto('/en/about')
+  await expect(page.locator('.about-gallery img')).toHaveCount(4)
+
+  await page.goto('/en/projects/canada-double-curved')
+  await expect(page.getByTestId('product-gallery')).toBeVisible()
+  await expect(page.getByText('Image 1 of 7')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Project overview' })).toBeVisible()
+  await page.setViewportSize({ height: 844, width: 390 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+
+  await page.goto('/ar/projects/canada-double-curved')
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl')
+  await expect(page.getByText('الصورة 1 من 7')).toBeVisible()
+
+  await page.goto('/en/news/what-is-double-curved-aluminum-panel')
+  await expect(
+    page.getByRole('heading', { name: 'A panel formed in two directions' }),
+  ).toBeVisible()
+
+  await page.goto('/ar/news/what-is-double-curved-aluminum-panel')
+  await expect(page.getByRole('heading', { name: 'لوح منحن في اتجاهين' })).toBeVisible()
+
+  await page.goto('/en/news/aluminum-panel-thickness-guide')
+  await expect(
+    page.getByRole('heading', { name: 'Archived thickness comparison table' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('img', {
+      name: 'Aluminum panel samples shown in the legacy IVY thickness article',
+    }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('table', { name: /Legacy IVY nominal-to-base-material/ }),
+  ).toBeVisible()
+  await expect(page.getByRole('cell', { name: '1.35 mm' })).toBeVisible()
 })
