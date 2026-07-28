@@ -11,6 +11,101 @@
 - 分支命名：`feat/task-<编号>-<简述>`，例如 `feat/task-8-knowledge-base`；修复用 `fix/...`。
 - 开工前先 `git pull origin main`，确保基于最新代码开分支。
 
+## 本地 worktree 规范
+
+### 工作区拓扑
+
+worktree 是本地检出环境，不是新的分支层级。远程有多少协作者分支，不等于本地需要多少 worktree。默认拓扑如下：
+
+| 目录 | 生命周期 | Git 状态 | 用途 |
+| --- | --- | --- | --- |
+| `ivybm` | 永久 | `main` | 同步可信基线、创建/审计 worktree、必要的 post-merge 验证；禁止日常开发 |
+| `ivybm-task<编号>-<简述>` | Task / PR 周期 | `feat/task-<编号>-<简述>` | Task 功能开发 |
+| `ivybm-fix-<简述>` / `ivybm-docs-<简述>` | PR 周期 | `fix/<简述>` / `docs/<简述>` | 独立修复或文档改动 |
+| `ivybm-review-pr-<编号>` | 一次 PR 审查 | 默认 detached HEAD | 审查协作者 PR、运行测试、验证合并风险 |
+| `ivybm-poc-<简述>` | 最长一个决策周期 | `poc/<简述>` | 有明确问题和退出条件的实验，不直接合入 `main` |
+
+每人同时最多保留 1 个主工作区、2 个开发类 worktree（PoC / hotfix 计入）和 2 个审查 worktree。无需长期 `develop`、integration、release、production 或“某协作者专用”工作区；`main` + GitHub PR + CI 是唯一集成基线。
+
+### 创建开发 worktree
+
+所有新工作从主工作区的最新 `origin/main` 创建。以下命令中的路径和分支必须保持一一对应：
+
+```bash
+cd /path/to/ivybm
+git status --short --branch
+git fetch --prune origin
+git switch main
+git pull --ff-only origin main
+git worktree add -b feat/task-<编号>-<简述> ../ivybm-task<编号>-<简述> origin/main
+bash scripts/install-git-hooks.sh
+```
+
+创建后在新 worktree 执行 `pnpm install --frozen-lockfile`，再配置该工作区自己的本地环境。首次 push 使用 `git push -u origin HEAD`，并确认 `git branch -vv` 显示的 upstream 与本地分支同名。禁止因为远程存在近似名称就复用错误 upstream。
+
+Task 被依赖阻塞时可以保留第二个开发 worktree，但不能在一个分支中混入另一个 Task。hotfix 也从最新 `origin/main` 创建 `fix/<简述>`，不设置长期 hotfix 工作区。
+
+独立修复和文档改动沿用同一创建流程，只把目录 / 分支组合替换为 `ivybm-fix-<简述>` + `fix/<简述>` 或 `ivybm-docs-<简述>` + `docs/<简述>`。
+
+### 创建 PR 审查 worktree
+
+审查协作者 PR 时获取 GitHub PR head 并用 detached HEAD 创建临时工作区，避免污染作者分支或本地分支列表：
+
+```bash
+cd /path/to/ivybm
+git fetch --prune origin
+git fetch origin pull/<PR编号>/head:refs/review/pr-<PR编号>-head
+git worktree add --detach ../ivybm-review-pr-<PR编号> refs/review/pr-<PR编号>-head
+git merge-tree --write-tree origin/main refs/review/pr-<PR编号>-head
+```
+
+审查 worktree 只用于读取、测试和生成审查证据。默认不提交、不 push、不改写协作者分支；需要修复时由作者更新原 PR，或在明确授权后从 PR head 创建单独短分支。作者推送新提交后，移除并按最新 head 重建审查 worktree，避免使用强制 reset 掩盖本地残留。
+
+审查至少核对：PR base/head、完整 diff、共享结构和跨人契约、migration 线性历史、对应测试、CI、回滚边界。涉及 migration 的测试使用一次性数据库，不连接 production 或其他开发 worktree 的数据库。
+
+### 运行时隔离
+
+- 每个并行 worktree 使用唯一的应用端口、Compose project name、数据库名和测试数据库名；不具备这些隔离条件时，同一时间只运行一个本地栈。
+- 每个 worktree 单独维护被 Git 忽略的 `.env`；密钥只能来自受控本地来源，不复制到文档、日志或 PR。不得让 worktree 共享可写 `.env`、`.next`、media、uploads 或数据库目录。
+- pnpm 的全局内容寻址 store 可以复用，但每个 worktree 单独安装自己的 `node_modules`，避免 lockfile 或依赖状态串扰。
+- 开发服务器、worker 和 Compose 服务启动后要能从目录名或 project name 识别归属；结束任务时停止对应进程和容器，不影响其他 worktree。
+
+### 合并后的清理
+
+开发分支只有在 worktree 干净且提交已进入 `origin/main` 时才清理：
+
+```bash
+git -C ../ivybm-task<编号>-<简述> status --short
+git fetch --prune origin
+git merge-base --is-ancestor feat/task-<编号>-<简述> origin/main
+git worktree remove ../ivybm-task<编号>-<简述>
+git branch -d feat/task-<编号>-<简述>
+git worktree prune
+```
+
+任何一步不满足都停止清理并人工确认。禁止用 `rm -rf`、Finder 或文件管理器直接删除已注册 worktree；禁止自动删除 dirty、未 push 或未合并分支。远程分支由 PR 作者或仓库负责人确认 PR 已合并后删除。
+
+PR 审查结束或 PR 关闭后立即清理临时工作区和本地 review ref：
+
+```bash
+git -C ../ivybm-review-pr-<PR编号> status --short
+git worktree remove ../ivybm-review-pr-<PR编号>
+git update-ref -d refs/review/pr-<PR编号>-head
+git worktree prune
+```
+
+每周从 `ivybm` 执行一次只读审计：
+
+```bash
+git fetch --prune origin
+git worktree list
+git branch -vv
+git branch --merged origin/main
+git worktree prune --dry-run
+```
+
+审计发现目录用途、分支名和 upstream 不一致时，先停止 push 和清理，核对提交归属后再处理。
+
 ## PR 与 Review
 
 - 仓库保持 private。当前 GitHub 免费私有仓库无法启用原生 branch protection，因此使用项目规则 + PR 流程 + CODEOWNERS + 本地 `pre-push` hook 形成多层约束。

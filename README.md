@@ -76,7 +76,7 @@ GitHub CI 只负责质量门禁与私有镜像发布；1Panel 手动拉取指定
 - [`docs/architecture/一期技术选型与部署架构规划.md`](docs/architecture/一期技术选型与部署架构规划.md)
 - [`docs/plans/2026-07-16-一期开发实施计划.md`](docs/plans/2026-07-16-一期开发实施计划.md)
 
-两人协作分支和 PR 规范见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+两人协作分支、PR 和本地 worktree 规范见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。本地固定保留 `ivybm` 作为干净的 `main` 基线；开发使用短期 `ivybm-task*`、`ivybm-fix-*` 或 `ivybm-docs-*`，协作者 PR 审查使用临时 `ivybm-review-pr-<编号>`，完成后按规范清理。
 
 编码代理规则见 [`AGENTS.md`](AGENTS.md)；Claude Code 入口见 [`CLAUDE.md`](CLAUDE.md)。首次 clone 后运行：
 
