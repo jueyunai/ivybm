@@ -14,7 +14,7 @@
 
 - `ivybm` 最终必须绑定 `main`、与 `origin/main` 同步且 `git status --short` 为空。
 - 本轮不得从旧 worktree 合入 `src/app/(frontend)`、`src/components/website`、`src/seed`、产品 E2E 或旧 Task 6 CSS；公开官网 UI 和 production 数据不变。
-- `ivybm-private-materials/`、主工作区 ignored `media/`、`deliverables/`、`.env` 内容、数据库、uploads 和 production 备份不删除、不复制到 Git。
+- `ivybm-local-data/private-materials/`、主工作区 ignored `media/`、`deliverables/`、`.env` 内容、数据库、uploads 和 production 备份不删除、不复制到 Git。
 - 任何 dirty worktree 在恢复包和 SHA-256 清单成功生成前不得清理。
 - 任何未合并 branch tip 在 `refs/archive/` 或既有 archive tag 可解析前不得删除。
 - `src/payload.config.ts` 的 Admin Shell PR 必须等另一名开发者 review；不得负责人自检合并。
@@ -24,7 +24,7 @@
 
 **Files / refs:**
 
-- Create outside Git: `/Users/zhiyun.lee/GitHub/builder/ivybm-local-archives/2026-07-28-worktree-consolidation/`
+- Create outside Git: `/Users/zhiyun.lee/GitHub/builder/ivybm-local-data/archives/2026-07-28-worktree-consolidation/`
 - Create refs: `refs/archive/2026-07-28/*`
 - Inspect: all registered worktrees, local / remote branches, stash, reflog metadata
 
@@ -46,7 +46,7 @@ Expected: root、Admin Shell、Dashboard concepts、CMS designer brief 四套恢
 
 Expected: `git show-ref refs/archive/2026-07-28/...` 全部可解析。
 
-**Step 4:** 验证恢复包不包含 `ivybm-private-materials`、ignored `media/`、`.env*` 或数据库文件。
+**Step 4:** 验证恢复包不包含 `ivybm-local-data/private-materials`、ignored `media/`、`.env*` 或数据库文件。
 
 ## Task 2：合并本地 worktree 管理规范和本实施计划
 
@@ -175,7 +175,7 @@ Expected: CI 通过且取得独立 review 后合并；若 review 未到，保留
 - 本计划和 Admin docs 临时 worktree
 - Admin Shell 新 worktree（仅 PR 已合并时）
 
-**Step 5:** 删除未注册且只剩空 `.next/` 的 `ivybm-task6-oldsite-content` 目录；不删除 `ivybm-private-materials`。
+**Step 5:** 删除未注册且只剩空 `.next/` 的 `ivybm-task6-oldsite-content` 目录；不删除 `ivybm-local-data/private-materials`。
 
 ## Task 7：缓存、安全权限与最终审计
 
