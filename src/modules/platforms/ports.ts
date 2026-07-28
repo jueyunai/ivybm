@@ -3,7 +3,10 @@ import type {
   NormalizedMessageStatus,
   NormalizedPlatformEvent,
   PlatformConversationDeliveryClaim,
+  PlatformConversationDeliveryClaimResult,
   PlatformConversationDeliveryIntent,
+  PlatformConversationDeliveryLeaseFence,
+  PlatformConversationDeliveryMarkResult,
   PlatformConversationDeliveryOutcome,
   PlatformConversationOutboundRequest,
   PlatformConversationOutboundRecoveryResult,
@@ -95,9 +98,12 @@ export interface PlatformConversationOutboundPort {
 export interface PlatformConversationDeliveryAuthorityPort {
   claimDelivery(
     intent: PlatformConversationDeliveryIntent,
-  ): Promise<PlatformConversationDeliveryClaim | undefined>
-  /** Atomically fence this generation immediately before provider I/O. */
-  markProviderIOStarted(claim: PlatformConversationDeliveryClaim): Promise<boolean>
+    leaseFence: PlatformConversationDeliveryLeaseFence,
+  ): Promise<PlatformConversationDeliveryClaimResult>
+  /** Atomically validate the current Job lease and fence this generation before provider I/O. */
+  markProviderIOStarted(
+    claim: PlatformConversationDeliveryClaim,
+  ): Promise<PlatformConversationDeliveryMarkResult>
   releaseDelivery(
     claim: PlatformConversationDeliveryClaim,
     outcome?: PlatformConversationDeliveryOutcome,
@@ -106,5 +112,8 @@ export interface PlatformConversationDeliveryAuthorityPort {
 
 /** Public application contract consumed by a future reviewed Task 10 handler. */
 export interface PlatformConversationDeliveryService {
-  deliver(intent: PlatformConversationDeliveryIntent): Promise<PlatformConversationDeliveryOutcome>
+  deliver(
+    intent: PlatformConversationDeliveryIntent,
+    leaseFence: PlatformConversationDeliveryLeaseFence,
+  ): Promise<PlatformConversationDeliveryOutcome>
 }

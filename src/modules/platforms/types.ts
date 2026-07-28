@@ -121,14 +121,17 @@ export type NormalizedPlatformEvent = NormalizedInboundMessage | NormalizedMessa
 export const PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES = [
   'account_not_connected',
   'authorization_required',
+  'delivery_busy',
   'delivery_unknown',
   'handoff_required',
   'invalid_request',
+  'lease_conflict',
   'message_window_closed',
   'permission_required',
   'platform_blocked',
   'provider_unavailable',
   'rate_limited',
+  'stale_revision',
 ] as const
 
 export type PlatformConversationOutboundErrorCode =
@@ -170,6 +173,31 @@ export type PlatformConversationDeliverySnapshot = {
 }
 
 /**
+ * Task 10 lease evidence carried into the delivery authority. A persistent
+ * implementation must validate these fields against the current Jobs row in
+ * the same transaction that marks provider I/O.
+ */
+export type PlatformConversationDeliveryLeaseFence = {
+  readonly jobId: number
+  readonly leaseExpiresAt: string
+  readonly ownerToken: string
+}
+
+export const PLATFORM_CONVERSATION_DELIVERY_BLOCK_REASONS = [
+  'busy',
+  'claim_conflict',
+  'handoff_required',
+  'intent_mismatch',
+  'lease_conflict',
+  'missing_intent',
+  'missing_snapshot',
+  'stale_revision',
+] as const
+
+export type PlatformConversationDeliveryBlockReason =
+  (typeof PLATFORM_CONVERSATION_DELIVERY_BLOCK_REASONS)[number]
+
+/**
  * Opaque logical fence acquired by a worker before provider I/O. Handoff
  * transitions must use the same authority and may not commit while a claim for
  * that conversation is active.
@@ -178,9 +206,27 @@ export type PlatformConversationDeliveryClaim = {
   readonly claimId: string
   readonly fencingGeneration: number
   readonly intent: PlatformConversationDeliveryIntent
+  readonly leaseFence: PlatformConversationDeliveryLeaseFence
   /** Reclaimed attempts reconcile first and never call send before evidence. */
   readonly mode: 'recover' | 'send'
 }
+
+export type PlatformConversationDeliveryClaimResult =
+  | {
+      readonly claim: PlatformConversationDeliveryClaim
+      readonly status: 'claimed'
+    }
+  | {
+      readonly reason: PlatformConversationDeliveryBlockReason
+      readonly status: 'blocked'
+    }
+
+export type PlatformConversationDeliveryMarkResult =
+  | { readonly status: 'fenced' }
+  | {
+      readonly reason: PlatformConversationDeliveryBlockReason
+      readonly status: 'blocked'
+    }
 
 type PlatformConversationOutboundResultBase = {
   deliveryKey: string

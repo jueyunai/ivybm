@@ -9,10 +9,14 @@ import {
   createFakePlatformConversationOutboundPort,
   createFakePlatformConversationOutboundProviderState,
 } from '@/modules/platforms/fakeConversationOutboundPort'
-import type { PlatformConversationOutboundPort } from '@/modules/platforms/ports'
+import type {
+  PlatformConversationDeliveryAuthorityPort,
+  PlatformConversationOutboundPort,
+} from '@/modules/platforms/ports'
 import {
   createProviderAcceptanceEvidence,
   type PlatformConversationDeliveryIntent,
+  type PlatformConversationDeliveryLeaseFence,
   type PlatformConversationOutboundRequest,
   type PlatformConversationOutboundResult,
 } from '@/modules/platforms/types'
@@ -38,14 +42,36 @@ const deliveryIntent = (
   ...overrides,
 })
 
+const LEASE_EXPIRES_AT = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+
+const deliveryLease = (
+  overrides: Partial<PlatformConversationDeliveryLeaseFence> = {},
+): PlatformConversationDeliveryLeaseFence => ({
+  jobId: 40,
+  leaseExpiresAt: LEASE_EXPIRES_AT,
+  ownerToken: 'worker-40',
+  ...overrides,
+})
+
 const authorityFor = (
   handoffStatus: 'ai_active' | 'handoff_requested' | 'human_active' | 'resolved' = 'ai_active',
   revision = 7,
 ) =>
   createFakePlatformConversationDeliveryAuthority({
     initialIntents: [deliveryIntent()],
+    initialJobLeases: [deliveryLease()],
     initialSnapshots: [{ conversationId: 42, handoffStatus, revision }],
   })
+
+const claimFor = async (
+  authority: PlatformConversationDeliveryAuthorityPort,
+  intent = deliveryIntent(),
+  leaseFence = deliveryLease(),
+) => {
+  const result = await authority.claimDelivery(intent, leaseFence)
+  if (result.status === 'blocked') throw new Error(`Fixture claim blocked: ${result.reason}`)
+  return result.claim
+}
 
 const claimedJob = (): ClaimedJob => ({
   attempts: 1,
@@ -82,7 +108,9 @@ describe('platform conversation delivery service', () => {
     const send = vi.spyOn(outbound, 'send')
     const service = createPlatformConversationDeliveryService({ authority, outbound })
 
-    await expect(service.deliver(deliveryIntent())).resolves.toMatchObject({ status: 'accepted' })
+    await expect(service.deliver(deliveryIntent(), deliveryLease())).resolves.toMatchObject({
+      status: 'accepted',
+    })
     expect(send).toHaveBeenCalledWith(transport())
     expect(Object.keys(send.mock.calls[0]?.[0] ?? {}).sort()).toEqual([
       'accountExternalId',
@@ -101,7 +129,7 @@ describe('platform conversation delivery service', () => {
       const send = vi.spyOn(outbound, 'send')
       const service = createPlatformConversationDeliveryService({ authority, outbound })
 
-      await expect(service.deliver(deliveryIntent())).resolves.toEqual({
+      await expect(service.deliver(deliveryIntent(), deliveryLease())).resolves.toEqual({
         deliveryKey: 'conversation-42:reply-7',
         errorCode: 'handoff_required',
         platform: 'facebook-messenger',
@@ -127,7 +155,7 @@ describe('platform conversation delivery service', () => {
 
     authority.setDeliverySnapshot({ conversationId: 42, handoffStatus: 'human_active', revision: 8 })
 
-    await expect(service.deliver(queuedBeforeTakeover)).resolves.toMatchObject({
+    await expect(service.deliver(queuedBeforeTakeover, deliveryLease())).resolves.toMatchObject({
       errorCode: 'handoff_required',
       status: 'blocked',
     })
@@ -146,9 +174,114 @@ describe('platform conversation delivery service', () => {
     const send = vi.spyOn(outbound, 'send')
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
-    ).resolves.toMatchObject({ errorCode: 'handoff_required', status: 'blocked' })
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
+    ).resolves.toMatchObject({ errorCode: 'stale_revision', status: 'blocked' })
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it('keeps an active delivery claim retryable instead of misclassifying it as handoff', async () => {
+    const authority = authorityFor()
+    const activeClaim = await claimFor(authority)
+    const outbound = createFakePlatformConversationOutboundPort()
+    const send = vi.spyOn(outbound, 'send')
+
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
+    ).resolves.toEqual({
+      deliveryKey: 'conversation-42:reply-7',
+      errorCode: 'delivery_busy',
+      platform: 'facebook-messenger',
+      retryable: true,
+      status: 'blocked',
+    })
+    expect(send).not.toHaveBeenCalled()
+    await authority.releaseDelivery(activeClaim)
+  })
+
+  it.each([
+    ['missing snapshot', [], [deliveryIntent()]],
+    [
+      'missing intent',
+      [{ conversationId: 42, handoffStatus: 'ai_active' as const, revision: 7 }],
+      [],
+    ],
+  ])('maps %s authority state to invalid_request', async (_description, snapshots, intents) => {
+    const authority = createFakePlatformConversationDeliveryAuthority({
+      initialIntents: intents,
+      initialJobLeases: [deliveryLease()],
+      initialSnapshots: snapshots,
+    })
+    const outbound = createFakePlatformConversationOutboundPort()
+    const send = vi.spyOn(outbound, 'send')
+
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
+    ).resolves.toMatchObject({ errorCode: 'invalid_request', retryable: false, status: 'blocked' })
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('rejects a worker that no longer owns the current Job lease at provider-I/O mark', async () => {
+    const baseAuthority = authorityFor()
+    const replacementLease = deliveryLease({ ownerToken: 'worker-41' })
+    const authority: PlatformConversationDeliveryAuthorityPort = {
+      claimDelivery: async (intent, leaseFence) => {
+        const result = await baseAuthority.claimDelivery(intent, leaseFence)
+        if (result.status === 'claimed') baseAuthority.setJobLease(replacementLease)
+        return result
+      },
+      markProviderIOStarted: baseAuthority.markProviderIOStarted,
+      releaseDelivery: baseAuthority.releaseDelivery,
+    }
+    const outbound = createFakePlatformConversationOutboundPort()
+    const send = vi.spyOn(outbound, 'send')
+
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
+    ).resolves.toEqual({
+      deliveryKey: 'conversation-42:reply-7',
+      errorCode: 'lease_conflict',
+      platform: 'facebook-messenger',
+      retryable: true,
+      status: 'blocked',
+    })
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('releases a claimed authority fence that does not match the requested Job lease', async () => {
+    const baseAuthority = authorityFor()
+    const otherLease = deliveryLease({ ownerToken: 'worker-other' })
+    baseAuthority.setJobLease(otherLease)
+    const authority: PlatformConversationDeliveryAuthorityPort = {
+      claimDelivery: (intent) => baseAuthority.claimDelivery(intent, otherLease),
+      markProviderIOStarted: baseAuthority.markProviderIOStarted,
+      releaseDelivery: baseAuthority.releaseDelivery,
+    }
+    const outbound = createFakePlatformConversationOutboundPort()
+    const send = vi.spyOn(outbound, 'send')
+
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
+    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
+    expect(send).not.toHaveBeenCalled()
+
+    const nextClaim = await claimFor(baseAuthority, deliveryIntent(), otherLease)
+    expect(nextClaim.mode).toBe('send')
+    await baseAuthority.releaseDelivery(nextClaim)
   })
 
   it('serializes human takeover against an in-flight transport claim', async () => {
@@ -175,7 +308,7 @@ describe('platform conversation delivery service', () => {
     const pendingDelivery = createPlatformConversationDeliveryService({
       authority,
       outbound,
-    }).deliver(deliveryIntent())
+    }).deliver(deliveryIntent(), deliveryLease())
     await sendStarted
 
     expect(
@@ -216,10 +349,13 @@ describe('platform conversation delivery service', () => {
       continueClaim = resolve
     })
     const delayedAuthority = {
-      claimDelivery: async (intent: PlatformConversationDeliveryIntent) => {
+      claimDelivery: async (
+        intent: PlatformConversationDeliveryIntent,
+        leaseFence: PlatformConversationDeliveryLeaseFence,
+      ) => {
         markClaimStarted()
         await claimMayContinue
-        return authority.claimDelivery(intent)
+        return authority.claimDelivery(intent, leaseFence)
       },
       markProviderIOStarted: authority.markProviderIOStarted,
       releaseDelivery: authority.releaseDelivery,
@@ -230,7 +366,7 @@ describe('platform conversation delivery service', () => {
     const pendingDelivery = createPlatformConversationDeliveryService({
       authority: delayedAuthority,
       outbound,
-    }).deliver(mutableIntent)
+    }).deliver(mutableIntent, deliveryLease())
     await claimStarted
 
     const mutableTransport = mutableIntent.transport as { text: string }
@@ -250,7 +386,10 @@ describe('platform conversation delivery service', () => {
     outbound.loseAcceptedResultNext({ platform: 'facebook-messenger' })
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toEqual({
       deliveryKey: 'conversation-42:reply-7',
       platform: 'facebook-messenger',
@@ -260,7 +399,10 @@ describe('platform conversation delivery service', () => {
     expect(recover).toHaveBeenCalledTimes(1)
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toEqual({
       deliveryKey: 'conversation-42:reply-7',
       platform: 'facebook-messenger',
@@ -268,6 +410,19 @@ describe('platform conversation delivery service', () => {
     })
     expect(send).toHaveBeenCalledTimes(1)
     expect(recover).toHaveBeenCalledTimes(2)
+
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
+    ).resolves.toEqual({
+      deliveryKey: 'conversation-42:reply-7',
+      platform: 'facebook-messenger',
+      status: 'delivery_unknown',
+    })
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(recover).toHaveBeenCalledTimes(3)
   })
 
   it('fails closed to delivery_unknown when reconciliation itself is unavailable', async () => {
@@ -283,7 +438,10 @@ describe('platform conversation delivery service', () => {
     }
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toEqual({
       deliveryKey: 'conversation-42:reply-7',
       platform: 'facebook-messenger',
@@ -309,7 +467,10 @@ describe('platform conversation delivery service', () => {
     }
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toEqual({
       deliveryKey: 'conversation-42:reply-7',
       platform: 'facebook-messenger',
@@ -341,7 +502,10 @@ describe('platform conversation delivery service', () => {
     }
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toEqual({
       deliveryKey: 'conversation-42:reply-7',
       platform: 'facebook-messenger',
@@ -365,7 +529,10 @@ describe('platform conversation delivery service', () => {
     }
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toEqual({
       deliveryKey: 'conversation-42:reply-7',
       platform: 'facebook-messenger',
@@ -423,7 +590,10 @@ describe('platform conversation delivery service', () => {
     }
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toEqual({
       deliveryKey: 'conversation-42:reply-7',
       platform: 'facebook-messenger',
@@ -448,6 +618,7 @@ describe('platform conversation delivery service', () => {
 
     const outcome = await createPlatformConversationDeliveryService({ authority, outbound }).deliver(
       deliveryIntent(),
+      deliveryLease(),
     )
     expect(outcome).toEqual({
       deliveryKey: 'conversation-42:reply-7',
@@ -476,7 +647,10 @@ describe('platform conversation delivery service', () => {
     })
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toEqual({
       deliveryKey: 'conversation-42:reply-7',
       errorCode: 'rate_limited',
@@ -497,7 +671,10 @@ describe('platform conversation delivery service', () => {
     const outbound = createFakePlatformConversationOutboundPort()
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toEqual({
       deliveryKey: 'conversation-42:reply-7',
       platform: 'facebook-messenger',
@@ -509,9 +686,10 @@ describe('platform conversation delivery service', () => {
     const authority = authorityFor()
     const outbound = createFakePlatformConversationOutboundPort()
     const send = vi.spyOn(outbound, 'send')
-    const abandonedClaim = await authority.claimDelivery(deliveryIntent())
-    if (!abandonedClaim) throw new Error('Fixture delivery claim must be available')
-    await expect(authority.markProviderIOStarted(abandonedClaim)).resolves.toBe(true)
+    const abandonedClaim = await claimFor(authority)
+    await expect(authority.markProviderIOStarted(abandonedClaim)).resolves.toEqual({
+      status: 'fenced',
+    })
     outbound.loseAcceptedResultNext({ platform: 'facebook-messenger' })
     await expect(outbound.send(transport())).rejects.toBeInstanceOf(
       PlatformConversationOutboundOutcomeUnknownError,
@@ -531,7 +709,7 @@ describe('platform conversation delivery service', () => {
     const worker = new JobWorker({
       handlers: {
         'platform.conversation.reply.test': async () => {
-          const outcome = await delivery.deliver(deliveryIntent())
+          const outcome = await delivery.deliver(deliveryIntent(), deliveryLease())
           expect(outcome.status).toBe('delivery_unknown')
         },
       },
@@ -551,9 +729,10 @@ describe('platform conversation delivery service', () => {
     'fences a same-key recovery retry after %s',
     async (_description, changedSnapshot) => {
       const authority = authorityFor()
-      const abandonedClaim = await authority.claimDelivery(deliveryIntent())
-      if (!abandonedClaim) throw new Error('Fixture delivery claim must be available')
-      await expect(authority.markProviderIOStarted(abandonedClaim)).resolves.toBe(true)
+      const abandonedClaim = await claimFor(authority)
+      await expect(authority.markProviderIOStarted(abandonedClaim)).resolves.toEqual({
+        status: 'fenced',
+      })
       expect(authority.expireDeliveryClaim(42)).toBe(true)
       expect(authority.setDeliverySnapshot(changedSnapshot)).toBe(true)
 
@@ -572,7 +751,10 @@ describe('platform conversation delivery service', () => {
       }
 
       await expect(
-        createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+        createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+          deliveryIntent(),
+          deliveryLease(),
+        ),
       ).resolves.toEqual({
         deliveryKey: 'conversation-42:reply-7',
         platform: 'facebook-messenger',
@@ -584,9 +766,10 @@ describe('platform conversation delivery service', () => {
 
   it('does not let a changed payload inherit another intent recovery fence', async () => {
     const authority = authorityFor()
-    const abandonedClaim = await authority.claimDelivery(deliveryIntent())
-    if (!abandonedClaim) throw new Error('Fixture delivery claim must be available')
-    await expect(authority.markProviderIOStarted(abandonedClaim)).resolves.toBe(true)
+    const abandonedClaim = await claimFor(authority)
+    await expect(authority.markProviderIOStarted(abandonedClaim)).resolves.toEqual({
+      status: 'fenced',
+    })
     expect(authority.expireDeliveryClaim(42)).toBe(true)
     const changedIntent = deliveryIntent({
       expectedRevision: 8,
@@ -607,8 +790,11 @@ describe('platform conversation delivery service', () => {
     const send = vi.spyOn(outbound, 'send')
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(changedIntent),
-    ).resolves.toMatchObject({ errorCode: 'handoff_required', status: 'blocked' })
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        changedIntent,
+        deliveryLease(),
+      ),
+    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
     expect(send).not.toHaveBeenCalled()
   })
 
@@ -619,9 +805,10 @@ describe('platform conversation delivery service', () => {
     })
     const outbound = createFakePlatformConversationOutboundPort({ providerState })
     const send = vi.spyOn(outbound, 'send')
-    const abandonedClaim = await authority.claimDelivery(deliveryIntent())
-    if (!abandonedClaim) throw new Error('Fixture delivery claim must be available')
-    await expect(authority.markProviderIOStarted(abandonedClaim)).resolves.toBe(true)
+    const abandonedClaim = await claimFor(authority)
+    await expect(authority.markProviderIOStarted(abandonedClaim)).resolves.toEqual({
+      status: 'fenced',
+    })
     outbound.loseAcceptedResultNext({ platform: 'facebook-messenger' })
     await expect(outbound.send(transport())).rejects.toBeInstanceOf(
       PlatformConversationOutboundOutcomeUnknownError,
@@ -629,7 +816,10 @@ describe('platform conversation delivery service', () => {
     expect(authority.expireDeliveryClaim(42)).toBe(true)
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toEqual({
       deliveryKey: 'conversation-42:reply-7',
       platform: 'facebook-messenger',
@@ -637,9 +827,9 @@ describe('platform conversation delivery service', () => {
     })
     expect(send).toHaveBeenCalledTimes(2)
 
-    const nextClaim = await authority.claimDelivery(deliveryIntent())
-    expect(nextClaim?.mode).toBe('send')
-    if (nextClaim) await authority.releaseDelivery(nextClaim)
+    const nextClaim = await claimFor(authority)
+    expect(nextClaim.mode).toBe('send')
+    await authority.releaseDelivery(nextClaim)
   })
 
   it.each([
@@ -668,7 +858,10 @@ describe('platform conversation delivery service', () => {
     }
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toEqual({
       deliveryKey: 'conversation-42:reply-7',
       platform: 'facebook-messenger',
@@ -695,7 +888,10 @@ describe('platform conversation delivery service', () => {
     }
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toMatchObject({ status: 'delivery_unknown' })
   })
 
@@ -727,7 +923,10 @@ describe('platform conversation delivery service', () => {
     }
 
     await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
     ).resolves.toEqual({
       deliveryKey: 'conversation-42:reply-7',
       platform: 'facebook-messenger',
@@ -746,7 +945,7 @@ describe('platform conversation delivery service', () => {
     const worker = new JobWorker({
       handlers: {
         'platform.conversation.reply.test': async () => {
-          const outcome = await delivery.deliver(deliveryIntent())
+          const outcome = await delivery.deliver(deliveryIntent(), deliveryLease())
           expect(outcome.status).toBe('delivery_unknown')
         },
       },

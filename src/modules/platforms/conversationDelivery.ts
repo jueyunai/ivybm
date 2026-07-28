@@ -12,7 +12,11 @@ import {
   MESSAGING_PLATFORMS,
   PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES,
   type ConfirmedPlatformConversationOutboundErrorCode,
+  type PlatformConversationDeliveryBlockReason,
+  type PlatformConversationDeliveryClaim,
   type PlatformConversationDeliveryIntent,
+  type PlatformConversationDeliveryLeaseFence,
+  type PlatformConversationDeliveryMarkResult,
   type PlatformConversationDeliveryOutcome,
   type PlatformConversationOutboundRecoveryResult,
   type PlatformConversationOutboundRequest,
@@ -82,6 +86,31 @@ const normalizeIntent = (input: unknown): PlatformConversationDeliveryIntent | u
   }
 }
 
+const normalizeLeaseFence = (
+  input: unknown,
+): PlatformConversationDeliveryLeaseFence | undefined => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
+  const fence = input as Partial<PlatformConversationDeliveryLeaseFence>
+  if (
+    typeof fence.jobId !== 'number' ||
+    !Number.isSafeInteger(fence.jobId) ||
+    fence.jobId < 1 ||
+    typeof fence.ownerToken !== 'string' ||
+    !fence.ownerToken.trim() ||
+    fence.ownerToken.length > 240 ||
+    /[\u0000-\u001F\u007F-\u009F]/u.test(fence.ownerToken) ||
+    typeof fence.leaseExpiresAt !== 'string' ||
+    !Number.isFinite(Date.parse(fence.leaseExpiresAt))
+  ) {
+    return undefined
+  }
+  return {
+    jobId: fence.jobId,
+    leaseExpiresAt: fence.leaseExpiresAt,
+    ownerToken: fence.ownerToken,
+  }
+}
+
 const sameIntent = (
   left: PlatformConversationDeliveryIntent,
   right: PlatformConversationDeliveryIntent,
@@ -99,6 +128,86 @@ const identitiesMatch = (
   result: { deliveryKey: string; platform: string },
   request: PlatformConversationOutboundRequest,
 ): boolean => result.deliveryKey === request.deliveryKey && result.platform === request.platform
+
+const sameLeaseFence = (
+  left: PlatformConversationDeliveryLeaseFence,
+  right: PlatformConversationDeliveryLeaseFence,
+): boolean =>
+  left.jobId === right.jobId &&
+  left.leaseExpiresAt === right.leaseExpiresAt &&
+  left.ownerToken === right.ownerToken
+
+const authorityBlockedOutcome = (
+  reason: PlatformConversationDeliveryBlockReason,
+  request: PlatformConversationOutboundRequest,
+): PlatformConversationDeliveryOutcome => {
+  if (reason === 'busy' || reason === 'claim_conflict') {
+    return {
+      deliveryKey: request.deliveryKey,
+      errorCode: 'delivery_busy',
+      platform: request.platform,
+      retryable: true,
+      status: 'blocked',
+    }
+  }
+  if (reason === 'lease_conflict') {
+    return {
+      deliveryKey: request.deliveryKey,
+      errorCode: 'lease_conflict',
+      platform: request.platform,
+      retryable: true,
+      status: 'blocked',
+    }
+  }
+  if (reason === 'stale_revision') {
+    return {
+      deliveryKey: request.deliveryKey,
+      errorCode: 'stale_revision',
+      platform: request.platform,
+      retryable: false,
+      status: 'blocked',
+    }
+  }
+  if (reason === 'handoff_required') {
+    return {
+      deliveryKey: request.deliveryKey,
+      errorCode: 'handoff_required',
+      platform: request.platform,
+      retryable: false,
+      status: 'blocked',
+    }
+  }
+  return {
+    deliveryKey: request.deliveryKey,
+    errorCode: 'invalid_request',
+    platform: request.platform,
+    retryable: false,
+    status: 'blocked',
+  }
+}
+
+const isClaim = (value: unknown): value is PlatformConversationDeliveryClaim => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const claim = value as Partial<PlatformConversationDeliveryClaim>
+  return (
+    typeof claim.claimId === 'string' &&
+    Boolean(claim.claimId.trim()) &&
+    Number.isSafeInteger(claim.fencingGeneration) &&
+    (claim.mode === 'send' || claim.mode === 'recover') &&
+    normalizeIntent(claim.intent) !== undefined &&
+    normalizeLeaseFence(claim.leaseFence) !== undefined
+  )
+}
+
+const recoveryMarkBlockedOutcome = (
+  result: Extract<PlatformConversationDeliveryMarkResult, { status: 'blocked' }>,
+  request: PlatformConversationOutboundRequest,
+): PlatformConversationDeliveryOutcome =>
+  result.reason === 'busy' ||
+  result.reason === 'claim_conflict' ||
+  result.reason === 'lease_conflict'
+    ? authorityBlockedOutcome(result.reason, request)
+    : deliveryUnknown(request)
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
@@ -280,19 +389,26 @@ export const createPlatformConversationDeliveryService = ({
   authority: PlatformConversationDeliveryAuthorityPort
   outbound: PlatformConversationOutboundPort
 }): PlatformConversationDeliveryService => ({
-  async deliver(input): Promise<PlatformConversationDeliveryOutcome> {
+  async deliver(input, leaseInput): Promise<PlatformConversationDeliveryOutcome> {
     const intent = normalizeIntent(input)
-    if (!intent) throw new Error('Platform conversation delivery intent is invalid')
+    const leaseFence = normalizeLeaseFence(leaseInput)
+    if (!intent || !leaseFence) throw new Error('Platform conversation delivery input is invalid')
 
-    const claim = await authority.claimDelivery(intent)
-    if (!claim) {
-      return {
-        deliveryKey: intent.transport.deliveryKey,
-        errorCode: 'handoff_required',
-        platform: intent.transport.platform,
-        retryable: false,
-        status: 'blocked',
+    const claimResult = await authority.claimDelivery(intent, leaseFence)
+    if (claimResult.status === 'blocked') {
+      return authorityBlockedOutcome(claimResult.reason, intent.transport)
+    }
+    const claim = claimResult.claim
+    if (!isClaim(claim)) {
+      return authorityBlockedOutcome('intent_mismatch', intent.transport)
+    }
+    if (!sameLeaseFence(claim.leaseFence, leaseFence)) {
+      try {
+        await authority.releaseDelivery(claim)
+      } catch {
+        // No provider I/O occurred; malformed authority state remains fail closed.
       }
+      return authorityBlockedOutcome('intent_mismatch', intent.transport)
     }
 
     const authoritativeIntent = normalizeIntent(claim.intent)
@@ -302,7 +418,8 @@ export const createPlatformConversationDeliveryService = ({
       claim.fencingGeneration < 1 ||
       !['recover', 'send'].includes(claim.mode) ||
       !authoritativeIntent ||
-      !sameIntent(authoritativeIntent, intent)
+      !sameIntent(authoritativeIntent, intent) ||
+      !sameLeaseFence(claim.leaseFence, leaseFence)
     ) {
       try {
         await authority.releaseDelivery(claim)
@@ -323,14 +440,14 @@ export const createPlatformConversationDeliveryService = ({
     if (claim.mode === 'recover') {
       outcome = await recoverUnknownOutcome(outbound, authoritativeIntent.transport)
       if (outcome.status === 'retry_same_delivery_key') {
-        let providerIOStarted = false
+        let providerIOStarted: PlatformConversationDeliveryMarkResult = { status: 'blocked', reason: 'claim_conflict' }
         try {
           providerIOStarted = await authority.markProviderIOStarted(claim)
         } catch {
           sendError = new PlatformConversationOutboundTransportError(authoritativeIntent.transport)
         }
-        if (!sendError && !providerIOStarted) {
-          outcome = deliveryUnknown(authoritativeIntent.transport)
+        if (!sendError && providerIOStarted.status === 'blocked') {
+          outcome = recoveryMarkBlockedOutcome(providerIOStarted, authoritativeIntent.transport)
         } else if (!sendError) {
           try {
             outcome = await sendAndRecover(outbound, authoritativeIntent.transport)
@@ -340,26 +457,20 @@ export const createPlatformConversationDeliveryService = ({
         }
       }
     } else {
-      let providerIOStarted = false
+      let providerIOStarted: PlatformConversationDeliveryMarkResult = { status: 'blocked', reason: 'claim_conflict' }
       try {
         providerIOStarted = await authority.markProviderIOStarted(claim)
       } catch {
         sendError = new PlatformConversationOutboundTransportError(authoritativeIntent.transport)
       }
 
-      if (!sendError && !providerIOStarted) {
+      if (!sendError && providerIOStarted.status === 'blocked') {
         try {
           await authority.releaseDelivery(claim)
         } catch {
           // Provider I/O never started, so this remains a confirmed fence block.
         }
-        return {
-          deliveryKey: authoritativeIntent.transport.deliveryKey,
-          errorCode: 'handoff_required',
-          platform: authoritativeIntent.transport.platform,
-          retryable: false,
-          status: 'blocked',
-        }
+        return authorityBlockedOutcome(providerIOStarted.reason, authoritativeIntent.transport)
       }
 
       if (!sendError) {

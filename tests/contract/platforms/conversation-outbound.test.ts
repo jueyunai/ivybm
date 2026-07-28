@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest'
 import type { PlatformConversationOutboundPort } from '../../../src/modules/platforms/ports'
 import {
   createProviderAcceptanceEvidence,
+  PLATFORM_CONVERSATION_DELIVERY_BLOCK_REASONS,
   PlatformConversationOutboundOutcomeUnknownError,
   PLATFORM_CONVERSATION_OUTBOUND_RECOVERY_ACTIONS,
   PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES,
   type PlatformConversationOutboundErrorCode,
+  type PlatformConversationDeliveryLeaseFence,
   type PlatformConversationOutboundRecoveryResult,
   type PlatformConversationOutboundRequest,
 } from '../../../src/modules/platforms/types'
@@ -35,14 +37,37 @@ describe('phase-one platform conversation outbound contract', () => {
     expect(PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES).toEqual([
       'account_not_connected',
       'authorization_required',
+      'delivery_busy',
       'delivery_unknown',
       'handoff_required',
       'invalid_request',
+      'lease_conflict',
       'message_window_closed',
       'permission_required',
       'platform_blocked',
       'provider_unavailable',
       'rate_limited',
+      'stale_revision',
+    ])
+  })
+
+  it('freezes Job lease evidence and distinguishable delivery claim blocks', () => {
+    const leaseFence: PlatformConversationDeliveryLeaseFence = {
+      jobId: 40,
+      leaseExpiresAt: '2026-07-28T06:00:00.000Z',
+      ownerToken: 'worker-40',
+    }
+
+    expect(Object.keys(leaseFence).sort()).toEqual(['jobId', 'leaseExpiresAt', 'ownerToken'])
+    expect(PLATFORM_CONVERSATION_DELIVERY_BLOCK_REASONS).toEqual([
+      'busy',
+      'claim_conflict',
+      'handoff_required',
+      'intent_mismatch',
+      'lease_conflict',
+      'missing_intent',
+      'missing_snapshot',
+      'stale_revision',
     ])
   })
 
