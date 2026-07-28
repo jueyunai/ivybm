@@ -5,7 +5,7 @@ Claude Code 在本仓库工作时，必须以 [`AGENTS.md`](AGENTS.md) 为主规
 特别强调：
 
 - 仓库必须保持 private。
-- 修改文件前从最新 `origin/main` 创建 Task 级短分支。
+- `ivybm` 主工作区只保留干净的 `main`；修改文件前从最新 `origin/main` 创建 Task 级短分支和独立 worktree，PR 审查使用临时 detached worktree。
 - 禁止直接 push `main`，禁止 force push；先运行 `bash scripts/install-git-hooks.sh`。
 - 除非用户明确要求，不自行 commit、push、创建或合并 PR、部署 production。
 - 修改 Payload 共享 Collection、`src/payload.config.ts`、migration、跨人公共契约或双方板块边界时，必须请求另一名开发者 review，并等待 review 完成后才能合并。

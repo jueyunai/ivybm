@@ -9,6 +9,7 @@
 
 ## 验证
 
+- [ ] 工作分支与 worktree 从最新 `origin/main` 创建，远程 upstream 与本地分支同名
 - [ ] 已运行对应 Task 要求的测试
 - [ ] `lint` 通过或当前阶段尚未配置
 - [ ] `typecheck` 通过或当前阶段尚未配置
