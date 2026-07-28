@@ -192,13 +192,16 @@ const authorityBlockedOutcome = (
 const isClaim = (value: unknown): value is PlatformConversationDeliveryClaim => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const claim = value as Partial<PlatformConversationDeliveryClaim>
+  const intent = normalizeIntent(claim.intent)
+  const leaseFence = normalizeLeaseFence(claim.leaseFence)
   return (
     typeof claim.claimId === 'string' &&
     Boolean(claim.claimId.trim()) &&
     Number.isSafeInteger(claim.fencingGeneration) &&
     (claim.mode === 'send' || claim.mode === 'recover') &&
-    normalizeIntent(claim.intent) !== undefined &&
-    normalizeLeaseFence(claim.leaseFence) !== undefined
+    intent !== undefined &&
+    leaseFence !== undefined &&
+    intent.jobId === leaseFence.jobId
   )
 }
 
@@ -396,6 +399,9 @@ export const createPlatformConversationDeliveryService = ({
     const intent = normalizeIntent(input)
     const leaseFence = normalizeLeaseFence(leaseInput)
     if (!intent || !leaseFence) throw new Error('Platform conversation delivery input is invalid')
+    if (intent.jobId !== leaseFence.jobId) {
+      return authorityBlockedOutcome('intent_mismatch', intent.transport)
+    }
 
     const claimResult = await authority.claimDelivery(intent, leaseFence)
     if (claimResult.status === 'blocked') {
@@ -403,6 +409,11 @@ export const createPlatformConversationDeliveryService = ({
     }
     const claim = claimResult.claim
     if (!isClaim(claim)) {
+      try {
+        await authority.releaseDelivery(claim)
+      } catch {
+        // The authority returned malformed state; release is best-effort and provider I/O is forbidden.
+      }
       return authorityBlockedOutcome('intent_mismatch', intent.transport)
     }
     if (!sameLeaseOwner(claim.leaseFence, leaseFence)) {
@@ -422,6 +433,7 @@ export const createPlatformConversationDeliveryService = ({
       !['recover', 'send'].includes(claim.mode) ||
       !authoritativeIntent ||
       !sameIntent(authoritativeIntent, intent) ||
+      authoritativeIntent.jobId !== claim.leaseFence.jobId ||
       !sameLeaseOwner(claim.leaseFence, leaseFence)
     ) {
       try {

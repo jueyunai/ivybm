@@ -292,6 +292,13 @@ describe('platform conversation delivery service', () => {
     await expect(authority.markProviderIOStarted(oldClaim)).resolves.toEqual({ status: 'fenced' })
     const replacementLease = deliveryLease({ ownerToken: 'worker-41' })
     authority.setJobLease(replacementLease)
+    expect(
+      authority.setDeliverySnapshot({
+        conversationId: 42,
+        handoffStatus: 'human_active',
+        revision: 8,
+      }),
+    ).toBe(true)
     const outbound = createFakePlatformConversationOutboundPort()
     const recover = vi.spyOn(outbound, 'recoverUnknownOutcome')
     const send = vi.spyOn(outbound, 'send')
@@ -355,12 +362,75 @@ describe('platform conversation delivery service', () => {
     expect(send).not.toHaveBeenCalled()
   })
 
+  it('rejects a mismatched Job lease before consulting the delivery authority', async () => {
+    const claimDelivery = vi.fn()
+    const authority: PlatformConversationDeliveryAuthorityPort = {
+      claimDelivery,
+      markProviderIOStarted: vi.fn(),
+      releaseDelivery: vi.fn(),
+    }
+    const outbound = createFakePlatformConversationOutboundPort()
+    const send = vi.spyOn(outbound, 'send')
+
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease({ jobId: 41, ownerToken: 'worker-41' }),
+      ),
+    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
+    expect(claimDelivery).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('releases a malformed authority claim whose intent and lease bind different Jobs', async () => {
+    const malformedClaim = {
+      claimId: 'malformed-cross-job-claim',
+      fencingGeneration: 1,
+      intent: deliveryIntent(),
+      leaseFence: deliveryLease({ jobId: 41 }),
+      mode: 'send',
+    }
+    const markProviderIOStarted = vi.fn()
+    const releaseDelivery = vi.fn()
+    const authority: PlatformConversationDeliveryAuthorityPort = {
+      claimDelivery: vi.fn().mockResolvedValue({ claim: malformedClaim, status: 'claimed' }),
+      markProviderIOStarted,
+      releaseDelivery,
+    }
+    const outbound = createFakePlatformConversationOutboundPort()
+    const send = vi.spyOn(outbound, 'send')
+
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
+    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
+    expect(releaseDelivery).toHaveBeenCalledWith(malformedClaim)
+    expect(markProviderIOStarted).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+
   it('does not allow an existing delivery identity to be rebound to another Job', () => {
     const authority = authorityFor()
 
     expect(() => authority.registerDeliveryIntent(deliveryIntent({ jobId: 41 }))).toThrow(
       'delivery intent identity is already registered',
     )
+  })
+
+  it('does not allow one Job to be bound to multiple delivery identities', () => {
+    const authority = authorityFor()
+
+    expect(() =>
+      authority.registerDeliveryIntent(
+        deliveryIntent({
+          conversationId: 43,
+          replyId: 'reply-8',
+          transport: transport({ deliveryKey: 'conversation-43:reply-8' }),
+        }),
+      ),
+    ).toThrow('delivery Job is already bound to another intent')
   })
 
   it('releases a claimed authority fence that does not match the requested Job lease', async () => {

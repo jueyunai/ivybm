@@ -81,6 +81,7 @@ export const createFakePlatformConversationDeliveryAuthority = ({
     { claim: PlatformConversationDeliveryClaim; providerIOStarted: boolean }
   >()
   const fencingGenerations = new Map<string, number>()
+  const intentIdentitiesByJobId = new Map<number, string>()
   const intents = new Map<string, PlatformConversationDeliveryIntent>()
   const jobLeases = new Map<number, PlatformConversationDeliveryLeaseFence>()
   const recoveryRequired = new Map<string, PlatformConversationDeliveryIntent>()
@@ -90,17 +91,15 @@ export const createFakePlatformConversationDeliveryAuthority = ({
   const registerDeliveryIntent = (intent: PlatformConversationDeliveryIntent): void => {
     const key = intentIdentityKey(intent)
     const existing = intents.get(key)
+    const existingJobIdentity = intentIdentitiesByJobId.get(intent.jobId)
     if (existing && !sameIntent(existing, intent)) {
       throw new Error('Fake platform conversation delivery intent identity is already registered')
     }
+    if (existingJobIdentity && existingJobIdentity !== key) {
+      throw new Error('Fake platform conversation delivery Job is already bound to another intent')
+    }
     intents.set(key, structuredClone(intent))
-  }
-
-  const setDeliverySnapshot = (snapshot: PlatformConversationDeliverySnapshot): boolean => {
-    const key = conversationKey(snapshot.conversationId)
-    if (activeClaims.has(key)) return false
-    snapshots.set(key, structuredClone(snapshot))
-    return true
+    intentIdentitiesByJobId.set(intent.jobId, key)
   }
 
   const setJobLease = (leaseFence: PlatformConversationDeliveryLeaseFence): void => {
@@ -125,6 +124,14 @@ export const createFakePlatformConversationDeliveryAuthority = ({
       )
     }
     activeClaims.delete(key)
+  }
+
+  const setDeliverySnapshot = (snapshot: PlatformConversationDeliverySnapshot): boolean => {
+    const key = conversationKey(snapshot.conversationId)
+    reclaimStaleClaim(key)
+    if (activeClaims.has(key)) return false
+    snapshots.set(key, structuredClone(snapshot))
+    return true
   }
 
   for (const intent of initialIntents) registerDeliveryIntent(intent)
@@ -186,6 +193,7 @@ export const createFakePlatformConversationDeliveryAuthority = ({
       active.claim.claimId !== claim.claimId ||
       active.claim.fencingGeneration !== claim.fencingGeneration ||
       !sameIntent(active.claim.intent, claim.intent) ||
+      active.claim.intent.jobId !== active.claim.leaseFence.jobId ||
       !sameLeaseOwner(active.claim.leaseFence, claim.leaseFence)
     ) {
       return { reason: 'claim_conflict', status: 'blocked' }
@@ -221,6 +229,7 @@ export const createFakePlatformConversationDeliveryAuthority = ({
       active.claim.claimId !== claim.claimId ||
       active.claim.fencingGeneration !== claim.fencingGeneration ||
       !sameIntent(active.claim.intent, claim.intent) ||
+      active.claim.intent.jobId !== active.claim.leaseFence.jobId ||
       !sameLeaseOwner(active.claim.leaseFence, claim.leaseFence) ||
       !currentLease ||
       !sameLeaseOwner(currentLease, claim.leaseFence) ||
