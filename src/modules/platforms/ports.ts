@@ -96,11 +96,12 @@ export interface PlatformConversationOutboundPort {
  * so `human_active` cannot commit and then be followed by an automatic send.
  */
 export interface PlatformConversationDeliveryAuthorityPort {
+  /** Atomically verify the current Job lease belongs to this persisted intent. */
   claimDelivery(
     intent: PlatformConversationDeliveryIntent,
     leaseFence: PlatformConversationDeliveryLeaseFence,
   ): Promise<PlatformConversationDeliveryClaimResult>
-  /** Atomically validate the current Job lease and fence this generation before provider I/O. */
+  /** Atomically revalidate Job ↔ intent, current owner/expiry, and fence provider I/O. */
   markProviderIOStarted(
     claim: PlatformConversationDeliveryClaim,
   ): Promise<PlatformConversationDeliveryMarkResult>

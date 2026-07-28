@@ -162,6 +162,8 @@ export type PlatformConversationOutboundRequest = {
 export type PlatformConversationDeliveryIntent = {
   readonly conversationId: number | string
   readonly expectedRevision: number
+  /** Stable FK to the Task 10 Job created for this delivery intent. */
+  readonly jobId: number
   readonly replyId: number | string
   readonly transport: PlatformConversationOutboundRequest
 }
@@ -173,9 +175,10 @@ export type PlatformConversationDeliverySnapshot = {
 }
 
 /**
- * Task 10 lease evidence carried into the delivery authority. A persistent
- * implementation must validate these fields against the current Jobs row in
- * the same transaction that marks provider I/O.
+ * Task 10 lease evidence carried into the delivery authority. `jobId` plus
+ * `ownerToken` is the stable fence identity; `leaseExpiresAt` is freshness
+ * evidence and may advance during a normal heartbeat. A persistent authority
+ * must read the current Jobs row in the transaction that marks provider I/O.
  */
 export type PlatformConversationDeliveryLeaseFence = {
   readonly jobId: number

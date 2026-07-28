@@ -8,6 +8,7 @@ import {
   PLATFORM_CONVERSATION_OUTBOUND_RECOVERY_ACTIONS,
   PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES,
   type PlatformConversationOutboundErrorCode,
+  type PlatformConversationDeliveryIntent,
   type PlatformConversationDeliveryLeaseFence,
   type PlatformConversationOutboundRecoveryResult,
   type PlatformConversationOutboundRequest,
@@ -52,12 +53,27 @@ describe('phase-one platform conversation outbound contract', () => {
   })
 
   it('freezes Job lease evidence and distinguishable delivery claim blocks', () => {
+    const intent: PlatformConversationDeliveryIntent = {
+      conversationId: 42,
+      expectedRevision: 7,
+      jobId: 40,
+      replyId: 'reply-7',
+      transport: request(),
+    }
     const leaseFence: PlatformConversationDeliveryLeaseFence = {
       jobId: 40,
       leaseExpiresAt: '2026-07-28T06:00:00.000Z',
       ownerToken: 'worker-40',
     }
 
+    expect(Object.keys(intent).sort()).toEqual([
+      'conversationId',
+      'expectedRevision',
+      'jobId',
+      'replyId',
+      'transport',
+    ])
+    expect(intent.jobId).toBe(leaseFence.jobId)
     expect(Object.keys(leaseFence).sort()).toEqual(['jobId', 'leaseExpiresAt', 'ownerToken'])
     expect(PLATFORM_CONVERSATION_DELIVERY_BLOCK_REASONS).toEqual([
       'busy',

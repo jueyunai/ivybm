@@ -48,6 +48,9 @@ const normalizeIntent = (input: unknown): PlatformConversationDeliveryIntent | u
   if (
     !isStableIdentity(intent.conversationId) ||
     !isStableIdentity(intent.replyId) ||
+    typeof intent.jobId !== 'number' ||
+    !Number.isSafeInteger(intent.jobId) ||
+    intent.jobId < 1 ||
     typeof expectedRevision !== 'number' ||
     !Number.isSafeInteger(expectedRevision) ||
     expectedRevision < 0 ||
@@ -75,6 +78,7 @@ const normalizeIntent = (input: unknown): PlatformConversationDeliveryIntent | u
   return {
     conversationId: intent.conversationId,
     expectedRevision,
+    jobId: intent.jobId,
     replyId: intent.replyId,
     transport: {
       accountExternalId,
@@ -117,6 +121,7 @@ const sameIntent = (
 ): boolean =>
   left.conversationId === right.conversationId &&
   left.expectedRevision === right.expectedRevision &&
+  left.jobId === right.jobId &&
   left.replyId === right.replyId &&
   left.transport.accountExternalId === right.transport.accountExternalId &&
   left.transport.deliveryKey === right.transport.deliveryKey &&
@@ -129,13 +134,11 @@ const identitiesMatch = (
   request: PlatformConversationOutboundRequest,
 ): boolean => result.deliveryKey === request.deliveryKey && result.platform === request.platform
 
-const sameLeaseFence = (
+const sameLeaseOwner = (
   left: PlatformConversationDeliveryLeaseFence,
   right: PlatformConversationDeliveryLeaseFence,
 ): boolean =>
-  left.jobId === right.jobId &&
-  left.leaseExpiresAt === right.leaseExpiresAt &&
-  left.ownerToken === right.ownerToken
+  left.jobId === right.jobId && left.ownerToken === right.ownerToken
 
 const authorityBlockedOutcome = (
   reason: PlatformConversationDeliveryBlockReason,
@@ -402,7 +405,7 @@ export const createPlatformConversationDeliveryService = ({
     if (!isClaim(claim)) {
       return authorityBlockedOutcome('intent_mismatch', intent.transport)
     }
-    if (!sameLeaseFence(claim.leaseFence, leaseFence)) {
+    if (!sameLeaseOwner(claim.leaseFence, leaseFence)) {
       try {
         await authority.releaseDelivery(claim)
       } catch {
@@ -419,7 +422,7 @@ export const createPlatformConversationDeliveryService = ({
       !['recover', 'send'].includes(claim.mode) ||
       !authoritativeIntent ||
       !sameIntent(authoritativeIntent, intent) ||
-      !sameLeaseFence(claim.leaseFence, leaseFence)
+      !sameLeaseOwner(claim.leaseFence, leaseFence)
     ) {
       try {
         await authority.releaseDelivery(claim)

@@ -37,6 +37,7 @@ const deliveryIntent = (
 ): PlatformConversationDeliveryIntent => ({
   conversationId: 42,
   expectedRevision: 7,
+  jobId: 40,
   replyId: 'reply-7',
   transport: transport(),
   ...overrides,
@@ -257,6 +258,109 @@ describe('platform conversation delivery service', () => {
       status: 'blocked',
     })
     expect(send).not.toHaveBeenCalled()
+
+    const reclaimed = await claimFor(baseAuthority, deliveryIntent(), replacementLease)
+    expect(reclaimed.mode).toBe('send')
+    await baseAuthority.releaseDelivery(reclaimed)
+  })
+
+  it('keeps a claim valid when the same Job owner normally extends its heartbeat lease', async () => {
+    const authority = authorityFor()
+    const claim = await claimFor(authority)
+    const renewedLease = deliveryLease({
+      leaseExpiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+    })
+
+    authority.setJobLease(renewedLease)
+
+    await expect(authority.markProviderIOStarted(claim)).resolves.toEqual({ status: 'fenced' })
+    await expect(
+      authority.releaseDelivery(claim, {
+        deliveryKey: claim.intent.transport.deliveryKey,
+        platform: claim.intent.transport.platform,
+        status: 'accepted',
+      }),
+    ).resolves.toBeUndefined()
+    const nextClaim = await claimFor(authority, deliveryIntent(), renewedLease)
+    expect(nextClaim.mode).toBe('send')
+    await authority.releaseDelivery(nextClaim)
+  })
+
+  it('reclaims a started claim under a replacement owner into recover mode without manual cleanup', async () => {
+    const authority = authorityFor()
+    const oldClaim = await claimFor(authority)
+    await expect(authority.markProviderIOStarted(oldClaim)).resolves.toEqual({ status: 'fenced' })
+    const replacementLease = deliveryLease({ ownerToken: 'worker-41' })
+    authority.setJobLease(replacementLease)
+    const outbound = createFakePlatformConversationOutboundPort()
+    const recover = vi.spyOn(outbound, 'recoverUnknownOutcome')
+    const send = vi.spyOn(outbound, 'send')
+
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        replacementLease,
+      ),
+    ).resolves.toMatchObject({ status: 'delivery_unknown' })
+    expect(recover).toHaveBeenCalledTimes(1)
+    expect(send).not.toHaveBeenCalled()
+    await expect(authority.releaseDelivery(oldClaim)).rejects.toThrow('no longer active')
+  })
+
+  it('reclaims a naturally expired unstarted claim for a new owner without manual cleanup', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2030-01-01T00:00:00.000Z'))
+    try {
+      const expiringLease = deliveryLease({
+        leaseExpiresAt: '2030-01-01T00:00:01.000Z',
+        ownerToken: 'worker-old',
+      })
+      const authority = createFakePlatformConversationDeliveryAuthority({
+        initialIntents: [deliveryIntent()],
+        initialJobLeases: [expiringLease],
+        initialSnapshots: [{ conversationId: 42, handoffStatus: 'ai_active', revision: 7 }],
+      })
+      await claimFor(authority, deliveryIntent(), expiringLease)
+      vi.setSystemTime(new Date('2030-01-01T00:00:02.000Z'))
+      const replacementLease = deliveryLease({
+        leaseExpiresAt: '2030-01-01T01:00:00.000Z',
+        ownerToken: 'worker-new',
+      })
+      authority.setJobLease(replacementLease)
+
+      const reclaimed = await claimFor(authority, deliveryIntent(), replacementLease)
+      expect(reclaimed.mode).toBe('send')
+      await authority.releaseDelivery(reclaimed)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rejects a valid lease belonging to a different Job than the delivery intent', async () => {
+    const unrelatedLease = deliveryLease({ jobId: 41, ownerToken: 'worker-41' })
+    const authority = createFakePlatformConversationDeliveryAuthority({
+      initialIntents: [deliveryIntent()],
+      initialJobLeases: [deliveryLease(), unrelatedLease],
+      initialSnapshots: [{ conversationId: 42, handoffStatus: 'ai_active', revision: 7 }],
+    })
+    const outbound = createFakePlatformConversationOutboundPort()
+    const send = vi.spyOn(outbound, 'send')
+
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        unrelatedLease,
+      ),
+    ).resolves.toMatchObject({ errorCode: 'invalid_request', status: 'blocked' })
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('does not allow an existing delivery identity to be rebound to another Job', () => {
+    const authority = authorityFor()
+
+    expect(() => authority.registerDeliveryIntent(deliveryIntent({ jobId: 41 }))).toThrow(
+      'delivery intent identity is already registered',
+    )
   })
 
   it('releases a claimed authority fence that does not match the requested Job lease', async () => {

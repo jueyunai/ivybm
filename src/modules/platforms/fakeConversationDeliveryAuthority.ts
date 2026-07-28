@@ -44,6 +44,7 @@ const sameIntent = (
 ): boolean =>
   stored.conversationId === input.conversationId &&
   stored.expectedRevision === input.expectedRevision &&
+  stored.jobId === input.jobId &&
   stored.replyId === input.replyId &&
   stored.transport.accountExternalId === input.transport.accountExternalId &&
   stored.transport.deliveryKey === input.transport.deliveryKey &&
@@ -51,13 +52,11 @@ const sameIntent = (
   stored.transport.recipientExternalId === input.transport.recipientExternalId &&
   stored.transport.text === input.transport.text
 
-const sameLeaseFence = (
+const sameLeaseOwner = (
   stored: PlatformConversationDeliveryLeaseFence,
   input: PlatformConversationDeliveryLeaseFence,
 ): boolean =>
-  stored.jobId === input.jobId &&
-  stored.leaseExpiresAt === input.leaseExpiresAt &&
-  stored.ownerToken === input.ownerToken
+  stored.jobId === input.jobId && stored.ownerToken === input.ownerToken
 
 const isUnexpiredLease = (leaseFence: PlatformConversationDeliveryLeaseFence): boolean => {
   const expiresAt = Date.parse(leaseFence.leaseExpiresAt)
@@ -108,6 +107,26 @@ export const createFakePlatformConversationDeliveryAuthority = ({
     jobLeases.set(leaseFence.jobId, structuredClone(leaseFence))
   }
 
+  const reclaimStaleClaim = (key: string): void => {
+    const active = activeClaims.get(key)
+    if (!active) return
+    const currentLease = jobLeases.get(active.claim.leaseFence.jobId)
+    if (
+      currentLease &&
+      sameLeaseOwner(currentLease, active.claim.leaseFence) &&
+      isUnexpiredLease(currentLease)
+    ) {
+      return
+    }
+    if (active.providerIOStarted) {
+      recoveryRequired.set(
+        intentIdentityKey(active.claim.intent),
+        structuredClone(active.claim.intent),
+      )
+    }
+    activeClaims.delete(key)
+  }
+
   for (const intent of initialIntents) registerDeliveryIntent(intent)
   for (const leaseFence of initialJobLeases) setJobLease(leaseFence)
   for (const snapshot of initialSnapshots) setDeliverySnapshot(snapshot)
@@ -120,16 +139,22 @@ export const createFakePlatformConversationDeliveryAuthority = ({
     const snapshot = snapshots.get(key)
     const identity = intentIdentityKey(input)
     const stored = intents.get(identity)
+    const currentLease = jobLeases.get(leaseFence.jobId)
+    reclaimStaleClaim(key)
     const recoveryIntent = recoveryRequired.get(identity)
     const requiresRecovery = Boolean(recoveryIntent && sameIntent(recoveryIntent, input))
-    const currentLease = jobLeases.get(leaseFence.jobId)
     if (activeClaims.has(key)) return { reason: 'busy', status: 'blocked' }
-    if (!currentLease || !sameLeaseFence(currentLease, leaseFence) || !isUnexpiredLease(currentLease)) {
+    if (
+      !currentLease ||
+      !sameLeaseOwner(currentLease, leaseFence) ||
+      !isUnexpiredLease(currentLease)
+    ) {
       return { reason: 'lease_conflict', status: 'blocked' }
     }
     if (!snapshot) return { reason: 'missing_snapshot', status: 'blocked' }
     if (!stored) return { reason: 'missing_intent', status: 'blocked' }
     if (!sameIntent(stored, input)) return { reason: 'intent_mismatch', status: 'blocked' }
+    if (stored.jobId !== leaseFence.jobId) return { reason: 'intent_mismatch', status: 'blocked' }
     if (!requiresRecovery && !isAutomaticPlatformConversationReplyAllowed(snapshot.handoffStatus)) {
       return { reason: 'handoff_required', status: 'blocked' }
     }
@@ -161,14 +186,14 @@ export const createFakePlatformConversationDeliveryAuthority = ({
       active.claim.claimId !== claim.claimId ||
       active.claim.fencingGeneration !== claim.fencingGeneration ||
       !sameIntent(active.claim.intent, claim.intent) ||
-      !sameLeaseFence(active.claim.leaseFence, claim.leaseFence)
+      !sameLeaseOwner(active.claim.leaseFence, claim.leaseFence)
     ) {
       return { reason: 'claim_conflict', status: 'blocked' }
     }
     const currentLease = jobLeases.get(claim.leaseFence.jobId)
     if (
       !currentLease ||
-      !sameLeaseFence(currentLease, claim.leaseFence) ||
+      !sameLeaseOwner(currentLease, claim.leaseFence) ||
       !isUnexpiredLease(currentLease)
     ) {
       return { reason: 'lease_conflict', status: 'blocked' }
@@ -196,9 +221,9 @@ export const createFakePlatformConversationDeliveryAuthority = ({
       active.claim.claimId !== claim.claimId ||
       active.claim.fencingGeneration !== claim.fencingGeneration ||
       !sameIntent(active.claim.intent, claim.intent) ||
-      !sameLeaseFence(active.claim.leaseFence, claim.leaseFence) ||
+      !sameLeaseOwner(active.claim.leaseFence, claim.leaseFence) ||
       !currentLease ||
-      !sameLeaseFence(currentLease, claim.leaseFence) ||
+      !sameLeaseOwner(currentLease, claim.leaseFence) ||
       !isUnexpiredLease(currentLease)
     ) {
       throw new Error('Fake platform conversation delivery claim is invalid or no longer active')
