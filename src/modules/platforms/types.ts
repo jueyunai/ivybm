@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto'
 
+import type { HandoffStatus } from '../conversations/contracts'
+
+export {
+  PlatformConversationOutboundOutcomeUnknownError,
+  PlatformConversationOutboundTransportError,
+  isPlatformConversationOutboundOutcomeUnknownError,
+} from './conversationOutboundResult'
+
 export {
   MAX_PUBLICATION_ASSETS,
   MAX_PUBLICATION_ASSET_ID_BYTES,
@@ -58,6 +66,11 @@ export type PlatformFamily = 'linkedin' | 'meta' | 'tiktok'
 
 export type MessagingPlatform = 'facebook-messenger' | 'instagram' | 'tiktok'
 
+export const MESSAGING_PLATFORMS: readonly MessagingPlatform[] = [
+  'facebook-messenger',
+  'instagram',
+  'tiktok',
+]
 export type NormalizedAttachment = {
   caption?: string
   externalId?: string
@@ -100,6 +113,225 @@ export type NormalizedMessageStatus = NormalizedEventBase & {
 
 export type NormalizedPlatformEvent = NormalizedInboundMessage | NormalizedMessageStatus
 
+/**
+ * Stable, credential-free error taxonomy for phase-one automatic conversation
+ * replies. `handoff_required` and `message_window_closed` are conversation
+ * specific; the rest mirror the publishing taxonomy so operators learn one set.
+ */
+export const PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES = [
+  'account_not_connected',
+  'authorization_required',
+  'delivery_busy',
+  'delivery_unknown',
+  'handoff_required',
+  'invalid_request',
+  'lease_conflict',
+  'message_window_closed',
+  'permission_required',
+  'platform_blocked',
+  'provider_unavailable',
+  'rate_limited',
+  'stale_revision',
+] as const
+
+export type PlatformConversationOutboundErrorCode =
+  (typeof PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES)[number]
+export type ConfirmedPlatformConversationOutboundErrorCode = Exclude<
+  PlatformConversationOutboundErrorCode,
+  'delivery_unknown'
+>
+
+/**
+ * Credential-free transport command for one automatic conversation reply. The
+ * adapter sees only provider-routing fields plus the delivery correlation key;
+ * conversation, reply, revision and handoff state remain above this boundary.
+ */
+export type PlatformConversationOutboundRequest = {
+  readonly accountExternalId: string
+  readonly deliveryKey: string
+  readonly platform: MessagingPlatform
+  readonly recipientExternalId: string
+  readonly text: string
+}
+
+/**
+ * Internal, stable delivery intent created while ConversationService is
+ * authoritative. A worker must atomically claim expectedRevision immediately
+ * before passing the nested transport request to an adapter.
+ */
+export type PlatformConversationDeliveryIntent = {
+  readonly conversationId: number | string
+  readonly expectedRevision: number
+  /** Stable FK to the Task 10 Job created for this delivery intent. */
+  readonly jobId: number
+  readonly replyId: number | string
+  readonly transport: PlatformConversationOutboundRequest
+}
+
+export type PlatformConversationDeliverySnapshot = {
+  readonly conversationId: number | string
+  readonly handoffStatus: HandoffStatus
+  readonly revision: number
+}
+
+/**
+ * Task 10 lease evidence carried into the delivery authority. `jobId` plus
+ * `ownerToken` is the stable fence identity; `leaseExpiresAt` is freshness
+ * evidence and may advance during a normal heartbeat. A persistent authority
+ * must read the current Jobs row in the transaction that marks provider I/O.
+ */
+export type PlatformConversationDeliveryLeaseFence = {
+  readonly jobId: number
+  readonly leaseExpiresAt: string
+  readonly ownerToken: string
+}
+
+export const PLATFORM_CONVERSATION_DELIVERY_BLOCK_REASONS = [
+  'busy',
+  'claim_conflict',
+  'handoff_required',
+  'intent_mismatch',
+  'lease_conflict',
+  'missing_intent',
+  'missing_snapshot',
+  'stale_revision',
+] as const
+
+export type PlatformConversationDeliveryBlockReason =
+  (typeof PLATFORM_CONVERSATION_DELIVERY_BLOCK_REASONS)[number]
+
+/**
+ * Opaque logical fence acquired by a worker before provider I/O. Handoff
+ * transitions must use the same authority and may not commit while a claim for
+ * that conversation is active.
+ */
+export type PlatformConversationDeliveryClaim = {
+  readonly claimId: string
+  readonly fencingGeneration: number
+  readonly intent: PlatformConversationDeliveryIntent
+  readonly leaseFence: PlatformConversationDeliveryLeaseFence
+  /** Reclaimed attempts reconcile first and never call send before evidence. */
+  readonly mode: 'recover' | 'send'
+}
+
+export type PlatformConversationDeliveryClaimResult =
+  | {
+      readonly claim: PlatformConversationDeliveryClaim
+      readonly status: 'claimed'
+    }
+  | {
+      readonly reason: PlatformConversationDeliveryBlockReason
+      readonly status: 'blocked'
+    }
+
+export type PlatformConversationDeliveryMarkResult =
+  | { readonly status: 'fenced' }
+  | {
+      readonly reason: PlatformConversationDeliveryBlockReason
+      readonly status: 'blocked'
+    }
+
+type PlatformConversationOutboundResultBase = {
+  deliveryKey: string
+  platform: MessagingPlatform
+}
+
+/**
+ * Acceptance-only outcome: a reply is accepted (or a known duplicate) or it is
+ * blocked with a machine-readable reason. There is deliberately no `sent` or
+ * `delivered` state; a future reviewed provider-status callback must record
+ * verified delivery separately.
+ */
+type PlatformConversationOutboundBlockedResult = PlatformConversationOutboundResultBase & {
+  errorCode: ConfirmedPlatformConversationOutboundErrorCode
+  status: 'blocked'
+} & (
+    | { retryAfterSeconds?: never; retryable: false }
+    | { retryAfterSeconds?: number; retryable: true }
+  )
+
+export type PlatformConversationOutboundResult =
+  | (PlatformConversationOutboundResultBase & {
+      status: 'accepted' | 'duplicate'
+    })
+  | PlatformConversationOutboundBlockedResult
+
+/**
+ * A worker may lose its own result after a provider accepts a delivery. These
+ * actions tell the delivery service how it may safely converge; they do not
+ * assert that a customer has received a message.
+ */
+export const PLATFORM_CONVERSATION_OUTBOUND_RECOVERY_ACTIONS = [
+  'delivery_unknown',
+  'provider_accepted',
+  'retry_same_delivery_key',
+] as const
+
+export type PlatformConversationOutboundRecoveryAction =
+  (typeof PLATFORM_CONVERSATION_OUTBOUND_RECOVERY_ACTIONS)[number]
+
+declare const PROVIDER_ACCEPTANCE_EVIDENCE: unique symbol
+
+/**
+ * A non-empty, opaque reference returned by a provider lookup. Adapters must
+ * construct it only from provider-issued acceptance evidence, never from an
+ * internal delivery key.
+ */
+export type ProviderAcceptanceEvidence = string & {
+  readonly [PROVIDER_ACCEPTANCE_EVIDENCE]: true
+}
+
+/**
+ * Narrow an externally returned provider reference before a recovery result
+ * can claim provider acceptance. Empty or whitespace-only evidence must fail
+ * closed to `delivery_unknown`.
+ */
+export const createProviderAcceptanceEvidence = ({
+  deliveryKey,
+  providerReference,
+}: {
+  deliveryKey: unknown
+  providerReference: unknown
+}): ProviderAcceptanceEvidence | undefined => {
+  if (typeof deliveryKey !== 'string' || typeof providerReference !== 'string') return undefined
+  const normalizedReference = providerReference.trim()
+  const isBoundedOpaqueIdentifier =
+    normalizedReference === providerReference &&
+    new TextEncoder().encode(normalizedReference).byteLength <= 512 &&
+    !/[\u0000-\u001F\u007F-\u009F]/u.test(normalizedReference) &&
+    !/\s/u.test(normalizedReference)
+  return normalizedReference &&
+    isBoundedOpaqueIdentifier &&
+    normalizedReference !== deliveryKey.trim()
+    ? (normalizedReference as ProviderAcceptanceEvidence)
+    : undefined
+}
+
+export type PlatformConversationOutboundRecoveryResult =
+  | (PlatformConversationOutboundResultBase & {
+      providerReference?: never
+      status: 'delivery_unknown' | 'retry_same_delivery_key'
+    })
+  | (PlatformConversationOutboundResultBase & {
+      /**
+       * Opaque provider-issued acceptance evidence obtained by an explicit
+       * lookup. It is not the internal deliveryKey and does not claim that the
+       * recipient has received the message.
+       */
+      providerReference: ProviderAcceptanceEvidence
+      status: 'provider_accepted'
+    })
+
+export type PlatformConversationDeliveryOutcome =
+  | PlatformConversationOutboundRecoveryResult
+  | PlatformConversationOutboundResult
+
+/**
+ * Automatic platform replies are only allowed while the authoritative
+ * conversation state machine keeps the AI in charge.
+ */
+export const isAutomaticPlatformConversationReplyAllowed = (status: HandoffStatus): boolean =>
+  status === 'ai_active'
 export const MAX_PLATFORM_EVENT_IDEMPOTENCY_KEY_LENGTH = 200
 
 /**

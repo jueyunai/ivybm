@@ -2,6 +2,15 @@ import type {
   NormalizedInboundMessage,
   NormalizedMessageStatus,
   NormalizedPlatformEvent,
+  PlatformConversationDeliveryClaim,
+  PlatformConversationDeliveryClaimResult,
+  PlatformConversationDeliveryIntent,
+  PlatformConversationDeliveryLeaseFence,
+  PlatformConversationDeliveryMarkResult,
+  PlatformConversationDeliveryOutcome,
+  PlatformConversationOutboundRequest,
+  PlatformConversationOutboundRecoveryResult,
+  PlatformConversationOutboundResult,
   PlatformFamily,
 } from './types'
 import type { PublishingService } from '../publishing/contracts'
@@ -58,3 +67,54 @@ export interface PlatformConnector {
 }
 
 export type PlatformPublishingPort = PublishingService
+
+export interface PlatformConversationOutboundPort {
+  /**
+   * Deliver one automatic conversation reply. `deliveryKey`, scoped by
+   * platform and account, is the idempotency anchor. A real adapter must make
+   * that deduplication atomic across I/O and map it to a provider idempotency
+   * mechanism where available; this port never reports provider delivery.
+   */
+  send(request: PlatformConversationOutboundRequest): Promise<PlatformConversationOutboundResult>
+
+  /**
+   * Reconcile an unknown result after a provider may have accepted a request
+   * but the worker died before it persisted the result. This method must never
+   * blind-send: it only permits same-key retry, returns provider-issued,
+   * opaque acceptance evidence, or declares delivery unknown for manual
+   * compensation. `provider_accepted` must never be returned without that
+   * external evidence.
+   */
+  recoverUnknownOutcome(
+    request: PlatformConversationOutboundRequest,
+  ): Promise<PlatformConversationOutboundRecoveryResult>
+}
+
+/**
+ * Authority used to atomically fence a queued AI reply before provider I/O.
+ * The same authority must serialize handoff transitions against active claims,
+ * so `human_active` cannot commit and then be followed by an automatic send.
+ */
+export interface PlatformConversationDeliveryAuthorityPort {
+  /** Atomically verify the current Job lease belongs to this persisted intent. */
+  claimDelivery(
+    intent: PlatformConversationDeliveryIntent,
+    leaseFence: PlatformConversationDeliveryLeaseFence,
+  ): Promise<PlatformConversationDeliveryClaimResult>
+  /** Atomically revalidate Job ↔ intent, current owner/expiry, and fence provider I/O. */
+  markProviderIOStarted(
+    claim: PlatformConversationDeliveryClaim,
+  ): Promise<PlatformConversationDeliveryMarkResult>
+  releaseDelivery(
+    claim: PlatformConversationDeliveryClaim,
+    outcome?: PlatformConversationDeliveryOutcome,
+  ): Promise<void>
+}
+
+/** Public application contract consumed by a future reviewed Task 10 handler. */
+export interface PlatformConversationDeliveryService {
+  deliver(
+    intent: PlatformConversationDeliveryIntent,
+    leaseFence: PlatformConversationDeliveryLeaseFence,
+  ): Promise<PlatformConversationDeliveryOutcome>
+}

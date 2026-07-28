@@ -24,6 +24,7 @@ export type JobRecord = {
 }
 
 export type ClaimedJob = JobRecord & {
+  leaseExpiresAt: string
   ownerToken: string
 }
 

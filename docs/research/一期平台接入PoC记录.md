@@ -37,7 +37,7 @@ fixture / mock 通过只表示接口契约完成。只有在 production 受控�
 - Meta durable inbound 阶段将规范化事件作为 `Jobs` 的原子 inbox，worker 在租约前后围栏检查后，通过 Task 9 权威会话服务写入会话、消息、接管与审计；已覆盖“业务提交后 worker 死亡、lease 过期重领”的无重复恢复场景。
 - Meta Webhook 在批次持久化前、worker 在 claim 后 dispatch 前分别查询 `PlatformAccounts`；账号不存在、重复、disabled / blocked / 未连接或 messaging capability blocked 时 fail closed。混合账号批次中任一账号被拒绝时整批零入队；账号在入队后停用时 worker 不调用会话写入。
 - 平台账号 readiness 将显式 blocked capability 保持为 `blocked`，并检查 access token 过期、refresh token 是否配置及当前部署能否解密。替换或清除 access token 时会同步清理未显式更新的旧 `expiresAt`，避免轮换后沿用错误期限；所有检查只返回稳定缺口码，不回显 token、密文或 provider 错误。
-- 社媒入站当前在没有外发账号 / adapter 时会明确转人工，不产生未投递的 AI 回复记录。后续出站 port / fake 必须遵循 [ADR-0003](../architecture/adr/0003-social-conversation-outbound-delivery.md)：`ConversationService` 创建稳定内部回复身份和 `deliveryKey`，delivery intent / outbox 持有业务状态，真实发送必须通过持久 Job 且在入队和执行前检查人工接管状态。
+- 社媒入站当前在没有外发账号 / adapter 时会明确转人工，不产生未投递的 AI 回复记录。后续出站 port / fake 必须遵循 [ADR-0003](../architecture/adr/0003-social-conversation-outbound-delivery.md)：`ConversationService` 创建稳定内部回复身份和 `deliveryKey`，delivery intent / outbox 持有业务状态；worker 调用 adapter 前以 `conversationId + replyId + deliveryKey + expectedRevision` 原子 claim 权威 intent，handoff 转换与 active claim 串行化，避免状态读取后的 TOCTOU。adapter 只接收平台传输字段，不接收 handoff、revision 或会话内部 ID。
 - 附件不下载、不访问网络；外部附件 URL 只保留 HTTPS origin/path，查询参数、fragment 和 userinfo 一律不进入 Job payload，避免短期签名或 token 被持久化。
 - Meta delivery/read callback 当前明确忽略，不进入 Jobs；`message-status` 仅保留未来 adapter 的内部类型，未被标记为已实现的状态回调能力。
 - 发布侧以 `src/modules/publishing/contracts.ts` 冻结 Task 12 可直接消费的 Facebook / Instagram / LinkedIn `PublishingService` 公共 contract，并由 `tests/fakes/publishingService.ts` 提供不依赖平台私有模块的测试 fake。capability、publish、status、`prepareAssistedPublication` 与所有结果均携带 `platformAccountId`；默认 `conditional` automatic fake 不会假装 accepted，只有显式测试 override 的 `available` 状态才模拟自动发布成功。
@@ -53,7 +53,7 @@ fixture / mock 通过只表示接口契约完成。只有在 production 受控�
 - Task 9 `Conversations` / `Messages` 已合并；Meta durable inbound adapter 通过权威会话服务写入，不让外部事件绕过权限、幂等或审计。公网 route 代码已完成，但尚未部署、订阅或使用真实 secret。
 - Task 12 `PublishJobs` / `PublishLogs` 尚未合并：不创建临时发布 Collection 或替代 migration。
 - Task 10 Jobs / worker 已合并；Meta durable inbound 已注册 `platform.event.dispatch` handler，并由 Jobs 的既有 lease / retry / dead job 机制托管。真实 webhook ingress、平台账号授权、生产受控窗口、人工补偿界面和真实出站仍未实现，不能视为真实平台联调完成。
-- 真实社媒 AI 自动出站仍缺 `PlatformAccounts`、持久 delivery handler、官方 adapter、账号 / 权限及受控发送窗口；在这些条件满足前不得把 fake、草稿或内部状态标为发送成功。provider 已接受但 worker 未持久化结果时，必须使用平台幂等键或状态查询归并；两者不可用时标为 `delivery_unknown` 并人工补偿，禁止盲目重发。
+- 真实社媒 AI 自动出站仍缺持久 delivery intent / claim 实现、Task 10 handler、官方 adapter、账号 / 权限及受控发送窗口；在这些条件满足前不得把 fake、草稿或内部状态标为发送成功。claim 必须绑定 worker lease 与 fencing generation：I/O 开始后的过期重领先 recovery，只有明确的 `retry_same_delivery_key` 能在重新取得 fencing 标记后执行一次同 payload、同 key 重试。provider 已接受但 worker 未持久化结果时，公共 `delivery_unknown` 信号不可进入普通 Job retry，必须使用平台幂等键或状态查询归并；两者不可用或恢复身份不匹配时标为 `delivery_unknown` 并人工补偿，禁止盲目重发。
 - 每个数据库依赖都必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`。随后必须先 `git fetch origin` 并从最新 `origin/main` 更新 Task 13 基线，再实现 Payload / PostgreSQL adapter 与 integration test。
 - `PlatformAccounts` 是 Task 13 的真实前向配置结构，不是替代 `Conversations`、`Messages`、`PublishJobs` 或 `PublishLogs`。它只保存管理员可见的账号元数据、审核状态与加密令牌配置，并提供不含令牌的 readiness 预检；不改变发布侧等待 Task 12 的约束。
 

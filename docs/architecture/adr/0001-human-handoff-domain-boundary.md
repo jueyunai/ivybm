@@ -38,6 +38,7 @@ resolved
 
 - `handoff_requested` 期间通知或分配失败，由 Job 重试并保持可见，不能静默退回 `ai_active`。
 - `human_active` 后所有 AI 自动回复请求必须被领域服务拒绝。
+- 社媒自动回复必须先用权威 revision 原子 claim 对应 delivery intent；人工接管与 active claim 使用同一 authority 串行化，禁止先提交 `human_active` 后仍调用平台 adapter。普通“读取状态后发送”不构成该保证。
 - 重复接管命令通过 `conversationId + idempotencyKey` 返回首次结果，不创建重复 Handoff。
 - 非法转换（例如 `resolved -> human_active`）由服务端拒绝并写审计日志。
 
