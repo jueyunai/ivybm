@@ -47,6 +47,7 @@ export default buildConfig({
   admin: {
     components: {
       Nav: '/admin/components/OperationsNav',
+      actions: ['/admin/components/AdminAccountMenu'],
       views: {
         dashboard: {
           Component: '/admin/views/OperationsDashboard',

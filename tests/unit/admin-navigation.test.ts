@@ -28,6 +28,7 @@ describe('task-oriented Admin navigation', () => {
     const components = payloadConfig.admin?.components
 
     expect(components?.Nav).toEqual('/admin/components/OperationsNav')
+    expect(components?.actions).toContain('/admin/components/AdminAccountMenu')
     expect(components?.beforeNavLinks).toBeUndefined()
     expect(components?.views?.dashboard).toMatchObject({
       Component: '/admin/views/OperationsDashboard',
@@ -105,9 +106,11 @@ describe('task-oriented Admin navigation', () => {
     expect(allItems.map((item) => item.href)).not.toContain('/admin/collections/payload-migrations')
     expect(ADMIN_COPY.en.navSections.workspace).toEqual(expect.any(String))
     expect(ADMIN_COPY.en.navSections.system).toEqual(expect.any(String))
+    expect(ADMIN_COPY.en.signingOut).toEqual(expect.any(String))
+    expect(ADMIN_COPY.zh.signOutError).toEqual(expect.any(String))
   })
 
-  it('defines an owned navigation shell without targeting Payload internal nav classes', () => {
+  it('defines an owned navigation shell with scoped Payload layout integration', () => {
     const navSource = readFileSync(
       path.join(process.cwd(), 'src/admin/components/OperationsNav.tsx'),
       'utf8',
@@ -126,12 +129,33 @@ describe('task-oriented Admin navigation', () => {
     expect(navSource).toContain('useNav')
     expect(navSource).toContain('NavWrapper')
     expect(navSource).toContain('operations-nav-close')
+    expect(navSource).not.toContain('ops-admin-nav__footer')
     expect(navStyles).toContain('.ops-admin-nav')
     expect(navStyles).toContain('.ops-admin-nav__close')
     expect(navStyles).toContain('.ops-admin-nav__section')
     expect(navStyles).toContain('block-size: 100dvh')
     expect(navStyles).toContain('background: var(--ops-accent-soft)')
     expect(tokenStyles.match(/--ops-accent-soft:/g)).toHaveLength(2)
-    expect(navStyles).not.toMatch(/\.nav__|\.nav-group|\.nav-toggler/)
+    expect(navStyles).toContain('.template-default__nav-toggler-wrapper')
+    expect(navStyles).toContain('inset-inline-start: var(--nav-width)')
+    expect(navStyles).toContain('.nav__scroll')
+    expect(navStyles).not.toMatch(/\.nav-group/)
+  })
+
+  it('keeps account settings and sign out in the header avatar menu', () => {
+    const accountMenuSource = readFileSync(
+      path.join(process.cwd(), 'src/admin/components/AdminAccountMenu.tsx'),
+      'utf8',
+    )
+
+    expect(accountMenuSource).toContain('ops-account-menu__trigger')
+    expect(accountMenuSource).toContain('aria-haspopup="menu"')
+    expect(accountMenuSource).toContain('href="/admin/account"')
+    expect(accountMenuSource).toContain('await logOut()')
+    expect(accountMenuSource).toContain("window.location.assign('/admin/login')")
+    expect(accountMenuSource).toContain("document.addEventListener('pointerdown'")
+    expect(accountMenuSource).toContain('triggerRef.current?.focus()')
+    expect(accountMenuSource).toContain('disabled={signingOut}')
+    expect(accountMenuSource).toContain('role="alert"')
   })
 })
