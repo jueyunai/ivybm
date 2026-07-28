@@ -10,10 +10,13 @@ import {
 import {
   createProviderAcceptanceEvidence,
   MESSAGING_PLATFORMS,
+  PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES,
+  type ConfirmedPlatformConversationOutboundErrorCode,
   type PlatformConversationDeliveryIntent,
   type PlatformConversationDeliveryOutcome,
   type PlatformConversationOutboundRecoveryResult,
   type PlatformConversationOutboundRequest,
+  type PlatformConversationOutboundResult,
 } from './types'
 
 const deliveryUnknown = (
@@ -97,17 +100,116 @@ const identitiesMatch = (
   request: PlatformConversationOutboundRequest,
 ): boolean => result.deliveryKey === request.deliveryKey && result.platform === request.platform
 
+const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+const hasExactKeys = (value: Record<string, unknown>, expected: readonly string[]): boolean => {
+  const keys = Reflect.ownKeys(value)
+  return keys.length === expected.length && expected.every((key) => Object.hasOwn(value, key))
+}
+
+const isConfirmedErrorCode = (
+  value: unknown,
+): value is ConfirmedPlatformConversationOutboundErrorCode =>
+  typeof value === 'string' &&
+  value !== 'delivery_unknown' &&
+  PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES.includes(
+    value as ConfirmedPlatformConversationOutboundErrorCode,
+  )
+
+const normalizeSendResult = (
+  value: unknown,
+  request: PlatformConversationOutboundRequest,
+): PlatformConversationDeliveryOutcome => {
+  if (!isPlainRecord(value)) return deliveryUnknown(request)
+  const result = value
+  if (!identitiesMatch(result as { deliveryKey: string; platform: string }, request)) {
+    return deliveryUnknown(request)
+  }
+
+  if (result.status === 'accepted' || result.status === 'duplicate') {
+    return hasExactKeys(result, ['deliveryKey', 'platform', 'status'])
+      ? {
+          deliveryKey: request.deliveryKey,
+          platform: request.platform,
+          status: result.status,
+        }
+      : deliveryUnknown(request)
+  }
+
+  if (
+    result.status !== 'blocked' ||
+    !isConfirmedErrorCode(result.errorCode) ||
+    typeof result.retryable !== 'boolean'
+  ) {
+    return deliveryUnknown(request)
+  }
+
+  if (!result.retryable) {
+    return hasExactKeys(result, [
+      'deliveryKey',
+      'errorCode',
+      'platform',
+      'retryable',
+      'status',
+    ])
+      ? {
+          deliveryKey: request.deliveryKey,
+          errorCode: result.errorCode,
+          platform: request.platform,
+          retryable: false,
+          status: 'blocked',
+        }
+      : deliveryUnknown(request)
+  }
+
+  const hasRetryAfterSeconds = Object.hasOwn(result, 'retryAfterSeconds')
+  if (
+    hasRetryAfterSeconds &&
+    (!Number.isInteger(result.retryAfterSeconds) || (result.retryAfterSeconds as number) <= 0)
+  ) {
+    return deliveryUnknown(request)
+  }
+  if (
+    !hasExactKeys(result, [
+      'deliveryKey',
+      'errorCode',
+      'platform',
+      ...(hasRetryAfterSeconds ? ['retryAfterSeconds'] : []),
+      'retryable',
+      'status',
+    ])
+  ) {
+    return deliveryUnknown(request)
+  }
+
+  const normalized: PlatformConversationOutboundResult = {
+    deliveryKey: request.deliveryKey,
+    errorCode: result.errorCode,
+    platform: request.platform,
+    ...(hasRetryAfterSeconds
+      ? { retryAfterSeconds: result.retryAfterSeconds as number }
+      : {}),
+    retryable: true,
+    status: 'blocked',
+  }
+  return normalized
+}
+
 const normalizeRecovery = (
   value: unknown,
   request: PlatformConversationOutboundRequest,
 ): PlatformConversationOutboundRecoveryResult => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return deliveryUnknown(request)
-  const result = value as Record<string, unknown>
+  if (!isPlainRecord(value)) return deliveryUnknown(request)
+  const result = value
   if (!identitiesMatch(result as { deliveryKey: string; platform: string }, request)) {
     return deliveryUnknown(request)
   }
   if (result.status === 'delivery_unknown' || result.status === 'retry_same_delivery_key') {
-    return result.providerReference === undefined
+    return hasExactKeys(result, ['deliveryKey', 'platform', 'status'])
       ? {
           deliveryKey: request.deliveryKey,
           platform: request.platform,
@@ -116,6 +218,9 @@ const normalizeRecovery = (
       : deliveryUnknown(request)
   }
   if (result.status === 'provider_accepted') {
+    if (!hasExactKeys(result, ['deliveryKey', 'platform', 'providerReference', 'status'])) {
+      return deliveryUnknown(request)
+    }
     const providerReference = createProviderAcceptanceEvidence({
       deliveryKey: request.deliveryKey,
       providerReference: result.providerReference,
@@ -150,7 +255,7 @@ const sendAndRecover = async (
 ): Promise<PlatformConversationDeliveryOutcome> => {
   try {
     const result = await outbound.send(request)
-    return identitiesMatch(result, request) ? result : deliveryUnknown(request)
+    return normalizeSendResult(result, request)
   } catch (error) {
     if (!isPlatformConversationOutboundOutcomeUnknownError(error)) {
       return deliveryUnknown(request)

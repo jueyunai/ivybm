@@ -258,6 +258,16 @@ describe('platform conversation delivery service', () => {
     })
     expect(send).toHaveBeenCalledTimes(1)
     expect(recover).toHaveBeenCalledTimes(1)
+
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+    ).resolves.toEqual({
+      deliveryKey: 'conversation-42:reply-7',
+      platform: 'facebook-messenger',
+      status: 'delivery_unknown',
+    })
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(recover).toHaveBeenCalledTimes(2)
   })
 
   it('fails closed to delivery_unknown when reconciliation itself is unavailable', async () => {
@@ -352,6 +362,64 @@ describe('platform conversation delivery service', () => {
         platform: 'facebook-messenger' as const,
         status: 'accepted' as const,
       })),
+    }
+
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+    ).resolves.toEqual({
+      deliveryKey: 'conversation-42:reply-7',
+      platform: 'facebook-messenger',
+      status: 'delivery_unknown',
+    })
+  })
+
+  it.each([
+    ['a recovery-only provider_accepted status', { status: 'provider_accepted' }],
+    ['a recovery-only delivery_unknown status', { status: 'delivery_unknown' }],
+    ['a recovery-only retry_same_delivery_key status', { status: 'retry_same_delivery_key' }],
+    ['an unknown status', { status: 'invented_status' }],
+    [
+      'delivery_unknown as a confirmed blocked error',
+      { errorCode: 'delivery_unknown', retryable: false, status: 'blocked' },
+    ],
+    ['a blocked result without retryable', { errorCode: 'rate_limited', status: 'blocked' }],
+    [
+      'retryAfterSeconds on a non-retryable block',
+      {
+        errorCode: 'permission_required',
+        retryAfterSeconds: 30,
+        retryable: false,
+        status: 'blocked',
+      },
+    ],
+    [
+      'a non-positive retryAfterSeconds',
+      { errorCode: 'rate_limited', retryAfterSeconds: 0, retryable: true, status: 'blocked' },
+    ],
+    [
+      'variant fields on an accepted result',
+      { errorCode: 'rate_limited', retryable: true, status: 'accepted' },
+    ],
+    ['an extra provider field', { providerReference: 'provider-message-1', status: 'accepted' }],
+    ['a non-object result', null],
+    ['an array result', []],
+  ])('fails closed when a normal adapter returns %s', async (_description, malformedResult) => {
+    const authority = authorityFor()
+    const outbound: PlatformConversationOutboundPort = {
+      recoverUnknownOutcome: vi.fn(async (input) => ({
+        deliveryKey: input.deliveryKey,
+        platform: input.platform,
+        status: 'delivery_unknown' as const,
+      })),
+      send: vi.fn(async () =>
+        malformedResult && typeof malformedResult === 'object' && !Array.isArray(malformedResult)
+          ? ({
+              deliveryKey: 'conversation-42:reply-7',
+              platform: 'facebook-messenger',
+              ...malformedResult,
+            } as never)
+          : (malformedResult as never),
+      ),
     }
 
     await expect(
@@ -476,6 +544,44 @@ describe('platform conversation delivery service', () => {
     expect(queue.fail).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['a human takeover', { conversationId: 42, handoffStatus: 'human_active' as const, revision: 8 }],
+    ['a newer AI revision', { conversationId: 42, handoffStatus: 'ai_active' as const, revision: 8 }],
+  ])(
+    'fences a same-key recovery retry after %s',
+    async (_description, changedSnapshot) => {
+      const authority = authorityFor()
+      const abandonedClaim = await authority.claimDelivery(deliveryIntent())
+      if (!abandonedClaim) throw new Error('Fixture delivery claim must be available')
+      await expect(authority.markProviderIOStarted(abandonedClaim)).resolves.toBe(true)
+      expect(authority.expireDeliveryClaim(42)).toBe(true)
+      expect(authority.setDeliverySnapshot(changedSnapshot)).toBe(true)
+
+      const send = vi.fn(async (input: PlatformConversationOutboundRequest) => ({
+        deliveryKey: input.deliveryKey,
+        platform: input.platform,
+        status: 'accepted' as const,
+      }))
+      const outbound: PlatformConversationOutboundPort = {
+        recoverUnknownOutcome: vi.fn(async (input) => ({
+          deliveryKey: input.deliveryKey,
+          platform: input.platform,
+          status: 'retry_same_delivery_key' as const,
+        })),
+        send,
+      }
+
+      await expect(
+        createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+      ).resolves.toEqual({
+        deliveryKey: 'conversation-42:reply-7',
+        platform: 'facebook-messenger',
+        status: 'delivery_unknown',
+      })
+      expect(send).not.toHaveBeenCalled()
+    },
+  )
+
   it('does not let a changed payload inherit another intent recovery fence', async () => {
     const authority = authorityFor()
     const abandonedClaim = await authority.claimDelivery(deliveryIntent())
@@ -591,6 +697,43 @@ describe('platform conversation delivery service', () => {
     await expect(
       createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
     ).resolves.toMatchObject({ status: 'delivery_unknown' })
+  })
+
+  it('rejects extra fields on a same-key recovery action without resending', async () => {
+    const authority = authorityFor()
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new PlatformConversationOutboundOutcomeUnknownError({
+          deliveryKey: 'conversation-42:reply-7',
+          platform: 'facebook-messenger',
+        }),
+      )
+      .mockResolvedValue({
+        deliveryKey: 'conversation-42:reply-7',
+        platform: 'facebook-messenger',
+        status: 'accepted',
+      })
+    const outbound: PlatformConversationOutboundPort = {
+      recoverUnknownOutcome: vi.fn(async (input) =>
+        ({
+          deliveryKey: input.deliveryKey,
+          extra: 'not part of the recovery union',
+          platform: input.platform,
+          status: 'retry_same_delivery_key',
+        }) as never,
+      ),
+      send,
+    }
+
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(deliveryIntent()),
+    ).resolves.toEqual({
+      deliveryKey: 'conversation-42:reply-7',
+      platform: 'facebook-messenger',
+      status: 'delivery_unknown',
+    })
+    expect(send).toHaveBeenCalledTimes(1)
   })
 
   it('lets Task 10 complete an unknown-result handler without queue.fail retrying the send', async () => {

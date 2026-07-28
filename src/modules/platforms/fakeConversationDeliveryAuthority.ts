@@ -124,11 +124,15 @@ export const createFakePlatformConversationDeliveryAuthority = ({
   ): Promise<boolean> => {
     const key = conversationKey(claim.intent.conversationId)
     const active = activeClaims.get(key)
+    const snapshot = snapshots.get(key)
     if (
       !active ||
+      !snapshot ||
       active.claim.claimId !== claim.claimId ||
       active.claim.fencingGeneration !== claim.fencingGeneration ||
-      !sameIntent(active.claim.intent, claim.intent)
+      !sameIntent(active.claim.intent, claim.intent) ||
+      snapshot.revision !== claim.intent.expectedRevision ||
+      !isAutomaticPlatformConversationReplyAllowed(snapshot.handoffStatus)
     ) {
       return false
     }
@@ -151,8 +155,14 @@ export const createFakePlatformConversationDeliveryAuthority = ({
       throw new Error('Fake platform conversation delivery claim is invalid or no longer active')
     }
     activeClaims.delete(key)
-    if (outcome && !['delivery_unknown', 'retry_same_delivery_key'].includes(outcome.status)) {
-      recoveryRequired.delete(intentIdentityKey(claim.intent))
+    const identity = intentIdentityKey(claim.intent)
+    if (
+      active.providerIOStarted &&
+      (!outcome || ['delivery_unknown', 'retry_same_delivery_key'].includes(outcome.status))
+    ) {
+      recoveryRequired.set(identity, structuredClone(claim.intent))
+    } else if (outcome) {
+      recoveryRequired.delete(identity)
     }
   }
 
