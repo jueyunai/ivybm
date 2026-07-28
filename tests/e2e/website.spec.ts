@@ -144,7 +144,11 @@ test('dynamic detail pages expose localized metadata and migrated project and ar
   ).toBeVisible()
   await expect(page.getByRole('heading', { name: 'مرجع المنتج التاريخي' })).toBeVisible()
 
-  const mainFit = await page.locator('.product-gallery-main-image').evaluate((image) => {
+  const mainImage = page.locator('.product-gallery-main-image')
+  await expect
+    .poll(() => mainImage.evaluate((image) => (image as HTMLImageElement).currentSrc))
+    .not.toBe('')
+  const mainFit = await mainImage.evaluate((image) => {
     const stage = image.closest('.product-gallery-stage')?.getBoundingClientRect()
     const rect = image.getBoundingClientRect()
     const element = image as HTMLImageElement
@@ -166,7 +170,11 @@ test('dynamic detail pages expose localized metadata and migrated project and ar
   await expect(
     page.getByRole('dialog', { name: 'صور ألواح ألمنيوم مزدوجة الانحناء بالحجم الكامل' }),
   ).toBeVisible()
-  const lightboxFit = await page.locator('.product-gallery-lightbox-image').evaluate((image) => {
+  const lightboxImage = page.locator('.product-gallery-lightbox-image')
+  await expect
+    .poll(() => lightboxImage.evaluate((image) => (image as HTMLImageElement).currentSrc))
+    .not.toBe('')
+  const lightboxFit = await lightboxImage.evaluate((image) => {
     const stage = image.closest('.product-gallery-lightbox-stage')?.getBoundingClientRect()
     const rect = image.getBoundingClientRect()
     const element = image as HTMLImageElement
