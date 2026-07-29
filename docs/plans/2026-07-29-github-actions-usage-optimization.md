@@ -260,6 +260,7 @@ git commit -m "ci: publish images only for production changes"
 - Draft Fast CI、旧 head、skipped / cancelled 不能作为合并依据；
 - workflows / classifier / policy / image trigger 必须独立 Review；
 - production image 不代表 production 部署授权。
+- 同一目标、同一实施计划和同一 Review 边界的紧密相关改动默认放在一个 Draft PR，用分阶段 commit 保持可审；禁止把方案、实现和验证记录机械拆成多个非必要 PR，也禁止把无关任务塞进同一 PR。只有独立任务、不同负责人或强制 Review 边界、需要独立回滚 / 发布，或完整 diff 已明显超出可审规模时才拆分。
 
 **Step 2: 同步 CLAUDE.md**
 
@@ -351,13 +352,13 @@ git commit -m "docs: record CI optimization verification"
 - Branch: `fix/github-actions-usage-optimization`
 - PR: Draft by default
 
-**Step 1: 将实施分支从最新 main 创建为代码分支**
+**Step 1: 在单一修复分支完成方案、实现和验证**
 
-方案 / 计划 docs PR 合并后，从最新 `origin/main` 创建 `fix/github-actions-usage-optimization` 独立 worktree；不得在 docs 分支直接实现 workflow。
+保留已基于最新 `origin/main` 创建的方案提交，将分支和 worktree 原地改名为 `fix/github-actions-usage-optimization` 与 `ivybm-fix-github-actions-usage-optimization`。分类器、workflow、规则文档和验证记录都属于同一 CI 优化目标、同一强制独立 Review 边界，因此使用一个 Draft PR 和分阶段 commit，不额外创建 docs-only 方案 PR。
 
-**Step 2: Push 并创建 Draft PR**
+**Step 2: 实施完成后 Push 并创建唯一 Draft PR**
 
-PR 描述引用本设计和计划，明确 `.github/workflows/**` 属于仓库门禁，必须请求 `xuemusi` 独立 Review。
+PR 描述引用本设计和计划，明确 `.github/workflows/**` 属于仓库门禁，必须请求 `xuemusi` 独立 Review。除非后续出现可独立回滚 / 发布的不同目标，不再拆分新的 CI 子 PR。
 
 Expected: Draft PR 只运行 Fast CI，不启动数据库、Playwright、Docker 或 publish。
 
