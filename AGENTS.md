@@ -41,13 +41,24 @@ bash scripts/install-git-hooks.sh
 
 ## 提交与 PR
 
-- 一个分支只处理一个实施计划 Task 或一个紧密相关的小修复。
+- 一个分支只处理一个实施计划 Task 或一个紧密相关的小修复，禁止混入无关任务。
+- 同一目标、同一实施计划、同一 Review 边界且可一起回滚 / 发布的紧密相关改动，默认使用一个 Draft PR 和分阶段 commit，保持 diff 可审；禁止仅为流程形式把方案、实现和验证记录机械拆成多个 PR。只有独立任务、不同负责人或强制 Review 边界、需要独立回滚 / 发布，或完整 diff 已明显超出可审规模时才拆分。
 - 提交前运行该 Task 规定的 lint、typecheck、test、build；不能运行时明确说明原因。
 - PR 标题和描述必须引用 Task 编号，并填写 `.github/pull_request_template.md`。
 - 项目初始化、CI、工程配置、文档及负责人自己板块内的独立改动，在 CI 通过、完成 PR 清单并检查完整 diff 后，可由负责人自检合并；必须在 PR 中记录不涉及共享结构、跨人契约、协作者范围或一期上线验收。作者自检不等同于 GitHub 独立审批。
 - 共享文件 `src/payload.config.ts`、migration、`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`PublishJobs`、`PublishLogs`，以及供另一人任务消费的公共接口、字段或契约，必须由另一名开发者 review。跨双方板块边界或影响另一人在途任务的改动同样不得自检合并。
 - production 发布仍由 jueyunai 审批，一期上线验收必须由两人共同确认。
 - `main` 上的紧急修复只能在用户明确授权后使用 `IVYBM_ALLOW_MAIN_PUSH=1` 绕过本地 hook；完成后必须补建 PR 或事故记录。
+
+## AI 与 CI 门禁
+
+- AI 创建 PR 时默认使用 Draft；只有本地定向验证、PR 描述、风险 / 回滚、共享边界判断和 Review 请求齐全后才转 Ready。除非用户明确要求且上述条件已满足，不直接创建 Ready PR。
+- push 前必须运行对应 Task 的本地定向检查；GitHub CI 不是调试器。同一轮小修改先合并完成再 push，避免每个细小编辑单独触发 Actions。
+- AI 和 PR 作者不手工选择 CI 档次，不使用 `[skip ci]`；由变更路径分类器自动决定。无法识别路径、无法解析 diff 或分类器异常时必须 fail closed，运行完整门禁。
+- Draft 代码只把 Fast CI 作为开发反馈，不是合并授权。Ready 后如需连续或较大修改，先转回 Draft；Ready 状态下任何新提交都必须针对最新 head 重新运行对应门禁。
+- 审核时记录 base SHA、head SHA、mergeability、完整 diff、Review 状态和 `CI policy`。只有与当前 head SHA 一致的成功 `CI policy` 可作为门禁证据；Draft Fast CI、旧 head，以及 pending、neutral、skipped、cancelled 或 failure 均不能授权合并。
+- `.github/workflows/**`、`scripts/ci/**`、CI policy 或 production image 触发边界的修改必须由另一名开发者独立 Review，不适用负责人自检合并。
+- docs-only 轻量门禁不改变共享结构、跨人契约和协作者边界的人工 Review 规则。production image 构建成功也不代表 production 部署授权；部署仍需 jueyunai 人工审批和既有 smoke / rollback 流程。
 
 ## 分工与依赖
 
