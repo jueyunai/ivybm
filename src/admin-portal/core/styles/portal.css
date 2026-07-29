@@ -1,0 +1,232 @@
+@layer theme, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme) prefix(portal);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(portal);
+@import "./tokens.css";
+
+@source "../../**/*.{ts,tsx}";
+@source "../../../app/(dashboard)/**/*.{ts,tsx}";
+
+@layer components {
+  .portal-shell,
+  .portal-shell * {
+    box-sizing: border-box;
+  }
+
+  .portal-shell {
+    min-height: 100%;
+    background: var(--portal-canvas);
+    color: var(--portal-ink);
+    font-family: var(--portal-font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .portal-shell :focus-visible {
+    outline: 2px solid var(--portal-accent);
+    outline-offset: 2px;
+  }
+
+  .portal-button {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: var(--portal-space-2);
+    border: 1px solid transparent;
+    border-radius: var(--portal-radius-control);
+    font: inherit;
+    font-weight: 600;
+    letter-spacing: 0;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease;
+  }
+
+  .portal-button:disabled,
+  .portal-button[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: 0.52;
+  }
+
+  .portal-button--default {
+    height: 40px;
+    padding: 0 14px;
+  }
+
+  .portal-button--compact {
+    height: 36px;
+    padding: 0 12px;
+  }
+
+  .portal-button--icon {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+  }
+
+  .portal-button--primary {
+    background: var(--portal-accent);
+    color: #FFFFFF;
+  }
+
+  .portal-button--primary:hover:not(:disabled) {
+    background: var(--portal-info);
+  }
+
+  .portal-button--secondary {
+    border-color: var(--portal-border);
+    background: var(--portal-surface);
+    color: var(--portal-ink);
+  }
+
+  .portal-button--secondary:hover:not(:disabled) {
+    border-color: var(--portal-accent);
+    color: var(--portal-accent);
+  }
+
+  .portal-button--ghost {
+    background: transparent;
+    color: var(--portal-ink-2);
+  }
+
+  .portal-button--ghost:hover:not(:disabled) {
+    background: var(--portal-accent-soft);
+    color: var(--portal-accent);
+  }
+
+  .portal-button--danger {
+    background: var(--portal-danger);
+    color: #FFFFFF;
+  }
+
+  .portal-status-badge {
+    display: inline-flex;
+    min-height: 28px;
+    align-items: center;
+    gap: 7px;
+    padding: 0 10px;
+    border-radius: var(--portal-radius-control);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0;
+  }
+
+  .portal-status-badge--success {
+    background: var(--portal-success-soft);
+    color: var(--portal-success);
+  }
+
+  .portal-status-badge--warning {
+    background: var(--portal-warning-soft);
+    color: var(--portal-warning);
+  }
+
+  .portal-status-badge--danger {
+    background: var(--portal-danger-soft);
+    color: var(--portal-danger);
+  }
+
+  .portal-status-badge--info {
+    background: var(--portal-info-soft);
+    color: var(--portal-info);
+  }
+
+  .portal-status-badge--neutral {
+    background: var(--portal-surface-subtle);
+    color: var(--portal-ink-2);
+  }
+
+  .portal-surface {
+    min-width: 0;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-card);
+    background: var(--portal-surface);
+  }
+
+  .portal-surface--subtle {
+    background: var(--portal-surface-subtle);
+  }
+
+  .portal-surface--plain {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .portal-state {
+    display: grid;
+    min-height: 104px;
+    grid-template-columns: 36px minmax(0, 1fr);
+    align-items: start;
+    gap: var(--portal-space-3);
+    padding: var(--portal-space-4);
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-card);
+    background: var(--portal-surface);
+  }
+
+  .portal-state__icon {
+    display: inline-flex;
+    width: 36px;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-info-soft);
+    color: var(--portal-info);
+  }
+
+  .portal-state--error .portal-state__icon,
+  .portal-state--forbidden .portal-state__icon {
+    background: var(--portal-danger-soft);
+    color: var(--portal-danger);
+  }
+
+  .portal-state--blocked .portal-state__icon,
+  .portal-state--dependency-gated .portal-state__icon {
+    background: var(--portal-warning-soft);
+    color: var(--portal-warning);
+  }
+
+  .portal-state__title {
+    margin: 0;
+    color: var(--portal-ink);
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .portal-state__description {
+    margin: var(--portal-space-1) 0 0;
+    color: var(--portal-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .portal-state__action {
+    margin-top: var(--portal-space-3);
+  }
+
+  .portal-state--loading .portal-state__icon svg {
+    animation: portal-spin 900ms linear infinite;
+  }
+}
+
+@keyframes portal-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-shell *,
+  .portal-shell *::before,
+  .portal-shell *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
