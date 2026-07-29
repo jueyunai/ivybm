@@ -66,9 +66,10 @@ git -C /Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1 branch 
 - P0.2 已提交：`98838c5 feat(admin-portal): add isolated design system`；
 - P0.3 已完成本地实现和定向验证：Payload session adapter、自研登录/登出、`/dashboard/login` 与受保护 `/dashboard` 均已通过单元、E2E、lint、typecheck 和 build；
 - P0.4 已完成：Shell、角色导航、桌面折叠、移动抽屉、账户菜单、语言/主题/减少动效偏好、Settings 安全摘要与模块状态均已落地，并通过定向单元/E2E、完整 unit、lint、typecheck、build 和 1440/390 视觉核验；
-- P0.5–P1.3 尚未开始或仍按依赖等待，不因同一 PR 批次而视为已交付。
+- P0.5 已完成：角色安全首页、真实四类队列、独立安全 DTO、依赖受限说明和真实空态已落地，并通过完整 unit、隔离数据库 integration、Portal E2E、lint、typecheck、build 和 1440/390 视觉核验；
+- P0.6–P1.3 尚未开始或仍按依赖等待，不因同一 PR 批次而视为已交付。
 
-因此 readiness 结论维持 `GO`：可以进入 P0.5；但每个模块仍必须先满足本章节的
+因此 readiness 结论维持 `GO`：可以进入 P0.6；但每个模块仍必须先满足本章节的
 precondition、owner/review 边界和定向门禁，不能把“允许开发”解释为“所有模块可无条件并行写入”。
 
 本 worktree 的本地应用端口是 `3001`。当前非 CI Playwright 默认端口仍为 `3000`，执行 Portal E2E 前必须

@@ -46,7 +46,10 @@ describe('Portal navigation', () => {
       canNavigate: true,
       featureState: { enabled: true, reason: 'available' },
     })
-    expect(sales.modules.find((module) => module.id === 'overview')?.canNavigate).toBe(false)
+    expect(sales.modules.find((module) => module.id === 'overview')).toMatchObject({
+      canNavigate: true,
+      featureState: { enabled: true, reason: 'available' },
+    })
   })
 
   it('renders an active Portal link without exposing internal maintenance routes', () => {
@@ -65,8 +68,8 @@ describe('Portal navigation', () => {
     expect(screen.getByRole('link', { name: '基础设置' }).getAttribute('aria-current')).toBe(
       'page',
     )
-    expect(screen.queryByRole('link', { name: '运营首页' })).toBeNull()
-    expect(screen.getByText('运营首页').closest('[aria-disabled="true"]')).toBeTruthy()
+    expect(screen.getByRole('link', { name: '运营首页' }).getAttribute('href')).toBe('/dashboard')
+    expect(screen.getByText('运营首页').closest('[aria-disabled="true"]')).toBeNull()
     expect(container.innerHTML).not.toContain('/admin')
   })
 

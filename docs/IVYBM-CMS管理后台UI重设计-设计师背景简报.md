@@ -502,7 +502,8 @@ Portal V1 的 canonical 视觉不再以早期探索色值为准，而以
 - P0.1 静态 module registry、owner/角色/路由/成熟度、总开关和模块开关已完成；
 - P0.2 Digital Lattice token、Tailwind/shadcn Portal 范围隔离和首批 UI primitives 已完成；
 - P0.3 Payload session、自研登录/登出和 `/dashboard` 受保护路由已完成定向验证；
-- P0.4 Shell、角色导航、账户菜单和基础设置 Hub 已完成实现与 checkpoint 验收；首页和业务模块继续按 Implementation Plan 推进。
+- P0.4 Shell、角色导航、账户菜单和基础设置 Hub 已完成实现与 checkpoint 验收；
+- P0.5 角色首页已完成：真实会话/线索/失败任务队列按 Payload 权限读取，内容审核、今日发布和飞书失败保持 dependency-gated，并完成桌面/移动视觉验收；官网内容与素材模块继续按 Implementation Plan 推进。
 
 本地 app、migration、seed、E2E、worker 和脚本只允许使用该 worktree 的独立开发库或 `_test` / `_ci`
 测试库，不得连接 production PostgreSQL，也不得读取 production media、uploads、备份、URL 或真实 token。

@@ -59,11 +59,49 @@ export interface PortalSettingsMessages {
   title: string
 }
 
+export interface PortalOverviewMessages {
+  dependencyDescription: string
+  dependencyItems: Record<
+    'content-review' | 'feishu-failures' | 'publishing-today',
+    { description: string; label: string }
+  >
+  dependencyStatus: string
+  dependencyTitle: string
+  description: string
+  emptyDescription: string
+  emptyTitle: string
+  eyebrow: string
+  priorityDescription: string
+  priorityKinds: Record<
+    'active-conversation' | 'handoff-request' | 'job' | 'lead',
+    { description: string; label: string }
+  >
+  priorityTitle: string
+  queue: {
+    activeConversations: { description: string; label: string }
+    failedJobs: { description: string; label: string }
+    handoffRequested: { description: string; label: string }
+    newQualifiedLeads: { description: string; label: string }
+  }
+  readErrorDescription: string
+  readErrorTitle: string
+  roleNotice: Record<'admin' | 'operator' | 'sales', string>
+  roleNoticeTitle: string
+  scopeBadge: string
+  statuses: Record<
+    'dead' | 'failed' | 'handoff_requested' | 'human_active' | 'new' | 'qualified',
+    string
+  >
+  title: string
+  updatedAt: string
+}
+
 export interface PortalMessages {
   modules: Record<PortalModuleLabelKey, string>
   navGroups: Record<PortalNavGroup, string>
   states: Record<PortalStateKey, string>
   nextSteps: Record<PortalNextStepKey, string>
+  overview: PortalOverviewMessages
   settings: PortalSettingsMessages
   shell: PortalShellMessages
 }

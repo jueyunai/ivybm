@@ -1,13 +1,32 @@
-import { PortalState } from '@/admin-portal/core/ui'
+import { createLocalReq, getPayload } from 'payload'
 
-export default function PortalOverviewPlaceholderPage() {
-  return (
-    <main style={{ padding: 24 }}>
-      <PortalState
-        description="Portal Shell 与角色首页将在后续基座 checkpoint 中挂载。"
-        title="运营门户正在构建"
-        type="dependency-gated"
-      />
-    </main>
-  )
+import { requirePortalUser } from '@/admin-portal/core/auth/requirePortalUser'
+import {
+  getPortalOverview,
+  type PortalOverviewSummary,
+} from '@/admin-portal/modules/overview/getPortalOverview'
+import { OverviewPage } from '@/admin-portal/modules/overview/OverviewPage'
+import type { User } from '@/payload-types'
+import config from '@/payload.config'
+
+export default async function DashboardPage() {
+  const user = await requirePortalUser()
+  const payload = await getPayload({ config })
+  let readError = false
+  let summary: PortalOverviewSummary | null = null
+
+  try {
+    const actor = { ...user, collection: 'users' } as User
+    const req = await createLocalReq({ user: actor }, payload)
+    summary = await getPortalOverview({ payload, req })
+  } catch (error) {
+    readError = true
+    console.error('[admin-portal] overview read failed', {
+      error,
+      module: 'overview',
+      query: 'portal-overview',
+    })
+  }
+
+  return <OverviewPage readError={readError} summary={summary} user={user} />
 }

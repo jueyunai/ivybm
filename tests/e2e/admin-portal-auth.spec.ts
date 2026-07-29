@@ -68,7 +68,7 @@ test('Portal login reuses the Payload session and keeps the existing Admin route
   const submit = page.getByRole('button', { name: '登录后台' })
   await submit.click()
   await expect(page).toHaveURL(/\/dashboard$/)
-  await expect(page.getByText('运营门户正在构建')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: '今日运营要务' })).toBeVisible()
 
   const session = await page.request.get('/api/users/me')
   expect(session.ok()).toBe(true)

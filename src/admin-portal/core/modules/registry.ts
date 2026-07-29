@@ -1,20 +1,10 @@
 import { definePortalModule, validatePortalModule } from './definePortalModule'
 import type { PortalModuleDefinition } from './types'
+import { OVERVIEW_MODULE } from '@/admin-portal/modules/overview/manifest'
 import { SETTINGS_MODULE } from '@/admin-portal/modules/settings/manifest'
 
 export const PORTAL_MODULES = Object.freeze([
-  definePortalModule({
-    id: 'overview',
-    owner: 'jueyunai',
-    navGroup: 'workspace',
-    href: '/dashboard',
-    labelKey: 'overview',
-    allowedRoles: ['admin', 'operator', 'sales'],
-    availability: 'dependency-gated',
-    featureFlag: 'ADMIN_PORTAL_OVERVIEW_ENABLED',
-    commands: [],
-    maintenance: { responsibleOwner: 'jueyunai', nextStepKey: 'overview' },
-  }),
+  OVERVIEW_MODULE,
   definePortalModule({
     id: 'conversations',
     owner: 'xuemusi',
