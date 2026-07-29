@@ -5,8 +5,8 @@
 Superseded by [ADR-0004](0004-modular-admin-portal.md)，2026-07-29。
 
 本 ADR 记录的 Payload Admin Custom Views 路线已完成首轮 Nav、Dashboard 与账户菜单验证，
-其实现继续作为 `/admin` 技术后台和回退入口保留；“一期不建设独立 `/dashboard`”的入口决策
-由 ADR-0004 取代。权限、领域服务、审计、敏感字段和有界查询约束继续有效。
+其实现仅作为 `/admin` 内部维护遗留能力保留，不再扩展，也不作为 Portal 产品回退；“一期不建设独立
+`/dashboard`”的入口决策由 ADR-0004 取代。权限、领域服务、审计、敏感字段和有界查询约束继续有效。
 
 ## 背景
 

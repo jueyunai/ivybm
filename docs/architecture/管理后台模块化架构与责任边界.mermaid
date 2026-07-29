@@ -1,5 +1,5 @@
 %% IVYBM 管理后台模块化架构与责任边界 v1.0
-%% 红色区域对应用户原图红圈：由 xuemusi 负责；其他模块由 jueyunai 负责。
+%% 责任边界按 2026-07-29 用户校正：AI 内容工作台归 jueyunai；红色区域为 xuemusi 的知识、会话与平台服务。
 flowchart TB
     STAFF["内部用户<br/>Admin / Operator / Sales"]
     VISITOR["海外客户"]
@@ -9,15 +9,15 @@ flowchart TB
         CMS["官网 CMS<br/>产品 / 案例 / 图册 / 文章 / SEO"]
         ASSET["素材库<br/>图片 / PDF / 视频索引"]
         LEAD["线索与飞书<br/>客户档案 / 跟进摘要 / 同步状态"]
+        STUDIO["AI 内容工作台<br/>生成 / 审核 / 发布任务准备"]
         SYSTEM["基础设置与 Jobs 外壳<br/>用户入口 / 安全摘要 / 通用补偿入口"]
         GOVERNANCE["整体 IA / Digital Lattice<br/>Core 公共契约 / 视觉与集成验收"]
         SLOT["协作者模块挂载点<br/>由 Portal Core 提供公共出口"]
     end
 
-    subgraph COLLAB["xuemusi：协作者负责的红圈模块"]
+    subgraph COLLAB["xuemusi：知识、会话与平台服务"]
         KNOW["业务知识库与 AI 调试<br/>手册 / 参数 / FAQ / 销售话术"]
-        STUDIO["AI 内容生产与审核<br/>文案 / 图片建议 / 视频脚本"]
-        PUBLISH["海外图文发布<br/>Facebook / Instagram / LinkedIn"]
+        PUBLISH["海外平台发布服务<br/>capability / publish / status / callback"]
         SOCIAL["海外社媒账号与连接器<br/>Meta / TikTok / LinkedIn readiness"]
         CHAT["AI 客服公共能力<br/>官网咨询 / 社媒会话 / 初筛"]
         INBOX["统一会话入口<br/>接管 / 回复 / 解决 / 审计"]
@@ -38,12 +38,12 @@ flowchart TB
     CORE --> CMS
     CORE --> ASSET
     CORE --> LEAD
+    CORE --> STUDIO
     CORE --> SYSTEM
     CORE --> SLOT
     GOVERNANCE -. "视觉、契约与集成验收" .-> SLOT
 
     SLOT --> KNOW
-    SLOT --> STUDIO
     SLOT --> PUBLISH
     SLOT --> SOCIAL
     SLOT --> CHAT
@@ -79,8 +79,8 @@ flowchart TB
     classDef control fill:#f1f5f9,stroke:#475569,stroke-width:1.5px,color:#0f172a
     classDef external fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f
 
-    class CORE,CMS,ASSET,LEAD,SYSTEM,GOVERNANCE,SLOT owner
-    class KNOW,STUDIO,PUBLISH,SOCIAL,CHAT,INBOX collaborator
+    class CORE,CMS,ASSET,LEAD,STUDIO,SYSTEM,GOVERNANCE,SLOT owner
+    class KNOW,PUBLISH,SOCIAL,CHAT,INBOX collaborator
     class PAYLOAD,DOMAIN,DB,MEDIA control
     class EXTERNAL external
 

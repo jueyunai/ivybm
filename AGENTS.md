@@ -46,7 +46,7 @@ bash scripts/install-git-hooks.sh
 - 提交前运行该 Task 规定的 lint、typecheck、test、build；不能运行时明确说明原因。
 - PR 标题和描述必须引用 Task 编号，并填写 `.github/pull_request_template.md`。
 - 项目初始化、CI、工程配置、文档及负责人自己板块内的独立改动，在 CI 通过、完成 PR 清单并检查完整 diff 后，可由负责人自检合并；必须在 PR 中记录不涉及共享结构、跨人契约、协作者范围或一期上线验收。作者自检不等同于 GitHub 独立审批。
-- 共享文件 `src/payload.config.ts`、migration、`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`PublishJobs`、`PublishLogs`，以及供另一人任务消费的公共接口、字段或契约，必须由另一名开发者 review。跨双方板块边界或影响另一人在途任务的改动同样不得自检合并。
+- 共享文件 `src/payload.config.ts`、migration、`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`ContentReviews`、`PublishJobs`、`PublishLogs`，以及供另一人任务消费的公共接口、字段或契约，必须由另一名开发者 review。跨双方板块边界或影响另一人在途任务的改动同样不得自检合并。
 - production 发布仍由 jueyunai 审批，一期上线验收必须由两人共同确认。
 - `main` 上的紧急修复只能在用户明确授权后使用 `IVYBM_ALLOW_MAIN_PUSH=1` 绕过本地 hook；完成后必须补建 PR 或事故记录。
 
@@ -62,12 +62,12 @@ bash scripts/install-git-hooks.sh
 
 ## 分工与依赖
 
-- jueyunai 负责 Portal Core、登录、首页、Shell、模块 Registry、UI contract、基础设置、官网/CMS/SEO、素材库、线索/飞书入口、通用 Jobs 异常外壳、整体 IA/Digital Lattice 和集成验收。Task 9 中 jueyunai 只负责官网 ChatWidget 与 Portal 公共基座，不负责统一会话工作区。
-- xuemusi 负责用户原图红圈内的六个模块及其后续迭代：业务知识库与 AI 调试、AI 内容生产与审核、海外图文发布、AI 客服公共能力、统一会话入口、海外社媒账号/连接器/readiness。责任覆盖该模块的页面、读模型、命令、领域状态机、幂等、权限、审计和 adapter。
+- jueyunai 负责 Portal Core、登录、首页、Shell、模块 Registry、UI contract、基础设置、官网/CMS/SEO、素材库、AI 内容工作台、内容生成/人工审核流程、`GeneratedContents` / `ContentReviews` / `PublishJobs` / `PublishLogs`、线索/飞书入口、通用 Jobs 异常外壳、整体 IA/Digital Lattice 和集成验收。Task 9 中 jueyunai 只负责官网 ChatWidget 与 Portal 公共基座，不负责统一会话工作区。
+- xuemusi 负责业务知识库与 AI 调试、AI 客服公共能力、统一会话入口、海外社媒账号/连接器/readiness，以及第三方平台 capability / publish / status、adapter、结果回调和真实发布执行。责任覆盖这些模块的页面或服务、读模型、命令、领域状态机、幂等、权限和审计；不负责 AI 内容工作台 UI、内容生成/审核流程或其共享结构。
 - 责任边界以 [`ADR-0004`](docs/architecture/adr/0004-modular-admin-portal.md) 和 [管理后台模块化架构与责任边界](docs/architecture/管理后台模块化架构与责任边界.mermaid) 为准。依赖箭头不改变 owner；共享 Core、Collection、migration、`src/payload.config.ts` 和跨模块 contract 继续强制另一人 review。
 - 一期平台范围冻结：入站会话仅为 Facebook Messenger、Instagram DM（企业 / 商业账号）和 TikTok 私信（商业账号）；图文发布仅为 Facebook、Instagram（企业账号）和 LinkedIn（账号类型不限制，但 API 发布权限仍需验证）。WhatsApp 不纳入一期系统 connector、Webhook、自动回复或发布能力，二期再评估网页插件等替代接入；官网静态链接不等于系统接入。
 - Task 9 的官网前端可以先依赖 `ChatService` mock 开发；其后端服务和数据库集成必须等待 Task 7 的 `Leads` 合并到 `main`，并消费 Task 8 的 AI 网关 contract。
-- Task 12 的内容生产/审核/发布模块由 xuemusi 端到端负责，可先依赖 `PublishingService` mock 开发；jueyunai 提供 Portal Core、素材/CMS 读模型和 IA/视觉/集成验收。任何前端都不能直接接入平台 SDK 或 token。
+- Task 12 的 AI 内容工作台由 jueyunai 负责，可先依赖共同冻结的 `PublishingService` mock 开发；范围包括页面、内容生成/人工审核流程、状态机和 `GeneratedContents` / `ContentReviews` / `PublishJobs` / `PublishLogs`。xuemusi 提供平台 capability / publish / status、账号 readiness、adapter、结果回调和真实发布执行。任何前端都不能直接接入平台 SDK 或 token。
 - Task 9 / Task 12 的跨人接口必须先冻结 TypeScript port/interface、请求响应 schema、错误码、状态枚举和 fixture；双方各自用 fake service / fake repository 完成测试后再替换真实 adapter。
 - 人工接管以官网入口、Portal 模块与领域服务分层：jueyunai 负责官网 ChatWidget 和 Portal 公共交互契约，xuemusi 负责运营会话/接管界面与服务端权威状态机；所有前端都不得直接写 `handoffStatus`、`assignedTo` 或审计字段。服务端产生领域事件，Task 10 / 11 处理飞书通知、重试和补偿。
 - Task 13 会话侧数据库集成必须等待 Task 9 的 `Conversations` / `Messages`；发布侧数据库集成必须等待 Task 12 的 `PublishJobs` / `PublishLogs`；真实 Webhook 异步处理、社媒 AI 自动出站、发布执行、失败重试和人工补偿必须等待 Task 10 的 `Jobs`、worker 及其 migration 合并到 `main`，并要求 `PlatformAccounts`、migration、Payload 注册和生成类型已合并。纯连接器接口和 fixture 契约测试不依赖 Task 10。

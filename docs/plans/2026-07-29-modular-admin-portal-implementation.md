@@ -4,7 +4,7 @@
 
 **Goal:** 在不重建 Payload 后端、认证和数据模型的前提下，交付可独立挂载业务模块的 `/dashboard` 运营门户基座，并按负责人和依赖逐步迁移高价值后台工作流。
 
-**Architecture:** Payload CMS / PostgreSQL 是唯一控制平面；`/dashboard` 是自研运营体验，`/admin` 是技术配置与 fallback。Portal Core 使用静态 TypeScript module registry 统一 Auth、RBAC、Shell、UI 状态、错误和质量契约；业务模块通过 read model 与领域 command 接入，不直接写权威字段。
+**Architecture:** Payload CMS / PostgreSQL 是唯一控制平面；第一阶段只建设和验收 `/dashboard` 运营门户。Portal Core 使用静态 TypeScript module registry 统一 Auth、RBAC、Shell、UI 状态、错误和质量契约；业务模块通过 read model 与领域 command 接入，不直接写权威字段。Payload 已有 `/admin` 只作为内部维护能力存在，本计划不新增或改造其 UI，也不把它作为 Portal 回退路径。
 
 **Tech Stack:** Next.js 16 App Router、React 19、Payload CMS 3.86、TypeScript、Tailwind CSS 4（禁用 Preflight、Portal 范围导入）、按需 shadcn/ui 源码组件、Tabler Icons、Vitest、React Testing Library、Playwright。
 
@@ -25,9 +25,9 @@
 - 自研登录页，但复用 Payload Users Auth 与同一 session；
 - 受保护 `/dashboard` Shell、模块注册、角色导航和账户/退出；
 - 复用真实四类队列的首页；
-- 基础设置 Hub，复杂表单先安全深链 `/admin`；
+- 基础设置 Hub；未纳入 Portal 的内部配置不提供导航或深链；
 - 通用 loading / empty / error / forbidden / blocked / dependency-gated 状态；
-- Feature flag、CSS isolation、视觉/权限/E2E 回归和 `/admin` fallback。
+- Feature flag、Portal 维护态、CSS isolation、视觉/权限/E2E 回归。
 
 第一阶段不做 CMS 重写、会话 Inbox、内容发布、平台 OAuth、线索 Pipeline 或任何 migration。
 
@@ -36,10 +36,9 @@
 | 能力 | 现有实现 | 计划中的处理 |
 | --- | --- | --- |
 | Payload Auth / session / roles | `src/collections/Users.ts`、`src/access/roles.ts` | 直接复用，不复制 |
-| Payload 技术后台 | `src/app/(payload)/admin` | 长期保留 |
-| Admin Nav / Dashboard / Account | `src/admin/**` | 保留并抽取纯 contract |
-| Dashboard 有界读模型 | `src/admin/dashboard/getDashboardSummary.ts` | 抽掉 `/admin` 链接后双端复用 |
-| CMS / Media | `src/collections/**` | Portal 提供任务入口和预览，复杂编辑 fallback |
+| Payload 控制平面 | `src/app/(payload)/**`、`src/collections/**` | 复用 Auth/RBAC/数据能力；不改造已有 Admin UI |
+| Dashboard 有界读模型 | `src/admin-portal/modules/overview/getPortalOverview.ts` | Portal 专用 DTO 与查询预算 |
+| CMS / Media | `src/collections/**` | Portal 提供任务入口、预览和范围内命令；未完成能力诚实受阻 |
 | Knowledge / AI | `src/modules/knowledge/**`、`src/modules/ai/**` | 协作者模块消费 |
 | Conversations | `src/modules/conversations/**`、operator APIs | 协作者模块消费 |
 | Publishing contract | `src/modules/publishing/contracts.ts` | 等正式结构后消费 |
@@ -49,7 +48,7 @@
 
 | Portal Task | 交付 | Owner | 是否阻塞后续 |
 | --- | --- | --- | --- |
-| P0.1 | Module contract + registry + feature flags/fallback 契约 | jueyunai | 是 |
+| P0.1 | Module contract + registry + feature flags/维护态契约 | jueyunai | 是 |
 | P0.2 | Design tokens + CSS isolation + UI primitives | jueyunai | 是 |
 | P0.3 | Payload session adapter + 自研登录/登出 | jueyunai | 是 |
 | P0.4 | Shell / navigation / settings Hub + 总开关回退 | jueyunai | 是 |
@@ -59,7 +58,7 @@
 | P0.8a | 协作者开发包 + 示例模块 | jueyunai | 阻塞协作者接入 |
 | P0.8b | 知识库与 AI 调试模块 | xuemusi | 协作者接入验收；阻塞 P0.9/P1.1 |
 | P0.9 | 会话与 AI 客服模块 | xuemusi | 阻塞线索会话联动 |
-| P1.1 | AI 内容生产、审核与发布准备 | xuemusi | 等正式结构；阻塞 P1.5 |
+| P1.1 | AI 内容工作台：生产、审核与发布任务准备 | jueyunai | 等正式结构；阻塞 P1.5 |
 | P1.2 | 平台账号/readiness | xuemusi | 等真实授权；阻塞 P1.5 |
 | P1.3 | 线索与飞书入口 | jueyunai | 等 Feishu 与 P0.9 读模型 |
 | P1.4 | Jobs 异常与人工补偿 | jueyunai + 模块 owner | 等补偿 contract；阻塞 P1.5 |
@@ -93,8 +92,8 @@
 - registry 按角色过滤，但不会输出权限外模块；
 - `dependency-gated` / `blocked` 不暴露 command；
 - owner 只能是 `jueyunai` 或 `xuemusi`；
-- fallback 只能是站内 `/admin/*`；
-- 每个模块必须有 `fallbackHref`，或明确为 `dependency-gated` / `blocked` / `admin-only`；
+- 模块必须明确 `available` / `dependency-gated` / `blocked` / `admin-only` 状态；
+- disabled 或依赖缺失时不得跳转内部 `/admin`，必须在 Portal 内给出维护态、责任人和下一步；
 - `ADMIN_PORTAL_ENABLED` 与按模块 flag 默认 fail closed，不得绕过服务端授权。
 
 **Step 2: Run tests and verify failure**
@@ -109,7 +108,7 @@ Expected: FAIL because Portal module contract does not exist.
 
 **Step 3: Implement the minimal static contract**
 
-使用 ADR-0004 中的 manifest 字段，并在 Core 首批实现总开关、模块 flag 与 fallback 不变式。不要加入动态 import、数据库菜单、远程插件、模块版本协商或运行时安装。
+使用 ADR-0004 中的 manifest 字段，并在 Core 首批实现总开关、模块 flag 与 Portal 维护态不变式。不要加入动态 import、数据库菜单、远程插件、模块版本协商或运行时安装。
 
 **Step 4: Verify**
 
@@ -195,11 +194,11 @@ Run:
 pnpm lint
 pnpm typecheck
 pnpm test:unit
-pnpm test:e2e -- tests/e2e/admin-portal-css-isolation.spec.ts tests/e2e/admin-visual.spec.ts
+pnpm test:e2e -- tests/e2e/admin-portal-css-isolation.spec.ts
 pnpm build
 ```
 
-Expected: Portal primitives match tokens; existing `/admin` screenshots and controls are unchanged.
+Expected: Portal primitives match tokens; styles do not leak to the website or other routes.
 
 **Step 5: Commit**
 
@@ -225,11 +224,9 @@ git commit -m "feat(admin-portal): add isolated design system"
 - Create: `src/app/(dashboard)/dashboard/login/page.tsx`
 - Create: `src/admin-portal/core/auth/PortalLoginForm.tsx`
 - Create: `src/app/(dashboard)/dashboard/(protected)/layout.tsx`
-- Modify: `src/admin/auth/logout.ts` to delegate to shared logout transport
 - Test: `tests/unit/admin-portal-return-to.test.ts`
 - Test: `tests/unit/admin-portal-auth.test.ts`
 - Test: `tests/unit/admin-portal-login.test.tsx`
-- Test: `tests/unit/admin-logout.test.ts`
 - Test: `tests/e2e/admin-portal-auth.spec.ts`
 
 **Step 1: Write failing auth tests**
@@ -242,14 +239,14 @@ git commit -m "feat(admin-portal): add isolated design system"
 - login 401、429、503、网络失败分别有稳定反馈；
 - login pending 防重复；
 - 登出只有在 Payload 返回 2xx 后清本地用户；
-- `/dashboard` 与 `/admin` 登出语义一致。
+- `/dashboard` 登出成功后清理 Portal 用户态，失败时保持会话并允许重试。
 
 **Step 2: Run tests and verify failure**
 
 Run:
 
 ```bash
-pnpm vitest run --config ./vitest.config.mts tests/unit/admin-portal-return-to.test.ts tests/unit/admin-portal-auth.test.ts tests/unit/admin-portal-login.test.tsx tests/unit/admin-logout.test.ts
+pnpm vitest run --config ./vitest.config.mts tests/unit/admin-portal-return-to.test.ts tests/unit/admin-portal-auth.test.ts tests/unit/admin-portal-login.test.tsx
 ```
 
 Expected: FAIL because Portal auth adapter does not exist.
@@ -271,16 +268,16 @@ Run:
 pnpm lint
 pnpm typecheck
 pnpm test:unit
-pnpm test:e2e -- tests/e2e/admin-portal-auth.spec.ts tests/e2e/admin-visual.spec.ts
+pnpm test:e2e -- tests/e2e/admin-portal-auth.spec.ts
 pnpm build
 ```
 
-Expected: one login session works across Portal and Payload Admin; no redirect loop.
+Expected: Portal login/logout/session-expiry works without redirect loops or a second identity system.
 
 **Step 5: Commit**
 
 ```bash
-git add src/admin-portal/core/auth src/modules/auth src/admin/auth src/app tests
+git add src/admin-portal/core/auth src/modules/auth src/app tests
 git commit -m "feat(admin-portal): reuse Payload authentication"
 ```
 
@@ -297,7 +294,7 @@ git commit -m "feat(admin-portal): reuse Payload authentication"
 - Create: `src/admin-portal/core/navigation/PortalAccountMenu.tsx`
 - Create: `src/admin-portal/core/navigation/PortalMobileNav.tsx`
 - Create: `src/admin-portal/core/navigation/PortalShell.tsx`
-- Create: `src/admin-portal/core/modules/resolvePortalFallback.ts`
+- Create: `src/admin-portal/core/modules/resolvePortalAvailability.ts`
 - Create: `src/admin-portal/modules/settings/manifest.ts`
 - Create: `src/admin-portal/modules/settings/SettingsHub.tsx`
 - Create: `src/app/(dashboard)/dashboard/(protected)/settings/page.tsx`
@@ -314,8 +311,8 @@ git commit -m "feat(admin-portal): reuse Payload authentication"
 - 当前路由、折叠、移动 Sheet、Escape、焦点恢复；
 - 未授权配置入口不显示；
 - Site Settings 的公开 read 不会被误解为全员可 update；
-- AI/provider/platform token 入口仅 Admin 深链 `/admin`，Portal 不读取凭据。
-- 总开关关闭时，`/dashboard` 仅重定向到站内 `/admin`，不渲染任何业务模块。
+- AI/provider/platform token 不出现在 Portal 导航、链接或响应中。
+- 总开关关闭时，`/dashboard` 显示明确维护态，不渲染任何业务模块。
 
 **Step 2: Run tests and verify failure**
 
@@ -327,18 +324,16 @@ pnpm vitest run --config ./vitest.config.mts tests/unit/admin-portal-navigation.
 
 Expected: FAIL.
 
-**Step 3: Implement Shell and settings links**
+**Step 3: Implement Shell and Portal settings**
 
-Settings Hub 第一阶段只提供经服务端过滤的入口：
+Settings Hub 第一阶段只提供 Portal 内经服务端过滤且已实现的设置：
 
 - 本人账户；
-- Site Settings；
-- Users（Admin）；
-- AI Management（Admin）；
-- Platform Accounts（Admin）；
-- Payload 技术后台。
+- 语言、主题与可访问性偏好；
+- Site Settings 的安全只读摘要或已实现的受保护字段；
+- 模块可用状态、责任人和下一步。
 
-不复制复杂表单或凭据编辑。
+用户管理、模型密钥和平台凭据属于内部维护范围，不进入第一阶段 Portal。
 
 **Step 4: Verify**
 
@@ -369,14 +364,10 @@ git commit -m "feat(admin-portal): add modular shell and settings hub"
 
 **Files:**
 
-- Create: `src/modules/dashboard/types.ts`
-- Create: `src/modules/dashboard/getOperationsSummary.ts`
 - Create: `src/admin-portal/modules/overview/manifest.ts`
 - Create: `src/admin-portal/modules/overview/getPortalOverview.ts`
 - Create: `src/admin-portal/modules/overview/OverviewPage.tsx`
 - Create: `src/app/(dashboard)/dashboard/(protected)/page.tsx`
-- Modify: `src/admin/dashboard/getDashboardSummary.ts` to adapt shared DTO
-- Modify: `src/admin/views/OperationsDashboard.tsx` to own `/admin` href mapping
 - Test: `tests/unit/admin-portal-overview.test.ts`
 - Test: `tests/integration/admin-portal-overview-access.test.ts`
 - Test: `tests/e2e/admin-portal-overview.spec.ts`
@@ -389,7 +380,7 @@ git commit -m "feat(admin-portal): add modular shell and settings hub"
 - 所有 Local API 用户读取 `overrideAccess: false`；
 - Admin 看失败/Dead Jobs，Operator 不看，Sales 只看分配给自己；
 - DTO 不含 transcript、联系方式、Job payload、secret；
-- read model 不带 `/admin` 或 `/dashboard` href；
+- read model 不带内部维护路径或 UI href；
 - 内容审核/今日发布没有正式结构时是 `dependency-gated`，不是数字 0。
 
 **Step 2: Run tests and verify failure**
@@ -397,15 +388,15 @@ git commit -m "feat(admin-portal): add modular shell and settings hub"
 Run:
 
 ```bash
-pnpm vitest run --config ./vitest.config.mts tests/unit/admin-dashboard-summary.test.ts tests/unit/admin-portal-overview.test.ts
+pnpm vitest run --config ./vitest.config.mts tests/unit/admin-portal-overview.test.ts
 pnpm test:integration -- tests/integration/admin-portal-overview-access.test.ts
 ```
 
-Expected: FAIL because shared link-free read model does not exist.
+Expected: FAIL because the Portal-specific bounded read model does not exist.
 
-**Step 3: Extract and adapt, do not duplicate queries**
+**Step 3: Reuse domain queries, do not couple to Admin UI**
 
-保留现有安全查询；把路由映射移到各自 UI adapter。Portal 首页只显示：
+复用现有领域服务和安全查询约束，但在 Portal 模块中映射独立 DTO，不修改 `src/admin/**`。Portal 首页只显示：
 
 - 待人工接管；
 - 人工服务中；
@@ -421,17 +412,17 @@ Run:
 pnpm lint
 pnpm typecheck
 pnpm test:unit
-pnpm test:integration -- tests/integration/admin-dashboard-access.test.ts tests/integration/admin-portal-overview-access.test.ts
-pnpm test:e2e -- tests/e2e/admin-portal-overview.spec.ts tests/e2e/admin-visual.spec.ts
+pnpm test:integration -- tests/integration/admin-portal-overview-access.test.ts
+pnpm test:e2e -- tests/e2e/admin-portal-overview.spec.ts
 pnpm build
 ```
 
-Expected: both `/dashboard` and `/admin` use one read model and preserve role boundaries.
+Expected: `/dashboard` shows real bounded queues and preserves role boundaries without depending on Admin UI code.
 
 **Step 5: Commit**
 
 ```bash
-git add src/modules/dashboard src/admin/dashboard src/admin/views src/admin-portal src/app tests
+git add src/admin-portal src/app tests
 git commit -m "feat(admin-portal): add permission-safe overview"
 ```
 
@@ -453,7 +444,7 @@ git commit -m "feat(admin-portal): add permission-safe overview"
 
 **Step 1: Write failing role/access tests**
 
-覆盖页面、产品、分类、案例、文章、下载资料的安全数量、最近更新、草稿/发布、EN/AR 完整度和原生编辑深链。
+覆盖页面、产品、分类、案例、文章、下载资料的安全数量、最近更新、草稿/发布、EN/AR 完整度、范围内编辑动作和未实现能力受阻态。
 
 **Step 2: Run failing tests**
 
@@ -468,8 +459,8 @@ Expected: FAIL.
 
 **Step 3: Implement Hub, not a second CMS**
 
-第一版提供任务总览、筛选、状态、完整度和预览；复杂 localized rich text、版本和 SEO 编辑深链对应
-`/admin/collections/*`。只有真实高频痛点证明价值后再自研编辑器。
+第一版提供任务总览、筛选、状态、完整度、预览和明确纳入范围的编辑命令；复杂 localized rich text、
+版本和 SEO 编辑未实现时显示 `dependency-gated`，不通过内部入口深链冒充完成。只有真实高频痛点证明价值后再扩展编辑器。
 
 **Step 4: Verify**
 
@@ -513,7 +504,7 @@ git commit -m "feat(admin-portal): add website content hub"
 
 **Step 1: Write failing tests**
 
-覆盖 URL 可序列化筛选、分页、长文件名、图片/PDF 安全预览、公开状态、alt/source、权限和原生编辑深链。
+覆盖 URL 可序列化筛选、分页、长文件名、图片/PDF 安全预览、公开状态、alt/source、权限和未实现编辑受阻态。
 
 **Step 2: Run failing tests**
 
@@ -569,9 +560,9 @@ git commit -m "feat(admin-portal): add media workspace"
 
 **Steps:**
 
-1. 写明 module manifest、公共 UI 出口、授权、状态、错误、fallback、日志和测试契约；
+1. 写明 module manifest、公共 UI 出口、授权、状态、错误、维护态、日志和测试契约；
 2. 用不访问真实领域数据的 example 模块证明新模块不需修改 Shell 私有代码；
-3. 验证跨模块私有 import 被禁止，`available` 模块必须有 fallback；
+3. 验证跨模块私有 import 被禁止，disabled/blocked 模块不会暴露副作用命令；
 4. Commit: `docs(admin-portal): add collaborator module kit`。
 
 ---
@@ -595,7 +586,7 @@ git commit -m "feat(admin-portal): add media workspace"
 
 1. 先写 module contract、角色、review/index 双状态和 index command 失败测试；
 2. 运行并确认缺少模块实现；
-3. manifest 使用 `ADMIN_PORTAL_KNOWLEDGE_ENABLED` 和有效 `/admin/*` fallback；关闭时不注册索引命令；
+3. manifest 使用 `ADMIN_PORTAL_KNOWLEDGE_ENABLED`；关闭时显示 Portal 维护态且不注册索引命令；
 4. 只通过知识 read model 和受保护 index command 接入，禁止直接写 index owner/status；
 5. 验证 Admin/Operator/Sales、模型缺失、维度不匹配、索引失败、关闭 flag 和重试；
 6. Commit: `feat(admin-portal): add knowledge workspace module`。
@@ -623,7 +614,7 @@ git commit -m "feat(admin-portal): add media workspace"
 **Steps:**
 
 1. 写失败测试：角色范围、接管、回复、解决、重复点击、stale revision、AI 在 human_active 停止；
-2. manifest 使用 `ADMIN_PORTAL_CONVERSATIONS_ENABLED` 和受权限控制的 fallback；关闭时不暴露接管/回复/解决命令；
+2. manifest 使用 `ADMIN_PORTAL_CONVERSATIONS_ENABLED`；关闭时显示受阻态且不暴露接管/回复/解决命令；
 3. 复用 operator API / ConversationService，禁止直接 Payload update；
 4. 实现三栏桌面和窄屏列表→对话→上下文；
 5. 验证 delivery_unknown、限流、过期、关闭 flag、失败重试和焦点；
@@ -631,16 +622,20 @@ git commit -m "feat(admin-portal): add media workspace"
 
 ---
 
-### Task P1.1：AI 内容生产、审核与发布准备模块
+### Task P1.1：AI 内容工作台、审核与发布任务准备模块
 
-**Owner:** xuemusi；整体 IA/视觉/集成验收：jueyunai
+**Owner:** jueyunai；平台发布 contract review：xuemusi
 
-**Precondition:** P0.7 素材 read model 与 P0.8b 知识 read model 已合并；`GeneratedContents`、`ContentReviews`、`PublishJobs`、`PublishLogs`、migration、Payload 注册、生成类型与 PublishingService persistence adapter 全部合并。
+**Precondition:** P0.7 素材 read model 与 P0.8b 知识 read model 已合并。先在本 Task 的结构子任务中完成 `GeneratedContents`、`ContentReviews`、`PublishJobs`、`PublishLogs`、migration、Payload 注册和生成类型；这些结构合并后，才实现工作台写命令和 PublishingService persistence adapter。
 
 **Files:**
 
 - Create: `src/admin-portal/modules/content-studio/**`
 - Create: `src/app/(dashboard)/dashboard/(protected)/content-studio/page.tsx`
+- Create/Modify: `src/collections/GeneratedContents.ts`
+- Create/Modify: `src/collections/ContentReviews.ts`
+- Create/Modify: `src/collections/PublishJobs.ts`
+- Create/Modify: `src/collections/PublishLogs.ts`
 - Test: `tests/contract/admin-portal-content-studio-contract.test.ts`
 - Test: `tests/integration/admin-portal-content-studio.test.ts`
 - Test: `tests/e2e/admin-portal-content-studio.spec.ts`
@@ -654,7 +649,8 @@ git commit -m "feat(admin-portal): add media workspace"
 - fixture/mock 永远不显示 `available`；
 - 内容事实来源可追溯。
 - P1.2 readiness 和 P1.4 补偿 contract 未就绪时，真实对外发布命令为 `dependency-gated`；仅允许草稿、审核、预览、内部任务和 assisted package。
-- manifest 使用 `ADMIN_PORTAL_CONTENT_STUDIO_ENABLED`；关闭时回退受权限控制的技术入口，不创建内容或发布任务。
+- manifest 使用 `ADMIN_PORTAL_CONTENT_STUDIO_ENABLED`；关闭时显示 Portal 维护态，不创建内容或发布任务。
+- 工作台只消费双方冻结的 `PublishingService` capability/publish/status contract，不导入平台 SDK 或 token。
 
 依赖未满足时不开始实现，不创建替代结构。
 
@@ -676,12 +672,12 @@ git commit -m "feat(admin-portal): add media workspace"
 - Test: `tests/integration/admin-portal-platform-readiness.test.ts`
 - Test: `tests/e2e/admin-portal-platform-readiness.spec.ts`
 
-第一版 Portal 只显示无凭据 readiness、责任人、下一步和受控测试状态；token 写入继续位于 Admin-only
-`/admin/collections/platform-accounts`。只有经过单独安全评审后才考虑 Portal 配置命令。
+第一版 Portal 只显示无凭据 readiness、责任人、下一步和受控测试状态；token 写入继续走受限内部维护流程，
+Portal 不提供入口、深链或回显。只有经过单独安全评审后才考虑 Portal 配置命令。
 
 必须覆盖：action-required、ready-for-controlled-test、blocked、available；TikTok DM 保持 blocked；
 WhatsApp、LinkedIn DM、TikTok publish 不进入一期。
-只有受控真实环境完成目标操作才能标记 `available`；fixture/mock 只能得到 `action-required` / `ready-for-controlled-test` / `blocked`。manifest 使用 `ADMIN_PORTAL_PLATFORMS_ENABLED`，关闭时回退 `/admin/*` 且不读取或回显 token。
+只有受控真实环境完成目标操作才能标记 `available`；fixture/mock 只能得到 `action-required` / `ready-for-controlled-test` / `blocked`。manifest 使用 `ADMIN_PORTAL_PLATFORMS_ENABLED`，关闭时显示 Portal 受阻态且不读取或回显 token。
 
 ---
 
@@ -698,7 +694,7 @@ WhatsApp、LinkedIn DM、TikTok publish 不进入一期。
 
 ### Task P1.4：Jobs 异常与人工补偿
 
-**Owner:** jueyunai 负责 Admin-only 通用外壳；每个模块 owner 负责自己的补偿命令。
+**Owner:** jueyunai 负责仅 admin 角色可见的 Portal 通用外壳；每个模块 owner 负责自己的补偿命令。
 
 **Files:**
 
@@ -740,9 +736,9 @@ WhatsApp、LinkedIn DM、TikTok publish 不进入一期。
 
 **Steps:**
 
-1. 在 P0.1/P0.4 合并后，验证 `ADMIN_PORTAL_ENABLED`、按模块 flags 和 `/dashboard -> /admin` 回退；
+1. 在 P0.1/P0.4 合并后，验证 `ADMIN_PORTAL_ENABLED`、按模块 flags 和 Portal 维护态；
 2. 覆盖三角色、四视口、键盘、深链、浏览器返回、慢请求和模块失败；
-3. 证明 Portal 失败不影响官网、`/admin`、worker 和数据库；
+3. 证明 Portal 失败不影响官网、worker、数据库和既有内部维护能力；
 4. 完成 production build、smoke、rollback 演练和 runbook。
 
 ## 3. Error & Rescue Registry
@@ -769,13 +765,13 @@ WhatsApp、LinkedIn DM、TikTok publish 不进入一期。
 | --- | --- | --- | --- | --- | --- |
 | Portal layout | session 过期 | 是 | auth E2E | 登录页 | 是 |
 | Registry | 重复 ID/href | CI 阻止 | unit | 不发布 | 测试报告 |
-| CSS | 污染 Payload Admin | CI 阻止 | visual E2E | 不发布 | screenshot diff |
+| CSS | 逃逸 `.portal-shell` 并污染官网/其他路由 | CI 阻止 | visual E2E | 不发布 | screenshot diff |
 | Overview | 一项查询失败 | 局部失败 | integration | 错误态 | 是 |
 | Module | 依赖缺失 | 是 | unit/E2E | dependency-gated | 是 |
 | Command | 双击/重复提交 | 领域幂等 | contract/E2E | 处理中/既有结果 | 是 |
 | Command | 页面离开后完成 | 是 | E2E | 返回后读取权威状态 | 是 |
 | Provider | 结果未知 | 是 | contract | 人工补偿 | 是 |
-| Feature rollout | Portal Core 回归 | 总开关 | operations | 回退 /admin | 是 |
+| Feature rollout | Portal Core 回归 | 总开关 | operations | Portal 维护态 | 是 |
 
 ## 5. Test Diagram
 
@@ -819,7 +815,7 @@ Operations
 
 ```text
 CURRENT
-Payload /admin 能管理数据，但运营流程分散
+Payload 控制平面已有数据能力，但运营流程分散
     |
     v
 THIS PLAN
@@ -827,7 +823,7 @@ THIS PLAN
     |
     v
 12-MONTH IDEAL
-90% 日常任务在 Portal 完成；/admin 只处理技术配置；
+90% 日常任务在 Portal 完成；内部维护入口不对运营用户暴露；
 模块 owner 可独立发布；所有状态、权限、失败和审计一致
 ```
 
@@ -854,10 +850,10 @@ git diff --check
 ## 9. Definition of Done
 
 - Portal Core 的 public API 有文档、contract test 和双方 review；
-- `/dashboard` 与 `/admin` 共享 Payload session，且没有第二套身份数据；
+- `/dashboard` 复用 Payload session，且没有第二套身份数据；
 - 添加示例模块不修改 Shell 私有代码；
 - 首页只展示真实且角色安全的数据；
-- 总开关能无 migration 回退到 `/admin`；
+- 总开关能无 migration 切换到 Portal 维护态；
 - 协作者独立完成知识模块接入，证明 ownership 模型可运行；
 - P1/Future 依赖全部显式记录，不以占位 UI 冒充已实现；
 - 每个阶段完成后更新 `docs/开发进度.md`。

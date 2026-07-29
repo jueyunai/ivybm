@@ -1,6 +1,6 @@
 # IVYBM CMS 管理后台 UI 重设计——设计师背景简报
 
-版本：v2.0
+版本：v2.1
 
 日期：2026-07-29
 
@@ -17,11 +17,11 @@ IVYBM 是一套服务建材出海业务的小团队 AI 获客运营系统。它�
 
 当前底层使用 Payload CMS 管理数据、身份、权限、草稿、版本、多语言和文件，功能可靠，但原生后台仍偏“Collection 列表 + 表单”的技术型 CMS。运营人员在处理会话、线索、审核、发布和异常时，需要频繁跳转、理解内部数据表，并且缺少跨业务对象的上下文。
 
-本轮设计目标是建立“Payload 控制平面 + 自研模块化运营门户”的双轨体验：
+本轮设计目标是建立“Payload 控制平面 + 自研模块化运营门户”的单一一期产品体验：
 
 - `/dashboard` 是 Admin、Operator、Sales 的日常运营入口，按照本设计稿实现完整 Shell 和模块化工作区；
-- `/admin` 保留 Payload 技术后台，继续承载复杂 Collection CRUD、用户、凭据、模型路由和故障兜底；
-- 两个入口共享同一 Payload Auth、RBAC、数据模型、领域服务和 PostgreSQL，不是两套后台系统；
+- Payload Auth、RBAC、数据模型、领域服务和 PostgreSQL 继续作为唯一后端；
+- Payload 已有 `/admin` 仅供内部维护，第一阶段不设计、不导航、不新增 UI，也不作为产品回退；
 - Portal Core 先统一登录、首页、导航、状态、错误、响应式和 UI contract，业务模块随后按 owner 挂载；
 - 所有业务写操作仍必须经过现有 access control 和领域服务，UI 不直接改权威状态、审计字段或平台凭据。
 
@@ -117,8 +117,8 @@ flowchart LR
 ## 4. 目标产品结构
 
 运营门户 `/dashboard` 沿用五个稳定导航分组：Workspace、Content、Intelligence、Operations、System。
-Portal Core 通过静态 module registry 注册菜单、owner、角色、成熟度和 fallback；只有在服务端权限允许时，
-对应模块才显示。Payload `/admin` 保留自己的技术导航，不与 Portal 菜单混为同一实现。
+Portal Core 通过静态 module registry 注册菜单、owner、角色、成熟度和可用状态；只有在服务端权限允许时，
+对应模块才显示。内部维护入口不出现在 Portal 菜单或设计稿中。
 
 ```text
 Operations Portal /dashboard
@@ -132,14 +132,15 @@ Operations Portal /dashboard
 │   ├── 项目案例
 │   ├── 新闻文章
 │   ├── 下载资料
-│   └── 媒体素材
+│   ├── 媒体素材
+│   └── AI 内容工作台 / 审核 / 发布任务准备（jueyunai）
 ├── Intelligence
 │   ├── 知识文档 / 知识切片（xuemusi）
 │   ├── 提示词模板
-│   └── AI Provider / Model / Route（xuemusi 负责 AI 调试/读模型；jueyunai 只提供设置入口；敏感写入回退 /admin）
+│   └── AI 调试与模型 readiness（xuemusi；敏感配置不进入 Portal）
 ├── Operations
 │   ├── 统一会话 / 人工接管（xuemusi）
-│   ├── Lead Sources（jueyunai）/ Platform Accounts（xuemusi）
+│   ├── Lead Sources（jueyunai）/ Platform readiness（xuemusi）
 │   └── Jobs / Audit Logs（按角色与权限）
 └── System（admin）
     ├── 用户与角色
@@ -153,7 +154,7 @@ P1 模块包括内容审核、发布排期、平台 readiness、飞书同步和�
 
 - 以任务和业务对象命名，不直接暴露 `Jobs`、`Handoffs`、`VisitorSessions` 等内部表名；
 - 默认首页随角色变化：Admin 看全局，Operator 看运营队列，Sales 看“我的会话与线索”；
-- `/dashboard` 是日常运营入口，`/admin` 是技术 fallback；两者共享同一权限和登录态；
+- `/dashboard` 是第一阶段唯一产品入口；内部维护能力不进入 Portal 导航或任务流；
 - 全局搜索 / `Cmd + K` 属于 Future 交互，可优先探索“找客户、找会话、找内容、跳转功能、创建常用对象”，危险动作不建议直接在命令面板执行。
 
 ---
@@ -479,7 +480,7 @@ ai_active
 - 会话、消息、人工接管权威状态机；
 - Jobs、重试、Dead Job 和 Admin 手工重试；
 - Meta 入站连接器的签名、幂等、队列和 readiness 基础；
-- Payload `/admin` 的自有侧栏和基础 Operations Dashboard；当前正式队列只有 `activeConversations`、`handoffRequested`、`newQualifiedLeads`，以及仅 Admin 可见的 `failedJobs`。
+- Payload `/admin` 的自有侧栏和基础 Operations Dashboard 已存在，但只作内部维护遗留能力，不是本轮设计目标；其中的安全查询可作为 Portal read model 的事实参考。
 
 ### 有条件或部分完成
 
@@ -527,7 +528,7 @@ ai_active
 1. `/dashboard` 自研登录、Payload session 复用和服务端角色守卫；
 2. Portal Shell、静态模块 registry、五组导航、Header、账户入口和通用状态；
 3. 基于真实四类队列的 Admin / Operator / Sales 角色首页；
-4. 官网内容 Hub、产品/案例/文章入口与复杂编辑的 `/admin` fallback；
+4. 官网内容 Hub、产品/案例/文章入口；未实现的复杂编辑显示明确受阻态；
 5. 媒体素材库网格 / 预览；
 6. 知识文档、审核/索引和 AI 调试模块（xuemusi）；
 7. 会话中心三栏 Inbox 与 AI 客服模块（xuemusi）；
@@ -535,7 +536,7 @@ ai_active
 
 ### P1：补齐内容获客和平台状态
 
-9. AI 内容生成工作台；
+9. AI 内容生成工作台（jueyunai）；
 10. 内容审核详情；
 11. 发布排期和发布记录；
 12. 平台账号 / readiness；
@@ -561,7 +562,7 @@ ai_active
 设计方案应能回答以下问题：
 
 1. Admin、Operator、Sales 登录后，10 秒内是否知道自己最该处理什么？
-2. Operator 能否在 `/dashboard` 完成大多数日常工作，并只在必要时进入 `/admin` Collection fallback？
+2. Operator 能否在 `/dashboard` 完成第一阶段日常工作，且未实现能力能否诚实显示受阻和下一步？
 3. Sales 是否只看到自己的会话和线索，并能在同一上下文中完成回复 / 解决？
 4. 用户能否清楚区分“待审核、已批准、已受理、已发布、失败、结果未知”？
 5. 平台被审核、账号、token 或地区限制时，是否能看懂下一步责任人和动作？
@@ -618,12 +619,12 @@ ai_active
 本简报综合了当前需求基线、技术架构、实施计划、后台改造方案、现有代码和自动化测试。设计阶段可以重新组织页面和交互，但以下约束必须保留：
 
 - Payload CMS / PostgreSQL 继续作为数据、身份、权限和唯一控制平面；
-- `/dashboard` 是模块化运营门户，`/admin` 是技术后台和 fallback，两者共享 Payload session；
+- `/dashboard` 是第一阶段模块化运营门户；Payload 已有 `/admin` 仅供内部维护，不属于设计或产品验收；
 - Portal 页面和命令不得绕过服务端 access control；
 - 会话接管必须经过 ConversationService；
 - 发布必须经过 PublishingService，且未审核内容不得发布；
 - 平台 token、模型 key 只写不可读；
 - 当前未实现的 Collection / migration 不得为 UI 临时造替代结构；
-- Portal Core 由 jueyunai 负责；知识/AI、内容生产与发布、AI 客服/会话、海外社媒模块由 xuemusi 负责；
+- Portal Core 与 AI 内容工作台由 jueyunai 负责；知识/AI、AI 客服/会话、海外社媒账号/连接器和真实平台发布服务由 xuemusi 负责；
 - 第三方平台状态必须诚实区分可用、受控测试、需要动作和受阻；
 - 设计交付应明确 P0 / P1 / Future，支持研发渐进落地。

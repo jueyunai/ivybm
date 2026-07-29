@@ -54,9 +54,9 @@
 - Cmd+K、Master-Detail、Kanban、Data Grid 和 AI Copilot 可作为未来设计手法评估，必须按真实数据、权限和依赖逐项落地，不能被描述为当前已实现能力。
 - 所有业务写操作继续复用 Payload access control 与领域服务；Custom View 不得直接改权威状态、审计字段或平台凭据。
 
-当前有效路线仍保留 Payload 作为唯一后端控制平面，但在同一 Next/Payload
-应用内新增自研 `/dashboard` 运营门户，`/admin` 作为技术后台和 fallback。该双轨只是两个前端体验层，
-不是两套认证、数据或部署系统；以 [ADR-0004](../architecture/adr/0004-modular-admin-portal.md) 为准。
+当前有效路线仍保留 Payload 作为唯一后端控制平面，并在同一 Next/Payload 应用内新增自研
+`/dashboard` 运营门户。第一阶段只建设和验收 Portal；已有 `/admin` 仅供内部维护，不进入产品导航、
+不新增 UI，也不作为 Portal fallback。以 [ADR-0004](../architecture/adr/0004-modular-admin-portal.md) 为准。
 
 Directus POC 中产生的 schema、fixtures、adapter、preview 和专属测试只属于失败试验，不合并到生产分支。对应 worktree 和本地 POC 资源在记录结论后删除。
 

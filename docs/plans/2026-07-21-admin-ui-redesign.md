@@ -1,7 +1,7 @@
 # IVYBM 任务导向运营后台与视觉系统改造 Implementation Plan
 
 > **Superseded，2026-07-29：** 本计划已完成的 Payload Nav、Operations Dashboard 和账户菜单
-> 继续作为 `/admin` 技术后台/fallback 保留；未开始的 Custom View Task 3–5 不再执行。
+> 仅作为 `/admin` 内部维护遗留能力保留，不进入一期 Portal 导航、开发或验收；未开始的 Custom View Task 3–5 不再执行。
 > 当前实施基线改为 [模块化运营门户计划](2026-07-29-modular-admin-portal-implementation.md)
 > 和 [ADR-0004](../architecture/adr/0004-modular-admin-portal.md)。
 
