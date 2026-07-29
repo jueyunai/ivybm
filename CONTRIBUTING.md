@@ -117,6 +117,15 @@ git worktree prune --dry-run
 - 负责人自检合并时，在 PR 描述或评论中明确记录“不涉及共享结构、跨人契约或协作者范围”，并保留对应测试与 CI 结果。CODEOWNERS 只为已列出的共享文件自动请求关注，不再为普通自有范围 PR 默认请求双方 review；公共契约、跨板块边界和对在途任务的影响无法完全依赖路径识别，PR 作者必须人工判断并请求另一名开发者 review。
 - PR 描述引用对应 Task 编号，方便对照实施计划里的验证步骤。
 
+### PR 粒度、Draft / Ready 与自动 CI
+
+- PR 以“一个业务 / 工程目标 + 一个实施计划 + 一致的 Review 边界 + 可一起回滚 / 发布”为默认边界。满足这四项的方案、实现、测试和验证记录放在一个 Draft PR，用分阶段 commit 保持可审，不额外拆成方案 PR、代码 PR、验证 PR。
+- 只有变更属于独立任务、负责人或强制 Review 边界不同、需要独立回滚 / 发布，或完整 diff 已明显超出一次有效 Review 的规模时才拆分。反向约束同样成立：不得为减少 PR 数量把无关 Task、临时清理或顺手重构塞入当前 PR。
+- 人工和 AI 默认从 Draft 开始。每次 push 前先运行本地定向验证，并合并同一轮细小修改后再 push；不要用 GitHub Actions 逐提交试错。PR 描述、测试记录、风险 / 回滚、共享边界和 Review 请求齐全后才转 Ready；Ready 后需要连续大改时先转回 Draft。
+- CI 自动按路径分类，作者不选择 Fast / Full 档次，也不得使用 `[skip ci]`。Draft 代码运行 Fast CI；Ready 和 `main` 针对当前 head 运行数据库、build、E2E、operations 等适用门禁；未知路径或 diff / 分类失败走完整 fallback。
+- 稳定的 `CI policy` 汇总 job 负责核对预期 job。Review 与合并前必须记录并复核当前 base / head SHA，只接受当前 head 的成功 policy；Draft Fast-only、旧 head、pending、neutral、skipped、cancelled 或 failure 都不是合并证据。Ready 后的新提交会使旧结论失效并重新运行门禁。
+- `.github/workflows/**`、`scripts/ci/**`、policy 和 production image 触发边界必须由另一名开发者独立 Review。docs-only 轻量检查不豁免共享结构 / 跨人边界 Review；镜像成功只提供不可变 SHA + digest，不授权 production 部署。
+
 本项目内的编码代理还必须遵守 `AGENTS.md`；Claude Code 同时读取 `CLAUDE.md`。这些文件用于阻止代理主动直推，并统一人工操作预期。
 
 ## Migration 冲突处理

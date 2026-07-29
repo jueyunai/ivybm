@@ -248,7 +248,9 @@ git commit -m "ci: publish images only for production changes"
 - Modify: `AGENTS.md`
 - Modify: `CLAUDE.md`
 - Modify: `CONTRIBUTING.md`
+- Modify: `.github/CODEOWNERS`
 - Modify: `.github/pull_request_template.md`
+- Modify: `docs/plans/2026-07-29-github-actions-usage-optimization-design.md`
 - Modify: `docs/开发进度.md`
 
 **Step 1: 更新 AGENTS.md**
@@ -291,7 +293,7 @@ git commit -m "ci: publish images only for production changes"
 记录设计、实施范围、安全边界和预计节省，不记录账单截图或账户信息。
 
 ```bash
-git add AGENTS.md CLAUDE.md CONTRIBUTING.md .github/pull_request_template.md docs/开发进度.md
+git add AGENTS.md CLAUDE.md CONTRIBUTING.md .github/CODEOWNERS .github/pull_request_template.md docs/plans/2026-07-29-github-actions-usage-optimization-design.md docs/开发进度.md
 git commit -m "docs: define AI pull request CI rules"
 ```
 

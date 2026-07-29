@@ -7,6 +7,16 @@
 
 - 请填写主要变更。
 
+## PR 范围与 CI 生命周期
+
+- [ ] 本 PR 只包含同一目标、实施计划、Review 边界和回滚 / 发布单元；未机械拆分方案 / 实现 / 验证，也未混入无关任务
+- [ ] PR 初始使用 Draft；push 前已运行本地定向检查并合并同轮小修改，未使用 `[skip ci]`
+- [ ] 转 Ready 前已补全描述、测试记录、风险 / 回滚、共享边界判断和 Review 请求
+- [ ] Ready 后如有新提交，已重新核对最新 head 的 Review 与 CI；连续大改时已先转回 Draft
+- 当前 head SHA：
+- `CI policy` 模式与结果（Fast-only / Full）：
+- production image（会 / 不会，依据）：
+
 ## 验证
 
 - [ ] 工作分支与 worktree 从最新 `origin/main` 创建，远程 upstream 与本地分支同名
@@ -28,8 +38,11 @@
 
 - [ ] 负责人自检合并：属于本人负责范围，CI 已通过，已检查完整 diff，且不涉及共享结构、跨人契约、协作者范围或一期上线验收
 - [ ] 另一名开发者 review：涉及共享结构、跨人契约、双方板块边界或影响协作者在途任务，已请求 review
+- [ ] CI 独立 review：如修改 workflow、`scripts/ci/**`、CI policy 或 production image 触发边界，已请求另一名开发者 review
 
 > 两条路径按实际情况选择一条。负责人自检合并不等同于作者批准自己的 PR；请在描述或评论中记录自检依据。
+
+> 合并前只接受与“当前 head SHA”一致的成功 `CI policy`。Draft Fast CI、旧 head、pending、neutral、skipped、cancelled 或 failure 均不能作为合并依据。
 
 ## 风险与回滚
 

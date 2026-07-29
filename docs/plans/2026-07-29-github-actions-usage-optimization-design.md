@@ -111,6 +111,7 @@ Buildx 使用 GitHub Actions cache，runtime 与 worker 共享稳定 scope。cac
 5. PR 准备审核时更新测试记录、风险、回滚、共享结构边界和 Review 路径，再转为 Ready。
 6. Ready 后需要连续修改时转回 Draft；完成后再次 Ready。
 7. `.github/workflows/**`、CI 分类器或 CI policy 的修改必须由另一名开发者独立 Review。
+8. 同一目标、实施计划、Review 边界和回滚 / 发布单元一致的方案、实现与验证默认放在一个 Draft PR，以分阶段 commit 保持可审；只有独立任务、不同负责人 / 强制 Review、独立回滚 / 发布或明显超出可审规模时才拆分，同时禁止把无关任务混入同一 PR。
 
 ### AI 审核和合并 PR
 
