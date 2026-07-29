@@ -2,6 +2,7 @@ import { definePortalModule, validatePortalModule } from './definePortalModule'
 import type { PortalModuleDefinition } from './types'
 import { OVERVIEW_MODULE } from '@/admin-portal/modules/overview/manifest'
 import { SETTINGS_MODULE } from '@/admin-portal/modules/settings/manifest'
+import { WEBSITE_CONTENT_MODULE } from '@/admin-portal/modules/website-content/manifest'
 
 export const PORTAL_MODULES = Object.freeze([
   OVERVIEW_MODULE,
@@ -29,18 +30,7 @@ export const PORTAL_MODULES = Object.freeze([
     commands: [],
     maintenance: { responsibleOwner: 'jueyunai', nextStepKey: 'leads' },
   }),
-  definePortalModule({
-    id: 'website-content',
-    owner: 'jueyunai',
-    navGroup: 'content',
-    href: '/dashboard/content',
-    labelKey: 'website-content',
-    allowedRoles: ['admin', 'operator'],
-    availability: 'dependency-gated',
-    featureFlag: 'ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED',
-    commands: [],
-    maintenance: { responsibleOwner: 'jueyunai', nextStepKey: 'website-content' },
-  }),
+  WEBSITE_CONTENT_MODULE,
   definePortalModule({
     id: 'media',
     owner: 'jueyunai',

@@ -1,6 +1,6 @@
 # 协作与分支规范
 
-本文档约定两名开发者在同一个仓库上的协作方式。板块级分工见 [`docs/requirements/一期需求说明文档.md`](docs/requirements/一期需求说明文档.md#L495) 第10节；任务级排期和负责人见 [`docs/plans/2026-07-16-一期开发实施计划.md`](docs/plans/2026-07-16-一期开发实施计划.md) 里程碑表。
+本文档约定两名开发者在同一个仓库上的协作方式。板块级分工见 [`docs/requirements/一期需求说明文档.md`](docs/requirements/一期需求说明文档.md#L495) 第10节；总体任务排期和负责人见 [`docs/plans/2026-07-16-一期开发实施计划.md`](docs/plans/2026-07-16-一期开发实施计划.md) 里程碑表。管理后台 Portal 的任务顺序、PR 批次、owner、依赖和门禁以 [`docs/plans/2026-07-29-modular-admin-portal-implementation.md`](docs/plans/2026-07-29-modular-admin-portal-implementation.md) 为准；与总体计划冲突时以 Portal 专项计划和 ADR-0004 为准。
 
 ## 分支策略
 
@@ -18,13 +18,13 @@
 
 worktree 是本地检出环境，不是新的分支层级。远程有多少协作者分支，不等于本地需要多少 worktree。默认拓扑如下：
 
-| 目录 | 生命周期 | Git 状态 | 用途 |
-| --- | --- | --- | --- |
-| `ivybm` | 永久 | `main` | 同步可信基线、创建/审计 worktree、必要的 post-merge 验证；禁止日常开发 |
-| `ivybm-task<编号>-<简述>` | PR 批次周期 | `feat/task-<编号>-<简述>` | 一个计划批次内的分阶段 Task 开发 |
-| `ivybm-fix-<简述>` / `ivybm-docs-<简述>` | PR 周期 | `fix/<简述>` / `docs/<简述>` | 独立修复或文档改动 |
-| `ivybm-review-pr-<编号>` | 一次 PR 审查 | 默认 detached HEAD | 审查协作者 PR、运行测试、验证合并风险 |
-| `ivybm-poc-<简述>` | 最长一个决策周期 | `poc/<简述>` | 有明确问题和退出条件的实验，不直接合入 `main` |
+| 目录                                     | 生命周期         | Git 状态                     | 用途                                                                   |
+| ---------------------------------------- | ---------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| `ivybm`                                  | 永久             | `main`                       | 同步可信基线、创建/审计 worktree、必要的 post-merge 验证；禁止日常开发 |
+| `ivybm-task<编号>-<简述>`                | PR 批次周期      | `feat/task-<编号>-<简述>`    | 一个计划批次内的分阶段 Task 开发                                       |
+| `ivybm-fix-<简述>` / `ivybm-docs-<简述>` | PR 周期          | `fix/<简述>` / `docs/<简述>` | 独立修复或文档改动                                                     |
+| `ivybm-review-pr-<编号>`                 | 一次 PR 审查     | 默认 detached HEAD           | 审查协作者 PR、运行测试、验证合并风险                                  |
+| `ivybm-poc-<简述>`                       | 最长一个决策周期 | `poc/<简述>`                 | 有明确问题和退出条件的实验，不直接合入 `main`                          |
 
 每人同时最多保留 1 个主工作区、2 个开发类 worktree（PoC / hotfix 计入）和 2 个审查 worktree。无需长期 `develop`、integration、release、production 或“某协作者专用”工作区；`main` + GitHub PR + CI 是唯一集成基线。
 
@@ -146,10 +146,10 @@ Payload / PostgreSQL 的 migration 按时间线性生成，两人各自本地生
 
 一期平台范围冻结如下：会话仅为 Facebook Messenger、Instagram DM（企业 / 商业账号）和 TikTok 私信（商业账号）；图文发布仅为 Facebook、Instagram（企业账号）和 LinkedIn（账号类型不限制，但 API 发布权限仍需验证）。WhatsApp 不纳入一期系统 connector、Webhook、自动回复或发布能力，二期再评估网页插件等替代接入；官网静态外链不等于系统接入。
 
-| 任务    | jueyunai                                                                                  | xuemusi                                                                                                                                                  |
-| ------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Task 9  | 官网 `ChatWidget`、Portal Core 公共交互契约、整体 IA/视觉/集成验收；使用 `ChatService` mock | 统一会话/接管界面、会话/AI 服务、接管状态机/幂等/权限/审计/领域事件、`Conversations` / `Messages` / `Handoffs` 集成和 contract fixture |
-| Task 12 | AI 内容工作台页面、内容生成/人工审核流程、状态机、`GeneratedContents` / `ContentReviews` / `PublishJobs` / `PublishLogs`，以及 Portal Core、素材/CMS 读模型和整体集成 | 平台 capability / publish / status、账号 readiness、第三方 adapter、结果回调和真实发布执行 |
+| 任务    | jueyunai                                                                                                                                                              | xuemusi                                                                                                                                |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Task 9  | 官网 `ChatWidget`、Portal Core 公共交互契约、整体 IA/视觉/集成验收；使用 `ChatService` mock                                                                           | 统一会话/接管界面、会话/AI 服务、接管状态机/幂等/权限/审计/领域事件、`Conversations` / `Messages` / `Handoffs` 集成和 contract fixture |
+| Task 12 | AI 内容工作台页面、内容生成/人工审核流程、状态机、`GeneratedContents` / `ContentReviews` / `PublishJobs` / `PublishLogs`，以及 Portal Core、素材/CMS 读模型和整体集成 | 平台 capability / publish / status、账号 readiness、第三方 adapter、结果回调和真实发布执行                                             |
 
 跨边界开发必须先提交并 review TypeScript port/interface、请求响应 schema、错误码、状态枚举和 mock 行为。消费者先用 fake service 开发，服务提供者先用 fake repository / 官方 fixture 实现；真实数据库和平台 adapter 在对应 Collection、migration、Payload 类型和 production 或等价受控真实环境条件满足后接入。
 
@@ -168,14 +168,14 @@ CI/CD 与发布回滚流程见架构文档 [16.8 节](docs/architecture/一期�
 
 ## 分工速查
 
-| 板块            | 负责人                                    |
-| --------------- | ----------------------------------------- |
-| 官网与 CMS      | jueyunai                                  |
-| SEO / GEO 基础  | jueyunai                                  |
-| AI 客服与知识库 | xuemusi；jueyunai 只负责官网 ChatWidget 与基座 |
-| 社媒会话与平台发布服务 | xuemusi                              |
-| 飞书 CRM        | jueyunai                                  |
-| AI 内容工作台   | jueyunai；平台发布服务由 xuemusi 提供          |
-| Portal Core/素材/设置 | jueyunai                                  |
+| 板块                   | 负责人                                         |
+| ---------------------- | ---------------------------------------------- |
+| 官网与 CMS             | jueyunai                                       |
+| SEO / GEO 基础         | jueyunai                                       |
+| AI 客服与知识库        | xuemusi；jueyunai 只负责官网 ChatWidget 与基座 |
+| 社媒会话与平台发布服务 | xuemusi                                        |
+| 飞书 CRM               | jueyunai                                       |
+| AI 内容工作台          | jueyunai；平台发布服务由 xuemusi 提供          |
+| Portal Core/素材/设置  | jueyunai                                       |
 
 "方案梳理与竞品调研"和"第一批部署上线、培训与试运营修复"不属于以上 6 个板块，统一由 jueyunai 收尾；上线验收需两人共同确认。

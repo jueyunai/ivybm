@@ -1,6 +1,6 @@
 # IVYBM 管理后台现代化 UI 重构与模块化架构规划
 
-版本：v2.5
+版本：v2.7
 
 日期：2026-07-30
 
@@ -91,9 +91,9 @@ flowchart TB
 
 ### 3.1 三层职责
 
-| 层 | 入口 | 责任 | 不负责 |
-| --- | --- | --- | --- |
-| 官网 | `/en`、`/ar` | 对外内容、询盘、ChatWidget | 内部运营与技术配置 |
+| 层       | 入口         | 责任                               | 不负责                                |
+| -------- | ------------ | ---------------------------------- | ------------------------------------- |
+| 官网     | `/en`、`/ar` | 对外内容、询盘、ChatWidget         | 内部运营与技术配置                    |
 | 运营门户 | `/dashboard` | 日常工作流、跨对象上下文、业务命令 | 密钥、底层 Collection 调试、migration |
 
 Payload 已有 `/admin` 在迁移验收前只由受限维护人员按 runbook 使用，不进入上述产品分层，也不属于
@@ -146,11 +146,7 @@ flowchart LR
 
 ```ts
 export type PortalRole = 'admin' | 'operator' | 'sales'
-export type PortalAvailability =
-  | 'available'
-  | 'dependency-gated'
-  | 'blocked'
-  | 'admin-only'
+export type PortalAvailability = 'available' | 'dependency-gated' | 'blocked' | 'admin-only'
 
 export interface PortalModuleManifest {
   id: string
@@ -371,20 +367,20 @@ flowchart TB
 
 ## 8. 模块优先级
 
-| 阶段 | 模块 | 价值 | 前置条件 | 负责人 |
-| --- | --- | --- | --- | --- |
-| P0-1 | Portal Core、登录、Shell、首页、设置 Hub | 建立所有后续模块基座 | 现有 Payload Auth/RBAC/Dashboard | jueyunai |
-| P0-2 | 官网内容 Hub、产品/案例/文章入口 | 支撑已上线官网日常维护 | CMS 已完成 | jueyunai |
-| P0-3 | 素材库 Workspace | 支撑官网和 AI 内容的共同资料源 | Media 已完成 | jueyunai |
-| P0-4 | 协作者开发指南与示例模块 | 冻结 Core 公共出口和接入契约 | P0-1 基座稳定 | jueyunai |
-| P0-5 | 知识库与 AI 调试 | AI 客服和内容生产共同基础 | 知识/AI 后端 + P0-4 | xuemusi |
-| P0-6 | 统一会话与 AI 客服 | 直接支撑询盘接待和人工接管 | P0-5 + ConversationService | xuemusi |
-| P1-1 | AI 内容工作台：生产、审核与发布任务准备 | 建立可追溯的内容流 | 素材/知识 + 正式 Generated/Review/Publish 结构 | jueyunai |
-| P1-2 | 海外社媒账号与 readiness | 支撑连接器和发布 | 真实账号/授权/受控联调 | xuemusi |
-| P1-3 | 线索、飞书同步与提醒 | 形成销售跟进闭环 | Task 11 Feishu + P0-6 会话 read model | jueyunai |
-| P1-4 | Jobs 异常与人工补偿 | 提升可运营性 | 各模块补偿 contract | jueyunai + 模块 owner |
-| P1-5 | 受控真实对外发布 | 在不伪造成功的前提下闭环 | P1-1 + P1-2 + P1-4 | xuemusi |
-| Future | Pipeline、Cmd+K、Copilot、复杂图表 | 提升效率 | 真实使用数据证明价值 | 按模块归属 |
+| 阶段   | 模块                                     | 价值                           | 前置条件                                       | 负责人                |
+| ------ | ---------------------------------------- | ------------------------------ | ---------------------------------------------- | --------------------- |
+| P0-1   | Portal Core、登录、Shell、首页、设置 Hub | 建立所有后续模块基座           | 现有 Payload Auth/RBAC/Dashboard               | jueyunai              |
+| P0-2   | 官网内容 Hub、产品/案例/文章入口         | 支撑已上线官网日常维护         | CMS 已完成                                     | jueyunai              |
+| P0-3   | 素材库 Workspace                         | 支撑官网和 AI 内容的共同资料源 | Media 已完成                                   | jueyunai              |
+| P0-4   | 协作者开发指南与示例模块                 | 冻结 Core 公共出口和接入契约   | P0-1 基座稳定                                  | jueyunai              |
+| P0-5   | 知识库与 AI 调试                         | AI 客服和内容生产共同基础      | 知识/AI 后端 + P0-4                            | xuemusi               |
+| P0-6   | 统一会话与 AI 客服                       | 直接支撑询盘接待和人工接管     | P0-5 + ConversationService                     | xuemusi               |
+| P1-1   | AI 内容工作台：生产、审核与发布任务准备  | 建立可追溯的内容流             | 素材/知识 + 正式 Generated/Review/Publish 结构 | jueyunai              |
+| P1-2   | 海外社媒账号与 readiness                 | 支撑连接器和发布               | 真实账号/授权/受控联调                         | xuemusi               |
+| P1-3   | 线索、飞书同步与提醒                     | 形成销售跟进闭环               | Task 11 Feishu + P0-6 会话 read model          | jueyunai              |
+| P1-4   | Jobs 异常与人工补偿                      | 提升可运营性                   | 各模块补偿 contract                            | jueyunai + 模块 owner |
+| P1-5   | 受控真实对外发布                         | 在不伪造成功的前提下闭环       | P1-1 + P1-2 + P1-4                             | xuemusi               |
+| Future | Pipeline、Cmd+K、Copilot、复杂图表       | 提升效率                       | 真实使用数据证明价值                           | 按模块归属            |
 
 ## 9. 分阶段交付
 
@@ -394,6 +390,7 @@ flowchart TB
 - P0.1 模块契约与 P0.2 设计系统已完成并通过定向测试、lint、typecheck 和 build；
 - P0.3 Payload session、自研登录/登出和受保护 `/dashboard` 已完成定向单元、E2E、lint、typecheck 和 build 验证；
 - P0.4 Shell、角色导航、账户菜单和基础设置 Hub 已完成定向单元/E2E、完整 unit、lint、typecheck、build 和 1440/390 视觉核验；
+- P0.5 角色安全首页和真实队列已完成；P0.6 官网内容 Hub 已完成六类内容安全摘要、筛选、状态、EN/AR 完整度、官网预览、角色访问和桌面/移动响应式验证；复杂编辑继续明确受依赖限制；
 - 允许继续本地开发，不授权连接 production、真实平台副作用、push、PR、合并或部署。
 
 正式交付只保留两个 PR 边界：PR-1 Portal V1 覆盖细粒度任务 P0.1–P1.3；PR-2 Hardening &
@@ -426,16 +423,16 @@ xuemusi 先接知识库与 AI 调试，再接统一会话；这些模块能尽�
 
 ## 10. 失败模式和用户反馈
 
-| 场景 | Portal 行为 | 服务端行为 | 记录 |
-| --- | --- | --- | --- |
-| 未认证/过期 | 安全跳转登录 | Payload auth 返回 unauthenticated | 不记录密码/token |
-| 无角色权限 | 403 页面或隐藏模块 | 服务端 guard 拒绝 | actor/module/route |
-| 依赖未完成 | dependency-gated | 不调用命令 | dependency code |
-| 模块读取失败 | 局部重试，不拖垮 Shell | typed read error | request ID + module |
-| stale state | 提示状态已变化并刷新 | 领域服务拒绝非法 transition | domain error code |
-| 重复点击 | 按钮 pending/禁用 | 幂等 command | idempotency/result |
-| 外部结果未知 | 停止盲目重发 | delivery_unknown | correlation ID |
-| CSS/构建回归 | CI 阻止发布 | 无运行副作用 | visual/build report |
+| 场景         | Portal 行为            | 服务端行为                        | 记录                |
+| ------------ | ---------------------- | --------------------------------- | ------------------- |
+| 未认证/过期  | 安全跳转登录           | Payload auth 返回 unauthenticated | 不记录密码/token    |
+| 无角色权限   | 403 页面或隐藏模块     | 服务端 guard 拒绝                 | actor/module/route  |
+| 依赖未完成   | dependency-gated       | 不调用命令                        | dependency code     |
+| 模块读取失败 | 局部重试，不拖垮 Shell | typed read error                  | request ID + module |
+| stale state  | 提示状态已变化并刷新   | 领域服务拒绝非法 transition       | domain error code   |
+| 重复点击     | 按钮 pending/禁用      | 幂等 command                      | idempotency/result  |
+| 外部结果未知 | 停止盲目重发           | delivery_unknown                  | correlation ID      |
+| CSS/构建回归 | CI 阻止发布            | 无运行副作用                      | visual/build report |
 
 禁止使用“吞掉异常后显示空列表”的降级方式。空数据与读取失败必须是不同状态。
 
@@ -454,13 +451,18 @@ xuemusi 先接知识库与 AI 调试，再接统一会话；这些模块能尽�
 
 - 本地和 CI 只允许连接当前 worktree 的独立 PostgreSQL/Compose：使用独立应用端口、Compose project、PostgreSQL host port、开发库、volume/network，以及名称以 `_test` / `_ci` 结尾的一次性测试库；
 - 任何本地 app、migration、seed、E2E、worker 或脚本都不得读取或写入 production 数据、media/uploads、备份、真实 token 或 production URL；
+- 当前实际 `.env` 已核验指向 `postgres://127.0.0.1:55433/ivybm_portal_v1`，被 Git 忽略且权限为 `0600`；本地开发不依赖 production 数据；
+- 数据库测试按命令显式把 `DATABASE_URL` 指向 `ivybm_portal_v1_test` 或 `_ci`，重置脚本拒绝非 `_test` / `_ci` 数据库；不得依赖隐式 production 连接或共享测试库；
 - development `GO` 只表示允许在隔离环境开发和受控预览，不等于允许真实平台发布、production 数据迁移或 production 部署；
 - 线上数据和外部平台操作只能按 PR-2 runbook 在经批准的受控环境与时间窗口执行。
 
 ## 12. 质量门禁
 
-开发期每个 checkpoint 先覆盖与当前改动直接相关的定向失败测试、类型和安全边界；PR-1 Portal V1 转 Ready
-前必须统一补齐，合并只接受最新 head 的成功 `CI policy`：
+开发期采用最小 checkpoint 门禁：当前模块 failing-first 测试、`pnpm typecheck`、必要的角色/access 定向集成、
+有写命令时的授权/状态/幂等测试、`git diff --check`，以及一个主桌面和一个窄屏视口的人工检查。纯静态
+UI/manifest 不强制启动数据库；不要求每个 checkpoint 重跑完整 suite 或 production build。
+
+PR-1 Portal V1 转 Ready 前必须统一补齐，合并只接受最新 head 的成功 `CI policy`：
 
 - registry/guard/DTO 单元测试；
 - 当前角色与 Collection access 的集成测试；
@@ -471,8 +473,10 @@ xuemusi 先接知识库与 AI 调试，再接统一会话；这些模块能尽�
 - Portal CSS 作用域、官网路由与全局样式隔离回归；
 - lint、typecheck、完整 unit/contract/integration/E2E/operations、production build 和 `git diff --check`。
 
-开发期可以后补全视口视觉矩阵、慢请求、少见错误、性能优化和体验精修，但不能后补服务端 Auth/RBAC、
-数据/migration 完整性、凭据隔离、外部副作用幂等、`delivery_unknown`、总开关/模块开关和发布 kill switch。
+开发期可以后补完整回归、全视口视觉矩阵、慢请求、少见错误、完整键盘路径、性能/可观测性优化、体验精修
+和非关键通用抽象；只读页面允许先用真实空态、错误态和 `dependency-gated` 跑通流程。不能后补服务端
+Auth/RBAC、用户数据 access、错误与空数据区分、测试库防误删、数据/migration 完整性、凭据隔离、外部副作用
+幂等、`delivery_unknown`、总开关/模块开关和发布 kill switch。
 PR-2 生产启用前必须对最新 head 再次执行同一完整门禁，并追加受控外部平台、类型化补偿、灰度、回滚和
 `/admin` 共存 smoke；本地功能跑通或 PR-1 合并均不构成 production 授权。
 

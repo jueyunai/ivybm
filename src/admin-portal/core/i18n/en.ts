@@ -45,38 +45,69 @@ export const PORTAL_EN = {
     settings: 'jueyunai will expose only server-filtered baseline settings.',
   },
   overview: {
-    dependencyDescription: 'These capabilities have no authoritative structures yet, so only their real dependency state is shown.',
+    dependencyDescription:
+      'These capabilities have no authoritative structures yet, so only their real dependency state is shown.',
     dependencyItems: {
-      'content-review': { label: 'Content awaiting review', description: 'Waiting for the formal Task 12 review structure' },
-      'publishing-today': { label: 'Publishing today', description: 'No fabricated count is shown' },
-      'feishu-failures': { label: 'Feishu sync failures', description: 'Waiting for formal Task 11 sync results' },
+      'content-review': {
+        label: 'Content awaiting review',
+        description: 'Waiting for the formal Task 12 review structure',
+      },
+      'publishing-today': {
+        label: 'Publishing today',
+        description: 'No fabricated count is shown',
+      },
+      'feishu-failures': {
+        label: 'Feishu sync failures',
+        description: 'Waiting for formal Task 11 sync results',
+      },
     },
     dependencyStatus: 'DEPENDENCY-GATED',
     dependencyTitle: 'Later queues',
-    description: 'Prioritize handoff requests and active human conversations. Only implemented, real queues appear here.',
-    emptyDescription: 'There are no conversations, leads, or failed jobs requiring immediate action in your access scope.',
+    description:
+      'Prioritize handoff requests and active human conversations. Only implemented, real queues appear here.',
+    emptyDescription:
+      'There are no conversations, leads, or failed jobs requiring immediate action in your access scope.',
     emptyTitle: 'No urgent work right now',
     eyebrow: 'WORKSPACE / OVERVIEW',
-    priorityDescription: 'Only safe references, statuses, and update times are shown; contacts and full conversations stay private.',
+    priorityDescription:
+      'Only safe references, statuses, and update times are shown; contacts and full conversations stay private.',
     priorityKinds: {
-      'active-conversation': { label: 'Human service active', description: 'A human conversation is still in progress' },
-      'handoff-request': { label: 'Awaiting handoff', description: 'A conversation is waiting for an authorized operator' },
-      job: { label: 'Job failed', description: 'Automatic retries failed and require an administrator' },
+      'active-conversation': {
+        label: 'Human service active',
+        description: 'A human conversation is still in progress',
+      },
+      'handoff-request': {
+        label: 'Awaiting handoff',
+        description: 'A conversation is waiting for an authorized operator',
+      },
+      job: {
+        label: 'Job failed',
+        description: 'Automatic retries failed and require an administrator',
+      },
       lead: { label: 'High-intent lead', description: 'A new or qualified A-level lead' },
     },
     priorityTitle: 'Needs attention',
     queue: {
-      activeConversations: { label: 'Human service active', description: 'Currently handled by a person' },
+      activeConversations: {
+        label: 'Human service active',
+        description: 'Currently handled by a person',
+      },
       failedJobs: { label: 'Failed / dead jobs', description: 'Visible to administrators only' },
-      handoffRequested: { label: 'Handoff requests', description: 'Waiting for an authorized person' },
+      handoffRequested: {
+        label: 'Handoff requests',
+        description: 'Waiting for an authorized person',
+      },
       newQualifiedLeads: { label: 'New A-level leads', description: 'New or qualified intent' },
     },
-    readErrorDescription: 'Queue reads failed and were not disguised as empty data. Please retry shortly.',
+    readErrorDescription:
+      'Queue reads failed and were not disguised as empty data. Please retry shortly.',
     readErrorTitle: 'Operations queues are unavailable',
     roleNotice: {
-      admin: 'Administrators see global operational queues and failed jobs, with safe summaries only.',
+      admin:
+        'Administrators see global operational queues and failed jobs, with safe summaries only.',
       operator: 'Operators see global conversations and leads, but system jobs are never queried.',
-      sales: 'Sales users only see assigned conversations and leads; system jobs are never queried.',
+      sales:
+        'Sales users only see assigned conversations and leads; system jobs are never queried.',
     },
     roleNoticeTitle: 'Permissions define visibility',
     scopeBadge: 'Live access scope',
@@ -88,8 +119,63 @@ export const PORTAL_EN = {
       new: 'New',
       qualified: 'Qualified',
     },
-    title: 'Today\'s operations',
+    title: "Today's operations",
     updatedAt: 'Updated',
+  },
+  websiteContent: {
+    allStatuses: 'All statuses',
+    arabic: 'Arabic',
+    collections: {
+      pages: 'Pages',
+      products: 'Products',
+      'product-categories': 'Product categories',
+      projects: 'Projects',
+      posts: 'News posts',
+      downloads: 'Downloads',
+    },
+    description:
+      'Inspect six website content types, publishing state, and English/Arabic completeness in one workspace.',
+    editorDescription:
+      'Rich text, version history, and full SEO editing remain dependency-gated; this view provides safe metadata and public previews.',
+    editorStatus: 'Editing gated',
+    editorTitle: 'Content detail',
+    emptyDescription: 'No content matches the current type, status, and search filters.',
+    emptyTitle: 'No matching content',
+    english: 'English',
+    eyebrow: 'CONTENT / WEBSITE',
+    filterLabel: 'Status',
+    forbiddenDescription:
+      'Your role cannot read or manage website content. No CMS query was executed.',
+    forbiddenTitle: 'Website content access denied',
+    itemCount: 'items',
+    lastUpdated: 'Last updated',
+    localeCompleteness: 'Locale completeness',
+    moduleDisabledDescription:
+      'The website content module is not enabled. No CMS query was executed.',
+    moduleDisabledTitle: 'Website content module disabled',
+    nextPage: 'Next page',
+    noPreview: 'Only published content with a public route can be previewed.',
+    preview: 'Open website preview',
+    previousPage: 'Previous page',
+    readErrorDescription:
+      'The CMS summary failed to load and was not disguised as an empty list. Please retry shortly.',
+    readErrorTitle: 'Website content is unavailable',
+    resetFilters: 'Clear filters',
+    searchLabel: 'Search content',
+    searchPlaceholder: 'Search English title or slug',
+    searchSubmit: 'Filter',
+    selectedItem: 'Selected',
+    slug: 'Stable slug',
+    status: 'Status',
+    statuses: {
+      active: 'Active',
+      'always-visible': 'Always visible',
+      draft: 'Draft',
+      inactive: 'Inactive',
+      published: 'Published',
+    },
+    title: 'Website content',
+    total: 'Total',
   },
   settings: {
     accountDescription: 'This Portal session reuses your Payload identity and role.',
@@ -113,7 +199,8 @@ export const PORTAL_EN = {
     reduceMotionDescription: 'Disable non-essential transitions and looping animation.',
     siteDescription: 'Site description',
     siteName: 'Site name',
-    siteSummaryDescription: 'Only site name and description are returned; contacts, SEO drafts, and credentials are excluded.',
+    siteSummaryDescription:
+      'Only site name and description are returned; contacts, SEO drafts, and credentials are excluded.',
     siteSummaryTitle: 'Safe site summary',
     systemTheme: 'System',
     themeLabel: 'Display theme',

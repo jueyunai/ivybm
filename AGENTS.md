@@ -89,6 +89,8 @@ bash scripts/install-git-hooks.sh
 
 - 需求基线：`docs/requirements/一期需求说明文档.md`。
 - 技术基线：`docs/architecture/一期技术选型与部署架构规划.md`。
-- 实施计划：`docs/plans/2026-07-16-一期开发实施计划.md`。
+- 总体实施计划：`docs/plans/2026-07-16-一期开发实施计划.md`；管理后台 Portal 任务以
+  `docs/plans/2026-07-29-modular-admin-portal-implementation.md` 和 ADR-0004 为当前实施基线，
+  与总体计划冲突时以 Portal 专项计划为准。
 - 完成阶段性任务后及时更新 `docs/开发进度.md`。
 - 代码、需求、架构或计划不一致时，先指出冲突并修正文档基线，再继续实施。

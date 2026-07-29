@@ -96,6 +96,47 @@ export interface PortalOverviewMessages {
   updatedAt: string
 }
 
+export interface PortalWebsiteContentMessages {
+  allStatuses: string
+  arabic: string
+  collections: Record<
+    'downloads' | 'pages' | 'posts' | 'product-categories' | 'products' | 'projects',
+    string
+  >
+  description: string
+  editorDescription: string
+  editorStatus: string
+  editorTitle: string
+  emptyDescription: string
+  emptyTitle: string
+  english: string
+  eyebrow: string
+  filterLabel: string
+  forbiddenDescription: string
+  forbiddenTitle: string
+  itemCount: string
+  lastUpdated: string
+  localeCompleteness: string
+  moduleDisabledDescription: string
+  moduleDisabledTitle: string
+  nextPage: string
+  noPreview: string
+  preview: string
+  previousPage: string
+  readErrorDescription: string
+  readErrorTitle: string
+  resetFilters: string
+  searchLabel: string
+  searchPlaceholder: string
+  searchSubmit: string
+  selectedItem: string
+  slug: string
+  status: string
+  statuses: Record<'active' | 'always-visible' | 'draft' | 'inactive' | 'published', string>
+  title: string
+  total: string
+}
+
 export interface PortalMessages {
   modules: Record<PortalModuleLabelKey, string>
   navGroups: Record<PortalNavGroup, string>
@@ -104,4 +145,5 @@ export interface PortalMessages {
   overview: PortalOverviewMessages
   settings: PortalSettingsMessages
   shell: PortalShellMessages
+  websiteContent: PortalWebsiteContentMessages
 }

@@ -18,7 +18,7 @@
 
 **Review rule:** Portal V1 虽使用一个 Draft PR，模块 owner 不变。Portal Core、共享 contract、`src/payload.config.ts`、migration 和跨模块 DTO 必须按 checkpoint 请求另一名开发者 review；最终 Ready 前双方复核完整 diff。
 
-**Quality rule:** 本地功能跑通阶段只运行当前 checkpoint 的定向检查，避免重复执行全量回归；转 Ready、合并 `main` 和生产启用前分别执行本计划规定的完整门禁。安全、权限、数据完整性和外部副作用边界不得以后补回归为由延期。
+**Quality rule:** 本地功能跑通阶段执行“最小 checkpoint 门禁”，避免每个模块重复跑全量回归；各 Task 章节中列出的完整 unit / integration / E2E / build 命令统一视为阶段收口或 PR-1 Ready 前证据，不要求每个 checkpoint 重复执行。安全、权限、数据完整性和外部副作用边界不得以后补回归为由延期。
 
 ## D0. Development Readiness Gate（已通过，2026-07-29）
 
@@ -67,15 +67,51 @@ git -C /Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1 branch 
 - P0.3 已完成本地实现和定向验证：Payload session adapter、自研登录/登出、`/dashboard/login` 与受保护 `/dashboard` 均已通过单元、E2E、lint、typecheck 和 build；
 - P0.4 已完成：Shell、角色导航、桌面折叠、移动抽屉、账户菜单、语言/主题/减少动效偏好、Settings 安全摘要与模块状态均已落地，并通过定向单元/E2E、完整 unit、lint、typecheck、build 和 1440/390 视觉核验；
 - P0.5 已完成：角色安全首页、真实四类队列、独立安全 DTO、依赖受限说明和真实空态已落地，并通过完整 unit、隔离数据库 integration、Portal E2E、lint、typecheck、build 和 1440/390 视觉核验；
-- P0.6–P1.3 尚未开始或仍按依赖等待，不因同一 PR 批次而视为已交付。
+- P0.6 已完成：官网内容模块 manifest、安全 read model、六类内容筛选、状态与 EN/AR 完整度、官网预览、角色访问集成和响应式页面已落地；重复空态已修复，lint、typecheck、定向单元 15/15、隔离 `_test` 数据库 integration 2/2、桌面/移动 E2E 2/2 与视觉核验通过；
+- P0.7–P1.3 尚未开始或仍按依赖等待，不因同一 PR 批次而视为已交付。
 
-因此 readiness 结论维持 `GO`：可以进入 P0.6；但每个模块仍必须先满足本章节的
+因此 readiness 结论维持 `GO`：P0.6 可以继续开发；但每个模块仍必须先满足本章节的
 precondition、owner/review 边界和定向门禁，不能把“允许开发”解释为“所有模块可无条件并行写入”。
 
 本 worktree 的本地应用端口是 `3001`。当前非 CI Playwright 默认端口仍为 `3000`，执行 Portal E2E 前必须
 先启动 `PORT=3001 pnpm dev`，再显式设置 `BASE_URL=http://localhost:3001`，避免复用其他服务。
 当前 Portal checkpoint 不启动 Compose worker；若后续需要容器化 worker，必须使用容器内 `db:5432`
 连接地址，不能把 host 侧 `127.0.0.1:55433` 注入 worker 容器。
+
+### D0.2 本地优先执行口径（2026-07-30 最新校正）
+
+当前本地 `.env` 的数据库目标已核验为 `postgres://127.0.0.1:55433/ivybm_portal_v1`，文件被 Git 忽略且
+权限为 `0600`。本地没有 production 数据库连接，也不需要 production 数据才能完成 PR-1 功能开发。
+
+每个功能 checkpoint 的最小门禁为：
+
+1. 先写当前模块的 failing-first 单元或 contract 测试，并验证实现后通过；
+2. 运行 `pnpm typecheck`；只有 lint 规则相关或准备 checkpoint commit 时再运行 `pnpm lint`；
+3. 读取 Payload 用户数据时，补一条当前角色和 `overrideAccess:false` 的定向集成测试；纯静态 UI/manifest 不强制启动数据库；
+4. 有写命令时，必须当场覆盖服务端授权、状态守卫、幂等或重复提交；只读模块不提前建设通用 command 基础设施；
+5. 运行 `git diff --check`，并对当前页面做一次主桌面视口和一个窄屏视口的人工检查；
+6. 不要求每个 checkpoint 重跑完整 unit、contract、integration、全部 Portal E2E、四视口视觉矩阵、operations 或 production build。
+
+允许后移到 PR-1 Ready 前的工作：完整回归矩阵、少见网络错误、慢请求/返回导航、全部键盘路径、四视口视觉基线、性能预算、日志/指标精修和非关键通用抽象。允许先使用真实空态和显式
+`dependency-gated` 跑通流程，不为未来能力提前写复杂防御层。
+
+不得后移的最小安全不变量：服务端 Auth/RBAC、用户数据 `overrideAccess:false`、输入边界、错误与空数据区分、测试库防误删、凭据/客户数据隔离、migration 线性历史、外部命令幂等、
+`delivery_unknown`、总开关/模块开关和真实发布 kill switch。
+
+测试数据库不在 `.env` 中持久保存第二个隐式连接；需要数据库测试时必须显式把 `DATABASE_URL` 指向
+`ivybm_portal_v1_test` 或 `_ci` 数据库。`scripts/db/reset-test.ts` 已对非 `_test` / `_ci` 名称 fail closed。
+已知非阻塞技术债是该脚本在全新空库上会先查询尚不存在的 `payload_migrations`；当前测试库已经完成初始化，
+不阻塞 P0.6，但必须在 PR-1 Ready 完整门禁前修正或以标准初始化命令验证。
+
+本轮仍使用同一个 PR-1 Portal V1 Draft PR 和 checkpoint commit，不为该校正另开文档 PR。当前 `GO`
+只授权继续本地开发，不授权 production 数据操作、真实平台副作用、push、创建 PR、合并或部署。
+
+| 决策 Gate                       | 当前结论  | 含义                                                                               |
+| ------------------------------- | --------- | ---------------------------------------------------------------------------------- |
+| 继续本地 P0/P1 功能开发         | **GO**    | 使用独立 worktree、本地开发库与显式 `_test` / `_ci` 库，按 checkpoint 最小门禁推进 |
+| P0.6 checkpoint 完成            | **GO**    | 重复空态已修复，定向单元/权限集成/E2E 和桌面/窄屏视觉核验已通过                    |
+| PR-1 转 Ready / 合并            | **NO-GO** | 等 P0.6–P1.3 按 owner/依赖完成，并对最新 head 执行完整门禁和双方 review            |
+| production 数据、真实平台与部署 | **NO-GO** | 仅 PR-2 经受控账号、补偿、灰度、回滚和人工审批后才可能开放                         |
 
 ## 0. Scope Reduction 结论
 
@@ -94,43 +130,43 @@ migration。完成基座定向验证后，同一 Portal V1 Draft PR 再按 P0.6�
 
 ## 1. What Already Exists
 
-| 能力 | 现有实现 | 计划中的处理 |
-| --- | --- | --- |
-| Payload Auth / session / roles | `src/collections/Users.ts`、`src/access/roles.ts` | 直接复用，不复制 |
-| Payload 控制平面 | `src/app/(payload)/**`、`src/collections/**` | 复用 Auth/RBAC/数据能力；不改造已有 Admin UI |
-| Dashboard 有界读模型 | `src/admin/dashboard/getDashboardSummary.ts` | 复用有界查询与权限约束；另建不含 `/admin` href 的 Portal DTO |
-| CMS / Media | `src/collections/**` | Portal 提供任务入口、预览和范围内命令；未完成能力诚实受阻 |
-| Knowledge / AI | `src/modules/knowledge/**`、`src/modules/ai/**` | 协作者模块消费 |
-| Conversations | `src/modules/conversations/**`、operator APIs | 协作者模块消费 |
-| Publishing contract | `src/modules/publishing/contracts.ts` | 等正式结构后消费 |
-| Jobs / Leads / Platform readiness | 既有 Collections 与 services | 按 owner 和依赖接入 |
+| 能力                              | 现有实现                                          | 计划中的处理                                                 |
+| --------------------------------- | ------------------------------------------------- | ------------------------------------------------------------ |
+| Payload Auth / session / roles    | `src/collections/Users.ts`、`src/access/roles.ts` | 直接复用，不复制                                             |
+| Payload 控制平面                  | `src/app/(payload)/**`、`src/collections/**`      | 复用 Auth/RBAC/数据能力；不改造已有 Admin UI                 |
+| Dashboard 有界读模型              | `src/admin/dashboard/getDashboardSummary.ts`      | 复用有界查询与权限约束；另建不含 `/admin` href 的 Portal DTO |
+| CMS / Media                       | `src/collections/**`                              | Portal 提供任务入口、预览和范围内命令；未完成能力诚实受阻    |
+| Knowledge / AI                    | `src/modules/knowledge/**`、`src/modules/ai/**`   | 协作者模块消费                                               |
+| Conversations                     | `src/modules/conversations/**`、operator APIs     | 协作者模块消费                                               |
+| Publishing contract               | `src/modules/publishing/contracts.ts`             | 等正式结构后消费                                             |
+| Jobs / Leads / Platform readiness | 既有 Collections 与 services                      | 按 owner 和依赖接入                                          |
 
 ## 2. Task 顺序
 
-| Portal Task | 交付 | Owner | 是否阻塞后续 |
-| --- | --- | --- | --- |
-| P0.1 | Module contract + registry + feature flags/维护态契约 | jueyunai | 是 |
-| P0.2 | Design tokens + CSS isolation + UI primitives | jueyunai | 是 |
-| P0.3 | Payload session adapter + 自研登录/登出 | jueyunai | 是 |
-| P0.4 | Shell / navigation / settings Hub + 总开关维护态 | jueyunai | 是 |
-| P0.5 | 角色首页与真实队列 | jueyunai | 基座验收 |
-| P0.6 | 官网内容 Hub | jueyunai | 否 |
-| P0.7 | 素材库 Workspace | jueyunai | 内容/知识共同输入 |
-| P0.8a | 协作者开发包 + 示例模块 | jueyunai | 阻塞协作者接入 |
-| P0.8b | 知识库与 AI 调试模块 | xuemusi | 协作者接入验收；阻塞 P0.9/P1.1 |
-| P0.9 | 会话与 AI 客服模块 | xuemusi | 阻塞线索会话联动 |
-| P1.1 | AI 内容工作台：生产、审核与发布任务准备 | jueyunai | 等正式结构；阻塞 P1.5 |
-| P1.2 | 平台账号/readiness | xuemusi | 等真实授权；阻塞 P1.5 |
-| P1.3 | 线索与飞书入口 | jueyunai | 等 Feishu 与 P0.9 读模型 |
-| P1.4 | Jobs 异常与人工补偿 | jueyunai + 模块 owner | 等补偿 contract；阻塞 P1.5 |
-| P1.5 | 受控真实对外发布启用 | xuemusi | P1.1 + P1.2 + P1.4 |
+| Portal Task | 交付                                                  | Owner                 | 是否阻塞后续                   |
+| ----------- | ----------------------------------------------------- | --------------------- | ------------------------------ |
+| P0.1        | Module contract + registry + feature flags/维护态契约 | jueyunai              | 是                             |
+| P0.2        | Design tokens + CSS isolation + UI primitives         | jueyunai              | 是                             |
+| P0.3        | Payload session adapter + 自研登录/登出               | jueyunai              | 是                             |
+| P0.4        | Shell / navigation / settings Hub + 总开关维护态      | jueyunai              | 是                             |
+| P0.5        | 角色首页与真实队列                                    | jueyunai              | 基座验收                       |
+| P0.6        | 官网内容 Hub                                          | jueyunai              | 否                             |
+| P0.7        | 素材库 Workspace                                      | jueyunai              | 内容/知识共同输入              |
+| P0.8a       | 协作者开发包 + 示例模块                               | jueyunai              | 阻塞协作者接入                 |
+| P0.8b       | 知识库与 AI 调试模块                                  | xuemusi               | 协作者接入验收；阻塞 P0.9/P1.1 |
+| P0.9        | 会话与 AI 客服模块                                    | xuemusi               | 阻塞线索会话联动               |
+| P1.1        | AI 内容工作台：生产、审核与发布任务准备               | jueyunai              | 等正式结构；阻塞 P1.5          |
+| P1.2        | 平台账号/readiness                                    | xuemusi               | 等真实授权；阻塞 P1.5          |
+| P1.3        | 线索与飞书入口                                        | jueyunai              | 等 Feishu 与 P0.9 读模型       |
+| P1.4        | Jobs 异常与人工补偿                                   | jueyunai + 模块 owner | 等补偿 contract；阻塞 P1.5     |
+| P1.5        | 受控真实对外发布启用                                  | xuemusi               | P1.1 + P1.2 + P1.4             |
 
 ### 2.1 两个正式 PR 批次
 
-| PR | 覆盖 Task | Owner | 必须独立的理由 |
-| --- | --- | --- | --- |
-| PR-1 Portal V1 | 当前设计/ADR/计划 + P0.1–P1.3 | jueyunai 集成；各模块按既定 owner 开发；双方 review 共享边界 | `/dashboard` 与 `/admin` 路由和样式隔离，所有模块默认受总开关/模块开关保护；以 checkpoint commit 和 reviewer matrix 保持一个大 Draft PR 可审 |
-| PR-2 Hardening & Production Enablement | P1.4 + P1.5 + P2 | jueyunai + xuemusi；双方上线验收 | 补齐全量回归、类型化补偿、真实账号授权、发布 kill switch、受控发布、runbook、灰度和回滚；与功能跑通阶段的外部风险和发布授权边界不同 |
+| PR                                     | 覆盖 Task                     | Owner                                                        | 必须独立的理由                                                                                                                               |
+| -------------------------------------- | ----------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| PR-1 Portal V1                         | 当前设计/ADR/计划 + P0.1–P1.3 | jueyunai 集成；各模块按既定 owner 开发；双方 review 共享边界 | `/dashboard` 与 `/admin` 路由和样式隔离，所有模块默认受总开关/模块开关保护；以 checkpoint commit 和 reviewer matrix 保持一个大 Draft PR 可审 |
+| PR-2 Hardening & Production Enablement | P1.4 + P1.5 + P2              | jueyunai + xuemusi；双方上线验收                             | 补齐全量回归、类型化补偿、真实账号授权、发布 kill switch、受控发布、runbook、灰度和回滚；与功能跑通阶段的外部风险和发布授权边界不同          |
 
 PR-1 使用当前提交历史，但 Development Readiness Gate 完成前不得写功能代码。不得先创建 docs-only PR，
 也不得把 P0/P1 模块机械拆成多个 PR。每个 Task 章节末尾的 `Commit` 是同一 Draft PR 内的可审 checkpoint；
@@ -819,35 +855,35 @@ WhatsApp、LinkedIn DM、TikTok publish 不进入一期。
 
 ## 3. Error & Rescue Registry
 
-| Codepath | Error code | 触发 | Portal 处理 | 日志 |
-| --- | --- | --- | --- | --- |
-| getPortalSession | `unauthenticated` | 无/过期 session | 跳登录 | route + request ID |
-| requirePortalRole | `forbidden` | 角色不允许 | 403 | actor ID + module |
-| safeReturnTo | `invalid_return_to` | 外域/非法路径 | 回首页 | 不记录恶意完整 URL |
-| login | `invalid_credentials` | 401 | 原位错误 | 不记录密码 |
-| login | `account_locked` | 429/锁定 | 稍后重试 | user ID/email hash |
-| read model | `read_failed` | DB/adapter 错误 | 局部重试 | module + query name |
-| registry | `dependency_unavailable` | 依赖未合并/未配置 | 受阻态 | dependency code |
-| domain command | `state_conflict` | stale/非法 transition | 刷新状态 | entity ID + revision |
-| domain command | `rate_limited` | 业务限流 | 倒计时/稍后重试 | command + actor |
-| provider | `delivery_unknown` | 已越过发送边界但结果未知 | 停止自动重试 | correlation ID |
-| logout | `logout_failed` | 非 2xx/网络 | 保持登录并重试 | status + request ID |
+| Codepath          | Error code               | 触发                     | Portal 处理     | 日志                 |
+| ----------------- | ------------------------ | ------------------------ | --------------- | -------------------- |
+| getPortalSession  | `unauthenticated`        | 无/过期 session          | 跳登录          | route + request ID   |
+| requirePortalRole | `forbidden`              | 角色不允许               | 403             | actor ID + module    |
+| safeReturnTo      | `invalid_return_to`      | 外域/非法路径            | 回首页          | 不记录恶意完整 URL   |
+| login             | `invalid_credentials`    | 401                      | 原位错误        | 不记录密码           |
+| login             | `account_locked`         | 429/锁定                 | 稍后重试        | user ID/email hash   |
+| read model        | `read_failed`            | DB/adapter 错误          | 局部重试        | module + query name  |
+| registry          | `dependency_unavailable` | 依赖未合并/未配置        | 受阻态          | dependency code      |
+| domain command    | `state_conflict`         | stale/非法 transition    | 刷新状态        | entity ID + revision |
+| domain command    | `rate_limited`           | 业务限流                 | 倒计时/稍后重试 | command + actor      |
+| provider          | `delivery_unknown`       | 已越过发送边界但结果未知 | 停止自动重试    | correlation ID       |
+| logout            | `logout_failed`          | 非 2xx/网络              | 保持登录并重试  | status + request ID  |
 
 禁止把 `read_failed` 转成空列表；禁止只 `console.error(error.message)` 后吞掉。
 
 ## 4. Failure Modes Registry
 
-| Codepath | Failure mode | Rescued | Test | User sees | Logged |
-| --- | --- | --- | --- | --- | --- |
-| Portal layout | session 过期 | 是 | auth E2E | 登录页 | 是 |
-| Registry | 重复 ID/href | CI 阻止 | unit | 不发布 | 测试报告 |
-| CSS | 逃逸 `.portal-shell` 并污染官网/其他路由 | CI 阻止 | visual E2E | 不发布 | screenshot diff |
-| Overview | 一项查询失败 | 局部失败 | integration | 错误态 | 是 |
-| Module | 依赖缺失 | 是 | unit/E2E | dependency-gated | 是 |
-| Command | 双击/重复提交 | 领域幂等 | contract/E2E | 处理中/既有结果 | 是 |
-| Command | 页面离开后完成 | 是 | E2E | 返回后读取权威状态 | 是 |
-| Provider | 结果未知 | 是 | contract | 人工补偿 | 是 |
-| Feature rollout | Portal Core 回归 | 总开关 | operations | Portal 维护态 | 是 |
+| Codepath        | Failure mode                             | Rescued  | Test         | User sees          | Logged          |
+| --------------- | ---------------------------------------- | -------- | ------------ | ------------------ | --------------- |
+| Portal layout   | session 过期                             | 是       | auth E2E     | 登录页             | 是              |
+| Registry        | 重复 ID/href                             | CI 阻止  | unit         | 不发布             | 测试报告        |
+| CSS             | 逃逸 `.portal-shell` 并污染官网/其他路由 | CI 阻止  | visual E2E   | 不发布             | screenshot diff |
+| Overview        | 一项查询失败                             | 局部失败 | integration  | 错误态             | 是              |
+| Module          | 依赖缺失                                 | 是       | unit/E2E     | dependency-gated   | 是              |
+| Command         | 双击/重复提交                            | 领域幂等 | contract/E2E | 处理中/既有结果    | 是              |
+| Command         | 页面离开后完成                           | 是       | E2E          | 返回后读取权威状态 | 是              |
+| Provider        | 结果未知                                 | 是       | contract     | 人工补偿           | 是              |
+| Feature rollout | Portal Core 回归                         | 总开关   | operations   | Portal 维护态      | 是              |
 
 ## 5. Test Diagram
 
@@ -905,8 +941,9 @@ THIS PLAN
 
 ## 8. Global Verification
 
-功能跑通期每个 checkpoint 只运行计划列出的定向检查，并至少保证相关类型检查、失败测试、权限/数据边界和
-`git diff --check`。不要求每个 commit 重复全量 E2E、四视口视觉回归、完整 integration 或 production build。
+功能跑通期按 D0.2 的最小门禁执行。各 Task 的 Verify 段落用于说明该模块最终需要的证据，其中完整
+unit / integration / E2E / build 可以在阶段收口或 PR-1 Ready 前集中执行；不要求每个 commit 重复全量
+E2E、四视口视觉回归、完整 integration、operations 或 production build。
 
 以下防线不得延期：服务端 Auth/RBAC、session/return target、安全输入校验、Local API access、migration 可重复性、
 凭据与客户数据隔离、外部 command 幂等、`delivery_unknown`、总开关/模块开关和真实发布 kill switch。
