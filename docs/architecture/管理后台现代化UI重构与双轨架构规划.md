@@ -1,6 +1,6 @@
 # IVYBM 管理后台现代化 UI 重构与模块化架构规划
 
-版本：v2.2
+版本：v2.3
 
 日期：2026-07-29
 
@@ -411,10 +411,17 @@ xuemusi 先接知识库与 AI 调试，再接统一会话；这些模块能尽�
 - Portal 总开关和模块开关支持分钟级切换到 Portal 维护态或模块受阻态；
 - Core 不引入新数据库表、缓存服务或异步 worker。
 
+### 11.1 开发环境与生产数据边界
+
+- 本地和 CI 只允许连接当前 worktree 的独立 PostgreSQL/Compose：使用独立应用端口、Compose project、PostgreSQL host port、开发库、volume/network，以及名称以 `_test` / `_ci` 结尾的一次性测试库；
+- 任何本地 app、migration、seed、E2E、worker 或脚本都不得读取或写入 production 数据、media/uploads、备份、真实 token 或 production URL；
+- development `GO` 只表示允许在隔离环境开发和受控预览，不等于允许真实平台发布、production 数据迁移或 production 部署；
+- 线上数据和外部平台操作只能按 PR-2 runbook 在经批准的受控环境与时间窗口执行。
+
 ## 12. 质量门禁
 
-开发期每个 checkpoint 先覆盖与当前改动直接相关的定向失败测试、类型和安全边界；Portal V1 转 Ready
-和合并前必须统一补齐：
+开发期每个 checkpoint 先覆盖与当前改动直接相关的定向失败测试、类型和安全边界；PR-1 Portal V1 转 Ready
+前必须统一补齐，合并只接受最新 head 的成功 `CI policy`：
 
 - registry/guard/DTO 单元测试；
 - 当前角色与 Collection access 的集成测试；
@@ -427,6 +434,8 @@ xuemusi 先接知识库与 AI 调试，再接统一会话；这些模块能尽�
 
 开发期可以后补全视口视觉矩阵、慢请求、少见错误、性能优化和体验精修，但不能后补服务端 Auth/RBAC、
 数据/migration 完整性、凭据隔离、外部副作用幂等、`delivery_unknown`、总开关/模块开关和发布 kill switch。
+PR-2 生产启用前必须对最新 head 再次执行同一完整门禁，并追加受控外部平台、类型化补偿、灰度、回滚和
+`/admin` 共存 smoke；本地功能跑通或 PR-1 合并均不构成 production 授权。
 
 ## 13. 明确不在首轮范围
 

@@ -20,7 +20,7 @@
 
 **Quality rule:** 本地功能跑通阶段只运行当前 checkpoint 的定向检查，避免重复执行全量回归；转 Ready、合并 `main` 和生产启用前分别执行本计划规定的完整门禁。安全、权限、数据完整性和外部副作用边界不得以后补回归为由延期。
 
-## D0. Development Readiness Gate
+## D0. Development Readiness Gate（已通过，2026-07-29）
 
 Portal V1 开始功能编码前一次性完成：
 
@@ -30,7 +30,7 @@ Portal V1 开始功能编码前一次性完成：
    不创建 docs-only PR；
 2. 执行 `pnpm install --frozen-lockfile`，确认 Node.js 24 与 pnpm 10.15.1；
 3. 为本 worktree 配置唯一的应用端口、Compose project、PostgreSQL host port、开发库和 `_test` / `_ci` 测试库；不得复用当前占用的 `127.0.0.1:5432`；
-4. 本地 `.env` 只使用本地数据库与测试凭据，不复制 production URL、token、客户数据、uploads 或备份；
+4. 本地 `.env` 只使用本地数据库与测试凭据，不复制 production URL、token、客户数据、uploads 或备份；任何本地 app、migration、seed、E2E、worker 或脚本均不得连接 production。local/CI 只允许使用本 worktree 的独立 PostgreSQL/Compose 开发库，以及名称以 `_test` / `_ci` 结尾的一次性测试库；
 5. 启动隔离数据库后完成 baseline `lint`、`typecheck`、`test:unit` 和 production build，记录结果到 `docs/开发进度.md`。
 
 worktree/分支转换使用以下非破坏性命令；执行前必须保证两个 worktree 都干净，且 `origin/main` 仍是当前
@@ -50,9 +50,15 @@ git -C /Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1 branch 
 git -C /Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1 branch --unset-upstream
 ```
 
-当前评估：架构和 P0.1 范围可实施；工具链、git hooks 已就绪。`node_modules`、隔离端口/数据库和上述
-feature 分支/worktree 转换尚未准备，因此可以进入本 Gate，但完成前不得开始 Portal 功能编码或
-integration/E2E 验证。
+**Gate 结果：`GO`，允许进入 Portal V1 本地功能开发。** 已完成并核验：
+
+- worktree `/Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1` 与分支 `feat/task-p0-p1-admin-portal-v1` 一一对应，基于 `origin/main`；首次 push 前再设置同名 upstream；
+- Node.js 24、pnpm 10.15.1、独立 `node_modules` 和仓库 git hooks 就绪；
+- Compose project `ivybm-portal-v1`、应用端口 `3001`、PostgreSQL host port `55433`、开发库 `ivybm_portal_v1`、独立 volume/network 已隔离；
+- 16 条业务 migration 已应用，本地 seed 完成；本地 `.env` 被 Git/Docker build context 排除、权限为 `0600`，应用密钥只在本地生成；
+- baseline lint、typecheck、57 files / 468 unit tests 和 production build 全部通过，build 仍包含既有 `/admin`。
+
+这里的 `GO` 只授权本地 Portal V1 开发，不授权连接 production、真实外部平台发布、push、创建 PR、合并或部署。开发 checkpoint 使用定向门禁；PR-1 转 Ready 前补齐完整回归；PR-2 生产启用前再次执行完整门禁和受控环境验证。
 
 ## 0. Scope Reduction 结论
 
@@ -888,7 +894,7 @@ THIS PLAN
 以下防线不得延期：服务端 Auth/RBAC、session/return target、安全输入校验、Local API access、migration 可重复性、
 凭据与客户数据隔离、外部 command 幂等、`delivery_unknown`、总开关/模块开关和真实发布 kill switch。
 
-Portal V1 转 Ready 和合并 `main` 前运行：
+PR-1 Portal V1 转 Ready 前运行以下完整门禁；合并 `main` 只接受与最新 head SHA 对齐且成功的 `CI policy`：
 
 ```bash
 pnpm install --frozen-lockfile
@@ -910,8 +916,10 @@ git diff --check
 `db:migrate:fresh` 和两次 `db:seed` 只能针对一次性、名称以 `_test` 或 `_ci` 结尾的隔离数据库；随后运行
 integration 与 Compose persistence，证明 migration/seed 可重复且持久化边界正确。数据库测试必须使用本
 worktree 独立的 PostgreSQL 18.4 + pgvector 0.8.5、端口、数据库名和 volume；E2E
-必须使用专用测试账号。不得连接 production、复制真实 token、正式客户资料、uploads 或备份。PR-2 还需在
-受控环境执行外部平台、补偿、灰度、回滚和 `/admin` 共存 smoke：批准的维护账号仍可完成现有登录/维护
+必须使用专用测试账号。不得连接 production、复制真实 token、正式客户资料、uploads 或备份。
+
+PR-2 在生产启用前必须针对其最新 head 再次执行同一完整门禁，并在受控 staging/production-like 环境追加
+外部平台、补偿、灰度、回滚和 `/admin` 共存 smoke：批准的维护账号仍可完成现有登录/维护
 流程，Portal 不出现 `/admin` 导航或深链，Operator/Sales 的既有 Collection RBAC 不因 Portal 扩权。
 失败不得以“预览未正式启用”为由豁免。
 
