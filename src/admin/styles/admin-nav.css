@@ -1,3 +1,33 @@
+/*
+ * Payload 3.86 shell compatibility boundary: NavWrapper owns these two outer shell
+ * nodes. Project-owned navigation styles remain under .ops-admin-nav; Admin E2E
+ * verifies the wrapper/toggler behavior before a Payload upgrade can be accepted.
+ */
+.nav__scroll:has(> .ops-admin-nav) {
+  padding: 0;
+}
+
+.template-default__nav-toggler-wrapper {
+  transition: inset-inline-start 180ms ease;
+}
+
+.template-default__nav-toggler {
+  align-items: center;
+  background: var(--ops-surface);
+  block-size: 38px;
+  border: 1px solid var(--ops-border);
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  display: inline-flex;
+  inline-size: 38px;
+  justify-content: center;
+}
+
+.template-default__nav-toggler:hover {
+  background: var(--ops-info-soft);
+  color: var(--ops-accent-strong);
+}
+
 .ops-admin-nav {
   background: var(--ops-surface);
   block-size: 100dvh;
@@ -8,7 +38,8 @@
   min-block-size: 100%;
   min-inline-size: 0;
   overflow: hidden;
-  padding: 56px 12px 12px;
+  inline-size: 100%;
+  padding: 12px 14px 16px;
   position: relative;
 }
 
@@ -48,8 +79,9 @@
   align-items: center;
   border-bottom: 1px solid var(--ops-border);
   display: flex;
-  gap: 10px;
-  padding: 4px 4px 16px;
+  gap: 12px;
+  min-block-size: 68px;
+  padding: 4px 6px 14px;
 }
 
 .ops-admin-nav__mark {
@@ -58,15 +90,15 @@
   border-radius: 8px;
   color: var(--ops-surface);
   display: inline-flex;
-  flex: 0 0 34px;
-  font-feature-settings: "tnum" 1;
-  font-size: 0.6875rem;
+  flex: 0 0 40px;
+  font-feature-settings: 'tnum' 1;
+  font-size: 0.75rem;
   font-weight: 800;
-  inline-size: 34px;
+  inline-size: 40px;
   justify-content: center;
   letter-spacing: 0;
   line-height: 1;
-  min-block-size: 34px;
+  min-block-size: 40px;
 }
 
 .ops-admin-nav__brand-copy {
@@ -77,15 +109,15 @@
 
 .ops-admin-nav__brand-copy strong {
   color: var(--ops-ink);
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   letter-spacing: 0;
   line-height: 1.2;
 }
 
 .ops-admin-nav__brand-copy small {
   color: var(--ops-muted);
-  font-size: 0.6875rem;
-  line-height: 1.35;
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 .ops-admin-nav__sections {
@@ -93,11 +125,11 @@
   min-block-size: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-block: 12px;
+  padding-block: 8px;
 }
 
 .ops-admin-nav__section {
-  padding-block: 12px;
+  padding-block: 10px;
 }
 
 .ops-admin-nav__section + .ops-admin-nav__section {
@@ -106,17 +138,17 @@
 
 .ops-admin-nav__section h2 {
   color: var(--ops-muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 750;
   letter-spacing: 0;
   line-height: 1.35;
-  margin: 0 8px 6px;
+  margin: 0 10px 7px;
   text-transform: uppercase;
 }
 
 .ops-admin-nav__section ul {
   display: grid;
-  gap: 2px;
+  gap: 3px;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -127,15 +159,17 @@
   border-radius: var(--ops-radius-control);
   color: var(--ops-ink);
   display: grid;
-  font-size: 0.8125rem;
+  font-size: 0.9375rem;
   font-weight: 650;
-  gap: 8px;
+  gap: 10px;
   grid-template-columns: 4px minmax(0, 1fr);
   line-height: 1.3;
-  min-block-size: 36px;
-  padding: 8px;
+  min-block-size: 44px;
+  padding: 10px 12px;
   text-decoration: none;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
 }
 
 .ops-admin-nav__link:hover {
@@ -160,48 +194,19 @@
   block-size: 18px;
 }
 
-.ops-admin-nav__link:focus-visible,
-.ops-admin-nav__footer a:focus-visible {
+.ops-admin-nav__link:focus-visible {
   outline: 2px solid var(--ops-focus);
   outline-offset: 3px;
 }
 
-.ops-admin-nav__footer {
-  border-top: 1px solid var(--ops-border);
-  padding: 12px 8px 4px;
-}
-
-.ops-admin-nav__footer p {
-  color: var(--ops-muted);
-  font-feature-settings: "tnum" 1;
-  font-size: 0.75rem;
-  margin: 0 0 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ops-admin-nav__footer div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.ops-admin-nav__footer a {
-  color: var(--ops-muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.ops-admin-nav__footer a:hover {
-  color: var(--ops-accent);
-}
-
 @media (max-width: 768px) {
+  .template-default__nav-toggler-wrapper {
+    display: none;
+  }
+
   .ops-admin-nav {
     min-block-size: 100dvh;
-    padding: 60px 10px 12px;
+    padding: 12px 10px;
   }
 
   .ops-admin-nav__close {
@@ -212,9 +217,20 @@
   .ops-admin-nav__section {
     padding-block: 10px;
   }
+
+  .ops-admin-nav__brand {
+    padding-inline-end: 48px;
+  }
+}
+
+@media (min-width: 769px) {
+  body:has(.template-default--nav-open) .template-default__nav-toggler-wrapper {
+    inset-inline-start: var(--nav-width);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .template-default__nav-toggler-wrapper,
   .ops-admin-nav__link {
     transition: none;
   }

@@ -17,14 +17,13 @@ const isActiveHref = (pathname: string | null, href: string): boolean => {
 
 export default function OperationsNav() {
   const pathname = usePathname()
-  const { permissions, user } = useAuth()
+  const { permissions } = useAuth()
   const { config } = useConfig()
   const { setNavOpen } = useNav()
   const { i18n } = useTranslation()
   const language = getAdminLocale(i18n.language)
   const copy = getAdminCopy(language)
   const sections = getOperationsNavSections({ config, copy, language, permissions })
-  const userLabel = typeof user?.email === 'string' ? user.email : copy.navHeading
 
   return (
     <NavWrapper baseClass="nav">
@@ -80,14 +79,6 @@ export default function OperationsNav() {
             </section>
           ))}
         </div>
-
-        <footer className="ops-admin-nav__footer">
-          <p title={userLabel}>{userLabel}</p>
-          <div>
-            <Link href="/admin/account">{copy.account}</Link>
-            <Link href="/admin/logout">{copy.signOut}</Link>
-          </div>
-        </footer>
       </nav>
     </NavWrapper>
   )

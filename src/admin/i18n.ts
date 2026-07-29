@@ -27,6 +27,8 @@ export type AdminCopy = {
   roleOperator: string
   roleSales: string
   signOut: string
+  signingOut: string
+  signOutError: string
   urgentConversation: (reference: string) => string
   urgentHeading: string
   urgentJob: (reference: string) => string
@@ -69,6 +71,8 @@ export const ADMIN_COPY: Record<AdminLocale, AdminCopy> = {
     roleOperator: '运营人员',
     roleSales: '销售人员',
     signOut: '退出登录',
+    signingOut: '正在退出…',
+    signOutError: '退出失败，请重试。',
     status: {
       failed: '失败',
       handoffRequested: '等待人工接管',
@@ -110,6 +114,8 @@ export const ADMIN_COPY: Record<AdminLocale, AdminCopy> = {
     roleOperator: 'Operator',
     roleSales: 'Sales',
     signOut: 'Sign out',
+    signingOut: 'Signing out…',
+    signOutError: 'Sign out failed. Please try again.',
     status: {
       failed: 'Failed',
       handoffRequested: 'Handoff requested',

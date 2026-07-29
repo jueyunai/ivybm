@@ -1,0 +1,182 @@
+.ops-account-menu {
+  position: relative;
+}
+
+.ops-account-menu__trigger {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--ops-ink);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 5px;
+  min-block-size: 40px;
+  padding: 0;
+}
+
+.ops-account-menu__avatar {
+  align-items: center;
+  background: var(--ops-ink);
+  block-size: 34px;
+  border: 1px solid var(--ops-border);
+  border-radius: 50%;
+  color: var(--ops-surface);
+  display: inline-flex;
+  flex: 0 0 34px;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  inline-size: 34px;
+  justify-content: center;
+  line-height: 1;
+}
+
+.ops-account-menu__avatar--large {
+  block-size: 40px;
+  flex-basis: 40px;
+  inline-size: 40px;
+}
+
+.ops-account-menu__chevron {
+  block-size: 16px;
+  color: var(--ops-muted);
+  inline-size: 16px;
+  transition: transform 160ms ease;
+}
+
+.ops-account-menu__trigger[aria-expanded='true'] .ops-account-menu__chevron {
+  transform: rotate(180deg);
+}
+
+.ops-account-menu__trigger:hover .ops-account-menu__avatar {
+  background: var(--ops-accent-strong);
+}
+
+.ops-account-menu__trigger:focus-visible,
+.ops-account-menu__popover a:focus-visible,
+.ops-account-menu__popover button:focus-visible {
+  outline: 2px solid var(--ops-focus);
+  outline-offset: 3px;
+}
+
+.ops-account-menu__popover {
+  background: var(--ops-surface);
+  border: 1px solid var(--ops-border);
+  border-radius: 8px;
+  box-shadow: var(--ops-shadow-raised);
+  color: var(--ops-ink);
+  inline-size: min(260px, calc(100vw - 24px));
+  inset-block-start: calc(100% + 8px);
+  inset-inline-end: 0;
+  padding: 8px;
+  position: absolute;
+  z-index: 40;
+}
+
+.ops-account-menu__identity {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  padding: 8px;
+}
+
+.ops-account-menu__identity > span:last-child {
+  color: var(--ops-muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-account-menu__divider {
+  background: var(--ops-border);
+  block-size: 1px;
+  margin: 4px 0;
+}
+
+.ops-account-menu__popover a,
+.ops-account-menu__popover button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ops-ink);
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  gap: 10px;
+  inline-size: 100%;
+  line-height: 1.4;
+  min-block-size: 42px;
+  padding: 9px 10px;
+  text-align: start;
+  text-decoration: none;
+}
+
+.ops-account-menu__popover a:hover,
+.ops-account-menu__popover button:hover {
+  background: var(--ops-info-soft);
+  color: var(--ops-accent-strong);
+}
+
+.ops-account-menu__popover button:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+
+.ops-account-menu__error {
+  color: var(--ops-danger);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  margin: 6px 8px 4px;
+}
+
+.ops-account-menu__popover svg {
+  block-size: 18px;
+  flex: 0 0 18px;
+  inline-size: 18px;
+}
+
+/*
+ * Payload 3.86 shell compatibility boundary: admin.components.actions can add this
+ * account menu but cannot replace the native Header account link. Keep the required
+ * hide/order rules together here; Admin E2E guards the native localizer, controls,
+ * desktop account action, and mobile account action whenever Payload is upgraded.
+ */
+.app-header:has(.ops-account-menu) .app-header__account {
+  display: none;
+}
+
+.app-header:has(.ops-account-menu) .app-header__step-nav-wrapper {
+  order: 1;
+}
+
+.app-header:has(.ops-account-menu) .app-header__localizer-spacing {
+  order: 2;
+}
+
+.app-header:has(.ops-account-menu) .app-header__actions-wrapper {
+  margin-inline-end: 0;
+  margin-inline-start: 10px;
+  order: 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ops-account-menu__chevron {
+    transition: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .template-default--nav-open .template-default__wrap {
+    overflow: clip;
+  }
+
+  .app-header--nav-open .app-header__mobile-nav-toggler,
+  .app-header--nav-open .app-header__controls-wrapper {
+    display: none;
+  }
+}
