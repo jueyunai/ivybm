@@ -1,6 +1,6 @@
 # IVYBM 管理后台现代化 UI 重构与模块化架构规划
 
-版本：v2.1
+版本：v2.2
 
 日期：2026-07-29
 
@@ -15,11 +15,12 @@ IVYBM 管理后台采用“一个后端控制平面、一个一期运营入口�
 - Payload CMS 继续负责数据模型、Auth、RBAC、Collections、migration、审计、媒体和 Local API；
 - `/dashboard` 是根据 Digital Lattice 设计稿自研的日常运营门户；
 - 第一阶段只设计、开发和验收 `/dashboard`；
-- Payload 已有 `/admin` 仅作为内部维护能力存在，不进 Portal 导航、不新增 UI、不作为产品回退；
+- Payload 已有 `/admin` 在新版迁移验收前继续作为受限维护入口，不进 Portal 导航、不新增 UI，也不作为 Portal 业务回退；验收后再决定继续维护或下架；
 - 官网和运营门户仍运行在同一个 Next.js + Payload 模块化单体中；
-- 门户基座先交付，业务模块按价值、依赖和负责人逐个挂载，不追求一次完成全部页面。
+- 门户基座先交付，业务模块在同一个 Portal V1 Draft PR 内按价值、依赖和负责人逐个 checkpoint；功能跑通后再进入统一强化与生产启用批次。
 
-数据库、账号、权限、领域状态机、Jobs 和外部平台接口只有一套。内部维护路径不属于一期产品形态。
+数据库、账号、权限、领域状态机、Jobs 和外部平台接口只有一套。迁移期内部维护路径与 Portal 并行存在，
+但不属于一期产品形态，也不得被 Portal UI 当作深链或错误兜底。
 
 ## 2. 第一性原理
 
@@ -95,7 +96,8 @@ flowchart TB
 | 官网 | `/en`、`/ar` | 对外内容、询盘、ChatWidget | 内部运营与技术配置 |
 | 运营门户 | `/dashboard` | 日常工作流、跨对象上下文、业务命令 | 密钥、底层 Collection 调试、migration |
 
-Payload 已有 `/admin` 只由内部维护人员按 runbook 使用，不进入上述产品分层，也不属于第一阶段 Portal 设计、开发或验收。
+Payload 已有 `/admin` 在迁移验收前只由受限维护人员按 runbook 使用，不进入上述产品分层，也不属于
+第一阶段 Portal 设计、开发或验收；迁移验收后再单独决定继续维护或下架。
 
 ## 4. Portal Core：真正的可插拔基座
 
@@ -411,7 +413,8 @@ xuemusi 先接知识库与 AI 调试，再接统一会话；这些模块能尽�
 
 ## 12. 质量门禁
 
-每个 Core 或模块 PR 至少包含：
+开发期每个 checkpoint 先覆盖与当前改动直接相关的定向失败测试、类型和安全边界；Portal V1 转 Ready
+和合并前必须统一补齐：
 
 - registry/guard/DTO 单元测试；
 - 当前角色与 Collection access 的集成测试；
@@ -420,7 +423,10 @@ xuemusi 先接知识库与 AI 调试，再接统一会话；这些模块能尽�
 - 1440、1280、768、390 视觉回归；
 - 键盘、焦点返回、44px 触控目标、reduced motion；
 - Portal CSS 作用域、官网路由与全局样式隔离回归；
-- lint、typecheck、定向 unit/integration/E2E、production build 和 `git diff --check`。
+- lint、typecheck、完整 unit/contract/integration/E2E/operations、production build 和 `git diff --check`。
+
+开发期可以后补全视口视觉矩阵、慢请求、少见错误、性能优化和体验精修，但不能后补服务端 Auth/RBAC、
+数据/migration 完整性、凭据隔离、外部副作用幂等、`delivery_unknown`、总开关/模块开关和发布 kill switch。
 
 ## 13. 明确不在首轮范围
 
@@ -445,7 +451,7 @@ xuemusi 先接知识库与 AI 调试，再接统一会话；这些模块能尽�
 7. 未完成/受阻模块不会显示伪造数量、伪成功或可点击危险动作；
 8. Digital Lattice 设计在桌面和窄屏无溢出，官网与其他路由未被 Portal 样式污染；
 9. production 部署拓扑、数据库、媒体和 worker 不因 Portal Core 增加新服务；
-10. 文档中不再把内部 `/admin` 维护能力描述成一期产品入口、交付物或回退路径。
+10. 文档中不把迁移期 `/admin` 维护能力描述成一期产品入口、交付物或 Portal 回退路径，并明确迁移验收后的继续维护/下架决策 Gate。
 
 ## 15. 关联文档
 

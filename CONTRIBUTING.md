@@ -8,6 +8,7 @@
 
 - 只有一条长期分支：`main`。`main` 始终保持可构建、可部署状态，不直接 push。
 - 每个实施计划 PR 批次从 `main` 拉一条短分支；同一目标、Owner、Review 和回滚边界内的多个 Task 以分阶段 commit 累积在同一个 Draft PR，批次完成后合并回 `main`。Task 不自动等于独立 PR。
+- 管理后台现代化按 ADR-0004 使用两个明确的集成批次：Portal V1 Draft PR（P0.1–P1.3）与 Hardening & Production Enablement PR（P1.4/P1.5/P2）。这是经计划批准的跨 owner 例外，必须用 checkpoint commit、模块 owner 和 reviewer matrix 保持责任边界，不扩展为其他长期集成分支先例。
 - 分支命名：`feat/task-<编号>-<简述>`，例如 `feat/task-8-knowledge-base`；修复用 `fix/...`。
 - 开工前先 `git pull origin main`，确保基于最新代码开分支。
 
@@ -66,6 +67,7 @@ git merge-tree --write-tree origin/main refs/review/pr-<PR编号>-head
 ### 运行时隔离
 
 - 每个并行 worktree 使用唯一的应用端口、Compose project name、数据库名和测试数据库名；不具备这些隔离条件时，同一时间只运行一个本地栈。
+- 每个 worktree 还必须使用唯一的 PostgreSQL host port；local/CI migration、seed、E2E 和脚本禁止连接 production 数据库、uploads、备份或真实外部 token。
 - 每个 worktree 单独维护被 Git 忽略的 `.env`；密钥只能来自受控本地来源，不复制到文档、日志或 PR。不得让 worktree 共享可写 `.env`、`.next`、media、uploads 或数据库目录。
 - pnpm 的全局内容寻址 store 可以复用，但每个 worktree 单独安装自己的 `node_modules`，避免 lockfile 或依赖状态串扰。
 - 开发服务器、worker 和 Compose 服务启动后要能从目录名或 project name 识别归属；结束任务时停止对应进程和容器，不影响其他 worktree。
@@ -157,6 +159,7 @@ Payload / PostgreSQL 的 migration 按时间线性生成，两人各自本地生
 
 1. **接口 / 纯逻辑阶段**：允许使用 TypeScript port/interface、fake repository、mock 和官方结构 fixture 并行开发。jueyunai 的官网 ChatWidget 先使用 `ChatService` mock，xuemusi 的 Task 9 统一会话使用对应 fake service/repository；jueyunai 的 Task 12 内容工作台消费双方冻结的 `PublishingService` mock；Task 13 在这一阶段可实现连接器接口、Webhook 验签、时间戳、事件幂等、payload 归一化，以及 Facebook Messenger / Instagram DM / TikTok 私信与 Facebook / Instagram / LinkedIn 图文发布的 mock。社媒会话可额外冻结 server-only outbound port、fake 与失败注入契约，但不得发网络请求、写入“已发送”状态或创建临时 `Leads`、`Conversations`、`Messages`、`PublishJobs` 或 `PublishLogs`，不生成替代 migration。
 2. **数据库集成阶段**：必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`，再从最新 `origin/main` 更新分支并实现 adapter。Task 9 服务读写 Task 7 的 `Leads`；Task 13 会话侧读写 Task 9 的 `Conversations` / `Messages`，发布侧读写 Task 12 的 `PublishJobs` / `PublishLogs`。社媒自动回复由 `ConversationService` 创建稳定内部回复身份和 delivery intent；在入队和 worker 发送前由权威会话状态二次允许。delivery intent / outbox 持有 `queued`、`retrying`、`blocked`、`failed`、`dead`、`delivery_unknown` 等业务状态，adapter 结果只能回到权威服务归并。它和真实 Webhook 异步处理、发布执行、失败重试、dead job 和人工补偿都必须等待 Task 10 的 `Jobs` Collection、worker、migration、Payload 注册和生成类型合并，且需要已合并的 `PlatformAccounts` / 凭据结构。纯连接器和 fixture 测试不依赖 Task 10。
+   Portal V1 同一 Draft PR 内可以在前置 checkpoint 已完成完整 Collection、migration、Payload 注册、生成类型和定向测试后继续实现消费者，不为制造 main gate 机械拆 PR；跨 PR、Task 13、worker 或真实外部执行仍严格遵守上述 main gate，且共享结构与 adapter 必须由另一人 review。
 3. **外部平台联调阶段**：需要甲方账号资产、平台授权和 production 的受控发布窗口。条件满足时实测 Facebook Messenger / Instagram DM / TikTok 私信 Webhook、入站消息和 Facebook / Instagram / LinkedIn 图文测试发布；条件缺失时以 fixture 契约测试、模拟记录、配置说明和阻塞证据按一期 P1 口径验收。WhatsApp 与其他未列平台为二期，不进入一期状态矩阵。fixture / mock 通过只代表接口契约完成，不得据此把平台标记为 `available`。
 
 ## 发布

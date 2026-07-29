@@ -43,6 +43,7 @@ bash scripts/install-git-hooks.sh
 
 - 一个分支只处理一个实施计划 PR 批次或一个紧密相关的小修复；Task 是批次内的 commit / 验收检查点，不自动等于独立 PR，禁止混入批次外的无关任务。
 - 同一目标、同一实施计划、同一 Review 边界且可一起回滚 / 发布的紧密相关改动，默认使用一个 Draft PR 和分阶段 commit，保持 diff 可审；禁止仅为流程形式把方案、实现和验证记录机械拆成多个 PR。只有独立任务、不同负责人或强制 Review 边界、需要独立回滚 / 发布，或完整 diff 已明显超出可审规模时才拆分。
+- 管理后台现代化是经 ADR-0004 明确批准的集成批次例外：P0.1–P1.3 使用一个 Portal V1 Draft PR，以 checkpoint commit、模块 owner 和 reviewer matrix 保持可审；P1.4/P1.5/P2 使用一个 Hardening & Production Enablement PR。合并 PR 不改变模块 owner、共享文件强制 review 或生产审批。
 - 提交前运行该 Task 规定的 lint、typecheck、test、build；不能运行时明确说明原因。
 - PR 标题和描述必须引用 Task 编号，并填写 `.github/pull_request_template.md`。
 - 项目初始化、CI、工程配置、文档及负责人自己板块内的独立改动，在 CI 通过、完成 PR 清单并检查完整 diff 后，可由负责人自检合并；必须在 PR 中记录不涉及共享结构、跨人契约、协作者范围或一期上线验收。作者自检不等同于 GitHub 独立审批。
@@ -56,6 +57,7 @@ bash scripts/install-git-hooks.sh
 - push 前必须运行对应 Task 的本地定向检查；GitHub CI 不是调试器。同一轮小修改先合并完成再 push，避免每个细小编辑单独触发 Actions。
 - AI 和 PR 作者不手工选择 CI 档次，不使用 `[skip ci]`；由变更路径分类器自动决定。无法识别路径、无法解析 diff 或分类器异常时必须 fail closed，运行完整门禁。
 - Draft 代码只把 Fast CI 作为开发反馈，不是合并授权。Ready 后如需连续或较大修改，先转回 Draft；Ready 状态下任何新提交都必须针对最新 head 重新运行对应门禁。
+- Portal V1 本地功能跑通期允许只运行当前 checkpoint 的定向验证；完整回归可以后置到转 Ready 前，但不得后置服务端 Auth/RBAC、数据/migration 完整性、凭据隔离、外部副作用幂等、feature flag、`delivery_unknown` 和发布 kill switch。
 - 审核时记录 base SHA、head SHA、mergeability、完整 diff、Review 状态和 `CI policy`。只有与当前 head SHA 一致的成功 `CI policy` 可作为门禁证据；Draft Fast CI、旧 head，以及 pending、neutral、skipped、cancelled 或 failure 均不能授权合并。
 - `.github/workflows/**`、`scripts/ci/**`、CI policy 或 production image 触发边界的修改必须由另一名开发者独立 Review，不适用负责人自检合并。
 - docs-only 轻量门禁不改变共享结构、跨人契约和协作者边界的人工 Review 规则。production image 构建成功也不代表 production 部署授权；部署仍需 jueyunai 人工审批和既有 smoke / rollback 流程。
@@ -73,6 +75,7 @@ bash scripts/install-git-hooks.sh
 - Task 13 会话侧数据库集成必须等待 Task 9 的 `Conversations` / `Messages`；发布侧数据库集成必须等待 Task 12 的 `PublishJobs` / `PublishLogs`；真实 Webhook 异步处理、社媒 AI 自动出站、发布执行、失败重试和人工补偿必须等待 Task 10 的 `Jobs`、worker 及其 migration 合并到 `main`，并要求 `PlatformAccounts`、migration、Payload 注册和生成类型已合并。纯连接器接口和 fixture 契约测试不依赖 Task 10。
 - 依赖未合并时，Task 13 可并行开发连接器接口、Webhook 验签、事件幂等、payload 归一化，以及 Facebook Messenger / Instagram DM / TikTok 私信和 Facebook / Instagram / LinkedIn 图文发布的官方 fixture 契约测试与 mock；也可按 [ADR-0003](docs/architecture/adr/0003-social-conversation-outbound-delivery.md) 冻结 server-only 社媒会话出站 port / fake / 失败注入测试。必须使用 TypeScript port/interface 与 fake repository，不得创建临时替代 Collection 或替代 migration；fake 结果不得被标为平台已发送或 `available`。
 - 任何数据库 adapter 开发都必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`，仅有接口定义或 Collection 代码不视为依赖已满足。
+- 上条对跨分支/跨 PR 的数据库依赖保持不变。Portal V1 同一 Draft PR 内的生产者与消费者可以在前置 checkpoint 已完成完整 Collection、migration、Payload 注册、生成类型和定向测试后继续，不为制造 main gate 机械拆 PR；相关结构和 adapter 仍必须由另一名开发者 review 后才能合并。
 - 外部平台联调需要对应账号、授权和 production 或等价受控真实环境；条件不足时以官方 fixture 契约测试、配置说明和阻塞记录按一期 P1 口径验收。WhatsApp 与其他未列平台作为二期项，不进入一期验收。
 - migration 以先合并到 `main` 的历史为准；未合并分支在同步最新 `main` 后重新生成，不修改已合并 migration。
 

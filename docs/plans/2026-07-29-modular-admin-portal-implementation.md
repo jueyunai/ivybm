@@ -4,7 +4,7 @@
 
 **Goal:** 在不重建 Payload 后端、认证和数据模型的前提下，交付可独立挂载业务模块的 `/dashboard` 运营门户基座，并按负责人和依赖逐步迁移高价值后台工作流。
 
-**Architecture:** Payload CMS / PostgreSQL 是唯一控制平面；第一阶段只建设和验收 `/dashboard` 运营门户。Portal Core 使用静态 TypeScript module registry 统一 Auth、RBAC、Shell、UI 状态、错误和质量契约；业务模块通过 read model 与领域 command 接入，不直接写权威字段。Payload 已有 `/admin` 只作为内部维护能力存在，本计划不新增或改造其 UI，也不把它作为 Portal 回退路径。
+**Architecture:** Payload CMS / PostgreSQL 是唯一控制平面；第一阶段只建设和验收 `/dashboard` 运营门户。Portal Core 使用静态 TypeScript module registry 统一 Auth、RBAC、Shell、UI 状态、错误和质量契约；业务模块通过 read model 与领域 command 接入，不直接写权威字段。Payload 已有 `/admin` 在新版迁移验收前继续作为受限维护入口，本计划不新增或改造其 UI，也不把它作为 Portal 导航或业务回退路径；迁移验收后再单独决定继续维护或下架。
 
 **Tech Stack:** Next.js 16 App Router、React 19、Payload CMS 3.86、TypeScript、Tailwind CSS 4（禁用 Preflight、Portal 范围导入）、按需 shadcn/ui 源码组件、Tabler Icons、Vitest、React Testing Library、Playwright。
 
@@ -14,13 +14,49 @@
 
 **Visual baseline:** [Digital Lattice Pencil](../../designs/ivybm-admin-portal-digital-lattice.pen)
 
-**Execution rule:** Task 是分阶段 commit / 验收检查点，不是 PR 边界。按本计划的 8 个 PR 批次从最新 `origin/main` 推进；当前设计与文档直接进入 PR-1 Portal Foundation，不单开 docs PR。
+**Execution rule:** Task 是分阶段 commit / 验收检查点，不是 PR 边界。按本计划的 2 个 PR 批次推进：Portal V1 Draft PR 覆盖设计、基座与主要功能；Hardening & Production Enablement PR 覆盖全量强化、补偿、真实发布和上线验收。当前设计与文档直接进入 Portal V1，不单开 docs PR。
 
-**Review rule:** Portal Core、共享 contract、`src/payload.config.ts`、migration 和跨模块 DTO 必须由另一名开发者 review。
+**Review rule:** Portal V1 虽使用一个 Draft PR，模块 owner 不变。Portal Core、共享 contract、`src/payload.config.ts`、migration 和跨模块 DTO 必须按 checkpoint 请求另一名开发者 review；最终 Ready 前双方复核完整 diff。
+
+**Quality rule:** 本地功能跑通阶段只运行当前 checkpoint 的定向检查，避免重复执行全量回归；转 Ready、合并 `main` 和生产启用前分别执行本计划规定的完整门禁。安全、权限、数据完整性和外部副作用边界不得以后补回归为由延期。
+
+## D0. Development Readiness Gate
+
+Portal V1 开始功能编码前一次性完成：
+
+1. 在本次方案提交且 worktree 干净后，从主工作区执行 `git worktree move`，把当前目录迁移为
+   `/Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1`；再把当前分支重命名为
+   `feat/task-p0-p1-admin-portal-v1` 并取消旧 docs upstream。保留当前基于最新 `origin/main` 的文档历史，
+   不创建 docs-only PR；
+2. 执行 `pnpm install --frozen-lockfile`，确认 Node.js 24 与 pnpm 10.15.1；
+3. 为本 worktree 配置唯一的应用端口、Compose project、PostgreSQL host port、开发库和 `_test` / `_ci` 测试库；不得复用当前占用的 `127.0.0.1:5432`；
+4. 本地 `.env` 只使用本地数据库与测试凭据，不复制 production URL、token、客户数据、uploads 或备份；
+5. 启动隔离数据库后完成 baseline `lint`、`typecheck`、`test:unit` 和 production build，记录结果到 `docs/开发进度.md`。
+
+worktree/分支转换使用以下非破坏性命令；执行前必须保证两个 worktree 都干净，且 `origin/main` 仍是当前
+HEAD 的祖先：
+
+```bash
+git -C /Users/zhiyun.lee/GitHub/builder/ivybm fetch --prune origin
+git -C /Users/zhiyun.lee/GitHub/builder/ivybm status --short --branch
+git -C /Users/zhiyun.lee/GitHub/builder/ivybm-docs-admin-portal-pen-redesign status --short --branch
+git -C /Users/zhiyun.lee/GitHub/builder/ivybm merge-base --is-ancestor origin/main \
+  docs/admin-portal-pen-redesign
+git -C /Users/zhiyun.lee/GitHub/builder/ivybm worktree move \
+  /Users/zhiyun.lee/GitHub/builder/ivybm-docs-admin-portal-pen-redesign \
+  /Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1
+git -C /Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1 branch -m \
+  feat/task-p0-p1-admin-portal-v1
+git -C /Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1 branch --unset-upstream
+```
+
+当前评估：架构和 P0.1 范围可实施；工具链、git hooks 已就绪。`node_modules`、隔离端口/数据库和上述
+feature 分支/worktree 转换尚未准备，因此可以进入本 Gate，但完成前不得开始 Portal 功能编码或
+integration/E2E 验证。
 
 ## 0. Scope Reduction 结论
 
-第一阶段只交付“可用的基座”，不是空壳大后台：
+Portal V1 的第一个开发 checkpoint 先交付“可用的基座”，不是空壳大后台：
 
 - 自研登录页，但复用 Payload Users Auth 与同一 session；
 - 受保护 `/dashboard` Shell、模块注册、角色导航和账户/退出；
@@ -29,7 +65,9 @@
 - 通用 loading / empty / error / forbidden / blocked / dependency-gated 状态；
 - Feature flag、Portal 维护态、CSS isolation、视觉/权限/E2E 回归。
 
-第一阶段不做 CMS 重写、会话 Inbox、内容发布、平台 OAuth、线索 Pipeline 或任何 migration。
+P0.1–P0.5 基座 checkpoint 不做 CMS 重写、会话 Inbox、内容发布、平台 OAuth、线索 Pipeline 或
+migration。完成基座定向验证后，同一 Portal V1 Draft PR 再按 P0.6–P1.3 checkpoint 接入内容/素材、
+知识/会话、AI 内容工作台、平台 readiness 和线索/飞书；其中 P1.1 的正式共享结构允许新增 migration。
 
 ## 1. What Already Exists
 
@@ -64,25 +102,20 @@
 | P1.4 | Jobs 异常与人工补偿 | jueyunai + 模块 owner | 等补偿 contract；阻塞 P1.5 |
 | P1.5 | 受控真实对外发布启用 | xuemusi | P1.1 + P1.2 + P1.4 |
 
-### 2.1 最小必要 PR 拓扑
+### 2.1 两个正式 PR 批次
 
 | PR | 覆盖 Task | Owner | 必须独立的理由 |
 | --- | --- | --- | --- |
-| PR-1 Portal Foundation | 当前设计/ADR/计划 + P0.1–P0.5 + P0.8a | jueyunai；xuemusi review | 同一基座、公共 contract、同一回滚边界；文档不是独立 PR |
-| PR-2 Content & Media | P0.6–P0.7 | jueyunai | 自有内容模块，与 Core 公共契约 Review 边界不同 |
-| PR-3 Knowledge & Conversations | P0.8b–P0.9 | xuemusi；jueyunai review | 同一协作者 owner 和领域接入边界，按知识→会话分阶段 commit |
-| PR-4 AI Content Workbench | P1.1 结构 + 页面 + 命令 | jueyunai；xuemusi review | Generated/Review/Publish 共享结构必须跨人 Review；结构与 UI 同 PR 分阶段提交 |
-| PR-5 Platform Readiness | P1.2 | xuemusi；jueyunai review | 外部账号、授权和 adapter 独立条件，不与内容工作台耦合 |
-| PR-6 Leads & Feishu | P1.3 | jueyunai；共享 contract 变更由 xuemusi review | 独立 CRM/飞书交付与回滚边界 |
-| PR-7 Compensation Framework | P1.4 | jueyunai + 模块 owner；双方 review | 跨模块 compensation port 和 runbook 是共享运维边界 |
-| PR-8 Controlled Publishing & Acceptance | P1.5 + P2 | xuemusi；jueyunai 上线/集成验收 | 真实平台授权、kill switch、受控发布和最终回滚是独立发布边界 |
+| PR-1 Portal V1 | 当前设计/ADR/计划 + P0.1–P1.3 | jueyunai 集成；各模块按既定 owner 开发；双方 review 共享边界 | `/dashboard` 与 `/admin` 路由和样式隔离，所有模块默认受总开关/模块开关保护；以 checkpoint commit 和 reviewer matrix 保持一个大 Draft PR 可审 |
+| PR-2 Hardening & Production Enablement | P1.4 + P1.5 + P2 | jueyunai + xuemusi；双方上线验收 | 补齐全量回归、类型化补偿、真实账号授权、发布 kill switch、受控发布、runbook、灰度和回滚；与功能跑通阶段的外部风险和发布授权边界不同 |
 
-PR-1 内使用现有 worktree 和提交历史继续开发，但在首次 feature push 前应把本地分支从
-`docs/admin-portal-pen-redesign` 重命名为 `feat/task-admin-portal-foundation`，并让 worktree 用途同步变为
-Portal Foundation。不得先创建 docs-only PR，再把同一基座代码放进第二个 PR。
+PR-1 使用当前提交历史，但 Development Readiness Gate 完成前不得写功能代码。不得先创建 docs-only PR，
+也不得把 P0/P1 模块机械拆成多个 PR。每个 Task 章节末尾的 `Commit` 是同一 Draft PR 内的可审 checkpoint；
+owner 变化时切换 reviewer，不切换 PR。跨 checkpoint 的依赖在同一分支上以前置 commit、定向测试、完整
+Collection + migration + Payload 注册 + 生成类型作为满足条件，不要求为了形式先合并 `main`。
 
-每个 Task 章节末尾的 `Commit` 只是 PR 内的可审阶段，不表示创建新 PR。只有上表 Owner、强制 Review、
-外部条件或独立回滚边界变化时才切换分支；P2 的测试与验收并入相关 PR，不单开“测试 PR”。
+PR-1 只交付本地/受控预览可用的 Portal V1；真实外部发布保持关闭。PR-2 才允许补齐全量强化并申请生产
+启用。两个 PR 均不得自动部署 production；合并只生成经 CI 验证的镜像，仍由 jueyunai 人工审批和发布。
 
 ---
 
@@ -576,7 +609,7 @@ git commit -m "feat(admin-portal): add media workspace"
 - Create: `src/admin-portal/modules/example/ExampleModule.tsx`
 - Test: `tests/contract/admin-portal-module-contract.test.ts`
 
-**Precondition:** P0.1–P0.5 merged。
+**Precondition:** Portal V1 同一分支的 P0.1–P0.5 checkpoint 已完成定向测试，Core public API 已由 xuemusi review。
 
 **Steps:**
 
@@ -600,7 +633,7 @@ git commit -m "feat(admin-portal): add media workspace"
 - Test: `tests/integration/admin-portal-knowledge-access.test.ts`
 - Test: `tests/e2e/admin-portal-knowledge.spec.ts`
 
-**Precondition:** P0.8a merged；知识索引/AI route/Jobs 已在 main。
+**Precondition:** P0.8a checkpoint 已完成；知识索引/AI route/Jobs 已在当前基线或通过冻结的 read model/command contract 可用。
 
 **Steps:**
 
@@ -629,7 +662,7 @@ git commit -m "feat(admin-portal): add media workspace"
 - Test: `tests/contract/admin-portal-conversation-contract.test.ts`
 - Test: `tests/e2e/admin-portal-conversations.spec.ts`
 
-**Precondition:** P0.8b merged，知识 read model 与 AI route 可用；operator summary/detail/command APIs 与 ConversationService contract 已合并。
+**Precondition:** P0.8b checkpoint 已完成，知识 read model 与 AI route 可用；operator summary/detail/command APIs 与 ConversationService contract 已在当前基线可用。
 
 **Steps:**
 
@@ -646,7 +679,7 @@ git commit -m "feat(admin-portal): add media workspace"
 
 **Owner:** jueyunai；平台发布 contract review：xuemusi
 
-**Precondition:** P0.7 素材 read model 与 P0.8b 知识 read model 已合并。先在本 Task 的结构子任务中完成 `GeneratedContents`、`ContentReviews`、`PublishJobs`、`PublishLogs`、migration、Payload 注册和生成类型；这些结构合并后，才实现工作台写命令和 PublishingService persistence adapter。
+**Precondition:** P0.7 素材 read model 与 P0.8b 知识 read model checkpoint 已完成。先在本 Task 的结构 checkpoint 中完成 `GeneratedContents`、`ContentReviews`、`PublishJobs`、`PublishLogs`、migration、Payload 注册、生成类型和对应定向测试；这些结构在同一 Portal V1 分支可验证后，才实现工作台写命令和 PublishingService persistence adapter。结构、adapter 和 UI 仍在同一 Draft PR 中分阶段 review。
 
 **Files:**
 
@@ -680,7 +713,7 @@ git commit -m "feat(admin-portal): add media workspace"
 
 **Owner:** xuemusi；IA/视觉/集成 review：jueyunai
 
-**Precondition:** `PlatformAccounts`、migration、Payload 注册和生成类型已合并；Task 13 capability/readiness contract、官方结构 fixture 和受控测试结果可用。
+**Precondition:** 当前基线已有完整 `PlatformAccounts`、migration、Payload 注册和生成类型；Task 13 capability/readiness contract 与官方结构 fixture 可用。真实账号受控测试结果只阻塞 PR-2 的 `available`/生产启用，不阻塞 PR-1 展示 `action-required`、`ready-for-controlled-test` 或 `blocked`。
 
 **Files:**
 
@@ -705,7 +738,7 @@ WhatsApp、LinkedIn DM、TikTok publish 不进入一期。
 
 **Owner:** jueyunai
 
-**Precondition:** Feishu mapping/sync handler、Jobs 和权限 contract 合并；P0.9 会话 read model contract 可用。共享会话/线索 contract 变更由 xuemusi review。
+**Precondition:** P0.9 会话 read model contract 可用。Feishu mapping/sync handler、Jobs 或权限 contract 尚未进入当前基线时，先交付真实 Leads 读模型和明确的 `dependency-gated` 飞书状态，不创建替代 Collection，也不伪造同步成功；依赖完成后在同一 Portal V1 Draft PR 内接入。共享会话/线索 contract 变更由 xuemusi review。
 
 第一版提供列表、筛选、详情、相关会话、意向、负责人、同步状态和飞书记录深链。Pipeline、拖拽和“已成交”
 必须等待正式领域状态，不在首版创建。
@@ -742,7 +775,7 @@ WhatsApp、LinkedIn DM、TikTok publish 不进入一期。
 
 ---
 
-### Task P2：全局质量、灰度与回滚
+### Task P2：全局强化、灰度与回滚
 
 **Files:**
 
@@ -756,7 +789,7 @@ WhatsApp、LinkedIn DM、TikTok publish 不进入一期。
 
 **Steps:**
 
-1. 在 P0.1/P0.4 合并后，验证 `ADMIN_PORTAL_ENABLED`、按模块 flags 和 Portal 维护态；
+1. 在 P0.1/P0.4 checkpoint 后先定向验证 `ADMIN_PORTAL_ENABLED`、按模块 flags 和 Portal 维护态；PR-2 再执行完整 operations 回归；
 2. 覆盖三角色、四视口、键盘、深链、浏览器返回、慢请求和模块失败；
 3. 证明 Portal 失败不影响官网、worker、数据库和既有内部维护能力；
 4. 完成 production build、smoke、rollback 演练和 runbook。
@@ -849,7 +882,13 @@ THIS PLAN
 
 ## 8. Global Verification
 
-每个 Task 至少运行定向检查；Portal Core Ready 前运行：
+功能跑通期每个 checkpoint 只运行计划列出的定向检查，并至少保证相关类型检查、失败测试、权限/数据边界和
+`git diff --check`。不要求每个 commit 重复全量 E2E、四视口视觉回归、完整 integration 或 production build。
+
+以下防线不得延期：服务端 Auth/RBAC、session/return target、安全输入校验、Local API access、migration 可重复性、
+凭据与客户数据隔离、外部 command 幂等、`delivery_unknown`、总开关/模块开关和真实发布 kill switch。
+
+Portal V1 转 Ready 和合并 `main` 前运行：
 
 ```bash
 pnpm install --frozen-lockfile
@@ -857,15 +896,24 @@ pnpm lint
 pnpm typecheck
 pnpm test:unit
 pnpm test:contract
+pnpm db:migrate:fresh
+pnpm db:seed
+pnpm db:seed
 pnpm test:integration
+pnpm db:test:persistence
 pnpm test:e2e
 pnpm test:operations
 pnpm build
 git diff --check
 ```
 
-数据库测试必须使用隔离 PostgreSQL 18.4 + pgvector 0.8.5；E2E 必须使用专用测试账号；
-不得连接 production、复制真实 token 或正式客户资料。
+`db:migrate:fresh` 和两次 `db:seed` 只能针对一次性、名称以 `_test` 或 `_ci` 结尾的隔离数据库；随后运行
+integration 与 Compose persistence，证明 migration/seed 可重复且持久化边界正确。数据库测试必须使用本
+worktree 独立的 PostgreSQL 18.4 + pgvector 0.8.5、端口、数据库名和 volume；E2E
+必须使用专用测试账号。不得连接 production、复制真实 token、正式客户资料、uploads 或备份。PR-2 还需在
+受控环境执行外部平台、补偿、灰度、回滚和 `/admin` 共存 smoke：批准的维护账号仍可完成现有登录/维护
+流程，Portal 不出现 `/admin` 导航或深链，Operator/Sales 的既有 Collection RBAC 不因 Portal 扩权。
+失败不得以“预览未正式启用”为由豁免。
 
 ## 9. Definition of Done
 
@@ -876,4 +924,5 @@ git diff --check
 - 总开关能无 migration 切换到 Portal 维护态；
 - 协作者独立完成知识模块接入，证明 ownership 模型可运行；
 - P1/Future 依赖全部显式记录，不以占位 UI 冒充已实现；
+- `/admin` 在迁移验收前继续可供受限维护人员使用，Portal 不导航或深链到它；迁移验收后形成继续维护或下架的单独决策；
 - 每个阶段完成后更新 `docs/开发进度.md`。

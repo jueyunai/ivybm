@@ -21,7 +21,7 @@ IVYBM 是一套服务建材出海业务的小团队 AI 获客运营系统。它�
 
 - `/dashboard` 是 Admin、Operator、Sales 的日常运营入口，按照本设计稿实现完整 Shell 和模块化工作区；
 - Payload Auth、RBAC、数据模型、领域服务和 PostgreSQL 继续作为唯一后端；
-- Payload 已有 `/admin` 仅供内部维护，第一阶段不设计、不导航、不新增 UI，也不作为产品回退；
+- Payload 已有 `/admin` 在新版迁移验收前继续供受限维护人员使用，第一阶段不设计、不导航、不新增 UI，也不作为 Portal 产品回退；验收后再决定维护或下架；
 - Portal Core 先统一登录、首页、导航、状态、错误、响应式和 UI contract，业务模块随后按 owner 挂载；
 - 所有业务写操作仍必须经过现有 access control 和领域服务，UI 不直接改权威状态、审计字段或平台凭据。
 
@@ -619,7 +619,7 @@ ai_active
 本简报综合了当前需求基线、技术架构、实施计划、后台改造方案、现有代码和自动化测试。设计阶段可以重新组织页面和交互，但以下约束必须保留：
 
 - Payload CMS / PostgreSQL 继续作为数据、身份、权限和唯一控制平面；
-- `/dashboard` 是第一阶段模块化运营门户；Payload 已有 `/admin` 仅供内部维护，不属于设计或产品验收；
+- `/dashboard` 是第一阶段模块化运营门户；Payload 已有 `/admin` 在迁移验收前继续供受限维护人员使用，不属于设计或产品验收，验收后再决定维护或下架；
 - Portal 页面和命令不得绕过服务端 access control；
 - 会话接管必须经过 ConversationService；
 - 发布必须经过 PublishingService，且未审核内容不得发布；

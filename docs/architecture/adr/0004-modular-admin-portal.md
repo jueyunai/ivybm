@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted，2026-07-29。
+Accepted，2026-07-29；同日补充迁移期共存、两批次交付和分层质量门禁。
 
 Supersedes [ADR-0002](0002-admin-ui-composition.md) 中“`/admin` 是一期唯一后台入口”的决策。
 ADR-0002 已落地的 Payload Nav、Operations Dashboard、账户菜单和安全约束继续保留。
@@ -28,8 +28,9 @@ IVYBM 已经具备可靠的 Payload CMS / PostgreSQL 后端、认证、三角色
 
 - Payload CMS、PostgreSQL、Auth、RBAC、Collections、migration、审计和领域服务仍是唯一后端与控制平面。
 - `/dashboard` 是自研运营门户，服务 Admin、Operator、Sales 的日常任务。
-- 第一阶段只设计、开发和验收 `/dashboard`；Portal 导航、模块注册和回退流程均不依赖 `/admin`。
-- Payload 已有 `/admin` 仅供受限的内部维护，不新增 UI、不进入 Portal 导航，也不作为一期产品交付或业务回退路径。
+- 第一阶段只设计、开发和验收 `/dashboard`；Portal 导航、模块注册和故障处理均不依赖 `/admin`。
+- Payload 已有 `/admin` 在 `/dashboard` 迁移验收前继续供受限维护人员使用，不新增 UI、不进入 Portal 导航，也不作为 Portal 的业务回退路径。
+- `/dashboard` 覆盖目标流程、权限、数据、回滚和运营培训并完成迁移验收后，再用单独决策决定 `/admin` 继续维护或下架；在此之前不得删除、破坏或降低其现有维护能力。
 - 官网和 `/dashboard` 在同一个 Next.js / Payload 模块化单体中部署，不增加第二个服务、数据库或用户体系。
 
 内部维护入口的存在不构成第二条一期产品体验线。
@@ -121,7 +122,9 @@ flowchart LR
 - Portal Core 使用总开关 `ADMIN_PORTAL_ENABLED`，模块使用独立 feature flag。
 - 第一阶段不因 Portal Shell 创建数据库 migration；关闭总开关时 `/dashboard` 显示维护状态，不重定向到内部入口。
 - 每个模块必须定义 `dependency-gated`、`blocked` 或局部错误态，不能因一个模块失败拖垮整个门户。
-- `/admin` 只维持现有内部维护能力和安全回归，不属于本计划的新增开发或产品验收。
+- `/admin` 在迁移验收前维持现有内部维护能力和安全回归，不属于本计划的新增开发或 Portal 产品验收；它是并行维护入口，不是 Portal 页面失败时的导航 fallback。
+- Portal 功能采用一个 Portal V1 Draft PR 分 checkpoint 跑通，再以一个 Hardening & Production Enablement PR 完成全量回归、补偿、灰度和真实发布。owner 与强制 review 边界不因 PR 合并而改变。
+- 本地功能跑通期允许只运行定向验证；转 Ready、合并 main 和生产启用前必须补齐各自完整门禁。Auth/RBAC、数据隔离、migration、凭据、幂等、feature flag 和外部副作用 kill switch 不得延期。
 
 ## 总体架构
 
@@ -223,9 +226,9 @@ flowchart TB
 ### 正面
 
 - 保留 Payload 成熟后端能力，同时获得完整 UI 所有权。
-- 模块可以按负责人和业务优先级独立交付，不要求一次完成所有后台页面。
+- 模块可以在同一 Portal V1 Draft PR 内按负责人和业务优先级独立 checkpoint，不要求一次完成所有后台页面。
 - 协作者能在稳定基座上持续迭代，不需要修改 Shell 或复制权限逻辑。
-- Portal 模块可以通过总开关、模块开关和受阻态灰度上线、独立回滚，不依赖第二个产品入口。
+- Portal 模块可以通过总开关、模块开关和受阻态灰度启用；Portal 不依赖 `/admin`，但迁移期保留其既有维护能力。
 
 ### 负面
 
@@ -237,7 +240,7 @@ flowchart TB
 ### 中性
 
 - 后端、数据库和部署拓扑不变。
-- 现有 Payload Admin Nav、Dashboard 和账户菜单不删除，但只作为内部维护遗留能力，不进入一期 Portal 范围。
+- 现有 Payload Admin Nav、Dashboard 和账户菜单在迁移验收前不删除，作为受限维护能力保留，不进入一期 Portal 范围；迁移验收后再决定维护或下架。
 
 ## 考虑过的替代方案
 
@@ -261,7 +264,7 @@ flowchart TB
 
 | 失败 | 用户表现 | 处理 | 回滚 |
 | --- | --- | --- | --- |
-| 未认证或 session 过期 | 跳转 Portal 登录并保留安全 return target | Payload auth 重新认证 | 显示可重试的认证错误，不切换产品入口 |
+| 未认证或 session 过期 | 跳转 Portal 登录并保留安全 return target | Payload auth 重新认证 | 显示可重试的认证错误，不导航到 `/admin` |
 | Portal Core 构建或样式异常 | `/dashboard` 不可用或局部错位 | CI 阻止；CSS isolation 回归 | 关闭 `ADMIN_PORTAL_ENABLED` |
 | 单模块依赖缺失 | 显示 dependency-gated / blocked | 模块不注册命令，不伪造数据 | 隐藏副作用命令并给出责任人与下一步 |
 | Read model 失败 | 局部错误态和 request ID | 结构化日志；允许重试 | Portal 内重试或转内部运维处理 |
@@ -271,6 +274,7 @@ flowchart TB
 ## 重新评估条件
 
 - `/admin` 默认不向普通运营用户暴露；内部维护权限、路径和 runbook 与 Portal 产品体验分离。
+- 当 `/dashboard` 完成目标流程覆盖、权限/数据/回滚验证和运营迁移培训后，单独评估 `/admin` 的访问记录、剩余维护场景和下架风险，再形成继续维护或下架 ADR。
 - 当出现第三个独立开发团队或需要外部模块安装时，再评估更强的 package / plugin 边界。
 - 当后台并发、数据规模或部署拓扑显著增长时，再评估独立服务、缓存或专用 BFF。
 
