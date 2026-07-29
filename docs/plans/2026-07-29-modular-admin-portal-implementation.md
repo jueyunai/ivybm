@@ -14,9 +14,9 @@
 
 **Visual baseline:** [Digital Lattice Pencil](../../designs/ivybm-admin-portal-digital-lattice.pen)
 
-**Execution rule:** Task 是分阶段 commit / 验收检查点，不是 PR 边界。按本计划的 2 个 PR 批次推进：Portal V1 Draft PR 覆盖设计、基座与主要功能；Hardening & Production Enablement PR 覆盖全量强化、补偿、真实发布和上线验收。当前设计与文档直接进入 Portal V1，不单开 docs PR。
+**Execution rule:** Task 是分阶段 commit / 验收检查点，不是 PR 边界。按最新确认的 2 个 PR 批次推进：PR-1 Portal V1 覆盖设计简报明确编号的 1～6 项页面/功能及其接入基础，即 P0.1–P0.8b；PR-2 Feature Expansion & Production Enablement 覆盖 P0.9–P2。当前设计与文档直接进入 PR-1，不单开 docs PR。
 
-**Review rule:** Portal V1 虽使用一个 Draft PR，模块 owner 不变。Portal Core、共享 contract、`src/payload.config.ts`、migration 和跨模块 DTO 必须按 checkpoint 请求另一名开发者 review；最终 Ready 前双方复核完整 diff。
+**Review rule:** Portal V1 虽使用一个 Draft PR，模块 owner 不变。为了本地一次完成 1～6 项，协作者 review 不再阻塞 P0.8a/P0.8b 本地编码；Portal Core、共享 contract 和知识模块仍必须在 PR-1 转 Ready 前由对应另一名开发者 review。`src/payload.config.ts`、migration 和跨模块 DTO 继续遵守原有强制 review 边界。
 
 **Quality rule:** 本地功能跑通阶段执行“最小 checkpoint 门禁”，避免每个模块重复跑全量回归；各 Task 章节中列出的完整 unit / integration / E2E / build 命令统一视为阶段收口或 PR-1 Ready 前证据，不要求每个 checkpoint 重复执行。安全、权限、数据完整性和外部副作用边界不得以后补回归为由延期。
 
@@ -70,11 +70,12 @@ git -C /Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1 branch 
 - P0.6 已完成：官网内容模块 manifest、安全 read model、六类内容筛选、状态与 EN/AR 完整度、官网预览、角色访问集成和响应式页面已落地；重复空态已修复，lint、typecheck、定向单元 15/15、隔离 `_test` 数据库 integration 2/2、桌面/移动 E2E 2/2 与视觉核验通过；
 - P0.7 已完成：素材库 manifest、安全 read model、URL 可序列化筛选/分页、网格/列表、图片/PDF 安全预览、公开状态、alt/source、上传限制和编辑受阻态已落地；lint、typecheck、定向单元 15/15、显式 `_test` 数据库 Media 策略与 Portal 权限集成 9/9、桌面/移动 E2E 2/2、Prettier、`git diff --check` 与 1440/390 视觉核验通过；
 - `.gitignore` 已把任意层级的 `media/` 收窄为根目录 `/media/`，继续忽略 Payload 上传目录，同时允许 `src/**/media/` 业务源码进入 Git；
-- P0.8a–P1.3 尚未交付。P0.8a 所需的 xuemusi Portal Core public API review 仍无仓库内完成证据，因此在 review 完成前不得把 P0.8a 标记为正式开工或验收通过。
+- P0.8a 已完成本地 checkpoint：协作者指南、Core modules 公共出口、通用 resolver、无领域数据示例模块和跨模块私有 import 契约测试已落地；定向 contract 5/5、registry/navigation/i18n unit 10/10、lint、typecheck 与 diff 检查通过，xuemusi review 仍待 PR-1 Ready 前完成；
+- PR-1 只剩 P0.8b 尚未交付；P0.9–P1.3 按最新范围进入 PR-2，不阻塞 PR-1 本地开发完成。
 
-因此 Portal V1 本地开发 readiness 结论维持 `GO`，P0.7 checkpoint 结论为 `GO`；下一顺序模块 P0.8a
-当前为 `NO-GO`，先由 xuemusi 完成 Portal Core public API review。每个模块仍必须先满足本章节的
-precondition、owner/review 边界和定向门禁，不能把“允许本地开发”解释为“所有模块可无条件并行写入”。
+因此 Portal V1 本地开发 readiness 结论维持 `GO`，P0.8a checkpoint 结论为 `GO`，允许继续实现
+P0.8b。xuemusi 对 Portal Core public API 和知识模块的 review 后移为 PR-1 Ready 门槛，不得被省略或
+伪记为已完成。每个模块仍必须满足 owner 边界和定向门禁。
 
 本 worktree 的本地应用端口是 `3001`。当前非 CI Playwright 默认端口仍为 `3000`，执行 Portal E2E 前必须
 先启动 `PORT=3001 pnpm dev`，再显式设置 `BASE_URL=http://localhost:3001`，避免复用其他服务。
@@ -114,8 +115,9 @@ precondition、owner/review 边界和定向门禁，不能把“允许本地开�
 | 继续本地 P0/P1 功能开发         | **GO**    | 使用独立 worktree、本地开发库与显式 `_test` / `_ci` 库，按 checkpoint 最小门禁推进 |
 | P0.6 checkpoint 完成            | **GO**    | 重复空态已修复，定向单元/权限集成/E2E 和桌面/窄屏视觉核验已通过                    |
 | P0.7 checkpoint 完成            | **GO**    | 素材策略、权限集成、定向单元/E2E 和桌面/窄屏视觉核验已通过                         |
-| P0.8a 正式开发/验收             | **NO-GO** | 先完成 xuemusi 对 Portal Core public API 的 review                                 |
-| PR-1 转 Ready / 合并            | **NO-GO** | 等 P0.8a–P1.3 按 owner/依赖完成，并对最新 head 执行完整门禁和双方 review           |
+| P0.8a checkpoint 完成           | **GO**    | 公共 resolver、模块指南、示例模块和 contract test 已通过                           |
+| P0.8b 本地开发                  | **GO**    | 只接真实知识/AI 后端；review 后移到 PR-1 Ready 前                                  |
+| PR-1 转 Ready / 合并            | **NO-GO** | 等 P0.8a/P0.8b 完成，并对最新 head 执行完整门禁和双方 review                       |
 | production 数据、真实平台与部署 | **NO-GO** | 仅 PR-2 经受控账号、补偿、灰度、回滚和人工审批后才可能开放                         |
 
 ## 0. Scope Reduction 结论
@@ -130,8 +132,8 @@ Portal V1 的第一个开发 checkpoint 先交付“可用的基座”，不是�
 - Feature flag、Portal 维护态、CSS isolation、视觉/权限/E2E 回归。
 
 P0.1–P0.5 基座 checkpoint 不做 CMS 重写、会话 Inbox、内容发布、平台 OAuth、线索 Pipeline 或
-migration。完成基座定向验证后，同一 Portal V1 Draft PR 再按 P0.6–P1.3 checkpoint 接入内容/素材、
-知识/会话、AI 内容工作台、平台 readiness 和线索/飞书；其中 P1.1 的正式共享结构允许新增 migration。
+migration。PR-1 在基座后接入 P0.6 官网内容、P0.7 素材、P0.8a 模块包和 P0.8b 知识/AI，完成设计简报
+编号 1～6；P0.9 会话及 P1 模块进入 PR-2，真实发布继续保持关闭。
 
 ## 1. What Already Exists
 
@@ -168,17 +170,17 @@ migration。完成基座定向验证后，同一 Portal V1 Draft PR 再按 P0.6�
 
 ### 2.1 两个正式 PR 批次
 
-| PR                                     | 覆盖 Task                     | Owner                                                        | 必须独立的理由                                                                                                                               |
-| -------------------------------------- | ----------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| PR-1 Portal V1                         | 当前设计/ADR/计划 + P0.1–P1.3 | jueyunai 集成；各模块按既定 owner 开发；双方 review 共享边界 | `/dashboard` 与 `/admin` 路由和样式隔离，所有模块默认受总开关/模块开关保护；以 checkpoint commit 和 reviewer matrix 保持一个大 Draft PR 可审 |
-| PR-2 Hardening & Production Enablement | P1.4 + P1.5 + P2              | jueyunai + xuemusi；双方上线验收                             | 补齐全量回归、类型化补偿、真实账号授权、发布 kill switch、受控发布、runbook、灰度和回滚；与功能跑通阶段的外部风险和发布授权边界不同          |
+| PR                                             | 覆盖 Task                      | Owner                                                        | 必须独立的理由                                                                                                                           |
+| ---------------------------------------------- | ------------------------------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| PR-1 Portal V1                                 | 当前设计/ADR/计划 + P0.1–P0.8b | jueyunai 集成；各模块按既定 owner 开发；双方 review 共享边界 | 交付设计简报编号 1～6；`/dashboard` 与 `/admin` 隔离，所有模块受总开关/模块开关保护；以 checkpoint commit 保持一个 Draft PR 可审         |
+| PR-2 Feature Expansion & Production Enablement | P0.9–P2                        | jueyunai + xuemusi；双方上线验收                             | 扩展会话、内容工作台、平台/飞书/补偿，并补齐真实账号授权、发布 kill switch、受控发布、runbook、灰度和回滚；与 PR-1 基座/知识验收边界不同 |
 
 PR-1 使用当前提交历史，但 Development Readiness Gate 完成前不得写功能代码。不得先创建 docs-only PR，
 也不得把 P0/P1 模块机械拆成多个 PR。每个 Task 章节末尾的 `Commit` 是同一 Draft PR 内的可审 checkpoint；
 owner 变化时切换 reviewer，不切换 PR。跨 checkpoint 的依赖在同一分支上以前置 commit、定向测试、完整
 Collection + migration + Payload 注册 + 生成类型作为满足条件，不要求为了形式先合并 `main`。
 
-PR-1 只交付本地/受控预览可用的 Portal V1；真实外部发布保持关闭。PR-2 才允许补齐全量强化并申请生产
+PR-1 只交付本地/受控预览可用的编号 1～6；真实外部发布保持关闭。PR-2 才允许扩展后续模块、补齐全量强化并申请生产
 启用。两个 PR 均不得自动部署 production；合并只生成经 CI 验证的镜像，仍由 jueyunai 人工审批和发布。
 
 ---
@@ -673,7 +675,7 @@ git commit -m "feat(admin-portal): add media workspace"
 - Create: `src/admin-portal/modules/example/ExampleModule.tsx`
 - Test: `tests/contract/admin-portal-module-contract.test.ts`
 
-**Precondition:** Portal V1 同一分支的 P0.1–P0.5 checkpoint 已完成定向测试，Core public API 已由 xuemusi review。
+**Precondition:** Portal V1 同一分支的 P0.1–P0.7 checkpoint 已完成定向测试。Core public API 可先在本地冻结并实现，但必须在 PR-1 转 Ready 前由 xuemusi review。
 
 **Steps:**
 
@@ -708,7 +710,7 @@ git commit -m "feat(admin-portal): add media workspace"
 5. 验证 Admin/Operator/Sales、模型缺失、维度不匹配、索引失败、关闭 flag 和重试；
 6. Commit: `feat(admin-portal): add knowledge workspace module`。
 
-本 Task 是“基座可由协作者独立使用”的验收，不是由 jueyunai 代写知识领域逻辑。
+本 Task 是“基座可由协作者独立使用”的验收。实现只消费现有知识/AI 领域契约，不复制或重写知识领域逻辑；owner 与最终 review 边界仍归 xuemusi。
 
 ---
 
@@ -989,7 +991,7 @@ PR-2 在生产启用前必须针对其最新 head 再次执行同一完整门禁
 - 添加示例模块不修改 Shell 私有代码；
 - 首页只展示真实且角色安全的数据；
 - 总开关能无 migration 切换到 Portal 维护态；
-- 协作者独立完成知识模块接入，证明 ownership 模型可运行；
-- P1/Future 依赖全部显式记录，不以占位 UI 冒充已实现；
+- 知识模块只通过现有 read model/command 边界接入，并由 xuemusi 在 Ready 前 review，证明 ownership 模型可运行；
+- P0.9/P1/Future 依赖全部显式记录，不以占位 UI 冒充已实现；
 - `/admin` 在迁移验收前继续可供受限维护人员使用，Portal 不导航或深链到它；迁移验收后形成继续维护或下架的单独决策；
 - 每个阶段完成后更新 `docs/开发进度.md`。

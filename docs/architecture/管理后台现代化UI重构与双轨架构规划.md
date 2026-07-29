@@ -391,10 +391,11 @@ flowchart TB
 - P0.3 Payload session、自研登录/登出和受保护 `/dashboard` 已完成定向单元、E2E、lint、typecheck 和 build 验证；
 - P0.4 Shell、角色导航、账户菜单和基础设置 Hub 已完成定向单元/E2E、完整 unit、lint、typecheck、build 和 1440/390 视觉核验；
 - P0.5 角色安全首页和真实队列已完成；P0.6 官网内容 Hub 已完成六类内容安全摘要、筛选、状态、EN/AR 完整度、官网预览、角色访问和桌面/移动响应式验证；复杂编辑继续明确受依赖限制；
+- P0.7 素材库已完成网格/列表、图片/PDF 安全预览、角色访问和桌面/移动响应式验证；P0.8a 协作者模块包已完成本地契约验证；PR-1 只剩 P0.8b 知识/AI；
 - 允许继续本地开发，不授权连接 production、真实平台副作用、push、PR、合并或部署。
 
-正式交付只保留两个 PR 边界：PR-1 Portal V1 覆盖细粒度任务 P0.1–P1.3；PR-2 Hardening &
-Production Enablement 覆盖 P1.4、P1.5 和 P2。架构表中的粗粒度阶段编号只表达业务顺序，执行编号和
+正式交付只保留两个 PR 边界：PR-1 Portal V1 覆盖设计简报编号 1～6，对应细粒度任务 P0.1–P0.8b；
+PR-2 Feature Expansion & Production Enablement 覆盖 P0.9–P2。架构表中的粗粒度阶段编号只表达业务顺序，执行编号和
 验收命令以 Implementation Plan 为准。
 
 ### 阶段 A：基线和基座
@@ -409,8 +410,8 @@ Production Enablement 覆盖 P1.4、P1.5 和 P2。架构表中的粗粒度阶段
 
 ### 阶段 C：协作者模块接入
 
-由 jueyunai 先交付模块开发指南、示例 manifest、权限/状态测试工具和 UI primitive，并负责 AI 内容工作台。
-xuemusi 先接知识库与 AI 调试，再接统一会话；这些模块能尽早验证基座是否真的可插拔。
+PR-1 由 jueyunai 先交付模块开发指南、示例 manifest、权限/状态测试工具和 UI primitive，再通过现有知识/AI
+契约完成知识库与 AI 调试接入；xuemusi 在 PR-1 Ready 前完成该公共契约和知识模块 review。统一会话进入 PR-2。
 
 ### 阶段 D：依赖受限模块
 
