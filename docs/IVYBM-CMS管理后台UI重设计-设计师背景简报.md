@@ -1,8 +1,8 @@
 # IVYBM CMS 管理后台 UI 重设计——设计师背景简报
 
-版本：v2.1
+版本：v2.3
 
-日期：2026-07-29
+日期：2026-07-30
 
 用途：产品设计 / UI 设计 / 交互设计背景输入
 项目阶段：一期开发中，后台 UI 进入重新设计阶段
@@ -70,15 +70,18 @@ flowchart LR
 
 ### 3.1 Admin——系统管理员
 
-目标：掌握全局状态、配置系统、处理异常、管理账号。
+目标：掌握全局状态、查看配置与能力状态、处理异常；技术配置继续走受限维护流程。
 
 需要：
 
 - 查看全部业务队列和系统异常；
-- 管理用户、角色、AI 供应商 / 模型 / 路由；
-- 管理平台账号和授权状态；
+- 查看本人账户、模块可用性、AI / 平台 readiness 和安全设置摘要；
 - 查看任务、审计和失败原因；
 - 处理危险操作时获得明确确认和结果反馈。
+
+第一阶段 `/dashboard` 不提供用户 / 角色、AI 供应商 / 模型密钥、平台凭据等技术后台配置。
+这些能力继续由受限维护人员在既有 `/admin` 中处理；Portal 只消费服务端过滤后的状态和安全摘要，
+不得提供 `/admin` 深链或回显 token / key。
 
 ### 3.2 Operator——运营人员
 
@@ -143,8 +146,9 @@ Operations Portal /dashboard
 │   ├── Lead Sources（jueyunai）/ Platform readiness（xuemusi）
 │   └── Jobs / Audit Logs（按角色与权限）
 └── System（admin）
-    ├── 用户与角色
-    └── Site Settings 等 Globals
+    ├── 本人账户与安全设置摘要
+    ├── 模块可用状态 / 责任人 / 下一步
+    └── Site Settings 安全只读摘要
 ```
 
 P1 模块包括内容审核、发布排期、平台 readiness、飞书同步和异常补偿。它们不改变底层权限和领域服务；
@@ -327,7 +331,7 @@ ai_active
 
 ### 5.8 平台账号与能力状态
 
-平台账号由 Admin 管理，包含账号类型、外部账号 ID、授权状态、token 是否已配置 / 过期、消息 / 发布能力审核状态和说明。token 永远不回显。
+平台账号由 Admin 通过受限内部维护流程管理，包含账号类型、外部账号 ID、授权状态、token 是否已配置 / 过期、消息 / 发布能力审核状态和说明。Portal V1 只展示无凭据 readiness、责任人和下一步；token 永远不回显。
 
 需要表达的状态不是简单“已连接 / 未连接”，而是：
 
@@ -394,21 +398,23 @@ ai_active
 
 ## 8. 视觉方向与参考
 
-### 8.1 建议视觉关键词
+### 8.1 已冻结的 Digital Lattice 视觉基线
 
 `Industrial Precision / 工业精密感`、专业、克制、可信、材料感、结构清晰、高信息密度、现代 B2B SaaS。
 
-建议延续的现有方向：
+Portal V1 的 canonical 视觉不再以早期探索色值为准，而以
+[`ivybm-admin-portal-digital-lattice.pen`](../designs/ivybm-admin-portal-digital-lattice.pen) 及已落地 token 为准：
 
-- 大面积暖白 / 冷灰画布，白色 Surface，石墨主文字；
-- 深青绿作为主行动色；
+- 冷灰画布 `#F7F9FB`，白色 Surface `#FFFFFF`，石墨主文字 `#191C1E`；
+- 深色侧栏 `#0F172A`，靛蓝 `#4F46E5` 作为主行动色；
 - 成功、警告、危险、信息色只用于状态；
-- 8px 控件圆角、12px 卡片圆角；
+- IBM Plex Sans / IBM Plex Mono；
+- 4px 控件圆角、8px 卡片圆角，字距统一为 `0`；
 - 细边框优先，浮层才使用克制阴影；
 - 避免大面积渐变、过度玻璃拟态、超大圆角和装饰性图表；
 - 浅色与深色模式都使用语义 token，不做简单反相。
 
-现有暂定色值可用于探索，不是必须照搬：主行动色 `#0F766E`、主文字 `#0F172A`、页面背景 `#F8FAFC`、边框 `#DCE3EC`。
+早期“深青绿、8px/12px 圆角”方向只保留为历史探索，不再作为实现或验收依据。
 
 ### 8.2 交互参考（参考方法，不照搬视觉）
 
@@ -430,7 +436,7 @@ ai_active
 
 | 方向 | 核心特征 | 适用性与取舍 |
 | --- | --- | --- |
-| A. 工业精密（推荐） | 暖白画布、白色面板、石墨文字、深青绿行动色；细边框、克制层级和清晰网格 | 最贴合铝单板 / 幕墙采购业务的材料感、结构感与工程精度，适合高密度、长期生产使用 |
+| A. 工业精密 / Digital Lattice（已采用） | 冷灰画布、白色面板、石墨文字、深色侧栏与靛蓝行动色；细边框、克制层级和清晰网格 | 已冻结为 Portal V1 canonical 方向，最适合高密度、长期生产使用 |
 | B. 石墨指挥舱 | 深石墨导航配浅色主画布，强化关键数字和异常 | 对 Admin / Operator 的“运营中枢”感更强，但需限制深色面积，避免压迫和过度科技化 |
 | C. 编辑型工作台 | 更轻、更通透，强调任务、排期和团队协作 | 内容运营体验友好，但密度较低，需要额外提高系统异常的视觉权重 |
 
@@ -490,13 +496,24 @@ ai_active
 - 真实 AI 生产质量仍依赖正式知识资料、模型配置和评测；
 - 线上生产联调、最终验收和备份恢复仍未完成。
 
-### 尚未正式实现
+### Portal 当前实施状态（2026-07-30）
+
+- D0 本地开发门禁已通过：独立 worktree、端口、Compose project、PostgreSQL、开发库、volume/network 和本地密钥已完成隔离；本地与 CI 均禁止连接 production；
+- P0.1 静态 module registry、owner/角色/路由/成熟度、总开关和模块开关已完成；
+- P0.2 Digital Lattice token、Tailwind/shadcn Portal 范围隔离和首批 UI primitives 已完成；
+- P0.3 Payload session、自研登录/登出和 `/dashboard` 受保护路由已完成定向验证；
+- P0.4 Shell、角色导航、账户菜单和基础设置 Hub 已完成实现与 checkpoint 验收；首页和业务模块继续按 Implementation Plan 推进。
+
+本地 app、migration、seed、E2E、worker 和脚本只允许使用该 worktree 的独立开发库或 `_test` / `_ci`
+测试库，不得连接 production PostgreSQL，也不得读取 production media、uploads、备份、URL 或真实 token。
+
+### 尚未正式实现或仍受依赖限制
 
 - 飞书 CRM 同步与提醒；
 - 完整 AI 内容工作台、内容审核和发布排期；
 - `PublishJobs` / `PublishLogs` 的正式后台流程；
 - 社媒 AI 自动出站与 `delivery_unknown` 人工补偿界面；
-- `/dashboard` Portal Core、模块 registry、自研登录和业务模块页面尚未实现；它们现在是当前实施目标。
+- 后续角色首页、官网内容、素材、知识、会话、内容工作台、平台 readiness 和线索页面仍按 checkpoint 实现，不应在设计稿中表现为已交付。
 
 设计可以覆盖未来状态，但需在 Figma 标注“P1 / Future / dependency-gated”，便于研发分阶段实现。
 
@@ -579,7 +596,7 @@ ai_active
 以下输入不阻塞低保真方案，但在高保真视觉定稿前需要确认：
 
 - 后台最终产品名和 Logo 组合方式；
-- 品牌主色是否沿用深青绿；
+- Portal 产品品牌与官网品牌的色彩关系；Portal 交互主色已冻结为 Digital Lattice 靛蓝；
 - 设计师可使用的正式产品、案例、工厂图片；
 - 中文 / 英文后台文案语气；
 - 运营人员日常设备分布和最常用分辨率；

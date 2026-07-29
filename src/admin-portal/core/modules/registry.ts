@@ -1,5 +1,6 @@
 import { definePortalModule, validatePortalModule } from './definePortalModule'
 import type { PortalModuleDefinition } from './types'
+import { SETTINGS_MODULE } from '@/admin-portal/modules/settings/manifest'
 
 export const PORTAL_MODULES = Object.freeze([
   definePortalModule({
@@ -110,18 +111,7 @@ export const PORTAL_MODULES = Object.freeze([
     commands: [],
     maintenance: { responsibleOwner: 'jueyunai', nextStepKey: 'operations' },
   }),
-  definePortalModule({
-    id: 'settings',
-    owner: 'jueyunai',
-    navGroup: 'system',
-    href: '/dashboard/settings',
-    labelKey: 'settings',
-    allowedRoles: ['admin', 'operator', 'sales'],
-    availability: 'dependency-gated',
-    featureFlag: 'ADMIN_PORTAL_SETTINGS_ENABLED',
-    commands: [],
-    maintenance: { responsibleOwner: 'jueyunai', nextStepKey: 'settings' },
-  }),
+  SETTINGS_MODULE,
 ] as const satisfies readonly PortalModuleDefinition[])
 
 export const validatePortalModuleRegistry = (

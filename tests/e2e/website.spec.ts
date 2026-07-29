@@ -51,7 +51,11 @@ test('sitemap and robots expose locale-prefixed public routes', async ({ request
 
   const robots = await request.get('/robots.txt')
   expect(robots.ok()).toBe(true)
-  expect(await robots.text()).toContain('Sitemap:')
+  const robotsBody = await robots.text()
+  expect(robotsBody).toContain('Sitemap:')
+  for (const privatePath of ['/admin', '/api', '/dashboard']) {
+    expect(robotsBody).toContain(`Disallow: ${privatePath}`)
+  }
 })
 
 test('anonymous website APIs expose the complete published seed without demo copy', async ({

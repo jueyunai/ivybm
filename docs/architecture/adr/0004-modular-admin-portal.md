@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted，2026-07-29；同日补充迁移期共存、两批次交付、分层质量门禁和本地/CI 数据隔离边界。
+Accepted，2026-07-29；2026-07-30 补充明确 PR 任务边界、维护态术语和技术后台非一期范围。
 
 Supersedes [ADR-0002](0002-admin-ui-composition.md) 中“`/admin` 是一期唯一后台入口”的决策。
 ADR-0002 已落地的 Payload Nav、Operations Dashboard、账户菜单和安全约束继续保留。
@@ -117,13 +117,13 @@ flowchart LR
 
 共享的 Portal Core、`src/payload.config.ts`、migration、公共 contract 和跨模块 DTO 仍需另一名开发者 review。
 
-### 7. 渐进交付和回退
+### 7. 渐进交付、维护态和生产启用
 
 - Portal Core 使用总开关 `ADMIN_PORTAL_ENABLED`，模块使用独立 feature flag。
 - 第一阶段不因 Portal Shell 创建数据库 migration；关闭总开关时 `/dashboard` 显示维护状态，不重定向到内部入口。
 - 每个模块必须定义 `dependency-gated`、`blocked` 或局部错误态，不能因一个模块失败拖垮整个门户。
 - `/admin` 在迁移验收前维持现有内部维护能力和安全回归，不属于本计划的新增开发或 Portal 产品验收；它是并行维护入口，不是 Portal 页面失败时的导航 fallback。
-- Portal 功能采用一个 Portal V1 Draft PR 分 checkpoint 跑通，再以一个 Hardening & Production Enablement PR 完成全量回归、补偿、灰度和真实发布。owner 与强制 review 边界不因 PR 合并而改变。
+- Portal 功能采用一个 Portal V1 Draft PR 分 checkpoint 跑通细粒度任务 P0.1–P1.3，再以一个 Hardening & Production Enablement PR 完成 P1.4、P1.5 和 P2 的全量强化、补偿、灰度和真实发布。owner 与强制 review 边界不因 PR 合并而改变；执行编号以 Implementation Plan 为准。
 - 本地功能跑通期允许只运行定向验证；转 Ready、合并 main 和生产启用前必须补齐各自完整门禁。Auth/RBAC、数据隔离、migration、凭据、幂等、feature flag 和外部副作用 kill switch 不得延期。
 - local/CI 只允许连接当前 worktree 的独立 PostgreSQL/Compose 开发库和 `_test` / `_ci` 测试库；任何本地 app、migration、seed、E2E、worker 或脚本不得连接 production 或读取 production 数据、media/uploads、备份、真实 token 和 production URL。
 - PR-1 的本地/受控预览完成不构成 production 授权；PR-2 生产启用前必须对最新 head 重跑完整门禁，并追加受控外部平台、补偿、灰度、回滚和 `/admin` 共存 smoke。

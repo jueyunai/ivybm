@@ -60,6 +60,22 @@ git -C /Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1 branch 
 
 这里的 `GO` 只授权本地 Portal V1 开发，不授权连接 production、真实外部平台发布、push、创建 PR、合并或部署。开发 checkpoint 使用定向门禁；PR-1 转 Ready 前补齐完整回归；PR-2 生产启用前再次执行完整门禁和受控环境验证。
 
+### D0.1 当前开发状态（2026-07-30）
+
+- P0.1 已提交：`beb4d92 feat(admin-portal): define modular portal contract`；
+- P0.2 已提交：`98838c5 feat(admin-portal): add isolated design system`；
+- P0.3 已完成本地实现和定向验证：Payload session adapter、自研登录/登出、`/dashboard/login` 与受保护 `/dashboard` 均已通过单元、E2E、lint、typecheck 和 build；
+- P0.4 已完成：Shell、角色导航、桌面折叠、移动抽屉、账户菜单、语言/主题/减少动效偏好、Settings 安全摘要与模块状态均已落地，并通过定向单元/E2E、完整 unit、lint、typecheck、build 和 1440/390 视觉核验；
+- P0.5–P1.3 尚未开始或仍按依赖等待，不因同一 PR 批次而视为已交付。
+
+因此 readiness 结论维持 `GO`：可以进入 P0.5；但每个模块仍必须先满足本章节的
+precondition、owner/review 边界和定向门禁，不能把“允许开发”解释为“所有模块可无条件并行写入”。
+
+本 worktree 的本地应用端口是 `3001`。当前非 CI Playwright 默认端口仍为 `3000`，执行 Portal E2E 前必须
+先启动 `PORT=3001 pnpm dev`，再显式设置 `BASE_URL=http://localhost:3001`，避免复用其他服务。
+当前 Portal checkpoint 不启动 Compose worker；若后续需要容器化 worker，必须使用容器内 `db:5432`
+连接地址，不能把 host 侧 `127.0.0.1:55433` 注入 worker 容器。
+
 ## 0. Scope Reduction 结论
 
 Portal V1 的第一个开发 checkpoint 先交付“可用的基座”，不是空壳大后台：
@@ -81,7 +97,7 @@ migration。完成基座定向验证后，同一 Portal V1 Draft PR 再按 P0.6�
 | --- | --- | --- |
 | Payload Auth / session / roles | `src/collections/Users.ts`、`src/access/roles.ts` | 直接复用，不复制 |
 | Payload 控制平面 | `src/app/(payload)/**`、`src/collections/**` | 复用 Auth/RBAC/数据能力；不改造已有 Admin UI |
-| Dashboard 有界读模型 | `src/admin-portal/modules/overview/getPortalOverview.ts` | Portal 专用 DTO 与查询预算 |
+| Dashboard 有界读模型 | `src/admin/dashboard/getDashboardSummary.ts` | 复用有界查询与权限约束；另建不含 `/admin` href 的 Portal DTO |
 | CMS / Media | `src/collections/**` | Portal 提供任务入口、预览和范围内命令；未完成能力诚实受阻 |
 | Knowledge / AI | `src/modules/knowledge/**`、`src/modules/ai/**` | 协作者模块消费 |
 | Conversations | `src/modules/conversations/**`、operator APIs | 协作者模块消费 |
@@ -95,7 +111,7 @@ migration。完成基座定向验证后，同一 Portal V1 Draft PR 再按 P0.6�
 | P0.1 | Module contract + registry + feature flags/维护态契约 | jueyunai | 是 |
 | P0.2 | Design tokens + CSS isolation + UI primitives | jueyunai | 是 |
 | P0.3 | Payload session adapter + 自研登录/登出 | jueyunai | 是 |
-| P0.4 | Shell / navigation / settings Hub + 总开关回退 | jueyunai | 是 |
+| P0.4 | Shell / navigation / settings Hub + 总开关维护态 | jueyunai | 是 |
 | P0.5 | 角色首页与真实队列 | jueyunai | 基座验收 |
 | P0.6 | 官网内容 Hub | jueyunai | 否 |
 | P0.7 | 素材库 Workspace | jueyunai | 内容/知识共同输入 |
@@ -253,7 +269,7 @@ Run:
 pnpm lint
 pnpm typecheck
 pnpm test:unit
-pnpm test:e2e -- tests/e2e/admin-portal-css-isolation.spec.ts
+BASE_URL=http://localhost:3001 pnpm test:e2e -- tests/e2e/admin-portal-css-isolation.spec.ts
 pnpm build
 ```
 
@@ -285,7 +301,7 @@ git commit -m "feat(admin-portal): add isolated design system"
 - Create: `src/app/(dashboard)/dashboard/(protected)/layout.tsx`
 - Test: `tests/unit/admin-portal-return-to.test.ts`
 - Test: `tests/unit/admin-portal-auth.test.ts`
-- Test: `tests/unit/admin-portal-login.test.tsx`
+- Test: `tests/unit/admin-portal-login.test.ts`
 - Test: `tests/e2e/admin-portal-auth.spec.ts`
 
 **Step 1: Write failing auth tests**
@@ -327,7 +343,7 @@ Run:
 pnpm lint
 pnpm typecheck
 pnpm test:unit
-pnpm test:e2e -- tests/e2e/admin-portal-auth.spec.ts
+BASE_URL=http://localhost:3001 pnpm test:e2e -- tests/e2e/admin-portal-auth.spec.ts
 pnpm build
 ```
 
@@ -357,8 +373,8 @@ git commit -m "feat(admin-portal): reuse Payload authentication"
 - Create: `src/admin-portal/modules/settings/manifest.ts`
 - Create: `src/admin-portal/modules/settings/SettingsHub.tsx`
 - Create: `src/app/(dashboard)/dashboard/(protected)/settings/page.tsx`
-- Test: `tests/unit/admin-portal-navigation.test.tsx`
-- Test: `tests/unit/admin-portal-settings.test.tsx`
+- Test: `tests/unit/admin-portal-navigation.test.ts`
+- Test: `tests/unit/admin-portal-settings.test.ts`
 - Test: `tests/e2e/admin-portal-shell.spec.ts`
 
 **Step 1: Write failing shell tests**
@@ -378,7 +394,7 @@ git commit -m "feat(admin-portal): reuse Payload authentication"
 Run:
 
 ```bash
-pnpm vitest run --config ./vitest.config.mts tests/unit/admin-portal-navigation.test.tsx tests/unit/admin-portal-settings.test.tsx
+pnpm vitest run --config ./vitest.config.mts tests/unit/admin-portal-navigation.test.ts tests/unit/admin-portal-settings.test.ts
 ```
 
 Expected: FAIL.
@@ -402,7 +418,7 @@ Run:
 pnpm lint
 pnpm typecheck
 pnpm test:unit
-pnpm test:e2e -- tests/e2e/admin-portal-shell.spec.ts
+BASE_URL=http://localhost:3001 pnpm test:e2e -- tests/e2e/admin-portal-shell.spec.ts
 pnpm build
 ```
 
@@ -472,7 +488,7 @@ pnpm lint
 pnpm typecheck
 pnpm test:unit
 pnpm test:integration -- tests/integration/admin-portal-overview-access.test.ts
-pnpm test:e2e -- tests/e2e/admin-portal-overview.spec.ts
+BASE_URL=http://localhost:3001 pnpm test:e2e -- tests/e2e/admin-portal-overview.spec.ts
 pnpm build
 ```
 
@@ -530,7 +546,7 @@ pnpm lint
 pnpm typecheck
 pnpm test:unit
 pnpm test:integration -- tests/integration/admin-portal-content-access.test.ts
-pnpm test:e2e -- tests/e2e/admin-portal-content.spec.ts
+BASE_URL=http://localhost:3001 pnpm test:e2e -- tests/e2e/admin-portal-content.spec.ts
 pnpm build
 ```
 
@@ -589,7 +605,7 @@ pnpm lint
 pnpm typecheck
 pnpm test:unit
 pnpm test:integration -- tests/integration/media.test.ts tests/integration/admin-portal-media-access.test.ts
-pnpm test:e2e -- tests/e2e/admin-portal-media.spec.ts
+BASE_URL=http://localhost:3001 pnpm test:e2e -- tests/e2e/admin-portal-media.spec.ts
 pnpm build
 ```
 
@@ -907,7 +923,7 @@ pnpm db:seed
 pnpm db:seed
 pnpm test:integration
 pnpm db:test:persistence
-pnpm test:e2e
+BASE_URL=http://localhost:3001 pnpm test:e2e
 pnpm test:operations
 pnpm build
 git diff --check

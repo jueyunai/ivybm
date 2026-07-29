@@ -1,8 +1,8 @@
 # IVYBM 管理后台现代化 UI 重构与模块化架构规划
 
-版本：v2.3
+版本：v2.5
 
-日期：2026-07-29
+日期：2026-07-30
 
 状态：Accepted
 
@@ -66,7 +66,7 @@ flowchart TB
             REG["Module Registry"]
             SHELL["Shell / Navigation / Header"]
             UIC["UI Contract / States / i18n"]
-            FLAGS["Module Flags / Fallback"]
+            FLAGS["Module Flags / Maintenance"]
         end
 
         PAYLOAD["Payload 控制平面\nAuth / RBAC / Collections / Local API / Audit"]
@@ -98,6 +98,33 @@ flowchart TB
 
 Payload 已有 `/admin` 在迁移验收前只由受限维护人员按 runbook 使用，不进入上述产品分层，也不属于
 第一阶段 Portal 设计、开发或验收；迁移验收后再单独决定继续维护或下架。
+
+### 3.2 环境拓扑与边界
+
+```mermaid
+flowchart LR
+    subgraph LOCAL["本地 / CI（完全隔离）"]
+        LAPP["Portal worktree\nNext.js :3001"]
+        LDB[("PostgreSQL :55433\nivybm_portal_v1 / *_test / *_ci")]
+        LMEDIA["本地 seed / 测试 media"]
+        LAPP --> LDB
+        LAPP --> LMEDIA
+    end
+
+    subgraph PROD["production（本地不可达、不可消费）"]
+        PAPP["production app / worker"]
+        PDB[("production PostgreSQL")]
+        PMEDIA["production media / backups / tokens"]
+        PAPP --> PDB
+        PAPP --> PMEDIA
+    end
+
+    LOCAL -. "禁止数据库、media、备份、URL、token 或外部副作用连接" .-x PROD
+```
+
+本地与 production 不是“同库不同界面”，而是两个不共享可写资源的运行环境。开发验证只使用
+当前 worktree 的本地 seed/fixture；需要真实账号、真实发布或 production 数据迁移的能力统一留在 PR-2
+受控启用阶段。
 
 ## 4. Portal Core：真正的可插拔基座
 
@@ -289,7 +316,7 @@ flowchart TB
         ASSET["素材库\n图片 / PDF / 视频索引"]
         LEAD["线索与飞书入口\n客户档案 / 跟进摘要 / 同步状态"]
         STUDIO["AI 内容工作台\n生成 / 审核 / 发布任务准备"]
-        SYS["基础设置 / 用户入口 / 通用异常外壳"]
+        SYS["基础设置 / 本人账户 / 通用异常外壳"]
         DESIGN["整体 IA / Digital Lattice / 视觉验收"]
         SLOT["协作者模块挂载点\n由 Portal Core 提供公共出口"]
     end
@@ -360,6 +387,18 @@ flowchart TB
 | Future | Pipeline、Cmd+K、Copilot、复杂图表 | 提升效率 | 真实使用数据证明价值 | 按模块归属 |
 
 ## 9. 分阶段交付
+
+### 9.0 当前执行状态（2026-07-30）
+
+- D0 已通过：`ivybm-task-p0-p1-admin-portal-v1` / `feat/task-p0-p1-admin-portal-v1`、本地端口 `3001`、Compose project `ivybm-portal-v1`、PostgreSQL `127.0.0.1:55433` 和开发库 `ivybm_portal_v1` 已形成独立闭环；
+- P0.1 模块契约与 P0.2 设计系统已完成并通过定向测试、lint、typecheck 和 build；
+- P0.3 Payload session、自研登录/登出和受保护 `/dashboard` 已完成定向单元、E2E、lint、typecheck 和 build 验证；
+- P0.4 Shell、角色导航、账户菜单和基础设置 Hub 已完成定向单元/E2E、完整 unit、lint、typecheck、build 和 1440/390 视觉核验；
+- 允许继续本地开发，不授权连接 production、真实平台副作用、push、PR、合并或部署。
+
+正式交付只保留两个 PR 边界：PR-1 Portal V1 覆盖细粒度任务 P0.1–P1.3；PR-2 Hardening &
+Production Enablement 覆盖 P1.4、P1.5 和 P2。架构表中的粗粒度阶段编号只表达业务顺序，执行编号和
+验收命令以 Implementation Plan 为准。
 
 ### 阶段 A：基线和基座
 

@@ -8,7 +8,7 @@ describe('Admin language proxy', () => {
     const response = proxy(new NextRequest('https://ivybm.com/admin'))
 
     expect(response.cookies.get('payload-lng')?.value).toBe('zh')
-    expect(config.matcher).toEqual(['/admin/:path*'])
+    expect(config.matcher).toEqual(['/admin/:path*', '/dashboard/:path*'])
   })
 
   it('does not overwrite an employee language preference', () => {
@@ -18,6 +18,19 @@ describe('Admin language proxy', () => {
       }),
     )
 
+    expect(response.cookies.get('payload-lng')).toBeUndefined()
+  })
+
+  it('passes the exact Portal path to the protected layout without trusting caller headers', () => {
+    const response = proxy(
+      new NextRequest('https://ivybm.com/dashboard/media?type=pdf', {
+        headers: { 'x-ivybm-portal-path': '/dashboard/attacker' },
+      }),
+    )
+
+    expect(response.headers.get('x-middleware-request-x-ivybm-portal-path')).toBe(
+      '/dashboard/media?type=pdf',
+    )
     expect(response.cookies.get('payload-lng')).toBeUndefined()
   })
 })
