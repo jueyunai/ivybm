@@ -14,7 +14,7 @@
 
 **Visual baseline:** [Digital Lattice Pencil](../../designs/ivybm-admin-portal-digital-lattice.pen)
 
-**Execution rule:** 每个 Task 从最新 `origin/main` 建独立短分支/worktree；不得在本 docs worktree 实现代码。
+**Execution rule:** Task 是分阶段 commit / 验收检查点，不是 PR 边界。按本计划的 8 个 PR 批次从最新 `origin/main` 推进；当前设计与文档直接进入 PR-1 Portal Foundation，不单开 docs PR。
 
 **Review rule:** Portal Core、共享 contract、`src/payload.config.ts`、migration 和跨模块 DTO 必须由另一名开发者 review。
 
@@ -44,7 +44,7 @@
 | Publishing contract | `src/modules/publishing/contracts.ts` | 等正式结构后消费 |
 | Jobs / Leads / Platform readiness | 既有 Collections 与 services | 按 owner 和依赖接入 |
 
-## 2. Task / PR 顺序
+## 2. Task 顺序
 
 | Portal Task | 交付 | Owner | 是否阻塞后续 |
 | --- | --- | --- | --- |
@@ -63,6 +63,26 @@
 | P1.3 | 线索与飞书入口 | jueyunai | 等 Feishu 与 P0.9 读模型 |
 | P1.4 | Jobs 异常与人工补偿 | jueyunai + 模块 owner | 等补偿 contract；阻塞 P1.5 |
 | P1.5 | 受控真实对外发布启用 | xuemusi | P1.1 + P1.2 + P1.4 |
+
+### 2.1 最小必要 PR 拓扑
+
+| PR | 覆盖 Task | Owner | 必须独立的理由 |
+| --- | --- | --- | --- |
+| PR-1 Portal Foundation | 当前设计/ADR/计划 + P0.1–P0.5 + P0.8a | jueyunai；xuemusi review | 同一基座、公共 contract、同一回滚边界；文档不是独立 PR |
+| PR-2 Content & Media | P0.6–P0.7 | jueyunai | 自有内容模块，与 Core 公共契约 Review 边界不同 |
+| PR-3 Knowledge & Conversations | P0.8b–P0.9 | xuemusi；jueyunai review | 同一协作者 owner 和领域接入边界，按知识→会话分阶段 commit |
+| PR-4 AI Content Workbench | P1.1 结构 + 页面 + 命令 | jueyunai；xuemusi review | Generated/Review/Publish 共享结构必须跨人 Review；结构与 UI 同 PR 分阶段提交 |
+| PR-5 Platform Readiness | P1.2 | xuemusi；jueyunai review | 外部账号、授权和 adapter 独立条件，不与内容工作台耦合 |
+| PR-6 Leads & Feishu | P1.3 | jueyunai；共享 contract 变更由 xuemusi review | 独立 CRM/飞书交付与回滚边界 |
+| PR-7 Compensation Framework | P1.4 | jueyunai + 模块 owner；双方 review | 跨模块 compensation port 和 runbook 是共享运维边界 |
+| PR-8 Controlled Publishing & Acceptance | P1.5 + P2 | xuemusi；jueyunai 上线/集成验收 | 真实平台授权、kill switch、受控发布和最终回滚是独立发布边界 |
+
+PR-1 内使用现有 worktree 和提交历史继续开发，但在首次 feature push 前应把本地分支从
+`docs/admin-portal-pen-redesign` 重命名为 `feat/task-admin-portal-foundation`，并让 worktree 用途同步变为
+Portal Foundation。不得先创建 docs-only PR，再把同一基座代码放进第二个 PR。
+
+每个 Task 章节末尾的 `Commit` 只是 PR 内的可审阶段，不表示创建新 PR。只有上表 Owner、强制 Review、
+外部条件或独立回滚边界变化时才切换分支；P2 的测试与验收并入相关 PR，不单开“测试 PR”。
 
 ---
 

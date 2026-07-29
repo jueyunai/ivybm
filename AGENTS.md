@@ -41,7 +41,7 @@ bash scripts/install-git-hooks.sh
 
 ## 提交与 PR
 
-- 一个分支只处理一个实施计划 Task 或一个紧密相关的小修复，禁止混入无关任务。
+- 一个分支只处理一个实施计划 PR 批次或一个紧密相关的小修复；Task 是批次内的 commit / 验收检查点，不自动等于独立 PR，禁止混入批次外的无关任务。
 - 同一目标、同一实施计划、同一 Review 边界且可一起回滚 / 发布的紧密相关改动，默认使用一个 Draft PR 和分阶段 commit，保持 diff 可审；禁止仅为流程形式把方案、实现和验证记录机械拆成多个 PR。只有独立任务、不同负责人或强制 Review 边界、需要独立回滚 / 发布，或完整 diff 已明显超出可审规模时才拆分。
 - 提交前运行该 Task 规定的 lint、typecheck、test、build；不能运行时明确说明原因。
 - PR 标题和描述必须引用 Task 编号，并填写 `.github/pull_request_template.md`。

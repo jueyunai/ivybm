@@ -7,7 +7,7 @@
 采用主干开发（trunk-based），不使用长期个人分支——两人各开一条贯穿全程的分支、最后合并的方式，会把所有冲突推到最后一次性爆发，改用短分支高频合并可以把冲突拆小。
 
 - 只有一条长期分支：`main`。`main` 始终保持可构建、可部署状态，不直接 push。
-- 每个开发任务从 `main` 拉一条短分支，粒度对应实施计划里的一个 Task（预计 1-4 天），完成后立即开 PR 合并回 `main`，不跨多个 Task 累积改动。
+- 每个实施计划 PR 批次从 `main` 拉一条短分支；同一目标、Owner、Review 和回滚边界内的多个 Task 以分阶段 commit 累积在同一个 Draft PR，批次完成后合并回 `main`。Task 不自动等于独立 PR。
 - 分支命名：`feat/task-<编号>-<简述>`，例如 `feat/task-8-knowledge-base`；修复用 `fix/...`。
 - 开工前先 `git pull origin main`，确保基于最新代码开分支。
 
@@ -20,7 +20,7 @@ worktree 是本地检出环境，不是新的分支层级。远程有多少协�
 | 目录 | 生命周期 | Git 状态 | 用途 |
 | --- | --- | --- | --- |
 | `ivybm` | 永久 | `main` | 同步可信基线、创建/审计 worktree、必要的 post-merge 验证；禁止日常开发 |
-| `ivybm-task<编号>-<简述>` | Task / PR 周期 | `feat/task-<编号>-<简述>` | Task 功能开发 |
+| `ivybm-task<编号>-<简述>` | PR 批次周期 | `feat/task-<编号>-<简述>` | 一个计划批次内的分阶段 Task 开发 |
 | `ivybm-fix-<简述>` / `ivybm-docs-<简述>` | PR 周期 | `fix/<简述>` / `docs/<简述>` | 独立修复或文档改动 |
 | `ivybm-review-pr-<编号>` | 一次 PR 审查 | 默认 detached HEAD | 审查协作者 PR、运行测试、验证合并风险 |
 | `ivybm-poc-<简述>` | 最长一个决策周期 | `poc/<简述>` | 有明确问题和退出条件的实验，不直接合入 `main` |
@@ -43,7 +43,7 @@ bash scripts/install-git-hooks.sh
 
 创建后在新 worktree 执行 `pnpm install --frozen-lockfile`，再配置该工作区自己的本地环境。首次 push 使用 `git push -u origin HEAD`，并确认 `git branch -vv` 显示的 upstream 与本地分支同名。禁止因为远程存在近似名称就复用错误 upstream。
 
-Task 被依赖阻塞时可以保留第二个开发 worktree，但不能在一个分支中混入另一个 Task。hotfix 也从最新 `origin/main` 创建 `fix/<简述>`，不设置长期 hotfix 工作区。
+PR 批次被依赖阻塞时可以保留第二个开发 worktree，但不能在一个分支中混入批次外的无关 Task。hotfix 也从最新 `origin/main` 创建 `fix/<简述>`，不设置长期 hotfix 工作区。
 
 独立修复和文档改动沿用同一创建流程，只把目录 / 分支组合替换为 `ivybm-fix-<简述>` + `fix/<简述>` 或 `ivybm-docs-<简述>` + `docs/<简述>`。
 
@@ -115,7 +115,7 @@ git worktree prune --dry-run
 - PR 分为“负责人自检合并”和“另一名开发者 review”两条路径。项目初始化、CI、工程配置、文档，以及负责人自己板块内的独立改动，在 CI 通过、PR 清单完成、作者逐项检查完整 diff，且不满足下述强制 review 条件时，可以由负责人自行合并。作者不能在 GitHub 上批准自己的 PR；这里的“自检合并”是完成自检并在 PR 中记录依据后直接合并，不伪装成独立审批。
 - 出现以下任一情况时，必须等另一名开发者 review 后才能合并：修改 `src/payload.config.ts`、migration，或共享 Collection（`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`ContentReviews`、`PublishJobs`、`PublishLogs`）；修改供另一人任务消费的公共接口、字段或契约；跨越双方板块边界，或实质影响另一人的在途任务。拿不准是否属于共享边界时，默认走另一人 review。
 - 负责人自检合并时，在 PR 描述或评论中明确记录“不涉及共享结构、跨人契约或协作者范围”，并保留对应测试与 CI 结果。CODEOWNERS 只为已列出的共享文件自动请求关注，不再为普通自有范围 PR 默认请求双方 review；公共契约、跨板块边界和对在途任务的影响无法完全依赖路径识别，PR 作者必须人工判断并请求另一名开发者 review。
-- PR 描述引用对应 Task 编号，方便对照实施计划里的验证步骤。
+- PR 描述引用该批次覆盖的全部 Task 编号，方便对照实施计划里的验证步骤。
 
 ### PR 粒度、Draft / Ready 与自动 CI
 
