@@ -100,6 +100,7 @@ describe('CI change classifier', () => {
     'pnpm-lock.yaml',
     'Dockerfile',
     'next.config.ts',
+    'tsconfig.json',
   ])('publishes production images for runtime input %s', (path) => {
     expect(classifyChangedFiles([path]).production_image).toBe(true)
   })

@@ -187,6 +187,7 @@ git commit -m "ci: split draft and ready quality gates"
 - Delete: `.github/workflows/build-image.yml`
 - Modify: `scripts/ci/classify-changes.mjs`
 - Modify: `tests/unit/ci-change-classifier.test.ts`
+- Modify: `tests/operations/image-publish-workflow.test.ts`
 
 **Step 1: 写 production image 路径测试**
 

@@ -173,7 +173,7 @@ export function classifyChangedFiles(paths) {
       result.code = true
       result.production_image = true
       recognized = true
-    } else if (path === 'next.config.ts') {
+    } else if (path === 'next.config.ts' || path === 'tsconfig.json') {
       result.code = true
       result.ui_e2e = true
       result.production_image = true
