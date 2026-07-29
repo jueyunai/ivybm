@@ -27,6 +27,8 @@
 
 ## 结论
 
-`payload-theme@0.7.0` 不作为 IVYBM 生产依赖，也不作为后台架构基础。保留其少量视觉灵感，按 [`ADR-0002`](../architecture/adr/0002-admin-ui-composition.md) 实施 Payload 原生 Admin + 自有 Custom Views。
+`payload-theme@0.7.0` 不作为 IVYBM 生产依赖，也不作为后台架构基础。保留其少量视觉灵感；
+当前 `/dashboard` 自研 Portal 与 `/admin` 技术后台边界按
+[`ADR-0004`](../architecture/adr/0004-modular-admin-portal.md) 实施。Portal 不使用该插件。
 
 浏览器强制刷新时的 hydration 报错来自 Immersive Translate 向 `<html>` 注入属性；这与 Payload 或主题服务端渲染无关，应对 localhost 禁用该扩展，而不是通过应用代码规避。

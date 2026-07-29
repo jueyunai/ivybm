@@ -1,8 +1,8 @@
 # IVYBM CMS 管理后台 UI 重设计——设计师背景简报
 
-版本：v1.1
+版本：v2.0
 
-日期：2026-07-28
+日期：2026-07-29
 
 用途：产品设计 / UI 设计 / 交互设计背景输入
 项目阶段：一期开发中，后台 UI 进入重新设计阶段
@@ -17,11 +17,12 @@ IVYBM 是一套服务建材出海业务的小团队 AI 获客运营系统。它�
 
 当前底层使用 Payload CMS 管理数据、身份、权限、草稿、版本、多语言和文件，功能可靠，但原生后台仍偏“Collection 列表 + 表单”的技术型 CMS。运营人员在处理会话、线索、审核、发布和异常时，需要频繁跳转、理解内部数据表，并且缺少跨业务对象的上下文。
 
-本轮设计目标是在现有 Payload `/admin` runtime 内建立现代、任务导向的运营体验，而不是另起一套后台：
+本轮设计目标是建立“Payload 控制平面 + 自研模块化运营门户”的双轨体验：
 
-- `/admin` 是一期唯一后台入口，继续承载认证、权限、Collection CRUD，并通过自有 Nav、Operations Dashboard 和 Custom Views 服务 admin、operator、sales；
-- 独立 `/dashboard`、shadcn/ui 与 Tailwind CSS 只作为 Future proposal，不是当前实现契约；
-- 高频流程优先设计为 `/admin` 内的 Custom View，需要时可进入受权限控制的 Collection 页面；
+- `/dashboard` 是 Admin、Operator、Sales 的日常运营入口，按照本设计稿实现完整 Shell 和模块化工作区；
+- `/admin` 保留 Payload 技术后台，继续承载复杂 Collection CRUD、用户、凭据、模型路由和故障兜底；
+- 两个入口共享同一 Payload Auth、RBAC、数据模型、领域服务和 PostgreSQL，不是两套后台系统；
+- Portal Core 先统一登录、首页、导航、状态、错误、响应式和 UI contract，业务模块随后按 owner 挂载；
 - 所有业务写操作仍必须经过现有 access control 和领域服务，UI 不直接改权威状态、审计字段或平台凭据。
 
 设计师应把它理解为“面向 1–5 人出海团队的轻量 AI Revenue Operations 工作台”，而不是“大而全的企业 SaaS”或“普通文章发布 CMS”。
@@ -115,14 +116,16 @@ flowchart LR
 
 ## 4. 目标产品结构
 
-当前主线在 Payload `/admin` 下使用五个稳定导航分组：Workspace、Content、Intelligence、Operations、System。设计师可以优化中文 / 英文命名和分组内交互，但一期稿必须以这套已实现骨架为 P0。下列 P0 树按当前代码归属表达；只有在权限允许时，对应项目才会显示。
+运营门户 `/dashboard` 沿用五个稳定导航分组：Workspace、Content、Intelligence、Operations、System。
+Portal Core 通过静态 module registry 注册菜单、owner、角色、成熟度和 fallback；只有在服务端权限允许时，
+对应模块才显示。Payload `/admin` 保留自己的技术导航，不与 Portal 菜单混为同一实现。
 
 ```text
-Payload /admin
+Operations Portal /dashboard
 ├── Workspace
 │   ├── Operations Dashboard
-│   ├── Conversations
-│   └── Leads
+│   ├── Conversations（xuemusi）
+│   └── Leads（jueyunai）
 ├── Content
 │   ├── 页面
 │   ├── 产品 / 产品分类
@@ -131,25 +134,26 @@ Payload /admin
 │   ├── 下载资料
 │   └── 媒体素材
 ├── Intelligence
-│   ├── 知识文档 / 知识切片
+│   ├── 知识文档 / 知识切片（xuemusi）
 │   ├── 提示词模板
-│   └── AI Provider / Model / Route（按角色与权限）
+│   └── AI Provider / Model / Route（xuemusi 负责 AI 调试/读模型；jueyunai 只提供设置入口；敏感写入回退 /admin）
 ├── Operations
-│   ├── Handoffs / Messages / Visitor Sessions
-│   ├── Lead Sources / Platform Accounts
+│   ├── 统一会话 / 人工接管（xuemusi）
+│   ├── Lead Sources（jueyunai）/ Platform Accounts（xuemusi）
 │   └── Jobs / Audit Logs（按角色与权限）
 └── System（admin）
     ├── 用户与角色
     └── Site Settings 等 Globals
 ```
 
-P1 / Future Custom Views 可以把上述对象重新组织为“统一 Inbox、我的跟进、内容审核、发布排期、平台 readiness、飞书同步”等任务流；它们不改变底层分组、权限和领域服务。其中内容审核 / 发布依赖 Task 12 正式结构，飞书同步依赖 Task 10 / 11，完整 Pipeline 与独立 `/dashboard` 均为 Future。
+P1 模块包括内容审核、发布排期、平台 readiness、飞书同步和异常补偿。它们不改变底层权限和领域服务；
+内容审核/发布依赖正式结构，飞书同步依赖 Task 10/11。完整 Pipeline、Cmd+K 和 AI Copilot 仍是 Future。
 
 ### 导航原则
 
 - 以任务和业务对象命名，不直接暴露 `Jobs`、`Handoffs`、`VisitorSessions` 等内部表名；
 - 默认首页随角色变化：Admin 看全局，Operator 看运营队列，Sales 看“我的会话与线索”；
-- `/admin` 是唯一后台入口；自有业务视图与 Collection fallback 必须共享同一权限、导航和登录态；
+- `/dashboard` 是日常运营入口，`/admin` 是技术 fallback；两者共享同一权限和登录态；
 - 全局搜索 / `Cmd + K` 属于 Future 交互，可优先探索“找客户、找会话、找内容、跳转功能、创建常用对象”，危险动作不建议直接在命令面板执行。
 
 ---
@@ -491,7 +495,7 @@ ai_active
 - 完整 AI 内容工作台、内容审核和发布排期；
 - `PublishJobs` / `PublishLogs` 的正式后台流程；
 - 社媒 AI 自动出站与 `delivery_unknown` 人工补偿界面；
-- 独立 `/dashboard` 工作台（Future proposal；当前不作为实施目标）。
+- `/dashboard` Portal Core、模块 registry、自研登录和业务模块页面尚未实现；它们现在是当前实施目标。
 
 设计可以覆盖未来状态，但需在 Figma 标注“P1 / Future / dependency-gated”，便于研发分阶段实现。
 
@@ -518,16 +522,16 @@ ai_active
 
 ## 12. 建议优先设计的页面与顺序
 
-### P0：先增强现有 `/admin` 骨架和核心任务
+### P0：先建立 Portal Core，再按 owner 挂载模块
 
-1. 现有 Payload 登录页与 Admin Shell；
-2. 基于真实四类队列的 Admin / Operator / Sales 角色首页；
-3. Workspace / Content / Intelligence / Operations / System 导航、Header 和账户入口；
-4. 会话中心三栏 Inbox；
-5. 线索列表与详情；Master–Detail / Pipeline 在真实状态和查询就绪前标为 Future；
-6. 产品列表 / 编辑 / 多语言 / 图库 / 发布状态；
-7. 媒体素材库网格 / 表格 / 预览；
-8. 知识文档列表、审核与索引状态。
+1. `/dashboard` 自研登录、Payload session 复用和服务端角色守卫；
+2. Portal Shell、静态模块 registry、五组导航、Header、账户入口和通用状态；
+3. 基于真实四类队列的 Admin / Operator / Sales 角色首页；
+4. 官网内容 Hub、产品/案例/文章入口与复杂编辑的 `/admin` fallback；
+5. 媒体素材库网格 / 预览；
+6. 知识文档、审核/索引和 AI 调试模块（xuemusi）；
+7. 会话中心三栏 Inbox 与 AI 客服模块（xuemusi）；
+8. 线索列表与详情；Pipeline 在真实状态和查询就绪前标为 Future。
 
 ### P1：补齐内容获客和平台状态
 
@@ -538,7 +542,8 @@ ai_active
 13. 飞书同步状态；
 14. 系统异常 / Job 人工补偿。
 
-全局 `Cmd + K`、独立 `/dashboard`、完整 Pipeline 和 AI Copilot 属于 Future，不进入当前 P0 骨架承诺。
+全局 `Cmd + K`、完整 Pipeline、复杂 Data Grid、AI Copilot 和装饰性图表属于 Future，
+不进入当前 P0 基座承诺。
 
 ### 设计交付建议
 
@@ -556,7 +561,7 @@ ai_active
 设计方案应能回答以下问题：
 
 1. Admin、Operator、Sales 登录后，10 秒内是否知道自己最该处理什么？
-2. Operator 能否在 `/admin` 的业务化导航和 Custom Views 内完成大多数日常工作，并只在必要时进入 Collection fallback？
+2. Operator 能否在 `/dashboard` 完成大多数日常工作，并只在必要时进入 `/admin` Collection fallback？
 3. Sales 是否只看到自己的会话和线索，并能在同一上下文中完成回复 / 解决？
 4. 用户能否清楚区分“待审核、已批准、已受理、已发布、失败、结果未知”？
 5. 平台被审核、账号、token 或地区限制时，是否能看懂下一步责任人和动作？
@@ -612,11 +617,13 @@ ai_active
 
 本简报综合了当前需求基线、技术架构、实施计划、后台改造方案、现有代码和自动化测试。设计阶段可以重新组织页面和交互，但以下约束必须保留：
 
-- Payload CMS / PostgreSQL 继续作为数据、身份、权限和唯一 Admin runtime；
-- `/admin` Custom Views 不得绕过服务端 access control；独立 `/dashboard` 仅是 Future proposal；
+- Payload CMS / PostgreSQL 继续作为数据、身份、权限和唯一控制平面；
+- `/dashboard` 是模块化运营门户，`/admin` 是技术后台和 fallback，两者共享 Payload session；
+- Portal 页面和命令不得绕过服务端 access control；
 - 会话接管必须经过 ConversationService；
 - 发布必须经过 PublishingService，且未审核内容不得发布；
 - 平台 token、模型 key 只写不可读；
 - 当前未实现的 Collection / migration 不得为 UI 临时造替代结构；
+- Portal Core 由 jueyunai 负责；知识/AI、内容生产与发布、AI 客服/会话、海外社媒模块由 xuemusi 负责；
 - 第三方平台状态必须诚实区分可用、受控测试、需要动作和受阻；
 - 设计交付应明确 P0 / P1 / Future，支持研发渐进落地。

@@ -13,7 +13,7 @@ Claude Code 在本仓库工作时，必须以 [`AGENTS.md`](AGENTS.md) 为主规
 - AI 默认创建 Draft PR，push 前先做本地定向验证并合并同轮小修改；不手工选择 CI 档次，不使用 `[skip ci]`，Ready 后连续修改先转回 Draft。
 - 审核只接受当前 head SHA 的成功 `CI policy`；Draft Fast CI、旧 head、skipped、cancelled、pending 或 failure 都不能授权合并。workflow、`scripts/ci/**`、policy 和镜像触发边界必须由另一名开发者独立 review。
 - production image 成功不等于 production 部署授权，部署仍需 jueyunai 人工审批。
-- 执行任务时以 `docs/plans/2026-07-16-一期开发实施计划.md` 为准，完成阶段后更新 `docs/开发进度.md`。
+- 执行任务时以 `docs/plans/2026-07-16-一期开发实施计划.md` 为总计划；管理后台 Portal 事项以 `docs/architecture/adr/0004-modular-admin-portal.md` 和 `docs/plans/2026-07-29-modular-admin-portal-implementation.md` 为准。用户原图红圈的知识/AI 调试、AI 内容、海外发布、AI 客服、统一会话和社媒账号/连接器归 xuemusi，其他 Portal Core 与模块归 jueyunai。完成阶段后更新 `docs/开发进度.md`。
 - 不提交任何密钥、客户商务文件、数据库、上传文件或备份。
 
 若本文件与 `AGENTS.md` 有差异，以约束更严格者为准。

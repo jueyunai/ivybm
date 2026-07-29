@@ -144,10 +144,10 @@ Payload / PostgreSQL 的 migration 按时间线性生成，两人各自本地生
 
 一期平台范围冻结如下：会话仅为 Facebook Messenger、Instagram DM（企业 / 商业账号）和 TikTok 私信（商业账号）；图文发布仅为 Facebook、Instagram（企业账号）和 LinkedIn（账号类型不限制，但 API 发布权限仍需验证）。WhatsApp 不纳入一期系统 connector、Webhook、自动回复或发布能力，二期再评估网页插件等替代接入；官网静态外链不等于系统接入。
 
-| 任务    | jueyunai                                                                                                                          | xuemusi                                                                                                                 |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Task 9  | 官网 `ChatWidget`、运营会话/接管界面、交互状态、前端 E2E；使用 `ChatService` mock                                                 | 会话/AI 服务、接管状态机/幂等/权限/审计/领域事件、`Conversations` / `Messages` / `Handoffs` 集成；提供 contract fixture |
-| Task 12 | 内容工作台页面、内容生成/审核 UI、内部状态流、`PublishJobs` / `PublishLogs` 共享结构和发布任务创建；使用 `PublishingService` mock | 第三方平台 capability / publish / status API、平台 adapter、发布结果回调；不把平台 SDK / token 暴露给前端               |
+| 任务    | jueyunai                                                                                  | xuemusi                                                                                                                                                  |
+| ------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task 9  | 官网 `ChatWidget`、Portal Core 公共交互契约、整体 IA/视觉/集成验收；使用 `ChatService` mock | 统一会话/接管界面、会话/AI 服务、接管状态机/幂等/权限/审计/领域事件、`Conversations` / `Messages` / `Handoffs` 集成和 contract fixture |
+| Task 12 | Portal Core、素材/CMS 读模型、整体 IA/视觉/集成验收                         | AI 内容生产/审核/发布页面、状态机、`GeneratedContents` / `ContentReviews` / `PublishJobs` / `PublishLogs`、平台 capability/adapter/结果回调 |
 
 跨边界开发必须先提交并 review TypeScript port/interface、请求响应 schema、错误码、状态枚举和 mock 行为。消费者先用 fake service 开发，服务提供者先用 fake repository / 官方 fixture 实现；真实数据库和平台 adapter 在对应 Collection、migration、Payload 类型和 production 或等价受控真实环境条件满足后接入。
 
@@ -155,7 +155,7 @@ Payload / PostgreSQL 的 migration 按时间线性生成，两人各自本地生
 
 依赖分三个阶段处理：
 
-1. **接口 / 纯逻辑阶段**：允许使用 TypeScript port/interface、fake repository、mock 和官方结构 fixture 并行开发。Task 9 前端先使用 `ChatService` mock，Task 12 前端先使用 `PublishingService` mock；Task 13 在这一阶段可实现连接器接口、Webhook 验签、时间戳、事件幂等、payload 归一化，以及 Facebook Messenger / Instagram DM / TikTok 私信与 Facebook / Instagram / LinkedIn 图文发布的 mock。社媒会话可额外冻结 server-only outbound port、fake 与失败注入契约，但不得发网络请求、写入“已发送”状态或创建临时 `Leads`、`Conversations`、`Messages`、`PublishJobs` 或 `PublishLogs`，不生成替代 migration。
+1. **接口 / 纯逻辑阶段**：允许使用 TypeScript port/interface、fake repository、mock 和官方结构 fixture 并行开发。jueyunai 的官网 ChatWidget 先使用 `ChatService` mock，xuemusi 的 Task 9 统一会话和 Task 12 内容发布模块分别使用对应 fake service/repository；Task 13 在这一阶段可实现连接器接口、Webhook 验签、时间戳、事件幂等、payload 归一化，以及 Facebook Messenger / Instagram DM / TikTok 私信与 Facebook / Instagram / LinkedIn 图文发布的 mock。社媒会话可额外冻结 server-only outbound port、fake 与失败注入契约，但不得发网络请求、写入“已发送”状态或创建临时 `Leads`、`Conversations`、`Messages`、`PublishJobs` 或 `PublishLogs`，不生成替代 migration。
 2. **数据库集成阶段**：必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`，再从最新 `origin/main` 更新分支并实现 adapter。Task 9 服务读写 Task 7 的 `Leads`；Task 13 会话侧读写 Task 9 的 `Conversations` / `Messages`，发布侧读写 Task 12 的 `PublishJobs` / `PublishLogs`。社媒自动回复由 `ConversationService` 创建稳定内部回复身份和 delivery intent；在入队和 worker 发送前由权威会话状态二次允许。delivery intent / outbox 持有 `queued`、`retrying`、`blocked`、`failed`、`dead`、`delivery_unknown` 等业务状态，adapter 结果只能回到权威服务归并。它和真实 Webhook 异步处理、发布执行、失败重试、dead job 和人工补偿都必须等待 Task 10 的 `Jobs` Collection、worker、migration、Payload 注册和生成类型合并，且需要已合并的 `PlatformAccounts` / 凭据结构。纯连接器和 fixture 测试不依赖 Task 10。
 3. **外部平台联调阶段**：需要甲方账号资产、平台授权和 production 的受控发布窗口。条件满足时实测 Facebook Messenger / Instagram DM / TikTok 私信 Webhook、入站消息和 Facebook / Instagram / LinkedIn 图文测试发布；条件缺失时以 fixture 契约测试、模拟记录、配置说明和阻塞证据按一期 P1 口径验收。WhatsApp 与其他未列平台为二期，不进入一期状态矩阵。fixture / mock 通过只代表接口契约完成，不得据此把平台标记为 `available`。
 
@@ -169,9 +169,10 @@ CI/CD 与发布回滚流程见架构文档 [16.8 节](docs/architecture/一期�
 | --------------- | ----------------------------------------- |
 | 官网与 CMS      | jueyunai                                  |
 | SEO / GEO 基础  | jueyunai                                  |
-| AI 客服与知识库 | xuemusi（服务）/ jueyunai（官网 UI）      |
-| 社媒会话与发布  | xuemusi（平台服务）/ jueyunai（发布页面） |
+| AI 客服与知识库 | xuemusi；jueyunai 只负责官网 ChatWidget 与基座 |
+| 社媒会话与发布  | xuemusi                                    |
 | 飞书 CRM        | jueyunai                                  |
-| 内容工作台      | jueyunai                                  |
+| 内容工作台      | xuemusi；jueyunai 负责 IA/视觉/集成验收       |
+| Portal Core/素材/设置 | jueyunai                                  |
 
 "方案梳理与竞品调研"和"第一批部署上线、培训与试运营修复"不属于以上 6 个板块，统一由 jueyunai 收尾；上线验收需两人共同确认。

@@ -1,5 +1,9 @@
 # Worktree 与分支收敛实施计划
 
+> **历史说明，2026-07-29：** 本计划已经完成，其关于“独立 `/dashboard` 仅为 Future”的
+> 收敛结论已被 [ADR-0004](../architecture/adr/0004-modular-admin-portal.md) 取代。
+> Worktree、恢复包和安全边界记录继续有效。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 在不丢失未提交成果、不改变公开官网 UI、不触碰正式客户素材的前提下，把本地仓库收敛为一个干净 `main` 主工作区和至多一个有效开发 worktree，并删除已合并或已被替代的本地 / 远端分支。
