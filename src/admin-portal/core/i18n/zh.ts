@@ -1,0 +1,47 @@
+import type { PortalMessages } from './types'
+
+export const PORTAL_ZH = {
+  modules: {
+    overview: '运营首页',
+    conversations: '统一会话',
+    leads: '线索管理',
+    'website-content': '官网内容',
+    media: '素材库',
+    'content-studio': 'AI 内容工作台',
+    knowledge: '知识库与 AI 调试',
+    platforms: '平台状态',
+    operations: '异常与补偿',
+    settings: '基础设置',
+  },
+  navGroups: {
+    workspace: '工作台',
+    content: '内容',
+    intelligence: '智能',
+    operations: '运营',
+    system: '系统',
+  },
+  states: {
+    loading: '加载中',
+    empty: '暂无数据',
+    error: '读取失败',
+    forbidden: '无权访问',
+    blocked: '当前受阻',
+    'dependency-gated': '依赖尚未就绪',
+    'portal-disabled': '运营门户维护中',
+    'module-disabled': '模块尚未启用',
+    available: '可用',
+    'admin-only': '仅管理员可用',
+  },
+  nextSteps: {
+    overview: '由 jueyunai 完成首页读模型与角色验收。',
+    conversations: '由 xuemusi 在会话契约就绪后接入统一会话模块。',
+    leads: '由 jueyunai 在线索与会话读模型就绪后接入。',
+    'website-content': '由 jueyunai 接入现有 CMS 的有界读模型和安全命令。',
+    media: '由 jueyunai 接入现有 Media Collection 和安全预览。',
+    'content-studio': '由 jueyunai 在正式审核与发布结构完成后启用。',
+    knowledge: '由 xuemusi 按 Portal 公共契约接入知识与 AI 调试。',
+    platforms: '由 xuemusi 在账号 readiness 契约就绪后启用。',
+    operations: '由 jueyunai 与各模块 owner 在类型化补偿契约完成后启用。',
+    settings: '由 jueyunai 只接入经服务端过滤的基础设置。',
+  },
+} as const satisfies PortalMessages

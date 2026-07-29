@@ -1,0 +1,47 @@
+import type { PortalMessages } from './types'
+
+export const PORTAL_EN = {
+  modules: {
+    overview: 'Operations overview',
+    conversations: 'Conversations',
+    leads: 'Leads',
+    'website-content': 'Website content',
+    media: 'Media library',
+    'content-studio': 'AI content studio',
+    knowledge: 'Knowledge and AI testing',
+    platforms: 'Platform readiness',
+    operations: 'Exceptions and recovery',
+    settings: 'Settings',
+  },
+  navGroups: {
+    workspace: 'Workspace',
+    content: 'Content',
+    intelligence: 'Intelligence',
+    operations: 'Operations',
+    system: 'System',
+  },
+  states: {
+    loading: 'Loading',
+    empty: 'No data yet',
+    error: 'Unable to load data',
+    forbidden: 'Access denied',
+    blocked: 'Blocked',
+    'dependency-gated': 'Waiting for dependencies',
+    'portal-disabled': 'Portal under maintenance',
+    'module-disabled': 'Module not enabled',
+    available: 'Available',
+    'admin-only': 'Admin only',
+  },
+  nextSteps: {
+    overview: 'jueyunai will complete the role-safe overview read model.',
+    conversations: 'xuemusi will integrate conversations after its contract is ready.',
+    leads: 'jueyunai will integrate leads after the conversation read model is ready.',
+    'website-content': 'jueyunai will map the existing CMS through bounded read models.',
+    media: 'jueyunai will integrate the existing Media collection and safe previews.',
+    'content-studio': 'jueyunai will enable this after review and publishing structures exist.',
+    knowledge: 'xuemusi will integrate knowledge and AI testing through the Portal contract.',
+    platforms: 'xuemusi will enable this after account readiness contracts are complete.',
+    operations: 'jueyunai and module owners will enable typed recovery actions together.',
+    settings: 'jueyunai will expose only server-filtered baseline settings.',
+  },
+} as const satisfies PortalMessages

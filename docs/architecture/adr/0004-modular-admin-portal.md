@@ -57,7 +57,7 @@ export type PortalModuleManifest = {
   labelKey: string
   allowedRoles: Array<'admin' | 'operator' | 'sales'>
   availability: 'available' | 'dependency-gated' | 'blocked' | 'admin-only'
-  featureFlag?: string
+  featureFlag: string
 }
 ```
 

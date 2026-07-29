@@ -133,7 +133,7 @@ export interface PortalModuleManifest {
   labelKey: string
   allowedRoles: PortalRole[]
   availability: PortalAvailability
-  featureFlag?: string
+  featureFlag: string
 }
 ```
 
