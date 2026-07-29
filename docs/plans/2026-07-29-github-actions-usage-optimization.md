@@ -79,7 +79,10 @@ git commit -m "test(ci): define change classification policy"
 **Files:**
 
 - Modify: `.github/workflows/ci.yml`
+- Create: `scripts/ci/evaluate-policy.mjs`
 - Modify: `tests/unit/ci-change-classifier.test.ts`
+- Create: `tests/unit/ci-policy.test.ts`
+- Create: `tests/operations/ci-workflow.test.ts`
 
 **Step 1: 扩展 pull_request 事件**
 
@@ -106,15 +109,15 @@ push:
 
 Expected: docs-only 也只消耗最小 runner 启动时间。
 
-**Step 3: 新增 docs-check job**
+**Step 3: 在 changes job 完成轻量仓库检查**
 
-当 `docs_only == 'true'` 时运行：
+为减少 docs-only 固定 runner 启动次数，`changes` job 在分类后直接运行：
 
 ```bash
 git diff --check <base> <head>
 ```
 
-同时确认仓库没有新提交 `.env`、数据库、uploads 或备份路径。不得因为 docs-only 自动认定可负责人自检；Review 路径仍由变更内容决定。
+同时确认仓库没有新提交 `.env`、数据库、uploads 或备份路径。docs-only 不再单独启动 `docs-check` runner；不得因为 docs-only 自动认定可负责人自检，Review 路径仍由变更内容决定。
 
 **Step 4: 新增 fast job**
 
@@ -149,7 +152,7 @@ Ready 的未知路径必须跑完整现有门禁。
 
 **Step 6: 新增 CI policy 汇总**
 
-`CI policy` 使用 `if: always()` 和 `needs` 结果验证：
+`CI policy` 使用 `if: always()` 和 `needs` 结果验证；实际判定提取到无依赖纯函数 `evaluateCiPolicy()` 并以表驱动单元测试锁定：
 
 - 应运行 job 必须为 `success`；
 - 合法不适用 job 可为 `skipped`；

@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   push:
     branches:
       - main
@@ -11,39 +12,153 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  quality:
-    name: Quality gate
+  changes:
+    name: Classify and validate changes
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    services:
-      db:
-        image: pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
-        env:
-          POSTGRES_DB: ivybm_ci
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d ivybm_ci"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ivybm_ci
-      PAYLOAD_SECRET: ci-build-only-secret-at-least-32-characters
-      NEXT_PUBLIC_SERVER_URL: http://localhost:3000
-      APP_VERSION: ci
-      E2E_ADMIN_EMAIL: admin@example.invalid
-      E2E_ADMIN_PASSWORD: ci-demo-admin-password
-      SEED_ADMIN_EMAIL: admin@example.invalid
-      SEED_ADMIN_PASSWORD: ci-demo-admin-password
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.code || steps.fallback.outputs.code }}
+      database: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.database || steps.fallback.outputs.database }}
+      diff_range: ${{ steps.diff.outputs.diff_range }}
+      docs_only: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.docs_only || steps.fallback.outputs.docs_only }}
+      full_fallback: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.full_fallback || steps.fallback.outputs.full_fallback }}
+      head_sha: ${{ steps.diff.outputs.head_sha }}
+      operations: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.operations || steps.fallback.outputs.operations }}
+      production_image: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.production_image || steps.fallback.outputs.production_image }}
+      ui_e2e: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.ui_e2e || steps.fallback.outputs.ui_e2e }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - name: Checkout repository history
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve comparison and changed paths
+        id: diff
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          changed_files="$RUNNER_TEMP/changed-files.zlist"
+          : > "$changed_files"
+
+          fail_closed() {
+            fallback_head="$PUSH_HEAD_SHA"
+            if [[ "$EVENT_NAME" == 'pull_request' && "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              fallback_head="$PR_HEAD_SHA"
+            fi
+            printf '__ci_diff_unavailable__\0' > "$changed_files"
+            echo 'diff_range=' >> "$GITHUB_OUTPUT"
+            echo "head_sha=$fallback_head" >> "$GITHUB_OUTPUT"
+          }
+
+          if [[ "$EVENT_NAME" == 'pull_request' ]]; then
+            base_sha="$PR_BASE_SHA"
+            head_sha="$PR_HEAD_SHA"
+            separator='...'
+          elif [[ "$EVENT_NAME" == 'push' ]]; then
+            base_sha="$PUSH_BEFORE_SHA"
+            head_sha="$PUSH_HEAD_SHA"
+            separator='..'
+          else
+            fail_closed
+            exit 0
+          fi
+
+          if [[ ! "$base_sha" =~ ^[0-9a-f]{40}$ ]] ||
+             [[ ! "$head_sha" =~ ^[0-9a-f]{40}$ ]] ||
+             [[ "$base_sha" == '0000000000000000000000000000000000000000' ]] ||
+             ! git cat-file -e "${base_sha}^{commit}" ||
+             ! git cat-file -e "${head_sha}^{commit}"; then
+            fail_closed
+            exit 0
+          fi
+
+          diff_range="${base_sha}${separator}${head_sha}"
+          if ! git diff --name-only -z "$diff_range" > "$changed_files" ||
+             [[ ! -s "$changed_files" ]]; then
+            fail_closed
+            exit 0
+          fi
+
+          echo "diff_range=$diff_range" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Classify changed paths
+        id: classify
+        continue-on-error: true
+        run: node scripts/ci/classify-changes.mjs < "$RUNNER_TEMP/changed-files.zlist"
+
+      - name: Preserve fail-closed outputs after classifier error
+        id: fallback
+        if: steps.classify.outcome != 'success'
+        shell: bash
+        run: |
+          {
+            echo 'docs_only=false'
+            echo 'code=true'
+            echo 'database=true'
+            echo 'ui_e2e=true'
+            echo 'operations=true'
+            echo 'production_image=true'
+            echo 'full_fallback=true'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate repository diff and sensitive path boundary
+        shell: bash
+        env:
+          DIFF_RANGE: ${{ steps.diff.outputs.diff_range }}
+          FULL_FALLBACK: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.full_fallback || steps.fallback.outputs.full_fallback }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$DIFF_RANGE" ]]; then
+            if [[ "$FULL_FALLBACK" != 'true' ]]; then
+              echo 'Missing diff range without full fallback.' >&2
+              exit 1
+            fi
+            exit 0
+          fi
+
+          git diff --check "$DIFF_RANGE"
+
+          forbidden=0
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              .env.example|.env.production.example)
+                ;;
+              .env|.env.*|data/*|*/data/*|media/*|*/media/*|uploads/*|*/uploads/*|backups/*|*/backups/*|*.sqlite|*.sqlite3|*.dump)
+                echo "Forbidden tracked path in change set: $path" >&2
+                forbidden=1
+                ;;
+            esac
+          done < <(git diff --name-only --diff-filter=ACMR -z "$DIFF_RANGE")
+
+          if [[ "$forbidden" -ne 0 ]]; then
+            exit 1
+          fi
+
+  fast:
+    name: Fast CI
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout verified revision
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.changes.outputs.head_sha }}
+          persist-credentials: false
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -73,45 +188,115 @@ jobs:
       - name: Contract tests
         run: pnpm test:contract
 
+  full_gate:
+    name: Path-specific full gate
+    needs: [changes, fast]
+    if: >-
+      needs.changes.result == 'success' &&
+      needs.fast.result == 'success' &&
+      (github.event_name == 'push' || github.event.pull_request.draft == false) &&
+      (needs.changes.outputs.database == 'true' ||
+       needs.changes.outputs.ui_e2e == 'true' ||
+       needs.changes.outputs.operations == 'true' ||
+       needs.changes.outputs.production_image == 'true' ||
+       needs.changes.outputs.full_fallback == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      db:
+        image: pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
+        env:
+          POSTGRES_DB: ivybm_ci
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ivybm_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ivybm_ci
+      PAYLOAD_SECRET: ci-build-only-secret-at-least-32-characters
+      NEXT_PUBLIC_SERVER_URL: http://localhost:3000
+      APP_VERSION: ci
+      E2E_ADMIN_EMAIL: admin@example.invalid
+      E2E_ADMIN_PASSWORD: ci-demo-admin-password
+      SEED_ADMIN_EMAIL: admin@example.invalid
+      SEED_ADMIN_PASSWORD: ci-demo-admin-password
+    steps:
+      - name: Checkout verified revision
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.changes.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.15.1
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Apply database migrations
+        if: needs.changes.outputs.database == 'true' || needs.changes.outputs.ui_e2e == 'true'
         run: pnpm db:migrate
 
       - name: Reset test database
+        if: needs.changes.outputs.database == 'true' || needs.changes.outputs.ui_e2e == 'true'
         run: pnpm db:reset:test
 
       - name: Seed demo data twice
+        if: needs.changes.outputs.database == 'true' || needs.changes.outputs.ui_e2e == 'true'
         run: |
           pnpm db:seed
           pnpm db:seed
 
       - name: Integration tests
+        if: needs.changes.outputs.database == 'true'
         run: pnpm test:integration
 
       - name: Verify Compose database persistence
+        if: needs.changes.outputs.database == 'true'
         run: pnpm db:test:persistence
 
       - name: Production build
+        if: needs.changes.outputs.production_image == 'true' || needs.changes.outputs.ui_e2e == 'true'
         run: pnpm build
 
-      - name: Install Chromium for ChatWidget E2E
+      - name: Install Chromium for browser E2E
+        if: needs.changes.outputs.ui_e2e == 'true'
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Browser E2E
+        if: needs.changes.outputs.ui_e2e == 'true'
         run: pnpm test:e2e -- tests/e2e/chat-handoff.spec.ts tests/e2e/admin-visual.spec.ts
 
-      - name: Build runtime image
+      - name: Build runtime image for PR validation
+        if: github.event_name == 'pull_request' && needs.changes.outputs.operations == 'true'
         run: >-
           docker build
           --target runtime
           --build-arg NEXT_PUBLIC_SERVER_URL=http://localhost:3000
           --tag ivybm:ci .
 
-      - name: Build job worker image
+      - name: Build job worker image for PR validation
+        if: github.event_name == 'pull_request' && needs.changes.outputs.operations == 'true'
         run: docker build --target worker --tag ivybm-worker:ci .
 
       - name: Validate local runtime Compose configuration
+        if: needs.changes.outputs.operations == 'true'
         env:
-          # Config validation must satisfy required interpolation without exposing real credentials.
           AI_CONFIG_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           APP_VERSION: ci
           DATABASE_URL: postgres://postgres:postgres@db:5432/ivybm_ci
@@ -124,4 +309,35 @@ jobs:
         run: docker compose -f compose.yaml -f compose.staging.yaml config >/dev/null
 
       - name: Validate production operations configuration
+        if: needs.changes.outputs.operations == 'true'
         run: pnpm test:operations
+
+  ci_policy:
+    name: CI policy
+    needs: [changes, fast, full_gate]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CHANGES_RESULT: ${{ needs.changes.result }}
+      CODE: ${{ needs.changes.outputs.code }}
+      DATABASE: ${{ needs.changes.outputs.database }}
+      DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+      EVENT_NAME: ${{ github.event_name }}
+      FAST_RESULT: ${{ needs.fast.result }}
+      FULL_FALLBACK: ${{ needs.changes.outputs.full_fallback }}
+      FULL_GATE_RESULT: ${{ needs.full_gate.result }}
+      HEAD_SHA: ${{ needs.changes.outputs.head_sha }}
+      IS_DRAFT: ${{ github.event.pull_request.draft || false }}
+      OPERATIONS: ${{ needs.changes.outputs.operations }}
+      PRODUCTION_IMAGE: ${{ needs.changes.outputs.production_image }}
+      UI_E2E: ${{ needs.changes.outputs.ui_e2e }}
+    steps:
+      - name: Checkout policy implementation
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.changes.outputs.head_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Enforce expected job results for this revision
+        run: node scripts/ci/evaluate-policy.mjs
