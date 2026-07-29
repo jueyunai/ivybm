@@ -55,13 +55,21 @@ test('operations dashboard and owned navigation remain available after an Admin 
   await expect(dashboard).toBeVisible()
   await expect(operationsNav).toBeVisible()
   await expect(operationsNav.locator('.ops-admin-nav__footer')).toHaveCount(0)
+  const adminHeader = page.locator('header.app-header')
+  const headerControls = adminHeader.locator('.app-header__controls-wrapper')
+  const headerLocalizer = adminHeader.locator('.app-header__localizer.localizer')
+  await expect(headerControls).toBeVisible()
+  await expect(headerLocalizer).toBeVisible()
+  await expect(adminHeader.locator('.app-header__account')).toBeHidden()
   const accountMenuTrigger = page.getByTestId('admin-account-menu-trigger')
   await expect(accountMenuTrigger).toBeVisible()
   await accountMenuTrigger.click()
   const accountMenu = page.getByTestId('admin-account-menu')
+  const accountMenuAccountLink = accountMenu.locator('a[href="/admin/account"]')
+  const accountMenuSignOut = accountMenu.locator('button[data-action="sign-out"]')
   await expect(accountMenu).toBeVisible()
-  await expect(accountMenu.locator('a[href="/admin/account"]')).toBeVisible()
-  await expect(accountMenu.locator('button[data-action="sign-out"]')).toBeVisible()
+  await expect(accountMenuAccountLink).toBeVisible()
+  await expect(accountMenuSignOut).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(accountMenu).not.toBeVisible()
   await expect(accountMenuTrigger).toBeFocused()
@@ -128,4 +136,30 @@ test('operations dashboard and owned navigation remain available after an Admin 
 
   await page.getByTestId('operations-nav-close').click()
   await expect(page.locator('aside.nav--nav-open')).toHaveCount(0)
+  await expect(page.locator('.app-header__mobile-nav-toggler')).toBeVisible()
+  await expect(headerControls).toBeVisible()
+  await expect(headerLocalizer).toBeVisible()
+  await expect(accountMenuTrigger).toBeVisible()
+
+  await accountMenuTrigger.press('ArrowUp')
+  await expect(accountMenu).toBeVisible()
+  await expect(accountMenuSignOut).toBeFocused()
+  await page.keyboard.press('Home')
+  await expect(accountMenuAccountLink).toBeFocused()
+  await page.keyboard.press('End')
+  await expect(accountMenuSignOut).toBeFocused()
+  expect(
+    await accountMenu.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return (
+        rect.left >= 0 &&
+        rect.right <= window.innerWidth &&
+        rect.top >= 0 &&
+        rect.bottom <= window.innerHeight
+      )
+    }),
+  ).toBe(true)
+  await page.keyboard.press('Escape')
+  await expect(accountMenu).not.toBeVisible()
+  await expect(accountMenuTrigger).toBeFocused()
 })

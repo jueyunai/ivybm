@@ -140,6 +140,12 @@
   inline-size: 18px;
 }
 
+/*
+ * Payload 3.86 shell compatibility boundary: admin.components.actions can add this
+ * account menu but cannot replace the native Header account link. Keep the required
+ * hide/order rules together here; Admin E2E guards the native localizer, controls,
+ * desktop account action, and mobile account action whenever Payload is upgraded.
+ */
 .app-header:has(.ops-account-menu) .app-header__account {
   display: none;
 }

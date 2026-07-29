@@ -1,3 +1,8 @@
+/*
+ * Payload 3.86 shell compatibility boundary: NavWrapper owns these two outer shell
+ * nodes. Project-owned navigation styles remain under .ops-admin-nav; Admin E2E
+ * verifies the wrapper/toggler behavior before a Payload upgrade can be accepted.
+ */
 .nav__scroll:has(> .ops-admin-nav) {
   padding: 0;
 }
