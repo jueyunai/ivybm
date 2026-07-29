@@ -3,6 +3,7 @@ import type { PortalModuleDefinition } from './types'
 import { OVERVIEW_MODULE } from '@/admin-portal/modules/overview/manifest'
 import { SETTINGS_MODULE } from '@/admin-portal/modules/settings/manifest'
 import { WEBSITE_CONTENT_MODULE } from '@/admin-portal/modules/website-content/manifest'
+import { MEDIA_MODULE } from '@/admin-portal/modules/media/manifest'
 
 export const PORTAL_MODULES = Object.freeze([
   OVERVIEW_MODULE,
@@ -31,18 +32,7 @@ export const PORTAL_MODULES = Object.freeze([
     maintenance: { responsibleOwner: 'jueyunai', nextStepKey: 'leads' },
   }),
   WEBSITE_CONTENT_MODULE,
-  definePortalModule({
-    id: 'media',
-    owner: 'jueyunai',
-    navGroup: 'content',
-    href: '/dashboard/media',
-    labelKey: 'media',
-    allowedRoles: ['admin', 'operator'],
-    availability: 'dependency-gated',
-    featureFlag: 'ADMIN_PORTAL_MEDIA_ENABLED',
-    commands: [],
-    maintenance: { responsibleOwner: 'jueyunai', nextStepKey: 'media' },
-  }),
+  MEDIA_MODULE,
   definePortalModule({
     id: 'content-studio',
     owner: 'jueyunai',
@@ -94,9 +84,7 @@ export const PORTAL_MODULES = Object.freeze([
   SETTINGS_MODULE,
 ] as const satisfies readonly PortalModuleDefinition[])
 
-export const validatePortalModuleRegistry = (
-  modules: readonly PortalModuleDefinition[],
-): void => {
+export const validatePortalModuleRegistry = (modules: readonly PortalModuleDefinition[]): void => {
   const ids = new Set<string>()
   const hrefs = new Set<string>()
   const labelKeys = new Set<string>()

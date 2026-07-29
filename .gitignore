@@ -56,7 +56,7 @@ output/
 *.log
 
 # Payload local media
-media/
+/media/
 
 # 文档本地素材（截图、草稿图等，生成物通过 deliverables/ 发布）
 docs/operations/assets/

@@ -137,12 +137,67 @@ export interface PortalWebsiteContentMessages {
   total: string
 }
 
+export interface PortalMediaMessages {
+  allKinds: string
+  allVisibility: string
+  altText: string
+  description: string
+  detailTitle: string
+  dimensions: string
+  editorStatus: string
+  emptyDescription: string
+  emptyTitle: string
+  eyebrow: string
+  filename: string
+  forbiddenDescription: string
+  forbiddenTitle: string
+  gridView: string
+  images: string
+  itemCount: string
+  kindLabel: string
+  lastUpdated: string
+  lastUsed: string
+  libraryTitle: string
+  listView: string
+  moduleDisabledDescription: string
+  moduleDisabledTitle: string
+  nextPage: string
+  noAlt: string
+  paginationLabel: string
+  pdfs: string
+  previewPdf: string
+  previewUnavailable: string
+  previousPage: string
+  private: string
+  public: string
+  readErrorDescription: string
+  readErrorTitle: string
+  resetFilters: string
+  searchLabel: string
+  searchPlaceholder: string
+  searchSubmit: string
+  selectAsset: string
+  sourceLabel: string
+  sourcePlaceholder: string
+  title: string
+  total: string
+  typeAndSize: string
+  upload: string
+  uploadDisabledTitle: string
+  uploadLimits: string
+  uploadLimitsTitle: string
+  usageGated: string
+  viewLabel: string
+  visibilityLabel: string
+}
+
 export interface PortalMessages {
   modules: Record<PortalModuleLabelKey, string>
   navGroups: Record<PortalNavGroup, string>
   states: Record<PortalStateKey, string>
   nextSteps: Record<PortalNextStepKey, string>
   overview: PortalOverviewMessages
+  mediaWorkspace: PortalMediaMessages
   settings: PortalSettingsMessages
   shell: PortalShellMessages
   websiteContent: PortalWebsiteContentMessages

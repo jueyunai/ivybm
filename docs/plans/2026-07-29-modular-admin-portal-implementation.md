@@ -68,10 +68,13 @@ git -C /Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1 branch 
 - P0.4 已完成：Shell、角色导航、桌面折叠、移动抽屉、账户菜单、语言/主题/减少动效偏好、Settings 安全摘要与模块状态均已落地，并通过定向单元/E2E、完整 unit、lint、typecheck、build 和 1440/390 视觉核验；
 - P0.5 已完成：角色安全首页、真实四类队列、独立安全 DTO、依赖受限说明和真实空态已落地，并通过完整 unit、隔离数据库 integration、Portal E2E、lint、typecheck、build 和 1440/390 视觉核验；
 - P0.6 已完成：官网内容模块 manifest、安全 read model、六类内容筛选、状态与 EN/AR 完整度、官网预览、角色访问集成和响应式页面已落地；重复空态已修复，lint、typecheck、定向单元 15/15、隔离 `_test` 数据库 integration 2/2、桌面/移动 E2E 2/2 与视觉核验通过；
-- P0.7–P1.3 尚未开始或仍按依赖等待，不因同一 PR 批次而视为已交付。
+- P0.7 已完成：素材库 manifest、安全 read model、URL 可序列化筛选/分页、网格/列表、图片/PDF 安全预览、公开状态、alt/source、上传限制和编辑受阻态已落地；lint、typecheck、定向单元 15/15、显式 `_test` 数据库 Media 策略与 Portal 权限集成 9/9、桌面/移动 E2E 2/2、Prettier、`git diff --check` 与 1440/390 视觉核验通过；
+- `.gitignore` 已把任意层级的 `media/` 收窄为根目录 `/media/`，继续忽略 Payload 上传目录，同时允许 `src/**/media/` 业务源码进入 Git；
+- P0.8a–P1.3 尚未交付。P0.8a 所需的 xuemusi Portal Core public API review 仍无仓库内完成证据，因此在 review 完成前不得把 P0.8a 标记为正式开工或验收通过。
 
-因此 readiness 结论维持 `GO`：P0.6 可以继续开发；但每个模块仍必须先满足本章节的
-precondition、owner/review 边界和定向门禁，不能把“允许开发”解释为“所有模块可无条件并行写入”。
+因此 Portal V1 本地开发 readiness 结论维持 `GO`，P0.7 checkpoint 结论为 `GO`；下一顺序模块 P0.8a
+当前为 `NO-GO`，先由 xuemusi 完成 Portal Core public API review。每个模块仍必须先满足本章节的
+precondition、owner/review 边界和定向门禁，不能把“允许本地开发”解释为“所有模块可无条件并行写入”。
 
 本 worktree 的本地应用端口是 `3001`。当前非 CI Playwright 默认端口仍为 `3000`，执行 Portal E2E 前必须
 先启动 `PORT=3001 pnpm dev`，再显式设置 `BASE_URL=http://localhost:3001`，避免复用其他服务。
@@ -110,7 +113,9 @@ precondition、owner/review 边界和定向门禁，不能把“允许开发”�
 | ------------------------------- | --------- | ---------------------------------------------------------------------------------- |
 | 继续本地 P0/P1 功能开发         | **GO**    | 使用独立 worktree、本地开发库与显式 `_test` / `_ci` 库，按 checkpoint 最小门禁推进 |
 | P0.6 checkpoint 完成            | **GO**    | 重复空态已修复，定向单元/权限集成/E2E 和桌面/窄屏视觉核验已通过                    |
-| PR-1 转 Ready / 合并            | **NO-GO** | 等 P0.6–P1.3 按 owner/依赖完成，并对最新 head 执行完整门禁和双方 review            |
+| P0.7 checkpoint 完成            | **GO**    | 素材策略、权限集成、定向单元/E2E 和桌面/窄屏视觉核验已通过                         |
+| P0.8a 正式开发/验收             | **NO-GO** | 先完成 xuemusi 对 Portal Core public API 的 review                                 |
+| PR-1 转 Ready / 合并            | **NO-GO** | 等 P0.8a–P1.3 按 owner/依赖完成，并对最新 head 执行完整门禁和双方 review           |
 | production 数据、真实平台与部署 | **NO-GO** | 仅 PR-2 经受控账号、补偿、灰度、回滚和人工审批后才可能开放                         |
 
 ## 0. Scope Reduction 结论
