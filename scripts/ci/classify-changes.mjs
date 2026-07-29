@@ -1,6 +1,6 @@
 import { appendFileSync, readFileSync } from 'node:fs'
 import { isAbsolute, posix } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
 
 const outputKeys = [
   'docs_only',
@@ -243,9 +243,6 @@ const runCli = () => {
 }
 
 const invokedPath = process.argv[1]
-if (
-  invokedPath &&
-  pathToFileURL(fileURLToPath(pathToFileURL(invokedPath))).href === import.meta.url
-) {
+if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
   runCli()
 }
