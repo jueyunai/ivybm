@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches:
       - main
@@ -22,13 +22,15 @@ jobs:
     outputs:
       code: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.code || steps.fallback.outputs.code }}
       database: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.database || steps.fallback.outputs.database }}
+      admin_e2e: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.admin_e2e || steps.fallback.outputs.admin_e2e }}
+      chat_e2e: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.chat_e2e || steps.fallback.outputs.chat_e2e }}
       diff_range: ${{ steps.diff.outputs.diff_range }}
       docs_only: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.docs_only || steps.fallback.outputs.docs_only }}
       full_fallback: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.full_fallback || steps.fallback.outputs.full_fallback }}
       head_sha: ${{ steps.diff.outputs.head_sha }}
       operations: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.operations || steps.fallback.outputs.operations }}
       production_image: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.production_image || steps.fallback.outputs.production_image }}
-      ui_e2e: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.ui_e2e || steps.fallback.outputs.ui_e2e }}
+      website_e2e: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.website_e2e || steps.fallback.outputs.website_e2e }}
     steps:
       - name: Checkout repository history
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -107,7 +109,9 @@ jobs:
             echo 'docs_only=false'
             echo 'code=true'
             echo 'database=true'
-            echo 'ui_e2e=true'
+            echo 'website_e2e=true'
+            echo 'admin_e2e=true'
+            echo 'chat_e2e=true'
             echo 'operations=true'
             echo 'production_image=true'
             echo 'full_fallback=true'
@@ -196,7 +200,9 @@ jobs:
       needs.fast.result == 'success' &&
       (github.event_name == 'push' || github.event.pull_request.draft == false) &&
       (needs.changes.outputs.database == 'true' ||
-       needs.changes.outputs.ui_e2e == 'true' ||
+       needs.changes.outputs.website_e2e == 'true' ||
+       needs.changes.outputs.admin_e2e == 'true' ||
+       needs.changes.outputs.chat_e2e == 'true' ||
        needs.changes.outputs.operations == 'true' ||
        needs.changes.outputs.production_image == 'true' ||
        needs.changes.outputs.full_fallback == 'true')
@@ -249,15 +255,27 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Apply database migrations
-        if: needs.changes.outputs.database == 'true' || needs.changes.outputs.ui_e2e == 'true'
+        if: >-
+          needs.changes.outputs.database == 'true' ||
+          needs.changes.outputs.website_e2e == 'true' ||
+          needs.changes.outputs.admin_e2e == 'true' ||
+          needs.changes.outputs.chat_e2e == 'true'
         run: pnpm db:migrate
 
       - name: Reset test database
-        if: needs.changes.outputs.database == 'true' || needs.changes.outputs.ui_e2e == 'true'
+        if: >-
+          needs.changes.outputs.database == 'true' ||
+          needs.changes.outputs.website_e2e == 'true' ||
+          needs.changes.outputs.admin_e2e == 'true' ||
+          needs.changes.outputs.chat_e2e == 'true'
         run: pnpm db:reset:test
 
       - name: Seed demo data twice
-        if: needs.changes.outputs.database == 'true' || needs.changes.outputs.ui_e2e == 'true'
+        if: >-
+          needs.changes.outputs.database == 'true' ||
+          needs.changes.outputs.website_e2e == 'true' ||
+          needs.changes.outputs.admin_e2e == 'true' ||
+          needs.changes.outputs.chat_e2e == 'true'
         run: |
           pnpm db:seed
           pnpm db:seed
@@ -271,16 +289,56 @@ jobs:
         run: pnpm db:test:persistence
 
       - name: Production build
-        if: needs.changes.outputs.production_image == 'true' || needs.changes.outputs.ui_e2e == 'true'
+        if: >-
+          needs.changes.outputs.production_image == 'true' ||
+          needs.changes.outputs.website_e2e == 'true' ||
+          needs.changes.outputs.admin_e2e == 'true' ||
+          needs.changes.outputs.chat_e2e == 'true'
         run: pnpm build
 
       - name: Install Chromium for browser E2E
-        if: needs.changes.outputs.ui_e2e == 'true'
+        if: >-
+          needs.changes.outputs.website_e2e == 'true' ||
+          needs.changes.outputs.admin_e2e == 'true' ||
+          needs.changes.outputs.chat_e2e == 'true'
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Browser E2E
-        if: needs.changes.outputs.ui_e2e == 'true'
-        run: pnpm test:e2e -- tests/e2e/chat-handoff.spec.ts tests/e2e/admin-visual.spec.ts
+        if: >-
+          needs.changes.outputs.website_e2e == 'true' ||
+          needs.changes.outputs.admin_e2e == 'true' ||
+          needs.changes.outputs.chat_e2e == 'true'
+        env:
+          ADMIN_E2E: ${{ needs.changes.outputs.admin_e2e }}
+          CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}
+          FULL_FALLBACK: ${{ needs.changes.outputs.full_fallback }}
+          WEBSITE_E2E: ${{ needs.changes.outputs.website_e2e }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$FULL_FALLBACK" == 'true' ]]; then
+            pnpm test:e2e
+            exit 0
+          fi
+
+          specs=()
+          if [[ "$WEBSITE_E2E" == 'true' ]]; then
+            specs+=(tests/e2e/website.spec.ts)
+          fi
+          if [[ "$ADMIN_E2E" == 'true' ]]; then
+            specs+=(tests/e2e/admin-visual.spec.ts)
+          fi
+          if [[ "$CHAT_E2E" == 'true' ]]; then
+            specs+=(tests/e2e/chat-handoff.spec.ts)
+          fi
+
+          if [[ "${#specs[@]}" -eq 0 ]]; then
+            echo 'Browser E2E was scheduled without a selected test suite.' >&2
+            exit 1
+          fi
+
+          pnpm test:e2e -- "${specs[@]}"
 
       - name: Build runtime image for PR validation
         if: github.event_name == 'pull_request' && needs.changes.outputs.operations == 'true'
@@ -322,6 +380,8 @@ jobs:
       CHANGES_RESULT: ${{ needs.changes.result }}
       CODE: ${{ needs.changes.outputs.code }}
       DATABASE: ${{ needs.changes.outputs.database }}
+      ADMIN_E2E: ${{ needs.changes.outputs.admin_e2e }}
+      CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}
       DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
       EVENT_NAME: ${{ github.event_name }}
       FAST_RESULT: ${{ needs.fast.result }}
@@ -331,7 +391,7 @@ jobs:
       IS_DRAFT: ${{ github.event.pull_request.draft || false }}
       OPERATIONS: ${{ needs.changes.outputs.operations }}
       PRODUCTION_IMAGE: ${{ needs.changes.outputs.production_image }}
-      UI_E2E: ${{ needs.changes.outputs.ui_e2e }}
+      WEBSITE_E2E: ${{ needs.changes.outputs.website_e2e }}
     steps:
       - name: Checkout policy implementation
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
