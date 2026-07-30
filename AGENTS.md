@@ -52,8 +52,8 @@ bash scripts/install-git-hooks.sh
 
 ## AI 与 CI 门禁
 
-- AI 创建 PR 时默认使用 Draft；只有本地定向验证、PR 描述、风险 / 回滚、共享边界判断和 Review 请求齐全后才转 Ready。除非用户明确要求且上述条件已满足，不直接创建 Ready PR。
-- push 前必须运行对应 Task 的本地定向检查；GitHub CI 不是调试器。同一轮小修改先合并完成再 push，避免每个细小编辑单独触发 Actions。
+- AI 创建 PR 时，只有本地完整门禁、PR 描述、风险 / 回滚和 Review 边界全部完成，并得到当前任务级明确授权，才可以直接创建 Ready PR。否则必须创建 Draft，并保持 Draft 到真实 Ready 检查点；禁止 Draft 创建后几十秒内立即转 Ready。
+- push 前必须运行对应 Task 的本地定向检查；GitHub CI 不是调试器。同一轮小修改必须集中完成后一次 push，禁止逐提交触发 Actions 调试。
 - AI 和 PR 作者不手工选择 CI 档次，不使用 `[skip ci]`；由变更路径分类器自动决定。无法识别路径、无法解析 diff 或分类器异常时必须 fail closed，运行完整门禁。
 - Draft 代码只把 Fast CI 作为开发反馈，不是合并授权。Ready 后如需连续或较大修改，先转回 Draft；Ready 状态下任何新提交都必须针对最新 head 重新运行对应门禁。
 - 审核时记录 base SHA、head SHA、mergeability、完整 diff、Review 状态和 `CI policy`。只有与当前 head SHA 一致的成功 `CI policy` 可作为门禁证据；Draft Fast CI、旧 head，以及 pending、neutral、skipped、cancelled 或 failure 均不能授权合并。
