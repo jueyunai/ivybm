@@ -4,19 +4,25 @@ import { evaluateCiPolicy } from '../../scripts/ci/evaluate-policy.mjs'
 
 const sha = '0123456789abcdef0123456789abcdef01234567'
 const docs = {
+  admin_e2e: false,
+  chat_e2e: false,
   code: false,
   database: false,
   docs_only: true,
   full_fallback: false,
   operations: false,
   production_image: false,
-  ui_e2e: false,
+  website_e2e: false,
 }
 const runtime = {
   ...docs,
   code: true,
   docs_only: false,
   production_image: true,
+}
+const website = {
+  ...runtime,
+  website_e2e: true,
 }
 
 const evaluate = ({
@@ -50,16 +56,17 @@ describe('CI policy evaluator', () => {
   })
 
   it('accepts Draft code only when Fast CI succeeds and the heavy job is skipped', () => {
-    expect(evaluate({ fullGate: 'skipped', isDraft: true })).toMatchObject({
+    expect(evaluate({ classification: website, fullGate: 'skipped', isDraft: true })).toMatchObject({
       fullGateRequired: false,
       mode: 'fast-only',
       ok: true,
     })
   })
 
-  it('requires the heavy job for Ready runtime changes', () => {
-    expect(evaluate()).toMatchObject({
+  it('requires the heavy job for a Ready Website change', () => {
+    expect(evaluate({ classification: website })).toMatchObject({
       fullGateRequired: true,
+      heavyRequired: true,
       mode: 'full-policy',
       ok: true,
     })
@@ -73,16 +80,16 @@ describe('CI policy evaluator', () => {
   })
 
   it.each(['failure', 'cancelled', 'skipped'])(
-    'rejects a Ready runtime change when the heavy job is %s',
+    'rejects a Ready Website change when the heavy job is %s',
     (fullGate) => {
-      expect(evaluate({ fullGate })).toMatchObject({ ok: false })
+      expect(evaluate({ classification: website, fullGate })).toMatchObject({ ok: false })
     },
   )
 
   it('rejects a Draft PR when Fast CI fails', () => {
-    expect(evaluate({ fast: 'failure', fullGate: 'skipped', isDraft: true })).toMatchObject({
-      ok: false,
-    })
+    expect(
+      evaluate({ classification: website, fast: 'failure', fullGate: 'skipped', isDraft: true }),
+    ).toMatchObject({ ok: false })
   })
 
   it('accepts Ready test-only changes without starting an inapplicable heavy job', () => {
@@ -117,7 +124,7 @@ describe('CI policy evaluator', () => {
     )
   })
 
-  it('requires full fallback to enable every heavy flag', () => {
+  it('requires full fallback to enable every E2E and heavy flag', () => {
     expect(
       evaluate({
         classification: {

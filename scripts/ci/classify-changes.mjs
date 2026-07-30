@@ -6,7 +6,9 @@ const outputKeys = [
   'docs_only',
   'code',
   'database',
-  'ui_e2e',
+  'website_e2e',
+  'admin_e2e',
+  'chat_e2e',
   'operations',
   'production_image',
   'full_fallback',
@@ -16,7 +18,9 @@ const lightClassification = () => ({
   docs_only: true,
   code: false,
   database: false,
-  ui_e2e: false,
+  website_e2e: false,
+  admin_e2e: false,
+  chat_e2e: false,
   operations: false,
   production_image: false,
   full_fallback: false,
@@ -26,7 +30,9 @@ const fullClassification = () => ({
   docs_only: false,
   code: true,
   database: true,
-  ui_e2e: true,
+  website_e2e: true,
+  admin_e2e: true,
+  chat_e2e: true,
   operations: true,
   production_image: true,
   full_fallback: true,
@@ -59,6 +65,82 @@ const isDocumentationPath = (path) =>
   path.startsWith('references/') ||
   exactDocumentationPaths.has(path) ||
   (!path.includes('/') && path.endsWith('.md'))
+
+const enableAllE2e = (classification) => {
+  classification.website_e2e = true
+  classification.admin_e2e = true
+  classification.chat_e2e = true
+}
+
+const classifyE2eTest = (path, classification) => {
+  if (path === 'tests/e2e/website.spec.ts') {
+    classification.website_e2e = true
+    return true
+  }
+  if (path === 'tests/e2e/admin-visual.spec.ts') {
+    classification.admin_e2e = true
+    return true
+  }
+  if (path === 'tests/e2e/chat-handoff.spec.ts') {
+    classification.chat_e2e = true
+    return true
+  }
+
+  return false
+}
+
+const classifySourceE2e = (path, classification) => {
+  if (path.startsWith('src/admin/') || path.startsWith('src/app/(payload)/')) {
+    classification.admin_e2e = true
+    return true
+  }
+
+  if (path.startsWith('src/components/website/') || path.startsWith('src/components/inquiry/')) {
+    classification.website_e2e = true
+    return true
+  }
+  if (path.startsWith('src/components/chat/')) {
+    classification.chat_e2e = true
+    return true
+  }
+  if (path.startsWith('src/components/')) {
+    return false
+  }
+
+  if (
+    path === 'src/app/(frontend)/[locale]/layout.tsx' ||
+    path === 'src/app/(frontend)/website.css'
+  ) {
+    classification.website_e2e = true
+    classification.chat_e2e = true
+    return true
+  }
+  if (
+    path.startsWith('src/app/(frontend)/') ||
+    path.startsWith('src/app/(frontend-root)/') ||
+    path === 'src/app/robots.ts' ||
+    path === 'src/app/sitemap.ts'
+  ) {
+    classification.website_e2e = true
+    return true
+  }
+  if (path.startsWith('src/app/api/chat/')) {
+    classification.chat_e2e = true
+    return true
+  }
+  if (path.startsWith('src/app/api/inquiries/')) {
+    classification.website_e2e = true
+    return true
+  }
+  if (path.startsWith('src/app/api/')) {
+    return true
+  }
+  if (path.startsWith('src/app/')) {
+    return false
+  }
+
+  return true
+}
 
 const normalizeRepositoryPath = (path) => {
   if (typeof path !== 'string' || path.length === 0 || path.includes('\\')) {
@@ -118,7 +200,9 @@ export function classifyChangedFiles(paths) {
         result.database = true
       }
       if (path.startsWith('tests/e2e/')) {
-        result.ui_e2e = true
+        if (!classifyE2eTest(path, result)) {
+          return fullClassification()
+        }
       }
       if (path.startsWith('tests/operations/')) {
         result.operations = true
@@ -141,17 +225,15 @@ export function classifyChangedFiles(paths) {
       }
 
       if (
-        path.startsWith('src/admin/') ||
-        path.startsWith('src/app/') ||
-        path.startsWith('src/components/')
+        (path.startsWith('src/admin/') ||
+          path.startsWith('src/app/') ||
+          path.startsWith('src/components/')) &&
+        !classifySourceE2e(path, result)
       ) {
-        result.ui_e2e = true
+        return fullClassification()
       }
     } else if (path.startsWith('public/')) {
-      result.code = true
-      result.ui_e2e = true
-      result.production_image = true
-      recognized = true
+      return fullClassification()
     } else if (path.startsWith('scripts/')) {
       result.code = true
       result.operations = true
@@ -175,12 +257,12 @@ export function classifyChangedFiles(paths) {
       recognized = true
     } else if (path === 'next.config.ts' || path === 'tsconfig.json') {
       result.code = true
-      result.ui_e2e = true
+      enableAllE2e(result)
       result.production_image = true
       recognized = true
     } else if (path === 'playwright.config.ts') {
       result.code = true
-      result.ui_e2e = true
+      enableAllE2e(result)
       recognized = true
     } else if (path === 'vitest.integration.config.mts') {
       result.code = true

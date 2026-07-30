@@ -6,12 +6,14 @@ import { describe, expect, it } from 'vitest'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const workflow = readFileSync(resolve(projectRoot, '.github/workflows/ci.yml'), 'utf8')
+const prJobs = workflow.slice(0, workflow.indexOf('  publish_production_images:'))
 
 describe('CI workflow policy', () => {
   it('uses native Draft and Ready pull request events', () => {
     expect(workflow).toContain(
-      'types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]',
+      'types: [opened, synchronize, reopened, ready_for_review]',
     )
+    expect(workflow).not.toContain('converted_to_draft')
     expect(workflow).not.toContain('pull_request_target')
     expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}")
   })
@@ -33,6 +35,45 @@ describe('CI workflow policy', () => {
 
   it('keeps default workflow permissions read-only', () => {
     expect(workflow).toMatch(/permissions:\n  contents: read\n/)
-    expect(workflow).not.toMatch(/^  packages: write$/m)
+    expect(prJobs).not.toContain('packages: write')
+  })
+
+  it('exports three E2E classifications and preserves full fallback', () => {
+    expect(workflow).toContain('website_e2e: ${{ steps.classify.outcome')
+    expect(workflow).toContain('admin_e2e: ${{ steps.classify.outcome')
+    expect(workflow).toContain('chat_e2e: ${{ steps.classify.outcome')
+    expect(workflow).not.toContain('ui_e2e')
+    expect(workflow).toContain("echo 'website_e2e=true'")
+    expect(workflow).toContain("echo 'admin_e2e=true'")
+    expect(workflow).toContain("echo 'chat_e2e=true'")
+  })
+
+  it('installs Chromium only when at least one E2E suite is selected', () => {
+    const installStep = workflow.slice(
+      workflow.indexOf('      - name: Install Chromium for browser E2E'),
+      workflow.indexOf('      - name: Browser E2E'),
+    )
+
+    expect(installStep).toContain("needs.changes.outputs.website_e2e == 'true'")
+    expect(installStep).toContain("needs.changes.outputs.admin_e2e == 'true'")
+    expect(installStep).toContain("needs.changes.outputs.chat_e2e == 'true'")
+    expect(installStep).toContain('pnpm exec playwright install --with-deps chromium')
+  })
+
+  it('runs selected Website, Admin, and Chat specs in one Playwright invocation', () => {
+    const e2eStep = workflow.slice(
+      workflow.indexOf('      - name: Browser E2E'),
+      workflow.indexOf('      - name: Build runtime image for PR validation'),
+    )
+
+    expect(e2eStep).toContain('WEBSITE_E2E: ${{ needs.changes.outputs.website_e2e }}')
+    expect(e2eStep).toContain('ADMIN_E2E: ${{ needs.changes.outputs.admin_e2e }}')
+    expect(e2eStep).toContain('CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}')
+    expect(e2eStep).toContain("specs+=(tests/e2e/website.spec.ts)")
+    expect(e2eStep).toContain("specs+=(tests/e2e/admin-visual.spec.ts)")
+    expect(e2eStep).toContain("specs+=(tests/e2e/chat-handoff.spec.ts)")
+    expect(e2eStep.match(/pnpm test:e2e/g)).toHaveLength(2)
+    expect(e2eStep).toContain('pnpm test:e2e -- "${specs[@]}"')
+    expect(e2eStep).toContain("if [[ \"$FULL_FALLBACK\" == 'true' ]]")
   })
 })

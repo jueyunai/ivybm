@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const workflow = readFileSync(resolve(projectRoot, '.github/workflows/ci.yml'), 'utf8')
 const publishJob = workflow.slice(workflow.indexOf('  publish_production_images:'))
+const prJobs = workflow.slice(0, workflow.indexOf('  publish_production_images:'))
 
 describe('production image publishing policy', () => {
   it('removes the duplicate workflow_run publishing path', () => {
@@ -23,6 +24,7 @@ describe('production image publishing policy', () => {
   })
 
   it('scopes package write access and pins privileged third-party actions', () => {
+    expect(prJobs).not.toContain('packages: write')
     expect(publishJob).toContain('packages: write')
     expect(publishJob).toContain('GITHUB_REPOSITORY_OWNER,,')
     expect(publishJob).toContain('NEXT_PUBLIC_SERVER_URL=https://ivybm.com')
