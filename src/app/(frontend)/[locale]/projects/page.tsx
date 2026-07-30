@@ -8,6 +8,10 @@ import { getWebsiteCopy, isPublicLocale, type Locale } from '@/lib/i18n'
 import { buildPageMetadata } from '@/lib/seo'
 import { getProjects, getSiteSettings } from '@/lib/website-data'
 
+// Keep public project indexes at the edge while CMS hooks invalidate them on publish.
+export const dynamic = 'force-static'
+export const revalidate = 60
+
 const loadProjects = async (locale: Locale) => {
   const [projects, settings] = await Promise.all([getProjects(locale), getSiteSettings(locale)])
   return { projects, settings }

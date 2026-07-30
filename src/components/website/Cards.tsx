@@ -7,6 +7,9 @@ import type { Post, Product, Project } from '@/payload-types'
 
 import { WebsiteImage } from './WebsiteImage'
 
+const projectCardImageSizes =
+  '(max-width: 640px) calc(100vw - 32px), (max-width: 920px) calc(50vw - 27px), 379px'
+
 export function ProductCard({
   locale,
   product,
@@ -111,7 +114,7 @@ export function ProjectCard({ locale, project }: { locale: Locale; project: Proj
         <WebsiteImage
           className="card-image"
           media={project.coverImage}
-          sizes="(max-width: 640px) 100vw, 33vw"
+          sizes={projectCardImageSizes}
           type="card"
         />
       </Link>
