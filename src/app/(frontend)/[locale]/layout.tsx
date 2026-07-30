@@ -16,8 +16,6 @@ import { getSiteSettings } from '@/lib/website-data'
 
 import '../website.css'
 
-export const dynamic = 'force-dynamic'
-
 export const metadata: Metadata = {
   metadataBase: getSiteOrigin(),
 }
