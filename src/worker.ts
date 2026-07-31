@@ -12,6 +12,11 @@ import {
   FEISHU_LEAD_SYNC_JOB_TYPE,
 } from '@/modules/feishu/jobs'
 import {
+  createFeishuConnectionProvisionJobHandler,
+  enqueuePendingFeishuConnectionProvisionJobs,
+  FEISHU_CONNECTION_PROVISION_JOB_TYPE,
+} from '@/modules/feishu/provisioning'
+import {
   DEFAULT_JOB_HEARTBEAT_INTERVAL_MS,
   DEFAULT_JOB_POLL_INTERVAL_MS,
   JobWorker,
@@ -53,6 +58,7 @@ const knowledgeRecoveryIntervalMs = Math.max(pollIntervalMs, heartbeatIntervalMs
 const feishuRelayIntervalMs = readPositiveInteger('FEISHU_RELAY_INTERVAL_MS', 30_000)
 const payload = await getPayload({ config, disableOnInit: true, key: 'job-worker' })
 const handlers: Record<string, JobHandler> = {
+  [FEISHU_CONNECTION_PROVISION_JOB_TYPE]: createFeishuConnectionProvisionJobHandler({ payload }),
   [FEISHU_HANDOFF_NOTIFY_JOB_TYPE]: createFeishuHandoffNotifyJobHandler({ payload }),
   [FEISHU_LEAD_SYNC_JOB_TYPE]: createFeishuLeadSyncJobHandler({ payload }),
   [KNOWLEDGE_INDEX_JOB_TYPE]: createKnowledgeIndexJobHandler({ payload }),
@@ -95,10 +101,13 @@ const relayFeishuOutbox = async (): Promise<void> => {
   nextFeishuRelayAt = now + feishuRelayIntervalMs
 
   try {
+    const provisioned = await enqueuePendingFeishuConnectionProvisionJobs({ payload })
     const relayed = await enqueuePendingFeishuJobs({ payload })
     const created = relayed.leads.created + relayed.handoffs.created
-    if (relayed.enabled && created > 0) {
-      payload.logger.info(`Feishu relay created ${created} job(s)`)
+    if (provisioned.created > 0 || created > 0) {
+      payload.logger.info(
+        `Feishu relay created ${provisioned.created} provisioning and ${created} delivery job(s)`,
+      )
     }
   } catch {
     payload.logger.error('Feishu outbox relay failed; continuing worker loop')

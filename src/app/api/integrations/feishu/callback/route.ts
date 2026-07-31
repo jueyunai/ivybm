@@ -14,7 +14,7 @@ import {
   readFeishuCredentialEncryptionKey,
 } from '@/modules/feishu/credentials'
 import { exchangeFeishuOAuthCode, getFeishuOAuthUser, hashOAuthState } from '@/modules/feishu/oauth'
-import { DEFAULT_FEISHU_FIELD_MAPPINGS, provisionFeishuCRM } from '@/modules/feishu/provision'
+import { enqueueFeishuConnectionProvisionJob } from '@/modules/feishu/provisioning'
 import config from '@/payload.config'
 
 export const dynamic = 'force-dynamic'
@@ -102,30 +102,20 @@ export async function GET(request: NextRequest): Promise<Response> {
       where: { tenantKey: { equals: user.tenantKey } },
     })
     const existingConnection = existingConnections.docs[0]
-    const provisioned =
-      existingConnection?.appToken && existingConnection.tableId && existingConnection.baseURL
-        ? {
-            appToken: existingConnection.appToken,
-            baseURL: existingConnection.baseURL,
-            tableId: existingConnection.tableId,
-          }
-        : await provisionFeishuCRM({ accessToken: token.accessToken })
     const key = readFeishuCredentialEncryptionKey()
+    const connectedAt = new Date().toISOString()
     const connectionData = {
       accessTokenEncrypted: encryptFeishuCredential(token.accessToken, key),
       accessTokenExpiresAt: token.expiresAt,
-      appToken: provisioned.appToken,
       authMode: 'store_oauth' as const,
-      baseURL: provisioned.baseURL,
       installerOpenId: user.openId,
-      lastConnectedAt: new Date().toISOString(),
+      lastConnectedAt: connectedAt,
       lastErrorCode: null,
       name: user.name ? `${user.name} 的飞书` : `飞书租户 ${user.tenantKey}`,
       refreshTokenEncrypted: encryptFeishuCredential(token.refreshToken, key),
       refreshTokenExpiresAt: token.refreshTokenExpiresAt ?? null,
       scopes: token.scopes.map((scope) => ({ scope })),
-      status: 'connected' as const,
-      tableId: provisioned.tableId,
+      status: 'provisioning' as const,
       tenantKey: user.tenantKey,
     }
     const connection = existingConnection
@@ -144,32 +134,12 @@ export async function GET(request: NextRequest): Promise<Response> {
     const mappings = await payload.find({
       collection: 'feishu-mappings',
       depth: 0,
-      limit: 2,
       overrideAccess: true,
-      where: {
-        or: [{ key: { equals: 'primary-leads' } }, { status: { equals: 'active' } }],
-      },
+      pagination: false,
+      where: { connection: { equals: connection.id } },
     })
-    const mappingData = {
-      appToken: provisioned.appToken,
-      connection: connection.id,
-      fieldMappings: DEFAULT_FEISHU_FIELD_MAPPINGS.map((field) => ({ ...field })),
-      name: '飞书 CRM 主客户表',
-      notificationRecipients: [
-        {
-          enabled: true,
-          label: user.name ?? '飞书安装管理员',
-          receiveId: user.openId,
-          receiveIdType: 'open_id' as const,
-        },
-      ],
-      status: 'active' as const,
-      tableId: provisioned.tableId,
-    }
-    const targetMapping =
-      mappings.docs.find((mapping) => mapping.key === 'primary-leads') ?? mappings.docs[0]
     for (const mapping of mappings.docs) {
-      if (mapping.id !== targetMapping?.id && mapping.status === 'active') {
+      if (mapping.status === 'active') {
         await payload.update({
           collection: 'feishu-mappings',
           data: { status: 'disabled' },
@@ -178,21 +148,11 @@ export async function GET(request: NextRequest): Promise<Response> {
         })
       }
     }
-    if (targetMapping) {
-      await payload.update({
-        collection: 'feishu-mappings',
-        data: mappingData,
-        id: targetMapping.id,
-        overrideAccess: true,
-      })
-    } else {
-      await payload.create({
-        collection: 'feishu-mappings',
-        data: { ...mappingData, key: 'primary-leads' },
-        overrideAccess: true,
-      })
-    }
-    return redirect(request, 'connected')
+    await enqueueFeishuConnectionProvisionJob({
+      connection: connection as unknown as Record<string, unknown>,
+      payload,
+    })
+    return redirect(request, 'provisioning')
   } catch {
     return redirect(request, 'failed')
   }

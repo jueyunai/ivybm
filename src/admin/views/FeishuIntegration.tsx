@@ -6,6 +6,14 @@ import { Gutter } from '@payloadcms/ui'
 import { getRoleUser } from '@/access/roles'
 import { canDecryptFeishuCredential } from '@/modules/feishu/credentials'
 
+const statusLabels = {
+  connected: '已连接',
+  disconnected: '已断开',
+  error: '自动开通失败',
+  provisioning: '正在自动创建客户表',
+  reconnect_required: '需要重新授权',
+} as const
+
 export default async function FeishuIntegration({ initPageResult }: AdminViewServerProps) {
   const { req } = initPageResult
   const user = getRoleUser(req.user)
@@ -47,9 +55,15 @@ export default async function FeishuIntegration({ initPageResult }: AdminViewSer
           {connection ? (
             <div>
               <p>
-                {connection.name}：{connection.status}
+                {connection.name}：{statusLabels[connection.status]}
                 {usable ? '（凭据可用）' : '（需要重新授权）'}
               </p>
+              {connection.status === 'provisioning' ? (
+                <p>授权已经完成。后台正在创建多维表格，稍后刷新本页即可打开客户表。</p>
+              ) : null}
+              {connection.status === 'error' ? (
+                <p>自动创建遇到问题。管理员可在 Jobs 中查看失败原因并人工重试，无需重新授权。</p>
+              ) : null}
               {connection.baseURL ? (
                 <p>
                   <a href={connection.baseURL} rel="noreferrer" target="_blank">

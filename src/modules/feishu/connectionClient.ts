@@ -46,6 +46,9 @@ const expiresSoon = (value: unknown): boolean => {
   return !Number.isFinite(expiresAt) || expiresAt <= Date.now() + 60_000
 }
 
+const canUseUserToken = (status: unknown): boolean =>
+  status === 'connected' || status === 'provisioning' || status === 'error'
+
 export class PayloadFeishuTokenProvider {
   private appToken?: { expiresAt: number; value: string }
   private readonly connectionId: number | string
@@ -91,7 +94,7 @@ export class PayloadFeishuTokenProvider {
         SELECT "id" FROM "feishu_connections" WHERE "id" = ${this.connectionId} FOR UPDATE
       `)
       const connection = await this.findConnection(req)
-      if (connection.status !== 'connected') {
+      if (!canUseUserToken(connection.status)) {
         throw new FeishuConfigurationError('Feishu connection requires authorization')
       }
       if (!force && !expiresSoon(connection.accessTokenExpiresAt)) {
@@ -144,7 +147,7 @@ export class PayloadFeishuTokenProvider {
 
   private async userAccessToken(forceRefresh = false): Promise<string> {
     const connection = await this.findConnection()
-    if (connection.status !== 'connected') {
+    if (!canUseUserToken(connection.status)) {
       throw new FeishuConfigurationError('Feishu connection requires authorization')
     }
     if (forceRefresh || expiresSoon(connection.accessTokenExpiresAt)) {

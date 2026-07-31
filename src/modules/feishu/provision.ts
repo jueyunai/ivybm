@@ -41,11 +41,13 @@ const request = async ({
   body,
   fetch: fetchImpl,
   path,
+  signal,
 }: {
   accessToken: string
   body: unknown
   fetch: FetchLike
   path: string
+  signal?: AbortSignal
 }): Promise<JsonRecord> => {
   const response = await fetchImpl(`https://open.feishu.cn${path}`, {
     body: JSON.stringify(body),
@@ -54,6 +56,7 @@ const request = async ({
       'content-type': 'application/json; charset=utf-8',
     },
     method: 'POST',
+    signal,
   })
   const responseBody = record(await response.json().catch(() => undefined)) ?? {}
   if (!response.ok || number(responseBody.code) !== 0) {
@@ -68,20 +71,23 @@ const request = async ({
   return responseBody
 }
 
-export const provisionFeishuCRM = async ({
+export const createFeishuCRMBase = async ({
   accessToken,
   baseName = 'IVYBM 客户管理',
   fetch: fetchImpl = globalThis.fetch,
+  signal,
 }: {
   accessToken: string
   baseName?: string
   fetch?: FetchLike
-}): Promise<{ appToken: string; baseURL: string; tableId: string }> => {
+  signal?: AbortSignal
+}): Promise<{ appToken: string; baseURL: string }> => {
   const created = await request({
     accessToken,
     body: { name: baseName, time_zone: 'Asia/Shanghai' },
     fetch: fetchImpl,
     path: '/open-apis/bitable/v1/apps',
+    signal,
   })
   const app = record(record(created.data)?.app)
   const appToken = string(app?.app_token)
@@ -94,6 +100,20 @@ export const provisionFeishuCRM = async ({
     })
   }
 
+  return { appToken, baseURL }
+}
+
+export const createFeishuCRMTable = async ({
+  accessToken,
+  appToken,
+  fetch: fetchImpl = globalThis.fetch,
+  signal,
+}: {
+  accessToken: string
+  appToken: string
+  fetch?: FetchLike
+  signal?: AbortSignal
+}): Promise<{ tableId: string }> => {
   const table = await request({
     accessToken,
     body: {
@@ -105,6 +125,7 @@ export const provisionFeishuCRM = async ({
     },
     fetch: fetchImpl,
     path: `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables`,
+    signal,
   })
   const tableId = string(record(table.data)?.table_id)
   if (!tableId) {
@@ -114,5 +135,26 @@ export const provisionFeishuCRM = async ({
       retryable: false,
     })
   }
-  return { appToken, baseURL, tableId }
+  return { tableId }
+}
+
+export const provisionFeishuCRM = async ({
+  accessToken,
+  baseName,
+  fetch: fetchImpl = globalThis.fetch,
+  signal,
+}: {
+  accessToken: string
+  baseName?: string
+  fetch?: FetchLike
+  signal?: AbortSignal
+}): Promise<{ appToken: string; baseURL: string; tableId: string }> => {
+  const base = await createFeishuCRMBase({ accessToken, baseName, fetch: fetchImpl, signal })
+  const table = await createFeishuCRMTable({
+    accessToken,
+    appToken: base.appToken,
+    fetch: fetchImpl,
+    signal,
+  })
+  return { ...base, ...table }
 }
