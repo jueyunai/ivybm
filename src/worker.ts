@@ -5,6 +5,13 @@ import { getPayload } from 'payload'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import type { JobHandler } from '@/modules/jobs/contracts'
 import {
+  createFeishuHandoffNotifyJobHandler,
+  createFeishuLeadSyncJobHandler,
+  enqueuePendingFeishuJobs,
+  FEISHU_HANDOFF_NOTIFY_JOB_TYPE,
+  FEISHU_LEAD_SYNC_JOB_TYPE,
+} from '@/modules/feishu/jobs'
+import {
   DEFAULT_JOB_HEARTBEAT_INTERVAL_MS,
   DEFAULT_JOB_POLL_INTERVAL_MS,
   JobWorker,
@@ -43,8 +50,11 @@ const jobHeartbeatIntervalMs = readPositiveInteger(
 )
 const pollIntervalMs = readPositiveInteger('WORKER_POLL_INTERVAL_MS', DEFAULT_JOB_POLL_INTERVAL_MS)
 const knowledgeRecoveryIntervalMs = Math.max(pollIntervalMs, heartbeatIntervalMs)
+const feishuRelayIntervalMs = readPositiveInteger('FEISHU_RELAY_INTERVAL_MS', 30_000)
 const payload = await getPayload({ config, disableOnInit: true, key: 'job-worker' })
 const handlers: Record<string, JobHandler> = {
+  [FEISHU_HANDOFF_NOTIFY_JOB_TYPE]: createFeishuHandoffNotifyJobHandler({ payload }),
+  [FEISHU_LEAD_SYNC_JOB_TYPE]: createFeishuLeadSyncJobHandler({ payload }),
   [KNOWLEDGE_INDEX_JOB_TYPE]: createKnowledgeIndexJobHandler({ payload }),
   [PLATFORM_EVENT_JOB_TYPE]: createPlatformEventJobHandler({
     accountAuthorizer: new PayloadPlatformMessagingAccountAuthorizer({ payload }),
@@ -63,6 +73,7 @@ const writeHeartbeat = (): void => {
 }
 
 let nextKnowledgeRecoveryAt = 0
+let nextFeishuRelayAt = 0
 const recoverDeadKnowledgeDocuments = async (): Promise<void> => {
   const now = Date.now()
   if (now < nextKnowledgeRecoveryAt) return
@@ -78,6 +89,27 @@ const recoverDeadKnowledgeDocuments = async (): Promise<void> => {
   }
 }
 
+const relayFeishuOutbox = async (): Promise<void> => {
+  const now = Date.now()
+  if (now < nextFeishuRelayAt) return
+  nextFeishuRelayAt = now + feishuRelayIntervalMs
+
+  try {
+    const relayed = await enqueuePendingFeishuJobs({ payload })
+    const created = relayed.leads.created + relayed.handoffs.created
+    if (relayed.enabled && created > 0) {
+      payload.logger.info(`Feishu relay created ${created} job(s)`)
+    }
+  } catch {
+    payload.logger.error('Feishu outbox relay failed; continuing worker loop')
+  }
+}
+
+const runMaintenance = async (): Promise<void> => {
+  await recoverDeadKnowledgeDocuments()
+  await relayFeishuOutbox()
+}
+
 const stopWorker = (): void => {
   worker.stop()
 }
@@ -91,7 +123,7 @@ let exitCode = 0
 
 try {
   try {
-    await recoverDeadKnowledgeDocuments()
+    await runMaintenance()
     const legacyRebuilds = await enqueueLegacyKnowledgeRebuilds({
       payload,
       requestedBy: null,
@@ -105,7 +137,7 @@ try {
     payload.logger.error('Legacy knowledge rebuild scan failed; continuing worker startup')
   }
   payload.logger.info('Job worker started')
-  await worker.runUntilStopped(recoverDeadKnowledgeDocuments)
+  await worker.runUntilStopped(runMaintenance)
 } catch (error) {
   exitCode = 1
   payload.logger.error(error instanceof Error ? error.message : String(error))

@@ -14,6 +14,7 @@ import * as migration_20260721_105212_task8_index_owner_recovery from './2026072
 import * as migration_20260721_150000_task8_ai_usage_logs from './20260721_150000_task8_ai_usage_logs'
 import * as migration_20260725_044748_task13_platform_accounts from './20260725_044748_task13_platform_accounts'
 import * as migration_20260725_051208_task13_tiktok_channel from './20260725_051208_task13_tiktok_channel'
+import * as migration_20260730_035013_task11_feishu_oauth from './20260730_035013_task11_feishu_oauth'
 
 export const migrations = [
   {
@@ -95,5 +96,10 @@ export const migrations = [
     up: migration_20260725_051208_task13_tiktok_channel.up,
     down: migration_20260725_051208_task13_tiktok_channel.down,
     name: '20260725_051208_task13_tiktok_channel',
+  },
+  {
+    up: migration_20260730_035013_task11_feishu_oauth.up,
+    down: migration_20260730_035013_task11_feishu_oauth.down,
+    name: '20260730_035013_task11_feishu_oauth',
   },
 ]
