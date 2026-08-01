@@ -32,6 +32,13 @@ test('admin overview renders real queues and dependency-gated work without inter
   await expect(page.getByText('DEPENDENCY-GATED')).toBeVisible()
   await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
   await expect(page.locator('.portal-overview__queue-card')).toHaveCount(4)
+  await expect(page.getByRole('link', { name: /待接管会话/ })).toHaveAttribute(
+    'href',
+    '/dashboard?queue=handoff-requested',
+  )
+  await page.getByRole('link', { name: /待接管会话/ }).click()
+  await expect(page).toHaveURL(/\/dashboard\?queue=handoff-requested$/)
+  await expect(page.getByRole('link', { name: '显示全部' })).toHaveAttribute('href', '/dashboard')
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440)
 
   await page.screenshot({

@@ -2,7 +2,6 @@ import { expect, test } from '@playwright/test'
 
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
-const localBaseURL = process.env.BASE_URL || 'http://localhost:3000'
 
 const fillPortalLogin = async (
   page: import('@playwright/test').Page,
@@ -29,7 +28,9 @@ test('unauthenticated Portal requests preserve a safe return target', async ({ p
   expect(page.url()).not.toContain('invalid%40example.invalid')
 })
 
-test('Portal login exposes stable locked, unavailable, and network failure states', async ({ page }) => {
+test('Portal login exposes stable locked, unavailable, and network failure states', async ({
+  page,
+}) => {
   await page.goto('/dashboard/login')
 
   for (const [status, message] of [
@@ -84,8 +85,48 @@ test('Portal login reuses the Payload session and keeps the existing Admin route
   await expect(page).toHaveURL(/\/dashboard\/login\?returnTo=%2Fdashboard$/)
 })
 
-test('the native no-JavaScript fallback never submits credentials in the URL', async ({ browser }) => {
-  const context = await browser.newContext({ baseURL: localBaseURL, javaScriptEnabled: false })
+test('the account menu preserves the session when logout fails and allows a successful retry', async ({
+  page,
+}) => {
+  test.skip(
+    !adminEmail || !adminPassword,
+    'Requires dedicated non-production E2E or local seed administrator credentials.',
+  )
+  if (!adminEmail || !adminPassword) return
+
+  await page.goto('/dashboard/login?returnTo=%2Fdashboard%2Fsettings')
+  await fillPortalLogin(page, adminEmail, adminPassword)
+  await page.getByRole('button', { name: '登录后台' }).click()
+  await expect(page).toHaveURL(/\/dashboard\/settings$/)
+
+  await page.route('**/api/users/logout', async (route) => {
+    await route.fulfill({ body: 'temporary logout failure', status: 503 })
+  })
+
+  await page.getByRole('button', { name: '账户菜单' }).click()
+  await page.getByRole('menuitem', { name: '退出登录' }).click()
+  await expect(page.locator('.portal-account__error[role="alert"]')).toHaveText(
+    '退出失败，请重试。',
+  )
+  await expect(page).toHaveURL(/\/dashboard\/settings$/)
+
+  const sessionAfterFailure = await page.request.get('/api/users/me')
+  expect(sessionAfterFailure.ok()).toBe(true)
+  await expect(sessionAfterFailure.json()).resolves.toMatchObject({ user: { role: 'admin' } })
+
+  await page.unroute('**/api/users/logout')
+  await page.getByRole('menuitem', { name: '退出登录' }).click()
+  await expect(page).toHaveURL(/\/dashboard\/login$/)
+})
+
+test('the native no-JavaScript fallback never submits credentials in the URL', async ({
+  browser,
+}, testInfo) => {
+  const projectBaseURL = testInfo.project.use.baseURL
+  const context = await browser.newContext({
+    baseURL: typeof projectBaseURL === 'string' ? projectBaseURL : 'http://localhost:3000',
+    javaScriptEnabled: false,
+  })
   const page = await context.newPage()
 
   try {

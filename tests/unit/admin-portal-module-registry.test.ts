@@ -112,7 +112,7 @@ describe('Portal module registry', () => {
     }
   })
 
-  it('keeps disabled and dependency-gated modules inside Portal state handling', () => {
+  it('keeps all ten Portal modules inside Portal state handling', () => {
     const flags = Object.fromEntries(
       PORTAL_MODULES.flatMap((module) =>
         module.featureFlag ? [[module.featureFlag, 'true']] : [],
@@ -125,9 +125,18 @@ describe('Portal module registry', () => {
 
     expect(modules.every((module) => module.href.startsWith('/dashboard'))).toBe(true)
     expect(JSON.stringify(modules)).not.toContain('/admin')
+    expect(modules).toHaveLength(10)
     expect(modules.find((module) => module.id === 'content-studio')).toMatchObject({
-      availability: 'dependency-gated',
-      commands: [],
+      availability: 'available',
+      commands: expect.arrayContaining(['content-studio:create', 'content-studio:schedule']),
+      owner: 'jueyunai',
+    })
+    expect(modules.find((module) => module.id === 'platforms')).toMatchObject({
+      canNavigate: true,
+      owner: 'xuemusi',
+    })
+    expect(modules.find((module) => module.id === 'operations')).toMatchObject({
+      commands: ['operations:retry'],
       owner: 'jueyunai',
     })
 

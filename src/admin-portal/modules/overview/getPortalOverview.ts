@@ -6,16 +6,23 @@ const MAX_PRIORITY_ITEMS_PER_KIND = 3
 
 export const PORTAL_OVERVIEW_QUERY_BUDGET = 7
 
-export type PortalOverviewPriorityKind =
-  | 'active-conversation'
-  | 'handoff-request'
-  | 'job'
-  | 'lead'
+export const PORTAL_OVERVIEW_QUEUE_FILTERS = [
+  'all',
+  'handoff-requested',
+  'active-conversations',
+  'new-qualified-leads',
+  'failed-jobs',
+] as const
 
-export type PortalOverviewDependencyId =
-  | 'content-review'
-  | 'feishu-failures'
-  | 'publishing-today'
+export type PortalOverviewQueueFilter = (typeof PORTAL_OVERVIEW_QUEUE_FILTERS)[number]
+
+export interface PortalOverviewQuery {
+  queue: PortalOverviewQueueFilter
+}
+
+export type PortalOverviewPriorityKind = 'active-conversation' | 'handoff-request' | 'job' | 'lead'
+
+export type PortalOverviewDependencyId = 'feishu-failures'
 
 export interface PortalOverviewPriorityItem {
   id: number | string
@@ -39,9 +46,22 @@ export interface PortalOverviewSummary {
   }
 }
 
+const firstValue = (value: string | string[] | undefined): string | undefined =>
+  Array.isArray(value) ? value[0] : value
+
+export function parsePortalOverviewQuery(
+  input: Record<string, string | string[] | undefined>,
+): PortalOverviewQuery {
+  const queue = firstValue(input.queue)
+
+  return {
+    queue: PORTAL_OVERVIEW_QUEUE_FILTERS.includes(queue as PortalOverviewQueueFilter)
+      ? (queue as PortalOverviewQueueFilter)
+      : 'all',
+  }
+}
+
 const dependencies = (): PortalOverviewSummary['dependencies'] => [
-  { id: 'content-review', status: 'dependency-gated' },
-  { id: 'publishing-today', status: 'dependency-gated' },
   { id: 'feishu-failures', status: 'dependency-gated' },
 ]
 
@@ -64,8 +84,10 @@ const byMostRecent = (
 ): number => {
   const leftTimestamp = Date.parse(left.updatedAt)
   const rightTimestamp = Date.parse(right.updatedAt)
-  return (Number.isNaN(rightTimestamp) ? 0 : rightTimestamp) -
+  return (
+    (Number.isNaN(rightTimestamp) ? 0 : rightTimestamp) -
     (Number.isNaN(leftTimestamp) ? 0 : leftTimestamp)
+  )
 }
 
 export class PortalOverviewReadError extends Error {

@@ -37,7 +37,9 @@ export interface PortalSettingsMessages {
   chinese: string
   darkTheme: string
   description: string
+  email: string
   english: string
+  eyebrow: string
   languageLabel: string
   lightTheme: string
   moduleOwner: string
@@ -47,9 +49,11 @@ export interface PortalSettingsMessages {
   noSiteDescription: string
   preferencesDescription: string
   preferencesTitle: string
+  permission: string
   readOnly: string
   reduceMotion: string
   reduceMotionDescription: string
+  role: string
   siteDescription: string
   siteName: string
   siteSummaryDescription: string
@@ -62,7 +66,7 @@ export interface PortalSettingsMessages {
 export interface PortalOverviewMessages {
   dependencyDescription: string
   dependencyItems: Record<
-    'content-review' | 'feishu-failures' | 'publishing-today',
+    'feishu-failures',
     { description: string; label: string }
   >
   dependencyStatus: string
@@ -88,6 +92,7 @@ export interface PortalOverviewMessages {
   roleNotice: Record<'admin' | 'operator' | 'sales', string>
   roleNoticeTitle: string
   scopeBadge: string
+  showAllPriorities: string
   statuses: Record<
     'dead' | 'failed' | 'handoff_requested' | 'human_active' | 'new' | 'qualified',
     string
@@ -99,6 +104,8 @@ export interface PortalOverviewMessages {
 export interface PortalWebsiteContentMessages {
   allStatuses: string
   arabic: string
+  completenessComplete: string
+  completenessMissing: string
   collections: Record<
     'downloads' | 'pages' | 'posts' | 'product-categories' | 'products' | 'projects',
     string
@@ -122,6 +129,8 @@ export interface PortalWebsiteContentMessages {
   nextPage: string
   noPreview: string
   preview: string
+  previewArabic: string
+  previewEnglish: string
   previousPage: string
   readErrorDescription: string
   readErrorTitle: string
@@ -183,7 +192,6 @@ export interface PortalMediaMessages {
   total: string
   typeAndSize: string
   upload: string
-  uploadDisabledTitle: string
   uploadLimits: string
   uploadLimitsTitle: string
   usageGated: string
@@ -191,11 +199,115 @@ export interface PortalMediaMessages {
   visibilityLabel: string
 }
 
+export interface PortalKnowledgeMessages {
+  addDocument: string
+  adminOnly: string
+  adminRetryRequired: string
+  aiAdminOnlyDescription: string
+  aiAdminOnlyTitle: string
+  aiRoutesTitle: string
+  allIndexStatuses: string
+  allLocales: string
+  allReviewStatuses: string
+  allSourceTypes: string
+  allVisibility: string
+  alreadyProcessing: string
+  applyFilters: string
+  arabic: string
+  credentialsNeverShown: string
+  customerVisible: string
+  description: string
+  documentColumn: string
+  documentCount: string
+  documentListTitle: string
+  documentNotFound: string
+  documentTableLabel: string
+  embeddingRoute: string
+  emptyDescription: string
+  emptyTitle: string
+  english: string
+  eyebrow: string
+  forbiddenDescription: string
+  forbiddenTitle: string
+  indexAccepted: string
+  indexColumn: string
+  indexDuplicate: string
+  indexLabel: string
+  indexRateLimited: string
+  indexStatuses: Record<'failed' | 'pending' | 'processing' | 'ready', string>
+  indexUnavailable: string
+  indexing: string
+  internalOnly: string
+  invalidDocument: string
+  localeColumn: string
+  localeLabel: string
+  metrics: {
+    draft: string
+    draftCaption: string
+    failed: string
+    failedCaption: string
+    processing: string
+    processingCaption: string
+    ready: string
+    readyCaption: string
+  }
+  metricsLabel: string
+  moduleDisabledDescription: string
+  moduleDisabledTitle: string
+  nextPage: string
+  no: string
+  noPrompts: string
+  operatorMaintainable: string
+  paginationLabel: string
+  previousPage: string
+  promptImmutableDescription: string
+  promptImmutableTitle: string
+  promptPurposes: Record<
+    'content-generation' | 'conversation-summary' | 'customer-chat' | 'translation',
+    string
+  >
+  promptsTitle: string
+  promptStatuses: Record<'active' | 'archived' | 'draft', string>
+  readErrorDescription: string
+  readErrorTitle: string
+  recoveryDescription: string
+  recoveryTitle: string
+  resetFilters: string
+  reviewColumn: string
+  reviewLabel: string
+  reviewRequired: string
+  reviewStatuses: Record<'archived' | 'draft' | 'reviewed', string>
+  routeActionRequired: string
+  routeReady: string
+  routeUnconfigured: string
+  searchLabel: string
+  searchPlaceholder: string
+  selectDocument: string
+  sourceTypeLabel: string
+  sourceTypes: Record<
+    | 'faq'
+    | 'other'
+    | 'product-manual'
+    | 'project-case'
+    | 'sales-script'
+    | 'technical-specification',
+    string
+  >
+  startIndex: string
+  textRoute: string
+  title: string
+  updatedColumn: string
+  visibilityColumn: string
+  visibilityLabel: string
+  yes: string
+}
+
 export interface PortalMessages {
   modules: Record<PortalModuleLabelKey, string>
   navGroups: Record<PortalNavGroup, string>
   states: Record<PortalStateKey, string>
   nextSteps: Record<PortalNextStepKey, string>
+  knowledgeWorkspace: PortalKnowledgeMessages
   overview: PortalOverviewMessages
   mediaWorkspace: PortalMediaMessages
   settings: PortalSettingsMessages

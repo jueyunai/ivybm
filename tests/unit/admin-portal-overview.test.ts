@@ -1,12 +1,20 @@
-import { describe, expect, it, vi } from 'vitest'
+import React from 'react'
+
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Payload, PayloadRequest } from 'payload'
 
 import {
   getPortalOverview,
+  parsePortalOverviewQuery,
   PORTAL_OVERVIEW_QUERY_BUDGET,
   PortalOverviewReadError,
 } from '@/admin-portal/modules/overview/getPortalOverview'
+import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
+import { OverviewPage } from '@/admin-portal/modules/overview/OverviewPage'
+
+afterEach(cleanup)
 
 const requestFor = (role: 'admin' | 'operator' | 'sales'): PayloadRequest =>
   ({
@@ -14,6 +22,34 @@ const requestFor = (role: 'admin' | 'operator' | 'sales'): PayloadRequest =>
   }) as unknown as PayloadRequest
 
 describe('Portal overview read model', () => {
+  it('renders a blocked state instead of overview data when the module is disabled', () => {
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(OverviewPage, {
+          pageState: 'module-disabled',
+          query: { queue: 'all' },
+          summary: null,
+          user: { email: 'admin@example.invalid', id: 1, role: 'admin' },
+        }),
+      ),
+    )
+
+    expect(screen.getAllByText('模块尚未启用')).toHaveLength(2)
+    expect(screen.queryByText('今日运营要务')).toBeNull()
+  })
+
+  it('normalizes reproducible queue filters without placing UI links in the read model', () => {
+    expect(parsePortalOverviewQuery({ queue: 'handoff-requested' })).toEqual({
+      queue: 'handoff-requested',
+    })
+    expect(parsePortalOverviewQuery({ queue: ['failed-jobs', 'all'] })).toEqual({
+      queue: 'failed-jobs',
+    })
+    expect(parsePortalOverviewQuery({ queue: 'unknown' })).toEqual({ queue: 'all' })
+  })
+
   it('uses at most seven access-controlled bounded queries and returns a safe Portal DTO', async () => {
     const count = vi.fn().mockResolvedValue({ totalDocs: 2 })
     const find = vi
@@ -90,8 +126,6 @@ describe('Portal overview read model', () => {
       'active-conversation',
     ])
     expect(summary.dependencies).toEqual([
-      { id: 'content-review', status: 'dependency-gated' },
-      { id: 'publishing-today', status: 'dependency-gated' },
       { id: 'feishu-failures', status: 'dependency-gated' },
     ])
 
@@ -123,8 +157,8 @@ describe('Portal overview read model', () => {
       find: vi.fn(),
     } as unknown as Payload
 
-    await expect(
-      getPortalOverview({ payload, req: requestFor('admin') }),
-    ).rejects.toBeInstanceOf(PortalOverviewReadError)
+    await expect(getPortalOverview({ payload, req: requestFor('admin') })).rejects.toBeInstanceOf(
+      PortalOverviewReadError,
+    )
   })
 })

@@ -2,6 +2,7 @@
 
 import {
   IconAlertTriangle,
+  IconArrowRight,
   IconHeadset,
   IconMessageCircle,
   IconShieldCheck,
@@ -9,27 +10,42 @@ import {
   type Icon as TablerIcon,
 } from '@tabler/icons-react'
 
+import Link from 'next/link'
+
 import type { PortalUser } from '@/admin-portal/core/auth/types'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
 
 import type {
   PortalOverviewPriorityItem,
   PortalOverviewPriorityKind,
+  PortalOverviewQuery,
   PortalOverviewSummary,
 } from './getPortalOverview'
 
 export interface OverviewPageProps {
+  pageState?: 'available' | 'module-disabled' | 'portal-disabled'
+  query: PortalOverviewQuery
   readError?: boolean
   summary: PortalOverviewSummary | null
   user: PortalUser
 }
 
-const priorityTone: Record<
-  PortalOverviewPriorityKind,
-  'danger' | 'info' | 'warning'
+const priorityKindForQueue: Record<
+  Exclude<PortalOverviewQuery['queue'], 'all'>,
+  PortalOverviewPriorityKind
 > = {
+  'active-conversations': 'active-conversation',
+  'failed-jobs': 'job',
+  'handoff-requested': 'handoff-request',
+  'new-qualified-leads': 'lead',
+}
+
+export const buildPortalOverviewHref = (queue: PortalOverviewQuery['queue']): string =>
+  queue === 'all' ? '/dashboard' : `/dashboard?queue=${queue}`
+
+const priorityTone: Record<PortalOverviewPriorityKind, 'danger' | 'info' | 'warning'> = {
   'active-conversation': 'info',
   'handoff-request': 'warning',
   job: 'danger',
@@ -46,13 +62,7 @@ const formatTimestamp = (value: string, locale: 'en' | 'zh'): string => {
   }).format(date)
 }
 
-function PriorityItem({
-  item,
-  locale,
-}: {
-  item: PortalOverviewPriorityItem
-  locale: 'en' | 'zh'
-}) {
+function PriorityItem({ item, locale }: { item: PortalOverviewPriorityItem; locale: 'en' | 'zh' }) {
   const messages = getPortalMessages(locale).overview
   const kind = messages.priorityKinds[item.kind]
   const status =
@@ -77,9 +87,18 @@ function PriorityItem({
   )
 }
 
-export function OverviewPage({ readError = false, summary, user }: OverviewPageProps) {
+export function OverviewPage({ pageState = 'available', query, readError = false, summary, user }: OverviewPageProps) {
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).overview
+
+  if (pageState !== 'available') {
+    const state = getPortalMessages(locale).states[pageState]
+    return (
+      <main className="portal-page portal-overview">
+        <PortalState description={state} title={state} type="blocked" />
+      </main>
+    )
+  }
 
   const queueCards: Array<{
     count: number
@@ -128,6 +147,12 @@ export function OverviewPage({ readError = false, summary, user }: OverviewPageP
             ]),
       ]
     : []
+  const selectedPriorityKind = query.queue === 'all' ? null : priorityKindForQueue[query.queue]
+  const visiblePriorityItems = summary
+    ? selectedPriorityKind === null
+      ? summary.priorityItems
+      : summary.priorityItems.filter((item) => item.kind === selectedPriorityKind)
+    : []
 
   return (
     <main className="portal-page portal-overview">
@@ -151,8 +176,10 @@ export function OverviewPage({ readError = false, summary, user }: OverviewPageP
         <>
           <section aria-label={messages.title} className="portal-overview__queues">
             {queueCards.map(({ count, description, icon: Icon, id, label, tone }) => (
-              <article
+              <Link
+                aria-current={query.queue === id ? 'page' : undefined}
                 className={`portal-overview__queue-card portal-overview__queue-card--${tone}`}
+                href={buildPortalOverviewHref(id as PortalOverviewQuery['queue'])}
                 key={id}
               >
                 <div className="portal-overview__queue-heading">
@@ -160,8 +187,11 @@ export function OverviewPage({ readError = false, summary, user }: OverviewPageP
                   <Icon aria-hidden="true" size={18} stroke={1.8} />
                 </div>
                 <strong className="portal-overview__queue-value">{count}</strong>
-                <p>{description}</p>
-              </article>
+                <span className="portal-overview__queue-footer">
+                  <span>{description}</span>
+                  <IconArrowRight aria-hidden="true" size={16} stroke={1.8} />
+                </span>
+              </Link>
             ))}
           </section>
 
@@ -172,9 +202,14 @@ export function OverviewPage({ readError = false, summary, user }: OverviewPageP
                   <h3>{messages.priorityTitle}</h3>
                   <p>{messages.priorityDescription}</p>
                 </div>
+                {query.queue !== 'all' ? (
+                  <Button asChild size="compact" variant="ghost">
+                    <Link href={buildPortalOverviewHref('all')}>{messages.showAllPriorities}</Link>
+                  </Button>
+                ) : null}
               </div>
 
-              {summary.priorityItems.length === 0 ? (
+              {visiblePriorityItems.length === 0 ? (
                 <PortalState
                   className="portal-overview__empty-state"
                   description={messages.emptyDescription}
@@ -183,7 +218,7 @@ export function OverviewPage({ readError = false, summary, user }: OverviewPageP
                 />
               ) : (
                 <ul className="portal-overview__priority-list">
-                  {summary.priorityItems.map((item) => (
+                  {visiblePriorityItems.map((item) => (
                     <PriorityItem item={item} key={`${item.kind}-${item.id}`} locale={locale} />
                   ))}
                 </ul>

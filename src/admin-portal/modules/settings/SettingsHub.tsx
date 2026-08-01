@@ -12,6 +12,7 @@ import type { PortalSettingsSummary } from './getPortalSettingsSummary'
 
 export interface SettingsHubProps {
   modules: readonly ResolvedPortalModule[]
+  pageState?: 'available' | 'module-disabled' | 'portal-disabled'
   readError?: boolean
   summary: PortalSettingsSummary | null
   user: PortalUser
@@ -36,16 +37,25 @@ const statusTone = (
   return 'neutral'
 }
 
-export function SettingsHub({ modules, readError = false, summary, user }: SettingsHubProps) {
+export function SettingsHub({ modules, pageState = 'available', readError = false, summary, user }: SettingsHubProps) {
   const { locale, reducedMotion, setLocale, setReducedMotion, setTheme, theme } =
     usePortalPreferences()
   const messages = getPortalMessages(locale)
+
+  if (pageState !== 'available') {
+    const state = messages.states[pageState]
+    return (
+      <main className="portal-page portal-settings">
+        <PortalState description={state} title={state} type="blocked" />
+      </main>
+    )
+  }
 
   return (
     <main className="portal-page portal-settings">
       <header className="portal-page__intro">
         <div>
-          <p className="portal-page__eyebrow">SYSTEM / SETTINGS</p>
+          <p className="portal-page__eyebrow">{messages.settings.eyebrow}</p>
           <h2>{messages.settings.title}</h2>
           <p>{messages.settings.description}</p>
         </div>
@@ -64,11 +74,11 @@ export function SettingsHub({ modules, readError = false, summary, user }: Setti
           </div>
           <dl className="portal-settings__account">
             <div>
-              <dt>Email</dt>
+              <dt>{messages.settings.email}</dt>
               <dd>{user.email}</dd>
             </div>
             <div>
-              <dt>Role</dt>
+              <dt>{messages.settings.role}</dt>
               <dd>{roleLabel(user.role, locale)}</dd>
             </div>
           </dl>
@@ -171,7 +181,7 @@ export function SettingsHub({ modules, readError = false, summary, user }: Setti
               </div>
               {summary.canUpdate ? (
                 <div className="portal-settings__permission">
-                  <dt>Permission</dt>
+                  <dt>{messages.settings.permission}</dt>
                   <dd>{messages.settings.canUpdateSite}</dd>
                 </div>
               ) : null}

@@ -10,8 +10,8 @@ describe('Portal style boundary', () => {
   it('uses Tailwind utilities without importing Preflight or a global reset', () => {
     const portalStyles = readProjectFile('src/admin-portal/core/styles/portal.css')
 
-    expect(portalStyles).toContain('@import "tailwindcss/theme.css"')
-    expect(portalStyles).toContain('@import "tailwindcss/utilities.css"')
+    expect(portalStyles).toMatch(/@import ['"]tailwindcss\/theme\.css['"]/)
+    expect(portalStyles).toMatch(/@import ['"]tailwindcss\/utilities\.css['"]/)
     expect(portalStyles).toContain('prefix(portal)')
     expect(portalStyles).not.toMatch(/tailwindcss(?:\/|\")preflight/)
     expect(portalStyles).not.toContain('@import "tailwindcss";')

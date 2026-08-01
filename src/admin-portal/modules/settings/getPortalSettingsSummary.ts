@@ -1,4 +1,4 @@
-import type { Payload } from 'payload'
+import type { Payload, PayloadRequest } from 'payload'
 
 import { resolveRoleAccess } from '@/access/roles'
 import type { PortalUser } from '@/admin-portal/core/auth/types'
@@ -31,14 +31,17 @@ export const selectPortalSettingsSummary = (
 
 export const getPortalSettingsSummary = async ({
   payload,
+  req,
   user,
 }: {
   payload: Payload
+  req: PayloadRequest
   user: PortalUser
 }): Promise<PortalSettingsSummary> => {
   const settings = await payload.findGlobal({
     depth: 0,
     overrideAccess: false,
+    req,
     select: {
       siteDescription: true,
       siteName: true,
