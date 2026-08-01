@@ -26,6 +26,7 @@ import type {
   MediaView,
 } from './getMediaPage'
 import { MediaGrid, formatDimensions, formatFileSize, formatType } from './MediaGrid'
+import { MediaEditor, MediaEditorButton } from './MediaEditor'
 import { MediaPreview } from './MediaPreview'
 
 export interface MediaWorkspaceProps {
@@ -58,6 +59,7 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).mediaWorkspace
   const [selectedId, setSelectedId] = useState<null | number | string>(null)
+  const [editor, setEditor] = useState<'create' | 'edit' | null>(null)
 
   if (pageState === 'forbidden') {
     return (
@@ -115,7 +117,7 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
           <h2>{messages.title}</h2>
           <p>{messages.description}</p>
         </div>
-        <StatusBadge label={messages.editorStatus} tone="warning" />
+        <StatusBadge label={messages.editorStatus} tone="success" />
       </header>
 
       <Surface as="section" className="portal-media__toolbar">
@@ -209,7 +211,7 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
               </Link>
             </Button>
           </nav>
-          <Button disabled title={messages.uploadDisabledTitle}>
+          <Button onClick={() => setEditor('create')}>
             <IconUpload aria-hidden="true" size={16} stroke={1.8} />
             {messages.upload}
           </Button>
@@ -282,7 +284,19 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
           ) : null}
         </Surface>
 
-        {selected ? (
+        {editor ? (
+          <Surface
+            as="aside"
+            className="portal-media__detail-panel portal-media__detail-panel--editor"
+          >
+            <MediaEditor
+              key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
+              item={editor === 'edit' ? selected : null}
+              mode={editor}
+              onClose={() => setEditor(null)}
+            />
+          </Surface>
+        ) : selected ? (
           <Surface as="aside" className="portal-media__detail-panel">
             <header className="portal-media__detail-heading">
               <div>
@@ -337,6 +351,10 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
               <p>{messages.uploadLimits}</p>
               <small>{summary.limits.mimeTypes.join(' · ')}</small>
             </section>
+
+            <div className="portal-media__detail-actions">
+              <MediaEditorButton onClick={() => setEditor('edit')} />
+            </div>
           </Surface>
         ) : null}
       </div>

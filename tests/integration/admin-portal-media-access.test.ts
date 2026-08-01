@@ -5,6 +5,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createLocalReq, getPayload, type Payload } from 'payload'
 
 import { getMediaPage, loadMediaPageData } from '@/admin-portal/modules/media/getMediaPage'
+import {
+  createPortalMedia,
+  deletePortalMedia,
+  updatePortalMedia,
+} from '@/admin-portal/modules/media/mediaCommands'
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
 
@@ -185,6 +190,68 @@ describe.sequential('Portal media access', () => {
 
     expect(summary.items).toHaveLength(1)
     expect(summary.items[0]).toMatchObject({ isPublic: false, kind: 'pdf' })
+  })
+
+  it('lets an operator upload, edit, audit, and delete an unreferenced asset', async () => {
+    const image = await sharp({
+      create: { background: '#563cf6', channels: 3, height: 320, width: 480 },
+    })
+      .png()
+      .toBuffer()
+    const req = await requestFor(operator)
+    const created = await createPortalMedia({
+      file: {
+        data: image,
+        mimetype: 'image/png',
+        name: `portal-command-${randomUUID()}.png`,
+        size: image.length,
+      },
+      input: {
+        alt: 'Portal command upload',
+        isPublic: false,
+        source: 'IVYBM generated integration fixture',
+      },
+      payload,
+      req,
+    })
+    createdMediaIDs.push(created.id)
+
+    const updated = await updatePortalMedia({
+      id: created.id,
+      input: {
+        alt: 'Portal command upload updated',
+        isPublic: true,
+        source: 'IVYBM owned integration fixture',
+        updatedAt: created.updatedAt,
+      },
+      payload,
+      req,
+    })
+    expect(updated).toMatchObject({ alt: 'Portal command upload updated', isPublic: true })
+
+    await expect(
+      deletePortalMedia({
+        id: created.id,
+        payload,
+        req,
+        updatedAt: updated.updatedAt,
+      }),
+    ).resolves.toMatchObject({ id: created.id })
+    createdMediaIDs.splice(createdMediaIDs.indexOf(created.id), 1)
+
+    const audits = await payload.find({
+      collection: 'audit-logs',
+      overrideAccess: true,
+      pagination: false,
+      where: {
+        and: [
+          { actor: { equals: operator.id } },
+          { documentId: { equals: String(created.id) } },
+          { resource: { equals: 'media' } },
+        ],
+      },
+    })
+    expect(audits.docs.map((audit) => audit.action).sort()).toEqual(['create', 'delete', 'update'])
   })
 
   it('returns a forbidden page result for sales before reading Media', async () => {

@@ -41,6 +41,13 @@ describe('Portal website content summary', () => {
 
   it('uses access-controlled localized reads and returns metadata instead of CMS bodies', async () => {
     const find = vi.fn().mockImplementation(async (options: Record<string, unknown>) => {
+      if (options.collection === 'media') {
+        return {
+          docs: [{ alt: 'Solid aluminum panel cover', id: 91 }],
+          totalDocs: 1,
+        }
+      }
+
       if (options.limit === 1) {
         return {
           docs: [{ updatedAt: '2026-07-30T08:00:00.000Z' }],
@@ -48,37 +55,32 @@ describe('Portal website content summary', () => {
         }
       }
 
-      if (options.locale === 'ar') {
-        return {
-          docs: [
-            {
-              id: 21,
-              seo: { description: 'وصف', title: 'عنوان' },
-              slug: 'solid-aluminum-panel',
-              title: 'ألواح الألمنيوم الصلبة',
-              updatedAt: '2026-07-30T09:00:00.000Z',
-            },
-          ],
-          totalDocs: 1,
-        }
-      }
-
       return {
         docs: [
           {
             _status: 'published',
+            category: 5,
+            coverImage: 91,
+            description: {
+              ar: { root: { children: [{ text: 'وصف المنتج' }] } },
+              en: { root: { children: [{ text: 'Product description' }] } },
+            },
             id: 21,
-            seo: { description: 'Description', title: 'SEO title' },
+            seo: {
+              description: { ar: 'وصف', en: 'Description' },
+              title: { ar: 'عنوان', en: 'SEO title' },
+            },
+            shortDescription: { ar: 'ملخص المنتج', en: 'Product summary' },
             slug: 'solid-aluminum-panel',
-            title: 'Solid Aluminum Panel',
+            title: { ar: 'ألواح الألمنيوم الصلبة', en: 'Solid Aluminum Panel' },
             updatedAt: '2026-07-30T09:00:00.000Z',
           },
           {
             _status: 'draft',
             id: 22,
-            seo: { description: null, title: null },
+            seo: { description: { ar: null, en: null }, title: { ar: null, en: null } },
             slug: 'double-curved-panel',
-            title: 'Double-curved Panel',
+            title: { ar: null, en: 'Double-curved Panel' },
             updatedAt: '2026-07-30T07:00:00.000Z',
           },
         ],
@@ -102,21 +104,29 @@ describe('Portal website content summary', () => {
       expect(options).toEqual(expect.objectContaining({ overrideAccess: false, req }))
     }
     expect(find).toHaveBeenCalledWith(
-      expect.objectContaining({ fallbackLocale: false, locale: 'ar', overrideAccess: false, req }),
+      expect.objectContaining({ fallbackLocale: false, locale: 'all', overrideAccess: false, req }),
     )
     expect(summary.statusBreakdown).toEqual({ draft: 1, published: 1 })
     expect(summary.items[0]).toMatchObject({
       localeCompleteness: { ar: 100, en: 100 },
-      previewHref: '/en/products/solid-aluminum-panel',
+      localeMissing: { ar: [], en: [] },
+      previewHrefs: {
+        ar: '/ar/products/solid-aluminum-panel',
+        en: '/en/products/solid-aluminum-panel',
+      },
       status: 'published',
       title: 'Solid Aluminum Panel',
     })
     expect(summary.items[1]).toMatchObject({
-      localeCompleteness: { ar: 0, en: 33 },
-      previewHref: null,
+      localeCompleteness: { ar: 0, en: 14 },
+      localeMissing: {
+        ar: expect.arrayContaining(['title', 'shortDescription', 'description']),
+        en: expect.arrayContaining(['shortDescription', 'description', 'coverImage']),
+      },
+      previewHrefs: { ar: null, en: null },
       status: 'draft',
     })
-    expect(summary.editor).toEqual({ status: 'dependency-gated' })
+    expect(summary.editor).toEqual({ status: 'available' })
 
     const serialized = JSON.stringify(summary)
     expect(serialized).not.toMatch(/\"(body|content|description|internalNotes|keywords)\":/i)
@@ -187,12 +197,16 @@ describe('Portal website content summary', () => {
               { id: 'posts', total: 1, updatedAt: null },
               { id: 'downloads', total: 1, updatedAt: null },
             ],
-            editor: { status: 'dependency-gated' },
+            editor: { status: 'available' },
             items: [
               {
                 id: 21,
                 localeCompleteness: { ar: 100, en: 100 },
-                previewHref: '/en/products/solid-aluminum-panel',
+                localeMissing: { ar: [], en: [] },
+                previewHrefs: {
+                  ar: '/ar/products/solid-aluminum-panel',
+                  en: '/en/products/solid-aluminum-panel',
+                },
                 slug: 'solid-aluminum-panel',
                 status: 'published',
                 title: 'Solid Aluminum Panel',
@@ -201,7 +215,11 @@ describe('Portal website content summary', () => {
               {
                 id: 22,
                 localeCompleteness: { ar: 40, en: 67 },
-                previewHref: null,
+                localeMissing: {
+                  ar: ['description', 'seo.description'],
+                  en: ['coverImage'],
+                },
+                previewHrefs: { ar: null, en: null },
                 slug: 'draft-panel',
                 status: 'draft',
                 title: 'Draft Panel',
@@ -221,19 +239,21 @@ describe('Portal website content summary', () => {
       6,
     )
     expect(screen.getByRole('link', { name: /^产品2/ }).getAttribute('aria-current')).toBe('page')
-    expect(screen.getByRole('link', { name: '打开官网预览' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: '英文预览' }).getAttribute('href')).toBe(
       '/en/products/solid-aluminum-panel',
     )
+    expect(screen.getByRole('link', { name: '阿语预览' }).getAttribute('href')).toBe(
+      '/ar/products/solid-aluminum-panel',
+    )
     expect(screen.getByText('语言完整度')).toBeTruthy()
-    expect(
-      screen.getByText(
-        '复杂富文本、版本历史和完整 SEO 编辑仍受依赖限制；当前只提供安全摘要与官网预览。',
-      ),
-    ).toBeTruthy()
+    expect(screen.getAllByText('字段完整').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByRole('button', { name: '新增内容' }).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByRole('button', { name: '编辑内容' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: /Draft Panel/ }))
     expect(screen.getByRole('heading', { name: 'Draft Panel' })).toBeTruthy()
-    expect(screen.queryByRole('link', { name: '打开官网预览' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '英文预览' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '阿语预览' })).toBeNull()
     expect(container.innerHTML).not.toContain('/admin')
   })
 })

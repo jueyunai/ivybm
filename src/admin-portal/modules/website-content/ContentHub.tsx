@@ -16,6 +16,7 @@ import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
 
+import { ContentEditor, ContentEditorActions } from './ContentEditor'
 import type {
   ContentItemStatus,
   ContentQuery,
@@ -58,23 +59,44 @@ const formatTimestamp = (value: null | string, locale: 'en' | 'zh'): string => {
   }).format(date)
 }
 
-function CompletenessBar({ label, value }: { label: string; value: number }) {
+function CompletenessBar({
+  completeLabel,
+  label,
+  missingCount,
+  missingLabel,
+  value,
+}: {
+  completeLabel: string
+  label: string
+  missingCount: number
+  missingLabel: string
+  value: number
+}) {
   return (
-    <div className="portal-content__completeness-row">
-      <span>{label}</span>
-      <progress aria-label={`${label} ${value}%`} max={100} value={value} />
-      <strong>{value}%</strong>
+    <div className="portal-content__completeness-item">
+      <div className="portal-content__completeness-row">
+        <span>{label}</span>
+        <progress aria-label={`${label} ${value}%`} max={100} value={value} />
+        <strong>{value}%</strong>
+      </div>
+      <small>
+        {missingCount === 0
+          ? completeLabel
+          : missingLabel.replace('{count}', String(missingCount))}
+      </small>
     </div>
   )
 }
 
 function ItemButton({
   active,
+  disabled = false,
   item,
   locale,
   onSelect,
 }: {
   active: boolean
+  disabled?: boolean
   item: ContentSummaryItem
   locale: 'en' | 'zh'
   onSelect: () => void
@@ -83,8 +105,10 @@ function ItemButton({
 
   return (
     <button
+      aria-disabled={disabled || undefined}
       aria-pressed={active}
       className={`portal-content__item${active ? ' is-active' : ''}`}
+      disabled={disabled}
       onClick={onSelect}
       type="button"
     >
@@ -114,6 +138,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).websiteContent
   const [selectedId, setSelectedId] = useState<number | string | null>(null)
+  const [editor, setEditor] = useState<'create' | 'edit' | null>(null)
 
   if (pageState === 'forbidden') {
     return (
@@ -170,7 +195,10 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
           <h2>{messages.title}</h2>
           <p>{messages.description}</p>
         </div>
-        <StatusBadge label={messages.editorStatus} tone="warning" />
+        <div className="portal-content__intro-actions">
+          <StatusBadge label={messages.editorStatus} tone="success" />
+          <ContentEditorActions onCreate={() => setEditor('create')} />
+        </div>
       </header>
 
       <nav aria-label={messages.title} className="portal-content__types">
@@ -264,6 +292,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
                 <li key={item.id}>
                   <ItemButton
                     active={String(item.id) === String(selected?.id)}
+                    disabled={editor !== null}
                     item={item}
                     locale={locale}
                     onSelect={() => setSelectedId(item.id)}
@@ -312,7 +341,17 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
           ) : null}
         </Surface>
 
-        {selected ? (
+        {editor ? (
+          <Surface as="aside" className="portal-content__detail-panel portal-content__detail-panel--editor">
+            <ContentEditor
+              key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
+              item={editor === 'edit' ? selected : null}
+              mode={editor}
+              onClose={() => setEditor(null)}
+              type={summary.query.type}
+            />
+          </Surface>
+        ) : selected ? (
           <Surface as="aside" className="portal-content__detail-panel">
             <>
               <header className="portal-content__detail-heading">
@@ -345,27 +384,56 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
                   <IconLanguage aria-hidden="true" size={17} stroke={1.8} />
                   <h4>{messages.localeCompleteness}</h4>
                 </header>
-                <CompletenessBar label={messages.english} value={selected.localeCompleteness.en} />
-                <CompletenessBar label={messages.arabic} value={selected.localeCompleteness.ar} />
+                <CompletenessBar
+                  completeLabel={messages.completenessComplete}
+                  label={messages.english}
+                  missingCount={selected.localeMissing.en.length}
+                  missingLabel={messages.completenessMissing}
+                  value={selected.localeCompleteness.en}
+                />
+                <CompletenessBar
+                  completeLabel={messages.completenessComplete}
+                  label={messages.arabic}
+                  missingCount={selected.localeMissing.ar.length}
+                  missingLabel={messages.completenessMissing}
+                  value={selected.localeCompleteness.ar}
+                />
               </section>
 
-              {selected.previewHref ? (
-                <Button asChild variant="secondary">
-                  <Link href={selected.previewHref} rel="noreferrer" target="_blank">
-                    <IconExternalLink aria-hidden="true" size={16} stroke={1.8} />
-                    {messages.preview}
-                  </Link>
-                </Button>
+              <ContentEditorActions
+                onCreate={() => setEditor('create')}
+                onEdit={() => setEditor('edit')}
+              />
+
+              {selected.previewHrefs.en || selected.previewHrefs.ar ? (
+                <div aria-label={messages.preview} className="portal-content__preview-actions">
+                  {selected.previewHrefs.en ? (
+                    <Button asChild variant="secondary">
+                      <Link href={selected.previewHrefs.en} rel="noreferrer" target="_blank">
+                        <IconExternalLink aria-hidden="true" size={16} stroke={1.8} />
+                        {messages.previewEnglish}
+                      </Link>
+                    </Button>
+                  ) : null}
+                  {selected.previewHrefs.ar ? (
+                    <Button asChild variant="secondary">
+                      <Link
+                        dir="rtl"
+                        href={selected.previewHrefs.ar}
+                        lang="ar"
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        <IconExternalLink aria-hidden="true" size={16} stroke={1.8} />
+                        {messages.previewArabic}
+                      </Link>
+                    </Button>
+                  ) : null}
+                </div>
               ) : (
                 <p className="portal-content__preview-note">{messages.noPreview}</p>
               )}
 
-              <PortalState
-                className="portal-content__editor-gate"
-                description={messages.editorDescription}
-                title={messages.editorTitle}
-                type="dependency-gated"
-              />
             </>
           </Surface>
         ) : null}

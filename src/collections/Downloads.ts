@@ -14,6 +14,7 @@ import {
   revalidateContentAfterChange,
   revalidateContentAfterDelete,
 } from '../hooks/revalidateContent'
+import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 
 export const Downloads: CollectionConfig = {
   slug: 'downloads',
@@ -73,7 +74,7 @@ export const Downloads: CollectionConfig = {
     seoField(),
   ],
   hooks: {
-    afterChange: [revalidateContentAfterChange],
-    afterDelete: [revalidateContentAfterDelete],
+    afterChange: [revalidateContentAfterChange, writeAuditLogAfterChange],
+    afterDelete: [revalidateContentAfterDelete, writeAuditLogAfterDelete],
   },
 }

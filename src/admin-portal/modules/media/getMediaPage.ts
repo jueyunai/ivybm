@@ -40,7 +40,7 @@ export interface MediaSummaryItem {
 }
 
 export interface MediaPageSummary {
-  editor: { status: 'dependency-gated' }
+  editor: { status: 'available' }
   items: MediaSummaryItem[]
   limits: {
     imageMaxBytes: number
@@ -225,7 +225,7 @@ export async function getMediaPage({
     })) as unknown as MediaFindResult
 
     return {
-      editor: { status: 'dependency-gated' },
+      editor: { status: 'available' },
       items: result.docs.map(mapMediaItem),
       limits: {
         imageMaxBytes: MEDIA_IMAGE_MAX_BYTES,

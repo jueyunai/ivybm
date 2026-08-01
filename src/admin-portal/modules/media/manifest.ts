@@ -9,6 +9,6 @@ export const MEDIA_MODULE = definePortalModule({
   allowedRoles: ['admin', 'operator'],
   availability: 'available',
   featureFlag: 'ADMIN_PORTAL_MEDIA_ENABLED',
-  commands: [],
+  commands: ['media:create', 'media:update', 'media:delete'],
   maintenance: { responsibleOwner: 'jueyunai', nextStepKey: 'media' },
 })

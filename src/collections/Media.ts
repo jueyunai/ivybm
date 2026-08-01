@@ -9,6 +9,7 @@ import {
   publicMediaRead,
 } from '../access/content'
 import { revalidateMediaAfterChange, revalidateMediaAfterDelete } from '../hooks/revalidateContent'
+import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 
 export const MEDIA_IMAGE_MAX_BYTES = 8 * 1024 * 1024
 export const MEDIA_PDF_MAX_BYTES = 20 * 1024 * 1024
@@ -92,8 +93,8 @@ export const Media: CollectionConfig = {
     },
   ],
   hooks: {
-    afterChange: [revalidateMediaAfterChange],
-    afterDelete: [revalidateMediaAfterDelete],
+    afterChange: [revalidateMediaAfterChange, writeAuditLogAfterChange],
+    afterDelete: [revalidateMediaAfterDelete, writeAuditLogAfterDelete],
     beforeOperation: [validateMediaFile],
   },
   upload: {

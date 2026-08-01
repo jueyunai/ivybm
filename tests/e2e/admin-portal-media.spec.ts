@@ -26,7 +26,7 @@ test('media workspace filters safe assets and exposes grid/list detail views', a
 
   await expect(page.getByRole('heading', { level: 2, name: '媒体素材' })).toBeVisible()
   await expect(page.locator('.portal-media__asset')).not.toHaveCount(0)
-  await expect(page.getByRole('button', { name: '上传素材' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '上传素材' })).toBeEnabled()
   await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
 
   await page.getByLabel('类型').selectOption('pdf')
@@ -64,4 +64,83 @@ test('mobile media workspace keeps filters, cards, and detail within the viewpor
     fullPage: true,
     path: testInfo.outputPath('portal-media-mobile.png'),
   })
+})
+
+test('media editor completes upload, metadata update, and safe delete in the Portal', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ height: 960, width: 1440 })
+  await login(page)
+  if (!adminEmail || !adminPassword) return
+
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`
+  const filename = `portal-e2e-media-${suffix}.png`
+  const initialAlt = `Portal E2E media ${suffix}`
+  const updatedAlt = `${initialAlt} updated`
+  let created: null | { id: number | string; updatedAt: string } = null
+
+  try {
+    await page.getByRole('button', { name: '上传素材' }).click()
+    await expect(page.getByRole('heading', { name: '上传素材' })).toBeVisible()
+    await page.getByLabel('文件').setInputFiles({
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64',
+      ),
+      mimeType: 'image/png',
+      name: filename,
+    })
+    await page.getByLabel('替代文本 alt').fill(initialAlt)
+    await page.getByLabel('版权 / 来源').fill('IVYBM generated local E2E fixture')
+    await page.getByLabel('允许公开读取').check()
+    const [uploadResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' && response.url().endsWith('/api/portal/media'),
+      ),
+      page.getByRole('button', { name: '上传素材' }).last().click(),
+    ])
+    const uploadBody = (await uploadResponse.json()) as {
+      result?: { filename?: string; id?: number | string; updatedAt?: string }
+    }
+    if (uploadBody.result?.id !== undefined && uploadBody.result.updatedAt) {
+      created = { id: uploadBody.result.id, updatedAt: uploadBody.result.updatedAt }
+    }
+    const savedFilename = uploadBody.result?.filename ?? filename
+
+    const asset = page.getByRole('button', { name: `选择素材: ${savedFilename}` })
+    await expect(asset).toBeVisible()
+    await asset.click()
+    await page.getByRole('button', { name: '编辑元数据' }).click()
+    await expect(page.getByLabel('替代文本 alt')).toHaveValue(initialAlt)
+    await page.getByLabel('替代文本 alt').fill(updatedAlt)
+    const [updateResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PATCH' &&
+          created !== null &&
+          response.url().endsWith(`/api/portal/media/${created.id}`),
+      ),
+      page.getByRole('button', { name: '保存元数据' }).click(),
+    ])
+    const updateBody = (await updateResponse.json()) as { result?: { updatedAt?: string } }
+    if (created && updateBody.result?.updatedAt) created.updatedAt = updateBody.result.updatedAt
+    await expect(page.getByText('素材元数据已保存。')).toBeVisible()
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath('portal-media-editor-desktop.png'),
+    })
+
+    await page.getByRole('button', { name: '删除' }).click()
+    await page.getByRole('button', { name: '确认永久删除' }).click()
+    await expect(page.getByRole('button', { name: `选择素材: ${savedFilename}` })).toHaveCount(0)
+    created = null
+  } finally {
+    if (created) {
+      await page.request.delete(`/api/portal/media/${created.id}`, {
+        data: { updatedAt: created.updatedAt },
+      })
+    }
+  }
 })

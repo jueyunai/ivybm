@@ -135,7 +135,7 @@ describe('Portal media workspace', () => {
       originalUrl: null,
       previewUrl: null,
     })
-    expect(summary.editor).toEqual({ status: 'dependency-gated' })
+    expect(summary.editor).toEqual({ status: 'available' })
     expect(JSON.stringify(summary)).not.toMatch(/\/admin|focalX|focalY|password|token/i)
   })
 
@@ -205,7 +205,7 @@ describe('Portal media workspace', () => {
         React.createElement(MediaWorkspace, {
           pageState: 'available',
           summary: {
-            editor: { status: 'dependency-gated' },
+            editor: { status: 'available' },
             items: [
               {
                 alt: 'Curved aluminum facade panels',
@@ -265,7 +265,8 @@ describe('Portal media workspace', () => {
     expect(screen.getAllByText(longFilename)).toHaveLength(3)
     expect(screen.getByText('IVYBM project photography')).toBeTruthy()
     expect(screen.getByText('图片 ≤ 8 MB · PDF ≤ 20 MB')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '上传素材' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: '上传素材' }).hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: '编辑元数据' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: /pricing-reference\.pdf/ }))
     expect(screen.getByRole('heading', { name: 'pricing-reference.pdf' })).toBeTruthy()

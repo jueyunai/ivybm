@@ -9,6 +9,6 @@ export const WEBSITE_CONTENT_MODULE = definePortalModule({
   allowedRoles: ['admin', 'operator'],
   availability: 'available',
   featureFlag: 'ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED',
-  commands: [],
+  commands: ['website-content:create', 'website-content:update', 'website-content:delete'],
   maintenance: { responsibleOwner: 'jueyunai', nextStepKey: 'website-content' },
 })

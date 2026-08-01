@@ -1,0 +1,140 @@
+import { Buffer } from 'node:buffer'
+
+import { createLocalReq, getPayload, type PayloadRequest } from 'payload'
+
+import { getRoleUser } from '@/access/roles'
+import { MEDIA_PDF_MAX_BYTES } from '@/collections/Media'
+import config from '@/payload.config'
+
+import { MediaCommandError, type MediaCommandPayload, type PortalMediaFile } from './mediaCommands'
+
+export interface AuthorizedMediaRequest {
+  payload: MediaCommandPayload
+  req: PayloadRequest
+}
+
+export async function authorizeMediaRequest(request: Request): Promise<AuthorizedMediaRequest> {
+  if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
+    throw new MediaCommandError('portal-disabled', 'The Portal is disabled', 503)
+  }
+  if (process.env.ADMIN_PORTAL_MEDIA_ENABLED !== 'true') {
+    throw new MediaCommandError('media-module-disabled', 'The media module is disabled', 503)
+  }
+
+  const payload = await getPayload({ config })
+  const { user } = await payload.auth({ headers: request.headers })
+  const actor = getRoleUser(user)
+  if (!user || !actor || (user as { collection?: string }).collection !== 'users') {
+    throw new MediaCommandError('media-unauthenticated', 'Authentication required', 401)
+  }
+  if (actor.role !== 'admin' && actor.role !== 'operator') {
+    throw new MediaCommandError('media-forbidden', 'Media access denied', 403)
+  }
+
+  return {
+    payload: payload as unknown as MediaCommandPayload,
+    req: await createLocalReq({ user }, payload),
+  }
+}
+
+export async function readMediaJSON(request: Request): Promise<Record<string, unknown>> {
+  const text = await request.text()
+  if (text.length > 16_000) {
+    throw new MediaCommandError('media-request-too-large', 'Media request is too large', 413)
+  }
+  if (!text.trim()) return {}
+  try {
+    const value = JSON.parse(text) as unknown
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      throw new Error('invalid object')
+    return value as Record<string, unknown>
+  } catch {
+    throw new MediaCommandError('media-invalid-json', 'A JSON object is required', 400)
+  }
+}
+
+export async function readMediaUpload(request: Request): Promise<{
+  file: PortalMediaFile
+  input: Record<string, unknown>
+}> {
+  const contentLength = Number.parseInt(request.headers.get('content-length') ?? '0', 10)
+  if (Number.isFinite(contentLength) && contentLength > MEDIA_PDF_MAX_BYTES + 1_048_576) {
+    throw new MediaCommandError('media-request-too-large', 'Media upload is too large', 413)
+  }
+
+  let form: FormData
+  try {
+    form = await request.formData()
+  } catch {
+    throw new MediaCommandError('media-invalid-form', 'A multipart upload is required', 400)
+  }
+  const candidate = form.get('file') as null | {
+    arrayBuffer?: () => Promise<ArrayBuffer>
+    name?: string
+    size?: number
+    type?: string
+  }
+  if (!candidate || typeof candidate.arrayBuffer !== 'function') {
+    throw new MediaCommandError('media-file-required', 'A media file is required', 400)
+  }
+  const data = Buffer.from(await candidate.arrayBuffer())
+  return {
+    file: {
+      data,
+      mimetype: candidate.type ?? '',
+      name: candidate.name ?? '',
+      size: candidate.size ?? data.length,
+    },
+    input: {
+      alt: form.get('alt'),
+      isPublic: form.get('isPublic'),
+      source: form.get('source'),
+    },
+  }
+}
+
+export function requireMediaID(value: string): number {
+  const id = Number.parseInt(value, 10)
+  if (!Number.isSafeInteger(id) || id <= 0 || String(id) !== value) {
+    throw new MediaCommandError('media-invalid-id', 'A valid media id is required', 400)
+  }
+  return id
+}
+
+export const mediaJSON = (body: unknown, init?: ResponseInit): Response =>
+  Response.json(body, {
+    ...init,
+    headers: {
+      'Cache-Control': 'no-store',
+      ...init?.headers,
+    },
+  })
+
+export function mediaErrorResponse(error: unknown): Response {
+  if (error instanceof MediaCommandError) {
+    return mediaJSON(
+      { error: { code: error.code, message: error.message } },
+      { status: error.status },
+    )
+  }
+  const candidate = error as { message?: unknown; name?: unknown; status?: unknown }
+  if (candidate?.name === 'ValidationError' || candidate?.status === 400) {
+    return mediaJSON(
+      {
+        error: {
+          code: 'media-validation-failed',
+          message:
+            typeof candidate.message === 'string' ? candidate.message : 'Media validation failed',
+        },
+      },
+      { status: 400 },
+    )
+  }
+  console.error('portal_media_command_failed', {
+    error: error instanceof Error ? error.name : typeof error,
+  })
+  return mediaJSON(
+    { error: { code: 'media-command-failed', message: 'Unable to complete the media command' } },
+    { status: 500 },
+  )
+}

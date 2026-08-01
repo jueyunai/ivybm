@@ -28,9 +28,18 @@ test('website content hub exposes six safe content types, filters, detail, and p
   await expect(page.getByRole('heading', { level: 2, name: '官网内容' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: '官网内容' }).getByRole('link')).toHaveCount(6)
   await expect(page.getByRole('link', { name: /^产品 \d/ })).toHaveAttribute('aria-current', 'page')
-  await expect(page.getByText('编辑能力受限')).toBeVisible()
+  await expect(page.getByRole('button', { name: '新增内容' }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: '编辑内容' })).toBeVisible()
   await expect(page.locator('.portal-content__item')).not.toHaveCount(0)
   await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '英文预览' })).toHaveAttribute(
+    'href',
+    /\/en\/products\//,
+  )
+  await expect(page.getByRole('link', { name: '阿语预览' })).toHaveAttribute(
+    'href',
+    /\/ar\/products\//,
+  )
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440)
 
   await page.getByRole('searchbox', { name: '搜索内容' }).fill('no-content-should-match-this')
@@ -61,4 +70,74 @@ test('mobile website content hub keeps filters and content workspace within the 
     fullPage: true,
     path: testInfo.outputPath('portal-content-mobile.png'),
   })
+})
+
+test('website content editor completes create, update, and safe delete from the Portal', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ height: 960, width: 1440 })
+  await login(page)
+  if (!adminEmail || !adminPassword) return
+
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`
+  const slug = `portal-e2e-category-${suffix}`
+  const initialTitle = `Portal E2E Category ${suffix}`
+  const updatedTitle = `${initialTitle} Updated`
+  let createdId: number | string | null = null
+
+  try {
+    await page.goto('/dashboard/content?type=product-categories')
+    await page.getByRole('button', { name: '新增内容' }).first().click()
+    await expect(page.getByRole('heading', { name: '新增内容' })).toBeVisible()
+    await page.getByLabel('Title / 标题').fill(initialTitle)
+    await page.getByLabel('Stable slug').fill(slug)
+    await page
+      .getByLabel('Description / 描述')
+      .fill('Created through the redesigned Portal editor.')
+    const [createResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          response.url().endsWith('/api/portal/content/product-categories'),
+      ),
+      page.getByRole('button', { name: '保存修改' }).click(),
+    ])
+    const createBody = (await createResponse.json()) as { result?: { id?: number | string } }
+    createdId = createBody.result?.id ?? null
+
+    const createdItem = page.getByRole('button', { name: new RegExp(initialTitle) })
+    await expect(createdItem).toBeVisible()
+    await createdItem.click()
+    await page.getByRole('button', { name: '编辑内容' }).click()
+    await expect(page.getByLabel('Stable slug')).toHaveValue(slug)
+    await expect(page.getByLabel('Title / 标题')).toHaveValue(initialTitle)
+    await page.getByLabel('Title / 标题').fill(updatedTitle)
+    await expect(page.getByLabel('Title / 标题')).toHaveValue(updatedTitle)
+    await page.getByRole('button', { name: '保存修改' }).click()
+    await expect(page.getByText('保存成功，列表已刷新。')).toBeVisible()
+    await page.getByRole('button', { name: '取消' }).click()
+
+    const updatedItem = page.getByRole('button', { name: new RegExp(updatedTitle) })
+    await expect(updatedItem).toBeVisible()
+    await updatedItem.click()
+    await page.getByRole('button', { name: '编辑内容' }).click()
+    await page.getByRole('button', { name: '删除' }).click()
+    await page.getByRole('button', { name: '确认永久删除' }).click()
+    await expect(page.getByRole('button', { name: new RegExp(updatedTitle) })).toHaveCount(0)
+    createdId = null
+  } finally {
+    if (createdId !== null) {
+      const detail = await page.request.get(
+        `/api/portal/content/product-categories/${createdId}?locale=en`,
+      )
+      if (detail.ok()) {
+        const body = (await detail.json()) as { record?: { updatedAt?: string } }
+        if (body.record?.updatedAt) {
+          await page.request.delete(`/api/portal/content/product-categories/${createdId}`, {
+            data: { updatedAt: body.record.updatedAt },
+          })
+        }
+      }
+    }
+  }
 })

@@ -6,7 +6,15 @@ import { createLocalReq, getPayload, type Payload } from 'payload'
 import {
   getContentSummary,
   loadWebsiteContentPageData,
+  type ContentTypeId,
 } from '@/admin-portal/modules/website-content/getContentSummary'
+import {
+  createPortalContent,
+  deletePortalContent,
+  getPortalContentEditor,
+  type ContentCommandResult,
+  updatePortalContent,
+} from '@/admin-portal/modules/website-content/contentCommands'
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
 
@@ -134,11 +142,22 @@ describe.sequential('Portal website content access', () => {
       expect(summary.items.map((item) => item.status).sort()).toEqual(['draft', 'published'])
       expect(summary.items.find((item) => item.status === 'published')?.localeCompleteness).toEqual(
         {
-          ar: 100,
-          en: 100,
+          ar: 50,
+          en: 50,
         },
       )
-      expect(JSON.stringify(summary)).not.toMatch(/body|internalNotes|keywords|\/admin/i)
+      expect(summary.items.find((item) => item.status === 'published')?.localeMissing).toEqual({
+        ar: ['summary', 'body', 'heroImage'],
+        en: ['summary', 'body', 'heroImage'],
+      })
+      const publishedItem = summary.items.find((item) => item.status === 'published')
+      expect(publishedItem?.previewHrefs).toEqual({
+        ar: `/ar/${publishedItem?.slug}`,
+        en: `/en/${publishedItem?.slug}`,
+      })
+      expect(JSON.stringify(summary)).not.toMatch(
+        /"(body|content|description|internalNotes|keywords)"\s*:|\/admin/i,
+      )
     }
   })
 
@@ -155,5 +174,373 @@ describe.sequential('Portal website content access', () => {
     })
 
     expect(result).toEqual({ state: 'forbidden', summary: null })
+  })
+
+  it('persists localized create, publish, edit, audit, and delete through Portal commands', async () => {
+    const media = await payload.find({
+      collection: 'media',
+      limit: 1,
+      overrideAccess: true,
+      pagination: false,
+      where: { mimeType: { contains: 'image/' } },
+    })
+    expect(media.docs[0]).toBeTruthy()
+    const heroImageId = media.docs[0].id
+    const slug = `portal-command-${randomUUID()}`
+    const operatorReq = await requestFor(operator)
+
+    const created = await createPortalContent({
+      input: {
+        action: 'save-draft',
+        bodyText: 'English body',
+        heroImageId,
+        locale: 'en',
+        seoDescription: 'English search description',
+        seoTitle: 'English search title',
+        slug,
+        summary: 'English summary',
+        title: 'Portal command page',
+      },
+      payload,
+      req: operatorReq,
+      type: 'pages',
+    })
+    createdPageIDs.push(created.id)
+    expect(created.status).toBe('draft')
+
+    const published = await updatePortalContent({
+      id: created.id,
+      input: {
+        action: 'publish',
+        bodyText: 'English body',
+        heroImageId,
+        locale: 'en',
+        seoDescription: 'English search description',
+        seoTitle: 'English search title',
+        slug,
+        summary: 'English summary',
+        title: 'Portal command page',
+        updatedAt: created.updatedAt,
+      },
+      payload,
+      req: operatorReq,
+      type: 'pages',
+    })
+    expect(published.status).toBe('published')
+
+    const localized = await updatePortalContent({
+      id: created.id,
+      input: {
+        action: 'save-draft',
+        bodyText: 'النص العربي',
+        heroImageId,
+        locale: 'ar',
+        seoDescription: 'وصف البحث',
+        seoTitle: 'عنوان البحث',
+        slug,
+        summary: 'الملخص العربي',
+        title: 'صفحة أوامر البوابة',
+        updatedAt: published.updatedAt,
+      },
+      payload,
+      req: operatorReq,
+      type: 'pages',
+    })
+    const arabic = await getPortalContentEditor({
+      id: created.id,
+      locale: 'ar',
+      payload,
+      req: operatorReq,
+      type: 'pages',
+    })
+    expect(arabic.data).toMatchObject({
+      bodyText: 'النص العربي',
+      slug,
+      summary: 'الملخص العربي',
+      title: 'صفحة أوامر البوابة',
+    })
+
+    const audit = await payload.find({
+      collection: 'audit-logs',
+      overrideAccess: true,
+      pagination: false,
+      where: {
+        and: [
+          { actor: { equals: operator.id } },
+          { documentId: { equals: String(created.id) } },
+          { resource: { equals: 'pages' } },
+        ],
+      },
+    })
+    expect(audit.docs.map((entry) => entry.action)).toEqual(
+      expect.arrayContaining(['create', 'update']),
+    )
+
+    await expect(
+      createPortalContent({
+        input: { action: 'save-draft', locale: 'en', slug: `${slug}-sales`, title: 'Denied' },
+        payload,
+        req: await requestFor(sales),
+        type: 'pages',
+      }),
+    ).rejects.toBeTruthy()
+
+    await expect(
+      deletePortalContent({
+        id: created.id,
+        locale: 'ar',
+        payload,
+        req: operatorReq,
+        type: 'pages',
+        updatedAt: localized.updatedAt,
+      }),
+    ).resolves.toMatchObject({ id: created.id })
+    createdPageIDs.splice(createdPageIDs.indexOf(created.id), 1)
+  })
+
+  it('persists bilingual create, update, state, and delete flows for all six content types', async () => {
+    const assets = await payload.find({
+      collection: 'media',
+      limit: 20,
+      overrideAccess: true,
+      pagination: false,
+    })
+    const image = assets.docs.find((asset) => asset.mimeType?.startsWith('image/'))
+    const file = assets.docs.find((asset) => asset.mimeType === 'application/pdf') ?? assets.docs[0]
+    expect(image).toBeTruthy()
+    expect(file).toBeTruthy()
+
+    const imageID = image!.id
+    const fileID = file!.id
+    const suffix = randomUUID()
+    const operatorReq = await requestFor(operator)
+    const records = new Map<ContentTypeId, ContentCommandResult>()
+    const collections: Record<
+      ContentTypeId,
+      'downloads' | 'pages' | 'posts' | 'product-categories' | 'products' | 'projects'
+    > = {
+      downloads: 'downloads',
+      pages: 'pages',
+      posts: 'posts',
+      'product-categories': 'product-categories',
+      products: 'products',
+      projects: 'projects',
+    }
+
+    const common = (type: ContentTypeId, locale: 'ar' | 'en') => ({
+      locale,
+      seoDescription: locale === 'ar' ? `وصف ${type}` : `${type} SEO description`,
+      seoTitle: locale === 'ar' ? `عنوان ${type}` : `${type} SEO title`,
+      slug: `portal-matrix-${type}-${suffix}`,
+      title: locale === 'ar' ? `عنوان ${type}` : `Portal matrix ${type}`,
+    })
+    const inputFor = (
+      type: ContentTypeId,
+      locale: 'ar' | 'en',
+      categoryID?: number | string,
+    ): Record<string, unknown> => {
+      const base = common(type, locale)
+      const body = locale === 'ar' ? `محتوى ${type}` : `${type} body content`
+      switch (type) {
+        case 'pages':
+          return {
+            ...base,
+            action: 'save-draft',
+            bodyText: body,
+            heroImageId: imageID,
+            summary: body,
+          }
+        case 'product-categories':
+          return { ...base, action: 'save', description: body, sortOrder: 10 }
+        case 'products':
+          return {
+            ...base,
+            action: 'save-draft',
+            bodyText: body,
+            categoryId: categoryID,
+            coverImageId: imageID,
+            galleryIds: [imageID],
+            shortDescription: body,
+            specifications: [{ label: locale === 'ar' ? 'السماكة' : 'Thickness', value: '3 mm' }],
+          }
+        case 'projects':
+          return {
+            ...base,
+            action: 'save-draft',
+            application: body,
+            bodyText: body,
+            coverImageId: imageID,
+            galleryIds: [imageID],
+            location: locale === 'ar' ? 'دبي' : 'Dubai',
+            summary: body,
+          }
+        case 'posts':
+          return {
+            ...base,
+            action: 'save-draft',
+            bodyText: body,
+            category: 'industry',
+            excerpt: body,
+            featuredImageId: imageID,
+          }
+        case 'downloads':
+          return {
+            ...base,
+            action: 'save',
+            coverImageId: imageID,
+            description: body,
+            downloadType: 'catalog',
+            fileId: fileID,
+            isActive: true,
+          }
+      }
+    }
+
+    const updateRecord = (type: ContentTypeId, result: ContentCommandResult) => {
+      records.set(type, result)
+      return result
+    }
+
+    try {
+      const category = updateRecord(
+        'product-categories',
+        await createPortalContent({
+          input: inputFor('product-categories', 'en'),
+          payload,
+          req: operatorReq,
+          type: 'product-categories',
+        }),
+      )
+
+      for (const type of ['pages', 'products', 'projects', 'posts', 'downloads'] as const) {
+        updateRecord(
+          type,
+          await createPortalContent({
+            input: inputFor(type, 'en', category.id),
+            payload,
+            req: operatorReq,
+            type,
+          }),
+        )
+      }
+
+      for (const type of [
+        'product-categories',
+        'pages',
+        'products',
+        'projects',
+        'posts',
+        'downloads',
+      ] as const) {
+        const current = records.get(type)!
+        const localized = updateRecord(
+          type,
+          await updatePortalContent({
+            id: current.id,
+            input: {
+              ...inputFor(type, 'ar', category.id),
+              updatedAt: current.updatedAt,
+            },
+            payload,
+            req: operatorReq,
+            type,
+          }),
+        )
+        const editor = await getPortalContentEditor({
+          id: localized.id,
+          locale: 'ar',
+          payload,
+          req: operatorReq,
+          type,
+        })
+        expect(editor.data.title).toBe(`عنوان ${type}`)
+      }
+
+      for (const type of ['pages', 'products', 'projects', 'posts'] as const) {
+        const current = records.get(type)!
+        const published = updateRecord(
+          type,
+          await updatePortalContent({
+            id: current.id,
+            input: {
+              ...inputFor(type, 'en', category.id),
+              action: 'publish',
+              updatedAt: current.updatedAt,
+            },
+            payload,
+            req: operatorReq,
+            type,
+          }),
+        )
+        expect(published.status).toBe('published')
+      }
+
+      const download = records.get('downloads')!
+      const deactivated = updateRecord(
+        'downloads',
+        await updatePortalContent({
+          id: download.id,
+          input: {
+            ...inputFor('downloads', 'en', category.id),
+            action: 'deactivate',
+            updatedAt: download.updatedAt,
+          },
+          payload,
+          req: operatorReq,
+          type: 'downloads',
+        }),
+      )
+      expect(deactivated.status).toBe('inactive')
+      expect(records.get('product-categories')?.status).toBe('always-visible')
+
+      for (const type of [
+        'products',
+        'product-categories',
+        'pages',
+        'projects',
+        'posts',
+        'downloads',
+      ] as const) {
+        const record = records.get(type)!
+        const deleted = await deletePortalContent({
+          id: record.id,
+          locale: 'en',
+          payload,
+          req: operatorReq,
+          type,
+          updatedAt: record.updatedAt,
+        })
+        expect(deleted.id).toBe(record.id)
+        records.delete(type)
+      }
+    } finally {
+      for (const type of [
+        'products',
+        'product-categories',
+        'pages',
+        'projects',
+        'posts',
+        'downloads',
+      ] as const) {
+        const record = records.get(type)
+        if (!record) continue
+        try {
+          await deletePortalContent({
+            id: record.id,
+            locale: 'en',
+            payload,
+            req: operatorReq,
+            type,
+            updatedAt: record.updatedAt,
+          })
+        } catch {
+          await payload.delete({
+            collection: collections[type],
+            id: record.id,
+            overrideAccess: true,
+          })
+        }
+      }
+    }
   })
 })
