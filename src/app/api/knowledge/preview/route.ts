@@ -14,17 +14,52 @@ const previewRateLimiter = createFixedWindowRateLimiter({
   limit: 30,
   windowMs: 10 * 60 * 1_000,
 })
+const MAX_PREVIEW_BODY_BYTES = 8_192
 
 const errorResponse = (status: number, code: string): Response =>
   NextResponse.json({ error: { code } }, { headers: noStore, status })
 
+const readBoundedText = async (request: Request): Promise<string | null> => {
+  if (!request.body) return null
+
+  const reader = request.body.getReader()
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  let byteLength = 0
+  let text = ''
+  try {
+    const contentLengthHeader = request.headers.get('content-length')
+    if (contentLengthHeader && /^\d+$/u.test(contentLengthHeader)) {
+      const contentLength = Number(contentLengthHeader)
+      if (Number.isSafeInteger(contentLength) && contentLength > MAX_PREVIEW_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined)
+        return null
+      }
+    }
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      byteLength += value.byteLength
+      if (byteLength > MAX_PREVIEW_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined)
+        return null
+      }
+      text += decoder.decode(value, { stream: true })
+    }
+    text += decoder.decode()
+    return text
+  } catch {
+    await reader.cancel().catch(() => undefined)
+    return null
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 const parseInput = async (
   request: NextRequest,
 ): Promise<{ locale: 'ar' | 'en'; query: string } | null> => {
-  const contentLength = Number(request.headers.get('content-length') || 0)
-  if (Number.isFinite(contentLength) && contentLength > 8_192) return null
-  const raw = await request.text()
-  if (Buffer.byteLength(raw, 'utf8') > 8_192) return null
+  const raw = await readBoundedText(request)
+  if (raw === null) return null
 
   let value: unknown
   try {

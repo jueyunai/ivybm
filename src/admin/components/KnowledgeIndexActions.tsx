@@ -3,7 +3,10 @@
 import { useAuth, useDocumentInfo, useFormModified, useTranslation } from '@payloadcms/ui'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { getKnowledgeIndexActionState } from '../knowledge/getKnowledgeIndexActionState'
+import {
+  canOpenKnowledgeJob,
+  getKnowledgeIndexActionState,
+} from '../knowledge/getKnowledgeIndexActionState'
 import { getAdminCopy } from '../i18n'
 
 type IndexResponse = {
@@ -161,7 +164,7 @@ export default function KnowledgeIndexActions() {
         {feedback ? (
           <p className={`ops-knowledge-feedback ops-knowledge-feedback--${feedback.kind}`} role="status">
             {feedback.text}
-            {feedback.jobId ? (
+            {feedback.jobId && canOpenKnowledgeJob(role) ? (
               <a href={`/admin/collections/jobs/${feedback.jobId}`}> {copy.openJob}</a>
             ) : null}
           </p>

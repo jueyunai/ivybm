@@ -13,6 +13,8 @@ export type KnowledgeIndexActionState = {
   reason?: KnowledgeIndexActionReason
 }
 
+export const canOpenKnowledgeJob = (role: unknown): boolean => role === 'admin'
+
 export const getKnowledgeIndexActionState = ({
   hasDocument,
   indexStatus,

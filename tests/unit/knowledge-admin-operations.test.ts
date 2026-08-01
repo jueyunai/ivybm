@@ -1,7 +1,10 @@
 import type { ClientConfig, SanitizedPermissions } from 'payload'
 import { describe, expect, it } from 'vitest'
 
-import { getKnowledgeIndexActionState } from '@/admin/knowledge/getKnowledgeIndexActionState'
+import {
+  canOpenKnowledgeJob,
+  getKnowledgeIndexActionState,
+} from '@/admin/knowledge/getKnowledgeIndexActionState'
 import { getAdminCopy } from '@/admin/i18n'
 import { getOperationsNavSections } from '@/admin/navigation/getOperationsNavSections'
 import config from '@/payload.config'
@@ -56,6 +59,9 @@ describe('knowledge operations Admin extensions', () => {
   })
 
   it('derives safe actions from review, index and role state', () => {
+    expect(canOpenKnowledgeJob('admin')).toBe(true)
+    expect(canOpenKnowledgeJob('operator')).toBe(false)
+    expect(canOpenKnowledgeJob('sales')).toBe(false)
     expect(
       getKnowledgeIndexActionState({
         hasDocument: true,

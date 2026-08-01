@@ -2,6 +2,7 @@ import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 
 import { AI_USAGE_KEYS, resolveAiGateway } from '@/modules/ai/registry'
+import type { AiGateway } from '@/modules/ai/gateway'
 import type { ChatLocale, ChatSession } from '@/modules/conversations/contracts'
 import { createKnowledgeConversationResponder } from '@/modules/conversations/responder'
 
@@ -42,15 +43,19 @@ export const previewKnowledgeAnswer = async ({
   payload: Payload
   query: string
 }): Promise<KnowledgePreviewResult> => {
-  const gateway = await resolveAiGateway({
-    payload,
-    routes: [
-      { operation: 'text', usageKey: AI_USAGE_KEYS.chatReply },
-      { operation: 'embedding', usageKey: AI_USAGE_KEYS.knowledgeEmbedding },
-    ],
-  })
+  let gatewayPromise: Promise<AiGateway> | undefined
+  const getGateway = () => {
+    gatewayPromise ??= resolveAiGateway({
+      payload,
+      routes: [
+        { operation: 'text', usageKey: AI_USAGE_KEYS.chatReply },
+        { operation: 'embedding', usageKey: AI_USAGE_KEYS.knowledgeEmbedding },
+      ],
+    })
+    return gatewayPromise
+  }
   const responder = createKnowledgeConversationResponder({
-    generateText: (input) => gateway.generateText(input),
+    generateText: async (input) => (await getGateway()).generateText(input),
     getPrompt: async (promptLocale) => {
       const result = await payload.find({
         collection: 'prompt-templates',
@@ -68,10 +73,10 @@ export const previewKnowledgeAnswer = async ({
       const prompt = result.docs[0]
       return prompt ? { template: prompt.template, version: prompt.version } : null
     },
-    retrieve: ({ locale: retrievalLocale, query: retrievalQuery }) =>
+    retrieve: async ({ locale: retrievalLocale, query: retrievalQuery }) =>
       retrieveKnowledgeForQuery({
         customerVisible: true,
-        gateway,
+        gateway: await getGateway(),
         locale: retrievalLocale,
         minScore: 0.2,
         pool: (payload.db as unknown as PostgresAdapter).pool,

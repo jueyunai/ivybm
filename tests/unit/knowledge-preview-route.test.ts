@@ -21,6 +21,41 @@ const request = (body: unknown): NextRequest =>
     method: 'POST',
   })
 
+const streamedRequest = (
+  chunks: Array<string | Uint8Array>,
+  headers: Record<string, string> = {},
+): { cancel: ReturnType<typeof vi.fn>; request: NextRequest } => {
+  const cancel = vi.fn()
+  const encoder = new TextEncoder()
+  const pending = [...chunks]
+  const body = new ReadableStream<Uint8Array>(
+    {
+      cancel,
+      pull(controller) {
+        const chunk = pending.shift()
+        if (chunk === undefined) {
+          controller.close()
+          return
+        }
+        controller.enqueue(typeof chunk === 'string' ? encoder.encode(chunk) : chunk)
+      },
+    },
+    { highWaterMark: 0 },
+  )
+  return {
+    cancel,
+    request: new NextRequest(
+      'http://localhost/api/knowledge/preview',
+      {
+        body,
+        duplex: 'half',
+        headers: { 'content-type': 'application/json', ...headers },
+        method: 'POST',
+      } as never,
+    ),
+  }
+}
+
 describe('knowledge preview route', () => {
   beforeEach(() => {
     mocks.getPayload.mockReset()
@@ -61,6 +96,58 @@ describe('knowledge preview route', () => {
 
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toEqual({ error: { code: 'invalid_request' } })
+    expect(mocks.previewKnowledgeAnswer).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['without Content-Length', {}],
+    ['with a forged low Content-Length', { 'content-length': '1' }],
+  ])('cancels an oversized streamed body %s', async (_description, headers) => {
+    mocks.getPayload.mockResolvedValue({
+      auth: vi.fn().mockResolvedValue({
+        user: { collection: 'users', id: 1, role: 'admin' },
+      }),
+      logger: { error: vi.fn() },
+    })
+    const raw = JSON.stringify({ locale: 'en', padding: 'x'.repeat(9_000), query: 'test' })
+    const streamed = streamedRequest([raw.slice(0, 4_096), raw.slice(4_096)], headers)
+
+    const response = await POST(streamed.request)
+
+    expect(response.status).toBe(400)
+    expect(streamed.cancel).toHaveBeenCalledTimes(1)
+    expect(mocks.previewKnowledgeAnswer).not.toHaveBeenCalled()
+  })
+
+  it('cancels a body rejected by its declared Content-Length', async () => {
+    mocks.getPayload.mockResolvedValue({
+      auth: vi.fn().mockResolvedValue({
+        user: { collection: 'users', id: 1, role: 'admin' },
+      }),
+      logger: { error: vi.fn() },
+    })
+    const streamed = streamedRequest(['{}'], { 'content-length': '9000' })
+
+    const response = await POST(streamed.request)
+
+    expect(response.status).toBe(400)
+    expect(streamed.cancel).toHaveBeenCalledTimes(1)
+    expect(mocks.previewKnowledgeAnswer).not.toHaveBeenCalled()
+  })
+
+  it('cancels a stream containing malformed UTF-8', async () => {
+    mocks.getPayload.mockResolvedValue({
+      auth: vi.fn().mockResolvedValue({
+        user: { collection: 'users', id: 1, role: 'admin' },
+      }),
+      logger: { error: vi.fn() },
+    })
+    const streamed = streamedRequest([new Uint8Array([0xff]), '{}'])
+
+    const response = await POST(streamed.request)
+
+    expect(response.status).toBe(400)
+    expect(streamed.cancel).toHaveBeenCalledTimes(1)
     expect(mocks.previewKnowledgeAnswer).not.toHaveBeenCalled()
   })
 
