@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   assessPlatformAccountReadiness,
   derivePlatformConnectionKey,
+  getPlatformReadinessAction,
 } from '@/modules/platforms/readiness'
 
 describe('platform account readiness', () => {
@@ -173,6 +174,66 @@ describe('platform account readiness', () => {
         }),
       ]),
     )
+  })
+
+  it('marks a capability available only after explicit successful controlled-test evidence', () => {
+    const account = {
+      accessTokenConfigured: true,
+      accessTokenReadable: true,
+      accountKind: 'facebook-page' as const,
+      authorizationState: 'connected' as const,
+      capabilityApprovals: { messagingInbound: 'approved' as const },
+      externalAccountId: 'page-123',
+      refreshTokenConfigured: false,
+      refreshTokenReadable: false,
+    }
+    const environment = {
+      META_WEBHOOK_ALLOWED_ACCOUNT_IDS: 'page-123',
+      META_WEBHOOK_APP_SECRET: 'fixture-app-secret',
+      META_WEBHOOK_VERIFY_TOKEN: 'fixture-verify-token',
+    }
+
+    const withoutEvidence = assessPlatformAccountReadiness({ account, environment })
+    expect(withoutEvidence.capabilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ capability: 'messaging-inbound', status: 'ready-for-controlled-test' }),
+      ]),
+    )
+
+    const withEvidence = assessPlatformAccountReadiness({
+      account: {
+        ...account,
+        controlledTestEvidence: {
+          'messaging-inbound': {
+            completedAt: '2026-07-30T00:00:00.000Z',
+            outcome: 'passed',
+            reference: 'controlled-test:local-fixture-1',
+          },
+        },
+      },
+      environment,
+      nowMilliseconds: Date.parse('2026-07-30T01:00:00.000Z'),
+    })
+    expect(withEvidence.capabilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ capability: 'messaging-inbound', status: 'available' }),
+      ]),
+    )
+  })
+
+  it('maps safe responsibility and next-action codes from readiness truth', () => {
+    expect(
+      getPlatformReadinessAction({
+        missing: ['publishing_job_adapter'],
+        status: 'blocked',
+      }),
+    ).toEqual({ code: 'implement-publishing-adapter', owner: 'engineering' })
+    expect(
+      getPlatformReadinessAction({
+        missing: [],
+        status: 'available',
+      }),
+    ).toEqual({ code: 'monitor-available-capability', owner: 'administrator' })
   })
 
   it('reports expired access tokens and unreadable refresh tokens without exposing credentials', () => {
