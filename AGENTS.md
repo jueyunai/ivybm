@@ -43,7 +43,7 @@ bash scripts/install-git-hooks.sh
 
 - 一个分支只处理一个实施计划 PR 批次或一个紧密相关的小修复；Task 是批次内的 commit / 验收检查点，不自动等于独立 PR，禁止混入批次外的无关任务。
 - 同一目标、同一实施计划、同一 Review 边界且可一起回滚 / 发布的紧密相关改动，默认使用一个 Draft PR 和分阶段 commit，保持 diff 可审；禁止仅为流程形式把方案、实现和验证记录机械拆成多个 PR。只有独立任务、不同负责人或强制 Review 边界、需要独立回滚 / 发布，或完整 diff 已明显超出可审规模时才拆分。
-- 管理后台现代化是经 ADR-0004 明确批准的集成批次例外：P0.1–P1.3 使用一个 Portal V1 Draft PR，以 checkpoint commit、模块 owner 和 reviewer matrix 保持可审；P1.4/P1.5/P2 使用一个 Hardening & Production Enablement PR。合并 PR 不改变模块 owner、共享文件强制 review 或生产审批。
+- 管理后台现代化是经 ADR-0004 明确批准的集成批次例外：设计简报编号 1～6（P0.1–P0.8b）使用一个 Portal V1 Draft PR，以 checkpoint commit、模块 owner 和 reviewer matrix 保持可审；P0.9–P2 使用一个 Feature Expansion & Production Enablement PR。合并 PR 不改变模块 owner、共享文件强制 review 或生产审批。
 - 提交前运行该 Task 规定的 lint、typecheck、test、build；不能运行时明确说明原因。
 - PR 标题和描述必须引用 Task 编号，并填写 `.github/pull_request_template.md`。
 - 项目初始化、CI、工程配置、文档及负责人自己板块内的独立改动，在 CI 通过、完成 PR 清单并检查完整 diff 后，可由负责人自检合并；必须在 PR 中记录不涉及共享结构、跨人契约、协作者范围或一期上线验收。作者自检不等同于 GitHub 独立审批。

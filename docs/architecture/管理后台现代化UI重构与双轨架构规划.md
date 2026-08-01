@@ -1,6 +1,6 @@
 # IVYBM 管理后台现代化 UI 重构与模块化架构规划
 
-版本：v2.7
+版本：v3.0
 
 日期：2026-07-30
 
@@ -55,11 +55,13 @@ IVYBM 管理后台采用“一个后端控制平面、一个一期运营入口�
 ```mermaid
 flowchart TB
     STAFF["Admin / Operator / Sales"]
+    MAINTAINER["受限技术维护人员"]
     VISITOR["海外客户"]
 
     subgraph RUNTIME["单一 Next.js 16 + Payload 3 模块化单体"]
         SITE["官网 /en /ar"]
         PORTAL["运营门户 /dashboard"]
+        ADMIN["技术维护入口 /admin\n沿用 Payload UI"]
 
         subgraph PORTALCORE["Portal Core"]
             AUTH["Payload Session Adapter"]
@@ -78,10 +80,12 @@ flowchart TB
     THIRD["AI Provider / Meta / TikTok / LinkedIn / 飞书"]
 
     STAFF --> PORTAL
+    MAINTAINER --> ADMIN
     VISITOR --> SITE
     PORTAL --> PORTALCORE
     PORTALCORE --> PAYLOAD
     PORTALCORE --> DOMAINS
+    ADMIN --> PAYLOAD
     SITE --> PAYLOAD
     PAYLOAD --> DATA
     PAYLOAD --> FILES
@@ -91,10 +95,11 @@ flowchart TB
 
 ### 3.1 三层职责
 
-| 层       | 入口         | 责任                               | 不负责                                |
-| -------- | ------------ | ---------------------------------- | ------------------------------------- |
-| 官网     | `/en`、`/ar` | 对外内容、询盘、ChatWidget         | 内部运营与技术配置                    |
-| 运营门户 | `/dashboard` | 日常工作流、跨对象上下文、业务命令 | 密钥、底层 Collection 调试、migration |
+| 层       | 入口         | 责任                                    | 不负责                                |
+| -------- | ------------ | --------------------------------------- | ------------------------------------- |
+| 官网     | `/en`、`/ar` | 对外内容、询盘、ChatWidget              | 内部运营与技术配置                    |
+| 运营门户 | `/dashboard` | 日常工作流、跨对象上下文、业务命令      | 密钥、底层 Collection 调试、migration |
+| 技术维护 | `/admin`     | 沿用 Payload 的受限配置、诊断和维护能力 | Portal 业务导航、一期新 UI 或业务回退 |
 
 Payload 已有 `/admin` 在迁移验收前只由受限维护人员按 runbook 使用，不进入上述产品分层，也不属于
 第一阶段 Portal 设计、开发或验收；迁移验收后再单独决定继续维护或下架。
@@ -103,15 +108,25 @@ Payload 已有 `/admin` 在迁移验收前只由受限维护人员按 runbook �
 
 ```mermaid
 flowchart LR
-    subgraph LOCAL["本地 / CI（完全隔离）"]
-        LAPP["Portal worktree\nNext.js :3001"]
-        LDB[("PostgreSQL :55433\nivybm_portal_v1 / *_test / *_ci")]
+    subgraph LOCAL["本地 worktree（持久但隔离）"]
+        LAPP["Portal\nNext.js :3001"]
+        LDB[("PostgreSQL :55433\nivybm_portal_v1")]
+        LTDB[("串行测试库\nivybm_portal_v1_test / _ci")]
         LMEDIA["本地 seed / 测试 media"]
         LAPP --> LDB
+        LAPP --> LTDB
         LAPP --> LMEDIA
     end
 
-    subgraph PROD["production（本地不可达、不可消费）"]
+    subgraph CI["CI Job（一次性）"]
+        CIAPP["build / test / E2E"]
+        CIDB[("ephemeral PostgreSQL + pgvector\n*_ci")]
+        CIFIX["fixture / 专用测试账号"]
+        CIAPP --> CIDB
+        CIAPP --> CIFIX
+    end
+
+    subgraph PROD["production（本地/CI 不可消费）"]
         PAPP["production app / worker"]
         PDB[("production PostgreSQL")]
         PMEDIA["production media / backups / tokens"]
@@ -120,11 +135,13 @@ flowchart LR
     end
 
     LOCAL -. "禁止数据库、media、备份、URL、token 或外部副作用连接" .-x PROD
+    CI -. "禁止数据库、media、备份、URL、token 或外部副作用连接" .-x PROD
 ```
 
-本地与 production 不是“同库不同界面”，而是两个不共享可写资源的运行环境。开发验证只使用
-当前 worktree 的本地 seed/fixture；需要真实账号、真实发布或 production 数据迁移的能力统一留在 PR-2
-受控启用阶段。
+本地、CI 与 production 不是“同库不同界面”。本地使用当前 worktree 的独立 Compose/端口/volume；
+`ivybm_portal_v1_test` 仅允许串行运行，避免共享 seed 账号和 session 竞争。CI 每个 Job 使用自建自销的
+PostgreSQL + pgvector service 与 `_ci` 数据库，不复用本机资源。开发验证只使用本地 seed/fixture；需要真实
+账号、真实发布或 production 数据迁移的能力统一留在 PR-2 受控启用阶段。
 
 ## 4. Portal Core：真正的可插拔基座
 
@@ -384,39 +401,64 @@ flowchart TB
 
 ## 9. 分阶段交付
 
-### 9.0 当前执行状态（2026-07-30）
+### 9.0 历史状态（2026-07-30，验收口径纠正前）
 
 - D0 已通过：`ivybm-task-p0-p1-admin-portal-v1` / `feat/task-p0-p1-admin-portal-v1`、本地端口 `3001`、Compose project `ivybm-portal-v1`、PostgreSQL `127.0.0.1:55433` 和开发库 `ivybm_portal_v1` 已形成独立闭环；
 - P0.1 模块契约与 P0.2 设计系统已完成并通过定向测试、lint、typecheck 和 build；
 - P0.3 Payload session、自研登录/登出和受保护 `/dashboard` 已完成定向单元、E2E、lint、typecheck 和 build 验证；
 - P0.4 Shell、角色导航、账户菜单和基础设置 Hub 已完成定向单元/E2E、完整 unit、lint、typecheck、build 和 1440/390 视觉核验；
-- P0.5 角色安全首页和真实队列已完成；P0.6 官网内容 Hub 已完成六类内容安全摘要、筛选、状态、EN/AR 完整度、官网预览、角色访问和桌面/移动响应式验证；复杂编辑继续明确受依赖限制；
-- P0.7 素材库已完成网格/列表、图片/PDF 安全预览、角色访问和桌面/移动响应式验证；P0.8a 协作者模块包已完成本地契约验证；PR-1 只剩 P0.8b 知识/AI；
+- P0.5 角色安全首页和真实队列已完成，四类队列均提供 Portal 内可复现筛选深链；P0.6 官网内容 Hub 已完成六类内容安全摘要、筛选、状态、真实发布字段与图片 alt 的 EN/AR 完整度、英文/阿语公开预览、角色访问和桌面/移动响应式验证；复杂编辑继续明确受依赖限制；
+- P0.7 素材库已完成网格/列表、图片/PDF 安全预览、角色访问和桌面/移动响应式验证；P0.8a 协作者模块包已完成本地契约验证；
+- P0.8b 知识/AI 已完成：manifest、read model、index client、Workspace、受保护路由、i18n/CSS、权限集成、桌面/移动 E2E 和视觉检查均已闭环，index client 与后端 `created | duplicate` 契约一致；
+- 已完成的读取、权限、索引与视觉测试只证明首批页面 checkpoint，不再等同于业务功能闭环；负责人复核确认五个菜单模块缺页，官网内容、素材和知识仍缺真实 CRUD；
 - 允许继续本地开发，不授权连接 production、真实平台副作用、push、PR、合并或部署。
 
-正式交付只保留两个 PR 边界：PR-1 Portal V1 覆盖设计简报编号 1～6，对应细粒度任务 P0.1–P0.8b；
-PR-2 Feature Expansion & Production Enablement 覆盖 P0.9–P2。架构表中的粗粒度阶段编号只表达业务顺序，执行编号和
-验收命令以 Implementation Plan 为准。
+| 决策 Gate                   | 当前结论  | 架构含义                                                        |
+| --------------------------- | --------- | --------------------------------------------------------------- |
+| 继续本地模块开发            | **GO**    | 本地数据库与 production 完全隔离，按最小 checkpoint 门禁推进    |
+| 首批只读页面 checkpoint     | **GO**    | 权限、索引契约、E2E 和桌面/移动读取体验已闭环                   |
+| Portal V1 功能闭环          | **NO-GO** | 缺统一会话、线索、内容工作台、平台、异常补偿及三类真实 CRUD     |
+| PR-1 Ready / 合并           | **NO-GO** | 还需 xuemusi review、Portal 浏览器 CI 覆盖和最新 head CI policy |
+| production 数据、平台与部署 | **NO-GO** | 必须等待 PR-2 的备份恢复、补偿、灰度、回滚、真实授权和人工审批  |
+
+### 9.1 Portal V1 本地功能闭环（2026-07-30，最新）
+
+- 左侧十项导航均已接入真实 `/dashboard` 页面：运营首页、统一会话、线索管理、官网内容、素材库、AI 内容工作台、知识库与 AI 调试、平台状态、异常与补偿、基础设置；`/admin` 仍可独立访问，但没有被 Portal 导航或命令依赖；
+- 官网内容已覆盖 Pages、Products、Product Categories、Projects、Posts、Downloads 的 EN/AR 新增、编辑、草稿/发布或启停、预览和引用保护删除；素材库已支持单文件上传、alt/source/公开状态编辑、安全预览与引用保护删除；
+- 知识库已支持文档新增、编辑、审核、归档、删除、索引与 Admin-only AI 调试；会话复用 `ConversationService` 完成列表、详情、接管、人工回复和解决；线索按角色范围提供列表、详情、筛选及受保护写入；
+- 内容工作台使用正式 `GeneratedContents`、`ContentReviews`、`PublishJobs` 和 `PublishLogs` 完成草稿、人工审核、内部 assisted 排期与时间线。自动对外发布仍被 `ADMIN_PORTAL_PUBLISHING_ENABLED` 关闭，LinkedIn 仅提供本地辅助素材包；
+- 平台模块只读取脱敏 readiness，异常模块只展示安全 Job DTO 和已注册的类型化补偿动作。二者都不回显 token、payload、客户正文或完整堆栈；
+- 所有 Portal 读写再次认证并经服务端角色与模块开关约束；面向当前用户的 Payload 查询维持 `overrideAccess: false` 和当前 request。当前已具备 mutation-specific 幂等键、版本令牌和 pending UI；统一持久 command receipt / 原子 CAS 是 PR-1 Ready 前的强化项，不影响本地功能运行结论。
+
+| 决策 Gate | 当前结论 | 架构含义 |
+| --- | --- | --- |
+| Portal V1 本地功能闭环 | **GO** | 十个入口与核心管理任务均可在隔离本地环境完成 |
+| PR-1 Ready / 合并 | **NO-GO** | 仍需 xuemusi 对 Portal Core / 知识及共享边界 review、最终 head 的远程 Browser CI / `CI policy`，并完成统一命令幂等与原子冲突处理强化 |
+| production 数据、真实平台与部署 | **NO-GO** | 仍需 PR-2 的账号授权、受控发布、补偿、备份恢复、灰度和人工审批 |
+
+正式交付仍只保留两个 PR 边界，但不再把页面编号作为完成边界：PR-1 Portal V1 在本地完成十个导航模块和
+可执行的核心管理工作流；PR-2 只负责真实平台、production enablement、受控账号联调和上线。架构表中的
+粗粒度阶段编号只表达业务顺序，执行编号和验收命令以 Implementation Plan 为准。
 
 ### 阶段 A：基线和基座
 
 交付新 ADR、Portal 路由骨架、设计 token、模块 registry、登录、权限守卫、Shell、首页、
-设置 Hub、通用状态和第一批视觉回归。无数据库 migration。
+设置 Hub、通用状态和第一批视觉回归。本阶段不新增数据库 migration；项目基线已有 migration 继续按原历史使用。
 
 ### 阶段 B：jueyunai 自有业务模块
 
-先交付官网内容 Hub 和素材库。Portal 首版先解决发现、筛选、预览、完整度和任务上下文；
-未纳入首版的复杂编辑显示明确受阻态和后续责任，不通过内部入口深链冒充完成。
+官网内容 Hub 和素材库已完成 Portal 原生写流程：内容覆盖六类对象的双语编辑与状态管理，素材覆盖上传、
+元数据编辑和引用守卫删除。Portal 不通过内部维护入口深链冒充业务完成。
 
 ### 阶段 C：协作者模块接入
 
-PR-1 由 jueyunai 先交付模块开发指南、示例 manifest、权限/状态测试工具和 UI primitive，再通过现有知识/AI
-契约完成知识库与 AI 调试接入；xuemusi 在 PR-1 Ready 前完成该公共契约和知识模块 review。统一会话进入 PR-2。
+PR-1 由 jueyunai 交付模块开发指南、示例 manifest、权限/状态测试工具和 UI primitive，并在同一分支接入
+知识/AI 与统一会话工作区；xuemusi 在 PR-1 Ready 前完成 Portal Core、知识模块和共享边界 review。
 
 ### 阶段 D：依赖受限模块
 
-发布正式结构、素材与知识读模型就绪后，先做内容生产/审核/发布准备；真实账号 readiness 和类型化补偿 contract 都具备后，才启用对外发布命令；
-飞书模块完成后再做线索同步与提醒。依赖未满足时只显示受阻说明。
+内容生产、审核、内部排期、平台 readiness 和安全补偿已完成本地工作流；真实账号 readiness、平台 adapter、
+回调与类型化外部补偿就绪后，才启用对外发布命令。飞书实际同步与提醒仍等待其领域依赖，不伪造同步成功。
 
 ### 阶段 E：效率增强
 
@@ -450,10 +492,11 @@ PR-1 由 jueyunai 先交付模块开发指南、示例 manifest、权限/状态�
 
 ### 11.1 开发环境与生产数据边界
 
-- 本地和 CI 只允许连接当前 worktree 的独立 PostgreSQL/Compose：使用独立应用端口、Compose project、PostgreSQL host port、开发库、volume/network，以及名称以 `_test` / `_ci` 结尾的一次性测试库；
+- 本地只允许连接当前 worktree 的独立 PostgreSQL/Compose：使用独立应用端口、Compose project、PostgreSQL host port、开发库、volume/network；应用测试库必须显式使用 `_test` / `_ci` 后缀，本地固定测试库串行使用；
+- CI 每个 Job 使用自建自销的 PostgreSQL 18.4 + pgvector 0.8.5 service 和 `_ci` 数据库，不复用本机 `127.0.0.1:55433`、Compose project、volume 或 `.env`；
 - 任何本地 app、migration、seed、E2E、worker 或脚本都不得读取或写入 production 数据、media/uploads、备份、真实 token 或 production URL；
 - 当前实际 `.env` 已核验指向 `postgres://127.0.0.1:55433/ivybm_portal_v1`，被 Git 忽略且权限为 `0600`；本地开发不依赖 production 数据；
-- 数据库测试按命令显式把 `DATABASE_URL` 指向 `ivybm_portal_v1_test` 或 `_ci`，重置脚本拒绝非 `_test` / `_ci` 数据库；不得依赖隐式 production 连接或共享测试库；
+- 数据库测试按命令从已核验的本地 URL 显式派生 `ivybm_portal_v1_test` 或 `_ci`；`db:reset:test` 内建 PostgreSQL 协议、loopback host 和 `_test` / `_ci` 后缀保护，外层 worktree/CI preflight 再校验预期端口；Portal 门禁不调用未受这些保护的 `db:migrate:fresh`，不得依赖隐式 production 连接或并发共享测试库；
 - development `GO` 只表示允许在隔离环境开发和受控预览，不等于允许真实平台发布、production 数据迁移或 production 部署；
 - 线上数据和外部平台操作只能按 PR-2 runbook 在经批准的受控环境与时间窗口执行。
 
@@ -474,12 +517,19 @@ PR-1 Portal V1 转 Ready 前必须统一补齐，合并只接受最新 head 的�
 - Portal CSS 作用域、官网路由与全局样式隔离回归；
 - lint、typecheck、完整 unit/contract/integration/E2E/operations、production build 和 `git diff --check`。
 
+当前 PR-1 本地实现与测试结论为 `GO`：P0.8b E2E/视觉已收口，`db:reset:test` 已内建本地 host/后缀保护，
+并已在全新 `_ci` 空库证明 16 条 migration 与连续两次 seed；本地完整门禁也已通过。PR-1 Ready/合并仍为
+`NO-GO`，剩余边界是 xuemusi 对 Portal Core/知识模块的 review、远程 CI 对 Portal 浏览器套件的实际覆盖，
+以及与最终 head SHA 对齐的成功 `CI policy`。这些阻塞项不否定继续本地开发 `GO`。
+
 开发期可以后补完整回归、全视口视觉矩阵、慢请求、少见错误、完整键盘路径、性能/可观测性优化、体验精修
 和非关键通用抽象；只读页面允许先用真实空态、错误态和 `dependency-gated` 跑通流程。不能后补服务端
 Auth/RBAC、用户数据 access、错误与空数据区分、测试库防误删、数据/migration 完整性、凭据隔离、外部副作用
 幂等、`delivery_unknown`、总开关/模块开关和发布 kill switch。
-PR-2 生产启用前必须对最新 head 再次执行同一完整门禁，并追加受控外部平台、类型化补偿、灰度、回滚和
-`/admin` 共存 smoke；本地功能跑通或 PR-1 合并均不构成 production 授权。
+PR-2 生产启用前必须对最新 head 再次执行同一完整门禁，并在一次性 production-like 演练环境（不设常驻
+staging）或经批准的 production 维护窗口追加受控外部平台、类型化补偿、灰度、镜像/数据库回滚、
+`/admin` 共存 smoke、外部备份可用性、RPO/RTO 和 restore rehearsal；本地功能跑通或 PR-1 合并均不
+构成 production 授权。
 
 ## 13. 明确不在首轮范围
 

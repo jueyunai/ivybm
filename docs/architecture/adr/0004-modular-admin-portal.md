@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted，2026-07-29；2026-07-30 补充明确 PR 任务边界、维护态术语和技术后台非一期范围。
+Accepted，2026-07-29；2026-07-30 补充明确 PR 任务边界、维护态术语、技术后台非一期范围和 Portal V1 十模块本地功能闭环。
 
 Supersedes [ADR-0002](0002-admin-ui-composition.md) 中“`/admin` 是一期唯一后台入口”的决策。
 ADR-0002 已落地的 Payload Nav、Operations Dashboard、账户菜单和安全约束继续保留。
@@ -104,16 +104,16 @@ flowchart LR
 
 ### 6. 模块与负责人
 
-| 模块 | 主要负责人 | 基座方责任 | 模块方责任 |
-| --- | --- | --- | --- |
-| Portal Core、登录、首页、导航、基础设置入口 | jueyunai | 架构、实现、测试、发布 | 协作者 review 公共契约 |
-| 官网 CMS、产品/案例/文章、素材库 | jueyunai | 模块实现与领域集成 | 协作者只消费公开内容 |
-| 线索、飞书入口与跟进摘要 | jueyunai | 模块实现 | 会话模块提供稳定关联 |
-| AI 内容工作台、生成/审核、发布任务结构 | jueyunai | 页面、状态机、共享结构与持久化 | 平台服务通过冻结 contract 接入 |
-| 业务知识库与 AI 调试 | xuemusi | 提供统一 Shell、UI primitive、设计 review | 读模型、命令、页面和迭代 |
-| AI 客服公共能力、统一会话 | xuemusi | 提供模块插槽和共享组件 | 会话读模型、命令、UI 和迭代 |
-| 海外社媒账号、连接器、readiness 与真实发布服务 | xuemusi | 工作台消费接口与集成验收 | capability/publish/status、adapter、回调与真实执行 |
-| Jobs 系统异常外壳 | jueyunai | Admin-only 通用列表与安全摘要 | 各模块 owner 提供类型化补偿动作 |
+| 模块                                           | 主要负责人 | 基座方责任                                | 模块方责任                                         |
+| ---------------------------------------------- | ---------- | ----------------------------------------- | -------------------------------------------------- |
+| Portal Core、登录、首页、导航、基础设置入口    | jueyunai   | 架构、实现、测试、发布                    | 协作者 review 公共契约                             |
+| 官网 CMS、产品/案例/文章、素材库               | jueyunai   | 模块实现与领域集成                        | 协作者只消费公开内容                               |
+| 线索、飞书入口与跟进摘要                       | jueyunai   | 模块实现                                  | 会话模块提供稳定关联                               |
+| AI 内容工作台、生成/审核、发布任务结构         | jueyunai   | 页面、状态机、共享结构与持久化            | 平台服务通过冻结 contract 接入                     |
+| 业务知识库与 AI 调试                           | xuemusi    | 提供统一 Shell、UI primitive、设计 review | 读模型、命令、页面和迭代                           |
+| AI 客服公共能力、统一会话                      | xuemusi    | 提供模块插槽和共享组件                    | 会话读模型、命令、UI 和迭代                        |
+| 海外社媒账号、连接器、readiness 与真实发布服务 | xuemusi    | 工作台消费接口与集成验收                  | capability/publish/status、adapter、回调与真实执行 |
+| Jobs 系统异常外壳                              | jueyunai   | Admin-only 通用列表与安全摘要             | 各模块 owner 提供类型化补偿动作                    |
 
 共享的 Portal Core、`src/payload.config.ts`、migration、公共 contract 和跨模块 DTO 仍需另一名开发者 review。
 
@@ -123,7 +123,7 @@ flowchart LR
 - 第一阶段不因 Portal Shell 创建数据库 migration；关闭总开关时 `/dashboard` 显示维护状态，不重定向到内部入口。
 - 每个模块必须定义 `dependency-gated`、`blocked` 或局部错误态，不能因一个模块失败拖垮整个门户。
 - `/admin` 在迁移验收前维持现有内部维护能力和安全回归，不属于本计划的新增开发或 Portal 产品验收；它是并行维护入口，不是 Portal 页面失败时的导航 fallback。
-- Portal 功能采用一个 Portal V1 Draft PR 分 checkpoint 跑通细粒度任务 P0.1–P1.3，再以一个 Hardening & Production Enablement PR 完成 P1.4、P1.5 和 P2 的全量强化、补偿、灰度和真实发布。owner 与强制 review 边界不因 PR 合并而改变；执行编号以 Implementation Plan 为准。
+- Portal V1 使用一个 Draft PR 分 checkpoint 完成十个导航模块及其本地核心工作流（P0.1–P1.4）；只有 P1.5–P2 的真实平台、production enablement 和上线演练进入 Feature Expansion & Production Enablement PR。方案、实现、测试和验证记录不再机械拆 PR，owner 与强制 review 边界也不因 PR 合并而改变；执行编号以 Implementation Plan 为准。
 - 本地功能跑通期允许只运行定向验证；转 Ready、合并 main 和生产启用前必须补齐各自完整门禁。Auth/RBAC、数据隔离、migration、凭据、幂等、feature flag 和外部副作用 kill switch 不得延期。
 - local/CI 只允许连接当前 worktree 的独立 PostgreSQL/Compose 开发库和 `_test` / `_ci` 测试库；任何本地 app、migration、seed、E2E、worker 或脚本不得连接 production 或读取 production 数据、media/uploads、备份、真实 token 和 production URL。
 - PR-1 的本地/受控预览完成不构成 production 授权；PR-2 生产启用前必须对最新 head 重跑完整门禁，并追加受控外部平台、补偿、灰度、回滚和 `/admin` 共存 smoke。
@@ -264,14 +264,14 @@ flowchart TB
 
 ## 失败与回滚
 
-| 失败 | 用户表现 | 处理 | 回滚 |
-| --- | --- | --- | --- |
-| 未认证或 session 过期 | 跳转 Portal 登录并保留安全 return target | Payload auth 重新认证 | 显示可重试的认证错误，不导航到 `/admin` |
-| Portal Core 构建或样式异常 | `/dashboard` 不可用或局部错位 | CI 阻止；CSS isolation 回归 | 关闭 `ADMIN_PORTAL_ENABLED` |
-| 单模块依赖缺失 | 显示 dependency-gated / blocked | 模块不注册命令，不伪造数据 | 隐藏副作用命令并给出责任人与下一步 |
-| Read model 失败 | 局部错误态和 request ID | 结构化日志；允许重试 | Portal 内重试或转内部运维处理 |
-| 命令冲突或重复点击 | 明确“状态已变化/请求处理中” | 领域幂等与最新状态回读 | 不做客户端盲目重试 |
-| 外部平台结果未知 | 显示 delivery_unknown | 停止自动重发，进入人工补偿 | 由平台模块 runbook 处理 |
+| 失败                       | 用户表现                                 | 处理                        | 回滚                                    |
+| -------------------------- | ---------------------------------------- | --------------------------- | --------------------------------------- |
+| 未认证或 session 过期      | 跳转 Portal 登录并保留安全 return target | Payload auth 重新认证       | 显示可重试的认证错误，不导航到 `/admin` |
+| Portal Core 构建或样式异常 | `/dashboard` 不可用或局部错位            | CI 阻止；CSS isolation 回归 | 关闭 `ADMIN_PORTAL_ENABLED`             |
+| 单模块依赖缺失             | 显示 dependency-gated / blocked          | 模块不注册命令，不伪造数据  | 隐藏副作用命令并给出责任人与下一步      |
+| Read model 失败            | 局部错误态和 request ID                  | 结构化日志；允许重试        | Portal 内重试或转内部运维处理           |
+| 命令冲突或重复点击         | 明确“状态已变化/请求处理中”              | 领域幂等与最新状态回读      | 不做客户端盲目重试                      |
+| 外部平台结果未知           | 显示 delivery_unknown                    | 停止自动重发，进入人工补偿  | 由平台模块 runbook 处理                 |
 
 ## 重新评估条件
 

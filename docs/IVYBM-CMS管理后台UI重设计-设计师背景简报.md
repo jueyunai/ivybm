@@ -1,6 +1,6 @@
 # IVYBM CMS 管理后台 UI 重设计——设计师背景简报
 
-版本：v2.5
+版本：v2.8
 
 日期：2026-07-30
 
@@ -145,20 +145,20 @@ Operations Portal /dashboard
 │   ├── 统一会话 / 人工接管（xuemusi）
 │   ├── Lead Sources（jueyunai）/ Platform readiness（xuemusi）
 │   └── Jobs / Audit Logs（按角色与权限）
-└── System（admin）
+└── System（Portal 基础设置）
     ├── 本人账户与安全设置摘要
     ├── 模块可用状态 / 责任人 / 下一步
     └── Site Settings 安全只读摘要
 ```
 
-P1 模块包括内容审核、发布排期、平台 readiness、飞书同步和异常补偿。它们不改变底层权限和领域服务；
-内容审核/发布依赖正式结构，飞书同步依赖 Task 10/11。完整 Pipeline、Cmd+K 和 AI Copilot 仍是 Future。
+Portal V1 的本地工作流已包括内容审核、内部排期、平台 readiness 和安全异常补偿；它们不改变底层权限和领域服务。
+飞书真实同步、自动对外发布和外部补偿仍依赖 Task 10/11、平台授权与受控环境。完整 Pipeline、Cmd+K 和 AI Copilot 仍是 Future。
 
 ### 导航原则
 
 - 以任务和业务对象命名，不直接暴露 `Jobs`、`Handoffs`、`VisitorSessions` 等内部表名；
 - 默认首页随角色变化：Admin 看全局，Operator 看运营队列，Sales 看“我的会话与线索”；
-- `/dashboard` 是第一阶段唯一产品入口；内部维护能力不进入 Portal 导航或任务流；
+- `/dashboard` 是第一阶段唯一运营产品入口；`/admin` 只作为并行受限技术维护入口，不进入 Portal 导航或任务流；
 - 全局搜索 / `Cmd + K` 属于 Future 交互，可优先探索“找客户、找会话、找内容、跳转功能、创建常用对象”，危险动作不建议直接在命令面板执行。
 
 ---
@@ -496,30 +496,54 @@ Portal V1 的 canonical 视觉不再以早期探索色值为准，而以
 - 真实 AI 生产质量仍依赖正式知识资料、模型配置和评测；
 - 线上生产联调、最终验收和备份恢复仍未完成。
 
-### Portal 当前实施状态（2026-07-30）
+### Portal 历史实施状态（2026-07-30，验收口径纠正前）
 
 - D0 本地开发门禁已通过：独立 worktree、端口、Compose project、PostgreSQL、开发库、volume/network 和本地密钥已完成隔离；本地与 CI 均禁止连接 production；
 - P0.1 静态 module registry、owner/角色/路由/成熟度、总开关和模块开关已完成；
 - P0.2 Digital Lattice token、Tailwind/shadcn Portal 范围隔离和首批 UI primitives 已完成；
 - P0.3 Payload session、自研登录/登出和 `/dashboard` 受保护路由已完成定向验证；
 - P0.4 Shell、角色导航、账户菜单和基础设置 Hub 已完成实现与 checkpoint 验收；
-- P0.5 角色首页已完成：真实会话/线索/失败任务队列按 Payload 权限读取，内容审核、今日发布和飞书失败保持 dependency-gated，并完成桌面/移动视觉验收；官网内容与素材模块继续按 Implementation Plan 推进。
-- P0.6 官网内容 Hub 已完成六类内容的安全摘要、筛选、状态、EN/AR 完整度、官网预览和角色访问测试；桌面与移动 E2E、空结果和响应式视觉已通过。复杂富文本、版本与完整 SEO 编辑继续显示 `dependency-gated`，不通过 `/admin` 深链冒充完成。
+- P0.5 角色首页已完成：真实会话/线索/失败任务队列按 Payload 权限读取，四张队列卡提供 Portal 内可复现的 `?queue=` 筛选深链；内容审核、今日发布和飞书失败保持 dependency-gated，并完成桌面/移动视觉验收；
+- P0.6 官网内容 Hub 已完成六类内容的安全摘要、筛选、状态、真实发布字段与图片 alt 的 EN/AR 完整度、英文/阿语公开预览和角色访问测试；桌面与移动 E2E、空结果和响应式视觉已通过。复杂富文本、版本与完整 SEO 编辑继续显示 `dependency-gated`，不通过 `/admin` 深链冒充完成。
+- P0.7 素材库已完成网格/列表、图片/PDF 安全预览、角色访问、桌面/移动 E2E 和响应式视觉验收；上传/复杂编辑继续明确受阻；
+- P0.8a 协作者开发包、Core modules 公共出口、resolver、示例模块和 contract test 已完成本地 checkpoint；协作者 review 仍是 PR-1 Ready 门槛；
+- P0.8b 知识/AI 已完成 manifest、read model、索引 client、Workspace、路由、i18n/CSS、Admin/Operator/Sales 权限集成和桌面/移动 E2E；索引 client 已对齐后端 `created | duplicate` 契约，双状态列表、AI readiness、安全摘要和 CSS 隔离均已验证；
+- 首批页面已经具备读取、权限、索引和响应式验证，但负责人实际复核确认它们尚未形成完整管理工作流：统一会话、线索、AI 内容工作台、平台状态、异常与补偿缺少页面，官网内容、素材和知识缺少新增/编辑/保存等真实写操作；因此撤销此前“编号 1～6 已完成”的结论。
 
-本地 app、migration、seed、E2E、worker 和脚本只允许使用该 worktree 的独立开发库或 `_test` / `_ci`
-测试库，不得连接 production PostgreSQL，也不得读取 production media、uploads、备份、URL 或真实 token。
+本地 app、migration、seed、E2E、worker 和脚本只允许使用该 worktree 的独立开发库或显式 `_test` / `_ci`
+测试库；本地固定测试库串行使用。当前本地环境没有 production 数据库连接，CI 每个 Job 使用自建自销的
+PostgreSQL + pgvector service 与 `_ci` 库，不复用本机 Compose、端口、volume 或 `.env`。两者均不得连接
+production PostgreSQL，也不得读取 production media、uploads、备份、URL 或真实 token。`db:reset:test`
+已内建 PostgreSQL 协议、loopback host 和 `_test` / `_ci` 后缀保护，Ready 门禁再校验本 worktree 的固定端口；
+全新 `_ci` 空库已验证 16 条 migration 和连续两次 seed，不直接调用 `db:migrate:fresh`。
 
-### 尚未正式实现或仍受依赖限制
+| 决策 Gate                       | 当前结论  | 设计侧含义                                                         |
+| ------------------------------- | --------- | ------------------------------------------------------------------ |
+| 继续本地模块开发                | **GO**    | 本地数据库与 production 完全隔离，可按最小 checkpoint 门禁继续推进 |
+| 首批只读页面 checkpoint         | **GO**    | 权限、索引契约、桌面/移动读取体验已闭环                             |
+| Portal V1 功能闭环              | **NO-GO** | 仍缺五个菜单模块和官网/素材/知识真实 CRUD                           |
+| PR-1 Ready / 合并               | **NO-GO** | 仍需 xuemusi review、Portal 浏览器 CI 覆盖和最新 head CI policy    |
+| production 数据、真实平台、部署 | **NO-GO** | 仅 PR-2 在备份恢复、补偿、灰度、回滚和人工审批全部满足后才可能开放 |
 
-- 飞书 CRM 同步与提醒；
-- 完整 AI 内容工作台、内容审核和发布排期；
-- `PublishJobs` / `PublishLogs` 的正式后台流程；
-- 社媒 AI 自动出站与 `delivery_unknown` 人工补偿界面；
-- 官网内容复杂编辑、素材、知识、会话、内容工作台、平台 readiness 和线索页面仍按 checkpoint 实现，不应在设计稿中表现为已交付。
+### Portal V1 最新本地功能状态（2026-07-30）
+
+- 十个菜单模块均有真实 Portal 工作区；截图中原本缺失的统一会话、线索管理、AI 内容工作台、平台状态与异常和补偿已补齐，`/admin` 保持独立维护入口；
+- 官网内容、素材库与知识库已从只读/disabled 状态升级为 Portal 原生受保护命令：内容支持双语新建、编辑、状态和安全删除；素材支持上传、元数据编辑和引用守卫删除；知识支持新增、编辑、审核、索引、删除及 Admin-only AI 调试；
+- 会话中心复用权威接管状态机，线索遵循数据级 Sales 范围；内容工作台完成草稿、审核、内部 assisted 排期和状态时间线，不把已审核或已排期伪装成平台已发布；
+- 平台只展示无凭据 readiness，异常模块只显示安全 Job 摘要和已注册补偿。自动对外发布、真实 token、`available` 判定、社媒 AI 自动出站与 production 部署仍保持关闭；
+- 本地验收已覆盖 `lint`、typecheck、完整 unit、隔离数据库 CRUD/access、桌面/390px Chromium 及 `/admin` 共存。PR Ready 前仍需补齐协作者 review、最终 head 的远程 CI policy 和统一命令幂等/原子冲突处理强化。
+
+### 后续仍受依赖限制
+
+- 飞书 CRM 实际同步与提醒；
+- 真实平台账号、token、授权、`available` 判定、状态回调和受控对外发布；
+- `delivery_unknown` 的外部平台结果核验与完整人工补偿 runbook；
+- production 的备份恢复、灰度、回滚和人工审批。
 
 设计可以覆盖未来状态，但需在 Figma 标注“P1 / Future / dependency-gated”，便于研发分阶段实现。
 本地功能跑通阶段只要求当前页面的主桌面与窄屏检查；完整四视口、全部状态和键盘路径在 Portal V1 Ready
-前统一补齐。此节奏不改变权限、敏感数据和外部副作用的设计边界。
+前统一补齐。此节奏不改变权限、敏感数据和外部副作用的设计边界，也不单独构成开发/合并授权；最终命令和
+Go/No-Go 证据链以 Implementation Plan 的 Global Verification 为准。
 
 ---
 
@@ -641,7 +665,9 @@ Portal V1 的 canonical 视觉不再以早期探索色值为准，而以
 
 - Payload CMS / PostgreSQL 继续作为数据、身份、权限和唯一控制平面；
 - `/dashboard` 是第一阶段模块化运营门户；Payload 已有 `/admin` 在迁移验收前继续供受限维护人员使用，不属于设计或产品验收，验收后再决定维护或下架；
-- Portal 页面和命令不得绕过服务端 access control；
+- Portal 页面和命令不得绕过服务端 Auth/RBAC；面向当前用户的 Payload Local API 必须显式 `overrideAccess: false`；
+- 测试库 reset 命令必须内建 loopback host 和 `_test` / `_ci` 后缀校验，worktree/CI preflight 另校验预期端口；本地/CI 不得读取 production 数据、media、备份、URL 或凭据；
+- migration 和数据完整性、凭据隔离、外部副作用幂等与 `delivery_unknown` 处理均不得后移；
 - 会话接管必须经过 ConversationService；
 - 发布必须经过 PublishingService，且未审核内容不得发布；
 - 平台 token、模型 key 只写不可读；

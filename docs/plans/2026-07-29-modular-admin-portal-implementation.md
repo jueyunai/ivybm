@@ -14,7 +14,7 @@
 
 **Visual baseline:** [Digital Lattice Pencil](../../designs/ivybm-admin-portal-digital-lattice.pen)
 
-**Execution rule:** Task 是分阶段 commit / 验收检查点，不是 PR 边界。按最新确认的 2 个 PR 批次推进：PR-1 Portal V1 覆盖设计简报明确编号的 1～6 项页面/功能及其接入基础，即 P0.1–P0.8b；PR-2 Feature Expansion & Production Enablement 覆盖 P0.9–P2。当前设计与文档直接进入 PR-1，不单开 docs PR。
+**Execution rule:** Task 是分阶段 commit / 验收检查点，不是 PR 边界。按最新确认的 2 个 PR 批次推进：PR-1 Portal V1 覆盖十个导航模块及其本地核心工作流，即 P0.1–P1.4 的 Portal UI / 内部命令；PR-2 Feature Expansion & Production Enablement 只覆盖 P1.5–P2 的真实平台、production enablement 与上线演练。当前设计、实现和验证记录都留在同一 Portal V1 Draft PR 边界，不单开 docs PR。
 
 **Review rule:** Portal V1 虽使用一个 Draft PR，模块 owner 不变。为了本地一次完成 1～6 项，协作者 review 不再阻塞 P0.8a/P0.8b 本地编码；Portal Core、共享 contract 和知识模块仍必须在 PR-1 转 Ready 前由对应另一名开发者 review。`src/payload.config.ts`、migration 和跨模块 DTO 继续遵守原有强制 review 边界。
 
@@ -29,8 +29,8 @@ Portal V1 开始功能编码前一次性完成：
    `feat/task-p0-p1-admin-portal-v1` 并取消旧 docs upstream。保留当前基于最新 `origin/main` 的文档历史，
    不创建 docs-only PR；
 2. 执行 `pnpm install --frozen-lockfile`，确认 Node.js 24 与 pnpm 10.15.1；
-3. 为本 worktree 配置唯一的应用端口、Compose project、PostgreSQL host port、开发库和 `_test` / `_ci` 测试库；不得复用当前占用的 `127.0.0.1:5432`；
-4. 本地 `.env` 只使用本地数据库与测试凭据，不复制 production URL、token、客户数据、uploads 或备份；任何本地 app、migration、seed、E2E、worker 或脚本均不得连接 production。local/CI 只允许使用本 worktree 的独立 PostgreSQL/Compose 开发库，以及名称以 `_test` / `_ci` 结尾的一次性测试库；
+3. 为本 worktree 配置唯一的应用端口、Compose project、PostgreSQL host port、开发库和 `_test` 测试库；不得复用当前占用的 `127.0.0.1:5432`；CI 另用每个 Job 自建自销的 PostgreSQL + pgvector service 和 `_ci` 数据库，不复用本机 Compose、端口或 volume；
+4. 本地 `.env` 只使用本地数据库与测试凭据，不复制 production URL、token、客户数据、uploads 或备份；任何本地 app、migration、seed、E2E、worker 或脚本均不得连接 production。本地只允许使用本 worktree 的开发库与显式 `_test` / `_ci` 临时库；CI 只允许使用当前 Job 的临时 `_ci` 库；
 5. 启动隔离数据库后完成 baseline `lint`、`typecheck`、`test:unit` 和 production build，记录结果到 `docs/开发进度.md`。
 
 worktree/分支转换使用以下非破坏性命令；执行前必须保证两个 worktree 都干净，且 `origin/main` 仍是当前
@@ -56,33 +56,36 @@ git -C /Users/zhiyun.lee/GitHub/builder/ivybm-task-p0-p1-admin-portal-v1 branch 
 - Node.js 24、pnpm 10.15.1、独立 `node_modules` 和仓库 git hooks 就绪；
 - Compose project `ivybm-portal-v1`、应用端口 `3001`、PostgreSQL host port `55433`、开发库 `ivybm_portal_v1`、独立 volume/network 已隔离；
 - 16 条业务 migration 已应用，本地 seed 完成；本地 `.env` 被 Git/Docker build context 排除、权限为 `0600`，应用密钥只在本地生成；
-- baseline lint、typecheck、57 files / 468 unit tests 和 production build 全部通过，build 仍包含既有 `/admin`。
+- 写入 P0.1 failing-first 测试之前的 baseline lint、typecheck、57 files / 468 unit tests 和 production build 全部通过，build 仍包含既有 `/admin`。后续 checkpoint 的预期红灯只用于 TDD，不得被记为当前 head 已通过完整回归。
 
 这里的 `GO` 只授权本地 Portal V1 开发，不授权连接 production、真实外部平台发布、push、创建 PR、合并或部署。开发 checkpoint 使用定向门禁；PR-1 转 Ready 前补齐完整回归；PR-2 生产启用前再次执行完整门禁和受控环境验证。
 
-### D0.1 当前开发状态（2026-07-30）
+### D0.1 历史开发状态（2026-07-30，验收口径已于 D0.3 / D0.4 更新）
 
 - P0.1 已提交：`beb4d92 feat(admin-portal): define modular portal contract`；
 - P0.2 已提交：`98838c5 feat(admin-portal): add isolated design system`；
 - P0.3 已完成本地实现和定向验证：Payload session adapter、自研登录/登出、`/dashboard/login` 与受保护 `/dashboard` 均已通过单元、E2E、lint、typecheck 和 build；
 - P0.4 已完成：Shell、角色导航、桌面折叠、移动抽屉、账户菜单、语言/主题/减少动效偏好、Settings 安全摘要与模块状态均已落地，并通过定向单元/E2E、完整 unit、lint、typecheck、build 和 1440/390 视觉核验；
-- P0.5 已完成：角色安全首页、真实四类队列、独立安全 DTO、依赖受限说明和真实空态已落地，并通过完整 unit、隔离数据库 integration、Portal E2E、lint、typecheck、build 和 1440/390 视觉核验；
-- P0.6 已完成：官网内容模块 manifest、安全 read model、六类内容筛选、状态与 EN/AR 完整度、官网预览、角色访问集成和响应式页面已落地；重复空态已修复，lint、typecheck、定向单元 15/15、隔离 `_test` 数据库 integration 2/2、桌面/移动 E2E 2/2 与视觉核验通过；
+- P0.5 已完成：角色安全首页、真实四类队列、Portal 内可复现的 `?queue=` 筛选深链、独立安全 DTO、依赖受限说明和真实空态已落地，并通过完整 unit、隔离数据库 integration、Portal E2E、lint、typecheck、build 和 1440/390 视觉核验；
+- P0.6 已完成：官网内容模块 manifest、安全 read model、六类内容筛选、状态、真实发布字段与图片 alt 的 EN/AR 完整度、英文/阿语公开预览、角色访问集成和响应式页面已落地；重复空态已修复，lint、typecheck、定向单元、隔离 `_test` 数据库 integration 2/2、桌面/移动 E2E 2/2 与视觉核验通过；
 - P0.7 已完成：素材库 manifest、安全 read model、URL 可序列化筛选/分页、网格/列表、图片/PDF 安全预览、公开状态、alt/source、上传限制和编辑受阻态已落地；lint、typecheck、定向单元 15/15、显式 `_test` 数据库 Media 策略与 Portal 权限集成 9/9、桌面/移动 E2E 2/2、Prettier、`git diff --check` 与 1440/390 视觉核验通过；
 - `.gitignore` 已把任意层级的 `media/` 收窄为根目录 `/media/`，继续忽略 Payload 上传目录，同时允许 `src/**/media/` 业务源码进入 Git；
 - P0.8a 已完成本地 checkpoint：协作者指南、Core modules 公共出口、通用 resolver、无领域数据示例模块和跨模块私有 import 契约测试已落地；定向 contract 5/5、registry/navigation/i18n unit 10/10、lint、typecheck 与 diff 检查通过，xuemusi review 仍待 PR-1 Ready 前完成；
-- PR-1 只剩 P0.8b 尚未交付；P0.9–P1.3 按最新范围进入 PR-2，不阻塞 PR-1 本地开发完成。
+- P0.8b 已完成：知识模块 manifest、read model、索引 API client、Workspace、受保护路由、i18n/CSS、权限集成、桌面/移动 E2E 与视觉检查已闭环，索引 client 已收敛到后端真实的 `created | duplicate` 契约；
+- PR-1 编号 1～6 已完成本地实现和完整测试：71 files / 545 unit tests、60 个 AI evaluation cases、6 files / 57 contract tests、22 files / 125 integration tests、7 files / 33 operations tests、production build，以及全部 78 个浏览器场景均有通过证据；
+- P0.9–P1.3 按最新范围进入 PR-2，不阻塞 PR-1 本地开发完成。
 
-因此 Portal V1 本地开发 readiness 结论维持 `GO`，P0.8a checkpoint 结论为 `GO`，允许继续实现
-P0.8b。xuemusi 对 Portal Core public API 和知识模块的 review 后移为 PR-1 Ready 门槛，不得被省略或
-伪记为已完成。每个模块仍必须满足 owner 边界和定向门禁。
+以上记录只证明首批页面的读取、权限和视觉 checkpoint 已通过，不再等同于 Portal V1 功能完成；
+最新完成口径和 Gate 以 D0.3 为准。
+xuemusi 对 Portal Core public API 和知识模块的 review 仍是 PR-1 Ready 门槛，不得被省略或伪记为已完成；
+远程 CI 还必须实际覆盖 Portal 浏览器套件并生成与最终 head 对齐的成功 `CI policy`。
 
 本 worktree 的本地应用端口是 `3001`。当前非 CI Playwright 默认端口仍为 `3000`，执行 Portal E2E 前必须
 先启动 `PORT=3001 pnpm dev`，再显式设置 `BASE_URL=http://localhost:3001`，避免复用其他服务。
 当前 Portal checkpoint 不启动 Compose worker；若后续需要容器化 worker，必须使用容器内 `db:5432`
 连接地址，不能把 host 侧 `127.0.0.1:55433` 注入 worker 容器。
 
-### D0.2 本地优先执行口径（2026-07-30 最新校正）
+### D0.2 历史本地优先执行口径（2026-07-30，已由 D0.4 收口结论取代）
 
 当前本地 `.env` 的数据库目标已核验为 `postgres://127.0.0.1:55433/ivybm_portal_v1`，文件被 Git 忽略且
 权限为 `0600`。本地没有 production 数据库连接，也不需要 production 数据才能完成 PR-1 功能开发。
@@ -102,23 +105,84 @@ P0.8b。xuemusi 对 Portal Core public API 和知识模块的 review 后移为 P
 不得后移的最小安全不变量：服务端 Auth/RBAC、用户数据 `overrideAccess:false`、输入边界、错误与空数据区分、测试库防误删、凭据/客户数据隔离、migration 线性历史、外部命令幂等、
 `delivery_unknown`、总开关/模块开关和真实发布 kill switch。
 
-测试数据库不在 `.env` 中持久保存第二个隐式连接；需要数据库测试时必须显式把 `DATABASE_URL` 指向
-`ivybm_portal_v1_test` 或 `_ci` 数据库。`scripts/db/reset-test.ts` 已对非 `_test` / `_ci` 名称 fail closed。
-已知非阻塞技术债是该脚本在全新空库上会先查询尚不存在的 `payload_migrations`；当前测试库已经完成初始化，
-不阻塞 P0.6，但必须在 PR-1 Ready 完整门禁前修正或以标准初始化命令验证。
+测试数据库不在 `.env` 中持久保存第二个隐式连接；需要数据库测试时必须从已核验的本地开发 URL 显式派生
+`ivybm_portal_v1_test` 或 `_ci`。`scripts/db/reset-test.ts` 已内建 PostgreSQL 协议、loopback host 和
+`_test` / `_ci` 后缀保护；外层 Ready/CI preflight 再校验当前 worktree 的预期端口。脚本通过 `to_regclass`
+处理全新空库尚不存在 `payload_migrations` 的情况，并已在全新 `ivybm_portal_v1_readiness_20260730_ci` 空库
+证明 16 条 migration 和连续两次 seed 可重复；验证后临时库已删除。Portal 门禁不调用 `db:migrate:fresh`。
+`db:test:persistence` 只操作脚本自建自销的隔离 probe DB/volume，不运行应用 migration/seed，也不得接收
+production 连接参数。
 
 本轮仍使用同一个 PR-1 Portal V1 Draft PR 和 checkpoint commit，不为该校正另开文档 PR。当前 `GO`
 只授权继续本地开发，不授权 production 数据操作、真实平台副作用、push、创建 PR、合并或部署。
 
 | 决策 Gate                       | 当前结论  | 含义                                                                               |
 | ------------------------------- | --------- | ---------------------------------------------------------------------------------- |
-| 继续本地 P0/P1 功能开发         | **GO**    | 使用独立 worktree、本地开发库与显式 `_test` / `_ci` 库，按 checkpoint 最小门禁推进 |
+| 继续本地模块开发                | **GO**    | 使用独立 worktree、本地开发库与显式 `_test` / `_ci` 库，按 checkpoint 最小门禁推进 |
 | P0.6 checkpoint 完成            | **GO**    | 重复空态已修复，定向单元/权限集成/E2E 和桌面/窄屏视觉核验已通过                    |
 | P0.7 checkpoint 完成            | **GO**    | 素材策略、权限集成、定向单元/E2E 和桌面/窄屏视觉核验已通过                         |
 | P0.8a checkpoint 完成           | **GO**    | 公共 resolver、模块指南、示例模块和 contract test 已通过                           |
-| P0.8b 本地开发                  | **GO**    | 只接真实知识/AI 后端；review 后移到 PR-1 Ready 前                                  |
-| PR-1 转 Ready / 合并            | **NO-GO** | 等 P0.8a/P0.8b 完成，并对最新 head 执行完整门禁和双方 review                       |
+| P0.8b checkpoint 完成           | **GO**    | 权限、索引契约、桌面/移动 E2E 与视觉检查已闭环                                     |
+| 首批只读页面 checkpoint         | **GO**    | 读取、权限、索引和响应式基线已通过，但不等于业务功能闭环                           |
+| Portal V1 功能闭环              | **NO-GO** | 仍缺五个导航模块，以及官网内容、素材和知识的新增/编辑/保存等真实写流程             |
+| PR-1 转 Ready / 合并            | **NO-GO** | 等 xuemusi review、Portal 浏览器 CI 覆盖和最终 head 的成功 CI policy               |
 | production 数据、真实平台与部署 | **NO-GO** | 仅 PR-2 经受控账号、补偿、灰度、回滚和人工审批后才可能开放                         |
+
+PR-1 转 Ready 前必须先完成 D0.3 的 Portal V1 功能闭环，再执行协作者 review、完整 Portal Browser E2E、
+最终 head CI policy。继续使用同一个 Draft PR 和 checkpoint commit，不为范围纠正拆额外文档 PR。
+
+### D0.3 历史用户验收口径纠正（2026-07-30）
+
+2026-07-30 依据负责人对实际页面的复核，撤销“PR-1 编号 1～6 已完成”的结论。此前把可浏览列表、
+`dependency-gated` 提示和 disabled 按钮计入完成，低于“管理后台必须完成真实任务”的验收标准。
+
+Portal V1 的 Done 改为：
+
+1. 左侧十个导航模块均有真实 Portal 页面：运营首页、统一会话、线索管理、官网内容、素材库、AI 内容工作台、知识库与 AI 调试、平台状态、异常与补偿、基础设置；
+2. 官网内容必须支持六类内容的新增、双语编辑/保存、草稿/发布或启停、预览和受保护删除；
+3. 素材库必须支持真实上传、alt/source/公开状态编辑、预览和引用守卫删除；
+4. 知识库必须支持文档新增、编辑、审核、删除、索引和 Admin-only AI 调试；
+5. 统一会话必须消费现有 ConversationService，完成列表、详情、接管、人工回复和解决，不直接写状态字段；
+6. 线索必须完成列表、详情、筛选和受保护更新；Sales 仍只操作分配给自己的记录；
+7. AI 内容工作台必须使用正式 Generated/Review/Publish 结构，完成草稿、审核、排期和状态时间线；本地不得把 fake/fixture 标为真实发布；
+8. 平台状态必须消费脱敏 readiness；异常与补偿必须使用安全 Job DTO 和类型化补偿动作；两者都不得回显 token、payload、owner token、客户正文或完整堆栈；
+9. 所有新增/编辑/状态操作均由服务端 Auth/RBAC、当前 Payload request、领域状态/revision 和幂等约束保护；不得以 `/admin` 跳转或直接浏览器写 Payload REST 代替 Portal command；
+10. 真实平台网络、真实 token 配置、`available` 判定和 production 部署继续保持 `NO-GO`，不影响本地完成草稿、审核、内部排期、readiness 和补偿工作流。
+
+本轮继续使用当前 worktree 和同一 PR-1 分支本地开发；不 push、不创建 PR、不合并、不部署。只有上述十项
+全部有本地数据库读回、角色/错误状态和桌面/窄屏 E2E 证据后，Portal V1 功能闭环才能改为 `GO`。
+
+### D0.4 Portal V1 本地功能闭环（2026-07-31，已完成）
+
+负责人复核后，D0.3 的十项功能范围已在当前 worktree 完成，不能再把“缺页”或“disabled 按钮”作为当前状态：
+
+1. 左侧十个模块均有真实 `/dashboard` 页面，且 `/admin` 保留为独立受限维护入口；
+2. 六类官网内容已有 EN/AR 新建、编辑、状态、预览和受保护删除；素材有上传、元数据写入、预览和跨 CMS / 知识 / 内容工作台引用守卫；
+3. 知识有新建、编辑、审核、归档、删除、索引/retry 与 Admin-only AI 调试；会话有列表、详情、接管、人工回复和解决；线索有列表、详情、筛选和角色安全 CRUD；
+4. AI 内容工作台使用正式 `GeneratedContents` / `ContentReviews` / `PublishJobs` / `PublishLogs`，支持草稿、审核、内部 assisted 排期与时间线。草稿之外不可编辑，审核或排期历史不可删除；自动发布受 `ADMIN_PORTAL_PUBLISHING_ENABLED` kill switch 和 adapter 缺失共同阻断；
+5. 平台模块只消费脱敏 readiness；异常模块只消费安全 Job DTO 与已注册的类型化 retry，不回显 token、payload、owner token、客户正文或完整堆栈；
+6. 所有 Portal route/command 都重新认证并受 Portal/module flag、角色、当前 Payload request 和领域状态/`updatedAt` 版本令牌约束；对外副作用仍未启用。
+
+本次本地阶段收口证据：`pnpm lint`（0 error，28 个既有/测试 warning）、`pnpm typecheck`、
+`pnpm test:unit`（80 files / 595 tests）、`pnpm test:contract`（6 files / 57 tests）、
+`pnpm test:integration`（23 files / 131 tests）、`pnpm db:test:persistence`、`pnpm test:operations`（7 files / 33 tests）、
+从本 worktree 开发 URL 派生 `ivybm_portal_v1_ci` 后的 reset/seed、串行 Chromium Portal E2E（11 specs / 28 tests）、
+`pnpm build` 和 `git diff --check`。桌面与 390px Portal 截图已人工检查；所有数据库验证仅使用
+`127.0.0.1:55433` 的 `_ci` 库，未连接 production。
+
+最终完成审计额外以真实 PostgreSQL/Payload 矩阵覆盖六类官网内容的 EN/AR 新增、写回、发布/启停状态和依赖顺序删除，
+并修正 Content Studio E2E 知识夹具与最新 Payload 生成类型的偏差；两项均已纳入上述当前 head 门禁。
+
+仓库全量 Playwright 当前为 53 passed / 1 skipped / 36 failed；失败全部属于既有官网视觉基线，隔离 seed 的媒体占位记录没有
+对应可解码文件。该 fixture 缺口不阻塞 Portal 本地功能闭环，但在 PR-1 转 Ready 前必须补齐并重跑全量 E2E。
+
+| 决策 Gate                       | 当前结论  | 含义                                                                                                                          |
+| ------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Portal V1 本地功能闭环          | **GO**    | 十项导航与核心管理任务均可在隔离本地环境完成                                                                                  |
+| PR-1 Ready / 合并               | **NO-GO** | 仍需统一持久 command receipt / 原子 CAS、xuemusi review、官网视觉 fixture 修复，以及最终 head 的远程 Browser CI / `CI policy` |
+| production 数据、真实平台与部署 | **NO-GO** | 仍需 PR-2 的真实账号、受控发布、外部结果核验、补偿、备份恢复、灰度、回滚和人工审批                                            |
+
+这一结论不创建额外 docs PR，也不授权 push、PR、合并或部署；继续使用当前 Portal V1 worktree / 分支，在同一 Draft PR 边界内收口 Ready 条件。
 
 ## 0. Scope Reduction 结论
 
@@ -170,18 +234,18 @@ migration。PR-1 在基座后接入 P0.6 官网内容、P0.7 素材、P0.8a 模�
 
 ### 2.1 两个正式 PR 批次
 
-| PR                                             | 覆盖 Task                      | Owner                                                        | 必须独立的理由                                                                                                                           |
-| ---------------------------------------------- | ------------------------------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| PR-1 Portal V1                                 | 当前设计/ADR/计划 + P0.1–P0.8b | jueyunai 集成；各模块按既定 owner 开发；双方 review 共享边界 | 交付设计简报编号 1～6；`/dashboard` 与 `/admin` 隔离，所有模块受总开关/模块开关保护；以 checkpoint commit 保持一个 Draft PR 可审         |
-| PR-2 Feature Expansion & Production Enablement | P0.9–P2                        | jueyunai + xuemusi；双方上线验收                             | 扩展会话、内容工作台、平台/飞书/补偿，并补齐真实账号授权、发布 kill switch、受控发布、runbook、灰度和回滚；与 PR-1 基座/知识验收边界不同 |
+| PR                                             | 覆盖 Task                                      | Owner                                                        | 必须独立的理由                                                                                                                                 |
+| ---------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| PR-1 Portal V1                                 | 当前设计/ADR/计划 + P0.1–P1.4 的本地门户工作流 | jueyunai 集成；各模块按既定 owner 开发；双方 review 共享边界 | 完成十个导航模块、Portal CRUD、会话命令、内部内容排期、脱敏 readiness 和安全补偿；`/dashboard` 与 `/admin` 隔离，所有模块受总开关/模块开关保护 |
+| PR-2 Feature Expansion & Production Enablement | P1.5–P2                                        | jueyunai + xuemusi；双方上线验收                             | 只处理真实账号授权、平台 adapter / 状态回调、受控发布、补偿 runbook、备份恢复、灰度和回滚；与 PR-1 本地产品闭环和 review 边界不同              |
 
 PR-1 使用当前提交历史，但 Development Readiness Gate 完成前不得写功能代码。不得先创建 docs-only PR，
 也不得把 P0/P1 模块机械拆成多个 PR。每个 Task 章节末尾的 `Commit` 是同一 Draft PR 内的可审 checkpoint；
 owner 变化时切换 reviewer，不切换 PR。跨 checkpoint 的依赖在同一分支上以前置 commit、定向测试、完整
 Collection + migration + Payload 注册 + 生成类型作为满足条件，不要求为了形式先合并 `main`。
 
-PR-1 只交付本地/受控预览可用的编号 1～6；真实外部发布保持关闭。PR-2 才允许扩展后续模块、补齐全量强化并申请生产
-启用。两个 PR 均不得自动部署 production；合并只生成经 CI 验证的镜像，仍由 jueyunai 人工审批和发布。
+PR-1 交付本地/受控预览可用的十个 Portal 模块；真实外部发布保持关闭。PR-2 才允许接入真实平台、补齐受控外部
+联调并申请生产启用。两个 PR 均不得自动部署 production；合并只生成经 CI 验证的镜像，仍由 jueyunai 人工审批和发布。
 
 ---
 
@@ -955,7 +1019,9 @@ E2E、四视口视觉回归、完整 integration、operations 或 production bui
 以下防线不得延期：服务端 Auth/RBAC、session/return target、安全输入校验、Local API access、migration 可重复性、
 凭据与客户数据隔离、外部 command 幂等、`delivery_unknown`、总开关/模块开关和真实发布 kill switch。
 
-PR-1 Portal V1 转 Ready 前运行以下完整门禁；合并 `main` 只接受与最新 head SHA 对齐且成功的 `CI policy`：
+PR-1 Portal V1 的功能专项门禁已通过；转 Ready 和合并 `main` 仍需先解决统一持久 command receipt / 原子 CAS、
+官网视觉 fixture 和双方 review，并且只接受与最新 head SHA 对齐且成功的远程 `CI policy`。Browser E2E job 必须实际包含
+Portal 套件与仓库官网视觉回归：
 
 ```bash
 pnpm install --frozen-lockfile
@@ -963,26 +1029,41 @@ pnpm lint
 pnpm typecheck
 pnpm test:unit
 pnpm test:contract
-pnpm db:migrate:fresh
+
+set -a
+source .env
+set +a
+export PORTAL_DEV_DATABASE_URL="$DATABASE_URL"
+node -e 'const u=new URL(process.env.PORTAL_DEV_DATABASE_URL); const hosts=new Set(["127.0.0.1","localhost","::1"]); if (!hosts.has(u.hostname) || u.port !== "55433" || u.pathname !== "/ivybm_portal_v1") process.exit(1)'
+export DATABASE_URL="$(node -e 'const u=new URL(process.env.PORTAL_DEV_DATABASE_URL); u.pathname="/ivybm_portal_v1_ci"; process.stdout.write(u.href)')"
+node -e 'const u=new URL(process.env.DATABASE_URL); const hosts=new Set(["127.0.0.1","localhost","::1"]); if (!hosts.has(u.hostname) || u.port !== "55433" || !u.pathname.endsWith("_ci")) process.exit(1)'
+pnpm db:reset:test
 pnpm db:seed
 pnpm db:seed
 pnpm test:integration
 pnpm db:test:persistence
-BASE_URL=http://localhost:3001 pnpm test:e2e
 pnpm test:operations
 pnpm build
+CI=1 E2E_PORT=3011 pnpm exec playwright test --config=playwright.config.ts tests/e2e/admin-portal-*.spec.ts
+# PR-1 Ready 前仍必须通过；当前因本地 seed 媒体占位符缺少实际文件而有 36 个 website-visual 失败：
+CI=1 E2E_PORT=3011 pnpm test:e2e
 git diff --check
 ```
 
-`db:migrate:fresh` 和两次 `db:seed` 只能针对一次性、名称以 `_test` 或 `_ci` 结尾的隔离数据库；随后运行
-integration 与 Compose persistence，证明 migration/seed 可重复且持久化边界正确。数据库测试必须使用本
-worktree 独立的 PostgreSQL 18.4 + pgvector 0.8.5、端口、数据库名和 volume；E2E
-必须使用专用测试账号。不得连接 production、复制真实 token、正式客户资料、uploads 或备份。
+上述 block 是本地 Ready 前门禁：Portal 专项 28/28 已通过，但完整 `test:e2e` 当前仍是 Ready 阻塞项，不能把专项通过
+记录成仓库全量通过。门禁只从已核验的 `ivybm_portal_v1` 本地 URL 派生一次性 `_ci` 库，并通过
+内建 loopback host 与后缀保护的 `db:reset:test` 逆序 down/up，禁止复制执行 `db:migrate:fresh`。CI 使用当前 Job 的临时
+PostgreSQL 18.4 + pgvector 0.8.5 service 和 `_ci` 数据库，复用脚本内建 host/后缀保护并执行 CI 端口
+preflight 与 reset/seed 证据链，不使用本机 `127.0.0.1:55433`、Compose volume 或 `.env`。如果已经在另一终端运行
+`PORT=3001 pnpm dev`，也可用 `BASE_URL=http://localhost:3001 pnpm test:e2e`；否则按上方先 build，再让
+Playwright 以 `CI=1 E2E_PORT=3001` 自启 standalone server。E2E 必须使用专用测试账号。不得连接
+production、复制真实 token、正式客户资料、uploads 或备份。
 
-PR-2 在生产启用前必须针对其最新 head 再次执行同一完整门禁，并在受控 staging/production-like 环境追加
-外部平台、补偿、灰度、回滚和 `/admin` 共存 smoke：批准的维护账号仍可完成现有登录/维护
-流程，Portal 不出现 `/admin` 导航或深链，Operator/Sales 的既有 Collection RBAC 不因 Portal 扩权。
-失败不得以“预览未正式启用”为由豁免。
+PR-2 在生产启用前必须针对其最新 head 再次执行同一完整门禁，并在一次性、隔离的 production-like 演练
+环境（不建立常驻 staging）或经批准的 production 维护窗口追加：受控外部平台、类型化补偿、灰度、镜像/
+数据库回滚、`/admin` 共存 smoke，以及外部备份可用性、RPO/RTO 和 restore rehearsal。批准的维护账号仍可
+完成现有登录/维护流程，Portal 不出现 `/admin` 导航或深链，Operator/Sales 的既有 Collection RBAC 不因
+Portal 扩权。任何一项失败都不得以“预览未正式启用”为由豁免。
 
 ## 9. Definition of Done
 

@@ -8,7 +8,7 @@
 
 - 只有一条长期分支：`main`。`main` 始终保持可构建、可部署状态，不直接 push。
 - 每个实施计划 PR 批次从 `main` 拉一条短分支；同一目标、Owner、Review 和回滚边界内的多个 Task 以分阶段 commit 累积在同一个 Draft PR，批次完成后合并回 `main`。Task 不自动等于独立 PR。
-- 管理后台现代化按 ADR-0004 使用两个明确的集成批次：Portal V1 Draft PR（P0.1–P1.3）与 Hardening & Production Enablement PR（P1.4/P1.5/P2）。这是经计划批准的跨 owner 例外，必须用 checkpoint commit、模块 owner 和 reviewer matrix 保持责任边界，不扩展为其他长期集成分支先例。
+- 管理后台现代化按 ADR-0004 使用两个明确的集成批次：Portal V1 Draft PR 覆盖设计简报编号 1～6（P0.1–P0.8b），Feature Expansion & Production Enablement PR 覆盖 P0.9–P2。这是经计划批准的跨 owner 例外，必须用 checkpoint commit、模块 owner 和 reviewer matrix 保持责任边界，不扩展为其他长期集成分支先例。
 - 分支命名：`feat/task-<编号>-<简述>`，例如 `feat/task-8-knowledge-base`；修复用 `fix/...`。
 - 开工前先 `git pull origin main`，确保基于最新代码开分支。
 
