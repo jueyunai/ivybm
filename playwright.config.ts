@@ -8,7 +8,10 @@ import 'dotenv/config'
 
 const isCI = Boolean(process.env.CI)
 const e2ePort = process.env.E2E_PORT || '3000'
-const defaultBaseURL = isCI ? `http://127.0.0.1:${e2ePort}` : 'http://localhost:3000'
+const devPort = process.env.PORT || '3001'
+// Chromium grants localhost a secure-context exception, which lets production-mode
+// Secure session cookies work without weakening Payload's cookie configuration.
+const defaultBaseURL = `http://localhost:${isCI ? e2ePort : devPort}`
 const baseURL = process.env.BASE_URL || defaultBaseURL
 const usesExternalServer = Boolean(process.env.BASE_URL)
 
@@ -22,8 +25,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: isCI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: isCI ? 1 : undefined,
+  // All Portal browser scenarios share one local seed account. Run serially so
+  // login failure protection is exercised without tests locking each other out.
+  workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */

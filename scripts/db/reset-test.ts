@@ -13,6 +13,7 @@ import { migrations } from '@/migrations'
 import config from '@/payload.config'
 
 const databaseUrl = process.env.DATABASE_URL
+const localDatabaseHosts = new Set(['127.0.0.1', 'localhost', '::1'])
 
 if (!databaseUrl) {
   throw new Error('DATABASE_URL is required to reset the test database')
@@ -22,6 +23,14 @@ const parsedDatabaseUrl = new URL(databaseUrl)
 
 if (parsedDatabaseUrl.protocol !== 'postgres:' && parsedDatabaseUrl.protocol !== 'postgresql:') {
   throw new Error('DATABASE_URL must use the postgres or postgresql protocol')
+}
+
+const databaseHost = parsedDatabaseUrl.hostname.replace(/^\[(.*)\]$/, '$1')
+
+if (!localDatabaseHosts.has(databaseHost)) {
+  throw new Error(
+    `Refusing to reset database on host "${databaseHost}"; test databases must use a local loopback host`,
+  )
 }
 
 const databaseName = decodeURIComponent(parsedDatabaseUrl.pathname.replace(/^\//, ''))
@@ -41,9 +50,12 @@ const payload = await getPayload({
 try {
   const database = payload.db as unknown as PostgresAdapter
   const req = await createLocalReq({}, payload)
-  const appliedResult = await database.pool.query<{ name: string }>(
-    'SELECT name FROM payload_migrations',
+  const trackingTable = await database.pool.query<{ name: null | string }>(
+    "SELECT to_regclass('payload_migrations')::text AS name",
   )
+  const appliedResult = trackingTable.rows[0]?.name
+    ? await database.pool.query<{ name: string }>('SELECT name FROM payload_migrations')
+    : { rows: [] }
   const appliedMigrations = new Set(appliedResult.rows.map(({ name }) => name))
   const localMigrationNames = new Set(migrations.map(({ name }) => name))
   const missingLocalMigrations = [...appliedMigrations].filter(
@@ -65,9 +77,7 @@ try {
     try {
       await initTransaction(req)
       const transactionID = await req.transactionID
-      const transaction = transactionID
-        ? database.sessions[String(transactionID)]?.db
-        : undefined
+      const transaction = transactionID ? database.sessions[String(transactionID)]?.db : undefined
 
       if (!transaction) {
         throw new Error(`Failed to start transaction for migration: ${migration.name}`)
