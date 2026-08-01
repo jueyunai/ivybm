@@ -5,6 +5,7 @@ import { Gutter } from '@payloadcms/ui'
 
 import { getRoleUser } from '@/access/roles'
 import { canDecryptFeishuCredential } from '@/modules/feishu/credentials'
+import FeishuDisconnectButton from '@/admin/components/FeishuDisconnectButton'
 
 const statusLabels = {
   connected: '已连接',
@@ -80,6 +81,9 @@ export default async function FeishuIntegration({ initPageResult }: AdminViewSer
               {connection ? '重新连接飞书' : '连接飞书'}
             </Link>
           </p>
+          {connection && connection.status !== 'disconnected' ? (
+            <FeishuDisconnectButton connectionId={connection.id} connectionName={connection.name} />
+          ) : null}
           <p>不会启用仅企业版支持的行列级高级权限；手动 App ID/Secret 模式保留为运维兜底。</p>
         </section>
       </div>

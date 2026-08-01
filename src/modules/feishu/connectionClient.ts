@@ -49,6 +49,8 @@ const expiresSoon = (value: unknown): boolean => {
 const canUseUserToken = (status: unknown): boolean =>
   status === 'connected' || status === 'provisioning' || status === 'error'
 
+const RECONNECT_REQUIRED_CODES = new Set([20024, 20026, 20037, 20064, 20073, 20074])
+
 export class PayloadFeishuTokenProvider {
   private appToken?: { expiresAt: number; value: string }
   private readonly connectionId: number | string
@@ -79,6 +81,24 @@ export class PayloadFeishuTokenProvider {
       ...(req ? { req } : {}),
     })
     return connection as unknown as UnknownRecord
+  }
+
+  private async markReconnectRequired(code: number | string): Promise<void> {
+    const req = await createLocalReq({}, this.payload)
+    await initTransaction(req)
+    try {
+      await this.payload.update({
+        collection: 'feishu-connections',
+        data: { lastErrorCode: String(code), status: 'reconnect_required' },
+        id: this.connectionId,
+        overrideAccess: true,
+        req,
+      })
+      await commitTransaction(req)
+    } catch (error) {
+      await killTransaction(req).catch(() => undefined)
+      throw error
+    }
   }
 
   private async refreshUserAccessToken(force = false): Promise<string> {
@@ -128,18 +148,15 @@ export class PayloadFeishuTokenProvider {
       return refreshed.accessToken
     } catch (error) {
       await killTransaction(req).catch(() => undefined)
-      if (
-        error instanceof FeishuApiError &&
-        [20037, 20064, 20073, 20074].includes(Number(error.code))
-      ) {
-        await this.payload
-          .update({
-            collection: 'feishu-connections',
-            data: { lastErrorCode: String(error.code), status: 'reconnect_required' },
-            id: this.connectionId,
-            overrideAccess: true,
-          })
-          .catch(() => undefined)
+      if (error instanceof FeishuApiError && RECONNECT_REQUIRED_CODES.has(Number(error.code))) {
+        try {
+          await this.markReconnectRequired(error.code)
+        } catch {
+          this.payload.logger.error('Failed to persist Feishu reconnect-required state')
+          throw new FeishuConfigurationError(
+            'Feishu connection authorization state could not be persisted',
+          )
+        }
       }
       throw error
     }

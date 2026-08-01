@@ -6,13 +6,17 @@ import { getPayload, type Payload } from 'payload'
 
 import { GET as feishuCallback } from '@/app/api/integrations/feishu/callback/route'
 import { GET as feishuConnect } from '@/app/api/integrations/feishu/connect/route'
-import { POST as feishuDisconnect } from '@/app/api/integrations/feishu/disconnect/route'
+import {
+  disconnectFeishuConnection,
+  POST as feishuDisconnect,
+} from '@/app/api/integrations/feishu/disconnect/route'
 import { GET as feishuStatus } from '@/app/api/integrations/feishu/status/route'
 import {
   encryptFeishuCredential,
   readFeishuCredentialEncryptionKey,
 } from '@/modules/feishu/credentials'
 import { FeishuApiError } from '@/modules/feishu/contracts'
+import { PayloadFeishuTokenProvider } from '@/modules/feishu/connectionClient'
 import type { ClaimedJob, JobRecord } from '@/modules/jobs/contracts'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import { JobWorker } from '@/modules/jobs/worker'
@@ -401,6 +405,52 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     )
     expect(missingConnectionID.status).toBe(400)
 
+    const crossOriginDisconnect = await feishuDisconnect(
+      new NextRequest('http://localhost/api/integrations/feishu/disconnect', {
+        body: JSON.stringify({ connectionId: callbackConnectionID }),
+        headers: {
+          authorization,
+          'content-type': 'application/json',
+          origin: 'https://attacker.example.invalid',
+        },
+        method: 'POST',
+      }),
+    )
+    expect(crossOriginDisconnect.status).toBe(403)
+
+    const admin = await payload.findByID({
+      collection: 'users',
+      depth: 0,
+      id: adminID,
+      overrideAccess: true,
+    })
+    await expect(
+      disconnectFeishuConnection({
+        connectionId: callbackConnectionID,
+        payload,
+        updateMapping: async () => {
+          throw new Error('injected mapping update failure')
+        },
+        user: admin,
+      }),
+    ).rejects.toThrow('injected mapping update failure')
+    await expect(
+      payload.findByID({
+        collection: 'feishu-connections',
+        depth: 0,
+        id: callbackConnectionID,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ status: 'connected' })
+    await expect(
+      payload.findByID({
+        collection: 'feishu-mappings',
+        depth: 0,
+        id: mappings.docs[0]!.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ status: 'active' })
+
     const disconnected = await feishuDisconnect(
       new NextRequest('http://localhost/api/integrations/feishu/disconnect', {
         body: JSON.stringify({ connectionId: callbackConnectionID }),
@@ -435,6 +485,37 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     expect(createTable).toHaveBeenCalledTimes(1)
     await payload.delete({ collection: 'jobs', context, id: job.id, overrideAccess: true })
   })
+
+  it.each([20024, 20026])(
+    'marks refresh token error %s as reconnect_required in a committed transaction',
+    async (code) => {
+      const fixture = await connectionFixture(`refresh-${code}-${randomUUID()}`)
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(response({ code, error: 'refresh token invalid fixture' }, 400))
+      const provider = new PayloadFeishuTokenProvider({
+        connectionId: fixture.connection.id,
+        fetch,
+        payload,
+      })
+
+      await expect(provider.getToken('base', undefined, true)).rejects.toMatchObject({ code })
+      await expect(
+        payload.findByID({
+          collection: 'feishu-connections',
+          depth: 0,
+          id: fixture.connection.id,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({ lastErrorCode: String(code), status: 'reconnect_required' })
+      await payload.delete({
+        collection: 'jobs',
+        context,
+        id: fixture.job.id,
+        overrideAccess: true,
+      })
+    },
+  )
 
   it('resumes after a partial Base success without creating a duplicate Base', async () => {
     const fixture = await connectionFixture(`resume-${randomUUID()}`)

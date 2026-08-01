@@ -27,6 +27,7 @@ const mapping: FeishuMappingConfig = {
     { localField: 'intentLevel', required: true, targetField: 'Intent' },
     { localField: 'productNeed', targetField: 'Product Need' },
     { localField: 'email', targetField: 'Email' },
+    { localField: 'nextFollowUpAt', targetField: 'Next Follow-up' },
     { localField: 'sourceURL', targetField: 'Source URL' },
     { localField: 'originalInquiry', targetField: 'Original Inquiry' },
   ],
@@ -50,6 +51,7 @@ const lead: LeadForFeishu = {
   interest: 'Double-curved aluminum panels',
   message: 'Please review our drawings.',
   name: 'Buyer Name',
+  nextFollowUpAt: '2026-07-30T10:00:00.000Z',
   phone: '+971500000000',
   requestId: '00000000-0000-4000-8000-000000000042',
   source: { id: 2, key: 'website-chat', label: 'Website chat' },
@@ -72,6 +74,7 @@ describe('Feishu CRM contract', () => {
         Email: 'buyer@example.invalid',
         Intent: 'A',
         'Local Lead ID': '42',
+        'Next Follow-up': Date.parse('2026-07-30T10:00:00.000Z'),
         'Product Need': 'Double-curved aluminum panels',
         'Original Inquiry': 'Please review our drawings.',
         Source: 'Website chat',
@@ -190,6 +193,29 @@ describe('Feishu CRM contract', () => {
       code: 'duplicate_local_lead_id',
       retryable: false,
     } satisfies Partial<FeishuApiError>)
+  })
+
+  it.each([
+    ['missing items', { has_more: false }],
+    ['a null record', { has_more: false, items: [null] }],
+    ['a record without record_id', { has_more: false, items: [{}] }],
+  ])('fails closed instead of creating when record search returns %s', async (_case, data) => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response(tokenSuccess))
+      .mockResolvedValueOnce(response({ code: 0, data, msg: 'success' }))
+    const client = new FeishuClient({
+      appId: 'cli-fixture',
+      appSecret: 'secret-fixture',
+      baseUrl: 'https://feishu.example.invalid',
+      fetch,
+    })
+
+    await expect(syncLead({ client, lead, mapping })).rejects.toMatchObject({
+      code: 'invalid_search_response',
+      retryable: false,
+    })
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 
   it('refreshes an invalid tenant token once before retrying the request', async () => {

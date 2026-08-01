@@ -6,10 +6,15 @@ import { getPayload, type Payload } from 'payload'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import type { ClaimedJob } from '@/modules/jobs/contracts'
 import {
+  createFeishuFollowUpReminderJobHandler,
   createFeishuHandoffNotifyJobHandler,
+  createFeishuLeadSyncFailureJobHandler,
   createFeishuLeadSyncJobHandler,
   enqueuePendingFeishuJobs,
+  feishuLeadSyncRevision,
+  FEISHU_FOLLOW_UP_REMINDER_JOB_TYPE,
   FEISHU_HANDOFF_NOTIFY_JOB_TYPE,
+  FEISHU_LEAD_SYNC_FAILURE_JOB_TYPE,
   FEISHU_LEAD_SYNC_JOB_TYPE,
 } from '@/modules/feishu/jobs'
 import type { FeishuClientPort } from '@/modules/feishu/contracts'
@@ -36,6 +41,10 @@ const fieldMappings = [
 ]
 
 const context = { skipAudit: true }
+const jobPayload = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
 
 const claimedJob = async (id: number): Promise<ClaimedJob> => {
   const job = await new PayloadJobQueue({ payload }).getByID(id)
@@ -60,7 +69,16 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
       collection: 'jobs',
       context,
       overrideAccess: true,
-      where: { type: { in: [FEISHU_LEAD_SYNC_JOB_TYPE, FEISHU_HANDOFF_NOTIFY_JOB_TYPE] } },
+      where: {
+        type: {
+          in: [
+            FEISHU_LEAD_SYNC_JOB_TYPE,
+            FEISHU_HANDOFF_NOTIFY_JOB_TYPE,
+            FEISHU_FOLLOW_UP_REMINDER_JOB_TYPE,
+            FEISHU_LEAD_SYNC_FAILURE_JOB_TYPE,
+          ],
+        },
+      },
     })
     if (handoffID)
       await payload.delete({ collection: 'handoffs', context, id: handoffID, overrideAccess: true })
@@ -108,8 +126,10 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
 
     await expect(enqueuePendingFeishuJobs({ payload })).resolves.toEqual({
       enabled: false,
+      failures: { created: 0, duplicate: 0 },
       handoffs: { created: 0, duplicate: 0 },
       leads: { created: 0, duplicate: 0 },
+      reminders: { created: 0, duplicate: 0 },
     })
 
     await expect(
@@ -177,7 +197,7 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     })
   })
 
-  it('relays each lead revision and durable handoff event into idempotent jobs', async () => {
+  it('serializes concurrent revisions for one lead across PostgreSQL worker sessions', async () => {
     const source = await payload.create({
       collection: 'lead-sources',
       context,
@@ -211,7 +231,203 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
       overrideAccess: true,
     })
     leadID = lead.id
+    await enqueuePendingFeishuJobs({ payload })
+    await payload.update({
+      collection: 'leads',
+      context,
+      data: { message: 'Concurrent revision for the same lead.' },
+      id: lead.id,
+      overrideAccess: true,
+    })
+    await enqueuePendingFeishuJobs({ payload })
 
+    const jobs = await payload.find({
+      collection: 'jobs',
+      limit: 10,
+      overrideAccess: true,
+      sort: 'id',
+      where: { type: { equals: FEISHU_LEAD_SYNC_JOB_TYPE } },
+    })
+    const leadJobs = jobs.docs.filter((job) => jobPayload(job.payload).entityId === leadID)
+    expect(leadJobs).toHaveLength(2)
+    const staleJob = leadJobs[0]
+    const currentJob = leadJobs[1]
+    if (!staleJob || !currentJob) throw new Error('Expected stale and current lead sync jobs')
+
+    let recordExists = false
+    let createCount = 0
+    let activeUpserts = 0
+    let maxActiveUpserts = 0
+    const upsertRecord = vi.fn(async () => {
+      const sawExisting = recordExists
+      activeUpserts += 1
+      maxActiveUpserts = Math.max(maxActiveUpserts, activeUpserts)
+      await new Promise<void>((resolve) => setTimeout(resolve, 40))
+      activeUpserts -= 1
+      if (!sawExisting) {
+        recordExists = true
+        createCount += 1
+        return { recordId: 'rec-created-once', state: 'created' as const }
+      }
+      return { recordId: 'rec-created-once', state: 'updated' as const }
+    })
+    const client: FeishuClientPort = {
+      sendText: vi.fn(async () => ({ messageId: 'om-concurrent' })),
+      upsertRecord,
+    }
+    const handler = createFeishuLeadSyncJobHandler({ client: () => client, payload })
+    const lease = {
+      assertLease: vi.fn(),
+      renewLease: vi.fn(),
+      signal: new AbortController().signal,
+    }
+
+    await handler(await claimedJob(staleJob.id), lease)
+    expect(upsertRecord).not.toHaveBeenCalled()
+
+    const firstClaim = await claimedJob(currentJob.id)
+    const reclaimedClaim = { ...firstClaim, ownerToken: `${firstClaim.ownerToken}-reclaimed` }
+    await Promise.all([handler(firstClaim, lease), handler(reclaimedClaim, lease)])
+
+    expect(upsertRecord).toHaveBeenCalledTimes(2)
+    expect(createCount).toBe(1)
+    expect(maxActiveUpserts).toBe(1)
+  })
+
+  it('queues one reminder per due timestamp and ignores stale reminder jobs', async () => {
+    const dueAt = '2026-07-29T10:00:00.000Z'
+    const now = new Date('2026-07-29T10:00:00.000Z')
+    await payload.update({
+      collection: 'leads',
+      context,
+      data: { nextFollowUpAt: dueAt },
+      id: leadID,
+      overrideAccess: true,
+    })
+
+    const first = await enqueuePendingFeishuJobs({ clock: () => now, payload })
+    const duplicate = await enqueuePendingFeishuJobs({ clock: () => now, payload })
+    expect(first.reminders.created).toBe(1)
+    expect(duplicate.reminders.duplicate).toBe(1)
+
+    const reminder = await payload.find({
+      collection: 'jobs',
+      limit: 1,
+      overrideAccess: true,
+      sort: '-id',
+      where: { type: { equals: FEISHU_FOLLOW_UP_REMINDER_JOB_TYPE } },
+    })
+    const reminderJob = reminder.docs[0]
+    if (!reminderJob) throw new Error('Expected follow-up reminder job')
+    const sendText = vi.fn(async () => ({ messageId: 'om-followup' }))
+    const client: FeishuClientPort = {
+      sendText,
+      upsertRecord: vi.fn(async () => ({ recordId: 'unused', state: 'updated' as const })),
+    }
+    const handler = createFeishuFollowUpReminderJobHandler({
+      client: () => client,
+      clock: () => now,
+      payload,
+    })
+    const lease = {
+      assertLease: vi.fn(),
+      renewLease: vi.fn(),
+      signal: new AbortController().signal,
+    }
+    await handler(await claimedJob(reminderJob.id), lease)
+    expect(sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('客户跟进已到期') }),
+    )
+
+    const rescheduledAt = '2027-07-30T10:00:00.000Z'
+    await payload.update({
+      collection: 'leads',
+      context,
+      data: { nextFollowUpAt: rescheduledAt },
+      id: leadID,
+      overrideAccess: true,
+    })
+    const rescheduled = await enqueuePendingFeishuJobs({
+      clock: () => new Date(rescheduledAt),
+      payload,
+    })
+    expect(rescheduled.reminders.created).toBe(1)
+    await handler(await claimedJob(reminderJob.id), lease)
+    expect(sendText).toHaveBeenCalledTimes(1)
+  })
+
+  it('recovers dead lead sync jobs into an idempotent failure notification and manual retry path', async () => {
+    const mapping = await payload.findByID({
+      collection: 'feishu-mappings',
+      depth: 0,
+      id: mappingID,
+      overrideAccess: true,
+    })
+    const lead = await payload.findByID({
+      collection: 'leads',
+      depth: 0,
+      id: leadID,
+      overrideAccess: true,
+    })
+    const deadJob = await payload.create({
+      collection: 'jobs',
+      context,
+      data: {
+        attempts: 5,
+        deadAt: '2026-07-29T11:00:00.000Z',
+        idempotencyKey: `dead-lead-sync-${runID}`,
+        lastError: 'sanitized sync failure',
+        manualRetryCount: 0,
+        maxAttempts: 5,
+        payload: {
+          entityId: leadID,
+          entityRevision: feishuLeadSyncRevision(lead),
+          mappingId: mapping.id,
+          mappingRevision: mapping.updatedAt,
+        },
+        status: 'dead',
+        type: FEISHU_LEAD_SYNC_JOB_TYPE,
+      },
+      overrideAccess: true,
+    })
+
+    const first = await enqueuePendingFeishuJobs({ payload })
+    const duplicate = await enqueuePendingFeishuJobs({ payload })
+    expect(first.failures.created).toBe(1)
+    expect(duplicate.failures.duplicate).toBe(1)
+
+    const notifications = await payload.find({
+      collection: 'jobs',
+      limit: 10,
+      overrideAccess: true,
+      where: { type: { equals: FEISHU_LEAD_SYNC_FAILURE_JOB_TYPE } },
+    })
+    const notification = notifications.docs.find(
+      (job) => jobPayload(job.payload).sourceJobId === deadJob.id,
+    )
+    if (!notification) throw new Error('Expected lead sync failure notification job')
+    const sendText = vi.fn(async () => ({ messageId: 'om-sync-failure' }))
+    const client: FeishuClientPort = {
+      sendText,
+      upsertRecord: vi.fn(async () => ({ recordId: 'unused', state: 'updated' as const })),
+    }
+    await createFeishuLeadSyncFailureJobHandler({ client: () => client, payload })(
+      await claimedJob(notification.id),
+      {
+        assertLease: vi.fn(),
+        renewLease: vi.fn(),
+        signal: new AbortController().signal,
+      },
+    )
+    expect(sendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining(`Job ID：${deadJob.id}`),
+      }),
+    )
+    expect(JSON.stringify(sendText.mock.calls)).not.toContain('sanitized sync failure')
+  })
+
+  it('relays each lead revision and durable handoff event into idempotent jobs', async () => {
     const visitor = await payload.create({
       collection: 'visitor-sessions',
       context,
@@ -234,7 +450,7 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
         channel: 'website',
         handoffStatus: 'handoff_requested',
         intentLevel: 'a',
-        lead: lead.id,
+        lead: leadID,
         locale: 'en',
         publicId: `conversation-${runID}`,
         requestId: randomUUID(),
@@ -263,14 +479,18 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
 
     const first = await enqueuePendingFeishuJobs({ payload })
     const duplicate = await enqueuePendingFeishuJobs({ payload })
-    expect(first).toMatchObject({ enabled: true, handoffs: { created: 1 }, leads: { created: 1 } })
+    expect(first).toMatchObject({
+      enabled: true,
+      handoffs: { created: 1 },
+      leads: { duplicate: 1 },
+    })
     expect(duplicate).toMatchObject({ handoffs: { duplicate: 1 }, leads: { duplicate: 1 } })
 
     await payload.update({
       collection: 'leads',
       context,
       data: { message: 'Updated requirements include 1,200 square metres.' },
-      id: lead.id,
+      id: leadID,
       overrideAccess: true,
     })
     const revised = await enqueuePendingFeishuJobs({ payload })
@@ -282,7 +502,7 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
       overrideAccess: true,
       where: { type: { in: [FEISHU_LEAD_SYNC_JOB_TYPE, FEISHU_HANDOFF_NOTIFY_JOB_TYPE] } },
     })
-    expect(jobs.docs.filter((job) => job.type === FEISHU_LEAD_SYNC_JOB_TYPE)).toHaveLength(2)
+    expect(jobs.docs.filter((job) => job.type === FEISHU_LEAD_SYNC_JOB_TYPE)).toHaveLength(6)
     expect(jobs.docs.filter((job) => job.type === FEISHU_HANDOFF_NOTIFY_JOB_TYPE)).toHaveLength(1)
   })
 

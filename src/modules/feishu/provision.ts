@@ -15,11 +15,14 @@ export const DEFAULT_FEISHU_FIELD_MAPPINGS = [
   { localField: 'owner', targetField: '负责人' },
   { localField: 'email', required: true, targetField: '邮箱' },
   { localField: 'phone', targetField: '电话' },
+  { localField: 'nextFollowUpAt', targetField: '下次跟进时间' },
   { localField: 'originalInquiry', required: true, targetField: '原始咨询' },
 ] as const
 
 const CRM_FIELDS = [
-  ...DEFAULT_FEISHU_FIELD_MAPPINGS.map(({ targetField }) => ({ field_name: targetField, type: 1 })),
+  ...DEFAULT_FEISHU_FIELD_MAPPINGS.filter(({ localField }) => localField !== 'nextFollowUpAt').map(
+    ({ targetField }) => ({ field_name: targetField, type: 1 }),
+  ),
   {
     field_name: '人工客户等级',
     property: { options: [{ name: 'A' }, { name: 'B' }, { name: 'C' }] },

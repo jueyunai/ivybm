@@ -33,6 +33,8 @@
   token 字段 field-access 禁止读取，状态 API 不返回密文。
 - `FEISHU_CREDENTIAL_ENCRYPTION_KEY` 与平台账号密钥分离；App Secret 只存在 app / worker 环境。
 - refresh token 为单次使用。刷新在连接行 `FOR UPDATE` 事务内完成，新 access / refresh token 原子轮换。
+- refresh token 被撤销、过期或无效（含 `20024` / `20026`）时，失败的轮换事务先回滚，再用独立
+  行锁事务把连接持久化为 `reconnect_required`；管理页不会继续显示可用。
 - Base 同步使用 user token；IM 通知使用商店应用 app token + tenant key 换取 tenant token。
 - provisioning Job payload 不保存 token，只保存连接 ID 和授权 revision；错误状态只记录脱敏错误码，
   不记录飞书响应正文、token 或请求 header。
@@ -45,3 +47,9 @@
   做集成测试；覆盖 state 重放、单任务入队、异步建表、部分成功续跑、最终 error 和断开后 stale no-op。
 - 回滚先停用 mapping，再回滚应用；不会删除客户飞书中的 Base 或记录。
 - fixture / fake fetch 不访问真实网络。真实可用必须等待应用商店审核和受控租户 smoke。
+- `Leads.nextFollowUpAt` 以 UTC 保存并映射为 Base 日期字段；worker 对已到期 Lead 创建稳定 reminder
+  Job，执行时重新核对当前到期时间。dead lead sync 由维护扫描恢复为脱敏失败通知，原 Job 继续走
+  Task 10 管理员人工重试。相同 Lead 的 upsert 在远端 search + write 全程持有 PostgreSQL Lead
+  行锁并核对内容 revision，跨 worker 串行化且阻止旧 revision 回写，但不宣称远端副作用 exactly-once。
+- 主动断开由 Admin client 明确确认后发送同源 POST；清空凭据和停用 mapping 使用一个数据库事务，
+  失败整体回滚。

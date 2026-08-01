@@ -22,7 +22,15 @@ export const Leads: CollectionConfig = {
     update: leadsUpdate,
   },
   admin: {
-    defaultColumns: ['name', 'company', 'country', 'status', 'intentLevel', 'assignedTo', 'createdAt'],
+    defaultColumns: [
+      'name',
+      'company',
+      'country',
+      'status',
+      'intentLevel',
+      'assignedTo',
+      'createdAt',
+    ],
     group: 'Lead Management',
     useAsTitle: 'email',
   },
@@ -108,6 +116,14 @@ export const Leads: CollectionConfig = {
         create: leadManagerFieldAccess,
         update: leadManagerFieldAccess,
       },
+    },
+    {
+      name: 'nextFollowUpAt',
+      type: 'date',
+      admin: {
+        description: 'Next sales follow-up deadline. Due reminders are sent once per timestamp.',
+      },
+      index: true,
     },
     {
       name: 'name',

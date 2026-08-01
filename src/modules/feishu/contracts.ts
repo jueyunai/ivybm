@@ -9,11 +9,13 @@ export const FEISHU_LEAD_FIELDS = [
   'owner',
   'email',
   'phone',
+  'nextFollowUpAt',
   'sourceURL',
   'originalInquiry',
 ] as const
 
 export type FeishuLeadField = (typeof FEISHU_LEAD_FIELDS)[number]
+export type FeishuFieldValue = number | string
 
 export type FeishuFieldMapping = {
   localField: FeishuLeadField
@@ -63,6 +65,7 @@ export type LeadForFeishu = {
   interest?: string | null
   message: string
   name: string
+  nextFollowUpAt?: string | null
   phone?: string | null
   requestId: string
   source: number | string | { id: number | string; key?: string | null; label?: string | null }
@@ -81,7 +84,7 @@ export type HandoffForFeishu = {
 
 export type FeishuUpsertRecordInput = {
   appToken: string
-  fields: Record<string, string>
+  fields: Record<string, FeishuFieldValue>
   localLeadId: string
   localLeadIdField: string
   signal?: AbortSignal

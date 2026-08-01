@@ -822,6 +822,10 @@ export interface Lead {
   status: 'new' | 'contacted' | 'qualified' | 'disqualified';
   intentLevel: 'unscored' | 'a' | 'b' | 'c';
   assignedTo?: (number | null) | User;
+  /**
+   * Next sales follow-up deadline. Due reminders are sent once per timestamp.
+   */
+  nextFollowUpAt?: string | null;
   name: string;
   company?: string | null;
   country: string;
@@ -910,6 +914,7 @@ export interface FeishuMapping {
           | 'owner'
           | 'email'
           | 'phone'
+          | 'nextFollowUpAt'
           | 'sourceURL'
           | 'originalInquiry';
         targetField: string;
@@ -1733,6 +1738,7 @@ export interface LeadsSelect<T extends boolean = true> {
   status?: T;
   intentLevel?: T;
   assignedTo?: T;
+  nextFollowUpAt?: T;
   name?: T;
   company?: T;
   country?: T;

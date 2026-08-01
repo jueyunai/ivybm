@@ -2,6 +2,7 @@ import {
   FEISHU_LEAD_FIELDS,
   FeishuConfigurationError,
   type FeishuLeadField,
+  type FeishuFieldValue,
   type FeishuMappingConfig,
   type LeadForFeishu,
 } from './contracts'
@@ -25,12 +26,22 @@ const relationshipLabel = (
   return String(value.id)
 }
 
-const leadValues = (lead: LeadForFeishu): Record<FeishuLeadField, string> => ({
+const followUpTimestamp = (value: string | null | undefined): number | string => {
+  if (!value) return ''
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) {
+    throw new FeishuConfigurationError('Lead nextFollowUpAt is invalid')
+  }
+  return timestamp
+}
+
+const leadValues = (lead: LeadForFeishu): Record<FeishuLeadField, FeishuFieldValue> => ({
   country: lead.country.trim(),
   customerName: (lead.company || lead.name).trim(),
   email: lead.email.trim(),
   intentLevel: lead.intentLevel.toUpperCase(),
   localLeadId: String(lead.id),
+  nextFollowUpAt: followUpTimestamp(lead.nextFollowUpAt),
   owner: relationshipLabel(lead.assignedTo),
   originalInquiry: lead.message.trim(),
   phone: lead.phone?.trim() ?? '',
@@ -79,19 +90,19 @@ export const mapLead = ({
 }: {
   lead: LeadForFeishu
   mapping: FeishuMappingConfig
-}): { fields: Record<string, string>; localLeadIdField: string } => {
+}): { fields: Record<string, FeishuFieldValue>; localLeadIdField: string } => {
   validateFeishuMapping(mapping)
   const values = leadValues(lead)
-  const fields: Record<string, string> = {}
+  const fields: Record<string, FeishuFieldValue> = {}
   let localLeadIdField = ''
 
   for (const item of mapping.fieldMappings) {
     const target = item.targetField.trim()
     const value = values[item.localField]
-    if (item.required && !value) {
+    if (item.required && value === '') {
       throw new FeishuConfigurationError(`Lead field ${item.localField} is required by the mapping`)
     }
-    if (value) fields[target] = value
+    if (value !== '') fields[target] = value
     if (item.localField === 'localLeadId') localLeadIdField = target
   }
 

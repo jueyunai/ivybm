@@ -175,10 +175,26 @@ export class FeishuClient implements FeishuClientPort {
       purpose: 'base',
       signal,
     })
-    const items = record(searched.data)?.items
-    const records = Array.isArray(items)
-      ? items.map(record).filter((item) => item !== undefined)
-      : []
+    const searchData = record(searched.data)
+    const items = searchData?.items
+    if (!searchData || !Array.isArray(items)) {
+      throw new FeishuApiError({
+        code: 'invalid_search_response',
+        message: 'Feishu record search response did not include an items array',
+        retryable: false,
+      })
+    }
+    const records = items.map((item) => {
+      const candidate = record(item)
+      if (!candidate || !string(candidate.record_id)) {
+        throw new FeishuApiError({
+          code: 'invalid_search_response',
+          message: 'Feishu record search response contained an invalid record',
+          retryable: false,
+        })
+      }
+      return candidate
+    })
     if (records.length > 1) {
       throw new FeishuApiError({
         code: 'duplicate_local_lead_id',

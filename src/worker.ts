@@ -5,10 +5,14 @@ import { getPayload } from 'payload'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import type { JobHandler } from '@/modules/jobs/contracts'
 import {
+  createFeishuFollowUpReminderJobHandler,
   createFeishuHandoffNotifyJobHandler,
+  createFeishuLeadSyncFailureJobHandler,
   createFeishuLeadSyncJobHandler,
   enqueuePendingFeishuJobs,
+  FEISHU_FOLLOW_UP_REMINDER_JOB_TYPE,
   FEISHU_HANDOFF_NOTIFY_JOB_TYPE,
+  FEISHU_LEAD_SYNC_FAILURE_JOB_TYPE,
   FEISHU_LEAD_SYNC_JOB_TYPE,
 } from '@/modules/feishu/jobs'
 import {
@@ -59,7 +63,9 @@ const feishuRelayIntervalMs = readPositiveInteger('FEISHU_RELAY_INTERVAL_MS', 30
 const payload = await getPayload({ config, disableOnInit: true, key: 'job-worker' })
 const handlers: Record<string, JobHandler> = {
   [FEISHU_CONNECTION_PROVISION_JOB_TYPE]: createFeishuConnectionProvisionJobHandler({ payload }),
+  [FEISHU_FOLLOW_UP_REMINDER_JOB_TYPE]: createFeishuFollowUpReminderJobHandler({ payload }),
   [FEISHU_HANDOFF_NOTIFY_JOB_TYPE]: createFeishuHandoffNotifyJobHandler({ payload }),
+  [FEISHU_LEAD_SYNC_FAILURE_JOB_TYPE]: createFeishuLeadSyncFailureJobHandler({ payload }),
   [FEISHU_LEAD_SYNC_JOB_TYPE]: createFeishuLeadSyncJobHandler({ payload }),
   [KNOWLEDGE_INDEX_JOB_TYPE]: createKnowledgeIndexJobHandler({ payload }),
   [PLATFORM_EVENT_JOB_TYPE]: createPlatformEventJobHandler({
@@ -103,7 +109,11 @@ const relayFeishuOutbox = async (): Promise<void> => {
   try {
     const provisioned = await enqueuePendingFeishuConnectionProvisionJobs({ payload })
     const relayed = await enqueuePendingFeishuJobs({ payload })
-    const created = relayed.leads.created + relayed.handoffs.created
+    const created =
+      relayed.leads.created +
+      relayed.handoffs.created +
+      relayed.reminders.created +
+      relayed.failures.created
     if (provisioned.created > 0 || created > 0) {
       payload.logger.info(
         `Feishu relay created ${provisioned.created} provisioning and ${created} delivery job(s)`,

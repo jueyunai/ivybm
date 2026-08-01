@@ -10,17 +10,19 @@ Task 11 默认使用 IVYBM 飞书应用商店应用 OAuth。管理员在 Payload
 
 - 线索按本地 Lead ID 在飞书多维表格幂等新增或更新；
 - 首次新线索和 A 级高意向线索分别幂等通知；
+- `nextFollowUpAt` 到期后按“Lead + 到期时间”幂等通知负责人或默认接收人；
 - `handoff.created` 人工接管通知；
-- 限流、Token 失效刷新、Job 指数退避、dead job 和管理员人工重试；
+- 限流、Token 失效刷新、Job 指数退避、dead job、最终同步失败通知和管理员人工重试；
 - OAuth `state` 单次消费、5 分钟过期和 PKCE S256；
 - access / refresh token 使用独立 AES-256-GCM 密钥加密，refresh token 轮换在数据库行锁内完成；
 - OAuth 回调立即返回，durable `feishu.connection.provision` Job 在后台自动创建
   `IVYBM 客户管理` Base 和客户档案表，不启用企业版专属行列权限；
 - 字段映射、销售用户到飞书 `open_id` 的成员映射和默认通知接收人由管理员配置，不在业务代码中写死飞书字段名或 ID。
 
-“下次跟进时间”和“最近跟进记录”目前尚未进入本地 `Leads` 契约。在真实表格与客户跟进
-流程确认前，这两个字段保留在飞书侧管理；不得在本地新增猜测字段。表格确定后，再选择飞书
-多维表格自动化提醒，或新增经 Review 的同步契约。
+经 Task 11 Review 确认，“下次跟进时间”已作为可空的 `Leads.nextFollowUpAt` UTC 时间进入
+共享契约，并映射到飞书日期字段。worker 每 30 秒扫描已到期且未淘汰的 Lead，每个时间戳只创建
+一个 durable reminder Job；日期变更会形成新的提醒身份，旧 Job 执行前会再次核对当前日期并安全
+no-op。“最近跟进记录”仍只保留在飞书侧，回写范围另行确认。
 
 ## 建议的首版多维表格
 
@@ -38,7 +40,7 @@ Task 11 默认使用 IVYBM 飞书应用商店应用 OAuth。管理员在 Payload
 | 邮箱                | 邮箱或单行文本 | Lead email                                        |
 | 电话                | 电话或单行文本 | Lead phone                                        |
 | 原始咨询 / 客户画像 | 多行文本       | 首次咨询或已审核 Lead 摘要，不写入无关对话        |
-| 下次跟进时间        | 日期时间       | 飞书侧填写，后续提醒依据                          |
+| 下次跟进时间        | 日期时间       | IVYBM `nextFollowUpAt`，按 UTC 到期调度提醒       |
 | 最近跟进记录        | 多行文本       | 飞书侧填写，后续回写范围另行确认                  |
 
 字段显示名可以按客户习惯调整。Payload 的 `FeishuMappings` 负责把标准本地字段映射到实际
@@ -78,6 +80,11 @@ Task 11 默认使用 IVYBM 飞书应用商店应用 OAuth。管理员在 Payload
   幂等任务，不会使用旧字段配置继续写入。
 - 当前 relay 每 30 秒扫描本地 Leads 和 durable Handoffs；一期数据量下可接受。数据量显著
   增长后应改为游标或数据库 outbox，而不是缩短轮询间隔。
+- 同一 Lead 的多个内容 revision 在 PostgreSQL Lead 行锁事务内校验 revision，并串行执行远端
+  search + create / update，避免旧 revision 覆盖新数据或并发空查后重复创建。飞书接受 create 但响应
+  丢失时，普通 Job 重试会在同一锁内先按本地 Lead ID 重新查询；仍不宣称第三方副作用 exactly-once。
+- worker 会把 dead 的 `feishu.lead.sync` 补建为独立失败通知 Job。通知不转发 provider 正文或 token，
+  只包含 Lead ID、Job ID 和管理员人工重试指引；原 dead Job 仍由 Task 10 的管理员重试流程补偿。
 - worker 同时补扫 `provisioning` 连接，防止 callback 在连接落库后、Job 入队前异常而永久卡住。
   若连接为 `error`，先在 Jobs 中查看脱敏错误码并人工重试原 `feishu.connection.provision` Job；
   若为 `reconnect_required`，重新点击“连接飞书”。
@@ -86,3 +93,5 @@ Task 11 默认使用 IVYBM 飞书应用商店应用 OAuth。管理员在 Payload
   管理员应在飞书中核对名称与创建时间后删除多余空 Base。
 - 在后台显示“正在自动创建客户表”时断开连接，会阻止 Job 后续写入和激活 mapping，但无法撤销已经
   发给飞书的创建请求；如果断开恰好发生在远端请求执行期间，也应按上一条核对并清理未关联空 Base。
+- 后台主动断开使用同源 POST，并在单一数据库事务中清空本地凭据、过期时间和错误状态，同时停用
+  所有关联 mapping；任一步失败会整体回滚。该操作不会调用飞书撤销 API，也不会删除客户 Base。

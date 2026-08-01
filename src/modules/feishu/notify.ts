@@ -63,6 +63,26 @@ export const formatNewLeadNotification = (lead: LeadForFeishu): string =>
     `联系方式：${lead.email}${lead.phone ? ` / ${lead.phone}` : ''}`,
   ].join('\n')
 
+export const formatFollowUpDueNotification = (lead: LeadForFeishu, dueAt: string): string =>
+  [
+    '客户跟进已到期',
+    `客户：${lead.company || lead.name}`,
+    `到期时间：${dueAt}`,
+    `联系方式：${lead.email}${lead.phone ? ` / ${lead.phone}` : ''}`,
+  ].join('\n')
+
+export const formatLeadSyncFailureNotification = (
+  lead: LeadForFeishu,
+  sourceJobId: number,
+): string =>
+  [
+    '飞书 CRM 线索同步最终失败',
+    `客户：${lead.company || lead.name}`,
+    `本地 Lead ID：${lead.id}`,
+    `Job ID：${sourceJobId}`,
+    '请管理员在 Payload Jobs 中检查并人工重试。',
+  ].join('\n')
+
 const assignedUserID = (lead: LeadForFeishu): number | string | undefined => {
   const assigned = lead.assignedTo
   if (typeof assigned === 'number' || typeof assigned === 'string') return assigned
@@ -153,3 +173,47 @@ export const notifyHighIntentLead = async ({
     text: formatHighIntentLeadNotification(lead),
   })
 }
+
+export const notifyFollowUpDue = async ({
+  client,
+  dueAt,
+  lead,
+  mapping,
+  signal,
+}: {
+  client: FeishuClientPort
+  dueAt: string
+  lead: LeadForFeishu
+  mapping: FeishuMappingConfig
+  signal?: AbortSignal
+}): Promise<Array<{ messageId: string }>> =>
+  notifyLead({
+    client,
+    idempotencyPrefix: `lead-followup-due-${dueAt}`,
+    lead,
+    mapping,
+    signal,
+    text: formatFollowUpDueNotification(lead, dueAt),
+  })
+
+export const notifyLeadSyncFailure = async ({
+  client,
+  lead,
+  mapping,
+  signal,
+  sourceJobId,
+}: {
+  client: FeishuClientPort
+  lead: LeadForFeishu
+  mapping: FeishuMappingConfig
+  signal?: AbortSignal
+  sourceJobId: number
+}): Promise<Array<{ messageId: string }>> =>
+  notifyLead({
+    client,
+    idempotencyPrefix: `lead-sync-dead-job-${sourceJobId}`,
+    lead,
+    mapping,
+    signal,
+    text: formatLeadSyncFailureNotification(lead, sourceJobId),
+  })
