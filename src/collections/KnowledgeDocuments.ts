@@ -7,6 +7,7 @@ import {
   knowledgeRead,
   knowledgeUpdate,
 } from '../access/knowledge'
+import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 
 const reviewRelevantFields = [
   'content',
@@ -233,6 +234,8 @@ export const KnowledgeDocuments: CollectionConfig = {
     },
   ],
   hooks: {
+    afterChange: [writeAuditLogAfterChange],
+    afterDelete: [writeAuditLogAfterDelete],
     beforeChange: [stampReview],
   },
 }

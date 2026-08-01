@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import type { Payload } from 'payload'
+import type { Payload, PayloadRequest } from 'payload'
 
 import type { Conversation, User, VisitorSession } from '@/payload-types'
 
@@ -18,7 +18,10 @@ export const hashVisitorToken = (token: string): string =>
 export const visitorSessionExpiresAt = (now: Date = new Date()): string =>
   new Date(now.getTime() + CHAT_SESSION_TTL_MS).toISOString()
 
-export const isVisitorSessionActive = (expiresAt: string | null | undefined, now = Date.now()): boolean => {
+export const isVisitorSessionActive = (
+  expiresAt: string | null | undefined,
+  now = Date.now(),
+): boolean => {
   const timestamp = expiresAt ? Date.parse(expiresAt) : Number.NaN
   return Number.isFinite(timestamp) && timestamp > now
 }
@@ -36,13 +39,15 @@ export const requireChatPublicID = (value: string): string => {
 const findConversation = async (
   payload: Payload,
   conversationPublicId: string,
+  req?: PayloadRequest,
 ): Promise<Conversation> => {
   const publicId = requireChatPublicID(conversationPublicId)
   const conversations = await payload.find({
     collection: 'conversations',
     depth: 0,
     limit: 1,
-    overrideAccess: true,
+    overrideAccess: req ? false : true,
+    ...(req ? { req } : {}),
     where: { publicId: { equals: publicId } },
   })
   const conversation = conversations.docs[0]
@@ -59,11 +64,11 @@ export const authorizeVisitorSession = async (
   const conversation = await findConversation(payload, conversationPublicId)
   const visitorID = relationshipID(conversation.visitorSession)
   if (!visitorID) throw new ChatServiceError('internal_error', 'Chat session is invalid')
-  const visitor = await payload.findByID({
+  const visitor = (await payload.findByID({
     collection: 'visitor-sessions',
     id: visitorID,
     overrideAccess: true,
-  }) as VisitorSession
+  })) as VisitorSession
   if (!isVisitorSessionActive(visitor.expiresAt)) {
     throw new ChatServiceError('forbidden', 'Chat session authorization has expired')
   }
@@ -83,8 +88,22 @@ export const authorizeOperatorConversation = async (
   payload: Payload,
   conversationPublicId: string,
   actor: User,
+  req?: PayloadRequest,
 ): Promise<Conversation> => {
-  const conversation = await findConversation(payload, conversationPublicId)
+  let conversation: Conversation
+  try {
+    conversation = await findConversation(payload, conversationPublicId, req)
+  } catch (error) {
+    if (
+      req &&
+      actor.role === 'sales' &&
+      error instanceof ChatServiceError &&
+      error.code === 'not_found'
+    ) {
+      throw new ChatServiceError('forbidden', 'Sales users may view only assigned conversations')
+    }
+    throw error
+  }
   const assignedTo = relationshipID(conversation.assignedTo)
   if (actor.role === 'sales' && String(assignedTo) !== String(actor.id)) {
     throw new ChatServiceError('forbidden', 'Sales users may view only assigned conversations')

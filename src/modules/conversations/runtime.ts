@@ -1,5 +1,5 @@
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
-import { getPayload, type Payload } from 'payload'
+import { getPayload, type Payload, type PayloadRequest } from 'payload'
 
 import config from '@/payload.config'
 import type { User } from '@/payload-types'
@@ -22,6 +22,7 @@ export const getChatPayload = (): Promise<Payload> => {
 
 type ChatRuntimeOptions = {
   actor?: User
+  req?: PayloadRequest
   sessionTokenHash?: string
 }
 
@@ -77,6 +78,7 @@ export const createPayloadChatService = async (options: ChatRuntimeOptions = {})
     repository: new PayloadConversationRepository({
       actor: options.actor,
       payload,
+      readReq: options.req,
       sessionTokenHash: options.sessionTokenHash,
     }),
     responder,

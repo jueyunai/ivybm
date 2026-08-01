@@ -1,11 +1,17 @@
 import { NextRequest } from 'next/server'
+import { createLocalReq } from 'payload'
 
 import {
   authenticateOperator,
   authorizeOperatorConversation,
   requireChatPublicID,
 } from '@/modules/conversations/auth'
-import { chatErrorResponse, chatJSONResponse, readChatJSON, requireString } from '@/modules/conversations/http'
+import {
+  chatErrorResponse,
+  chatJSONResponse,
+  readChatJSON,
+  requireString,
+} from '@/modules/conversations/http'
 import {
   CHAT_RATE_LIMIT_SCOPES,
   chatOperatorCommandRateLimiter,
@@ -23,12 +29,17 @@ export async function POST(
   try {
     const { id: rawID } = await params
     const id = requireChatPublicID(rawID)
-    enforceChatRateLimit(request, chatOperatorCommandRateLimiter, CHAT_RATE_LIMIT_SCOPES.operatorCommand)
+    enforceChatRateLimit(
+      request,
+      chatOperatorCommandRateLimiter,
+      CHAT_RATE_LIMIT_SCOPES.operatorCommand,
+    )
     const body = await readChatJSON(request)
     const payload = await getChatPayload()
     const actor = await authenticateOperator(payload, request)
-    await authorizeOperatorConversation(payload, id, actor)
-    const service = await createPayloadChatService({ actor })
+    const req = await createLocalReq({ user: actor }, payload)
+    await authorizeOperatorConversation(payload, id, actor, req)
+    const service = await createPayloadChatService({ actor, req })
     return chatJSONResponse(
       await service.sendOperatorMessage({
         idempotencyKey: requireString(body, 'idempotencyKey', 200),

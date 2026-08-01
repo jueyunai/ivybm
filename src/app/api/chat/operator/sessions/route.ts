@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import type { Where } from 'payload'
+import { createLocalReq, type Where } from 'payload'
 
 import { authenticateOperator } from '@/modules/conversations/auth'
 import { type ChatSessionList, ChatServiceError } from '@/modules/conversations/contracts'
@@ -30,11 +30,15 @@ export async function GET(request: NextRequest): Promise<Response> {
   try {
     const payload = await getChatPayload()
     const actor = await authenticateOperator(payload, request)
+    const req = await createLocalReq({ user: actor }, payload)
     const url = new URL(request.url)
     const page = positiveInteger(url.searchParams.get('page'), 1, 10_000)
     const limit = positiveInteger(url.searchParams.get('limit'), 20, 100)
     const status = url.searchParams.get('status')
-    if (status && !['ai_active', 'handoff_requested', 'human_active', 'resolved'].includes(status)) {
+    if (
+      status &&
+      !['ai_active', 'handoff_requested', 'human_active', 'resolved'].includes(status)
+    ) {
       throw new ChatServiceError('invalid_request', 'Unsupported handoff status')
     }
     const filters: Where[] = []
@@ -44,8 +48,9 @@ export async function GET(request: NextRequest): Promise<Response> {
       collection: 'conversations',
       depth: 0,
       limit,
-      overrideAccess: true,
+      overrideAccess: false,
       page,
+      req,
       sort: '-lastMessageAt',
       where: filters.length > 0 ? { and: filters } : undefined,
     })
