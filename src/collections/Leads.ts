@@ -9,6 +9,7 @@ import {
   leadsRead,
   leadsUpdate,
 } from '../access/leads'
+import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 
 const immutableAfterCreate = () => false
 
@@ -173,4 +174,8 @@ export const Leads: CollectionConfig = {
       ],
     },
   ],
+  hooks: {
+    afterChange: [writeAuditLogAfterChange],
+    afterDelete: [writeAuditLogAfterDelete],
+  },
 }

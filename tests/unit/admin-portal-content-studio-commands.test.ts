@@ -1,0 +1,348 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import type { PayloadRequest } from 'payload'
+
+import {
+  ContentStudioCommandError,
+  createContentStudioDraft,
+  deleteContentStudioDraft,
+  generateContentStudioDraft,
+  scheduleContentStudioPublication,
+  submitContentStudioReview,
+  updateContentStudioDraft,
+} from '@/admin-portal/modules/content-studio/contentStudioCommands'
+
+const req = {
+  user: { collection: 'users', email: 'operator@example.invalid', id: 2, role: 'operator' },
+} as unknown as PayloadRequest
+
+const input = {
+  assets: [4],
+  body: 'A reviewed facade systems post.',
+  contentLocale: 'en',
+  contentType: 'post',
+  idempotencyKey: 'portal-content-studio:create-1',
+  knowledgeSources: [9],
+  platform: 'linkedin',
+  sourceReferences: [
+    { claim: 'Material finish is anodized aluminum.', source: 'Product specification 4.2' },
+  ],
+  title: 'Anodized aluminum facade systems',
+}
+
+describe('Portal Content Studio draft commands', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('creates one draft for an idempotent create request and returns it on retry', async () => {
+    let stored: Record<string, unknown> | null = null
+    const create = vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      stored = {
+        ...data,
+        id: 71,
+        updatedAt: '2026-07-30T12:00:00.000Z',
+      }
+      return stored
+    })
+    const find = vi.fn(async () => ({ docs: stored ? [stored] : [] }))
+    const payload = { create, find } as any
+
+    await expect(createContentStudioDraft({ input, payload, req })).resolves.toEqual({
+      content: {
+        id: 71,
+        status: 'draft',
+        title: input.title,
+        updatedAt: '2026-07-30T12:00:00.000Z',
+      },
+      duplicate: false,
+    })
+    await expect(createContentStudioDraft({ input, payload, req })).resolves.toEqual({
+      content: {
+        id: 71,
+        status: 'draft',
+        title: input.title,
+        updatedAt: '2026-07-30T12:00:00.000Z',
+      },
+      duplicate: true,
+    })
+
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'generated-contents',
+        data: expect.objectContaining({
+          createdBy: 2,
+          creationFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+          idempotencyKey: input.idempotencyKey,
+          status: 'draft',
+        }),
+        overrideAccess: false,
+        req,
+      }),
+    )
+  })
+
+  it('rejects a reused create key when the intended draft is different', async () => {
+    const payload = {
+      find: vi.fn().mockResolvedValue({
+        docs: [
+          {
+            createdBy: 2,
+            creationFingerprint: 'a'.repeat(64),
+            id: 71,
+            status: 'draft',
+            title: input.title,
+            updatedAt: '2026-07-30T12:00:00.000Z',
+          },
+        ],
+      }),
+    } as any
+
+    await expect(createContentStudioDraft({ input, payload, req })).rejects.toMatchObject({
+      code: 'content-studio-idempotency-conflict',
+      status: 409,
+    } satisfies Partial<ContentStudioCommandError>)
+  })
+
+  it('requires a canonical create idempotency key', async () => {
+    await expect(
+      createContentStudioDraft({
+        input: { ...input, idempotencyKey: ' has surrounding whitespace ' },
+        payload: { find: vi.fn() } as any,
+        req,
+      }),
+    ).rejects.toMatchObject({
+      code: 'content-studio-invalid-idempotency-key',
+      status: 400,
+    })
+  })
+
+  it('creates traceable AI drafts idempotently and rejects a reused key for another brief', async () => {
+    let stored: Record<string, unknown> | null = null
+    const create = vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      stored = { ...data, id: 72, updatedAt: '2026-07-30T12:30:00.000Z' }
+      return stored
+    })
+    const find = vi.fn(async ({ collection }: { collection: string }) => {
+      if (collection === 'knowledge-documents') {
+        return {
+          docs: [
+            {
+              content: 'Anodized aluminum is available for exterior facade systems.',
+              id: 9,
+              indexStatus: 'ready',
+              reviewStatus: 'reviewed',
+              sourceTitle: 'Product specification',
+              sourceURL: 'https://example.invalid/specification',
+              sourceVersion: '4.2',
+            },
+          ],
+        }
+      }
+      return { docs: stored ? [stored] : [] }
+    })
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        body: 'Specify anodized aluminum facade systems with the selected finish.',
+        sourceReferences: [
+          {
+            claim: 'The selected finish is anodized aluminum.',
+            source: 'https://example.invalid/specification',
+          },
+        ],
+        title: 'Anodized aluminum facade systems',
+      }),
+    })
+    const resolveGateway = vi.fn().mockResolvedValue({ generateText })
+    const generationInput = {
+      assets: [4],
+      brief: 'Introduce the anodized finish for a commercial facade project.',
+      contentLocale: 'en',
+      contentType: 'post',
+      idempotencyKey: 'portal-content-studio:generate-1',
+      knowledgeSources: [9],
+      platform: 'linkedin',
+    }
+    const payload = { create, find } as any
+
+    await expect(
+      generateContentStudioDraft({
+        input: generationInput,
+        payload,
+        req,
+        resolveGateway: resolveGateway as any,
+      }),
+    ).resolves.toMatchObject({ content: { id: 72, status: 'draft' }, duplicate: false })
+    await expect(
+      generateContentStudioDraft({
+        input: generationInput,
+        payload,
+        req,
+        resolveGateway: resolveGateway as any,
+      }),
+    ).resolves.toMatchObject({ content: { id: 72 }, duplicate: true })
+    await expect(
+      generateContentStudioDraft({
+        input: { ...generationInput, brief: 'Write a different brief with the same key.' },
+        payload,
+        req,
+        resolveGateway: resolveGateway as any,
+      }),
+    ).rejects.toMatchObject({ code: 'content-studio-idempotency-conflict', status: 409 })
+
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(generateText).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects past internal schedules before creating a publish job', async () => {
+    const approved = {
+      id: 71,
+      platform: 'linkedin',
+      status: 'approved',
+      updatedAt: '2026-07-30T12:00:00.000Z',
+    }
+    const create = vi.fn()
+    const payload = {
+      create,
+      find: vi.fn().mockResolvedValue({ docs: [] }),
+      findByID: vi.fn().mockResolvedValue(approved),
+    } as any
+
+    await expect(
+      scheduleContentStudioPublication({
+        id: 71,
+        input: {
+          idempotencyKey: 'portal-content-studio:past-assisted-1',
+          mode: 'assisted',
+          platform: 'linkedin',
+          scheduledFor: '2026-07-30T11:59:00.000Z',
+          updatedAt: approved.updatedAt,
+        },
+        now: () => new Date('2026-07-30T12:00:00.000Z'),
+        payload,
+        req,
+      }),
+    ).rejects.toMatchObject({ code: 'content-studio-invalid-schedule', status: 400 })
+
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it('keeps reviewed content immutable and prevents an automatic publication from being staged', async () => {
+    const approved = {
+      id: 71,
+      platform: 'facebook',
+      status: 'approved',
+      updatedAt: '2026-07-30T12:00:00.000Z',
+    }
+    const payload = { findByID: vi.fn().mockResolvedValue(approved), update: vi.fn() } as any
+
+    await expect(
+      updateContentStudioDraft({
+        id: 71,
+        input: { ...input, updatedAt: approved.updatedAt },
+        payload,
+        req,
+      }),
+    ).rejects.toMatchObject({
+      code: 'content-studio-invalid-transition',
+      status: 409,
+    } satisfies Partial<ContentStudioCommandError>)
+
+    vi.stubEnv('ADMIN_PORTAL_PUBLISHING_ENABLED', 'false')
+    await expect(
+      scheduleContentStudioPublication({
+        id: 71,
+        input: {
+          idempotencyKey: 'portal-content-studio:automatic-1',
+          mode: 'automatic',
+          platform: 'facebook',
+          scheduledFor: '2026-08-01T10:30:00.000Z',
+          updatedAt: approved.updatedAt,
+        },
+        payload: { findByID: vi.fn().mockResolvedValue(approved) } as any,
+        req,
+      }),
+    ).rejects.toMatchObject({
+      code: 'content-studio-publishing-disabled',
+      status: 503,
+    } satisfies Partial<ContentStudioCommandError>)
+  })
+
+  it('only submits drafts whose fact references resolve to selected reviewed knowledge', async () => {
+    const content = {
+      id: 71,
+      knowledgeSources: [9],
+      sourceReferences: [
+        { claim: 'Finish is anodized aluminum.', source: 'https://example.invalid/specification' },
+      ],
+      status: 'draft',
+      updatedAt: '2026-07-30T12:00:00.000Z',
+    }
+    const update = vi.fn().mockResolvedValue({ ...content, status: 'review' })
+    const find = vi.fn().mockResolvedValue({
+      docs: [
+        {
+          content: 'Approved facts',
+          id: 9,
+          indexStatus: 'ready',
+          reviewStatus: 'reviewed',
+          sourceTitle: 'Product specification',
+          sourceURL: 'https://example.invalid/specification',
+          sourceVersion: '4.2',
+        },
+      ],
+    })
+
+    await expect(
+      submitContentStudioReview({
+        id: 71,
+        input: { updatedAt: content.updatedAt },
+        payload: { find, findByID: vi.fn().mockResolvedValue(content), update } as any,
+        req,
+      }),
+    ).resolves.toMatchObject({ id: 71, status: 'review' })
+
+    await expect(
+      submitContentStudioReview({
+        id: 71,
+        input: { updatedAt: content.updatedAt },
+        payload: {
+          find,
+          findByID: vi.fn().mockResolvedValue({
+            ...content,
+            sourceReferences: [{ claim: 'Invented fact', source: 'unreviewed-note' }],
+          }),
+          update,
+        } as any,
+        req,
+      }),
+    ).rejects.toMatchObject({
+      code: 'content-studio-sources-unavailable',
+      status: 409,
+    })
+  })
+
+  it('preserves publication history instead of deleting a draft that has a job', async () => {
+    const payload = {
+      find: vi.fn().mockResolvedValue({ docs: [{ id: 14 }] }),
+      findByID: vi.fn().mockResolvedValue({
+        id: 71,
+        status: 'draft',
+        updatedAt: '2026-07-30T12:00:00.000Z',
+      }),
+    } as any
+
+    await expect(
+      deleteContentStudioDraft({
+        id: 71,
+        input: { updatedAt: '2026-07-30T12:00:00.000Z' },
+        payload,
+        req,
+      }),
+    ).rejects.toMatchObject({
+      code: 'content-studio-delete-restricted',
+      status: 409,
+    } satisfies Partial<ContentStudioCommandError>)
+  })
+})

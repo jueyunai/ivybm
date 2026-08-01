@@ -9,11 +9,13 @@ import sharp from 'sharp'
 
 import { localizeAdminCollections, localizeAdminGlobals } from './admin/localizeConfig'
 import { AuditLogs } from './collections/AuditLogs'
+import { ContentReviews } from './collections/ContentReviews'
 import { AiModelProfiles } from './collections/AiModelProfiles'
 import { AiProviders } from './collections/AiProviders'
 import { AiUsageLogs } from './collections/AiUsageLogs'
 import { AiUsageRoutes } from './collections/AiUsageRoutes'
 import { Downloads } from './collections/Downloads'
+import { GeneratedContents } from './collections/GeneratedContents'
 import { Conversations } from './collections/Conversations'
 import { ConversationCommands } from './collections/ConversationCommands'
 import { Handoffs } from './collections/Handoffs'
@@ -31,6 +33,8 @@ import { Products } from './collections/Products'
 import { PromptTemplates } from './collections/PromptTemplates'
 import { Projects } from './collections/Projects'
 import { PlatformAccounts } from './collections/PlatformAccounts'
+import { PublishJobs } from './collections/PublishJobs'
+import { PublishLogs } from './collections/PublishLogs'
 import { Users } from './collections/Users'
 import { VisitorSessions } from './collections/VisitorSessions'
 import { SiteSettings } from './globals/SiteSettings'
@@ -67,6 +71,10 @@ export default buildConfig({
     AiModelProfiles,
     AiUsageRoutes,
     AiUsageLogs,
+    GeneratedContents,
+    ContentReviews,
+    PublishJobs,
+    PublishLogs,
     Pages,
     ProductCategories,
     Products,
