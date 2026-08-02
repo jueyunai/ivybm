@@ -274,6 +274,9 @@ describe('Portal knowledge workspace', () => {
       status: 'pending',
     })
     expect(acceptedFetch).toHaveBeenCalledWith('/api/portal/knowledge/documents/21/index', {
+      headers: {
+        'Idempotency-Key': expect.stringMatching(/^portal-knowledge-index:[0-9a-f-]{36}$/),
+      },
       method: 'POST',
     })
 
