@@ -31,6 +31,18 @@ describe('CI workflow policy', () => {
     )
 
     expect(fullGate).toContain('timeout-minutes: 30')
+    expect(fullGate).toContain('ADMIN_PORTAL_ENABLED: true')
+    expect(fullGate).toContain('ADMIN_PORTAL_SETTINGS_ENABLED: true')
+    expect(fullGate).toContain('ADMIN_PORTAL_OVERVIEW_ENABLED: true')
+    expect(fullGate).toContain('ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED: true')
+    expect(fullGate).toContain('ADMIN_PORTAL_MEDIA_ENABLED: true')
+    expect(fullGate).toContain('ADMIN_PORTAL_KNOWLEDGE_ENABLED: true')
+    expect(fullGate).toContain('ADMIN_PORTAL_CONVERSATIONS_ENABLED: true')
+    expect(fullGate).toContain('ADMIN_PORTAL_LEADS_ENABLED: true')
+    expect(fullGate).toContain('ADMIN_PORTAL_CONTENT_STUDIO_ENABLED: true')
+    expect(fullGate).toContain('ADMIN_PORTAL_PUBLISHING_ENABLED: false')
+    expect(fullGate).toContain('ADMIN_PORTAL_PLATFORMS_ENABLED: true')
+    expect(fullGate).toContain('ADMIN_PORTAL_OPERATIONS_ENABLED: true')
   })
 
   it('always evaluates a stable fail-closed policy for the current head', () => {
