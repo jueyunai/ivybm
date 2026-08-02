@@ -8,10 +8,12 @@ import {
   killTransaction,
   type Payload,
   type PayloadRequest,
+  type CollectionAfterChangeHook,
 } from 'payload'
 
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import type { JobHandler } from '@/modules/jobs/contracts'
+import { isHighIntentLead } from '@/modules/leads/highIntent'
 
 import { createFeishuClientForMapping } from './connectionClient'
 import { findActiveFeishuMapping } from './config'
@@ -42,9 +44,17 @@ type FeishuJobPayload = {
   mappingRevision: string
 }
 
-type FeishuLeadSyncJobPayload = FeishuJobPayload & { entityRevision: string }
+const FEISHU_LEAD_NOTIFICATION_INTENTS = ['none', 'new_lead', 'high_intent'] as const
+type FeishuLeadNotificationIntent = (typeof FEISHU_LEAD_NOTIFICATION_INTENTS)[number]
+type FeishuLeadSyncJobPayload = FeishuJobPayload & {
+  entityRevision: string
+  notificationIntent: FeishuLeadNotificationIntent
+}
 type FeishuFollowUpJobPayload = FeishuJobPayload & { dueAt: string }
-type FeishuSyncFailureJobPayload = FeishuJobPayload & { sourceJobId: number }
+type FeishuSyncFailureJobPayload = FeishuJobPayload & {
+  failureCycle: number
+  sourceJobId: number
+}
 
 const record = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -98,9 +108,19 @@ export const parseFeishuJobPayload = (value: unknown): FeishuJobPayload => {
   }
 }
 
+const notificationIntent = (value: unknown): FeishuLeadNotificationIntent => {
+  // Draft jobs created before notification intent existed are safe historical backfill.
+  if (value === undefined) return 'none'
+  if (FEISHU_LEAD_NOTIFICATION_INTENTS.some((intent) => intent === value)) {
+    return value as FeishuLeadNotificationIntent
+  }
+  throw new FeishuConfigurationError('Feishu job notificationIntent is invalid')
+}
+
 const parseFeishuLeadSyncJobPayload = (value: unknown): FeishuLeadSyncJobPayload => ({
   ...parseFeishuJobPayload(value),
   entityRevision: requiredString(record(value)?.entityRevision, 'entityRevision'),
+  notificationIntent: notificationIntent(record(value)?.notificationIntent),
 })
 
 const dateString = (value: unknown, field: string): string => {
@@ -117,6 +137,11 @@ const numericId = (value: unknown, field: string): number => {
   throw new FeishuConfigurationError(`Feishu job ${field} is invalid`)
 }
 
+const nonNegativeInteger = (value: unknown, field: string): number => {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return value
+  throw new FeishuConfigurationError(`Feishu job ${field} is invalid`)
+}
+
 const parseFollowUpJobPayload = (value: unknown): FeishuFollowUpJobPayload => ({
   ...parseFeishuJobPayload(value),
   dueAt: dateString(record(value)?.dueAt, 'dueAt'),
@@ -124,6 +149,7 @@ const parseFollowUpJobPayload = (value: unknown): FeishuFollowUpJobPayload => ({
 
 const parseSyncFailureJobPayload = (value: unknown): FeishuSyncFailureJobPayload => ({
   ...parseFeishuJobPayload(value),
+  failureCycle: nonNegativeInteger(record(value)?.failureCycle, 'failureCycle'),
   sourceJobId: numericId(record(value)?.sourceJobId, 'sourceJobId'),
 })
 
@@ -187,13 +213,59 @@ const currentMapping = async ({
   mappingId,
   mappingRevision,
   payload,
-}: FeishuJobPayload & { payload: Payload }) => {
-  const mapping = await findActiveFeishuMapping(payload)
+  req,
+}: FeishuJobPayload & { payload: Payload; req?: PayloadRequest }) => {
+  const mapping = await findActiveFeishuMapping(payload, req)
   if (!mapping) return null
   if (String(mapping.id) !== String(mappingId) || mapping.revision !== mappingRevision) {
     return null
   }
   return mapping
+}
+
+const withLockedSyncFailure = async <T>({
+  leadId,
+  payload,
+  run,
+  sourceJobId,
+}: {
+  leadId: number | string
+  payload: Payload
+  run: (req: PayloadRequest) => Promise<T>
+  sourceJobId: number
+}): Promise<T | undefined> => {
+  const req = await createLocalReq({}, payload)
+  await initTransaction(req)
+  try {
+    const transactionID = await req.transactionID
+    const adapter = payload.db as unknown as PostgresAdapter
+    const database = transactionID ? adapter.sessions[transactionID]?.db : undefined
+    if (!database) {
+      throw new FeishuConfigurationError('Feishu sync failure transaction is unavailable')
+    }
+    const lead = await database.execute(sql`
+      SELECT "id" FROM "leads" WHERE "id" = ${leadId} FOR UPDATE
+    `)
+    if (!lead.rows[0]) {
+      await commitTransaction(req)
+      return undefined
+    }
+    // Match the Lead update hook's lead -> job lock order to avoid a deadlock
+    // when an unchanged Lead revision collides with the source Job's key.
+    const sourceJob = await database.execute(sql`
+      SELECT "id" FROM "jobs" WHERE "id" = ${sourceJobId} FOR UPDATE
+    `)
+    if (!sourceJob.rows[0]) {
+      await commitTransaction(req)
+      return undefined
+    }
+    const result = await run(req)
+    await commitTransaction(req)
+    return result
+  } catch (error) {
+    await killTransaction(req).catch(() => undefined)
+    throw error
+  }
 }
 
 const withLockedLead = async <T>({
@@ -228,6 +300,69 @@ const withLockedLead = async <T>({
     await killTransaction(req).catch(() => undefined)
     throw error
   }
+}
+
+export const enqueueFeishuLeadChange: CollectionAfterChangeHook = async ({
+  doc,
+  operation,
+  previousDoc,
+  req,
+}) => {
+  const mapping = await findActiveFeishuMapping(req.payload, req)
+  if (!mapping) return doc
+
+  const transactionID = await req.transactionID
+  const adapter = req.payload.db as unknown as PostgresAdapter
+  const database = transactionID ? adapter.sessions[transactionID]?.db : undefined
+  if (!database) {
+    throw new FeishuConfigurationError('Feishu lead relay transaction is unavailable')
+  }
+
+  let intent: FeishuLeadNotificationIntent =
+    operation === 'create'
+      ? 'new_lead'
+      : isHighIntentLead(doc) && !isHighIntentLead(previousDoc)
+        ? 'high_intent'
+        : 'none'
+
+  if (operation === 'update') {
+    const pendingNotifications = await database.execute(sql`
+      SELECT "payload"->>'notificationIntent' AS "notification_intent"
+      FROM "jobs"
+      WHERE "type" = ${FEISHU_LEAD_SYNC_JOB_TYPE}
+        AND "status" <> 'succeeded'
+        AND "payload"->>'entityId' = ${String(doc.id)}
+        AND "payload"->>'mappingId' = ${String(mapping.id)}
+        AND "payload"->>'mappingRevision' = ${mapping.revision}
+      ORDER BY "id" DESC
+    `)
+    const carried = pendingNotifications.rows.map((row) => row.notification_intent)
+    if (carried.includes('new_lead')) intent = 'new_lead'
+    else if (intent === 'none' && carried.includes('high_intent')) intent = 'high_intent'
+  }
+
+  const revision = feishuLeadSyncRevision(doc)
+  const now = new Date().toISOString()
+  const jobPayload: FeishuLeadSyncJobPayload = {
+    entityId: doc.id,
+    entityRevision: revision,
+    mappingId: mapping.id,
+    mappingRevision: mapping.revision,
+    notificationIntent: intent,
+  }
+  await database.execute(sql`
+    INSERT INTO "jobs" (
+      "type", "idempotency_key", "payload", "status", "attempts", "max_attempts",
+      "next_run_at", "manual_retry_count", "updated_at", "created_at"
+    ) VALUES (
+      ${FEISHU_LEAD_SYNC_JOB_TYPE},
+      ${`${mapping.key}:lead:${doc.id}:${revision}`},
+      ${JSON.stringify(jobPayload)}::jsonb,
+      'pending', 0, 5, ${now}, 0, ${now}, ${now}
+    )
+    ON CONFLICT ("type", "idempotency_key") DO NOTHING
+  `)
+  return doc
 }
 
 export const createFeishuLeadSyncJobHandler =
@@ -270,9 +405,11 @@ export const createFeishuLeadSyncJobHandler =
     })
     if (!lead) return
     execution.assertLease()
-    await notifyNewLead({ client: resolvedClient, lead, mapping, signal: execution.signal })
-    execution.assertLease()
-    if (lead.intentLevel === 'a') {
+    if (input.notificationIntent === 'new_lead') {
+      await notifyNewLead({ client: resolvedClient, lead, mapping, signal: execution.signal })
+      execution.assertLease()
+    }
+    if (input.notificationIntent !== 'none' && isHighIntentLead(lead)) {
       await notifyHighIntentLead({
         client: resolvedClient,
         lead,
@@ -343,33 +480,55 @@ export const createFeishuLeadSyncFailureJobHandler =
   }): JobHandler =>
   async (job, execution) => {
     const input = parseSyncFailureJobPayload(job.payload)
-    const sourceJob = await new PayloadJobQueue({ payload }).getByID(input.sourceJobId)
-    if (!sourceJob || sourceJob.type !== FEISHU_LEAD_SYNC_JOB_TYPE || sourceJob.status !== 'dead') {
-      return
-    }
-    const sourceInput = parseFeishuLeadSyncJobPayload(sourceJob.payload)
-    if (String(sourceInput.entityId) !== String(input.entityId)) {
-      return
-    }
-    const mapping = await findActiveFeishuMapping(payload)
-    if (!mapping) return
-    const lead = leadForFeishu(
-      await payload.findByID({
-        collection: 'leads',
-        depth: 1,
-        id: input.entityId,
-        overrideAccess: true,
-      }),
-    )
-    execution.assertLease()
-    await notifyLeadSyncFailure({
-      client: await client(mapping),
-      lead,
-      mapping,
-      signal: execution.signal,
-      sourceJobId: sourceJob.id,
+    await withLockedSyncFailure({
+      leadId: input.entityId,
+      payload,
+      sourceJobId: input.sourceJobId,
+      run: async (req) => {
+        const sourceJob = await payload.findByID({
+          collection: 'jobs',
+          depth: 0,
+          id: input.sourceJobId,
+          overrideAccess: true,
+          req,
+        })
+        if (
+          sourceJob.type !== FEISHU_LEAD_SYNC_JOB_TYPE ||
+          sourceJob.status !== 'dead' ||
+          sourceJob.manualRetryCount !== input.failureCycle
+        ) {
+          return
+        }
+        const sourceInput = parseFeishuLeadSyncJobPayload(sourceJob.payload)
+        if (String(sourceInput.entityId) !== String(input.entityId)) return
+        const mapping = await currentMapping({ ...input, payload, req })
+        if (!mapping) return
+        if (
+          String(sourceInput.mappingId) !== String(mapping.id) ||
+          sourceInput.mappingRevision !== mapping.revision
+        ) {
+          return
+        }
+        const document = await payload.findByID({
+          collection: 'leads',
+          depth: 1,
+          id: input.entityId,
+          overrideAccess: true,
+          req,
+        })
+        if (feishuLeadSyncRevision(document) !== sourceInput.entityRevision) return
+        execution.assertLease()
+        await notifyLeadSyncFailure({
+          client: await client(mapping),
+          failureCycle: input.failureCycle,
+          lead: leadForFeishu(document),
+          mapping,
+          signal: execution.signal,
+          sourceJobId: sourceJob.id,
+        })
+        execution.assertLease()
+      },
     })
-    execution.assertLease()
   }
 
 export const createFeishuHandoffNotifyJobHandler =
@@ -458,6 +617,7 @@ export const enqueuePendingFeishuJobs = async ({
           entityRevision: revision,
           mappingId: mapping.id,
           mappingRevision: mapping.revision,
+          notificationIntent: 'none',
         },
         type: FEISHU_LEAD_SYNC_JOB_TYPE,
       })
@@ -516,16 +676,33 @@ export const enqueuePendingFeishuJobs = async ({
       },
     })
     for (const deadJob of deadJobs.docs) {
-      let source: FeishuJobPayload
+      let source: FeishuLeadSyncJobPayload
       try {
         source = parseFeishuLeadSyncJobPayload(deadJob.payload)
       } catch {
         continue
       }
+      if (
+        String(source.mappingId) !== String(mapping.id) ||
+        source.mappingRevision !== mapping.revision
+      ) {
+        continue
+      }
+      const currentLead = await payload
+        .findByID({
+          collection: 'leads',
+          depth: 0,
+          id: source.entityId,
+          overrideAccess: true,
+        })
+        .catch(() => null)
+      if (!currentLead || feishuLeadSyncRevision(currentLead) !== source.entityRevision) continue
+      const failureCycle = nonNegativeInteger(deadJob.manualRetryCount, 'manualRetryCount')
       const enqueued = await queue.enqueue({
-        idempotencyKey: `${mapping.key}:lead-sync-dead:${deadJob.id}`,
+        idempotencyKey: `${mapping.key}:lead-sync-dead:${deadJob.id}:cycle:${failureCycle}`,
         payload: {
           entityId: source.entityId,
+          failureCycle,
           mappingId: mapping.id,
           mappingRevision: mapping.revision,
           sourceJobId: deadJob.id,

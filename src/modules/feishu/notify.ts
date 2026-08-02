@@ -198,12 +198,14 @@ export const notifyFollowUpDue = async ({
 
 export const notifyLeadSyncFailure = async ({
   client,
+  failureCycle,
   lead,
   mapping,
   signal,
   sourceJobId,
 }: {
   client: FeishuClientPort
+  failureCycle: number
   lead: LeadForFeishu
   mapping: FeishuMappingConfig
   signal?: AbortSignal
@@ -211,7 +213,7 @@ export const notifyLeadSyncFailure = async ({
 }): Promise<Array<{ messageId: string }>> =>
   notifyLead({
     client,
-    idempotencyPrefix: `lead-sync-dead-job-${sourceJobId}`,
+    idempotencyPrefix: `lead-sync-dead-job-${sourceJobId}-cycle-${failureCycle}`,
     lead,
     mapping,
     signal,

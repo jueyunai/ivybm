@@ -1,4 +1,4 @@
-import type { Payload } from 'payload'
+import type { Payload, PayloadRequest } from 'payload'
 
 import {
   FEISHU_LEAD_FIELDS,
@@ -117,12 +117,14 @@ export const parseFeishuMappingConfig = (value: unknown): FeishuMappingConfig =>
 
 export const findActiveFeishuMapping = async (
   payload: Payload,
+  req?: PayloadRequest,
 ): Promise<FeishuMappingConfig | null> => {
   const result = await payload.find({
     collection: 'feishu-mappings',
     depth: 0,
     limit: 2,
     overrideAccess: true,
+    ...(req ? { req } : {}),
     sort: 'id',
     where: { status: { equals: 'active' } },
   })

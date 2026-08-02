@@ -9,6 +9,7 @@ import {
   leadsRead,
   leadsUpdate,
 } from '../access/leads'
+import { enqueueFeishuLeadChange } from '../modules/feishu/jobs'
 
 const immutableAfterCreate = () => false
 
@@ -189,4 +190,7 @@ export const Leads: CollectionConfig = {
       ],
     },
   ],
+  hooks: {
+    afterChange: [enqueueFeishuLeadChange],
+  },
 }

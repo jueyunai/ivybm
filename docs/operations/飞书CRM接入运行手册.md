@@ -9,7 +9,7 @@ Task 11 默认使用 IVYBM 飞书应用商店应用 OAuth。管理员在 Payload
 当前代码提供：
 
 - 线索按本地 Lead ID 在飞书多维表格幂等新增或更新；
-- 首次新线索和 A 级高意向线索分别幂等通知；
+- 真实新建线索和新进入统一高意向状态的线索分别幂等通知；
 - `nextFollowUpAt` 到期后按“Lead + 到期时间”幂等通知负责人或默认接收人；
 - `handoff.created` 人工接管通知；
 - 限流、Token 失效刷新、Job 指数退避、dead job、最终同步失败通知和管理员人工重试；
@@ -78,6 +78,10 @@ no-op。“最近跟进记录”仍只保留在飞书侧，回写范围另行确
 - 通知只发送必要摘要，不发送完整 Token、内部提示词或无关对话。
 - 修改 active 映射时，旧 revision 的未执行任务会安全结束，新 mapping revision 会重新生成
   幂等任务，不会使用旧字段配置继续写入。
+- Lead 创建 / 更新与其 `feishu.lead.sync` Job 在同一 PostgreSQL 事务内持久化。Job
+  payload 显式区分 `new_lead` / `high_intent` / `none`；首次连接时 relay 扫描的历史 Lead
+  一律为 `none`，只做回填同步，不发“新客户”或“新高意向”通知。高意向与 Dashboard
+  共用 `status in (new, qualified) AND intentLevel = a`，`contacted` / `disqualified` 不会误报。
 - 当前 relay 每 30 秒扫描本地 Leads 和 durable Handoffs；一期数据量下可接受。数据量显著
   增长后应改为游标或数据库 outbox，而不是缩短轮询间隔。
 - 同一 Lead 的多个内容 revision 在 PostgreSQL Lead 行锁事务内校验 revision，并串行执行远端
@@ -85,6 +89,8 @@ no-op。“最近跟进记录”仍只保留在飞书侧，回写范围另行确
   丢失时，普通 Job 重试会在同一锁内先按本地 Lead ID 重新查询；仍不宣称第三方副作用 exactly-once。
 - worker 会把 dead 的 `feishu.lead.sync` 补建为独立失败通知 Job。通知不转发 provider 正文或 token，
   只包含 Lead ID、Job ID 和管理员人工重试指引；原 dead Job 仍由 Task 10 的管理员重试流程补偿。
+  扫描和发送前都会核对 Lead 当前 revision，被新 revision 取代的失败 no-op；每次人工重试后以
+  `manualRetryCount` 形成新失败周期，不会被上一周期的通知幂等键吞掉。
 - worker 同时补扫 `provisioning` 连接，防止 callback 在连接落库后、Job 入队前异常而永久卡住。
   若连接为 `error`，先在 Jobs 中查看脱敏错误码并人工重试原 `feishu.connection.provision` Job；
   若为 `reconnect_required`，重新点击“连接飞书”。

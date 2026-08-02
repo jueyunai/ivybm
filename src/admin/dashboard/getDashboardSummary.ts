@@ -1,6 +1,7 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
 import { getRoleUser } from '@/access/roles'
+import { HIGH_INTENT_LEAD_WHERE } from '@/modules/leads/highIntent'
 
 import type { DashboardUrgentItem, OperatorDashboardSummary } from './types'
 
@@ -35,9 +36,6 @@ export const getDashboardSummary = async ({
 
   const handoffWhere: Where = { handoffStatus: { equals: 'handoff_requested' } }
   const activeWhere: Where = { handoffStatus: { equals: 'human_active' } }
-  const highIntentLeadWhere: Where = {
-    and: [{ status: { in: ['new', 'qualified'] } }, { intentLevel: { equals: 'a' } }],
-  }
   const failedJobWhere: Where = { status: { in: ['failed', 'dead'] } }
 
   const [handoffCount, activeCount, leadCount, failedJobCount, handoffItems, leadItems, jobItems] =
@@ -58,7 +56,7 @@ export const getDashboardSummary = async ({
         collection: 'leads',
         overrideAccess: false,
         req,
-        where: highIntentLeadWhere,
+        where: HIGH_INTENT_LEAD_WHERE,
       }),
       user.role === 'admin'
         ? payload.count({
@@ -97,7 +95,7 @@ export const getDashboardSummary = async ({
           updatedAt: true,
         },
         sort: '-updatedAt',
-        where: highIntentLeadWhere,
+        where: HIGH_INTENT_LEAD_WHERE,
       }),
       user.role === 'admin'
         ? payload.find({

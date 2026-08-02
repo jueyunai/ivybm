@@ -51,5 +51,8 @@
   Job，执行时重新核对当前到期时间。dead lead sync 由维护扫描恢复为脱敏失败通知，原 Job 继续走
   Task 10 管理员人工重试。相同 Lead 的 upsert 在远端 search + write 全程持有 PostgreSQL Lead
   行锁并核对内容 revision，跨 worker 串行化且阻止旧 revision 回写，但不宣称远端副作用 exactly-once。
+- Lead after-change 与同 revision 的同步 Job 同事务持久化，payload 显式记录通知意图；历史 relay
+  回填默认无通知。新线索 / 新高意向通知不从“首次同步”推测。高意向谓词与 Dashboard 共用；
+  dead 通知同时绑定 Lead revision 和 `manualRetryCount` 失败周期，被取代或过期的失败安全 no-op。
 - 主动断开由 Admin client 明确确认后发送同源 POST；清空凭据和停用 mapping 使用一个数据库事务，
   失败整体回滚。
