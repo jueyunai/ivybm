@@ -23,10 +23,16 @@ import config from '@/payload.config'
 
 let payload: Payload
 let originalTrustProxyHeaders: string | undefined
+let originalPortalConversationsEnabled: string | undefined
+let originalPortalEnabled: string | undefined
 
 describe.sequential('chat HTTP API', () => {
   beforeAll(async () => {
     originalTrustProxyHeaders = process.env.TRUST_PROXY_HEADERS
+    originalPortalConversationsEnabled = process.env.ADMIN_PORTAL_CONVERSATIONS_ENABLED
+    originalPortalEnabled = process.env.ADMIN_PORTAL_ENABLED
+    process.env.ADMIN_PORTAL_CONVERSATIONS_ENABLED = 'true'
+    process.env.ADMIN_PORTAL_ENABLED = 'true'
     process.env.TRUST_PROXY_HEADERS = 'true'
     payload = await getPayload({ config, disableOnInit: true, key: 'task9-chat-api-integration' })
   })
@@ -38,6 +44,11 @@ describe.sequential('chat HTTP API', () => {
     } else {
       process.env.TRUST_PROXY_HEADERS = originalTrustProxyHeaders
     }
+    if (originalPortalConversationsEnabled === undefined)
+      delete process.env.ADMIN_PORTAL_CONVERSATIONS_ENABLED
+    else process.env.ADMIN_PORTAL_CONVERSATIONS_ENABLED = originalPortalConversationsEnabled
+    if (originalPortalEnabled === undefined) delete process.env.ADMIN_PORTAL_ENABLED
+    else process.env.ADMIN_PORTAL_ENABLED = originalPortalEnabled
   })
 
   afterEach(() => {
