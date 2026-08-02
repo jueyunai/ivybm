@@ -10,9 +10,7 @@ const prJobs = workflow.slice(0, workflow.indexOf('  publish_production_images:'
 
 describe('CI workflow policy', () => {
   it('uses native Draft and Ready pull request events', () => {
-    expect(workflow).toContain(
-      'types: [opened, synchronize, reopened, ready_for_review]',
-    )
+    expect(workflow).toContain('types: [opened, synchronize, reopened, ready_for_review]')
     expect(workflow).not.toContain('converted_to_draft')
     expect(workflow).not.toContain('pull_request_target')
     expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}")
@@ -36,6 +34,21 @@ describe('CI workflow policy', () => {
   it('keeps default workflow permissions read-only', () => {
     expect(workflow).toMatch(/permissions:\n  contents: read\n/)
     expect(prJobs).not.toContain('packages: write')
+  })
+
+  it('blocks root runtime data without rejecting source modules named media', () => {
+    const sensitivePathStep = workflow.slice(
+      workflow.indexOf('      - name: Validate repository diff and sensitive path boundary'),
+      workflow.indexOf('  fast:'),
+    )
+
+    expect(sensitivePathStep).toContain(
+      '.env|.env.*|data/*|media/*|uploads/*|backups/*|*.sqlite|*.sqlite3|*.dump)',
+    )
+    expect(sensitivePathStep).not.toContain('*/data/*')
+    expect(sensitivePathStep).not.toContain('*/media/*')
+    expect(sensitivePathStep).not.toContain('*/uploads/*')
+    expect(sensitivePathStep).not.toContain('*/backups/*')
   })
 
   it('exports three E2E classifications and preserves full fallback', () => {
@@ -69,11 +82,11 @@ describe('CI workflow policy', () => {
     expect(e2eStep).toContain('WEBSITE_E2E: ${{ needs.changes.outputs.website_e2e }}')
     expect(e2eStep).toContain('ADMIN_E2E: ${{ needs.changes.outputs.admin_e2e }}')
     expect(e2eStep).toContain('CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}')
-    expect(e2eStep).toContain("specs+=(tests/e2e/website.spec.ts)")
-    expect(e2eStep).toContain("specs+=(tests/e2e/admin-visual.spec.ts)")
-    expect(e2eStep).toContain("specs+=(tests/e2e/chat-handoff.spec.ts)")
+    expect(e2eStep).toContain('specs+=(tests/e2e/website.spec.ts)')
+    expect(e2eStep).toContain('specs+=(tests/e2e/admin-visual.spec.ts)')
+    expect(e2eStep).toContain('specs+=(tests/e2e/chat-handoff.spec.ts)')
     expect(e2eStep.match(/pnpm test:e2e/g)).toHaveLength(2)
     expect(e2eStep).toContain('pnpm test:e2e -- "${specs[@]}"')
-    expect(e2eStep).toContain("if [[ \"$FULL_FALLBACK\" == 'true' ]]")
+    expect(e2eStep).toContain('if [[ "$FULL_FALLBACK" == \'true\' ]]')
   })
 })
