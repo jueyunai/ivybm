@@ -41,6 +41,8 @@ describe('platform readiness route', () => {
   })
 
   it('returns a stable unavailable response without logging a credential-bearing failure', async () => {
+    vi.stubEnv('ADMIN_PORTAL_ENABLED', 'true')
+    vi.stubEnv('ADMIN_PORTAL_PLATFORMS_ENABLED', 'true')
     const logger = { error: vi.fn() }
     const secretBearingError = new Error('access token must not be exposed')
     mocks.getPayload.mockResolvedValue({
@@ -91,11 +93,13 @@ describe('platform readiness route', () => {
     const response = await GET(request())
 
     await expect(response.json()).resolves.toEqual({ accounts: [] })
-    expect(find).toHaveBeenCalledWith(expect.objectContaining({
-      collection: 'platform-accounts',
-      context: { portalPlatformReadinessCredentialRead: true },
-      overrideAccess: false,
-      req: expect.anything(),
-    }))
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'platform-accounts',
+        context: { portalPlatformReadinessCredentialRead: true },
+        overrideAccess: false,
+        req: expect.anything(),
+      }),
+    )
   })
 })
