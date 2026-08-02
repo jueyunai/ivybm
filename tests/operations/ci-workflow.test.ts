@@ -24,6 +24,15 @@ describe('CI workflow policy', () => {
     expect(workflow).toContain('github.event.pull_request.draft == false')
   })
 
+  it('budgets enough time for the complete path-specific gate', () => {
+    const fullGate = workflow.slice(
+      workflow.indexOf('  full_gate:'),
+      workflow.indexOf('  ci_policy:'),
+    )
+
+    expect(fullGate).toContain('timeout-minutes: 30')
+  })
+
   it('always evaluates a stable fail-closed policy for the current head', () => {
     expect(workflow).toContain('name: CI policy')
     expect(workflow).toContain('if: ${{ always() }}')

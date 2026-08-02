@@ -207,7 +207,7 @@ jobs:
        needs.changes.outputs.production_image == 'true' ||
        needs.changes.outputs.full_fallback == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     services:
       db:
         image: pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
