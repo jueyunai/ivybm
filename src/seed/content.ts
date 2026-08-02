@@ -200,6 +200,7 @@ const ensureMediaFile = async (
       size: data.length,
     },
     overrideAccess: true,
+    overwriteExistingFiles: true,
   })
 
   return media.id
