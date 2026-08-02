@@ -59,6 +59,11 @@ export default buildConfig({
           Component: '/admin/views/FeishuIntegration',
           path: '/feishu',
         },
+        knowledgePlayground: {
+          Component: '/admin/views/KnowledgePlayground',
+          exact: true,
+          path: '/knowledge-playground',
+        },
       },
     },
     user: Users.slug,

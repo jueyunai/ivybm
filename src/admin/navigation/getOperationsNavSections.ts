@@ -136,6 +136,14 @@ export const getOperationsNavSections = ({
     })
   }
 
+  if (canReadCollection(permissions, 'knowledge-documents')) {
+    sections.get('intelligence')?.items.push({
+      href: '/admin/knowledge-playground',
+      id: 'workspace:knowledge-playground',
+      label: copy.knowledge.playgroundNav,
+    })
+  }
+
   for (const collection of config.collections) {
     if (
       INTERNAL_COLLECTIONS.has(collection.slug) ||

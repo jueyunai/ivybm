@@ -264,13 +264,28 @@ describe.sequential('knowledge index job', () => {
     expect(chunks.totalDocs).toBeGreaterThan(0)
     expect(chunks.docs.every((chunk) => chunk.embeddingSpace === ready.embeddingSpace)).toBe(true)
 
-    const duplicateAfterSuccess = await createRequest()
-    expect(duplicateAfterSuccess.status).toBe(200)
-    await expect(duplicateAfterSuccess.json()).resolves.toMatchObject({
-      jobId: createdBody.jobId,
+    const reindex = await createRequest()
+    const reindexBody = (await reindex.json()) as { jobId: number; state: string }
+    expect(reindex.status).toBe(202)
+    expect(reindexBody).toMatchObject({ state: 'created' })
+    expect(reindexBody.jobId).not.toBe(createdBody.jobId)
+    jobIDs.push(reindexBody.jobId)
+
+    const duplicateReindex = await createRequest()
+    expect(duplicateReindex.status).toBe(200)
+    await expect(duplicateReindex.json()).resolves.toMatchObject({
+      jobId: reindexBody.jobId,
       state: 'duplicate',
-      status: 'succeeded',
     })
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+    expect(embed).toHaveBeenCalledTimes(2)
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-documents',
+        id: document.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ indexStatus: 'ready' })
   })
 
   it('retries a failed provider call using the stable reviewed-content revision', async () => {
