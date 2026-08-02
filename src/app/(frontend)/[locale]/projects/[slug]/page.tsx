@@ -10,6 +10,10 @@ import { normalizeProductGallery } from '@/lib/product-gallery'
 import { buildPageMetadata } from '@/lib/seo'
 import { getProjectBySlug, getSiteSettings } from '@/lib/website-data'
 
+// Project detail pages use the same ISR window as the public project index.
+export const dynamic = 'force-static'
+export const revalidate = 60
+
 const loadProject = async (locale: 'ar' | 'en', slug: string) => {
   const [project, settings] = await Promise.all([getProjectBySlug(locale, slug), getSiteSettings(locale)])
   return { project, settings }

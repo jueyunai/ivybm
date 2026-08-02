@@ -8,6 +8,8 @@
 
 决策依据：[ADR-0004](adr/0004-modular-admin-portal.md)
 
+> **2026-08-02 现行交付决策：** 一个功能分支、一个 Portal V1 Draft PR、一次合并、一次经人工批准的 production 部署。本文后续所有“PR-1 / PR-2”“两个 PR”与“PR-2 才启用 Portal”的表述仅保留为历史方案，已失效。真实平台 transport、token 刷新、worker 发布 handler、平台回调、`delivery_unknown` 补偿和受控账号联调由 xuemusi 后续独立 PR 完成；Portal 首次部署保持 `ADMIN_PORTAL_PUBLISHING_ENABLED=false`。
+
 ## 1. 结论
 
 IVYBM 管理后台采用“一个后端控制平面、一个一期运营入口、一个模块化门户基座”的架构：
@@ -17,7 +19,7 @@ IVYBM 管理后台采用“一个后端控制平面、一个一期运营入口�
 - 第一阶段只设计、开发和验收 `/dashboard`；
 - Payload 已有 `/admin` 在新版迁移验收前继续作为受限维护入口，不进 Portal 导航、不新增 UI，也不作为 Portal 业务回退；验收后再决定继续维护或下架；
 - 官网和运营门户仍运行在同一个 Next.js + Payload 模块化单体中；
-- 门户基座先交付，业务模块在同一个 Portal V1 Draft PR 内按价值、依赖和负责人逐个 checkpoint；功能跑通后再进入统一强化与生产启用批次。
+- 门户基座与十个业务模块在同一个 Portal V1 Draft PR 内按价值、依赖和负责人逐个 checkpoint；同一 PR 完成统一强化与生产启用配置，不再拆第二个 enablement PR。
 
 数据库、账号、权限、领域状态机、Jobs 和外部平台接口只有一套。迁移期内部维护路径与 Portal 并行存在，
 但不属于一期产品形态，也不得被 Portal UI 当作深链或错误兜底。

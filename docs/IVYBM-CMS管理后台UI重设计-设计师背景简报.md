@@ -498,6 +498,8 @@ Portal V1 的 canonical 视觉不再以早期探索色值为准，而以
 
 ### Portal 历史实施状态（2026-07-30，验收口径纠正前）
 
+> 本节的 PR-1 / PR-2 Gate 只记录 2026-07-30 的历史判断，已被 2026-08-02 的“一功能分支、一 Portal V1 Draft PR、一次合并、一次人工部署”决策取代。当前真实平台发布仍关闭，协作者后续独立 PR 只负责真实 transport 与受控账号联调。
+
 - D0 本地开发门禁已通过：独立 worktree、端口、Compose project、PostgreSQL、开发库、volume/network 和本地密钥已完成隔离；本地与 CI 均禁止连接 production；
 - P0.1 静态 module registry、owner/角色/路由/成熟度、总开关和模块开关已完成；
 - P0.2 Digital Lattice token、Tailwind/shadcn Portal 范围隔离和首批 UI primitives 已完成；

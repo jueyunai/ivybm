@@ -43,7 +43,7 @@ bash scripts/install-git-hooks.sh
 
 - 一个分支只处理一个实施计划 PR 批次或一个紧密相关的小修复；Task 是批次内的 commit / 验收检查点，不自动等于独立 PR，禁止混入批次外的无关任务。
 - 同一目标、同一实施计划、同一 Review 边界且可一起回滚 / 发布的紧密相关改动，默认使用一个 Draft PR 和分阶段 commit，保持 diff 可审；禁止仅为流程形式把方案、实现和验证记录机械拆成多个 PR。只有独立任务、不同负责人或强制 Review 边界、需要独立回滚 / 发布，或完整 diff 已明显超出可审规模时才拆分。
-- 管理后台现代化是经 ADR-0004 明确批准的集成批次例外：设计简报编号 1～6（P0.1–P0.8b）使用一个 Portal V1 Draft PR，以 checkpoint commit、模块 owner 和 reviewer matrix 保持可审；P0.9–P2 使用一个 Feature Expansion & Production Enablement PR。合并 PR 不改变模块 owner、共享文件强制 review 或生产审批。
+- 管理后台现代化按 ADR-0004 使用一个功能分支、一个 Portal V1 Draft PR、一次合并和一次人工批准的 production 部署；P0.1–P1.4、发布启用配置、测试与文档都在该 PR 内按 checkpoint commit 保持可审。真实平台 transport、token 刷新、worker 发布 handler、平台回调和受控账号联调由 xuemusi 后续独立 PR 完成，不是 Portal V1 完成条件。合并 PR 不改变模块 owner、共享文件强制 review 或 production 审批。
 - 提交前运行该 Task 规定的 lint、typecheck、test、build；不能运行时明确说明原因。
 - PR 标题和描述必须引用 Task 编号，并填写 `.github/pull_request_template.md`。
 - 项目初始化、CI、工程配置、文档及负责人自己板块内的独立改动，在 CI 通过、完成 PR 清单并检查完整 diff 后，可由负责人自检合并；必须在 PR 中记录不涉及共享结构、跨人契约、协作者范围或一期上线验收。作者自检不等同于 GitHub 独立审批。
@@ -53,8 +53,8 @@ bash scripts/install-git-hooks.sh
 
 ## AI 与 CI 门禁
 
-- AI 创建 PR 时默认使用 Draft；只有本地定向验证、PR 描述、风险 / 回滚、共享边界判断和 Review 请求齐全后才转 Ready。除非用户明确要求且上述条件已满足，不直接创建 Ready PR。
-- push 前必须运行对应 Task 的本地定向检查；GitHub CI 不是调试器。同一轮小修改先合并完成再 push，避免每个细小编辑单独触发 Actions。
+- AI 创建 PR 时，只有本地完整门禁、PR 描述、风险 / 回滚和 Review 边界全部完成，并得到当前任务级明确授权，才可以直接创建 Ready PR。否则必须创建 Draft，并保持 Draft 到真实 Ready 检查点；禁止 Draft 创建后几十秒内立即转 Ready。
+- push 前必须运行对应 Task 的本地定向检查；GitHub CI 不是调试器。同一轮小修改必须集中完成后一次 push，禁止逐提交触发 Actions 调试。
 - AI 和 PR 作者不手工选择 CI 档次，不使用 `[skip ci]`；由变更路径分类器自动决定。无法识别路径、无法解析 diff 或分类器异常时必须 fail closed，运行完整门禁。
 - Draft 代码只把 Fast CI 作为开发反馈，不是合并授权。Ready 后如需连续或较大修改，先转回 Draft；Ready 状态下任何新提交都必须针对最新 head 重新运行对应门禁。
 - Portal V1 本地功能跑通期允许只运行当前 checkpoint 的定向验证；完整回归可以后置到转 Ready 前，但不得后置服务端 Auth/RBAC、数据/migration 完整性、凭据隔离、外部副作用幂等、feature flag、`delivery_unknown` 和发布 kill switch。

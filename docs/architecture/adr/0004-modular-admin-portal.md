@@ -123,10 +123,10 @@ flowchart LR
 - 第一阶段不因 Portal Shell 创建数据库 migration；关闭总开关时 `/dashboard` 显示维护状态，不重定向到内部入口。
 - 每个模块必须定义 `dependency-gated`、`blocked` 或局部错误态，不能因一个模块失败拖垮整个门户。
 - `/admin` 在迁移验收前维持现有内部维护能力和安全回归，不属于本计划的新增开发或 Portal 产品验收；它是并行维护入口，不是 Portal 页面失败时的导航 fallback。
-- Portal V1 使用一个 Draft PR 分 checkpoint 完成十个导航模块及其本地核心工作流（P0.1–P1.4）；只有 P1.5–P2 的真实平台、production enablement 和上线演练进入 Feature Expansion & Production Enablement PR。方案、实现、测试和验证记录不再机械拆 PR，owner 与强制 review 边界也不因 PR 合并而改变；执行编号以 Implementation Plan 为准。
+- Portal V1 使用一个功能分支和一个 Draft PR 分 checkpoint 完成 Portal Core、十个导航模块、内部数据库工作流、生产开关配置、测试与文档；通过 review 和最终 head 门禁后一次合并，并在 jueyunai 再次明确批准后执行一次 production 部署。方案、实现、测试和验证记录不再机械拆 PR，owner 与强制 review 边界也不因 PR 合并而改变；执行编号以 Implementation Plan 为准。
 - 本地功能跑通期允许只运行定向验证；转 Ready、合并 main 和生产启用前必须补齐各自完整门禁。Auth/RBAC、数据隔离、migration、凭据、幂等、feature flag 和外部副作用 kill switch 不得延期。
 - local/CI 只允许连接当前 worktree 的独立 PostgreSQL/Compose 开发库和 `_test` / `_ci` 测试库；任何本地 app、migration、seed、E2E、worker 或脚本不得连接 production 或读取 production 数据、media/uploads、备份、真实 token 和 production URL。
-- PR-1 的本地/受控预览完成不构成 production 授权；PR-2 生产启用前必须对最新 head 重跑完整门禁，并追加受控外部平台、补偿、灰度、回滚和 `/admin` 共存 smoke。
+- Draft PR、合并和 CI 成功都不构成 production 授权；最终 head 只运行一次完整本地门禁，production 部署仍需 jueyunai 再次明确批准，并执行备份、迁移、灰度、回滚与 `/admin` 共存 smoke。真实社交平台 transport、token、回调和受控账号联调由 xuemusi 后续独立 PR 完成，本次部署保持真实发布关闭。
 
 ## 总体架构
 

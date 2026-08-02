@@ -8,7 +8,7 @@
 
 - 只有一条长期分支：`main`。`main` 始终保持可构建、可部署状态，不直接 push。
 - 每个实施计划 PR 批次从 `main` 拉一条短分支；同一目标、Owner、Review 和回滚边界内的多个 Task 以分阶段 commit 累积在同一个 Draft PR，批次完成后合并回 `main`。Task 不自动等于独立 PR。
-- 管理后台现代化按 ADR-0004 使用两个明确的集成批次：Portal V1 Draft PR 覆盖设计简报编号 1～6（P0.1–P0.8b），Feature Expansion & Production Enablement PR 覆盖 P0.9–P2。这是经计划批准的跨 owner 例外，必须用 checkpoint commit、模块 owner 和 reviewer matrix 保持责任边界，不扩展为其他长期集成分支先例。
+- 管理后台现代化按 ADR-0004 使用一个 Portal V1 Draft PR，覆盖 Portal Core、十个导航模块、内部数据库工作流、生产开关配置、测试和文档；通过 review 与当前 head 门禁后一次合并，再由 jueyunai 人工批准一次 production 部署。真实平台 transport 与受控账号联调保留为 xuemusi 后续独立 PR，不阻塞 Portal V1，且不改变共享边界强制 review。
 - 分支命名：`feat/task-<编号>-<简述>`，例如 `feat/task-8-knowledge-base`；修复用 `fix/...`。
 - 开工前先 `git pull origin main`，确保基于最新代码开分支。
 
@@ -123,7 +123,8 @@ git worktree prune --dry-run
 
 - PR 以“一个业务 / 工程目标 + 一个实施计划 + 一致的 Review 边界 + 可一起回滚 / 发布”为默认边界。满足这四项的方案、实现、测试和验证记录放在一个 Draft PR，用分阶段 commit 保持可审，不额外拆成方案 PR、代码 PR、验证 PR。
 - 只有变更属于独立任务、负责人或强制 Review 边界不同、需要独立回滚 / 发布，或完整 diff 已明显超出一次有效 Review 的规模时才拆分。反向约束同样成立：不得为减少 PR 数量把无关 Task、临时清理或顺手重构塞入当前 PR。
-- 人工和 AI 默认从 Draft 开始。每次 push 前先运行本地定向验证，并合并同一轮细小修改后再 push；不要用 GitHub Actions 逐提交试错。PR 描述、测试记录、风险 / 回滚、共享边界和 Review 请求齐全后才转 Ready；Ready 后需要连续大改时先转回 Draft。
+- 本地完整门禁、PR 描述、测试记录、风险 / 回滚、共享边界和 Review 请求全部完成，并得到当前任务级明确授权时，人工和 AI 可以直接创建 Ready PR。否则必须从 Draft 开始并保持到真实 Ready 检查点，禁止 Draft 创建后几十秒内立即转 Ready；Ready 后需要连续大改时先转回 Draft。
+- 每次 push 前先运行本地定向验证，同一轮细小修改必须集中完成后一次 push；不要用 GitHub Actions 逐提交试错。
 - CI 自动按路径分类，作者不选择 Fast / Full 档次，也不得使用 `[skip ci]`。Draft 代码运行 Fast CI；Ready 和 `main` 针对当前 head 运行数据库、build、E2E、operations 等适用门禁；未知路径或 diff / 分类失败走完整 fallback。
 - 稳定的 `CI policy` 汇总 job 负责核对预期 job。Review 与合并前必须记录并复核当前 base / head SHA，只接受当前 head 的成功 policy；Draft Fast-only、旧 head、pending、neutral、skipped、cancelled 或 failure 都不是合并证据。Ready 后的新提交会使旧结论失效并重新运行门禁。
 - `.github/workflows/**`、`scripts/ci/**`、policy 和 production image 触发边界必须由另一名开发者独立 Review。docs-only 轻量检查不豁免共享结构 / 跨人边界 Review；镜像成功只提供不可变 SHA + digest，不授权 production 部署。

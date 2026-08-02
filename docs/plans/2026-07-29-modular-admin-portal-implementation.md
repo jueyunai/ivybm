@@ -14,9 +14,11 @@
 
 **Visual baseline:** [Digital Lattice Pencil](../../designs/ivybm-admin-portal-digital-lattice.pen)
 
-**Execution rule:** Task 是分阶段 commit / 验收检查点，不是 PR 边界。按最新确认的 2 个 PR 批次推进：PR-1 Portal V1 覆盖十个导航模块及其本地核心工作流，即 P0.1–P1.4 的 Portal UI / 内部命令；PR-2 Feature Expansion & Production Enablement 只覆盖 P1.5–P2 的真实平台、production enablement 与上线演练。当前设计、实现和验证记录都留在同一 Portal V1 Draft PR 边界，不单开 docs PR。
+> **2026-08-02 supersession:** 本计划内所有“PR-1 / PR-2”“Feature Expansion & Production Enablement PR”及“PR-2 才允许 Portal 上线”的表述均为历史方案，不再是执行指令。现行决策是一个功能分支、一个 Portal V1 Draft PR、一次合并、一次经人工批准的 production 部署。真实平台 transport 与受控账号联调由 xuemusi 后续独立 PR 完成，不是本 PR 或 Portal 首次部署的完成条件。
 
-**Review rule:** Portal V1 虽使用一个 Draft PR，模块 owner 不变。为了本地一次完成 1～6 项，协作者 review 不再阻塞 P0.8a/P0.8b 本地编码；Portal Core、共享 contract 和知识模块仍必须在 PR-1 转 Ready 前由对应另一名开发者 review。`src/payload.config.ts`、migration 和跨模块 DTO 继续遵守原有强制 review 边界。
+**Execution rule:** Task 是分阶段 commit / 验收检查点，不是 PR 边界。P0.1–P1.4 的 Portal UI、内部命令、生产开关配置、测试和文档全部留在同一个 Portal V1 Draft PR；不单开 docs PR，也不再拆 production enablement PR。最终 head 冻结后只运行一次完整门禁，Review、Draft CI 与本地门禁并行推进。
+
+**Review rule:** Portal V1 使用一个 Draft PR，模块 owner 不变。Portal Core、共享 contract、知识/会话/平台契约、`src/payload.config.ts`、migration、生成类型和共享 Collection 必须由 xuemusi review；Draft CI、Review 与最终本地完整门禁可以并行，但完成前不得转 Ready 或申请合并。
 
 **Quality rule:** 本地功能跑通阶段执行“最小 checkpoint 门禁”，避免每个模块重复跑全量回归；各 Task 章节中列出的完整 unit / integration / E2E / build 命令统一视为阶段收口或 PR-1 Ready 前证据，不要求每个 checkpoint 重复执行。安全、权限、数据完整性和外部副作用边界不得以后补回归为由延期。
 
@@ -232,20 +234,20 @@ migration。PR-1 在基座后接入 P0.6 官网内容、P0.7 素材、P0.8a 模�
 | P1.4        | Jobs 异常与人工补偿                                   | jueyunai + 模块 owner | 等补偿 contract；阻塞 P1.5     |
 | P1.5        | 受控真实对外发布启用                                  | xuemusi               | P1.1 + P1.2 + P1.4             |
 
-### 2.1 两个正式 PR 批次
+### 2.1 一个 Portal V1 Draft PR（2026-08-02 现行决策）
 
-| PR                                             | 覆盖 Task                                      | Owner                                                        | 必须独立的理由                                                                                                                                 |
-| ---------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| PR-1 Portal V1                                 | 当前设计/ADR/计划 + P0.1–P1.4 的本地门户工作流 | jueyunai 集成；各模块按既定 owner 开发；双方 review 共享边界 | 完成十个导航模块、Portal CRUD、会话命令、内部内容排期、脱敏 readiness 和安全补偿；`/dashboard` 与 `/admin` 隔离，所有模块受总开关/模块开关保护 |
-| PR-2 Feature Expansion & Production Enablement | P1.5–P2                                        | jueyunai + xuemusi；双方上线验收                             | 只处理真实账号授权、平台 adapter / 状态回调、受控发布、补偿 runbook、备份恢复、灰度和回滚；与 PR-1 本地产品闭环和 review 边界不同              |
+| PR | 覆盖 Task | Owner / Review | 发布边界 |
+| --- | --- | --- | --- |
+| Portal V1 Draft PR | 当前设计/ADR/计划 + P0.1–P1.4、生产开关配置、测试与文档 | jueyunai 集成；各模块按既定 owner；xuemusi review 共享结构与跨人契约 | 完成十个模块和内部工作流后一次合并；production 仅在再次人工批准后部署一次，真实发布保持关闭 |
 
 PR-1 使用当前提交历史，但 Development Readiness Gate 完成前不得写功能代码。不得先创建 docs-only PR，
 也不得把 P0/P1 模块机械拆成多个 PR。每个 Task 章节末尾的 `Commit` 是同一 Draft PR 内的可审 checkpoint；
 owner 变化时切换 reviewer，不切换 PR。跨 checkpoint 的依赖在同一分支上以前置 commit、定向测试、完整
 Collection + migration + Payload 注册 + 生成类型作为满足条件，不要求为了形式先合并 `main`。
 
-PR-1 交付本地/受控预览可用的十个 Portal 模块；真实外部发布保持关闭。PR-2 才允许接入真实平台、补齐受控外部
-联调并申请生产启用。两个 PR 均不得自动部署 production；合并只生成经 CI 验证的镜像，仍由 jueyunai 人工审批和发布。
+本 Draft PR 交付可部署的十个 Portal 模块与内部工作流；真实外部发布保持关闭。Meta/LinkedIn transport adapter、
+token 刷新、worker 发布 handler、平台回调、`delivery_unknown` 补偿和受控账号联调由 xuemusi 后续独立 PR 完成。
+合并只生成经 CI 验证的镜像，不自动部署 production；仍由 jueyunai 人工审批和发布。
 
 ---
 
@@ -1019,9 +1021,9 @@ E2E、四视口视觉回归、完整 integration、operations 或 production bui
 以下防线不得延期：服务端 Auth/RBAC、session/return target、安全输入校验、Local API access、migration 可重复性、
 凭据与客户数据隔离、外部 command 幂等、`delivery_unknown`、总开关/模块开关和真实发布 kill switch。
 
-PR-1 Portal V1 的功能专项门禁已通过；转 Ready 和合并 `main` 仍需先解决统一持久 command receipt / 原子 CAS、
-官网视觉 fixture 和双方 review，并且只接受与最新 head SHA 对齐且成功的远程 `CI policy`。Browser E2E job 必须实际包含
-Portal 套件与仓库官网视觉回归：
+Portal V1 的 command receipt / 原子 CAS 与官网视觉 fixture 已完成定向验证。Draft PR 创建后，xuemusi Review、
+Draft CI 与本地完整门禁并行；转 Ready 和申请合并只接受与最终 head SHA 对齐且成功的 `CI policy`，并要求
+Browser E2E 实际包含 Portal 套件与仓库官网视觉回归：
 
 ```bash
 pnpm install --frozen-lockfile
@@ -1045,13 +1047,14 @@ pnpm db:test:persistence
 pnpm test:operations
 pnpm build
 CI=1 E2E_PORT=3011 pnpm exec playwright test --config=playwright.config.ts tests/e2e/admin-portal-*.spec.ts
-# PR-1 Ready 前仍必须通过；当前因本地 seed 媒体占位符缺少实际文件而有 36 个 website-visual 失败：
+# 最终 head 必须通过完整 Playwright；不得只报告 Portal 专项：
 CI=1 E2E_PORT=3011 pnpm test:e2e
 git diff --check
 ```
 
-上述 block 是本地 Ready 前门禁：Portal 专项 28/28 已通过，但完整 `test:e2e` 当前仍是 Ready 阻塞项，不能把专项通过
-记录成仓库全量通过。门禁只从已核验的 `ivybm_portal_v1` 本地 URL 派生一次性 `_ci` 库，并通过
+上述 block 只在最终 head 冻结后运行一次；此前 checkpoint 不重复跑全量。官网视觉 fixture 定向 36/36 已通过，
+但完整 `test:e2e` 仍必须在最终 head 重新验证，不能把专项通过记录成仓库全量通过。门禁只从已核验的
+`ivybm_portal_v1` 本地 URL 派生一次性 `_ci` 库，并通过
 内建 loopback host 与后缀保护的 `db:reset:test` 逆序 down/up，禁止复制执行 `db:migrate:fresh`。CI 使用当前 Job 的临时
 PostgreSQL 18.4 + pgvector 0.8.5 service 和 `_ci` 数据库，复用脚本内建 host/后缀保护并执行 CI 端口
 preflight 与 reset/seed 证据链，不使用本机 `127.0.0.1:55433`、Compose volume 或 `.env`。如果已经在另一终端运行
@@ -1059,9 +1062,10 @@ preflight 与 reset/seed 证据链，不使用本机 `127.0.0.1:55433`、Compose
 Playwright 以 `CI=1 E2E_PORT=3001` 自启 standalone server。E2E 必须使用专用测试账号。不得连接
 production、复制真实 token、正式客户资料、uploads 或备份。
 
-PR-2 在生产启用前必须针对其最新 head 再次执行同一完整门禁，并在一次性、隔离的 production-like 演练
-环境（不建立常驻 staging）或经批准的 production 维护窗口追加：受控外部平台、类型化补偿、灰度、镜像/
-数据库回滚、`/admin` 共存 smoke，以及外部备份可用性、RPO/RTO 和 restore rehearsal。批准的维护账号仍可
+同一 Portal V1 合并提交进入 production 前，不重复运行另一套 PR 门禁；以最终 head 的完整本地门禁、当前 head
+CI policy、Review 和人工部署审批为依据，并在一次性、隔离的 production-like 演练环境（不建立常驻 staging）
+或经批准的 production 维护窗口追加：备份、灰度、镜像/数据库回滚、`/admin` 共存 smoke，以及外部备份可用性、
+RPO/RTO 和 restore rehearsal。真实平台发布继续关闭，不把缺少受控平台账号视为 Portal 首次部署阻塞。批准的维护账号仍可
 完成现有登录/维护流程，Portal 不出现 `/admin` 导航或深链，Operator/Sales 的既有 Collection RBAC 不因
 Portal 扩权。任何一项失败都不得以“预览未正式启用”为由豁免。
 

@@ -7,6 +7,8 @@ const __filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(__filename)
 
 const nextConfig: NextConfig = {
+  // Keep ISR pages fresh for one minute and eligible for a five-minute stale window.
+  expireTime: 360,
   output: 'standalone',
   images: {
     localPatterns: [

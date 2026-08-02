@@ -3,13 +3,28 @@ import { describe, expect, it } from 'vitest'
 import { classifyChangedFiles } from '../../scripts/ci/classify-changes.mjs'
 
 const lightClassification = {
+  admin_e2e: false,
+  chat_e2e: false,
   code: false,
   database: false,
   docs_only: true,
   full_fallback: false,
   operations: false,
   production_image: false,
-  ui_e2e: false,
+  website_e2e: false,
+}
+
+const fullClassification = {
+  ...lightClassification,
+  admin_e2e: true,
+  chat_e2e: true,
+  code: true,
+  database: true,
+  docs_only: false,
+  full_fallback: true,
+  operations: true,
+  production_image: true,
+  website_e2e: true,
 }
 
 const invalidPathLists: string[][] = [
@@ -49,13 +64,86 @@ describe('CI change classifier', () => {
     },
   )
 
-  it.each(['src/admin/views/Page.tsx', 'src/app/page.tsx', 'tests/e2e/smoke.spec.ts'])(
-    'classifies %s as a UI E2E change',
+  it.each([
+    'src/app/(frontend)/[locale]/products/page.tsx',
+    'src/components/website/SiteHeader.tsx',
+    'src/components/inquiry/InquiryForm.tsx',
+    'tests/e2e/website.spec.ts',
+  ])('selects only Website E2E for %s', (path) => {
+    expect(classifyChangedFiles([path])).toMatchObject({
+      admin_e2e: false,
+      chat_e2e: false,
+      code: true,
+      docs_only: false,
+      website_e2e: true,
+    })
+  })
+
+  it.each([
+    'src/admin/views/OperationsDashboard.tsx',
+    'src/app/(payload)/custom.scss',
+    'tests/e2e/admin-visual.spec.ts',
+  ])('selects only Admin E2E for %s', (path) => {
+    expect(classifyChangedFiles([path])).toMatchObject({
+      admin_e2e: true,
+      chat_e2e: false,
+      code: true,
+      docs_only: false,
+      website_e2e: false,
+    })
+  })
+
+  it.each([
+    'src/components/chat/ChatWidget.tsx',
+    'src/app/api/chat/sessions/route.ts',
+    'tests/e2e/chat-handoff.spec.ts',
+  ])('selects only Chat E2E for %s', (path) => {
+    expect(classifyChangedFiles([path])).toMatchObject({
+      admin_e2e: false,
+      chat_e2e: true,
+      code: true,
+      docs_only: false,
+      website_e2e: false,
+    })
+  })
+
+  it.each([
+    'src/app/(frontend)/[locale]/layout.tsx',
+    'src/app/(frontend)/website.css',
+  ])('selects Website and Chat E2E for shared frontend path %s', (path) => {
+    expect(classifyChangedFiles([path])).toMatchObject({
+      admin_e2e: false,
+      chat_e2e: true,
+      code: true,
+      docs_only: false,
+      website_e2e: true,
+    })
+  })
+
+  it('combines Website and Admin E2E for a mixed change', () => {
+    expect(
+      classifyChangedFiles([
+        'src/components/website/SiteHeader.tsx',
+        'src/admin/views/OperationsDashboard.tsx',
+      ]),
+    ).toMatchObject({
+      admin_e2e: true,
+      chat_e2e: false,
+      code: true,
+      docs_only: false,
+      website_e2e: true,
+    })
+  })
+
+  it.each(['next.config.ts', 'tsconfig.json', 'playwright.config.ts'])(
+    'selects every E2E suite for global UI configuration %s',
     (path) => {
       expect(classifyChangedFiles([path])).toMatchObject({
+        admin_e2e: true,
+        chat_e2e: true,
         code: true,
         docs_only: false,
-        ui_e2e: true,
+        website_e2e: true,
       })
     },
   )
@@ -105,41 +193,16 @@ describe('CI change classifier', () => {
     expect(classifyChangedFiles([path]).production_image).toBe(true)
   })
 
-  it('combines flags across all changed paths', () => {
-    expect(
-      classifyChangedFiles(['docs/guide.md', 'src/admin/views/Page.tsx', 'src/payload.config.ts']),
-    ).toMatchObject({
-      code: true,
-      database: true,
-      docs_only: false,
-      production_image: true,
-      ui_e2e: true,
-    })
-  })
-
-  it('fails closed for an unknown path', () => {
-    expect(classifyChangedFiles(['unexpected-root.file'])).toEqual({
-      ...lightClassification,
-      code: true,
-      database: true,
-      docs_only: false,
-      full_fallback: true,
-      operations: true,
-      production_image: true,
-      ui_e2e: true,
-    })
+  it.each([
+    ['unexpected-root.file'],
+    ['src/components/unowned/NewWidget.tsx'],
+    ['src/app/(unowned)/page.tsx'],
+    ['tests/e2e/new-suite.spec.ts'],
+  ])('fails closed for an unknown path %j', (paths) => {
+    expect(classifyChangedFiles(paths)).toEqual(fullClassification)
   })
 
   it.each(invalidPathLists)('fails closed for invalid input %j', (paths) => {
-    expect(classifyChangedFiles(paths)).toEqual({
-      ...lightClassification,
-      code: true,
-      database: true,
-      docs_only: false,
-      full_fallback: true,
-      operations: true,
-      production_image: true,
-      ui_e2e: true,
-    })
+    expect(classifyChangedFiles(paths)).toEqual(fullClassification)
   })
 })

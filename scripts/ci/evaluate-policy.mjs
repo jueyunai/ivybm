@@ -5,7 +5,9 @@ const booleanKeys = [
   'docs_only',
   'code',
   'database',
-  'ui_e2e',
+  'website_e2e',
+  'admin_e2e',
+  'chat_e2e',
   'operations',
   'production_image',
   'full_fallback',
@@ -27,7 +29,9 @@ const validateClassification = (classification, errors) => {
 
   const heavyFlags = [
     classification.database,
-    classification.ui_e2e,
+    classification.website_e2e,
+    classification.admin_e2e,
+    classification.chat_e2e,
     classification.operations,
     classification.production_image,
     classification.full_fallback,
@@ -78,7 +82,9 @@ export function evaluateCiPolicy({ eventName, isDraft, headSha, classification, 
   if (validClassification) {
     heavyRequired =
       classification.database ||
-      classification.ui_e2e ||
+      classification.website_e2e ||
+      classification.admin_e2e ||
+      classification.chat_e2e ||
       classification.operations ||
       classification.production_image ||
       classification.full_fallback
