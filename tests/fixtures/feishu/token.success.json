@@ -1,0 +1,6 @@
+{
+  "code": 0,
+  "expire": 7200,
+  "msg": "ok",
+  "tenant_access_token": "tenant-token-fixture"
+}

@@ -3,11 +3,7 @@ import type { ClientConfig, SanitizedPermissions } from 'payload'
 import type { AdminCopy, AdminLocale } from '../i18n'
 
 export type OperationsNavSectionId =
-  | 'workspace'
-  | 'content'
-  | 'intelligence'
-  | 'operations'
-  | 'system'
+  'workspace' | 'content' | 'intelligence' | 'operations' | 'system'
 
 export type OperationsNavItem = {
   href: string
@@ -79,7 +75,8 @@ const getCollectionSection = ({
   slug: string
 }): OperationsNavSectionId => {
   if (WORKSPACE_COLLECTIONS.has(slug)) return 'workspace'
-  if (CONTENT_COLLECTIONS.has(slug) || group === 'Website Content' || group === '官网内容') return 'content'
+  if (CONTENT_COLLECTIONS.has(slug) || group === 'Website Content' || group === '官网内容')
+    return 'content'
   if (
     INTELLIGENCE_COLLECTIONS.has(slug) ||
     group === 'AI Management' ||
@@ -139,8 +136,19 @@ export const getOperationsNavSections = ({
     })
   }
 
+  if (canReadCollection(permissions, 'knowledge-documents')) {
+    sections.get('intelligence')?.items.push({
+      href: '/admin/knowledge-playground',
+      id: 'workspace:knowledge-playground',
+      label: copy.knowledge.playgroundNav,
+    })
+  }
+
   for (const collection of config.collections) {
-    if (INTERNAL_COLLECTIONS.has(collection.slug) || !canReadCollection(permissions, collection.slug))
+    if (
+      INTERNAL_COLLECTIONS.has(collection.slug) ||
+      !canReadCollection(permissions, collection.slug)
+    )
       continue
 
     const sectionId = getCollectionSection({
@@ -166,6 +174,14 @@ export const getOperationsNavSections = ({
         typeof global.label === 'function'
           ? global.slug
           : getLocalizedLabel(global.label, language),
+    })
+  }
+
+  if (canReadCollection(permissions, 'feishu-connections')) {
+    sections.get('operations')?.items.unshift({
+      href: '/admin/feishu',
+      id: 'view:feishu',
+      label: language === 'en' ? 'Feishu CRM' : '飞书 CRM',
     })
   }
 

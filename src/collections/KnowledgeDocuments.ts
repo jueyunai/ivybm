@@ -90,6 +90,11 @@ export const KnowledgeDocuments: CollectionConfig = {
     update: knowledgeUpdate,
   },
   admin: {
+    components: {
+      edit: {
+        beforeDocumentControls: ['/admin/components/KnowledgeIndexActions'],
+      },
+    },
     defaultColumns: [
       'sourceTitle',
       'sourceType',

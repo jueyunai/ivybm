@@ -153,14 +153,18 @@ export const enqueueKnowledgeIndexJob = async ({
     embeddingConfigurationKey,
     requestedBy,
   }
+  const idempotencyParts = [
+    'knowledge-index',
+    documentId,
+    jobPayload.documentRevision,
+    embeddingConfigurationKey,
+  ]
+  if (document.indexStatus === 'ready' && document.indexedAt) {
+    idempotencyParts.push('reindex', document.indexedAt)
+  }
   const queue = new PayloadJobQueue({ payload })
   const enqueued = await queue.enqueue({
-    idempotencyKey: [
-      'knowledge-index',
-      documentId,
-      jobPayload.documentRevision,
-      embeddingConfigurationKey,
-    ].join(':'),
+    idempotencyKey: idempotencyParts.join(':'),
     payload: jobPayload,
     type: KNOWLEDGE_INDEX_JOB_TYPE,
   })

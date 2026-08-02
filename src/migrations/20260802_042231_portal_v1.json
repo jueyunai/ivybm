@@ -8257,6 +8257,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "next_follow_up_at": {
+          "name": "next_follow_up_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "name": {
           "name": "name",
           "type": "varchar",
@@ -8441,6 +8447,21 @@
           "method": "btree",
           "with": {}
         },
+        "leads_next_follow_up_at_idx": {
+          "name": "leads_next_follow_up_at_idx",
+          "columns": [
+            {
+              "expression": "next_follow_up_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "leads_name_idx": {
           "name": "leads_name_idx",
           "columns": [
@@ -8537,6 +8558,926 @@
           "tableTo": "users",
           "columnsFrom": [
             "assigned_to_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.feishu_connections_scopes": {
+      "name": "feishu_connections_scopes",
+      "schema": "",
+      "columns": {
+        "_order": {
+          "name": "_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "_parent_id": {
+          "name": "_parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "varchar",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "feishu_connections_scopes_order_idx": {
+          "name": "feishu_connections_scopes_order_idx",
+          "columns": [
+            {
+              "expression": "_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_connections_scopes_parent_id_idx": {
+          "name": "feishu_connections_scopes_parent_id_idx",
+          "columns": [
+            {
+              "expression": "_parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "feishu_connections_scopes_parent_id_fk": {
+          "name": "feishu_connections_scopes_parent_id_fk",
+          "tableFrom": "feishu_connections_scopes",
+          "tableTo": "feishu_connections",
+          "columnsFrom": [
+            "_parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.feishu_connections": {
+      "name": "feishu_connections",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth_mode": {
+          "name": "auth_mode",
+          "type": "enum_feishu_connections_auth_mode",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'store_oauth'"
+        },
+        "tenant_key": {
+          "name": "tenant_key",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "installer_open_id": {
+          "name": "installer_open_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "enum_feishu_connections_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'provisioning'"
+        },
+        "access_token_encrypted": {
+          "name": "access_token_encrypted",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refresh_token_encrypted": {
+          "name": "refresh_token_encrypted",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "access_token_expires_at": {
+          "name": "access_token_expires_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refresh_token_expires_at": {
+          "name": "refresh_token_expires_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "app_token": {
+          "name": "app_token",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "table_id": {
+          "name": "table_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "base_u_r_l": {
+          "name": "base_u_r_l",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_connected_at": {
+          "name": "last_connected_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_refreshed_at": {
+          "name": "last_refreshed_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error_code": {
+          "name": "last_error_code",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "feishu_connections_tenant_key_idx": {
+          "name": "feishu_connections_tenant_key_idx",
+          "columns": [
+            {
+              "expression": "tenant_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_connections_status_idx": {
+          "name": "feishu_connections_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_connections_updated_at_idx": {
+          "name": "feishu_connections_updated_at_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_connections_created_at_idx": {
+          "name": "feishu_connections_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.feishu_mappings_field_mappings": {
+      "name": "feishu_mappings_field_mappings",
+      "schema": "",
+      "columns": {
+        "_order": {
+          "name": "_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "_parent_id": {
+          "name": "_parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "varchar",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "local_field": {
+          "name": "local_field",
+          "type": "enum_feishu_mappings_field_mappings_local_field",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_field": {
+          "name": "target_field",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "required": {
+          "name": "required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        }
+      },
+      "indexes": {
+        "feishu_mappings_field_mappings_order_idx": {
+          "name": "feishu_mappings_field_mappings_order_idx",
+          "columns": [
+            {
+              "expression": "_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_mappings_field_mappings_parent_id_idx": {
+          "name": "feishu_mappings_field_mappings_parent_id_idx",
+          "columns": [
+            {
+              "expression": "_parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "feishu_mappings_field_mappings_parent_id_fk": {
+          "name": "feishu_mappings_field_mappings_parent_id_fk",
+          "tableFrom": "feishu_mappings_field_mappings",
+          "tableTo": "feishu_mappings",
+          "columnsFrom": [
+            "_parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.feishu_mappings_member_mappings": {
+      "name": "feishu_mappings_member_mappings",
+      "schema": "",
+      "columns": {
+        "_order": {
+          "name": "_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "_parent_id": {
+          "name": "_parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "varchar",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "open_id": {
+          "name": "open_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        }
+      },
+      "indexes": {
+        "feishu_mappings_member_mappings_order_idx": {
+          "name": "feishu_mappings_member_mappings_order_idx",
+          "columns": [
+            {
+              "expression": "_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_mappings_member_mappings_parent_id_idx": {
+          "name": "feishu_mappings_member_mappings_parent_id_idx",
+          "columns": [
+            {
+              "expression": "_parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_mappings_member_mappings_user_idx": {
+          "name": "feishu_mappings_member_mappings_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "feishu_mappings_member_mappings_user_id_users_id_fk": {
+          "name": "feishu_mappings_member_mappings_user_id_users_id_fk",
+          "tableFrom": "feishu_mappings_member_mappings",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "feishu_mappings_member_mappings_parent_id_fk": {
+          "name": "feishu_mappings_member_mappings_parent_id_fk",
+          "tableFrom": "feishu_mappings_member_mappings",
+          "tableTo": "feishu_mappings",
+          "columnsFrom": [
+            "_parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.feishu_mappings_notification_recipients": {
+      "name": "feishu_mappings_notification_recipients",
+      "schema": "",
+      "columns": {
+        "_order": {
+          "name": "_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "_parent_id": {
+          "name": "_parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "varchar",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receive_id_type": {
+          "name": "receive_id_type",
+          "type": "enum_feishu_mappings_notification_recipients_receive_id_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "receive_id": {
+          "name": "receive_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        }
+      },
+      "indexes": {
+        "feishu_mappings_notification_recipients_order_idx": {
+          "name": "feishu_mappings_notification_recipients_order_idx",
+          "columns": [
+            {
+              "expression": "_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_mappings_notification_recipients_parent_id_idx": {
+          "name": "feishu_mappings_notification_recipients_parent_id_idx",
+          "columns": [
+            {
+              "expression": "_parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "feishu_mappings_notification_recipients_parent_id_fk": {
+          "name": "feishu_mappings_notification_recipients_parent_id_fk",
+          "tableFrom": "feishu_mappings_notification_recipients",
+          "tableTo": "feishu_mappings",
+          "columnsFrom": [
+            "_parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.feishu_mappings": {
+      "name": "feishu_mappings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "enum_feishu_mappings_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "connection_id": {
+          "name": "connection_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "app_token": {
+          "name": "app_token",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "table_id": {
+          "name": "table_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "feishu_mappings_key_idx": {
+          "name": "feishu_mappings_key_idx",
+          "columns": [
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_mappings_status_idx": {
+          "name": "feishu_mappings_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_mappings_connection_idx": {
+          "name": "feishu_mappings_connection_idx",
+          "columns": [
+            {
+              "expression": "connection_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_mappings_updated_at_idx": {
+          "name": "feishu_mappings_updated_at_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_mappings_created_at_idx": {
+          "name": "feishu_mappings_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "feishu_mappings_connection_id_feishu_connections_id_fk": {
+          "name": "feishu_mappings_connection_id_feishu_connections_id_fk",
+          "tableFrom": "feishu_mappings",
+          "tableTo": "feishu_connections",
+          "columnsFrom": [
+            "connection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.feishu_oauth_states": {
+      "name": "feishu_oauth_states",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "state_hash": {
+          "name": "state_hash",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verifier_encrypted": {
+          "name": "verifier_encrypted",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_by_id": {
+          "name": "requested_by_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "feishu_oauth_states_state_hash_idx": {
+          "name": "feishu_oauth_states_state_hash_idx",
+          "columns": [
+            {
+              "expression": "state_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_oauth_states_expires_at_idx": {
+          "name": "feishu_oauth_states_expires_at_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_oauth_states_used_at_idx": {
+          "name": "feishu_oauth_states_used_at_idx",
+          "columns": [
+            {
+              "expression": "used_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_oauth_states_requested_by_idx": {
+          "name": "feishu_oauth_states_requested_by_idx",
+          "columns": [
+            {
+              "expression": "requested_by_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_oauth_states_updated_at_idx": {
+          "name": "feishu_oauth_states_updated_at_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_oauth_states_created_at_idx": {
+          "name": "feishu_oauth_states_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "feishu_oauth_states_requested_by_id_users_id_fk": {
+          "name": "feishu_oauth_states_requested_by_id_users_id_fk",
+          "tableFrom": "feishu_oauth_states",
+          "tableTo": "users",
+          "columnsFrom": [
+            "requested_by_id"
           ],
           "columnsTo": [
             "id"
@@ -10459,6 +11400,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "feishu_connections_id": {
+          "name": "feishu_connections_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "feishu_mappings_id": {
+          "name": "feishu_mappings_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "feishu_oauth_states_id": {
+          "name": "feishu_oauth_states_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "visitor_sessions_id": {
           "name": "visitor_sessions_id",
           "type": "integer",
@@ -10902,6 +11861,51 @@
           "method": "btree",
           "with": {}
         },
+        "payload_locked_documents_rels_feishu_connections_id_idx": {
+          "name": "payload_locked_documents_rels_feishu_connections_id_idx",
+          "columns": [
+            {
+              "expression": "feishu_connections_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payload_locked_documents_rels_feishu_mappings_id_idx": {
+          "name": "payload_locked_documents_rels_feishu_mappings_id_idx",
+          "columns": [
+            {
+              "expression": "feishu_mappings_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payload_locked_documents_rels_feishu_oauth_states_id_idx": {
+          "name": "payload_locked_documents_rels_feishu_oauth_states_id_idx",
+          "columns": [
+            {
+              "expression": "feishu_oauth_states_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "payload_locked_documents_rels_visitor_sessions_id_idx": {
           "name": "payload_locked_documents_rels_visitor_sessions_id_idx",
           "columns": [
@@ -11312,6 +12316,45 @@
           "tableTo": "leads",
           "columnsFrom": [
             "leads_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "payload_locked_documents_rels_feishu_connections_fk": {
+          "name": "payload_locked_documents_rels_feishu_connections_fk",
+          "tableFrom": "payload_locked_documents_rels",
+          "tableTo": "feishu_connections",
+          "columnsFrom": [
+            "feishu_connections_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "payload_locked_documents_rels_feishu_mappings_fk": {
+          "name": "payload_locked_documents_rels_feishu_mappings_fk",
+          "tableFrom": "payload_locked_documents_rels",
+          "tableTo": "feishu_mappings",
+          "columnsFrom": [
+            "feishu_mappings_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "payload_locked_documents_rels_feishu_oauth_states_fk": {
+          "name": "payload_locked_documents_rels_feishu_oauth_states_fk",
+          "tableFrom": "payload_locked_documents_rels",
+          "tableTo": "feishu_oauth_states",
+          "columnsFrom": [
+            "feishu_oauth_states_id"
           ],
           "columnsTo": [
             "id"
@@ -12675,6 +13718,60 @@
         "c"
       ]
     },
+    "public.enum_feishu_connections_auth_mode": {
+      "name": "enum_feishu_connections_auth_mode",
+      "schema": "public",
+      "values": [
+        "store_oauth"
+      ]
+    },
+    "public.enum_feishu_connections_status": {
+      "name": "enum_feishu_connections_status",
+      "schema": "public",
+      "values": [
+        "provisioning",
+        "connected",
+        "reconnect_required",
+        "disconnected",
+        "error"
+      ]
+    },
+    "public.enum_feishu_mappings_field_mappings_local_field": {
+      "name": "enum_feishu_mappings_field_mappings_local_field",
+      "schema": "public",
+      "values": [
+        "localLeadId",
+        "customerName",
+        "country",
+        "source",
+        "productNeed",
+        "projectStage",
+        "intentLevel",
+        "owner",
+        "email",
+        "phone",
+        "nextFollowUpAt",
+        "sourceURL",
+        "originalInquiry"
+      ]
+    },
+    "public.enum_feishu_mappings_notification_recipients_receive_id_type": {
+      "name": "enum_feishu_mappings_notification_recipients_receive_id_type",
+      "schema": "public",
+      "values": [
+        "open_id",
+        "chat_id"
+      ]
+    },
+    "public.enum_feishu_mappings_status": {
+      "name": "enum_feishu_mappings_status",
+      "schema": "public",
+      "values": [
+        "draft",
+        "active",
+        "disabled"
+      ]
+    },
     "public.enum_visitor_sessions_channel": {
       "name": "enum_visitor_sessions_channel",
       "schema": "public",
@@ -12813,6 +13910,6 @@
     "tables": {},
     "columns": {}
   },
-  "id": "4a0c7416-ab4d-4128-9c40-8ab13c317390",
+  "id": "5f4eb6a1-1335-4598-af11-3192b55c6d34",
   "prevId": "00000000-0000-0000-0000-000000000000"
 }

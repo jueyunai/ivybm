@@ -11,6 +11,7 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   CREATE TYPE "public"."enum_publish_jobs_mode" AS ENUM('assisted', 'automatic');
   CREATE TYPE "public"."enum_publish_jobs_status" AS ENUM('scheduled', 'accepted', 'publishing', 'published', 'failed', 'delivery_unknown');
   CREATE TYPE "public"."enum_publish_logs_event" AS ENUM('created', 'scheduled', 'accepted', 'assisted-package-ready', 'status-updated', 'failed', 'delivery-unknown');
+  CREATE TYPE "public"."enum_portal_command_receipts_status" AS ENUM('processing', 'completed', 'failed');
   CREATE TABLE "generated_contents_source_references" (
     "_order" integer NOT NULL,
     "_parent_id" integer NOT NULL,
@@ -27,6 +28,8 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
     "content_type" "enum_generated_contents_content_type" NOT NULL,
     "body" varchar NOT NULL,
     "status" "enum_generated_contents_status" DEFAULT 'draft' NOT NULL,
+    "idempotency_key" varchar NOT NULL,
+    "creation_fingerprint" varchar NOT NULL,
     "created_by_id" integer NOT NULL,
     "reviewed_at" timestamp(3) with time zone,
     "reviewed_by_id" integer,
@@ -87,10 +90,26 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
     "created_at" timestamp(3) with time zone DEFAULT now() NOT NULL
   );
 
+  CREATE TABLE "portal_command_receipts" (
+    "id" serial PRIMARY KEY NOT NULL,
+    "scope" varchar NOT NULL,
+    "idempotency_key" varchar NOT NULL,
+    "fingerprint" varchar NOT NULL,
+    "actor_id" integer NOT NULL,
+    "owner_token" varchar NOT NULL,
+    "lease_expires_at" timestamp(3) with time zone NOT NULL,
+    "status" "enum_portal_command_receipts_status" DEFAULT 'processing' NOT NULL,
+    "result" jsonb,
+    "error_code" varchar,
+    "updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+    "created_at" timestamp(3) with time zone DEFAULT now() NOT NULL
+  );
+
   ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "generated_contents_id" integer;
   ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "content_reviews_id" integer;
   ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "publish_jobs_id" integer;
   ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "publish_logs_id" integer;
+  ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "portal_command_receipts_id" integer;
   ALTER TABLE "generated_contents_source_references" ADD CONSTRAINT "generated_contents_source_references_parent_id_fk" FOREIGN KEY ("_parent_id") REFERENCES "public"."generated_contents"("id") ON DELETE cascade ON UPDATE no action;
   ALTER TABLE "generated_contents" ADD CONSTRAINT "generated_contents_created_by_id_users_id_fk" FOREIGN KEY ("created_by_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "generated_contents" ADD CONSTRAINT "generated_contents_reviewed_by_id_users_id_fk" FOREIGN KEY ("reviewed_by_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
@@ -104,11 +123,13 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   ALTER TABLE "publish_jobs" ADD CONSTRAINT "publish_jobs_created_by_id_users_id_fk" FOREIGN KEY ("created_by_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "publish_logs" ADD CONSTRAINT "publish_logs_publish_job_id_publish_jobs_id_fk" FOREIGN KEY ("publish_job_id") REFERENCES "public"."publish_jobs"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "publish_logs" ADD CONSTRAINT "publish_logs_actor_id_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "portal_command_receipts" ADD CONSTRAINT "portal_command_receipts_actor_id_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
   CREATE INDEX "generated_contents_source_references_order_idx" ON "generated_contents_source_references" USING btree ("_order");
   CREATE INDEX "generated_contents_source_references_parent_id_idx" ON "generated_contents_source_references" USING btree ("_parent_id");
   CREATE INDEX "generated_contents_platform_idx" ON "generated_contents" USING btree ("platform");
   CREATE INDEX "generated_contents_content_locale_idx" ON "generated_contents" USING btree ("content_locale");
   CREATE INDEX "generated_contents_status_idx" ON "generated_contents" USING btree ("status");
+  CREATE UNIQUE INDEX "generated_contents_idempotency_key_idx" ON "generated_contents" USING btree ("idempotency_key");
   CREATE INDEX "generated_contents_created_by_idx" ON "generated_contents" USING btree ("created_by_id");
   CREATE INDEX "generated_contents_reviewed_by_idx" ON "generated_contents" USING btree ("reviewed_by_id");
   CREATE INDEX "generated_contents_updated_at_idx" ON "generated_contents" USING btree ("updated_at");
@@ -135,14 +156,23 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   CREATE INDEX "publish_logs_actor_idx" ON "publish_logs" USING btree ("actor_id");
   CREATE INDEX "publish_logs_updated_at_idx" ON "publish_logs" USING btree ("updated_at");
   CREATE INDEX "publish_logs_created_at_idx" ON "publish_logs" USING btree ("created_at");
+  CREATE INDEX "portal_command_receipts_scope_idx" ON "portal_command_receipts" USING btree ("scope");
+  CREATE INDEX "portal_command_receipts_actor_idx" ON "portal_command_receipts" USING btree ("actor_id");
+  CREATE INDEX "portal_command_receipts_lease_expires_at_idx" ON "portal_command_receipts" USING btree ("lease_expires_at");
+  CREATE INDEX "portal_command_receipts_status_idx" ON "portal_command_receipts" USING btree ("status");
+  CREATE INDEX "portal_command_receipts_updated_at_idx" ON "portal_command_receipts" USING btree ("updated_at");
+  CREATE INDEX "portal_command_receipts_created_at_idx" ON "portal_command_receipts" USING btree ("created_at");
+  CREATE UNIQUE INDEX "actor_scope_idempotencyKey_idx" ON "portal_command_receipts" USING btree ("actor_id","scope","idempotency_key");
   ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_generated_contents_fk" FOREIGN KEY ("generated_contents_id") REFERENCES "public"."generated_contents"("id") ON DELETE cascade ON UPDATE no action;
   ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_content_reviews_fk" FOREIGN KEY ("content_reviews_id") REFERENCES "public"."content_reviews"("id") ON DELETE cascade ON UPDATE no action;
   ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_publish_jobs_fk" FOREIGN KEY ("publish_jobs_id") REFERENCES "public"."publish_jobs"("id") ON DELETE cascade ON UPDATE no action;
   ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_publish_logs_fk" FOREIGN KEY ("publish_logs_id") REFERENCES "public"."publish_logs"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_portal_command_receipts_fk" FOREIGN KEY ("portal_command_receipts_id") REFERENCES "public"."portal_command_receipts"("id") ON DELETE cascade ON UPDATE no action;
   CREATE INDEX "payload_locked_documents_rels_generated_contents_id_idx" ON "payload_locked_documents_rels" USING btree ("generated_contents_id");
   CREATE INDEX "payload_locked_documents_rels_content_reviews_id_idx" ON "payload_locked_documents_rels" USING btree ("content_reviews_id");
   CREATE INDEX "payload_locked_documents_rels_publish_jobs_id_idx" ON "payload_locked_documents_rels" USING btree ("publish_jobs_id");
-  CREATE INDEX "payload_locked_documents_rels_publish_logs_id_idx" ON "payload_locked_documents_rels" USING btree ("publish_logs_id");`)
+  CREATE INDEX "payload_locked_documents_rels_publish_logs_id_idx" ON "payload_locked_documents_rels" USING btree ("publish_logs_id");
+  CREATE INDEX "payload_locked_documents_rels_portal_command_receipts_id_idx" ON "payload_locked_documents_rels" USING btree ("portal_command_receipts_id");`)
 }
 
 export async function down({ db, payload, req }: MigrateDownArgs): Promise<void> {
@@ -151,26 +181,31 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_content_reviews_fk";
   ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_publish_jobs_fk";
   ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_publish_logs_fk";
+  ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_portal_command_receipts_fk";
   DROP INDEX "payload_locked_documents_rels_generated_contents_id_idx";
   DROP INDEX "payload_locked_documents_rels_content_reviews_id_idx";
   DROP INDEX "payload_locked_documents_rels_publish_jobs_id_idx";
   DROP INDEX "payload_locked_documents_rels_publish_logs_id_idx";
+  DROP INDEX "payload_locked_documents_rels_portal_command_receipts_id_idx";
   ALTER TABLE "payload_locked_documents_rels" DROP COLUMN "generated_contents_id";
   ALTER TABLE "payload_locked_documents_rels" DROP COLUMN "content_reviews_id";
   ALTER TABLE "payload_locked_documents_rels" DROP COLUMN "publish_jobs_id";
   ALTER TABLE "payload_locked_documents_rels" DROP COLUMN "publish_logs_id";
+  ALTER TABLE "payload_locked_documents_rels" DROP COLUMN "portal_command_receipts_id";
   ALTER TABLE "generated_contents_source_references" DISABLE ROW LEVEL SECURITY;
+  ALTER TABLE "generated_contents" DISABLE ROW LEVEL SECURITY;
   ALTER TABLE "generated_contents_rels" DISABLE ROW LEVEL SECURITY;
   ALTER TABLE "content_reviews" DISABLE ROW LEVEL SECURITY;
-  ALTER TABLE "publish_logs" DISABLE ROW LEVEL SECURITY;
   ALTER TABLE "publish_jobs" DISABLE ROW LEVEL SECURITY;
-  ALTER TABLE "generated_contents" DISABLE ROW LEVEL SECURITY;
+  ALTER TABLE "publish_logs" DISABLE ROW LEVEL SECURITY;
+  ALTER TABLE "portal_command_receipts" DISABLE ROW LEVEL SECURITY;
   DROP TABLE "generated_contents_source_references" CASCADE;
   DROP TABLE "generated_contents_rels" CASCADE;
   DROP TABLE "content_reviews" CASCADE;
   DROP TABLE "publish_logs" CASCADE;
   DROP TABLE "publish_jobs" CASCADE;
   DROP TABLE "generated_contents" CASCADE;
+  DROP TABLE "portal_command_receipts" CASCADE;
   DROP TYPE "public"."enum_generated_contents_platform";
   DROP TYPE "public"."enum_generated_contents_content_locale";
   DROP TYPE "public"."enum_generated_contents_content_type";
@@ -179,5 +214,6 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   DROP TYPE "public"."enum_publish_jobs_platform";
   DROP TYPE "public"."enum_publish_jobs_mode";
   DROP TYPE "public"."enum_publish_jobs_status";
-  DROP TYPE "public"."enum_publish_logs_event";`)
+  DROP TYPE "public"."enum_publish_logs_event";
+  DROP TYPE "public"."enum_portal_command_receipts_status";`)
 }

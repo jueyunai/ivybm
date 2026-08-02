@@ -16,6 +16,9 @@ import { AiUsageLogs } from './collections/AiUsageLogs'
 import { AiUsageRoutes } from './collections/AiUsageRoutes'
 import { Downloads } from './collections/Downloads'
 import { GeneratedContents } from './collections/GeneratedContents'
+import { FeishuConnections } from './collections/FeishuConnections'
+import { FeishuMappings } from './collections/FeishuMappings'
+import { FeishuOAuthStates } from './collections/FeishuOAuthStates'
 import { Conversations } from './collections/Conversations'
 import { ConversationCommands } from './collections/ConversationCommands'
 import { Handoffs } from './collections/Handoffs'
@@ -57,6 +60,15 @@ export default buildConfig({
         dashboard: {
           Component: '/admin/views/OperationsDashboard',
         },
+        feishu: {
+          Component: '/admin/views/FeishuIntegration',
+          path: '/feishu',
+        },
+        knowledgePlayground: {
+          Component: '/admin/views/KnowledgePlayground',
+          exact: true,
+          path: '/knowledge-playground',
+        },
       },
     },
     user: Users.slug,
@@ -89,6 +101,9 @@ export default buildConfig({
     PortalCommandReceipts,
     LeadSources,
     Leads,
+    FeishuConnections,
+    FeishuMappings,
+    FeishuOAuthStates,
     VisitorSessions,
     Conversations,
     Messages,
