@@ -41,7 +41,10 @@ export function KnowledgeAiDebug() {
     try {
       const response = await fetch('/api/portal/knowledge/ai-debug', {
         body: JSON.stringify({ prompt }),
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `portal-knowledge-ai:${crypto.randomUUID()}`,
+        },
         method: 'POST',
       })
       const body = (await response.json()) as {

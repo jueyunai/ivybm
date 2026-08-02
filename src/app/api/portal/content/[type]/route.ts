@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 
+import { executePortalRouteCommand } from '@/admin-portal/core/commands/portalCommandReceipts'
 import {
   createPortalContent,
   getPortalContentOptions,
@@ -36,7 +37,15 @@ export async function POST(
     const type = parseContentType((await params).type)
     const { payload, req } = await authorizeContentRequest(request)
     const input = await readContentJSON(request)
-    const result = await createPortalContent({ input, payload, req, type })
+    const result = await executePortalRouteCommand({
+      fingerprintInput: { input, type },
+      operation: (transactionReq) =>
+        createPortalContent({ input, payload, req: transactionReq, type }),
+      payload,
+      req,
+      request,
+      scope: `portal.website-content:${type}:create`,
+    })
     return contentJSON({ result }, { status: 201 })
   } catch (error) {
     return contentErrorResponse(error)

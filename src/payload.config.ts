@@ -33,6 +33,7 @@ import { Products } from './collections/Products'
 import { PromptTemplates } from './collections/PromptTemplates'
 import { Projects } from './collections/Projects'
 import { PlatformAccounts } from './collections/PlatformAccounts'
+import { PortalCommandReceipts } from './collections/PortalCommandReceipts'
 import { PublishJobs } from './collections/PublishJobs'
 import { PublishLogs } from './collections/PublishLogs'
 import { Users } from './collections/Users'
@@ -85,6 +86,7 @@ export default buildConfig({
     KnowledgeChunks,
     PromptTemplates,
     PlatformAccounts,
+    PortalCommandReceipts,
     LeadSources,
     Leads,
     VisitorSessions,

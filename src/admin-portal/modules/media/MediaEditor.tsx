@@ -95,11 +95,18 @@ export function MediaEditor({
         form.set('source', source)
         form.set('isPublic', String(isPublic))
         form.set('file', file)
-        response = await fetch('/api/portal/media', { body: form, method: 'POST' })
+        response = await fetch('/api/portal/media', {
+          body: form,
+          headers: { 'Idempotency-Key': `portal-media:${crypto.randomUUID()}` },
+          method: 'POST',
+        })
       } else if (item) {
         response = await fetch(`/api/portal/media/${item.id}`, {
           body: JSON.stringify({ alt, isPublic, source, updatedAt }),
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': `portal-media:${crypto.randomUUID()}`,
+          },
           method: 'PATCH',
         })
       } else {
@@ -126,7 +133,10 @@ export function MediaEditor({
     try {
       const response = await fetch(`/api/portal/media/${item.id}`, {
         body: JSON.stringify({ updatedAt }),
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `portal-media:${crypto.randomUUID()}`,
+        },
         method: 'DELETE',
       })
       if (!response.ok) throw new Error(await errorMessage(response, text.error))

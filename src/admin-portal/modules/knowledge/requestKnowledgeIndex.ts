@@ -37,6 +37,7 @@ export async function requestKnowledgeIndex(
   let response: Response
   try {
     response = await fetchImpl(`/api/portal/knowledge/documents/${normalizedId}/index`, {
+      headers: { 'Idempotency-Key': `portal-knowledge-index:${crypto.randomUUID()}` },
       method: 'POST',
     })
   } catch (error) {

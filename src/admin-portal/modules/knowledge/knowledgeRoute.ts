@@ -2,6 +2,7 @@ import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'p
 
 import { getRoleUser } from '@/access/roles'
 import config from '@/payload.config'
+import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 
 import { KnowledgeCommandError } from './knowledgeCommands'
 
@@ -83,6 +84,12 @@ export const knowledgeJSON = (body: unknown, init?: ResponseInit): Response =>
   })
 
 export function knowledgeErrorResponse(error: unknown): Response {
+  if (error instanceof PortalCommandReceiptError) {
+    return knowledgeJSON(
+      { error: { code: error.code, message: error.message } },
+      { status: error.status },
+    )
+  }
   if (error instanceof KnowledgeCommandError) {
     return knowledgeJSON(
       { error: { code: error.code, message: error.message } },
@@ -95,10 +102,7 @@ export function knowledgeErrorResponse(error: unknown): Response {
       {
         error: {
           code: 'knowledge-validation-failed',
-          message:
-            typeof candidate.message === 'string'
-              ? candidate.message
-              : 'Knowledge validation failed',
+          message: 'Knowledge validation failed',
         },
       },
       { status: 400 },

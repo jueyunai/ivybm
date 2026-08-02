@@ -195,7 +195,10 @@ export function KnowledgeEditor({
       const body = action === 'save' ? { ...form, action } : { action, updatedAt: form.updatedAt }
       const response = await fetch(url, {
         body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `portal-knowledge:${crypto.randomUUID()}`,
+        },
         method: mode === 'edit' ? 'PATCH' : 'POST',
       })
       if (!response.ok) throw new Error(await errorMessage(response, text.error))
@@ -233,7 +236,10 @@ export function KnowledgeEditor({
     try {
       const response = await fetch(`/api/portal/knowledge/documents/${item.id}`, {
         body: JSON.stringify({ updatedAt: form.updatedAt }),
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `portal-knowledge:${crypto.randomUUID()}`,
+        },
         method: 'DELETE',
       })
       if (!response.ok) throw new Error(await errorMessage(response, text.error))

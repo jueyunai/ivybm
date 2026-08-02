@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 
+import { executePortalRouteCommand } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { runKnowledgeAiDebug } from '@/admin-portal/modules/knowledge/knowledgeAiDebugCommand'
 import {
   authorizeKnowledgeRequest,
@@ -13,9 +14,18 @@ export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest): Promise<Response> {
   try {
-    const { payload } = await authorizeKnowledgeRequest(request, { adminOnly: true })
+    const { payload, req } = await authorizeKnowledgeRequest(request, { adminOnly: true })
+    const input = await readKnowledgeJSON(request)
     return knowledgeJSON({
-      result: await runKnowledgeAiDebug({ input: await readKnowledgeJSON(request), payload }),
+      result: await executePortalRouteCommand({
+        atomic: false,
+        fingerprintInput: input,
+        operation: () => runKnowledgeAiDebug({ input, payload }),
+        payload,
+        req,
+        request,
+        scope: 'portal.knowledge:ai-debug',
+      }),
     })
   } catch (error) {
     return knowledgeErrorResponse(error)

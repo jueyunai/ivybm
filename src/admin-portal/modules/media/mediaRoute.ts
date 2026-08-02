@@ -1,15 +1,16 @@
 import { Buffer } from 'node:buffer'
 
-import { createLocalReq, getPayload, type PayloadRequest } from 'payload'
+import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
 import { getRoleUser } from '@/access/roles'
 import { MEDIA_PDF_MAX_BYTES } from '@/collections/Media'
 import config from '@/payload.config'
+import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 
-import { MediaCommandError, type MediaCommandPayload, type PortalMediaFile } from './mediaCommands'
+import { MediaCommandError, type PortalMediaFile } from './mediaCommands'
 
 export interface AuthorizedMediaRequest {
-  payload: MediaCommandPayload
+  payload: Payload
   req: PayloadRequest
 }
 
@@ -32,7 +33,7 @@ export async function authorizeMediaRequest(request: Request): Promise<Authorize
   }
 
   return {
-    payload: payload as unknown as MediaCommandPayload,
+    payload,
     req: await createLocalReq({ user }, payload),
   }
 }
@@ -111,6 +112,12 @@ export const mediaJSON = (body: unknown, init?: ResponseInit): Response =>
   })
 
 export function mediaErrorResponse(error: unknown): Response {
+  if (error instanceof PortalCommandReceiptError) {
+    return mediaJSON(
+      { error: { code: error.code, message: error.message } },
+      { status: error.status },
+    )
+  }
   if (error instanceof MediaCommandError) {
     return mediaJSON(
       { error: { code: error.code, message: error.message } },
@@ -123,8 +130,7 @@ export function mediaErrorResponse(error: unknown): Response {
       {
         error: {
           code: 'media-validation-failed',
-          message:
-            typeof candidate.message === 'string' ? candidate.message : 'Media validation failed',
+          message: 'Media validation failed',
         },
       },
       { status: 400 },

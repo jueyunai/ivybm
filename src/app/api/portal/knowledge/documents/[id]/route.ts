@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 
+import { executePortalRouteCommand } from '@/admin-portal/core/commands/portalCommandReceipts'
 import {
   deletePortalKnowledgeDocument,
   getPortalKnowledgeEditor,
@@ -43,12 +44,17 @@ export async function PATCH(
   try {
     const id = await documentID(params)
     const { payload, req } = await authorizeKnowledgeRequest(request)
+    const input = await readKnowledgeJSON(request)
     return knowledgeJSON({
-      result: await updatePortalKnowledgeDocument({
-        id,
-        input: await readKnowledgeJSON(request),
+      result: await executePortalRouteCommand({
+        fingerprintInput: { id, input },
+        operation: (transactionReq) =>
+          updatePortalKnowledgeDocument({ id, input, payload, req: transactionReq }),
         payload,
         req,
+        request,
+        scope: `portal.knowledge:update:${id}:${String(input.action ?? 'save')}`,
+        target: { collection: 'knowledge-documents', id },
       }),
     })
   } catch (error) {
@@ -65,11 +71,20 @@ export async function DELETE(
     const { payload, req } = await authorizeKnowledgeRequest(request)
     const input = await readKnowledgeJSON(request)
     return knowledgeJSON({
-      result: await deletePortalKnowledgeDocument({
-        id,
+      result: await executePortalRouteCommand({
+        fingerprintInput: { id, input },
+        operation: (transactionReq) =>
+          deletePortalKnowledgeDocument({
+            id,
+            payload,
+            req: transactionReq,
+            updatedAt: typeof input.updatedAt === 'string' ? input.updatedAt : '',
+          }),
         payload,
         req,
-        updatedAt: typeof input.updatedAt === 'string' ? input.updatedAt : '',
+        request,
+        scope: `portal.knowledge:delete:${id}`,
+        target: { collection: 'knowledge-documents', id },
       }),
     })
   } catch (error) {

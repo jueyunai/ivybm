@@ -1,12 +1,13 @@
-import { createLocalReq, getPayload, type PayloadRequest } from 'payload'
+import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
 import { getRoleUser } from '@/access/roles'
 import config from '@/payload.config'
+import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 
-import { ContentCommandError, type ContentCommandPayload } from './contentCommands'
+import { ContentCommandError } from './contentCommands'
 
 export interface AuthorizedContentRequest {
-  payload: ContentCommandPayload
+  payload: Payload
   req: PayloadRequest
 }
 
@@ -28,7 +29,7 @@ export async function authorizeContentRequest(request: Request): Promise<Authori
     throw new ContentCommandError('content-forbidden', 'Website content access denied', 403)
   }
   const req = await createLocalReq({ user }, payload)
-  return { payload: payload as unknown as ContentCommandPayload, req }
+  return { payload, req }
 }
 
 export async function readContentJSON(request: Request): Promise<Record<string, unknown>> {
@@ -39,7 +40,8 @@ export async function readContentJSON(request: Request): Promise<Record<string, 
   if (!text.trim()) return {}
   try {
     const value = JSON.parse(text) as unknown
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid object')
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      throw new Error('invalid object')
     return value as Record<string, unknown>
   } catch {
     throw new ContentCommandError('content-invalid-json', 'A JSON object is required', 400)
@@ -64,6 +66,12 @@ export const contentJSON = (body: unknown, init?: ResponseInit): Response =>
   })
 
 export function contentErrorResponse(error: unknown): Response {
+  if (error instanceof PortalCommandReceiptError) {
+    return contentJSON(
+      { error: { code: error.code, message: error.message } },
+      { status: error.status },
+    )
+  }
   if (error instanceof ContentCommandError) {
     return contentJSON(
       { error: { code: error.code, message: error.message } },
@@ -77,7 +85,7 @@ export function contentErrorResponse(error: unknown): Response {
       {
         error: {
           code: 'content-validation-failed',
-          message: typeof candidate.message === 'string' ? candidate.message : 'Content validation failed',
+          message: 'Content validation failed',
         },
       },
       { status: 400 },
@@ -88,7 +96,9 @@ export function contentErrorResponse(error: unknown): Response {
     error: error instanceof Error ? error.name : typeof error,
   })
   return contentJSON(
-    { error: { code: 'content-command-failed', message: 'Unable to complete the content command' } },
+    {
+      error: { code: 'content-command-failed', message: 'Unable to complete the content command' },
+    },
     { status: 500 },
   )
 }

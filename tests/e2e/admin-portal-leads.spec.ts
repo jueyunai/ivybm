@@ -76,7 +76,7 @@ test('lead workspace creates, edits, and deletes an ACL-aware Portal lead', asyn
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440)
     await page.screenshot({ fullPage: true, path: testInfo.outputPath('portal-leads-desktop.png') })
   } finally {
-    if (leadID && leadUpdatedAt) await page.request.delete(`/api/portal/leads/${leadID}`, { data: { updatedAt: leadUpdatedAt }, timeout: 5_000 }).catch(() => undefined)
+    if (leadID && leadUpdatedAt) await page.request.delete(`/api/portal/leads/${leadID}`, { data: { updatedAt: leadUpdatedAt }, headers: { 'Idempotency-Key': `portal-e2e-leads:${crypto.randomUUID()}` }, timeout: 5_000 }).catch(() => undefined)
     await page.request.delete(`/api/lead-sources/${sourceID}`, { timeout: 5_000 }).catch(() => undefined)
   }
 })

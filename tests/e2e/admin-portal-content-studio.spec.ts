@@ -154,7 +154,10 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
 
     await page.getByRole('button', { name: '创建内部排期' }).click()
     const schedule = page.locator('.portal-content-studio__form').first()
-    await schedule.getByLabel('计划时间').fill('2026-08-01T10:30')
+    const futureSchedule = new Date(Date.now() + 24 * 60 * 60 * 1_000)
+      .toISOString()
+      .slice(0, 16)
+    await schedule.getByLabel('计划时间').fill(futureSchedule)
     await schedule.getByRole('button', { name: '创建内部排期' }).click()
     await expect(page.getByText('已创建内部排期')).toBeVisible()
     expect(hydrationErrors).toEqual([])

@@ -281,7 +281,10 @@ export function ContentEditor({
         })
         .catch((error: unknown) => {
           if (active && (error as { name?: string }).name !== 'AbortError') {
-            setNotice({ tone: 'danger', value: error instanceof Error ? error.message : text.error })
+            setNotice({
+              tone: 'danger',
+              value: error instanceof Error ? error.message : text.error,
+            })
           }
         })
         .finally(() => {
@@ -315,7 +318,10 @@ export function ContentEditor({
           : `/api/portal/content/${type}`
       const response = await fetch(url, {
         body: JSON.stringify(requestBody(action)),
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `portal-content:${crypto.randomUUID()}`,
+        },
         method: mode === 'edit' ? 'PATCH' : 'POST',
       })
       if (!response.ok) throw new Error(await errorMessage(response, text.error))
@@ -338,7 +344,10 @@ export function ContentEditor({
     try {
       const response = await fetch(`/api/portal/content/${type}/${item.id}`, {
         body: JSON.stringify({ locale: form.locale, updatedAt: form.updatedAt }),
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `portal-content:${crypto.randomUUID()}`,
+        },
         method: 'DELETE',
       })
       if (!response.ok) throw new Error(await errorMessage(response, text.error))

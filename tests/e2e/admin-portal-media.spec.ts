@@ -140,6 +140,7 @@ test('media editor completes upload, metadata update, and safe delete in the Por
     if (created) {
       await page.request.delete(`/api/portal/media/${created.id}`, {
         data: { updatedAt: created.updatedAt },
+        headers: { 'Idempotency-Key': `portal-e2e-media:${crypto.randomUUID()}` },
       })
     }
   }

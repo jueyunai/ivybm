@@ -135,6 +135,7 @@ test('website content editor completes create, update, and safe delete from the 
         if (body.record?.updatedAt) {
           await page.request.delete(`/api/portal/content/product-categories/${createdId}`, {
             data: { updatedAt: body.record.updatedAt },
+            headers: { 'Idempotency-Key': `portal-e2e-content:${crypto.randomUUID()}` },
           })
         }
       }

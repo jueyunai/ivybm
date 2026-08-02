@@ -16,6 +16,7 @@ import * as migration_20260725_044748_task13_platform_accounts from './20260725_
 import * as migration_20260725_051208_task13_tiktok_channel from './20260725_051208_task13_tiktok_channel'
 import * as migration_20260730_054109_task12_content_studio from './20260730_054109_task12_content_studio'
 import * as migration_20260730_064020 from './20260730_064020'
+import * as migration_20260802_000938_portal_command_receipts from './20260802_000938_portal_command_receipts'
 
 export const migrations = [
   {
@@ -107,5 +108,10 @@ export const migrations = [
     up: migration_20260730_064020.up,
     down: migration_20260730_064020.down,
     name: '20260730_064020',
+  },
+  {
+    up: migration_20260802_000938_portal_command_receipts.up,
+    down: migration_20260802_000938_portal_command_receipts.down,
+    name: '20260802_000938_portal_command_receipts',
   },
 ]

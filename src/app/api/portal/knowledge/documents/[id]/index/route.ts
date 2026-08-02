@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 
+import { executePortalRouteCommand } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { KnowledgeCommandError } from '@/admin-portal/modules/knowledge/knowledgeCommands'
 import {
   authorizeKnowledgeRequest,
@@ -27,21 +28,6 @@ export async function POST(
   try {
     const { payload, req, role } = await authorizeKnowledgeRequest(request)
     const documentId = requireKnowledgeID((await params).id)
-    const document = await payload.findByID({
-      collection: 'knowledge-documents',
-      depth: 0,
-      id: documentId,
-      overrideAccess: false,
-      req,
-    })
-    if (document.reviewStatus !== 'reviewed') {
-      throw new KnowledgeCommandError(
-        'knowledge-not-reviewed',
-        'Only reviewed knowledge documents can be indexed',
-        409,
-      )
-    }
-
     const actorID = Number(req.user?.id)
     if (!Number.isSafeInteger(actorID) || actorID < 1) {
       throw new KnowledgeCommandError('knowledge-unauthenticated', 'Authentication required', 401)
@@ -59,11 +45,36 @@ export async function POST(
       )
     }
 
-    const result = await enqueueKnowledgeIndexJob({
-      documentId,
-      manualRetryActor: { id: actorID, role },
+    const result = await executePortalRouteCommand({
+      atomic: false,
+      fingerprintInput: { documentId },
+      operation: async (commandReq) => {
+        const document = await payload.findByID({
+          collection: 'knowledge-documents',
+          depth: 0,
+          id: documentId,
+          overrideAccess: false,
+          req: commandReq,
+        })
+        if (document.reviewStatus !== 'reviewed') {
+          throw new KnowledgeCommandError(
+            'knowledge-not-reviewed',
+            'Only reviewed knowledge documents can be indexed',
+            409,
+          )
+        }
+        return enqueueKnowledgeIndexJob({
+          documentId,
+          manualRetryActor: { id: actorID, role },
+          payload,
+          requestedBy: actorID,
+        })
+      },
       payload,
-      requestedBy: actorID,
+      req,
+      request,
+      scope: `portal.knowledge:index:${documentId}`,
+      target: { collection: 'knowledge-documents', id: documentId },
     })
     return knowledgeJSON(
       { jobId: result.job.id, state: result.state, status: result.job.status },
@@ -79,7 +90,12 @@ export async function POST(
     const candidate = error as { status?: unknown }
     if (candidate?.status === 404) {
       return knowledgeJSON(
-        { error: { code: 'knowledge-document-not-found', message: 'Knowledge document was not found' } },
+        {
+          error: {
+            code: 'knowledge-document-not-found',
+            message: 'Knowledge document was not found',
+          },
+        },
         { status: 404 },
       )
     }

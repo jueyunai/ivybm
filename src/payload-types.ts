@@ -88,6 +88,7 @@ export interface Config {
     'knowledge-chunks': KnowledgeChunk;
     'prompt-templates': PromptTemplate;
     'platform-accounts': PlatformAccount;
+    'portal-command-receipts': PortalCommandReceipt;
     'lead-sources': LeadSource;
     leads: Lead;
     'visitor-sessions': VisitorSession;
@@ -124,6 +125,7 @@ export interface Config {
     'knowledge-chunks': KnowledgeChunksSelect<false> | KnowledgeChunksSelect<true>;
     'prompt-templates': PromptTemplatesSelect<false> | PromptTemplatesSelect<true>;
     'platform-accounts': PlatformAccountsSelect<false> | PlatformAccountsSelect<true>;
+    'portal-command-receipts': PortalCommandReceiptsSelect<false> | PortalCommandReceiptsSelect<true>;
     'lead-sources': LeadSourcesSelect<false> | LeadSourcesSelect<true>;
     leads: LeadsSelect<false> | LeadsSelect<true>;
     'visitor-sessions': VisitorSessionsSelect<false> | VisitorSessionsSelect<true>;
@@ -881,6 +883,32 @@ export interface PromptTemplate {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "portal-command-receipts".
+ */
+export interface PortalCommandReceipt {
+  id: number;
+  scope: string;
+  idempotencyKey: string;
+  fingerprint: string;
+  actor: number | User;
+  ownerToken: string;
+  leaseExpiresAt: string;
+  status: 'processing' | 'completed' | 'failed';
+  result?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  errorCode?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "lead-sources".
  */
 export interface LeadSource {
@@ -1184,6 +1212,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'platform-accounts';
         value: number | PlatformAccount;
+      } | null)
+    | ({
+        relationTo: 'portal-command-receipts';
+        value: number | PortalCommandReceipt;
       } | null)
     | ({
         relationTo: 'lead-sources';
@@ -1761,6 +1793,23 @@ export interface PlatformAccountsSelect<T extends boolean = true> {
         publishing?: T;
       };
   notes?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "portal-command-receipts_select".
+ */
+export interface PortalCommandReceiptsSelect<T extends boolean = true> {
+  scope?: T;
+  idempotencyKey?: T;
+  fingerprint?: T;
+  actor?: T;
+  ownerToken?: T;
+  leaseExpiresAt?: T;
+  status?: T;
+  result?: T;
+  errorCode?: T;
   updatedAt?: T;
   createdAt?: T;
 }

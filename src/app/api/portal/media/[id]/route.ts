@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 
+import { executePortalRouteCommand } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { deletePortalMedia, updatePortalMedia } from '@/admin-portal/modules/media/mediaCommands'
 import {
   authorizeMediaRequest,
@@ -21,8 +22,18 @@ export async function PATCH(
   try {
     const id = await mediaID(params)
     const { payload, req } = await authorizeMediaRequest(request)
+    const input = await readMediaJSON(request)
     return mediaJSON({
-      result: await updatePortalMedia({ id, input: await readMediaJSON(request), payload, req }),
+      result: await executePortalRouteCommand({
+        fingerprintInput: { id, input },
+        operation: (transactionReq) =>
+          updatePortalMedia({ id, input, payload, req: transactionReq }),
+        payload,
+        req,
+        request,
+        scope: `portal.media:update:${id}`,
+        target: { collection: 'media', id },
+      }),
     })
   } catch (error) {
     return mediaErrorResponse(error)
@@ -38,11 +49,20 @@ export async function DELETE(
     const { payload, req } = await authorizeMediaRequest(request)
     const input = await readMediaJSON(request)
     return mediaJSON({
-      result: await deletePortalMedia({
-        id,
+      result: await executePortalRouteCommand({
+        fingerprintInput: { id, input },
+        operation: (transactionReq) =>
+          deletePortalMedia({
+            id,
+            payload,
+            req: transactionReq,
+            updatedAt: typeof input.updatedAt === 'string' ? input.updatedAt : '',
+          }),
         payload,
         req,
-        updatedAt: typeof input.updatedAt === 'string' ? input.updatedAt : '',
+        request,
+        scope: `portal.media:delete:${id}`,
+        target: { collection: 'media', id },
       }),
     })
   } catch (error) {

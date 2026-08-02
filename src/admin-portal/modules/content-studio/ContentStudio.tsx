@@ -256,7 +256,13 @@ const request = async (
   const response = await fetch(url, {
     body: JSON.stringify(body),
     credentials: 'same-origin',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'Idempotency-Key':
+        typeof body.idempotencyKey === 'string'
+          ? body.idempotencyKey
+          : `portal-content-studio:${crypto.randomUUID()}`,
+    },
     method,
   })
   const data = (await response.json()) as { error?: { message?: string } }

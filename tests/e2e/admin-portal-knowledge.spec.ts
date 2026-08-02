@@ -253,6 +253,7 @@ test('knowledge editor completes draft, review, AI debug, and delete in the Port
     if (created) {
       await page.request.delete(`/api/portal/knowledge/documents/${created.id}`, {
         data: { updatedAt: created.updatedAt },
+        headers: { 'Idempotency-Key': `portal-e2e-knowledge:${crypto.randomUUID()}` },
       })
     }
   }

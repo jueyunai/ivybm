@@ -2,6 +2,7 @@ import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'p
 
 import { getRoleUser, type UserRole } from '@/access/roles'
 import config from '@/payload.config'
+import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 
 import { LeadCommandError } from './leadCommands'
 
@@ -29,7 +30,8 @@ export const authorizeLeadRequest = async (request: Request): Promise<Authorized
 
 export const readLeadJSON = async (request: Request): Promise<Record<string, unknown>> => {
   const text = await request.text()
-  if (text.length > 128_000) throw new LeadCommandError('leads-request-too-large', 'Request is too large', 413)
+  if (text.length > 128_000)
+    throw new LeadCommandError('leads-request-too-large', 'Request is too large', 413)
   if (!text.trim()) return {}
   try {
     const value = JSON.parse(text) as unknown
@@ -52,13 +54,30 @@ export const leadJSON = (body: unknown, init: ResponseInit = {}): Response =>
   Response.json(body, { ...init, headers: { 'Cache-Control': 'no-store', ...init.headers } })
 
 export const leadErrorResponse = (error: unknown): Response => {
+  if (error instanceof PortalCommandReceiptError) {
+    return leadJSON(
+      { error: { code: error.code, message: error.message } },
+      { status: error.status },
+    )
+  }
   if (error instanceof LeadCommandError) {
-    return leadJSON({ error: { code: error.code, message: error.message } }, { status: error.status })
+    return leadJSON(
+      { error: { code: error.code, message: error.message } },
+      { status: error.status },
+    )
   }
   const candidate = error as { message?: unknown; name?: unknown; status?: unknown }
   if (candidate?.name === 'ValidationError' || candidate?.status === 400) {
-    return leadJSON({ error: { code: 'leads-validation-failed', message: typeof candidate.message === 'string' ? candidate.message : 'Lead validation failed' } }, { status: 400 })
+    return leadJSON(
+      { error: { code: 'leads-validation-failed', message: 'Lead validation failed' } },
+      { status: 400 },
+    )
   }
-  console.error('portal_lead_command_failed', { error: error instanceof Error ? error.name : typeof error })
-  return leadJSON({ error: { code: 'leads-command-failed', message: 'Unable to complete the lead command' } }, { status: 500 })
+  console.error('portal_lead_command_failed', {
+    error: error instanceof Error ? error.name : typeof error,
+  })
+  return leadJSON(
+    { error: { code: 'leads-command-failed', message: 'Unable to complete the lead command' } },
+    { status: 500 },
+  )
 }
