@@ -86,6 +86,9 @@ export interface Config {
     'platform-accounts': PlatformAccount;
     'lead-sources': LeadSource;
     leads: Lead;
+    'feishu-connections': FeishuConnection;
+    'feishu-mappings': FeishuMapping;
+    'feishu-oauth-states': FeishuOauthState;
     'visitor-sessions': VisitorSession;
     conversations: Conversation;
     messages: Message;
@@ -118,6 +121,9 @@ export interface Config {
     'platform-accounts': PlatformAccountsSelect<false> | PlatformAccountsSelect<true>;
     'lead-sources': LeadSourcesSelect<false> | LeadSourcesSelect<true>;
     leads: LeadsSelect<false> | LeadsSelect<true>;
+    'feishu-connections': FeishuConnectionsSelect<false> | FeishuConnectionsSelect<true>;
+    'feishu-mappings': FeishuMappingsSelect<false> | FeishuMappingsSelect<true>;
+    'feishu-oauth-states': FeishuOauthStatesSelect<false> | FeishuOauthStatesSelect<true>;
     'visitor-sessions': VisitorSessionsSelect<false> | VisitorSessionsSelect<true>;
     conversations: ConversationsSelect<false> | ConversationsSelect<true>;
     messages: MessagesSelect<false> | MessagesSelect<true>;
@@ -816,6 +822,10 @@ export interface Lead {
   status: 'new' | 'contacted' | 'qualified' | 'disqualified';
   intentLevel: 'unscored' | 'a' | 'b' | 'c';
   assignedTo?: (number | null) | User;
+  /**
+   * Next sales follow-up deadline. Due reminders are sent once per timestamp.
+   */
+  nextFollowUpAt?: string | null;
   name: string;
   company?: string | null;
   country: string;
@@ -831,6 +841,124 @@ export interface Lead {
     term?: string | null;
     content?: string | null;
   };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "feishu-connections".
+ */
+export interface FeishuConnection {
+  id: number;
+  name: string;
+  authMode: 'store_oauth';
+  tenantKey: string;
+  installerOpenId: string;
+  status: 'provisioning' | 'connected' | 'reconnect_required' | 'disconnected' | 'error';
+  scopes?:
+    | {
+        scope: string;
+        id?: string | null;
+      }[]
+    | null;
+  accessTokenEncrypted?: string | null;
+  refreshTokenEncrypted?: string | null;
+  accessTokenExpiresAt?: string | null;
+  refreshTokenExpiresAt?: string | null;
+  appToken?: string | null;
+  tableId?: string | null;
+  baseURL?: string | null;
+  lastConnectedAt?: string | null;
+  lastRefreshedAt?: string | null;
+  lastErrorCode?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "feishu-mappings".
+ */
+export interface FeishuMapping {
+  id: number;
+  name: string;
+  /**
+   * Stable internal mapping key, for example primary-leads.
+   */
+  key: string;
+  status: 'draft' | 'active' | 'disabled';
+  /**
+   * OAuth connection used by this mapping. Leave empty for manual App ID/Secret fallback.
+   */
+  connection?: (number | null) | FeishuConnection;
+  /**
+   * Bitable app token. This is an identifier, not the Feishu app secret.
+   */
+  appToken?: string | null;
+  /**
+   * Bitable table identifier. Draft mappings may leave this empty.
+   */
+  tableId?: string | null;
+  /**
+   * Maps normalized lead fields to customer-defined Bitable field names.
+   */
+  fieldMappings?:
+    | {
+        localField:
+          | 'localLeadId'
+          | 'customerName'
+          | 'country'
+          | 'source'
+          | 'productNeed'
+          | 'projectStage'
+          | 'intentLevel'
+          | 'owner'
+          | 'email'
+          | 'phone'
+          | 'nextFollowUpAt'
+          | 'sourceURL'
+          | 'originalInquiry';
+        targetField: string;
+        required?: boolean | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Maps Payload sales users to Feishu open_id values for direct notifications.
+   */
+  memberMappings?:
+    | {
+        user: number | User;
+        openId: string;
+        enabled?: boolean | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Recipients for high-intent and handoff notifications.
+   */
+  notificationRecipients?:
+    | {
+        label?: string | null;
+        receiveIdType: 'open_id' | 'chat_id';
+        receiveId: string;
+        enabled?: boolean | null;
+        id?: string | null;
+      }[]
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "feishu-oauth-states".
+ */
+export interface FeishuOauthState {
+  id: number;
+  stateHash: string;
+  verifierEncrypted: string;
+  expiresAt: string;
+  usedAt?: string | null;
+  requestedBy: number | User;
   updatedAt: string;
   createdAt: string;
 }
@@ -1083,6 +1211,18 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'leads';
         value: number | Lead;
+      } | null)
+    | ({
+        relationTo: 'feishu-connections';
+        value: number | FeishuConnection;
+      } | null)
+    | ({
+        relationTo: 'feishu-mappings';
+        value: number | FeishuMapping;
+      } | null)
+    | ({
+        relationTo: 'feishu-oauth-states';
+        value: number | FeishuOauthState;
       } | null)
     | ({
         relationTo: 'visitor-sessions';
@@ -1598,6 +1738,7 @@ export interface LeadsSelect<T extends boolean = true> {
   status?: T;
   intentLevel?: T;
   assignedTo?: T;
+  nextFollowUpAt?: T;
   name?: T;
   company?: T;
   country?: T;
@@ -1615,6 +1756,87 @@ export interface LeadsSelect<T extends boolean = true> {
         term?: T;
         content?: T;
       };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "feishu-connections_select".
+ */
+export interface FeishuConnectionsSelect<T extends boolean = true> {
+  name?: T;
+  authMode?: T;
+  tenantKey?: T;
+  installerOpenId?: T;
+  status?: T;
+  scopes?:
+    | T
+    | {
+        scope?: T;
+        id?: T;
+      };
+  accessTokenEncrypted?: T;
+  refreshTokenEncrypted?: T;
+  accessTokenExpiresAt?: T;
+  refreshTokenExpiresAt?: T;
+  appToken?: T;
+  tableId?: T;
+  baseURL?: T;
+  lastConnectedAt?: T;
+  lastRefreshedAt?: T;
+  lastErrorCode?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "feishu-mappings_select".
+ */
+export interface FeishuMappingsSelect<T extends boolean = true> {
+  name?: T;
+  key?: T;
+  status?: T;
+  connection?: T;
+  appToken?: T;
+  tableId?: T;
+  fieldMappings?:
+    | T
+    | {
+        localField?: T;
+        targetField?: T;
+        required?: T;
+        id?: T;
+      };
+  memberMappings?:
+    | T
+    | {
+        user?: T;
+        openId?: T;
+        enabled?: T;
+        id?: T;
+      };
+  notificationRecipients?:
+    | T
+    | {
+        label?: T;
+        receiveIdType?: T;
+        receiveId?: T;
+        enabled?: T;
+        id?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "feishu-oauth-states_select".
+ */
+export interface FeishuOauthStatesSelect<T extends boolean = true> {
+  stateHash?: T;
+  verifierEncrypted?: T;
+  expiresAt?: T;
+  usedAt?: T;
+  requestedBy?: T;
   updatedAt?: T;
   createdAt?: T;
 }

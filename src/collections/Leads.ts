@@ -9,6 +9,7 @@ import {
   leadsRead,
   leadsUpdate,
 } from '../access/leads'
+import { enqueueFeishuLeadChange } from '../modules/feishu/jobs'
 
 const immutableAfterCreate = () => false
 
@@ -22,7 +23,15 @@ export const Leads: CollectionConfig = {
     update: leadsUpdate,
   },
   admin: {
-    defaultColumns: ['name', 'company', 'country', 'status', 'intentLevel', 'assignedTo', 'createdAt'],
+    defaultColumns: [
+      'name',
+      'company',
+      'country',
+      'status',
+      'intentLevel',
+      'assignedTo',
+      'createdAt',
+    ],
     group: 'Lead Management',
     useAsTitle: 'email',
   },
@@ -110,6 +119,14 @@ export const Leads: CollectionConfig = {
       },
     },
     {
+      name: 'nextFollowUpAt',
+      type: 'date',
+      admin: {
+        description: 'Next sales follow-up deadline. Due reminders are sent once per timestamp.',
+      },
+      index: true,
+    },
+    {
       name: 'name',
       type: 'text',
       index: true,
@@ -173,4 +190,7 @@ export const Leads: CollectionConfig = {
       ],
     },
   ],
+  hooks: {
+    afterChange: [enqueueFeishuLeadChange],
+  },
 }

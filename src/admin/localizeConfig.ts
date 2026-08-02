@@ -31,6 +31,14 @@ const COLLECTION_LABELS: Record<string, { plural: AdminText; singular: AdminText
     singular: text('会话指令', 'Conversation Command'),
   },
   conversations: { plural: text('会话', 'Conversations'), singular: text('会话', 'Conversation') },
+  'feishu-connections': {
+    plural: text('飞书连接', 'Feishu Connections'),
+    singular: text('飞书连接', 'Feishu Connection'),
+  },
+  'feishu-mappings': {
+    plural: text('飞书字段映射', 'Feishu Field Mappings'),
+    singular: text('飞书字段映射', 'Feishu Field Mapping'),
+  },
   downloads: { plural: text('下载资料', 'Downloads'), singular: text('下载资料', 'Download') },
   handoffs: { plural: text('人工接管', 'Handoffs'), singular: text('人工接管', 'Handoff') },
   jobs: { plural: text('任务', 'Jobs'), singular: text('任务', 'Job') },

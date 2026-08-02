@@ -32,6 +32,11 @@ const requiredEnvironment = {
   APP_PORT: '3000',
   APP_VERSION: 'operation-test',
   DATABASE_URL: 'postgres://operation:operation@db:5432/ivybm',
+  FEISHU_APP_ID: 'cli-operation-test',
+  FEISHU_APP_SECRET: 'operation-test-feishu-secret',
+  FEISHU_CREDENTIAL_ENCRYPTION_KEY: 'd'.repeat(64),
+  FEISHU_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/integrations/feishu/callback',
+  FEISHU_RELAY_INTERVAL_MS: '45000',
   IMAGE_TAG: imageTag,
   META_WEBHOOK_ALLOWED_ACCOUNT_IDS: '1234567890,9876543210',
   META_WEBHOOK_APP_SECRET: 'operation-test-meta-app-secret',
@@ -84,6 +89,11 @@ const getLocalComposeConfig = (): ComposeConfig => {
         AI_PROVIDER_API_KEY: 'local-provider-key',
         AI_PROVIDER_BASE_URL: 'https://local-provider.example.invalid/v1',
         AI_TEXT_MODEL: 'local-text-model',
+        FEISHU_APP_ID: 'cli-local-test',
+        FEISHU_APP_SECRET: 'local-feishu-secret',
+        FEISHU_CREDENTIAL_ENCRYPTION_KEY: 'a'.repeat(64),
+        FEISHU_OAUTH_REDIRECT_URI: 'http://localhost:3000/api/integrations/feishu/callback',
+        FEISHU_RELAY_INTERVAL_MS: '60000',
         PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'f'.repeat(64),
       },
     },
@@ -217,6 +227,26 @@ describe('production Compose configuration', () => {
       )
     }
   })
+
+  it('passes Feishu OAuth credentials to app and worker but not migration processes', () => {
+    for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
+      const expected = {
+        FEISHU_APP_ID: 'cli-operation-test',
+        FEISHU_APP_SECRET: 'operation-test-feishu-secret',
+        FEISHU_CREDENTIAL_ENCRYPTION_KEY: 'd'.repeat(64),
+        FEISHU_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/integrations/feishu/callback',
+      }
+      expect(config.services.app.environment).toMatchObject(expected)
+      expect(config.services.worker.environment).toMatchObject({
+        ...expected,
+        FEISHU_RELAY_INTERVAL_MS: '45000',
+      })
+      expect(config.services.migrate.environment).not.toHaveProperty('FEISHU_APP_SECRET')
+      expect(config.services.migrate.environment).not.toHaveProperty(
+        'FEISHU_CREDENTIAL_ENCRYPTION_KEY',
+      )
+    }
+  })
 })
 
 describe('local Compose worker configuration', () => {
@@ -230,6 +260,11 @@ describe('local Compose worker configuration', () => {
       AI_PROVIDER_API_KEY: 'local-provider-key',
       AI_PROVIDER_BASE_URL: 'https://local-provider.example.invalid/v1',
       AI_TEXT_MODEL: 'local-text-model',
+      FEISHU_APP_ID: 'cli-local-test',
+      FEISHU_APP_SECRET: 'local-feishu-secret',
+      FEISHU_CREDENTIAL_ENCRYPTION_KEY: 'a'.repeat(64),
+      FEISHU_OAUTH_REDIRECT_URI: 'http://localhost:3000/api/integrations/feishu/callback',
+      FEISHU_RELAY_INTERVAL_MS: '60000',
       PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'f'.repeat(64),
     })
   })

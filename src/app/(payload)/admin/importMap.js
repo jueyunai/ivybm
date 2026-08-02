@@ -26,6 +26,7 @@ import { default as default_4696b4ba63b9202d3bf6f5aa25717111 } from '../../../ad
 import { default as default_41b46242f1c6803b112f706342fd9b41 } from '../../../admin/components/OperationsNav'
 import { default as default_360b490f12137ea3a38a08695fc2faab } from '../../../admin/components/AdminAccountMenu'
 import { default as default_3fa7a7e39163aa3e1bba593eb53d72b8 } from '../../../admin/views/OperationsDashboard'
+import { default as default_ec977bcafdf7cc92fcc735686bd8a6f6 } from '../../../admin/views/FeishuIntegration'
 import { default as default_02c010e661505c3185bf62d93da1590d } from '../../../admin/views/KnowledgePlayground'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
@@ -59,6 +60,7 @@ export const importMap = {
   "/admin/components/OperationsNav#default": default_41b46242f1c6803b112f706342fd9b41,
   "/admin/components/AdminAccountMenu#default": default_360b490f12137ea3a38a08695fc2faab,
   "/admin/views/OperationsDashboard#default": default_3fa7a7e39163aa3e1bba593eb53d72b8,
+  "/admin/views/FeishuIntegration#default": default_ec977bcafdf7cc92fcc735686bd8a6f6,
   "/admin/views/KnowledgePlayground#default": default_02c010e661505c3185bf62d93da1590d,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
 }
