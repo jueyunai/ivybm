@@ -154,6 +154,10 @@ const ensureMediaFile = async (
     (await findMediaByFilename(payload, filename)) ?? (await findMediaBySource(payload, source))
 
   if (existing) {
+    const storedFilename = typeof existing.filename === 'string' ? existing.filename : filename
+    const storedFile = path.resolve(process.cwd(), 'media', storedFilename)
+    const shouldRestoreFile = !fs.existsSync(storedFile)
+    const data = shouldRestoreFile ? fs.readFileSync(filepath) : null
     const media = await payload.update({
       collection: 'media',
       context: seedContext,
@@ -163,6 +167,17 @@ const ensureMediaFile = async (
         source,
       },
       id: existing.id,
+      ...(data
+        ? {
+            file: {
+              data,
+              mimetype: 'image/jpeg',
+              name: filename,
+              size: data.length,
+            },
+            overwriteExistingFiles: true,
+          }
+        : {}),
       overrideAccess: true,
     })
 
@@ -604,8 +619,7 @@ export const seedContent = async (payload: Payload): Promise<void> => {
         seo: {
           description:
             'ألواح ألمنيوم ثلاثية الأبعاد مخصصة للواجهات الحرة والأشكال المعقدة والأسطح الانسيابية.',
-          keywords:
-            'ألواح ألمنيوم مزدوجة الانحناء، ألواح واجهات ثلاثية الأبعاد، تصنيع واجهات مخصص',
+          keywords: 'ألواح ألمنيوم مزدوجة الانحناء، ألواح واجهات ثلاثية الأبعاد، تصنيع واجهات مخصص',
           title: 'ألواح ألمنيوم مزدوجة الانحناء | IVYBM',
         },
         shortDescription: 'للواجهات المميزة والأسطح الانسيابية والأشكال الهندسية المعقدة.',
@@ -679,8 +693,7 @@ export const seedContent = async (payload: Payload): Promise<void> => {
         seo: {
           description:
             'Custom single-curved aluminum panels for facades, canopies, ceilings, and radius-based architectural features.',
-          keywords:
-            'single curved aluminum panel, radius aluminum cladding, curved facade panel',
+          keywords: 'single curved aluminum panel, radius aluminum cladding, curved facade panel',
           title: 'Single-Curved Aluminum Panel Manufacturer | IVYBM',
         },
         shortDescription: 'For airport roofs, canopies, column wraps, and arc-shaped facade zones.',
@@ -706,8 +719,7 @@ export const seedContent = async (payload: Payload): Promise<void> => {
     {
       arabic: {
         seo: {
-          description:
-            'ألواح ألمنيوم مصمتة مخصصة للواجهات والكسوة الداخلية والمشاريع المعمارية.',
+          description: 'ألواح ألمنيوم مصمتة مخصصة للواجهات والكسوة الداخلية والمشاريع المعمارية.',
           keywords: 'ألواح ألمنيوم مصمتة، ألواح ألمنيوم للواجهات، تصنيع ألواح مخصص',
           title: 'ألواح ألمنيوم مصمتة | IVYBM',
         },
