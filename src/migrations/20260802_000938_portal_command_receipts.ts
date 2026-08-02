@@ -33,11 +33,10 @@ export async function up({ db, payload: _payload, req: _req }: MigrateUpArgs): P
 
 export async function down({ db, payload: _payload, req: _req }: MigrateDownArgs): Promise<void> {
   await db.execute(sql`
-   ALTER TABLE "portal_command_receipts" DISABLE ROW LEVEL SECURITY;
-  DROP TABLE "portal_command_receipts" CASCADE;
-  ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_portal_command_receipts_fk";
-
+   ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_portal_command_receipts_fk";
   DROP INDEX "payload_locked_documents_rels_portal_command_receipts_id_idx";
   ALTER TABLE "payload_locked_documents_rels" DROP COLUMN "portal_command_receipts_id";
+  ALTER TABLE "portal_command_receipts" DISABLE ROW LEVEL SECURITY;
+  DROP TABLE "portal_command_receipts" CASCADE;
   DROP TYPE "public"."enum_portal_command_receipts_status";`)
 }
