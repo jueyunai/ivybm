@@ -4,6 +4,7 @@ import { getPayload } from 'payload'
 
 import config from '../payload.config'
 import { seedContent } from './content'
+import { seedKnowledgeDemo } from './knowledgeDemo'
 
 const requireEnvironment = (name: string): string => {
   const value = process.env[name]
@@ -58,6 +59,9 @@ const seed = async (): Promise<void> => {
     }
 
     await seedContent(payload)
+    if (process.env.SEED_KNOWLEDGE_DEMO === 'true') {
+      await seedKnowledgeDemo(payload)
+    }
   } finally {
     await payload.destroy()
   }

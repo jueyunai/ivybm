@@ -52,6 +52,11 @@ export default buildConfig({
         dashboard: {
           Component: '/admin/views/OperationsDashboard',
         },
+        knowledgePlayground: {
+          Component: '/admin/views/KnowledgePlayground',
+          exact: true,
+          path: '/knowledge-playground',
+        },
       },
     },
     user: Users.slug,
