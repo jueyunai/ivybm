@@ -110,4 +110,12 @@ describe('CI workflow policy', () => {
     expect(e2eStep).toContain('pnpm test:e2e -- "${specs[@]}"')
     expect(e2eStep).toContain('if [[ "$FULL_FALLBACK" == \'true\' ]]')
   })
+
+  it('keeps visual baselines isolated by runner platform', () => {
+    const playwrightConfig = readFileSync(resolve(projectRoot, 'playwright.config.ts'), 'utf8')
+
+    expect(playwrightConfig).toContain(
+      "snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{platform}/{arg}-{projectName}{ext}'",
+    )
+  })
 })
