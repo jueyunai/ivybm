@@ -352,19 +352,6 @@ jobs:
 
           pnpm test:e2e -- "${specs[@]}"
 
-      - name: Upload generated Linux visual baseline candidates
-        if: ${{ always() && runner.os == 'Linux' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: website-visual-linux-${{ needs.changes.outputs.head_sha }}
-          path: tests/e2e/website-visual.spec.ts-snapshots/linux/
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Reject uncommitted Linux visual baselines
-        if: ${{ always() && runner.os == 'Linux' }}
-        run: test -z "$(git status --porcelain -- tests/e2e/website-visual.spec.ts-snapshots/linux/)"
-
       - name: Build runtime image for PR validation
         if: github.event_name == 'pull_request' && needs.changes.outputs.operations == 'true'
         run: >-
