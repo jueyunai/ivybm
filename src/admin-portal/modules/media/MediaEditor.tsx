@@ -92,6 +92,7 @@ export function MediaEditor({
     setNotice(null)
     try {
       let response: Response
+      let createKey: string | null = null
       if (mode === 'create' && file) {
         const form = new FormData()
         form.set('alt', alt)
@@ -110,13 +111,12 @@ export function MediaEditor({
           isPublic,
           source,
         })
-        const createKey = createCommand.key(fingerprint)
+        createKey = createCommand.key(fingerprint)
         response = await fetch('/api/portal/media', {
           body: form,
           headers: { 'Idempotency-Key': createKey },
           method: 'POST',
         })
-        createCommand.receivedResponse(createKey)
       } else if (item) {
         response = await fetch(`/api/portal/media/${item.id}`, {
           body: JSON.stringify({ alt, isPublic, source, updatedAt }),
@@ -130,8 +130,14 @@ export function MediaEditor({
         throw new Error(text.error)
       }
 
-      if (!response.ok) throw new Error(await errorMessage(response, text.error))
-      const body = (await response.json()) as { result?: { updatedAt?: string } }
+      const body = (await response.json()) as {
+        error?: { message?: unknown }
+        result?: { updatedAt?: string }
+      }
+      if (createKey) createCommand.receivedResponse(createKey)
+      if (!response.ok) {
+        throw new Error(typeof body.error?.message === 'string' ? body.error.message : text.error)
+      }
       if (typeof body.result?.updatedAt === 'string') setUpdatedAt(body.result.updatedAt)
       router.refresh()
       if (mode === 'create') onClose()

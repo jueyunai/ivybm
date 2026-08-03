@@ -207,9 +207,16 @@ export function KnowledgeEditor({
         },
         method: mode === 'edit' ? 'PATCH' : 'POST',
       })
+      const payload = (await response.json()) as {
+        error?: { message?: unknown }
+        result?: { updatedAt?: string }
+      }
       if (createKey) createCommand.receivedResponse(createKey)
-      if (!response.ok) throw new Error(await errorMessage(response, text.error))
-      const payload = (await response.json()) as { result?: { updatedAt?: string } }
+      if (!response.ok) {
+        throw new Error(
+          typeof payload.error?.message === 'string' ? payload.error.message : text.error,
+        )
+      }
       if (typeof payload.result?.updatedAt === 'string')
         update('updatedAt', payload.result.updatedAt)
       router.refresh()

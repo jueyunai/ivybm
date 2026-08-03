@@ -111,8 +111,8 @@ function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { 
       const createKey = mode === 'create' ? createCommand.key(JSON.stringify(commandInput)) : null
       const requestBody = createKey ? { ...commandInput, idempotencyKey: createKey } : mutation
       const response = await fetch(mode === 'create' ? '/api/portal/leads' : `/api/portal/leads/${form.id}`, { body: JSON.stringify(requestBody), credentials: 'same-origin', headers: { 'content-type': 'application/json', 'Idempotency-Key': createKey ?? `portal-leads:${crypto.randomUUID()}` }, method: mode === 'create' ? 'POST' : 'PATCH' })
-      if (createKey) createCommand.receivedResponse(createKey)
       const body = await response.json() as { error?: { message?: string }; result?: { id?: number | string; updatedAt?: string } }
+      if (createKey) createCommand.receivedResponse(createKey)
       if (!response.ok) throw new Error(body.error?.message || text.formError)
       const id = body.result?.id ?? form.id
       if (id === undefined) throw new Error(text.formError)

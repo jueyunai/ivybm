@@ -51,11 +51,11 @@ export function KnowledgeAiDebug() {
         },
         method: 'POST',
       })
-      commandKey.receivedResponse(idempotencyKey)
       const body = (await response.json()) as {
         error?: { message?: unknown }
         result?: { text?: unknown; usage?: { totalTokens?: unknown } }
       }
+      commandKey.receivedResponse(idempotencyKey)
       if (!response.ok) {
         throw new Error(typeof body.error?.message === 'string' ? body.error.message : text.error)
       }

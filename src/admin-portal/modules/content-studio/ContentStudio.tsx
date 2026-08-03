@@ -267,8 +267,8 @@ const request = async (
     },
     method,
   })
-  onResponse?.()
   const data = (await response.json()) as { error?: { message?: string } }
+  onResponse?.()
   if (!response.ok) throw new Error(data.error?.message || 'Request failed')
   return data
 }

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import { createLocalReq, getPayload, type Payload } from 'payload'
 
 import {
@@ -161,6 +162,34 @@ describe.sequential('Portal command receipts', () => {
     expect(results.find(({ status }) => status === 'rejected')).toMatchObject({
       reason: { code: 'portal-stale', status: 409 },
     })
+  })
+
+  it('preserves the ownership conflict when another owner reclaims completion', async () => {
+    const req = await createLocalReq({ user: admin }, payload)
+    const idempotencyKey = `portal-receipt:${randomUUID()}`
+    const scope = `portal.pages:ownership:${pageID}`
+
+    await expect(
+      executePortalCommand({
+        fingerprintInput: { action: 'save', id: pageID },
+        idempotencyKey,
+        operation: async () => {
+          await (payload.db as unknown as PostgresAdapter).pool.query(
+            `UPDATE portal_command_receipts
+             SET owner_token = $1, updated_at = $2
+             WHERE scope = $3 AND idempotency_key = $4`,
+            [randomUUID(), new Date().toISOString(), scope, idempotencyKey],
+          )
+          return { accepted: true }
+        },
+        payload,
+        req,
+        scope,
+      }),
+    ).rejects.toMatchObject({
+      code: 'portal-command-conflict',
+      status: 409,
+    } satisfies Partial<PortalCommandReceiptError>)
   })
 
   it('does not replay an external command after an expired lease', async () => {

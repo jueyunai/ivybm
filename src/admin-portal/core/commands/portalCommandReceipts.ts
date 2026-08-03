@@ -111,6 +111,19 @@ const transaction = async <T>(
   }
 }
 
+const databaseForRequest = async (payload: Payload, req: PayloadRequest) => {
+  const adapter = payload.db as unknown as PostgresAdapter
+  const transactionID = await req.transactionID
+  if (!transactionID) return adapter.drizzle
+  const database = adapter.sessions[transactionID]?.db
+  if (!database) {
+    throw new Error('Portal command transaction session is unavailable')
+  }
+  return database
+}
+
+const receiptWasUpdated = (result: { rows: unknown[] }): boolean => Boolean(result.rows[0])
+
 const findReceipt = async ({
   actorID,
   idempotencyKey,
@@ -217,36 +230,24 @@ const claimCommand = async ({
             409,
           )
         }
-        const reclaimed = await payload.update({
-          collection: 'portal-command-receipts',
-          context: { skipAudit: true },
-          data: {
-            errorCode: null,
-            leaseExpiresAt,
-            ownerToken,
-            result: null,
-            status: 'processing',
-          },
-          overrideAccess: true,
-          req,
-          where: {
-            and: [
-              { id: { equals: existing.id } },
-              {
-                or: [
-                  { status: { equals: 'failed' } },
-                  {
-                    and: [
-                      { status: { equals: 'processing' } },
-                      { leaseExpiresAt: { less_than_equal: now.toISOString() } },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        })
-        if (!reclaimed.docs[0]) {
+        const database = await databaseForRequest(payload, req)
+        const reclaimed = await database.execute(sql`
+          UPDATE portal_command_receipts
+          SET
+            error_code = NULL,
+            lease_expires_at = ${leaseExpiresAt},
+            owner_token = ${ownerToken},
+            result = NULL,
+            status = 'processing',
+            updated_at = ${now.toISOString()}
+          WHERE id = ${existing.id as number | string}
+            AND (
+              status = 'failed'
+              OR (status = 'processing' AND lease_expires_at <= ${now.toISOString()})
+            )
+          RETURNING id
+        `)
+        if (!receiptWasUpdated(reclaimed)) {
           throw new PortalCommandReceiptError(
             'portal-command-processing',
             'This command is already processing',
@@ -265,11 +266,7 @@ const claimCommand = async ({
 
 const lockTarget = async (payload: Payload, req: PayloadRequest, target?: PortalCommandTarget) => {
   if (!target) return
-  const adapter = payload.db as unknown as PostgresAdapter
-  const transactionID = await req.transactionID
-  const db = transactionID
-    ? (adapter.sessions[transactionID]?.db ?? adapter.drizzle)
-    : adapter.drizzle
+  const db = await databaseForRequest(payload, req)
   const table = TARGET_TABLES[target.collection]
   await db.execute(sql`SELECT id FROM ${sql.identifier(table)} WHERE id = ${target.id} FOR UPDATE`)
 }
@@ -286,23 +283,55 @@ const markFailed = async ({
   ownerToken: string
   payload: Payload
   user: PayloadRequest['user']
-}) => {
-  await transaction(payload, user, async (req) => {
-    await payload.update({
-      collection: 'portal-command-receipts',
-      context: { skipAudit: true },
-      data: { errorCode: code, leaseExpiresAt: new Date().toISOString(), status: 'failed' },
-      overrideAccess: true,
-      req,
-      where: {
-        and: [
-          { id: { equals: id } },
-          { ownerToken: { equals: ownerToken } },
-          { status: { equals: 'processing' } },
-        ],
-      },
-    })
+}): Promise<boolean> =>
+  transaction(payload, user, async (req) => {
+    const failedAt = new Date().toISOString()
+    const database = await databaseForRequest(payload, req)
+    const failed = await database.execute(sql`
+      UPDATE portal_command_receipts
+      SET
+        error_code = ${code},
+        lease_expires_at = ${failedAt},
+        status = 'failed',
+        updated_at = ${failedAt}
+      WHERE id = ${id}
+        AND owner_token = ${ownerToken}
+        AND status = 'processing'
+      RETURNING id
+    `)
+    return receiptWasUpdated(failed)
   })
+
+const completeReceipt = async ({
+  id,
+  ownerToken,
+  payload,
+  req,
+  result,
+}: {
+  id: number | string
+  ownerToken: string
+  payload: Payload
+  req: PayloadRequest
+  result: unknown
+}): Promise<boolean> => {
+  const completedAt = new Date().toISOString()
+  const resultJSON = JSON.stringify(result) ?? 'null'
+  const database = await databaseForRequest(payload, req)
+  const completed = await database.execute(sql`
+    UPDATE portal_command_receipts
+    SET
+      error_code = NULL,
+      lease_expires_at = ${completedAt},
+      result = ${resultJSON}::jsonb,
+      status = 'completed',
+      updated_at = ${completedAt}
+    WHERE id = ${id}
+      AND owner_token = ${ownerToken}
+      AND status = 'processing'
+    RETURNING id
+  `)
+  return receiptWasUpdated(completed)
 }
 
 export async function executePortalCommand<T>({
@@ -351,26 +380,14 @@ export async function executePortalCommand<T>({
     if (!atomic) {
       const result = await operation(req, execution)
       await transaction(payload, req.user, async (transactionReq) => {
-        const completed = await payload.update({
-          collection: 'portal-command-receipts',
-          context: { skipAudit: true },
-          data: {
-            errorCode: null,
-            leaseExpiresAt: new Date().toISOString(),
-            result: result as JsonValue,
-            status: 'completed',
-          },
-          overrideAccess: true,
+        const completed = await completeReceipt({
+          id: claimed.id,
+          ownerToken: claimed.ownerToken,
+          payload,
           req: transactionReq,
-          where: {
-            and: [
-              { id: { equals: claimed.id } },
-              { ownerToken: { equals: claimed.ownerToken } },
-              { status: { equals: 'processing' } },
-            ],
-          },
+          result,
         })
-        if (!completed.docs[0]) {
+        if (!completed) {
           throw new PortalCommandReceiptError(
             'portal-command-conflict',
             'Command ownership changed before completion',
@@ -402,26 +419,14 @@ export async function executePortalCommand<T>({
       }
       await lockTarget(payload, transactionReq, target)
       const result = await operation(transactionReq, execution)
-      const completed = await payload.update({
-        collection: 'portal-command-receipts',
-        context: { skipAudit: true },
-        data: {
-          errorCode: null,
-          leaseExpiresAt: new Date().toISOString(),
-          result: result as JsonValue,
-          status: 'completed',
-        },
-        overrideAccess: true,
+      const completed = await completeReceipt({
+        id: claimed.id,
+        ownerToken: claimed.ownerToken,
+        payload,
         req: transactionReq,
-        where: {
-          and: [
-            { id: { equals: claimed.id } },
-            { ownerToken: { equals: claimed.ownerToken } },
-            { status: { equals: 'processing' } },
-          ],
-        },
+        result,
       })
-      if (!completed.docs[0]) {
+      if (!completed) {
         throw new PortalCommandReceiptError(
           'portal-command-conflict',
           'Command ownership changed before completion',
@@ -439,13 +444,20 @@ export async function executePortalCommand<T>({
             typeof (error as { code?: unknown }).code === 'string'
           ? String((error as { code: string }).code)
           : 'portal-command-failed'
-    await markFailed({
-      code,
-      id: claimed.id,
-      ownerToken: claimed.ownerToken,
-      payload,
-      user: req.user,
-    }).catch(() => undefined)
+    try {
+      await markFailed({
+        code,
+        id: claimed.id,
+        ownerToken: claimed.ownerToken,
+        payload,
+        user: req.user,
+      })
+    } catch (receiptError) {
+      throw new AggregateError(
+        [error, receiptError],
+        'Portal command failed and its receipt failure state could not be recorded',
+      )
+    }
     throw error
   }
 }
