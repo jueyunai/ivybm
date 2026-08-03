@@ -13,6 +13,7 @@ import {
 type JsonValue = boolean | null | number | string | JsonValue[] | { [key: string]: JsonValue }
 type ReceiptRecord = Record<string, unknown>
 type PortalCommandReplayPolicy = 'retry-safe' | 'unknown-on-expiry'
+export type PortalCommandExecution = { markExternalDispatch: () => void }
 
 const COMMAND_LEASE_MS = 2 * 60 * 1000
 const UNKNOWN_RESULT_CODE = 'portal-command-result-unknown'
@@ -318,7 +319,7 @@ export async function executePortalCommand<T>({
   atomic?: boolean
   fingerprintInput: unknown
   idempotencyKey: string
-  operation: (transactionReq: PayloadRequest) => Promise<T>
+  operation: (transactionReq: PayloadRequest, execution: PortalCommandExecution) => Promise<T>
   payload: Payload
   replayPolicy?: PortalCommandReplayPolicy
   req: PayloadRequest
@@ -340,9 +341,15 @@ export async function executePortalCommand<T>({
     user: req.user,
   })
   if ('result' in claimed) return claimed.result as T
+  let externalDispatchStarted = false
+  const execution: PortalCommandExecution = {
+    markExternalDispatch: () => {
+      externalDispatchStarted = true
+    },
+  }
   try {
     if (!atomic) {
-      const result = await operation(req)
+      const result = await operation(req, execution)
       await transaction(payload, req.user, async (transactionReq) => {
         const completed = await payload.update({
           collection: 'portal-command-receipts',
@@ -394,7 +401,7 @@ export async function executePortalCommand<T>({
         )
       }
       await lockTarget(payload, transactionReq, target)
-      const result = await operation(transactionReq)
+      const result = await operation(transactionReq, execution)
       const completed = await payload.update({
         collection: 'portal-command-receipts',
         context: { skipAudit: true },
@@ -425,7 +432,7 @@ export async function executePortalCommand<T>({
     })
   } catch (error) {
     const code =
-      replayPolicy === 'unknown-on-expiry'
+      replayPolicy === 'unknown-on-expiry' && externalDispatchStarted
         ? UNKNOWN_RESULT_CODE
         : error &&
             typeof error === 'object' &&
@@ -456,7 +463,7 @@ export const executePortalRouteCommand = <T>({
 }: {
   atomic?: boolean
   fingerprintInput: unknown
-  operation: (transactionReq: PayloadRequest) => Promise<T>
+  operation: (transactionReq: PayloadRequest, execution: PortalCommandExecution) => Promise<T>
   payload: Payload
   replayPolicy?: PortalCommandReplayPolicy
   req: PayloadRequest

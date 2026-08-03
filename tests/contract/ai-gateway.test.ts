@@ -25,6 +25,27 @@ const fakeProvider: AiProvider = {
 }
 
 describe('AI gateway contract', () => {
+  it('marks dispatch only when the provider call is about to start', async () => {
+    const onDispatch = vi.fn()
+    const generateText = vi.fn(fakeProvider.generateText)
+    const gateway = createAiGateway({
+      models: { text: 'fake-text' },
+      provider: { ...fakeProvider, generateText },
+    })
+
+    await gateway.generateText({ input: 'dispatch boundary', onDispatch })
+    expect(onDispatch).toHaveBeenCalledTimes(1)
+    expect(onDispatch.mock.invocationCallOrder[0]).toBeLessThan(
+      generateText.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    )
+
+    const invalidDispatch = vi.fn()
+    await expect(
+      createAiGateway({}).generateText({ input: 'missing configuration', onDispatch: invalidDispatch }),
+    ).rejects.toMatchObject({ code: 'provider_unavailable' })
+    expect(invalidDispatch).not.toHaveBeenCalled()
+  })
+
   it('normalizes generation, embedding, token usage and estimated cost', async () => {
     const onUsage = vi.fn()
     const gateway = createAiGateway({

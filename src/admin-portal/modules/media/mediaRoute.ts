@@ -6,6 +6,7 @@ import { getRoleUser } from '@/access/roles'
 import { MEDIA_PDF_MAX_BYTES } from '@/collections/Media'
 import config from '@/payload.config'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
+import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
 
 import { MediaCommandError, type PortalMediaFile } from './mediaCommands'
 
@@ -69,19 +70,12 @@ export async function authorizeMediaRequest(request: Request): Promise<Authorize
 }
 
 export async function readMediaJSON(request: Request): Promise<Record<string, unknown>> {
-  const text = await request.text()
-  if (text.length > 16_000) {
-    throw new MediaCommandError('media-request-too-large', 'Media request is too large', 413)
-  }
-  if (!text.trim()) return {}
-  try {
-    const value = JSON.parse(text) as unknown
-    if (!value || typeof value !== 'object' || Array.isArray(value))
-      throw new Error('invalid object')
-    return value as Record<string, unknown>
-  } catch {
-    throw new MediaCommandError('media-invalid-json', 'A JSON object is required', 400)
-  }
+  return readLimitedJSONObject(request, {
+    invalid: () => new MediaCommandError('media-invalid-json', 'A JSON object is required', 400),
+    maximumBytes: 16_000,
+    tooLarge: () =>
+      new MediaCommandError('media-request-too-large', 'Media request is too large', 413),
+  })
 }
 
 export async function readMediaUpload(request: Request): Promise<{

@@ -19,7 +19,13 @@ export async function POST(request: NextRequest): Promise<Response> {
     const result = await executePortalRouteCommand({
       atomic: false,
       fingerprintInput: input,
-      operation: (commandReq) => generateContentStudioDraft({ input, payload, req: commandReq }),
+      operation: (commandReq, execution) =>
+        generateContentStudioDraft({
+          input,
+          onProviderDispatch: execution.markExternalDispatch,
+          payload,
+          req: commandReq,
+        }),
       payload,
       replayPolicy: 'unknown-on-expiry',
       req,

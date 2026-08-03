@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { IconEdit, IconPlus, IconSearch, IconTrash, IconUsers } from '@tabler/icons-react'
 
+import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import type { PortalRole } from '@/admin-portal/core/modules/types'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
@@ -34,7 +35,7 @@ type LeadMutation = {
   values?: Partial<LeadSummaryItem>
 }
 
-const blank = (sourceId = ''): LeadForm => ({ assignedToId: '', company: '', country: '', email: '', idempotencyKey: `portal-lead:${crypto.randomUUID()}`, interest: '', intentLevel: 'unscored', locale: 'en', message: '', name: '', phone: '', sourceId, status: 'new', updatedAt: '' })
+const blank = (sourceId = ''): LeadForm => ({ assignedToId: '', company: '', country: '', email: '', idempotencyKey: '', interest: '', intentLevel: 'unscored', locale: 'en', message: '', name: '', phone: '', sourceId, status: 'new', updatedAt: '' })
 
 const leadForm = (lead: LeadSummaryItem): LeadForm => ({ assignedToId: lead.assignedTo ? String(lead.assignedTo) : '', company: lead.company ?? '', country: lead.country, email: lead.email, id: lead.id, idempotencyKey: '', interest: lead.interest ?? '', intentLevel: lead.intentLevel, locale: lead.locale, message: lead.message, name: lead.name, phone: lead.phone ?? '', sourceId: String(lead.source), status: lead.status, updatedAt: lead.updatedAt })
 
@@ -97,6 +98,7 @@ function href(query: LeadsSummary['query'], page: number) { const params = new U
 
 function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { mode: EditorMode; onClose: () => void; onDone: (message: string, mutation: LeadMutation) => void; options: LeadsSummary['options']; role: PortalRole; selected: LeadSummaryItem | null; text: typeof copy['zh'] | typeof copy['en'] }) {
   const [form, setForm] = useState<LeadForm>(() => selected ? leadForm(selected) : blank(String(options.sources[0]?.id ?? '')))
+  const createCommand = usePortalCommandKey('portal-lead')
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -105,7 +107,11 @@ function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { 
     setBusy(true); setError(null)
     try {
       const mutation = getLeadMutationPayload(form, mode, role)
-      const response = await fetch(mode === 'create' ? '/api/portal/leads' : `/api/portal/leads/${form.id}`, { body: JSON.stringify(mutation), credentials: 'same-origin', headers: { 'content-type': 'application/json', 'Idempotency-Key': typeof mutation.idempotencyKey === 'string' && mutation.idempotencyKey.length >= 8 ? mutation.idempotencyKey : `portal-leads:${crypto.randomUUID()}` }, method: mode === 'create' ? 'POST' : 'PATCH' })
+      const { idempotencyKey: _formKey, ...commandInput } = mutation
+      const createKey = mode === 'create' ? createCommand.key(JSON.stringify(commandInput)) : null
+      const requestBody = createKey ? { ...commandInput, idempotencyKey: createKey } : mutation
+      const response = await fetch(mode === 'create' ? '/api/portal/leads' : `/api/portal/leads/${form.id}`, { body: JSON.stringify(requestBody), credentials: 'same-origin', headers: { 'content-type': 'application/json', 'Idempotency-Key': createKey ?? `portal-leads:${crypto.randomUUID()}` }, method: mode === 'create' ? 'POST' : 'PATCH' })
+      if (createKey) createCommand.receivedResponse(createKey)
       const body = await response.json() as { error?: { message?: string }; result?: { id?: number | string; updatedAt?: string } }
       if (!response.ok) throw new Error(body.error?.message || text.formError)
       const id = body.result?.id ?? form.id

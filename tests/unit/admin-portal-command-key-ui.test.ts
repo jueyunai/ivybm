@@ -8,6 +8,7 @@ import { ScheduleEditor } from '@/admin-portal/modules/content-studio/ContentStu
 import type { ContentStudioItem } from '@/admin-portal/modules/content-studio/getContentStudioPage'
 import { getContentStudioMessages } from '@/admin-portal/modules/content-studio/messages'
 import { KnowledgeEditor } from '@/admin-portal/modules/knowledge/KnowledgeEditor'
+import { KnowledgeAiDebug } from '@/admin-portal/modules/knowledge/KnowledgeAiDebug'
 import { MediaEditor } from '@/admin-portal/modules/media/MediaEditor'
 
 const router = { refresh: vi.fn() }
@@ -33,6 +34,37 @@ afterEach(() => {
 })
 
 describe('Portal create command keys', () => {
+  it('reuses the AI debug key after a lost response and rotates when the prompt changes', async () => {
+    const request = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new TypeError('response lost'))
+      .mockResolvedValueOnce(jsonResponse({ result: { text: 'second', usage: { totalTokens: 2 } } }))
+      .mockResolvedValueOnce(jsonResponse({ result: { text: 'changed', usage: { totalTokens: 3 } } }))
+    vi.stubGlobal('fetch', request)
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(KnowledgeAiDebug),
+      ),
+    )
+
+    const input = screen.getByLabelText('调试输入')
+    fireEvent.change(input, { target: { value: 'same prompt' } })
+    fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
+    await screen.findByRole('alert')
+    fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
+    await screen.findByText(/second/)
+    fireEvent.change(input, { target: { value: 'changed prompt' } })
+    fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
+    await screen.findByText(/changed/)
+
+    const keys = request.mock.calls.map((call) => headerValue(call[1], 'Idempotency-Key'))
+    expect(keys[0]).toMatch(/^portal-knowledge-ai:/)
+    expect(keys[1]).toBe(keys[0])
+    expect(keys[2]).not.toBe(keys[1])
+  })
+
   it('reuses the media upload key after a lost response', async () => {
     const request = vi
       .fn<typeof fetch>()

@@ -212,7 +212,10 @@ describe.sequential('Portal command receipts', () => {
         atomic: false,
         fingerprintInput: input,
         idempotencyKey,
-        operation,
+        operation: async (_transactionReq, execution) => {
+          execution.markExternalDispatch()
+          return operation()
+        },
         payload,
         replayPolicy: 'unknown-on-expiry',
         req,
@@ -225,5 +228,30 @@ describe.sequential('Portal command receipts', () => {
       status: 409,
     })
     expect(operation).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps deterministic pre-dispatch failures retryable under the external policy', async () => {
+    const req = await createLocalReq({ user: admin }, payload)
+    const input = { action: 'generate', brief: 'configuration missing' }
+    const idempotencyKey = `portal-receipt:${randomUUID()}`
+    const operation = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error('model is not configured'), { code: 'invalid_request' }))
+      .mockResolvedValueOnce({ generated: true })
+    const command = () =>
+      executePortalCommand({
+        atomic: false,
+        fingerprintInput: input,
+        idempotencyKey,
+        operation,
+        payload,
+        replayPolicy: 'unknown-on-expiry',
+        req,
+        scope: 'portal.content-studio:generate',
+      })
+
+    await expect(command()).rejects.toMatchObject({ code: 'invalid_request' })
+    await expect(command()).resolves.toEqual({ generated: true })
+    expect(operation).toHaveBeenCalledTimes(2)
   })
 })

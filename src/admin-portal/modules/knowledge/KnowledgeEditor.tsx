@@ -12,6 +12,7 @@ import {
   IconX,
 } from '@tabler/icons-react'
 
+import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, StatusBadge } from '@/admin-portal/core/ui'
 
@@ -127,7 +128,7 @@ export function KnowledgeEditor({
   const { locale: portalLocale } = usePortalPreferences()
   const text = copy[portalLocale]
   const [form, setForm] = useState<EditorForm>(emptyForm)
-  const [createKey] = useState(() => `portal-knowledge:${crypto.randomUUID()}`)
+  const createCommand = usePortalCommandKey('portal-knowledge')
   const [options, setOptions] = useState<EditorOptions>(EMPTY_OPTIONS)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -194,15 +195,19 @@ export function KnowledgeEditor({
           ? `/api/portal/knowledge/documents/${item.id}`
           : '/api/portal/knowledge/documents'
       const body = action === 'save' ? { ...form, action } : { action, updatedAt: form.updatedAt }
+      const createKey = mode === 'create' ? createCommand.key(JSON.stringify(body)) : null
       const response = await fetch(url, {
         body: JSON.stringify(body),
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key':
-            mode === 'create' ? createKey : `portal-knowledge:${crypto.randomUUID()}`,
+            mode === 'create' && createKey
+              ? createKey
+              : `portal-knowledge:${crypto.randomUUID()}`,
         },
         method: mode === 'edit' ? 'PATCH' : 'POST',
       })
+      if (createKey) createCommand.receivedResponse(createKey)
       if (!response.ok) throw new Error(await errorMessage(response, text.error))
       const payload = (await response.json()) as { result?: { updatedAt?: string } }
       if (typeof payload.result?.updatedAt === 'string')

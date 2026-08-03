@@ -18,10 +18,12 @@ export interface KnowledgeAiDebugResult {
 
 export async function runKnowledgeAiDebug({
   input,
+  onProviderDispatch,
   payload,
   resolveGateway = resolveAiGateway,
 }: {
   input: unknown
+  onProviderDispatch?: () => void
   payload: Payload
   resolveGateway?: ResolveGateway
 }): Promise<KnowledgeAiDebugResult> {
@@ -45,7 +47,11 @@ export async function runKnowledgeAiDebug({
     payload,
     routes: [{ operation: 'text', usageKey: AI_USAGE_KEYS.chatReply }],
   })
-  const result = await gateway.generateText({ input: prompt, maxOutputTokens: 800 })
+  const result = await gateway.generateText({
+    input: prompt,
+    maxOutputTokens: 800,
+    onDispatch: onProviderDispatch,
+  })
   return {
     durationMs: Date.now() - startedAt,
     text: result.text,

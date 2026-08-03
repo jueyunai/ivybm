@@ -20,7 +20,12 @@ export async function POST(request: NextRequest): Promise<Response> {
       result: await executePortalRouteCommand({
         atomic: false,
         fingerprintInput: input,
-        operation: () => runKnowledgeAiDebug({ input, payload }),
+        operation: (_commandReq, execution) =>
+          runKnowledgeAiDebug({
+            input,
+            onProviderDispatch: execution.markExternalDispatch,
+            payload,
+          }),
         payload,
         replayPolicy: 'unknown-on-expiry',
         req,

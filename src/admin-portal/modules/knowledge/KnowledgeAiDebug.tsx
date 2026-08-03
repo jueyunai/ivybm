@@ -4,6 +4,7 @@ import { useState } from 'react'
 
 import { IconPlayerPlay, IconTerminal2 } from '@tabler/icons-react'
 
+import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button } from '@/admin-portal/core/ui'
 
@@ -33,20 +34,24 @@ export function KnowledgeAiDebug() {
   const [result, setResult] = useState('')
   const [error, setError] = useState('')
   const [running, setRunning] = useState(false)
+  const commandKey = usePortalCommandKey('portal-knowledge-ai')
 
   const run = async () => {
     setRunning(true)
     setError('')
     setResult('')
     try {
+      const fingerprint = JSON.stringify({ prompt })
+      const idempotencyKey = commandKey.key(fingerprint)
       const response = await fetch('/api/portal/knowledge/ai-debug', {
         body: JSON.stringify({ prompt }),
         headers: {
           'Content-Type': 'application/json',
-          'Idempotency-Key': `portal-knowledge-ai:${crypto.randomUUID()}`,
+          'Idempotency-Key': idempotencyKey,
         },
         method: 'POST',
       })
+      commandKey.receivedResponse(idempotencyKey)
       const body = (await response.json()) as {
         error?: { message?: unknown }
         result?: { text?: unknown; usage?: { totalTokens?: unknown } }

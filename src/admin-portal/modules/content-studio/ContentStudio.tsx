@@ -16,6 +16,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react'
 
+import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
 
@@ -252,6 +253,7 @@ const request = async (
   url: string,
   method: 'DELETE' | 'PATCH' | 'POST',
   body: Record<string, unknown>,
+  onResponse?: () => void,
 ) => {
   const response = await fetch(url, {
     body: JSON.stringify(body),
@@ -265,6 +267,7 @@ const request = async (
     },
     method,
   })
+  onResponse?.()
   const data = (await response.json()) as { error?: { message?: string } }
   if (!response.ok) throw new Error(data.error?.message || 'Request failed')
   return data
@@ -576,7 +579,7 @@ function DraftEditor({
     }),
     [item],
   )
-  const [createKey] = useState(() => `portal-content-studio:${crypto.randomUUID()}`)
+  const createCommand = usePortalCommandKey('portal-content-studio')
   const [form, setForm] = useState(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -593,12 +596,14 @@ function DraftEditor({
     try {
       const body = {
         ...form,
-        ...(item ? { updatedAt: item.updatedAt } : { idempotencyKey: createKey }),
+        ...(item ? { updatedAt: item.updatedAt } : {}),
       }
+      const createKey = item ? null : createCommand.key(JSON.stringify(body))
       await request(
         item ? `/api/portal/content-studio/${item.id}` : '/api/portal/content-studio',
         item ? 'PATCH' : 'POST',
-        body,
+        createKey ? { ...body, idempotencyKey: createKey } : body,
+        createKey ? () => createCommand.receivedResponse(createKey) : undefined,
       )
       onDone(copy.feedback)
     } catch (caught) {
@@ -717,7 +722,7 @@ function GenerateDraftEditor({
   onDone: (message: string) => void
   options: ContentStudioSummary['options']
 }) {
-  const [idempotencyKey] = useState(() => `portal-content-studio:generate:${crypto.randomUUID()}`)
+  const command = usePortalCommandKey('portal-content-studio:generate')
   const [form, setForm] = useState({
     assets: [] as string[],
     brief: '',
@@ -739,7 +744,13 @@ function GenerateDraftEditor({
     setBusy(true)
     setError(null)
     try {
-      await request('/api/portal/content-studio/generate', 'POST', { ...form, idempotencyKey })
+      const idempotencyKey = command.key(JSON.stringify(form))
+      await request(
+        '/api/portal/content-studio/generate',
+        'POST',
+        { ...form, idempotencyKey },
+        () => command.receivedResponse(idempotencyKey),
+      )
       onDone(copy.generationComplete)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : copy.unknown)
@@ -930,7 +941,7 @@ export function ScheduleEditor({
   onDone: (message: string) => void
 }) {
   const mode = 'assisted'
-  const [idempotencyKey] = useState(() => `portal-content-studio:schedule:${crypto.randomUUID()}`)
+  const command = usePortalCommandKey('portal-content-studio:schedule')
   const [scheduledFor, setScheduledFor] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -938,14 +949,20 @@ export function ScheduleEditor({
     setBusy(true)
     setError(null)
     try {
-      await request(`/api/portal/content-studio/${item.id}`, 'POST', {
+      const body = {
         action: 'schedule',
-        idempotencyKey,
         mode,
         platform: item.platform,
         scheduledFor: new Date(scheduledFor).toISOString(),
         updatedAt: item.updatedAt,
-      })
+      }
+      const idempotencyKey = command.key(JSON.stringify(body))
+      await request(
+        `/api/portal/content-studio/${item.id}`,
+        'POST',
+        { ...body, idempotencyKey },
+        () => command.receivedResponse(idempotencyKey),
+      )
       onDone(copy.scheduled)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : copy.unknown)

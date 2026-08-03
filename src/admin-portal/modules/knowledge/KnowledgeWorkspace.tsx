@@ -284,6 +284,7 @@ export function KnowledgeWorkspace({ pageState, summary }: KnowledgeWorkspacePro
       {editor ? (
         <Surface as="section" className="portal-knowledge__editor-panel">
           <KnowledgeEditor
+            key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
             item={editor === 'edit' ? selected : null}
             mode={editor}
             onClose={() => setEditor(null)}

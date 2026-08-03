@@ -3,6 +3,7 @@ import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'p
 import { getRoleUser } from '@/access/roles'
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
+import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
 
 import { OperationsCommandError } from './operationsCommands'
 
@@ -35,18 +36,13 @@ export const authorizeOperationsRequest = async (
 }
 
 export const readOperationsJSON = async (request: Request): Promise<Record<string, unknown>> => {
-  const text = await request.text()
-  if (text.length > 16_000) {
-    throw new OperationsCommandError('operations-request-too-large', 'Request is too large.', 413)
-  }
-  if (!text.trim()) return {}
-  try {
-    const value = JSON.parse(text) as unknown
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid')
-    return value as Record<string, unknown>
-  } catch {
-    throw new OperationsCommandError('operations-invalid-json', 'A JSON object is required.', 400)
-  }
+  return readLimitedJSONObject(request, {
+    invalid: () =>
+      new OperationsCommandError('operations-invalid-json', 'A JSON object is required.', 400),
+    maximumBytes: 16_000,
+    tooLarge: () =>
+      new OperationsCommandError('operations-request-too-large', 'Request is too large.', 413),
+  })
 }
 
 export const requireOperationsJobID = (value: string): number => {

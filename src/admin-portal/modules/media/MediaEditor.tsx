@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { IconDeviceFloppy, IconEdit, IconTrash, IconUpload, IconX } from '@tabler/icons-react'
 
+import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, StatusBadge } from '@/admin-portal/core/ui'
 
@@ -73,7 +74,8 @@ export function MediaEditor({
   const [isPublic, setIsPublic] = useState(() => item?.isPublic ?? false)
   const [updatedAt, setUpdatedAt] = useState(() => item?.updatedAt ?? '')
   const [file, setFile] = useState<File | null>(null)
-  const [createKey] = useState(() => `portal-media:${crypto.randomUUID()}`)
+  const [fileSelection, setFileSelection] = useState(0)
+  const createCommand = usePortalCommandKey('portal-media')
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [notice, setNotice] = useState<null | { tone: 'danger' | 'success'; value: string }>(null)
@@ -96,11 +98,25 @@ export function MediaEditor({
         form.set('source', source)
         form.set('isPublic', String(isPublic))
         form.set('file', file)
+        const fingerprint = JSON.stringify({
+          alt,
+          file: {
+            selection: fileSelection,
+            lastModified: file.lastModified,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+          },
+          isPublic,
+          source,
+        })
+        const createKey = createCommand.key(fingerprint)
         response = await fetch('/api/portal/media', {
           body: form,
           headers: { 'Idempotency-Key': createKey },
           method: 'POST',
         })
+        createCommand.receivedResponse(createKey)
       } else if (item) {
         response = await fetch(`/api/portal/media/${item.id}`, {
           body: JSON.stringify({ alt, isPublic, source, updatedAt }),
@@ -175,7 +191,10 @@ export function MediaEditor({
             <input
               accept="image/avif,image/jpeg,image/png,image/webp,application/pdf"
               disabled={busy}
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                setFile(event.target.files?.[0] ?? null)
+                setFileSelection((current) => current + 1)
+              }}
               required
               type="file"
             />

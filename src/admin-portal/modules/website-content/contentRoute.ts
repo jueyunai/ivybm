@@ -3,6 +3,7 @@ import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'p
 import { getRoleUser } from '@/access/roles'
 import config from '@/payload.config'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
+import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
 
 import { ContentCommandError } from './contentCommands'
 
@@ -33,19 +34,12 @@ export async function authorizeContentRequest(request: Request): Promise<Authori
 }
 
 export async function readContentJSON(request: Request): Promise<Record<string, unknown>> {
-  const text = await request.text()
-  if (text.length > 128_000) {
-    throw new ContentCommandError('content-request-too-large', 'Content request is too large', 413)
-  }
-  if (!text.trim()) return {}
-  try {
-    const value = JSON.parse(text) as unknown
-    if (!value || typeof value !== 'object' || Array.isArray(value))
-      throw new Error('invalid object')
-    return value as Record<string, unknown>
-  } catch {
-    throw new ContentCommandError('content-invalid-json', 'A JSON object is required', 400)
-  }
+  return readLimitedJSONObject(request, {
+    invalid: () => new ContentCommandError('content-invalid-json', 'A JSON object is required', 400),
+    maximumBytes: 128_000,
+    tooLarge: () =>
+      new ContentCommandError('content-request-too-large', 'Content request is too large', 413),
+  })
 }
 
 export function requireContentID(value: string): number {

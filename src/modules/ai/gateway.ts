@@ -156,7 +156,10 @@ type GatewayOptions = {
   timeouts?: { embedMs?: number; generateTextMs?: number }
 }
 
-type GenerateTextInput = Omit<ProviderGenerateTextInput, 'model' | 'signal'> & { model?: string }
+type GenerateTextInput = Omit<ProviderGenerateTextInput, 'model' | 'signal'> & {
+  model?: string
+  onDispatch?: () => void
+}
 export type AiGatewayEmbedInput = Omit<ProviderEmbedInput, 'model'> & {
   model?: string
 }
@@ -413,18 +416,21 @@ export const createAiGateway = (options: GatewayOptions) => ({
     const startedAt = Date.now()
 
     try {
+      const { onDispatch, ...providerInput } = input
       const result = await withTimeout(
         operation?.timeoutMs ?? options.timeouts?.generateTextMs ?? 30_000,
-        (signal) =>
-          provider.generateText({
-            ...input,
+        (signal) => {
+          onDispatch?.()
+          return provider.generateText({
+            ...providerInput,
             maxOutputTokens: input.maxOutputTokens ?? operation?.maxOutputTokens,
             model,
             reasoning,
             signal,
             temperature: input.temperature ?? operation?.temperature,
             topP: input.topP ?? operation?.topP,
-          }),
+          })
+        },
       )
       if (!result.text.trim()) {
         throw new AiGatewayError('invalid_response', 'AI provider returned empty text')

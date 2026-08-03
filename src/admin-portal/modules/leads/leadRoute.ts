@@ -3,6 +3,7 @@ import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'p
 import { getRoleUser, type UserRole } from '@/access/roles'
 import config from '@/payload.config'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
+import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
 
 import { LeadCommandError } from './leadCommands'
 
@@ -29,17 +30,12 @@ export const authorizeLeadRequest = async (request: Request): Promise<Authorized
 }
 
 export const readLeadJSON = async (request: Request): Promise<Record<string, unknown>> => {
-  const text = await request.text()
-  if (text.length > 128_000)
-    throw new LeadCommandError('leads-request-too-large', 'Request is too large', 413)
-  if (!text.trim()) return {}
-  try {
-    const value = JSON.parse(text) as unknown
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid')
-    return value as Record<string, unknown>
-  } catch {
-    throw new LeadCommandError('leads-invalid-json', 'A JSON object is required', 400)
-  }
+  return readLimitedJSONObject(request, {
+    invalid: () => new LeadCommandError('leads-invalid-json', 'A JSON object is required', 400),
+    maximumBytes: 128_000,
+    tooLarge: () =>
+      new LeadCommandError('leads-request-too-large', 'Request is too large', 413),
+  })
 }
 
 export const requireLeadID = (value: string): number => {

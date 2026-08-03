@@ -496,11 +496,13 @@ const findExistingGeneratedDraft = async ({
 
 export async function generateContentStudioDraft({
   input: rawInput,
+  onProviderDispatch,
   payload,
   req,
   resolveGateway = resolveAiGateway,
 }: {
   input: unknown
+  onProviderDispatch?: () => void
   payload: ContentStudioPayload
   req: PayloadRequest
   resolveGateway?: ResolveContentStudioGateway
@@ -544,6 +546,7 @@ export async function generateContentStudioDraft({
         `Each source value must be exactly one of: ${sources.map(({ label }) => JSON.stringify(label)).join(', ')}.`,
       ].join('\n'),
       maxOutputTokens: 1_800,
+      onDispatch: onProviderDispatch,
       temperature: 0.2,
     })
     generatedText = result.text
