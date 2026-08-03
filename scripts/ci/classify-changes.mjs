@@ -77,7 +77,7 @@ const classifyE2eTest = (path, classification) => {
     classification.website_e2e = true
     return true
   }
-  if (path === 'tests/e2e/admin-visual.spec.ts') {
+  if (path === 'tests/e2e/admin-visual.spec.ts' || path.startsWith('tests/e2e/admin-portal-')) {
     classification.admin_e2e = true
     return true
   }
@@ -90,7 +90,13 @@ const classifyE2eTest = (path, classification) => {
 }
 
 const classifySourceE2e = (path, classification) => {
-  if (path.startsWith('src/admin/') || path.startsWith('src/app/(payload)/')) {
+  if (
+    path.startsWith('src/admin/') ||
+    path.startsWith('src/admin-portal/') ||
+    path.startsWith('src/app/(dashboard)/') ||
+    path.startsWith('src/app/(payload)/') ||
+    path.startsWith('src/app/api/portal/')
+  ) {
     classification.admin_e2e = true
     return true
   }
@@ -226,6 +232,7 @@ export function classifyChangedFiles(paths) {
 
       if (
         (path.startsWith('src/admin/') ||
+          path.startsWith('src/admin-portal/') ||
           path.startsWith('src/app/') ||
           path.startsWith('src/components/')) &&
         !classifySourceE2e(path, result)

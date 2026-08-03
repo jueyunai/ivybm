@@ -5,6 +5,7 @@ import { createLocalReq, getPayload, type Payload } from 'payload'
 
 import {
   executePortalCommand,
+  portalCommandFingerprint,
   PortalCommandReceiptError,
 } from '@/admin-portal/core/commands/portalCommandReceipts'
 import type { User } from '@/payload-types'
@@ -160,5 +161,69 @@ describe.sequential('Portal command receipts', () => {
     expect(results.find(({ status }) => status === 'rejected')).toMatchObject({
       reason: { code: 'portal-stale', status: 409 },
     })
+  })
+
+  it('does not replay an external command after an expired lease', async () => {
+    const req = await createLocalReq({ user: admin }, payload)
+    const input = { action: 'generate', brief: 'lease-expiry replay' }
+    const idempotencyKey = `portal-receipt:${randomUUID()}`
+    const scope = 'portal.content-studio:generate'
+    await payload.create({
+      collection: 'portal-command-receipts',
+      context: { skipAudit: true },
+      data: {
+        actor: admin.id,
+        fingerprint: portalCommandFingerprint(input),
+        idempotencyKey,
+        leaseExpiresAt: new Date(Date.now() - 60_000).toISOString(),
+        ownerToken: randomUUID(),
+        scope,
+        status: 'processing',
+      },
+      overrideAccess: true,
+    })
+    const operation = vi.fn(async () => ({ generated: true }))
+
+    await expect(
+      executePortalCommand({
+        atomic: false,
+        fingerprintInput: input,
+        idempotencyKey,
+        operation,
+        payload,
+        replayPolicy: 'unknown-on-expiry',
+        req,
+        scope,
+      }),
+    ).rejects.toMatchObject({ code: 'portal-command-result-unknown', status: 409 })
+    expect(operation).not.toHaveBeenCalled()
+  })
+
+  it('does not retry an external command whose failure outcome is unknown', async () => {
+    const req = await createLocalReq({ user: admin }, payload)
+    const input = { action: 'ai-debug', question: 'unknown response' }
+    const idempotencyKey = `portal-receipt:${randomUUID()}`
+    const scope = 'portal.knowledge:ai-debug'
+    const operation = vi.fn(async () => {
+      throw new Error('connection closed after request dispatch')
+    })
+    const command = () =>
+      executePortalCommand({
+        atomic: false,
+        fingerprintInput: input,
+        idempotencyKey,
+        operation,
+        payload,
+        replayPolicy: 'unknown-on-expiry',
+        req,
+        scope,
+      })
+
+    await expect(command()).rejects.toThrow('connection closed after request dispatch')
+    await expect(command()).rejects.toMatchObject({
+      code: 'portal-command-result-unknown',
+      status: 409,
+    })
+    expect(operation).toHaveBeenCalledTimes(1)
   })
 })

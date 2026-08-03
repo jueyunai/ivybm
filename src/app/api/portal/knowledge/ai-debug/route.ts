@@ -22,6 +22,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         fingerprintInput: input,
         operation: () => runKnowledgeAiDebug({ input, payload }),
         payload,
+        replayPolicy: 'unknown-on-expiry',
         req,
         request,
         scope: 'portal.knowledge:ai-debug',

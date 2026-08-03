@@ -12,8 +12,10 @@ import {
 
 type JsonValue = boolean | null | number | string | JsonValue[] | { [key: string]: JsonValue }
 type ReceiptRecord = Record<string, unknown>
+type PortalCommandReplayPolicy = 'retry-safe' | 'unknown-on-expiry'
 
 const COMMAND_LEASE_MS = 2 * 60 * 1000
+const UNKNOWN_RESULT_CODE = 'portal-command-result-unknown'
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:._-]{7,199}$/
 
 const TARGET_TABLES = {
@@ -154,6 +156,7 @@ const claimCommand = async ({
   idempotencyKey,
   now,
   payload,
+  replayPolicy,
   scope,
   user,
 }: {
@@ -162,6 +165,7 @@ const claimCommand = async ({
   idempotencyKey: string
   now: Date
   payload: Payload
+  replayPolicy: PortalCommandReplayPolicy
   scope: string
   user: PayloadRequest['user']
 }): Promise<{ id: number | string; ownerToken: string } | { result: unknown }> => {
@@ -194,6 +198,17 @@ const claimCommand = async ({
         const expired =
           typeof existing.leaseExpiresAt !== 'string' ||
           existing.leaseExpiresAt <= now.toISOString()
+        if (
+          replayPolicy === 'unknown-on-expiry' &&
+          ((existing.status === 'processing' && expired) ||
+            (existing.status === 'failed' && existing.errorCode === UNKNOWN_RESULT_CODE))
+        ) {
+          throw new PortalCommandReceiptError(
+            UNKNOWN_RESULT_CODE,
+            'The command outcome is unknown. Check current data before starting a new command.',
+            409,
+          )
+        }
         if (existing.status === 'processing' && !expired) {
           throw new PortalCommandReceiptError(
             'portal-command-processing',
@@ -295,6 +310,7 @@ export async function executePortalCommand<T>({
   idempotencyKey,
   operation,
   payload,
+  replayPolicy = 'retry-safe',
   req,
   scope,
   target,
@@ -304,6 +320,7 @@ export async function executePortalCommand<T>({
   idempotencyKey: string
   operation: (transactionReq: PayloadRequest) => Promise<T>
   payload: Payload
+  replayPolicy?: PortalCommandReplayPolicy
   req: PayloadRequest
   scope: string
   target?: PortalCommandTarget
@@ -318,6 +335,7 @@ export async function executePortalCommand<T>({
     idempotencyKey,
     now: new Date(),
     payload,
+    replayPolicy,
     scope,
     user: req.user,
   })
@@ -407,9 +425,13 @@ export async function executePortalCommand<T>({
     })
   } catch (error) {
     const code =
-      error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
-        ? String((error as { code: string }).code)
-        : 'portal-command-failed'
+      replayPolicy === 'unknown-on-expiry'
+        ? UNKNOWN_RESULT_CODE
+        : error &&
+            typeof error === 'object' &&
+            typeof (error as { code?: unknown }).code === 'string'
+          ? String((error as { code: string }).code)
+          : 'portal-command-failed'
     await markFailed({
       code,
       id: claimed.id,
@@ -426,6 +448,7 @@ export const executePortalRouteCommand = <T>({
   fingerprintInput,
   operation,
   payload,
+  replayPolicy,
   req,
   request,
   scope,
@@ -435,6 +458,7 @@ export const executePortalRouteCommand = <T>({
   fingerprintInput: unknown
   operation: (transactionReq: PayloadRequest) => Promise<T>
   payload: Payload
+  replayPolicy?: PortalCommandReplayPolicy
   req: PayloadRequest
   request: Request
   scope: string
@@ -446,6 +470,7 @@ export const executePortalRouteCommand = <T>({
     idempotencyKey: requirePortalIdempotencyKey(request),
     operation,
     payload,
+    replayPolicy,
     req,
     scope,
     target,

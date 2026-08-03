@@ -73,6 +73,7 @@ export function MediaEditor({
   const [isPublic, setIsPublic] = useState(() => item?.isPublic ?? false)
   const [updatedAt, setUpdatedAt] = useState(() => item?.updatedAt ?? '')
   const [file, setFile] = useState<File | null>(null)
+  const [createKey] = useState(() => `portal-media:${crypto.randomUUID()}`)
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [notice, setNotice] = useState<null | { tone: 'danger' | 'success'; value: string }>(null)
@@ -97,7 +98,7 @@ export function MediaEditor({
         form.set('file', file)
         response = await fetch('/api/portal/media', {
           body: form,
-          headers: { 'Idempotency-Key': `portal-media:${crypto.randomUUID()}` },
+          headers: { 'Idempotency-Key': createKey },
           method: 'POST',
         })
       } else if (item) {

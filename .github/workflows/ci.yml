@@ -340,6 +340,7 @@ jobs:
           fi
           if [[ "$ADMIN_E2E" == 'true' ]]; then
             specs+=(tests/e2e/admin-visual.spec.ts)
+            specs+=(tests/e2e/admin-portal-*.spec.ts)
           fi
           if [[ "$CHAT_E2E" == 'true' ]]; then
             specs+=(tests/e2e/chat-handoff.spec.ts)

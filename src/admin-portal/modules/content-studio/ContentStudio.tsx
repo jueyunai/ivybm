@@ -918,7 +918,7 @@ function ReviewEditor({
   )
 }
 
-function ScheduleEditor({
+export function ScheduleEditor({
   copy,
   item,
   onClose,
@@ -930,6 +930,7 @@ function ScheduleEditor({
   onDone: (message: string) => void
 }) {
   const mode = 'assisted'
+  const [idempotencyKey] = useState(() => `portal-content-studio:schedule:${crypto.randomUUID()}`)
   const [scheduledFor, setScheduledFor] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -939,7 +940,7 @@ function ScheduleEditor({
     try {
       await request(`/api/portal/content-studio/${item.id}`, 'POST', {
         action: 'schedule',
-        idempotencyKey: `portal-content-studio:${crypto.randomUUID()}`,
+        idempotencyKey,
         mode,
         platform: item.platform,
         scheduledFor: new Date(scheduledFor).toISOString(),

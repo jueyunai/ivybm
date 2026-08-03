@@ -26,10 +26,7 @@ test('desktop Portal Shell exposes role-safe business navigation and settings', 
 
   await expect(page.getByRole('navigation', { name: '运营门户导航' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 2, name: '基础设置' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '基础设置' })).toHaveAttribute(
-    'aria-current',
-    'page',
-  )
+  await expect(page.getByRole('link', { name: '基础设置' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByText(adminEmail)).toBeVisible()
   await expect(page.locator('.portal-sidebar')).toHaveCSS('width', '260px')
   await page.screenshot({
@@ -57,6 +54,18 @@ test('mobile Portal Shell uses an accessible navigation drawer without horizonta
   await trigger.click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('navigation', { name: '运营门户导航' })).toBeVisible()
+  const dialog = page.getByRole('dialog')
+  const focusable = dialog.locator(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )
+  const first = focusable.first()
+  const last = focusable.last()
+  await last.focus()
+  await page.keyboard.press('Tab')
+  await expect(first).toBeFocused()
+  await first.focus()
+  await page.keyboard.press('Shift+Tab')
+  await expect(last).toBeFocused()
   await page.screenshot({
     fullPage: true,
     path: testInfo.outputPath('portal-settings-mobile-drawer.png'),

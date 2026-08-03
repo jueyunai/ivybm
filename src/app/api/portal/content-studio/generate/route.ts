@@ -21,6 +21,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       fingerprintInput: input,
       operation: (commandReq) => generateContentStudioDraft({ input, payload, req: commandReq }),
       payload,
+      replayPolicy: 'unknown-on-expiry',
       req,
       request,
       scope: 'portal.content-studio:generate',

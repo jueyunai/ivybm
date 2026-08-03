@@ -9,6 +9,36 @@ import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCo
 
 import { MediaCommandError, type PortalMediaFile } from './mediaCommands'
 
+const MAX_MEDIA_UPLOAD_REQUEST_BYTES = MEDIA_PDF_MAX_BYTES + 1_048_576
+
+const readRequestBodyWithinLimit = async (
+  request: Request,
+  maximumBytes: number,
+): Promise<Buffer> => {
+  if (!request.body) return Buffer.alloc(0)
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value.byteLength > maximumBytes - total) {
+        await reader.cancel('request body exceeds media upload limit').catch(() => undefined)
+        throw new MediaCommandError('media-request-too-large', 'Media upload is too large', 413)
+      }
+      total += value.byteLength
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  return Buffer.concat(
+    chunks.map((chunk) => Buffer.from(chunk)),
+    total,
+  )
+}
+
 export interface AuthorizedMediaRequest {
   payload: Payload
   req: PayloadRequest
@@ -59,14 +89,23 @@ export async function readMediaUpload(request: Request): Promise<{
   input: Record<string, unknown>
 }> {
   const contentLength = Number.parseInt(request.headers.get('content-length') ?? '0', 10)
-  if (Number.isFinite(contentLength) && contentLength > MEDIA_PDF_MAX_BYTES + 1_048_576) {
+  if (Number.isFinite(contentLength) && contentLength > MAX_MEDIA_UPLOAD_REQUEST_BYTES) {
     throw new MediaCommandError('media-request-too-large', 'Media upload is too large', 413)
   }
 
   let form: FormData
   try {
-    form = await request.formData()
-  } catch {
+    const body = await readRequestBodyWithinLimit(request, MAX_MEDIA_UPLOAD_REQUEST_BYTES)
+    const headers = new Headers(request.headers)
+    headers.delete('content-length')
+    headers.delete('transfer-encoding')
+    form = await new Request(request.url, {
+      body,
+      headers,
+      method: request.method,
+    }).formData()
+  } catch (error) {
+    if (error instanceof MediaCommandError) throw error
     throw new MediaCommandError('media-invalid-form', 'A multipart upload is required', 400)
   }
   const candidate = form.get('file') as null | {

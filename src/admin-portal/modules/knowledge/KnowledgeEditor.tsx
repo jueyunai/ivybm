@@ -127,6 +127,7 @@ export function KnowledgeEditor({
   const { locale: portalLocale } = usePortalPreferences()
   const text = copy[portalLocale]
   const [form, setForm] = useState<EditorForm>(emptyForm)
+  const [createKey] = useState(() => `portal-knowledge:${crypto.randomUUID()}`)
   const [options, setOptions] = useState<EditorOptions>(EMPTY_OPTIONS)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -197,7 +198,8 @@ export function KnowledgeEditor({
         body: JSON.stringify(body),
         headers: {
           'Content-Type': 'application/json',
-          'Idempotency-Key': `portal-knowledge:${crypto.randomUUID()}`,
+          'Idempotency-Key':
+            mode === 'create' ? createKey : `portal-knowledge:${crypto.randomUUID()}`,
         },
         method: mode === 'edit' ? 'PATCH' : 'POST',
       })

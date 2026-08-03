@@ -1,9 +1,10 @@
 import React from 'react'
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PortalSidebar } from '@/admin-portal/core/navigation/PortalSidebar'
+import { PortalMobileNav } from '@/admin-portal/core/navigation/PortalMobileNav'
 import { PortalShell } from '@/admin-portal/core/navigation/PortalShell'
 import { resolvePortalAvailability } from '@/admin-portal/core/modules/resolvePortalAvailability'
 
@@ -65,9 +66,7 @@ describe('Portal navigation', () => {
     )
 
     expect(screen.getByRole('navigation', { name: '运营门户导航' })).toBeTruthy()
-    expect(screen.getByRole('link', { name: '基础设置' }).getAttribute('aria-current')).toBe(
-      'page',
-    )
+    expect(screen.getByRole('link', { name: '基础设置' }).getAttribute('aria-current')).toBe('page')
     expect(screen.getByRole('link', { name: '运营首页' }).getAttribute('href')).toBe('/dashboard')
     expect(screen.getByText('运营首页').closest('[aria-disabled="true"]')).toBeNull()
     expect(container.innerHTML).not.toContain('/admin')
@@ -99,5 +98,41 @@ describe('Portal navigation', () => {
     expect(screen.getByText('运营门户维护中')).toBeTruthy()
     expect(screen.queryByText('must not render')).toBeNull()
     expect(screen.queryByRole('navigation')).toBeNull()
+  })
+
+  it('keeps Tab and Shift+Tab inside the mobile navigation dialog', async () => {
+    const triggerRef = React.createRef<HTMLButtonElement>()
+    const resolution = resolvePortalAvailability({ env: enabledEnvironment, role: 'admin' })
+    render(
+      React.createElement(
+        'div',
+        null,
+        React.createElement('button', { ref: triggerRef }, 'Open navigation'),
+        React.createElement(PortalMobileNav, {
+          locale: 'zh',
+          modules: resolution.modules,
+          onClose: vi.fn(),
+          onLocaleToggle: vi.fn(),
+          open: true,
+          triggerRef,
+          user: { email: 'admin@example.com', id: 1, role: 'admin' },
+        }),
+      ),
+    )
+
+    const dialog = await screen.findByRole('dialog')
+    const focusable = () =>
+      Array.from(dialog.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea'))
+    await waitFor(() => expect(document.activeElement).toBe(focusable()[0]))
+    const first = focusable()[0]
+    const last = focusable().at(-1)
+    if (!first || !last) throw new Error('Expected mobile navigation controls')
+
+    last.focus()
+    fireEvent.keyDown(document, { key: 'Tab' })
+    expect(document.activeElement).toBe(first)
+    first.focus()
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(last)
   })
 })

@@ -9,6 +9,22 @@ import type { ResolvedPortalModule } from '@/admin-portal/core/modules/types'
 
 import { PortalSidebar } from './PortalSidebar'
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
+const focusableElements = (dialog: HTMLElement): HTMLElement[] =>
+  Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (element) =>
+      element.getAttribute('aria-hidden') !== 'true' &&
+      element.getAttribute('aria-disabled') !== 'true',
+  )
+
 export interface PortalMobileNavProps {
   locale: PortalLocale
   modules: readonly ResolvedPortalModule[]
@@ -38,12 +54,38 @@ export function PortalMobileNav({
     const trigger = triggerRef.current
     document.body.style.overflow = 'hidden'
     const focusFrame = window.requestAnimationFrame(() => {
-      dialogRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+      const dialog = dialogRef.current
+      if (!dialog) return
+      const initialFocus = focusableElements(dialog)[0] ?? dialog
+      initialFocus.focus()
     })
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
         onClose()
+        return
+      }
+      if (event.key === 'Tab') {
+        const dialog = dialogRef.current
+        if (!dialog) return
+        const elements = focusableElements(dialog)
+        if (elements.length === 0) {
+          event.preventDefault()
+          dialog.focus()
+          return
+        }
+        const first = elements[0]
+        const last = elements[elements.length - 1]
+        const active = document.activeElement
+        if (
+          event.shiftKey
+            ? active === first || !dialog.contains(active)
+            : active === last || !dialog.contains(active)
+        ) {
+          event.preventDefault()
+          const wrappedFocus = event.shiftKey ? last : first
+          wrappedFocus.focus()
+        }
       }
     }
 
@@ -71,6 +113,7 @@ export function PortalMobileNav({
         className="portal-mobile-nav__dialog"
         ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
       >
         <PortalSidebar
           collapsed={false}

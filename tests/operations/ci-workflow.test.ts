@@ -105,6 +105,7 @@ describe('CI workflow policy', () => {
     expect(e2eStep).toContain('CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}')
     expect(e2eStep).toContain('specs+=(tests/e2e/website.spec.ts)')
     expect(e2eStep).toContain('specs+=(tests/e2e/admin-visual.spec.ts)')
+    expect(e2eStep).toContain('specs+=(tests/e2e/admin-portal-*.spec.ts)')
     expect(e2eStep).toContain('specs+=(tests/e2e/chat-handoff.spec.ts)')
     expect(e2eStep.match(/pnpm test:e2e/g)).toHaveLength(2)
     expect(e2eStep).toContain('pnpm test:e2e -- "${specs[@]}"')
