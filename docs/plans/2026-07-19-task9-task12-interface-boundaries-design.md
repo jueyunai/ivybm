@@ -2,7 +2,10 @@
 
 ## 目标
 
-Task 9 和 Task 12 按“前端体验与内部工作流”和“后端服务与第三方平台适配”拆分，避免任一方等待另一方完成全部 Task 才能开发。双方先冻结内部接口、请求响应结构、错误码和 mock/fixture，再分别实现消费者与服务提供者。
+Task 9 和 Task 12 按 Portal Core 与业务模块 owner 拆分。jueyunai 提供 `/dashboard`
+基座、共享 UI/状态/错误契约、官网 ChatWidget、AI 内容工作台和整体视觉/集成验收；xuemusi 负责知识/AI、
+统一会话、AI 客服及海外平台服务的页面或领域服务和持续迭代。
+双方先冻结接口、请求响应、错误码和 mock/fixture，再独立开发。
 
 ## 一期平台范围
 
@@ -14,21 +17,23 @@ Task 9 和 Task 12 按“前端体验与内部工作流”和“后端服务与�
 
 | 领域                | jueyunai                                                                                                                 | xuemusi                                                                                                                                                          |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Task 9 官网 AI 客服 | `ChatWidget`、官网交互、加载/错误/人工接管 UI、前端 E2E                                                                  | 会话服务、AI 回复、知识引用、意向评分、人工接管 API、Facebook Messenger / Instagram DM / TikTok 私信 adapter、`Conversations` / `Messages` / `Handoffs` 数据集成 |
-| Task 12 内容工作台  | 图文内容发布页面、内容生成/审核 UI、状态展示、内容生成与审核工作流、`PublishJobs` / `PublishLogs` 共享结构和发布任务创建 | Facebook / Instagram / LinkedIn 图文 capability / publish / status 服务、platform adapter、发布结果回调                                                          |
+| Portal Core | `/dashboard` 登录、Shell、module registry、共享 UI/状态、设计规范、集成验收 | 按公共 contract 接入模块；不复制 Core 或绕过权限 |
+| Task 9 官网 AI 客服 | 官网 `ChatWidget` 与公开页面集成、整体体验验收 | `/dashboard/conversations`、会话服务、AI 回复、知识引用、意向评分、人工接管 API、平台 adapter 和数据集成 |
+| Task 12 内容工作台  | `/dashboard/content-studio`、素材/CMS 输入、生成/审核流程、正式共享结构、发布任务、整体 IA 与视觉验收 | 平台 capability/publish/status、账号 readiness、adapter、结果回调和真实发布执行 |
 | 共同                | 冻结 contract、错误码、fixture、mock 行为；跨边界改动互相 review                                                         | 冻结 contract、错误码、fixture、mock 行为；跨边界改动互相 review                                                                                                 |
 
 ## 接口与解耦
 
 - 官网前端只依赖 `ChatService` contract，不导入模型供应商 SDK，也不直接访问 `Conversations` / `Messages`。
-- 内容工作台只依赖 `PublishingService` contract，不导入 Facebook / Instagram / LinkedIn SDK，也不读取平台 token。
-- xuemusi 的服务实现可以先使用 fake repository 和 fake provider；平台账号、审核和 production 或等价受控真实环境条件满足后，再替换为真实 adapter。
+- 内容工作台模块只依赖 `PublishingService` contract，不导入 Facebook / Instagram / LinkedIn SDK，也不读取平台 token。
+- jueyunai 的内容工作台先消费双方冻结的 `PublishingService` fake；xuemusi 的平台服务可以先使用 fake repository 和 fake provider，production 或等价受控真实环境条件满足后再替换真实 adapter。
 - 共享 Collection、migration、Payload 注册和生成类型仍按 `main` 的合并顺序维护；接口 contract 可以先于数据库 adapter 合并。
 
 ### 人工接管边界
 
-- jueyunai 负责 ChatWidget、运营会话列表、接管提示、认领/解决操作和所有用户可见状态。
-- xuemusi 负责服务端权威状态机、转换守卫、幂等、权限、审计，以及进入 `human_active` 后阻止 AI 自动回复。
+- jueyunai 负责官网 ChatWidget、Portal Core、统一设计规范和集成验收。
+- xuemusi 负责 `/dashboard/conversations` 的运营会话 UI、服务端权威状态机、转换守卫、
+  幂等、权限、审计，以及进入 `human_active` 后阻止 AI 自动回复。
 - `ChatService` 的 HTTP route 是模块化单体内的薄适配层，不是独立微服务；官网、运营后台以及一期 Facebook Messenger / Instagram DM / TikTok 私信连接器共用同一个 `ConversationService`。
 - 前端只提交 `reason`、`source` 和 `idempotencyKey` 等命令参数，不能直接写 `handoffStatus`、`assignedTo` 或审计字段。
 - 运营界面先从 `GET /api/chat/operator/sessions` 读取分页摘要，再用 `GET /api/chat/sessions/:id?view=operator` 读取详情；admin/operator 可认领，sales 只能处理已分配会话。
@@ -39,14 +44,14 @@ Task 9 和 Task 12 按“前端体验与内部工作流”和“后端服务与�
 ## Mock-first 交付顺序
 
 1. 双方共同提交 TypeScript port/interface、JSON schema、错误码、状态枚举和官方结构 fixture。
-2. jueyunai 用 `FakeChatService` 和 `FakePublishingService` 完成页面、交互和前端测试；mock 必须覆盖 loading、retry、handoff、scheduled、published、failed 等状态。
-3. xuemusi 用 contract test、fake repository 和平台 mock 完成服务与 adapter；测试不得访问真实平台网络或携带真实 token。
+2. jueyunai 先交付 Portal module manifest、示例模块、共享 UI/状态和视觉测试工具。
+3. jueyunai 用 `PublishingService` mock 完成内容工作台；xuemusi 用 fake repository、平台 mock 和 Portal contract 完成知识、会话与平台发布服务；测试不得访问真实平台网络或携带真实 token。
 4. 服务端接口稳定后，双方分别补数据库集成测试；Task 13 的真实发布 adapter 只有在 `PublishJobs` / `PublishLogs` 合并后接入。
 5. production 或等价受控真实环境具备账号授权后，分别执行 Facebook Messenger / Instagram DM / TikTok 私信入站、Facebook / Instagram / LinkedIn 图文发布的真实联调；fixture / mock 通过不等同于平台已可用。
 
 ## 验收边界
 
-- Task 9 前端验收：英文 / 阿语、RTL、移动端、重试、敏感问题转人工、人工接管后停止 AI 回复。
+- Task 9 前端验收：官网 ChatWidget 与 `/dashboard/conversations` 的移动端、重试、敏感问题转人工、人工接管后停止 AI 回复。
 - Task 9 服务验收：Facebook Messenger / Instagram DM / TikTok 私信的会话幂等、知识引用、意向评分、Lead 创建、稳定错误码和权限边界。
 - Task 12 前端验收：内容生成、审核状态机、平台选择、定时发布、发布中/成功/失败展示。
 - Task 12 平台服务验收：Facebook / Instagram / LinkedIn 图文能力查询、发布任务幂等、结果回调、限流/重试和 token 隔离。

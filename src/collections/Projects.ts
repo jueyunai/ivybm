@@ -15,6 +15,7 @@ import {
   revalidateContentAfterChange,
   revalidateContentAfterDelete,
 } from '../hooks/revalidateContent'
+import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 
 export const Projects: CollectionConfig = {
   slug: 'projects',
@@ -76,8 +77,8 @@ export const Projects: CollectionConfig = {
     internalNotesField(),
   ],
   hooks: {
-    afterChange: [revalidateContentAfterChange],
-    afterDelete: [revalidateContentAfterDelete],
+    afterChange: [revalidateContentAfterChange, writeAuditLogAfterChange],
+    afterDelete: [revalidateContentAfterDelete, writeAuditLogAfterDelete],
   },
   versions: {
     drafts: true,

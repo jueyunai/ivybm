@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { createLocalReq } from 'payload'
 
 import {
   authenticateOperator,
@@ -33,8 +34,9 @@ export async function GET(
       return chatJSONResponse(await service.getSession(id))
     }
     const actor = await authenticateOperator(payload, request)
-    await authorizeOperatorConversation(payload, id, actor)
-    const service = await createPayloadChatService({ actor })
+    const req = await createLocalReq({ user: actor }, payload)
+    await authorizeOperatorConversation(payload, id, actor, req)
+    const service = await createPayloadChatService({ actor, req })
     return chatJSONResponse(await service.getSession(id))
   } catch (error) {
     return chatErrorResponse(error)

@@ -74,6 +74,10 @@ export interface Config {
     'ai-model-profiles': AiModelProfile;
     'ai-usage-routes': AiUsageRoute;
     'ai-usage-logs': AiUsageLog;
+    'generated-contents': GeneratedContent;
+    'content-reviews': ContentReview;
+    'publish-jobs': PublishJob;
+    'publish-logs': PublishLog;
     pages: Page;
     'product-categories': ProductCategory;
     products: Product;
@@ -84,6 +88,7 @@ export interface Config {
     'knowledge-chunks': KnowledgeChunk;
     'prompt-templates': PromptTemplate;
     'platform-accounts': PlatformAccount;
+    'portal-command-receipts': PortalCommandReceipt;
     'lead-sources': LeadSource;
     leads: Lead;
     'feishu-connections': FeishuConnection;
@@ -109,6 +114,10 @@ export interface Config {
     'ai-model-profiles': AiModelProfilesSelect<false> | AiModelProfilesSelect<true>;
     'ai-usage-routes': AiUsageRoutesSelect<false> | AiUsageRoutesSelect<true>;
     'ai-usage-logs': AiUsageLogsSelect<false> | AiUsageLogsSelect<true>;
+    'generated-contents': GeneratedContentsSelect<false> | GeneratedContentsSelect<true>;
+    'content-reviews': ContentReviewsSelect<false> | ContentReviewsSelect<true>;
+    'publish-jobs': PublishJobsSelect<false> | PublishJobsSelect<true>;
+    'publish-logs': PublishLogsSelect<false> | PublishLogsSelect<true>;
     pages: PagesSelect<false> | PagesSelect<true>;
     'product-categories': ProductCategoriesSelect<false> | ProductCategoriesSelect<true>;
     products: ProductsSelect<false> | ProductsSelect<true>;
@@ -119,6 +128,7 @@ export interface Config {
     'knowledge-chunks': KnowledgeChunksSelect<false> | KnowledgeChunksSelect<true>;
     'prompt-templates': PromptTemplatesSelect<false> | PromptTemplatesSelect<true>;
     'platform-accounts': PlatformAccountsSelect<false> | PlatformAccountsSelect<true>;
+    'portal-command-receipts': PortalCommandReceiptsSelect<false> | PortalCommandReceiptsSelect<true>;
     'lead-sources': LeadSourcesSelect<false> | LeadSourcesSelect<true>;
     leads: LeadsSelect<false> | LeadsSelect<true>;
     'feishu-connections': FeishuConnectionsSelect<false> | FeishuConnectionsSelect<true>;
@@ -355,6 +365,175 @@ export interface AiUsageLog {
   totalTokens: number;
   estimatedCostUSD?: number | null;
   durationMs: number;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "generated-contents".
+ */
+export interface GeneratedContent {
+  id: number;
+  title: string;
+  platform: 'facebook' | 'instagram' | 'linkedin';
+  contentLocale: 'en' | 'ar';
+  contentType: 'post' | 'carousel' | 'long-form';
+  body: string;
+  sourceReferences?:
+    | {
+        claim: string;
+        source: string;
+        id?: string | null;
+      }[]
+    | null;
+  assets?: (number | Media)[] | null;
+  knowledgeSources?: (number | KnowledgeDocument)[] | null;
+  status: 'draft' | 'review' | 'approved';
+  idempotencyKey: string;
+  creationFingerprint: string;
+  createdBy: number | User;
+  reviewedAt?: string | null;
+  reviewedBy?: (number | null) | User;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-documents".
+ */
+export interface KnowledgeDocument {
+  id: number;
+  sourceTitle: string;
+  sourceType: 'faq' | 'product-manual' | 'technical-specification' | 'sales-script' | 'project-case' | 'other';
+  /**
+   * Only reviewed, indexed documents marked here may be used by the public website chat.
+   */
+  customerVisible?: boolean | null;
+  sourceURL?: string | null;
+  sourceFile?: (number | null) | Media;
+  sourceVersion: string;
+  locale: 'en' | 'ar';
+  content: string;
+  reviewStatus: 'draft' | 'reviewed' | 'archived';
+  reviewedAt?: string | null;
+  reviewedBy?: (number | null) | User;
+  indexStatus: 'pending' | 'processing' | 'ready' | 'failed';
+  indexedAt?: string | null;
+  embeddingModel?: string | null;
+  embeddingSpace?: string | null;
+  indexJobId?: number | null;
+  indexOwnerToken?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "content-reviews".
+ */
+export interface ContentReview {
+  id: number;
+  content: number | GeneratedContent;
+  decision: 'approved' | 'revision-requested';
+  checklist: {
+    factsTraceable: boolean;
+    technicalClaimsChecked: boolean;
+    noCommercialCommitment: boolean;
+    platformFormatChecked: boolean;
+    arabicProofread: boolean;
+  };
+  comments?: string | null;
+  reviewedBy: number | User;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "publish-jobs".
+ */
+export interface PublishJob {
+  id: number;
+  content: number | GeneratedContent;
+  platform: 'facebook' | 'instagram' | 'linkedin';
+  platformAccount?: (number | null) | PlatformAccount;
+  mode: 'assisted' | 'automatic';
+  status: 'scheduled' | 'accepted' | 'publishing' | 'published' | 'failed' | 'delivery_unknown';
+  scheduledFor: string;
+  acceptedAt?: string | null;
+  publishedAt?: string | null;
+  externalPublicationId?: string | null;
+  lastErrorCode?: string | null;
+  lastErrorSummary?: string | null;
+  idempotencyKey: string;
+  createdBy: number | User;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-accounts".
+ */
+export interface PlatformAccount {
+  id: number;
+  name: string;
+  accountKind:
+    'facebook-page' | 'instagram-professional' | 'tiktok-business' | 'linkedin-member' | 'linkedin-organization';
+  platformFamily: 'meta' | 'tiktok' | 'linkedin';
+  /**
+   * Provider-side Page, professional account, member, or organization identifier. Leave blank until known.
+   */
+  externalAccountId?: string | null;
+  connectionKey?: string | null;
+  authorization: {
+    state: 'not_started' | 'pending' | 'connected' | 'expired' | 'blocked' | 'disabled';
+    /**
+     * Non-secret provider application ID only. Never enter an App Secret or Client Secret here.
+     */
+    appId?: string | null;
+    /**
+     * Write-only. Enter a value to set or replace the token; leave blank to retain it.
+     */
+    accessToken?: string | null;
+    /**
+     * This indicator never reveals the token.
+     */
+    accessTokenConfigured?: boolean | null;
+    /**
+     * Use only when revoking a credential. A connected account cannot be saved without a token.
+     */
+    clearAccessToken?: boolean | null;
+    /**
+     * Write-only. Enter a value to set or replace the refresh token; leave blank to retain it.
+     */
+    refreshToken?: string | null;
+    refreshTokenConfigured?: boolean | null;
+    clearRefreshToken?: boolean | null;
+    expiresAt?: string | null;
+    scopes?:
+      | {
+          scope: string;
+          id?: string | null;
+        }[]
+      | null;
+  };
+  capabilities?: {
+    messagingInbound?: ('not_started' | 'pending' | 'approved' | 'blocked') | null;
+    publishing?: ('not_started' | 'pending' | 'approved' | 'blocked') | null;
+  };
+  notes?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "publish-logs".
+ */
+export interface PublishLog {
+  id: number;
+  publishJob: number | PublishJob;
+  event:
+    'created' | 'scheduled' | 'accepted' | 'assisted-package-ready' | 'status-updated' | 'failed' | 'delivery-unknown';
+  summary: string;
+  actor?: (number | null) | User;
   updatedAt: string;
   createdAt: string;
 }
@@ -664,35 +843,6 @@ export interface Download {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "knowledge-documents".
- */
-export interface KnowledgeDocument {
-  id: number;
-  sourceTitle: string;
-  sourceType: 'faq' | 'product-manual' | 'technical-specification' | 'sales-script' | 'project-case' | 'other';
-  /**
-   * Only reviewed, indexed documents marked here may be used by the public website chat.
-   */
-  customerVisible?: boolean | null;
-  sourceURL?: string | null;
-  sourceFile?: (number | null) | Media;
-  sourceVersion: string;
-  locale: 'en' | 'ar';
-  content: string;
-  reviewStatus: 'draft' | 'reviewed' | 'archived';
-  reviewedAt?: string | null;
-  reviewedBy?: (number | null) | User;
-  indexStatus: 'pending' | 'processing' | 'ready' | 'failed';
-  indexedAt?: string | null;
-  embeddingModel?: string | null;
-  embeddingSpace?: string | null;
-  indexJobId?: number | null;
-  indexOwnerToken?: string | null;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "knowledge-chunks".
  */
 export interface KnowledgeChunk {
@@ -739,56 +889,27 @@ export interface PromptTemplate {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "platform-accounts".
+ * via the `definition` "portal-command-receipts".
  */
-export interface PlatformAccount {
+export interface PortalCommandReceipt {
   id: number;
-  name: string;
-  accountKind:
-    'facebook-page' | 'instagram-professional' | 'tiktok-business' | 'linkedin-member' | 'linkedin-organization';
-  platformFamily: 'meta' | 'tiktok' | 'linkedin';
-  /**
-   * Provider-side Page, professional account, member, or organization identifier. Leave blank until known.
-   */
-  externalAccountId?: string | null;
-  connectionKey?: string | null;
-  authorization: {
-    state: 'not_started' | 'pending' | 'connected' | 'expired' | 'blocked' | 'disabled';
-    /**
-     * Non-secret provider application ID only. Never enter an App Secret or Client Secret here.
-     */
-    appId?: string | null;
-    /**
-     * Write-only. Enter a value to set or replace the token; leave blank to retain it.
-     */
-    accessToken?: string | null;
-    /**
-     * This indicator never reveals the token.
-     */
-    accessTokenConfigured?: boolean | null;
-    /**
-     * Use only when revoking a credential. A connected account cannot be saved without a token.
-     */
-    clearAccessToken?: boolean | null;
-    /**
-     * Write-only. Enter a value to set or replace the refresh token; leave blank to retain it.
-     */
-    refreshToken?: string | null;
-    refreshTokenConfigured?: boolean | null;
-    clearRefreshToken?: boolean | null;
-    expiresAt?: string | null;
-    scopes?:
-      | {
-          scope: string;
-          id?: string | null;
-        }[]
-      | null;
-  };
-  capabilities?: {
-    messagingInbound?: ('not_started' | 'pending' | 'approved' | 'blocked') | null;
-    publishing?: ('not_started' | 'pending' | 'approved' | 'blocked') | null;
-  };
-  notes?: string | null;
+  scope: string;
+  idempotencyKey: string;
+  fingerprint: string;
+  actor: number | User;
+  ownerToken: string;
+  leaseExpiresAt: string;
+  status: 'processing' | 'completed' | 'failed';
+  result?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  errorCode?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -1165,6 +1286,22 @@ export interface PayloadLockedDocument {
         value: number | AiUsageLog;
       } | null)
     | ({
+        relationTo: 'generated-contents';
+        value: number | GeneratedContent;
+      } | null)
+    | ({
+        relationTo: 'content-reviews';
+        value: number | ContentReview;
+      } | null)
+    | ({
+        relationTo: 'publish-jobs';
+        value: number | PublishJob;
+      } | null)
+    | ({
+        relationTo: 'publish-logs';
+        value: number | PublishLog;
+      } | null)
+    | ({
         relationTo: 'pages';
         value: number | Page;
       } | null)
@@ -1203,6 +1340,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'platform-accounts';
         value: number | PlatformAccount;
+      } | null)
+    | ({
+        relationTo: 'portal-command-receipts';
+        value: number | PortalCommandReceipt;
       } | null)
     | ({
         relationTo: 'lead-sources';
@@ -1443,6 +1584,88 @@ export interface AiUsageLogsSelect<T extends boolean = true> {
   totalTokens?: T;
   estimatedCostUSD?: T;
   durationMs?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "generated-contents_select".
+ */
+export interface GeneratedContentsSelect<T extends boolean = true> {
+  title?: T;
+  platform?: T;
+  contentLocale?: T;
+  contentType?: T;
+  body?: T;
+  sourceReferences?:
+    | T
+    | {
+        claim?: T;
+        source?: T;
+        id?: T;
+      };
+  assets?: T;
+  knowledgeSources?: T;
+  status?: T;
+  idempotencyKey?: T;
+  creationFingerprint?: T;
+  createdBy?: T;
+  reviewedAt?: T;
+  reviewedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "content-reviews_select".
+ */
+export interface ContentReviewsSelect<T extends boolean = true> {
+  content?: T;
+  decision?: T;
+  checklist?:
+    | T
+    | {
+        factsTraceable?: T;
+        technicalClaimsChecked?: T;
+        noCommercialCommitment?: T;
+        platformFormatChecked?: T;
+        arabicProofread?: T;
+      };
+  comments?: T;
+  reviewedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "publish-jobs_select".
+ */
+export interface PublishJobsSelect<T extends boolean = true> {
+  content?: T;
+  platform?: T;
+  platformAccount?: T;
+  mode?: T;
+  status?: T;
+  scheduledFor?: T;
+  acceptedAt?: T;
+  publishedAt?: T;
+  externalPublicationId?: T;
+  lastErrorCode?: T;
+  lastErrorSummary?: T;
+  idempotencyKey?: T;
+  createdBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "publish-logs_select".
+ */
+export interface PublishLogsSelect<T extends boolean = true> {
+  publishJob?: T;
+  event?: T;
+  summary?: T;
+  actor?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1710,6 +1933,23 @@ export interface PlatformAccountsSelect<T extends boolean = true> {
         publishing?: T;
       };
   notes?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "portal-command-receipts_select".
+ */
+export interface PortalCommandReceiptsSelect<T extends boolean = true> {
+  scope?: T;
+  idempotencyKey?: T;
+  fingerprint?: T;
+  actor?: T;
+  ownerToken?: T;
+  leaseExpiresAt?: T;
+  status?: T;
+  result?: T;
+  errorCode?: T;
   updatedAt?: T;
   createdAt?: T;
 }

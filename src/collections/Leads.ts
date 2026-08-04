@@ -9,6 +9,7 @@ import {
   leadsRead,
   leadsUpdate,
 } from '../access/leads'
+import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 import { enqueueFeishuLeadChange } from '../modules/feishu/jobs'
 
 const immutableAfterCreate = () => false
@@ -191,6 +192,7 @@ export const Leads: CollectionConfig = {
     },
   ],
   hooks: {
-    afterChange: [enqueueFeishuLeadChange],
+    afterChange: [writeAuditLogAfterChange, enqueueFeishuLeadChange],
+    afterDelete: [writeAuditLogAfterDelete],
   },
 }

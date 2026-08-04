@@ -13,6 +13,7 @@
 - Task 1 正式应用工程已初始化，当前具备 Next.js 前台、Payload Admin、REST API、GraphQL API 和基础测试能力。
 - 当前技术栈：Next.js 16.2.6、Payload CMS 3.86.0、React 19.2.6、PostgreSQL Adapter、Node.js 24、pnpm 10.15.1。
 - 当前已具备 PostgreSQL + pgvector、Docker Compose 和 1Panel OpenResty 的运行时基础；后续按实施计划继续完成 production 镜像发布和业务模块。
+- 管理后台目标架构已冻结为“Payload 唯一控制平面 + 自研 `/dashboard` 运营门户”；第一阶段只设计、开发和验收 `/dashboard`。Payload 已有 `/admin` 在新版迁移验收前继续供受限维护人员使用，不进入 Portal 导航、不新增 UI，也不作为 Portal 业务回退；验收后再决定继续维护或下架。
 
 ## 本地开发
 
@@ -24,19 +25,27 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
+每个 worktree 必须使用独立应用端口、Compose project、PostgreSQL host port、开发库和 `_test` / `_ci`
+测试库。本地 migration、seed、E2E 和脚本禁止连接 production 数据库、uploads、备份或真实外部 token。
+
 默认访问地址：
 
 - 前台：`http://localhost:3000/`
-- Payload Admin：`http://localhost:3000/admin`
+- Payload Admin（迁移期受限维护入口，非一期 Portal 交付）：`http://localhost:3000/admin`
+- 运营门户（目标路由，按计划开发中）：`http://localhost:3000/dashboard`
 - REST API：`http://localhost:3000/api`
 - GraphQL API：`http://localhost:3000/api/graphql`
 
-提交前运行：
+开发 checkpoint 先运行当前改动对应的定向测试、类型检查和 `git diff --check`。Portal V1 转 Ready / 合并前运行：
 
 ```bash
 pnpm lint
 pnpm typecheck
 pnpm test:unit
+pnpm test:contract
+pnpm test:integration
+pnpm test:e2e
+pnpm test:operations
 pnpm build
 ```
 
@@ -75,6 +84,9 @@ GitHub CI 只负责质量门禁与私有镜像发布；1Panel 手动拉取指定
 - [`docs/requirements/一期需求说明文档.md`](docs/requirements/一期需求说明文档.md)
 - [`docs/architecture/一期技术选型与部署架构规划.md`](docs/architecture/一期技术选型与部署架构规划.md)
 - [`docs/plans/2026-07-16-一期开发实施计划.md`](docs/plans/2026-07-16-一期开发实施计划.md)
+- [`docs/architecture/adr/0004-modular-admin-portal.md`](docs/architecture/adr/0004-modular-admin-portal.md)
+- [`docs/architecture/管理后台模块化架构与责任边界.mermaid`](docs/architecture/管理后台模块化架构与责任边界.mermaid)
+- [`docs/plans/2026-07-29-modular-admin-portal-implementation.md`](docs/plans/2026-07-29-modular-admin-portal-implementation.md)
 
 两人协作分支、PR 和本地 worktree 规范见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。本地固定保留 `ivybm` 作为干净的 `main` 基线；开发使用短期 `ivybm-task*`、`ivybm-fix-*` 或 `ivybm-docs-*`，协作者 PR 审查使用临时 `ivybm-review-pr-<编号>`，完成后按规范清理。
 

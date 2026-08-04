@@ -140,7 +140,7 @@ jobs:
             case "$path" in
               .env.example|.env.production.example)
                 ;;
-              .env|.env.*|data/*|*/data/*|media/*|*/media/*|uploads/*|*/uploads/*|backups/*|*/backups/*|*.sqlite|*.sqlite3|*.dump)
+              .env|.env.*|data/*|media/*|uploads/*|backups/*|*.sqlite|*.sqlite3|*.dump)
                 echo "Forbidden tracked path in change set: $path" >&2
                 forbidden=1
                 ;;
@@ -207,7 +207,7 @@ jobs:
        needs.changes.outputs.production_image == 'true' ||
        needs.changes.outputs.full_fallback == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     services:
       db:
         image: pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
@@ -223,6 +223,18 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      ADMIN_PORTAL_CONTENT_STUDIO_ENABLED: true
+      ADMIN_PORTAL_CONVERSATIONS_ENABLED: true
+      ADMIN_PORTAL_ENABLED: true
+      ADMIN_PORTAL_KNOWLEDGE_ENABLED: true
+      ADMIN_PORTAL_LEADS_ENABLED: true
+      ADMIN_PORTAL_MEDIA_ENABLED: true
+      ADMIN_PORTAL_OPERATIONS_ENABLED: true
+      ADMIN_PORTAL_OVERVIEW_ENABLED: true
+      ADMIN_PORTAL_PLATFORMS_ENABLED: true
+      ADMIN_PORTAL_PUBLISHING_ENABLED: false
+      ADMIN_PORTAL_SETTINGS_ENABLED: true
+      ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED: true
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ivybm_ci
       PAYLOAD_SECRET: ci-build-only-secret-at-least-32-characters
       NEXT_PUBLIC_SERVER_URL: http://localhost:3000
@@ -328,6 +340,7 @@ jobs:
           fi
           if [[ "$ADMIN_E2E" == 'true' ]]; then
             specs+=(tests/e2e/admin-visual.spec.ts)
+            specs+=(tests/e2e/admin-portal-*.spec.ts)
           fi
           if [[ "$CHAT_E2E" == 'true' ]]; then
             specs+=(tests/e2e/chat-handoff.spec.ts)

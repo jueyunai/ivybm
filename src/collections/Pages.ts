@@ -15,6 +15,7 @@ import {
   revalidateContentAfterChange,
   revalidateContentAfterDelete,
 } from '../hooks/revalidateContent'
+import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 
 export const Pages: CollectionConfig = {
   slug: 'pages',
@@ -58,8 +59,8 @@ export const Pages: CollectionConfig = {
     internalNotesField(),
   ],
   hooks: {
-    afterChange: [revalidateContentAfterChange],
-    afterDelete: [revalidateContentAfterDelete],
+    afterChange: [revalidateContentAfterChange, writeAuditLogAfterChange],
+    afterDelete: [revalidateContentAfterDelete, writeAuditLogAfterDelete],
   },
   versions: {
     drafts: true,

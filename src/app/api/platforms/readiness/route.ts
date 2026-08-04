@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPayload, type Payload } from 'payload'
+import { createLocalReq, getPayload, type Payload } from 'payload'
 
-import { canDecryptPlatformCredential } from '@/modules/platforms/credentials'
-import { assessPlatformAccountReadiness } from '@/modules/platforms/readiness'
+import { listPlatformReadiness } from '@/admin-portal/modules/platforms/getPlatformReadiness'
 import config from '@/payload.config'
-import type { PlatformAccount, User } from '@/payload-types'
+import type { User } from '@/payload-types'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -28,41 +27,6 @@ const logReadinessFailure = (payload: Payload | undefined, phase: ReadinessFailu
   process.stderr.write(`${message}\n`)
 }
 
-const asReadinessAccount = (account: PlatformAccount) => {
-  const authorization = account.authorization
-  const capabilities = account.capabilities
-  const accessTokenConfigured = authorization.accessTokenConfigured === true
-
-  return {
-    accountKind: account.accountKind,
-    externalAccountId: account.externalAccountId,
-    id: account.id,
-    name: account.name,
-    readiness: assessPlatformAccountReadiness({
-      account: {
-        accessTokenConfigured,
-        accessTokenExpiresAt: authorization.expiresAt,
-        accessTokenReadable:
-          accessTokenConfigured && canDecryptPlatformCredential(authorization.accessToken),
-        accountKind: account.accountKind,
-        authorizationState: authorization.state,
-        capabilityApprovals: {
-          ...(capabilities?.messagingInbound
-            ? { messagingInbound: capabilities.messagingInbound }
-            : {}),
-          ...(capabilities?.publishing ? { publishing: capabilities.publishing } : {}),
-        },
-        externalAccountId: account.externalAccountId,
-        refreshTokenConfigured: authorization.refreshTokenConfigured === true,
-        refreshTokenReadable:
-          authorization.refreshTokenConfigured === true &&
-          canDecryptPlatformCredential(authorization.refreshToken),
-      },
-      environment: process.env,
-    }),
-  }
-}
-
 export async function GET(request: NextRequest): Promise<Response> {
   let payload: Payload | undefined
   let phase: ReadinessFailurePhase = 'initializing'
@@ -75,23 +39,18 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
     const actor = authenticated.user as User
     if (actor.role !== 'admin') return errorResponse(403, 'forbidden')
+    if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
+      return errorResponse(503, 'portal_disabled')
+    }
+    if (process.env.ADMIN_PORTAL_PLATFORMS_ENABLED !== 'true') {
+      return errorResponse(503, 'platform_module_disabled')
+    }
 
     phase = 'loading_accounts'
-    const accounts = await payload.find({
-      collection: 'platform-accounts',
-      depth: 0,
-      pagination: false,
-      sort: 'name',
-      // The route has already authenticated an administrator and returns a
-      // hand-built response. It needs the ciphertext only long enough to
-      // authenticate it against the current deployment key; this catches a
-      // missing or rotated key before the account is reported as usable. Neither
-      // ciphertext nor plaintext is included in the result, logs, or errors.
-      overrideAccess: true,
-    })
     phase = 'assessing'
+    const req = await createLocalReq({ user: authenticated.user }, payload)
     return NextResponse.json(
-      { accounts: accounts.docs.map(asReadinessAccount) },
+      await listPlatformReadiness({ environment: process.env, payload, req }),
       { headers: noStore, status: 200 },
     )
   } catch {

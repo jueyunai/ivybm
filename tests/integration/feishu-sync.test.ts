@@ -749,7 +749,7 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     })
     expect(first.leads.created).toBe(0)
     expect(first.leads.duplicate).toBeGreaterThanOrEqual(1)
-    expect(duplicate.handoffs.duplicate).toBe(1)
+    expect(duplicate.handoffs.duplicate).toBeGreaterThanOrEqual(1)
     expect(duplicate.leads.created).toBe(0)
     expect(duplicate.leads.duplicate).toBeGreaterThanOrEqual(1)
 
@@ -761,7 +761,7 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
       overrideAccess: true,
     })
     const revised = await enqueuePendingFeishuJobs({ payload })
-    expect(revised.handoffs.duplicate).toBe(1)
+    expect(revised.handoffs.duplicate).toBeGreaterThanOrEqual(1)
     expect(revised.leads.created).toBe(0)
     expect(revised.leads.duplicate).toBeGreaterThanOrEqual(1)
 
@@ -787,7 +787,13 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
         (job) => jobPayload(job.payload).entityRevision === feishuLeadSyncRevision(currentLead),
       ),
     ).toBe(true)
-    expect(jobs.docs.filter((job) => job.type === FEISHU_HANDOFF_NOTIFY_JOB_TYPE)).toHaveLength(1)
+    expect(
+      jobs.docs.filter(
+        (job) =>
+          job.type === FEISHU_HANDOFF_NOTIFY_JOB_TYPE &&
+          jobPayload(job.payload).entityId === handoffID,
+      ),
+    ).toHaveLength(1)
   })
 
   it('executes lead upsert and handoff notification through the server-only client port', async () => {

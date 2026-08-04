@@ -1,0 +1,89 @@
+%% IVYBM 管理后台模块化架构与责任边界 v1.0
+%% 责任边界按 2026-07-29 用户校正：AI 内容工作台归 jueyunai；红色区域为 xuemusi 的知识、会话与平台服务。
+flowchart TB
+    STAFF["内部用户<br/>Admin / Operator / Sales"]
+    VISITOR["海外客户"]
+
+    subgraph OWNER["jueyunai：平台基座与自有模块"]
+        CORE["Portal Core<br/>登录 / 首页 / Shell / Registry / 权限呈现"]
+        CMS["官网 CMS<br/>产品 / 案例 / 图册 / 文章 / SEO"]
+        ASSET["素材库<br/>图片 / PDF / 视频索引"]
+        LEAD["线索与飞书<br/>客户档案 / 跟进摘要 / 同步状态"]
+        STUDIO["AI 内容工作台<br/>生成 / 审核 / 发布任务准备"]
+        SYSTEM["基础设置与 Jobs 外壳<br/>本人账户 / 安全摘要 / 通用补偿入口"]
+        GOVERNANCE["整体 IA / Digital Lattice<br/>Core 公共契约 / 视觉与集成验收"]
+        SLOT["协作者模块挂载点<br/>由 Portal Core 提供公共出口"]
+    end
+
+    subgraph COLLAB["xuemusi：知识、会话与平台服务"]
+        KNOW["业务知识库与 AI 调试<br/>手册 / 参数 / FAQ / 销售话术"]
+        PUBLISH["海外平台发布服务<br/>capability / publish / status / callback"]
+        SOCIAL["海外社媒账号与连接器<br/>Meta / TikTok / LinkedIn readiness"]
+        CHAT["AI 客服公共能力<br/>官网咨询 / 社媒会话 / 初筛"]
+        INBOX["统一会话入口<br/>接管 / 回复 / 解决 / 审计"]
+    end
+
+    subgraph CONTROLPLANE["唯一后端控制平面：共享变更必须双方 Review"]
+        PAYLOAD["Payload CMS<br/>Auth / RBAC / Collections / Local API / Audit"]
+        DOMAIN["领域服务与 Command Ports<br/>状态机 / 幂等 / 事务 / 审计"]
+        DB[("PostgreSQL + pgvector")]
+        MEDIA[("Media Storage")]
+    end
+
+    EXTERNAL["AI Providers / Meta / TikTok / LinkedIn / 飞书"]
+
+    STAFF --> CORE
+    VISITOR --> CMS
+
+    CORE --> CMS
+    CORE --> ASSET
+    CORE --> LEAD
+    CORE --> STUDIO
+    CORE --> SYSTEM
+    CORE --> SLOT
+    GOVERNANCE -. "视觉、契约与集成验收" .-> SLOT
+
+    SLOT --> KNOW
+    SLOT --> PUBLISH
+    SLOT --> SOCIAL
+    SLOT --> CHAT
+    SLOT --> INBOX
+
+    ASSET --> CMS
+    ASSET --> STUDIO
+    KNOW --> STUDIO
+    KNOW --> CHAT
+    STUDIO --> PUBLISH
+    SOCIAL --> PUBLISH
+    SOCIAL --> CHAT
+    CHAT --> INBOX
+    INBOX --> LEAD
+
+    CMS --> PAYLOAD
+    ASSET --> PAYLOAD
+    LEAD --> DOMAIN
+    SYSTEM --> DOMAIN
+    KNOW --> DOMAIN
+    STUDIO --> DOMAIN
+    PUBLISH --> DOMAIN
+    SOCIAL --> DOMAIN
+    CHAT --> DOMAIN
+    INBOX --> DOMAIN
+    PAYLOAD --> DB
+    PAYLOAD --> MEDIA
+    DOMAIN --> DB
+    DOMAIN --> EXTERNAL
+
+    classDef owner fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#0c4a6e
+    classDef collaborator fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d
+    classDef control fill:#f1f5f9,stroke:#475569,stroke-width:1.5px,color:#0f172a
+    classDef external fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f
+
+    class CORE,CMS,ASSET,LEAD,STUDIO,SYSTEM,GOVERNANCE,SLOT owner
+    class KNOW,PUBLISH,SOCIAL,CHAT,INBOX collaborator
+    class PAYLOAD,DOMAIN,DB,MEDIA control
+    class EXTERNAL external
+
+    style OWNER fill:#f0f9ff,stroke:#0369a1,stroke-width:2px
+    style COLLAB fill:#fff1f2,stroke:#dc2626,stroke-width:4px
+    style CONTROLPLANE fill:#f8fafc,stroke:#64748b,stroke-width:2px

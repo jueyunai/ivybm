@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "base-nova",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/admin-portal/core/styles/portal.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": "portal-"
+  },
+  "aliases": {
+    "components": "@/admin-portal/core",
+    "utils": "@/admin-portal/core/ui/cn",
+    "ui": "@/admin-portal/core/ui",
+    "lib": "@/lib",
+    "hooks": "@/admin-portal/core/hooks"
+  },
+  "iconLibrary": "tabler"
+}

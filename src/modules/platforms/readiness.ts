@@ -78,7 +78,43 @@ export type PlatformReadinessRequirement =
 export type PlatformConnectionReadinessStatus = 'action-required' | 'ready-for-controlled-test'
 
 export type PlatformCapabilityReadinessStatus =
-  'action-required' | 'blocked' | 'ready-for-controlled-test'
+  | 'action-required'
+  | 'available'
+  | 'blocked'
+  | 'ready-for-controlled-test'
+
+export type PlatformReadinessStatus =
+  | PlatformCapabilityReadinessStatus
+  | PlatformConnectionReadinessStatus
+
+export type PlatformControlledTestEvidence = {
+  completedAt: string
+  outcome: 'passed'
+  reference: string
+}
+
+export type PlatformReadinessActionOwner =
+  | 'account-owner'
+  | 'administrator'
+  | 'engineering'
+  | 'platform'
+
+export type PlatformReadinessActionCode =
+  | 'configure-meta-webhook'
+  | 'configure-credentials'
+  | 'complete-authorization'
+  | 'complete-tiktok-eligibility'
+  | 'implement-publishing-adapter'
+  | 'monitor-available-capability'
+  | 'provide-external-account'
+  | 'request-platform-approval'
+  | 'run-controlled-test'
+  | 'wait-for-official-schema'
+
+export type PlatformReadinessAction = {
+  code: PlatformReadinessActionCode
+  owner: PlatformReadinessActionOwner
+}
 
 export type PlatformCapabilityImplementation = 'blocked' | 'implemented'
 
@@ -101,6 +137,9 @@ export type PlatformAccountReadinessInput = {
       messagingInbound: PlatformCapabilityApprovalState
       publishing: PlatformCapabilityApprovalState
     }>
+    controlledTestEvidence?: Partial<
+      Record<PlatformAccountCapability, PlatformControlledTestEvidence>
+    >
     externalAccountId?: string | null
     refreshTokenConfigured: boolean
     refreshTokenReadable: boolean
@@ -131,6 +170,67 @@ const nonEmpty = (value: string | null | undefined): string | undefined => {
 }
 
 const unique = <Value>(values: Value[]): Value[] => [...new Set(values)]
+
+const hasPassedControlledTest = ({
+  evidence,
+  nowMilliseconds,
+}: {
+  evidence: PlatformControlledTestEvidence | undefined
+  nowMilliseconds: number
+}): boolean => {
+  if (!evidence || evidence.outcome !== 'passed' || !nonEmpty(evidence.reference)) return false
+  const completedAt = Date.parse(evidence.completedAt)
+  return Number.isFinite(completedAt) && completedAt <= nowMilliseconds
+}
+
+export const getPlatformReadinessAction = ({
+  missing,
+  status,
+}: {
+  missing: readonly PlatformReadinessRequirement[]
+  status: PlatformReadinessStatus
+}): PlatformReadinessAction => {
+  if (status === 'available') {
+    return { code: 'monitor-available-capability', owner: 'administrator' }
+  }
+
+  if (missing.includes('official_tiktok_dm_schema')) {
+    return { code: 'wait-for-official-schema', owner: 'platform' }
+  }
+  if (missing.includes('publishing_job_adapter')) {
+    return { code: 'implement-publishing-adapter', owner: 'engineering' }
+  }
+  if (
+    missing.includes('meta_app_secret') ||
+    missing.includes('meta_verify_token') ||
+    missing.includes('meta_account_allowlist')
+  ) {
+    return { code: 'configure-meta-webhook', owner: 'engineering' }
+  }
+  if (missing.includes('external_account_id')) {
+    return { code: 'provide-external-account', owner: 'account-owner' }
+  }
+  if (missing.includes('authorization')) {
+    return { code: 'complete-authorization', owner: 'account-owner' }
+  }
+  if (
+    missing.includes('access_token') ||
+    missing.includes('access_token_expired') ||
+    missing.includes('credential_decryption') ||
+    missing.includes('refresh_token') ||
+    missing.includes('refresh_token_decryption')
+  ) {
+    return { code: 'configure-credentials', owner: 'administrator' }
+  }
+  if (missing.includes('tiktok_dm_api_eligibility')) {
+    return { code: 'complete-tiktok-eligibility', owner: 'account-owner' }
+  }
+  if (missing.includes('approval')) {
+    return { code: 'request-platform-approval', owner: 'account-owner' }
+  }
+
+  return { code: 'run-controlled-test', owner: 'administrator' }
+}
 
 export const isPlatformAccountKind = (value: unknown): value is PlatformAccountKind =>
   typeof value === 'string' && PLATFORM_ACCOUNT_KINDS.some((kind) => kind === value)
@@ -265,8 +365,19 @@ export const assessPlatformAccountReadiness = ({
     }
 
     const missing = unique([...connection, ...metaEnvironmentMissing])
+    const hasVerifiedCapability =
+      missing.length === 0 &&
+      approval === 'approved' &&
+      hasPassedControlledTest({
+        evidence: account.controlledTestEvidence?.[capability],
+        nowMilliseconds,
+      })
     const status: PlatformCapabilityReadinessStatus =
-      missing.length === 0 ? 'ready-for-controlled-test' : 'action-required'
+      hasVerifiedCapability
+        ? 'available'
+        : missing.length === 0
+          ? 'ready-for-controlled-test'
+          : 'action-required'
     return {
       capability,
       implementation: 'implemented' as const,

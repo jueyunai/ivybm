@@ -14,6 +14,7 @@ import {
   getMediaURL,
   getSiteOrigin,
 } from '@/lib/seo'
+import robots from '@/app/robots'
 
 describe('website localization', () => {
   afterEach(() => vi.unstubAllEnvs())
@@ -50,6 +51,16 @@ describe('website SEO', () => {
 
   it('normalizes the configured public origin', () => {
     expect(getSiteOrigin('https://www.ivybm.com/').toString()).toBe('https://www.ivybm.com/')
+  })
+
+  it('keeps private application routes out of robots indexing', () => {
+    vi.stubEnv('NEXT_PUBLIC_SERVER_URL', 'https://www.ivybm.com')
+
+    expect(robots().rules).toMatchObject({
+      allow: '/',
+      disallow: ['/admin', '/admin/', '/api', '/api/', '/dashboard', '/dashboard/'],
+      userAgent: '*',
+    })
   })
 
   it('fails fast when the production public origin is missing or invalid', () => {

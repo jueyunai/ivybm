@@ -21,6 +21,8 @@ let originalEncryptionKey: string | undefined
 let originalMetaAllowedAccountIDs: string | undefined
 let originalMetaAppSecret: string | undefined
 let originalMetaVerifyToken: string | undefined
+let originalPortalEnabled: string | undefined
+let originalPortalPlatformsEnabled: string | undefined
 const createdUserIDs: Array<number | string> = []
 const createdAccountIDs: Array<number | string> = []
 
@@ -83,6 +85,10 @@ describe.sequential('platform accounts', () => {
     originalMetaAllowedAccountIDs = process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS
     originalMetaAppSecret = process.env.META_WEBHOOK_APP_SECRET
     originalMetaVerifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN
+    originalPortalEnabled = process.env.ADMIN_PORTAL_ENABLED
+    originalPortalPlatformsEnabled = process.env.ADMIN_PORTAL_PLATFORMS_ENABLED
+    process.env.ADMIN_PORTAL_ENABLED = 'true'
+    process.env.ADMIN_PORTAL_PLATFORMS_ENABLED = 'true'
     process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY = 'e'.repeat(64)
     payload = await getPayload({
       config,
@@ -147,6 +153,11 @@ describe.sequential('platform accounts', () => {
     else process.env.META_WEBHOOK_APP_SECRET = originalMetaAppSecret
     if (originalMetaVerifyToken === undefined) delete process.env.META_WEBHOOK_VERIFY_TOKEN
     else process.env.META_WEBHOOK_VERIFY_TOKEN = originalMetaVerifyToken
+    if (originalPortalEnabled === undefined) delete process.env.ADMIN_PORTAL_ENABLED
+    else process.env.ADMIN_PORTAL_ENABLED = originalPortalEnabled
+    if (originalPortalPlatformsEnabled === undefined)
+      delete process.env.ADMIN_PORTAL_PLATFORMS_ENABLED
+    else process.env.ADMIN_PORTAL_PLATFORMS_ENABLED = originalPortalPlatformsEnabled
   })
 
   it('keeps account tokens write-only, encrypted, and visible only to administrators', async () => {

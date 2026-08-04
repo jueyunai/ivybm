@@ -23,16 +23,23 @@ cleanup() {
 
 wait_for_database() {
   local attempt
+  local consecutive_ready=0
 
-  for attempt in {1..30}; do
-    if "${compose[@]}" exec -T db pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
-      return 0
+  for attempt in {1..60}; do
+    if "${compose[@]}" exec -T db \
+      psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc 'SELECT 1' 2>/dev/null | grep -qx '1'; then
+      consecutive_ready=$((consecutive_ready + 1))
+      if ((consecutive_ready >= 3)); then
+        return 0
+      fi
+    else
+      consecutive_ready=0
     fi
 
-    sleep 2
+    sleep 1
   done
 
-  echo "PostgreSQL did not become ready" >&2
+  echo "PostgreSQL did not remain ready for three consecutive checks" >&2
   return 1
 }
 

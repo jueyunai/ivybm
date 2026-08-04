@@ -31,6 +31,7 @@ type PayloadConversationRepositoryOptions = {
   clock?: () => Date
   commandLeaseMs?: number
   payload: Payload
+  readReq?: PayloadRequest
   sessionTokenHash?: string
 }
 
@@ -97,6 +98,7 @@ export class PayloadConversationRepository implements ConversationRepository {
   private readonly clock: () => Date
   private readonly commandLeaseMs: number
   private readonly payload: Payload
+  private readonly readReq?: PayloadRequest
   private readonly sessionTokenHash?: string
 
   constructor(options: PayloadConversationRepositoryOptions) {
@@ -104,6 +106,7 @@ export class PayloadConversationRepository implements ConversationRepository {
     this.clock = options.clock ?? (() => new Date())
     this.commandLeaseMs = options.commandLeaseMs ?? DEFAULT_COMMAND_LEASE_MS
     this.payload = options.payload
+    this.readReq = options.readReq
     this.sessionTokenHash = options.sessionTokenHash
   }
 
@@ -127,25 +130,32 @@ export class PayloadConversationRepository implements ConversationRepository {
   private async transactionDB(req: PayloadRequest) {
     const adapter = this.payload.db as unknown as PostgresAdapter
     const transactionID = await req.transactionID
-    return transactionID ? adapter.sessions[transactionID]?.db ?? adapter.drizzle : adapter.drizzle
+    return transactionID
+      ? (adapter.sessions[transactionID]?.db ?? adapter.drizzle)
+      : adapter.drizzle
   }
 
   private async findConversation(
     publicId: number | string,
     req?: PayloadRequest,
+    respectAccess = false,
   ): Promise<Conversation | null> {
     const result = await this.payload.find({
       collection: 'conversations',
       depth: 0,
       limit: 1,
-      overrideAccess: true,
+      overrideAccess: !respectAccess,
       ...(req ? { req } : {}),
       where: { publicId: { equals: String(publicId) } },
     })
     return result.docs[0] ?? null
   }
 
-  private async hydrate(conversation: Conversation, req?: PayloadRequest): Promise<ChatSession> {
+  private async hydrate(
+    conversation: Conversation,
+    req?: PayloadRequest,
+    respectAccess = false,
+  ): Promise<ChatSession> {
     const messages: Message[] = []
     let page = 1
     while (true) {
@@ -153,7 +163,7 @@ export class PayloadConversationRepository implements ConversationRepository {
         collection: 'messages',
         depth: 0,
         limit: 200,
-        overrideAccess: true,
+        overrideAccess: !respectAccess,
         page,
         ...(req ? { req } : {}),
         sort: 'createdAt',
@@ -170,11 +180,12 @@ export class PayloadConversationRepository implements ConversationRepository {
     if (this.actor?.role === 'sales' && String(assignedTo) !== String(this.actor.id)) {
       throw new ChatServiceError('forbidden', 'Sales users may view only assigned conversations')
     }
-    const viewer: ChatSessionViewer = this.actor?.role === 'admin' || this.actor?.role === 'operator'
-      ? 'operator'
-      : this.actor?.role === 'sales'
-        ? 'sales'
-        : 'visitor'
+    const viewer: ChatSessionViewer =
+      this.actor?.role === 'admin' || this.actor?.role === 'operator'
+        ? 'operator'
+        : this.actor?.role === 'sales'
+          ? 'sales'
+          : 'visitor'
     const includeInternalMetadata = viewer === 'operator'
     return {
       allowedActions: allowedActionsFor(conversation.handoffStatus, viewer),
@@ -242,8 +253,8 @@ export class PayloadConversationRepository implements ConversationRepository {
   private shouldCreateLead(evaluation?: ConversationLeadEvaluation): boolean {
     return Boolean(
       evaluation?.score.level === 'a' &&
-        evaluation.signals.contact.email?.trim() &&
-        evaluation.signals.country?.trim(),
+      evaluation.signals.contact.email?.trim() &&
+      evaluation.signals.country?.trim(),
     )
   }
 
@@ -376,10 +387,7 @@ export class PayloadConversationRepository implements ConversationRepository {
             overrideAccess: true,
             req,
             where: {
-              and: [
-                { scope: { equals: scope } },
-                { idempotencyKey: { equals: idempotencyKey } },
-              ],
+              and: [{ scope: { equals: scope } }, { idempotencyKey: { equals: idempotencyKey } }],
             },
           })
           const command = existing.docs[0]
@@ -586,8 +594,8 @@ export class PayloadConversationRepository implements ConversationRepository {
   }
 
   async getSession(sessionId: number | string): Promise<ChatSession | null> {
-    const conversation = await this.findConversation(sessionId)
-    return conversation ? this.hydrate(conversation) : null
+    const conversation = await this.findConversation(sessionId, this.readReq, Boolean(this.readReq))
+    return conversation ? this.hydrate(conversation, this.readReq, Boolean(this.readReq)) : null
   }
 
   async saveSession(
@@ -602,10 +610,14 @@ export class PayloadConversationRepository implements ConversationRepository {
       // Payload's declarative update is not enough to serialize two independent commands
       // that read the same session before either writes. Lock the row on this request's
       // existing transaction, then validate the version while the lock is held.
-      const lock = await (await this.transactionDB(req)).execute(sql`
+      const lock = await (
+        await this.transactionDB(req)
+      ).execute(sql`
         SELECT "revision" FROM "conversations" WHERE "id" = ${conversation.id} FOR UPDATE
       `)
-      const lockedRevision = Number((lock.rows[0] as { revision?: number | string } | undefined)?.revision)
+      const lockedRevision = Number(
+        (lock.rows[0] as { revision?: number | string } | undefined)?.revision,
+      )
       if (!Number.isInteger(lockedRevision) || lockedRevision !== mutation.base.revision) {
         throw new ChatServiceError('conflict', 'Conversation state changed concurrently', {
           retryable: true,
@@ -622,10 +634,14 @@ export class PayloadConversationRepository implements ConversationRepository {
       }
       this.assertMutationAuthority(session, mutation, newMessages)
       if (mutation.handoff && (!stateChanged || session.handoffStatus !== 'handoff_requested')) {
-        throw new ChatServiceError('conflict', 'Handoff event must accompany its requested transition')
+        throw new ChatServiceError(
+          'conflict',
+          'Handoff event must accompany its requested transition',
+        )
       }
 
-      const operatorWrite = newMessages.some(({ author }) => author === 'operator') ||
+      const operatorWrite =
+        newMessages.some(({ author }) => author === 'operator') ||
         (stateChanged && session.handoffStatus === 'resolved')
       const requiresAssignment = operatorWrite && this.actor?.role !== 'admin'
       const where: Where = {
@@ -633,13 +649,12 @@ export class PayloadConversationRepository implements ConversationRepository {
           { id: { equals: conversation.id } },
           { handoffStatus: { equals: mutation.base.handoffStatus } },
           { revision: { equals: mutation.base.revision } },
-          ...(requiresAssignment && this.actor
-            ? [{ assignedTo: { equals: this.actor.id } }]
-            : []),
+          ...(requiresAssignment && this.actor ? [{ assignedTo: { equals: this.actor.id } }] : []),
         ],
       }
       const lastMessage = newMessages.at(-1)
-      const shouldUpdateConversation = stateChanged || newMessages.length > 0 || Boolean(mutation.leadEvaluation)
+      const shouldUpdateConversation =
+        stateChanged || newMessages.length > 0 || Boolean(mutation.leadEvaluation)
       let persistedConversation = conversation
       if (shouldUpdateConversation) {
         const updated = await this.payload.update({
@@ -688,7 +703,8 @@ export class PayloadConversationRepository implements ConversationRepository {
             conversation: persistedConversation.id,
             estimatedCostUSD: message.estimatedCostUSD ?? undefined,
             externalMessageId: metadata?.externalMessageId,
-            idempotencyKey: metadata?.persistedIdempotencyKey ?? `domain-message:${String(message.id)}`,
+            idempotencyKey:
+              metadata?.persistedIdempotencyKey ?? `domain-message:${String(message.id)}`,
             model: message.model,
             promptVersion: message.promptVersion,
             requestId: String(message.id),

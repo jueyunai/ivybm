@@ -125,6 +125,18 @@ const getStagingComposeConfig = (): ComposeConfig => {
 }
 
 describe('production Compose configuration', () => {
+  it('waits through the PostgreSQL init-server restart before probing persistence', () => {
+    const persistenceScript = readFileSync(
+      resolve(projectRoot, 'scripts/db/verify-compose-persistence.sh'),
+      'utf8',
+    )
+
+    expect(persistenceScript).toContain('local consecutive_ready=0')
+    expect(persistenceScript).toContain("psql -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" -Atc 'SELECT 1'")
+    expect(persistenceScript).toContain('if ((consecutive_ready >= 3)); then')
+    expect(persistenceScript).toContain('consecutive_ready=0')
+  })
+
   it('does not accept PAYLOAD_SECRET as a Docker build argument', () => {
     const dockerfile = readFileSync(resolve(projectRoot, 'Dockerfile'), 'utf8')
 

@@ -13,6 +13,7 @@ import {
   revalidateContentAfterChange,
   revalidateContentAfterDelete,
 } from '../hooks/revalidateContent'
+import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 
 export const ProductCategories: CollectionConfig = {
   slug: 'product-categories',
@@ -50,7 +51,7 @@ export const ProductCategories: CollectionConfig = {
     seoField(),
   ],
   hooks: {
-    afterChange: [revalidateContentAfterChange],
-    afterDelete: [revalidateContentAfterDelete],
+    afterChange: [revalidateContentAfterChange, writeAuditLogAfterChange],
+    afterDelete: [revalidateContentAfterDelete, writeAuditLogAfterDelete],
   },
 }

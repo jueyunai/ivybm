@@ -9,23 +9,30 @@ import type { Product, ProductCategory } from '@/payload-types'
 
 export function ProductFilter({
   categories,
+  initialCategory,
   locale,
   products,
 }: {
   categories: ProductCategory[]
+  initialCategory?: string
   locale: Locale
   products: Product[]
 }) {
   const copy = getWebsiteCopy(locale)
-  const [active, setActive] = useState('all')
+  const [active, setActive] = useState(initialCategory ?? 'all')
   const availableCategories = selectProductCategories(categories, products)
+  const selectedCategory =
+    active === 'all' || availableCategories.some((category) => category.slug === active)
+      ? active
+      : 'all'
+
   const filtered =
-    active === 'all'
+    selectedCategory === 'all'
       ? products
       : products.filter((product) => {
           const category =
             typeof product.category === 'object' ? product.category.slug : String(product.category)
-          return category === active
+          return category === selectedCategory
         })
 
   return (
@@ -33,9 +40,9 @@ export function ProductFilter({
       <div className="tabs product-tabs" role="group" aria-label={copy.navigation.products}>
         <button
           aria-controls="product-grid"
-          aria-pressed={active === 'all'}
+          aria-pressed={selectedCategory === 'all'}
           className="tab"
-          data-active={active === 'all'}
+          data-active={selectedCategory === 'all'}
           onClick={() => setActive('all')}
           type="button"
         >
@@ -44,9 +51,9 @@ export function ProductFilter({
         {availableCategories.map((category) => (
           <button
             aria-controls="product-grid"
-            aria-pressed={active === category.slug}
+            aria-pressed={selectedCategory === category.slug}
             className="tab"
-            data-active={active === category.slug}
+            data-active={selectedCategory === category.slug}
             key={category.id}
             onClick={() => setActive(category.slug)}
             type="button"

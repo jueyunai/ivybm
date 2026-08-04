@@ -10,8 +10,12 @@ import { GET as listOperatorSessions } from '@/app/api/chat/operator/sessions/ro
 import { POST as requestHandoff } from '@/app/api/chat/sessions/[id]/handoff/route'
 import { POST as sendMessage } from '@/app/api/chat/sessions/[id]/messages/route'
 import { POST as sendOperatorMessage } from '@/app/api/chat/sessions/[id]/operator-messages/route'
-import { POST as resolveSession } from '@/app/api/chat/sessions/[id]/resolve/route'
 import { POST as takeOverSession } from '@/app/api/chat/sessions/[id]/take-over/route'
+import { GET as listPortalConversations } from '@/app/api/portal/conversations/route'
+import { GET as getPortalConversation } from '@/app/api/portal/conversations/[id]/route'
+import { POST as sendPortalOperatorMessage } from '@/app/api/portal/conversations/[id]/operator-messages/route'
+import { POST as resolvePortalConversation } from '@/app/api/portal/conversations/[id]/resolve/route'
+import { POST as takeOverPortalConversation } from '@/app/api/portal/conversations/[id]/take-over/route'
 import { createAiGateway } from '@/modules/ai/gateway'
 import { AI_USAGE_KEYS } from '@/modules/ai/registry'
 import { indexKnowledgeDocument } from '@/modules/knowledge/embed'
@@ -19,10 +23,16 @@ import config from '@/payload.config'
 
 let payload: Payload
 let originalTrustProxyHeaders: string | undefined
+let originalPortalConversationsEnabled: string | undefined
+let originalPortalEnabled: string | undefined
 
 describe.sequential('chat HTTP API', () => {
   beforeAll(async () => {
     originalTrustProxyHeaders = process.env.TRUST_PROXY_HEADERS
+    originalPortalConversationsEnabled = process.env.ADMIN_PORTAL_CONVERSATIONS_ENABLED
+    originalPortalEnabled = process.env.ADMIN_PORTAL_ENABLED
+    process.env.ADMIN_PORTAL_CONVERSATIONS_ENABLED = 'true'
+    process.env.ADMIN_PORTAL_ENABLED = 'true'
     process.env.TRUST_PROXY_HEADERS = 'true'
     payload = await getPayload({ config, disableOnInit: true, key: 'task9-chat-api-integration' })
   })
@@ -34,6 +44,11 @@ describe.sequential('chat HTTP API', () => {
     } else {
       process.env.TRUST_PROXY_HEADERS = originalTrustProxyHeaders
     }
+    if (originalPortalConversationsEnabled === undefined)
+      delete process.env.ADMIN_PORTAL_CONVERSATIONS_ENABLED
+    else process.env.ADMIN_PORTAL_CONVERSATIONS_ENABLED = originalPortalConversationsEnabled
+    if (originalPortalEnabled === undefined) delete process.env.ADMIN_PORTAL_ENABLED
+    else process.env.ADMIN_PORTAL_ENABLED = originalPortalEnabled
   })
 
   afterEach(() => {
@@ -944,16 +959,16 @@ describe.sequential('chat HTTP API', () => {
     expect(salesTakeover.status).toBe(403)
 
     const takeover = await Promise.all([
-      takeOverSession(
-        new NextRequest(`http://localhost/api/chat/sessions/${session.id}/take-over`, {
+      takeOverPortalConversation(
+        new NextRequest(`http://localhost/api/portal/conversations/${session.id}/take-over`, {
           body: JSON.stringify({ idempotencyKey: `op-1-takeover-${suffix}` }),
           headers: { ...firstAuth, 'content-type': 'application/json' },
           method: 'POST',
         }),
         { params: Promise.resolve({ id: session.id }) },
       ),
-      takeOverSession(
-        new NextRequest(`http://localhost/api/chat/sessions/${session.id}/take-over`, {
+      takeOverPortalConversation(
+        new NextRequest(`http://localhost/api/portal/conversations/${session.id}/take-over`, {
           body: JSON.stringify({ idempotencyKey: `op-2-takeover-${suffix}` }),
           headers: { ...secondAuth, 'content-type': 'application/json' },
           method: 'POST',
@@ -970,8 +985,8 @@ describe.sequential('chat HTTP API', () => {
     expect(visitorSnapshot.status).toBe(200)
     await expect(visitorSnapshot.json()).resolves.not.toHaveProperty('assignedTo')
 
-    const operatorSnapshot = await getSession(
-      new NextRequest(`http://localhost/api/chat/sessions/${session.id}?view=operator`, {
+    const operatorSnapshot = await getPortalConversation(
+      new NextRequest(`http://localhost/api/portal/conversations/${session.id}?view=operator`, {
         headers: firstAuth,
       }),
       { params: Promise.resolve({ id: session.id }) },
@@ -1015,8 +1030,8 @@ describe.sequential('chat HTTP API', () => {
       allowedActions: ['send_operator_message', 'resolve'],
       assignedTo: { id: users[2].id },
     })
-    const operatorInbox = await listOperatorSessions(
-      new NextRequest('http://localhost/api/chat/operator/sessions?limit=10', {
+    const operatorInbox = await listPortalConversations(
+      new NextRequest('http://localhost/api/portal/conversations?limit=10', {
         headers: firstAuth,
       }),
     )
@@ -1058,8 +1073,8 @@ describe.sequential('chat HTTP API', () => {
       { params: Promise.resolve({ id: session.id }) },
     )
     expect(otherReply.status).toBe(403)
-    const assignedReply = await sendOperatorMessage(
-      new NextRequest(`http://localhost/api/chat/sessions/${session.id}/operator-messages`, {
+    const assignedReply = await sendPortalOperatorMessage(
+      new NextRequest(`http://localhost/api/portal/conversations/${session.id}/operator-messages`, {
         body: JSON.stringify({
           idempotencyKey: `assigned-reply-${suffix}`,
           text: 'I will assist with your project.',
@@ -1070,8 +1085,8 @@ describe.sequential('chat HTTP API', () => {
       { params: Promise.resolve({ id: session.id }) },
     )
     expect(assignedReply.status).toBe(200)
-    const resolved = await resolveSession(
-      new NextRequest(`http://localhost/api/chat/sessions/${session.id}/resolve`, {
+    const resolved = await resolvePortalConversation(
+      new NextRequest(`http://localhost/api/portal/conversations/${session.id}/resolve`, {
         body: JSON.stringify({ idempotencyKey: `assigned-resolve-${suffix}` }),
         headers: { ...salesAuth, 'content-type': 'application/json' },
         method: 'POST',

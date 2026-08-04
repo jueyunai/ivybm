@@ -1,0 +1,34 @@
+.portal-shell {
+  --portal-canvas: #F7F9FB;
+  --portal-surface: #FFFFFF;
+  --portal-surface-subtle: #ECEEF0;
+  --portal-ink: #191C1E;
+  --portal-ink-2: #464555;
+  --portal-muted: #777587;
+  --portal-border: #C7C4D8;
+  --portal-accent: #4F46E5;
+  --portal-accent-soft: #E2DFFF;
+  --portal-success: #15803D;
+  --portal-success-soft: #DCFCE7;
+  --portal-warning: #B45309;
+  --portal-warning-soft: #FEF3C7;
+  --portal-danger: #BA1A1A;
+  --portal-danger-soft: #FFDAD6;
+  --portal-info: #3525CD;
+  --portal-info-soft: #DAE2FD;
+  --portal-phase: #3130C0;
+  --portal-phase-soft: #E1E0FF;
+  --portal-sidebar: #0F172A;
+  --portal-sidebar-2: #1E293B;
+  --portal-sidebar-text: #EFF1F3;
+  --portal-font-ui: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  --portal-font-data: 'IBM Plex Mono', monospace;
+  --portal-radius-control: 4px;
+  --portal-radius-card: 8px;
+  --portal-space-1: 4px;
+  --portal-space-2: 8px;
+  --portal-space-3: 12px;
+  --portal-space-4: 16px;
+  --portal-space-6: 24px;
+  --portal-shadow-overlay: 0 12px 32px rgb(15 23 42 / 14%);
+}

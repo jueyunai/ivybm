@@ -1,4 +1,4 @@
-import { revalidatePath } from 'next/cache'
+import { revalidatePath } from 'next/cache.js'
 import type {
   CollectionAfterChangeHook,
   CollectionAfterDeleteHook,

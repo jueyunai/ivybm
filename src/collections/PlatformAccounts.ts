@@ -6,6 +6,7 @@ import {
   type CollectionConfig,
 } from 'payload'
 
+import { platformCredentialRead } from '../access/platformCredentials'
 import { accessFor, admins } from '../access/roles'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 import {
@@ -353,7 +354,7 @@ export const PlatformAccounts: CollectionConfig = {
         {
           name: 'accessToken',
           type: 'text',
-          access: { read: () => false },
+          access: { read: platformCredentialRead },
           admin: {
             description:
               'Write-only. Enter a value to set or replace the token; leave blank to retain it.',
@@ -377,7 +378,7 @@ export const PlatformAccounts: CollectionConfig = {
         {
           name: 'refreshToken',
           type: 'text',
-          access: { read: () => false },
+          access: { read: platformCredentialRead },
           admin: {
             description:
               'Write-only. Enter a value to set or replace the refresh token; leave blank to retain it.',

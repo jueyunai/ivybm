@@ -41,12 +41,13 @@ bash scripts/install-git-hooks.sh
 
 ## 提交与 PR
 
-- 一个分支只处理一个实施计划 Task 或一个紧密相关的小修复，禁止混入无关任务。
+- 一个分支只处理一个实施计划 PR 批次或一个紧密相关的小修复；Task 是批次内的 commit / 验收检查点，不自动等于独立 PR，禁止混入批次外的无关任务。
 - 同一目标、同一实施计划、同一 Review 边界且可一起回滚 / 发布的紧密相关改动，默认使用一个 Draft PR 和分阶段 commit，保持 diff 可审；禁止仅为流程形式把方案、实现和验证记录机械拆成多个 PR。只有独立任务、不同负责人或强制 Review 边界、需要独立回滚 / 发布，或完整 diff 已明显超出可审规模时才拆分。
+- 管理后台现代化按 ADR-0004 使用一个功能分支、一个 Portal V1 Draft PR、一次合并和一次人工批准的 production 部署；P0.1–P1.4、发布启用配置、测试与文档都在该 PR 内按 checkpoint commit 保持可审。真实平台 transport、token 刷新、worker 发布 handler、平台回调和受控账号联调由 xuemusi 后续独立 PR 完成，不是 Portal V1 完成条件。合并 PR 不改变模块 owner、共享文件强制 review 或 production 审批。
 - 提交前运行该 Task 规定的 lint、typecheck、test、build；不能运行时明确说明原因。
 - PR 标题和描述必须引用 Task 编号，并填写 `.github/pull_request_template.md`。
 - 项目初始化、CI、工程配置、文档及负责人自己板块内的独立改动，在 CI 通过、完成 PR 清单并检查完整 diff 后，可由负责人自检合并；必须在 PR 中记录不涉及共享结构、跨人契约、协作者范围或一期上线验收。作者自检不等同于 GitHub 独立审批。
-- 共享文件 `src/payload.config.ts`、migration、`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`PublishJobs`、`PublishLogs`，以及供另一人任务消费的公共接口、字段或契约，必须由另一名开发者 review。跨双方板块边界或影响另一人在途任务的改动同样不得自检合并。
+- 共享文件 `src/payload.config.ts`、migration、`Leads`、`Conversations`、`Messages`、`GeneratedContents`、`ContentReviews`、`PublishJobs`、`PublishLogs`，以及供另一人任务消费的公共接口、字段或契约，必须由另一名开发者 review。跨双方板块边界或影响另一人在途任务的改动同样不得自检合并。
 - production 发布仍由 jueyunai 审批，一期上线验收必须由两人共同确认。
 - `main` 上的紧急修复只能在用户明确授权后使用 `IVYBM_ALLOW_MAIN_PUSH=1` 绕过本地 hook；完成后必须补建 PR 或事故记录。
 
@@ -56,22 +57,25 @@ bash scripts/install-git-hooks.sh
 - push 前必须运行对应 Task 的本地定向检查；GitHub CI 不是调试器。同一轮小修改必须集中完成后一次 push，禁止逐提交触发 Actions 调试。
 - AI 和 PR 作者不手工选择 CI 档次，不使用 `[skip ci]`；由变更路径分类器自动决定。无法识别路径、无法解析 diff 或分类器异常时必须 fail closed，运行完整门禁。
 - Draft 代码只把 Fast CI 作为开发反馈，不是合并授权。Ready 后如需连续或较大修改，先转回 Draft；Ready 状态下任何新提交都必须针对最新 head 重新运行对应门禁。
+- Portal V1 本地功能跑通期允许只运行当前 checkpoint 的定向验证；完整回归可以后置到转 Ready 前，但不得后置服务端 Auth/RBAC、数据/migration 完整性、凭据隔离、外部副作用幂等、feature flag、`delivery_unknown` 和发布 kill switch。
 - 审核时记录 base SHA、head SHA、mergeability、完整 diff、Review 状态和 `CI policy`。只有与当前 head SHA 一致的成功 `CI policy` 可作为门禁证据；Draft Fast CI、旧 head，以及 pending、neutral、skipped、cancelled 或 failure 均不能授权合并。
 - `.github/workflows/**`、`scripts/ci/**`、CI policy 或 production image 触发边界的修改必须由另一名开发者独立 Review，不适用负责人自检合并。
 - docs-only 轻量门禁不改变共享结构、跨人契约和协作者边界的人工 Review 规则。production image 构建成功也不代表 production 部署授权；部署仍需 jueyunai 人工审批和既有 smoke / rollback 流程。
 
 ## 分工与依赖
 
-- jueyunai：Task 1-7、10-12、14-15；官网/CMS、SEO、飞书、内容工作台、部署收尾。Task 9 由 jueyunai 负责官网 ChatWidget 前端；Task 12 由 jueyunai 负责内容工作台前端、内容生成/审核工作流，以及 `PublishJobs` / `PublishLogs` 共享结构和发布任务创建。
-- xuemusi：Task 8-9、13；知识库/AI 客服、社媒会话与发布。Task 9 由 xuemusi 负责会话/AI 服务，以及人工接管状态机、转换守卫、幂等、权限、审计、领域事件和数据库集成；Task 12 由 xuemusi 负责第三方平台 capability、publish、status 接口、平台 adapter 和发布结果回调。
+- jueyunai 负责 Portal Core、登录、首页、Shell、模块 Registry、UI contract、基础设置、官网/CMS/SEO、素材库、AI 内容工作台、内容生成/人工审核流程、`GeneratedContents` / `ContentReviews` / `PublishJobs` / `PublishLogs`、线索/飞书入口、通用 Jobs 异常外壳、整体 IA/Digital Lattice 和集成验收。Task 9 中 jueyunai 只负责官网 ChatWidget 与 Portal 公共基座，不负责统一会话工作区。
+- xuemusi 负责业务知识库与 AI 调试、AI 客服公共能力、统一会话入口、海外社媒账号/连接器/readiness，以及第三方平台 capability / publish / status、adapter、结果回调和真实发布执行。责任覆盖这些模块的页面或服务、读模型、命令、领域状态机、幂等、权限和审计；不负责 AI 内容工作台 UI、内容生成/审核流程或其共享结构。
+- 责任边界以 [`ADR-0004`](docs/architecture/adr/0004-modular-admin-portal.md) 和 [管理后台模块化架构与责任边界](docs/architecture/管理后台模块化架构与责任边界.mermaid) 为准。依赖箭头不改变 owner；共享 Core、Collection、migration、`src/payload.config.ts` 和跨模块 contract 继续强制另一人 review。
 - 一期平台范围冻结：入站会话仅为 Facebook Messenger、Instagram DM（企业 / 商业账号）和 TikTok 私信（商业账号）；图文发布仅为 Facebook、Instagram（企业账号）和 LinkedIn（账号类型不限制，但 API 发布权限仍需验证）。WhatsApp 不纳入一期系统 connector、Webhook、自动回复或发布能力，二期再评估网页插件等替代接入；官网静态链接不等于系统接入。
 - Task 9 的官网前端可以先依赖 `ChatService` mock 开发；其后端服务和数据库集成必须等待 Task 7 的 `Leads` 合并到 `main`，并消费 Task 8 的 AI 网关 contract。
-- Task 12 的内容工作台前端和内部内容/审核/发布任务流程可以先依赖 `PublishingService` mock 开发；第三方平台发布接口由 xuemusi 提供，不能在前端直接接入平台 SDK 或 token。
+- Task 12 的 AI 内容工作台由 jueyunai 负责，可先依赖共同冻结的 `PublishingService` mock 开发；范围包括页面、内容生成/人工审核流程、状态机和 `GeneratedContents` / `ContentReviews` / `PublishJobs` / `PublishLogs`。xuemusi 提供平台 capability / publish / status、账号 readiness、adapter、结果回调和真实发布执行。任何前端都不能直接接入平台 SDK 或 token。
 - Task 9 / Task 12 的跨人接口必须先冻结 TypeScript port/interface、请求响应 schema、错误码、状态枚举和 fixture；双方各自用 fake service / fake repository 完成测试后再替换真实 adapter。
-- 人工接管以前端体验与领域服务分层：jueyunai 负责 ChatWidget 和运营接管界面，xuemusi 负责服务端权威状态机；前端不得直接写 `handoffStatus`、`assignedTo` 或审计字段。服务端产生领域事件，Task 10 / 11 处理飞书通知、重试和补偿。
+- 人工接管以官网入口、Portal 模块与领域服务分层：jueyunai 负责官网 ChatWidget 和 Portal 公共交互契约，xuemusi 负责运营会话/接管界面与服务端权威状态机；所有前端都不得直接写 `handoffStatus`、`assignedTo` 或审计字段。服务端产生领域事件，Task 10 / 11 处理飞书通知、重试和补偿。
 - Task 13 会话侧数据库集成必须等待 Task 9 的 `Conversations` / `Messages`；发布侧数据库集成必须等待 Task 12 的 `PublishJobs` / `PublishLogs`；真实 Webhook 异步处理、社媒 AI 自动出站、发布执行、失败重试和人工补偿必须等待 Task 10 的 `Jobs`、worker 及其 migration 合并到 `main`，并要求 `PlatformAccounts`、migration、Payload 注册和生成类型已合并。纯连接器接口和 fixture 契约测试不依赖 Task 10。
 - 依赖未合并时，Task 13 可并行开发连接器接口、Webhook 验签、事件幂等、payload 归一化，以及 Facebook Messenger / Instagram DM / TikTok 私信和 Facebook / Instagram / LinkedIn 图文发布的官方 fixture 契约测试与 mock；也可按 [ADR-0003](docs/architecture/adr/0003-social-conversation-outbound-delivery.md) 冻结 server-only 社媒会话出站 port / fake / 失败注入测试。必须使用 TypeScript port/interface 与 fake repository，不得创建临时替代 Collection 或替代 migration；fake 结果不得被标为平台已发送或 `available`。
 - 任何数据库 adapter 开发都必须等待对应 Collection、migration、`src/payload.config.ts` 注册和 `src/payload-types.ts` 生成类型全部合并到 `main`，仅有接口定义或 Collection 代码不视为依赖已满足。
+- 上条对跨分支/跨 PR 的数据库依赖保持不变。Portal V1 同一 Draft PR 内的生产者与消费者可以在前置 checkpoint 已完成完整 Collection、migration、Payload 注册、生成类型和定向测试后继续，不为制造 main gate 机械拆 PR；相关结构和 adapter 仍必须由另一名开发者 review 后才能合并。
 - 外部平台联调需要对应账号、授权和 production 或等价受控真实环境；条件不足时以官方 fixture 契约测试、配置说明和阻塞记录按一期 P1 口径验收。WhatsApp 与其他未列平台作为二期项，不进入一期验收。
 - migration 以先合并到 `main` 的历史为准；未合并分支在同步最新 `main` 后重新生成，不修改已合并 migration。
 
@@ -85,6 +89,8 @@ bash scripts/install-git-hooks.sh
 
 - 需求基线：`docs/requirements/一期需求说明文档.md`。
 - 技术基线：`docs/architecture/一期技术选型与部署架构规划.md`。
-- 实施计划：`docs/plans/2026-07-16-一期开发实施计划.md`。
+- 总体实施计划：`docs/plans/2026-07-16-一期开发实施计划.md`；管理后台 Portal 任务以
+  `docs/plans/2026-07-29-modular-admin-portal-implementation.md` 和 ADR-0004 为当前实施基线，
+  与总体计划冲突时以 Portal 专项计划为准。
 - 完成阶段性任务后及时更新 `docs/开发进度.md`。
 - 代码、需求、架构或计划不一致时，先指出冲突并修正文档基线，再继续实施。

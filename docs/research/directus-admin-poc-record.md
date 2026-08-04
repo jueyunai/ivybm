@@ -1,5 +1,10 @@
 # Directus 管理后台 POC 验证记录
 
+> **后续决策说明，2026-07-29：** 拒绝 Directus、保留 Payload 控制平面和单一数据/认证体系的
+> 实验结论继续有效；“只在 `/admin` 内扩展、独立 `/dashboard` 仅为 Future”的入口结论
+> 已被 [ADR-0004](../architecture/adr/0004-modular-admin-portal.md) 取代。新 Portal 仍在同一
+> Next/Payload 应用内运行，不采用 Directus，也不创建第二套认证或数据访问路径。
+
 ## 验证范围
 
 - 日期：2026-07-27 至 2026-07-28
@@ -35,13 +40,13 @@
 | 权限能力 | Directus 12.1.1 Core 无许可时拒绝自定义 row / field permission rules | 增加许可或适配层约束 |
 | 迁移代价 | 需要复制 schema、权限、内容适配、预览和运维链路 | 不值得为默认 Studio UI 承担 |
 
-## 最终决策
+## 最终决策（实验结论保留，入口路线已被取代）
 
 **拒绝将 IVYBM 管理后台迁移到 Directus。**
 
 保留现有 Payload CMS v3 + PostgreSQL 作为数据模型、Auth、权限、版本、多语言、Local API / REST API 和技术维护后台，不引入 Directus 生产依赖，也不迁移 production 数据。
 
-当前批准的实现路线是在 Payload `/admin` runtime 内渐进增强，而不是建设两套并行后台：
+以下为 2026-07-28 POC 结束时的历史入口判断，已于 2026-07-29 被 ADR-0004 取代：
 
 - Payload CMS v3 继续承载 Admin runtime、认证、权限、Collection CRUD 和 Custom View 扩展点。
 - `/admin` 使用自有 Nav、Operations Dashboard 和后续 Custom Views，把高频运营任务组织成业务工作区；需要时仍可回退到受权限控制的 Collection 页面。
@@ -49,11 +54,15 @@
 - Cmd+K、Master-Detail、Kanban、Data Grid 和 AI Copilot 可作为未来设计手法评估，必须按真实数据、权限和依赖逐项落地，不能被描述为当前已实现能力。
 - 所有业务写操作继续复用 Payload access control 与领域服务；Custom View 不得直接改权威状态、审计字段或平台凭据。
 
+当前有效路线仍保留 Payload 作为唯一后端控制平面，并在同一 Next/Payload 应用内新增自研
+`/dashboard` 运营门户。第一阶段只建设和验收 Portal；已有 `/admin` 仅供内部维护，不进入产品导航、
+不新增 UI，也不作为 Portal fallback。以 [ADR-0004](../architecture/adr/0004-modular-admin-portal.md) 为准。
+
 Directus POC 中产生的 schema、fixtures、adapter、preview 和专属测试只属于失败试验，不合并到生产分支。对应 worktree 和本地 POC 资源在记录结论后删除。
 
 ## 可复用经验
 
 1. 更换通用 CMS 不等于获得现代化业务工作台；默认 Admin UI 的差异不足以抵消迁移数据模型、权限和运维链路的成本。
 2. 对运营效率有决定性影响的是任务编排、跨实体上下文和就地操作，而不是表单主题、圆角或配色。
-3. Payload 应继续负责后端能力与 Admin runtime；面向运营人员的体验优先在 `/admin` 的自有 Nav、Dashboard 和 Custom Views 中渐进改善，避免维护两套后台。
+3. Payload 应继续负责后端能力与 Admin runtime；面向运营人员的体验可在同一应用内通过独立路由和 Portal Core 渐进改善，但不复制认证、数据模型或领域服务。
 4. 后续选型 POC 应把“完成一个真实业务任务的步骤数、上下文切换次数和可恢复性”作为主要验收指标，而不是只验证 CRUD 是否可用。

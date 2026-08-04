@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { getPayload, type Payload } from 'payload'
 
@@ -331,5 +334,36 @@ describe.sequential('showcase media seed', () => {
 
     expect(canonical.docs).toHaveLength(1)
     expect(relationID(downloads.docs[0]?.file)).toBe(canonical.docs[0].id)
+  })
+
+  it('restores a missing seeded media file when the database record already exists', async () => {
+    await seedContent(payload)
+    const existing = await payload.find({
+      collection: 'media',
+      limit: 100,
+      overrideAccess: true,
+    })
+    const seeded = existing.docs.find((document) =>
+      document.source?.startsWith(`IVYBM seed asset: showcase:${showcaseFilenames[0]};`),
+    )
+    const filename = seeded?.filename
+    expect(filename).toEqual(expect.any(String))
+    const storedFile = path.resolve(process.cwd(), 'media', String(filename))
+    expect(fs.existsSync(storedFile)).toBe(true)
+
+    fs.unlinkSync(storedFile)
+    try {
+      await seedContent(payload)
+      const restored = await payload.findByID({
+        collection: 'media',
+        id: seeded?.id as number,
+        overrideAccess: true,
+      })
+      const restoredFile = path.resolve(process.cwd(), 'media', String(restored.filename))
+      expect(fs.existsSync(restoredFile)).toBe(true)
+      expect(fs.statSync(restoredFile).size).toBeGreaterThan(0)
+    } finally {
+      if (!fs.existsSync(storedFile)) await seedContent(payload)
+    }
   })
 })

@@ -1,8 +1,8 @@
 # IVYBM CMS 管理后台 UI 重设计——设计师背景简报
 
-版本：v1.1
+版本：v2.8
 
-日期：2026-07-28
+日期：2026-07-30
 
 用途：产品设计 / UI 设计 / 交互设计背景输入
 项目阶段：一期开发中，后台 UI 进入重新设计阶段
@@ -17,11 +17,12 @@ IVYBM 是一套服务建材出海业务的小团队 AI 获客运营系统。它�
 
 当前底层使用 Payload CMS 管理数据、身份、权限、草稿、版本、多语言和文件，功能可靠，但原生后台仍偏“Collection 列表 + 表单”的技术型 CMS。运营人员在处理会话、线索、审核、发布和异常时，需要频繁跳转、理解内部数据表，并且缺少跨业务对象的上下文。
 
-本轮设计目标是在现有 Payload `/admin` runtime 内建立现代、任务导向的运营体验，而不是另起一套后台：
+本轮设计目标是建立“Payload 控制平面 + 自研模块化运营门户”的单一一期产品体验：
 
-- `/admin` 是一期唯一后台入口，继续承载认证、权限、Collection CRUD，并通过自有 Nav、Operations Dashboard 和 Custom Views 服务 admin、operator、sales；
-- 独立 `/dashboard`、shadcn/ui 与 Tailwind CSS 只作为 Future proposal，不是当前实现契约；
-- 高频流程优先设计为 `/admin` 内的 Custom View，需要时可进入受权限控制的 Collection 页面；
+- `/dashboard` 是 Admin、Operator、Sales 的日常运营入口，按照本设计稿实现完整 Shell 和模块化工作区；
+- Payload Auth、RBAC、数据模型、领域服务和 PostgreSQL 继续作为唯一后端；
+- Payload 已有 `/admin` 在新版迁移验收前继续供受限维护人员使用，第一阶段不设计、不导航、不新增 UI，也不作为 Portal 产品回退；验收后再决定维护或下架；
+- Portal Core 先统一登录、首页、导航、状态、错误、响应式和 UI contract，业务模块随后按 owner 挂载；
 - 所有业务写操作仍必须经过现有 access control 和领域服务，UI 不直接改权威状态、审计字段或平台凭据。
 
 设计师应把它理解为“面向 1–5 人出海团队的轻量 AI Revenue Operations 工作台”，而不是“大而全的企业 SaaS”或“普通文章发布 CMS”。
@@ -69,15 +70,18 @@ flowchart LR
 
 ### 3.1 Admin——系统管理员
 
-目标：掌握全局状态、配置系统、处理异常、管理账号。
+目标：掌握全局状态、查看配置与能力状态、处理异常；技术配置继续走受限维护流程。
 
 需要：
 
 - 查看全部业务队列和系统异常；
-- 管理用户、角色、AI 供应商 / 模型 / 路由；
-- 管理平台账号和授权状态；
+- 查看本人账户、模块可用性、AI / 平台 readiness 和安全设置摘要；
 - 查看任务、审计和失败原因；
 - 处理危险操作时获得明确确认和结果反馈。
+
+第一阶段 `/dashboard` 不提供用户 / 角色、AI 供应商 / 模型密钥、平台凭据等技术后台配置。
+这些能力继续由受限维护人员在既有 `/admin` 中处理；Portal 只消费服务端过滤后的状态和安全摘要，
+不得提供 `/admin` 深链或回显 token / key。
 
 ### 3.2 Operator——运营人员
 
@@ -115,41 +119,46 @@ flowchart LR
 
 ## 4. 目标产品结构
 
-当前主线在 Payload `/admin` 下使用五个稳定导航分组：Workspace、Content、Intelligence、Operations、System。设计师可以优化中文 / 英文命名和分组内交互，但一期稿必须以这套已实现骨架为 P0。下列 P0 树按当前代码归属表达；只有在权限允许时，对应项目才会显示。
+运营门户 `/dashboard` 沿用五个稳定导航分组：Workspace、Content、Intelligence、Operations、System。
+Portal Core 通过静态 module registry 注册菜单、owner、角色、成熟度和可用状态；只有在服务端权限允许时，
+对应模块才显示。内部维护入口不出现在 Portal 菜单或设计稿中。
 
 ```text
-Payload /admin
+Operations Portal /dashboard
 ├── Workspace
 │   ├── Operations Dashboard
-│   ├── Conversations
-│   └── Leads
+│   ├── Conversations（xuemusi）
+│   └── Leads（jueyunai）
 ├── Content
 │   ├── 页面
 │   ├── 产品 / 产品分类
 │   ├── 项目案例
 │   ├── 新闻文章
 │   ├── 下载资料
-│   └── 媒体素材
+│   ├── 媒体素材
+│   └── AI 内容工作台 / 审核 / 发布任务准备（jueyunai）
 ├── Intelligence
-│   ├── 知识文档 / 知识切片
+│   ├── 知识文档 / 知识切片（xuemusi）
 │   ├── 提示词模板
-│   └── AI Provider / Model / Route（按角色与权限）
+│   └── AI 调试与模型 readiness（xuemusi；敏感配置不进入 Portal）
 ├── Operations
-│   ├── Handoffs / Messages / Visitor Sessions
-│   ├── Lead Sources / Platform Accounts
+│   ├── 统一会话 / 人工接管（xuemusi）
+│   ├── Lead Sources（jueyunai）/ Platform readiness（xuemusi）
 │   └── Jobs / Audit Logs（按角色与权限）
-└── System（admin）
-    ├── 用户与角色
-    └── Site Settings 等 Globals
+└── System（Portal 基础设置）
+    ├── 本人账户与安全设置摘要
+    ├── 模块可用状态 / 责任人 / 下一步
+    └── Site Settings 安全只读摘要
 ```
 
-P1 / Future Custom Views 可以把上述对象重新组织为“统一 Inbox、我的跟进、内容审核、发布排期、平台 readiness、飞书同步”等任务流；它们不改变底层分组、权限和领域服务。其中内容审核 / 发布依赖 Task 12 正式结构，飞书同步依赖 Task 10 / 11，完整 Pipeline 与独立 `/dashboard` 均为 Future。
+Portal V1 的本地工作流已包括内容审核、内部排期、平台 readiness 和安全异常补偿；它们不改变底层权限和领域服务。
+飞书真实同步、自动对外发布和外部补偿仍依赖 Task 10/11、平台授权与受控环境。完整 Pipeline、Cmd+K 和 AI Copilot 仍是 Future。
 
 ### 导航原则
 
 - 以任务和业务对象命名，不直接暴露 `Jobs`、`Handoffs`、`VisitorSessions` 等内部表名；
 - 默认首页随角色变化：Admin 看全局，Operator 看运营队列，Sales 看“我的会话与线索”；
-- `/admin` 是唯一后台入口；自有业务视图与 Collection fallback 必须共享同一权限、导航和登录态；
+- `/dashboard` 是第一阶段唯一运营产品入口；`/admin` 只作为并行受限技术维护入口，不进入 Portal 导航或任务流；
 - 全局搜索 / `Cmd + K` 属于 Future 交互，可优先探索“找客户、找会话、找内容、跳转功能、创建常用对象”，危险动作不建议直接在命令面板执行。
 
 ---
@@ -322,7 +331,7 @@ ai_active
 
 ### 5.8 平台账号与能力状态
 
-平台账号由 Admin 管理，包含账号类型、外部账号 ID、授权状态、token 是否已配置 / 过期、消息 / 发布能力审核状态和说明。token 永远不回显。
+平台账号由 Admin 通过受限内部维护流程管理，包含账号类型、外部账号 ID、授权状态、token 是否已配置 / 过期、消息 / 发布能力审核状态和说明。Portal V1 只展示无凭据 readiness、责任人和下一步；token 永远不回显。
 
 需要表达的状态不是简单“已连接 / 未连接”，而是：
 
@@ -389,21 +398,23 @@ ai_active
 
 ## 8. 视觉方向与参考
 
-### 8.1 建议视觉关键词
+### 8.1 已冻结的 Digital Lattice 视觉基线
 
 `Industrial Precision / 工业精密感`、专业、克制、可信、材料感、结构清晰、高信息密度、现代 B2B SaaS。
 
-建议延续的现有方向：
+Portal V1 的 canonical 视觉不再以早期探索色值为准，而以
+[`ivybm-admin-portal-digital-lattice.pen`](../designs/ivybm-admin-portal-digital-lattice.pen) 及已落地 token 为准：
 
-- 大面积暖白 / 冷灰画布，白色 Surface，石墨主文字；
-- 深青绿作为主行动色；
+- 冷灰画布 `#F7F9FB`，白色 Surface `#FFFFFF`，石墨主文字 `#191C1E`；
+- 深色侧栏 `#0F172A`，靛蓝 `#4F46E5` 作为主行动色；
 - 成功、警告、危险、信息色只用于状态；
-- 8px 控件圆角、12px 卡片圆角；
+- IBM Plex Sans / IBM Plex Mono；
+- 4px 控件圆角、8px 卡片圆角，字距统一为 `0`；
 - 细边框优先，浮层才使用克制阴影；
 - 避免大面积渐变、过度玻璃拟态、超大圆角和装饰性图表；
 - 浅色与深色模式都使用语义 token，不做简单反相。
 
-现有暂定色值可用于探索，不是必须照搬：主行动色 `#0F766E`、主文字 `#0F172A`、页面背景 `#F8FAFC`、边框 `#DCE3EC`。
+早期“深青绿、8px/12px 圆角”方向只保留为历史探索，不再作为实现或验收依据。
 
 ### 8.2 交互参考（参考方法，不照搬视觉）
 
@@ -423,11 +434,11 @@ ai_active
 
 三套视觉稿已作为研究素材归档在仓库外，不进入 Git。后续设计应以方向 A 为主线，B / C 只用于比较取舍，不能把三套方向同时发展为产品主题。
 
-| 方向 | 核心特征 | 适用性与取舍 |
-| --- | --- | --- |
-| A. 工业精密（推荐） | 暖白画布、白色面板、石墨文字、深青绿行动色；细边框、克制层级和清晰网格 | 最贴合铝单板 / 幕墙采购业务的材料感、结构感与工程精度，适合高密度、长期生产使用 |
-| B. 石墨指挥舱 | 深石墨导航配浅色主画布，强化关键数字和异常 | 对 Admin / Operator 的“运营中枢”感更强，但需限制深色面积，避免压迫和过度科技化 |
-| C. 编辑型工作台 | 更轻、更通透，强调任务、排期和团队协作 | 内容运营体验友好，但密度较低，需要额外提高系统异常的视觉权重 |
+| 方向                                    | 核心特征                                                                       | 适用性与取舍                                                                   |
+| --------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| A. 工业精密 / Digital Lattice（已采用） | 冷灰画布、白色面板、石墨文字、深色侧栏与靛蓝行动色；细边框、克制层级和清晰网格 | 已冻结为 Portal V1 canonical 方向，最适合高密度、长期生产使用                  |
+| B. 石墨指挥舱                           | 深石墨导航配浅色主画布，强化关键数字和异常                                     | 对 Admin / Operator 的“运营中枢”感更强，但需限制深色面积，避免压迫和过度科技化 |
+| C. 编辑型工作台                         | 更轻、更通透，强调任务、排期和团队协作                                         | 内容运营体验友好，但密度较低，需要额外提高系统异常的视觉权重                   |
 
 共同约束：桌面基准 1440px，并覆盖 1280px 与 768px；中文后台为主，英文 / 阿语是内容语言；正文不小于 14px；状态同时使用文字、图标和颜色；避免大面积渐变、玻璃拟态、夸张阴影和过度圆角。
 
@@ -475,7 +486,7 @@ ai_active
 - 会话、消息、人工接管权威状态机；
 - Jobs、重试、Dead Job 和 Admin 手工重试；
 - Meta 入站连接器的签名、幂等、队列和 readiness 基础；
-- Payload `/admin` 的自有侧栏和基础 Operations Dashboard；当前正式队列只有 `activeConversations`、`handoffRequested`、`newQualifiedLeads`，以及仅 Admin 可见的 `failedJobs`。
+- Payload `/admin` 的自有侧栏和基础 Operations Dashboard 已存在，但只作内部维护遗留能力，不是本轮设计目标；其中的安全查询可作为 Portal read model 的事实参考。
 
 ### 有条件或部分完成
 
@@ -485,15 +496,56 @@ ai_active
 - 真实 AI 生产质量仍依赖正式知识资料、模型配置和评测；
 - 线上生产联调、最终验收和备份恢复仍未完成。
 
-### 尚未正式实现
+### Portal 历史实施状态（2026-07-30，验收口径纠正前）
 
-- 飞书 CRM 同步与提醒；
-- 完整 AI 内容工作台、内容审核和发布排期；
-- `PublishJobs` / `PublishLogs` 的正式后台流程；
-- 社媒 AI 自动出站与 `delivery_unknown` 人工补偿界面；
-- 独立 `/dashboard` 工作台（Future proposal；当前不作为实施目标）。
+> 本节的 PR-1 / PR-2 Gate 只记录 2026-07-30 的历史判断，已被 2026-08-02 的“一功能分支、一 Portal V1 Draft PR、一次合并、一次人工部署”决策取代。当前真实平台发布仍关闭，协作者后续独立 PR 只负责真实 transport 与受控账号联调。
+
+- D0 本地开发门禁已通过：独立 worktree、端口、Compose project、PostgreSQL、开发库、volume/network 和本地密钥已完成隔离；本地与 CI 均禁止连接 production；
+- P0.1 静态 module registry、owner/角色/路由/成熟度、总开关和模块开关已完成；
+- P0.2 Digital Lattice token、Tailwind/shadcn Portal 范围隔离和首批 UI primitives 已完成；
+- P0.3 Payload session、自研登录/登出和 `/dashboard` 受保护路由已完成定向验证；
+- P0.4 Shell、角色导航、账户菜单和基础设置 Hub 已完成实现与 checkpoint 验收；
+- P0.5 角色首页已完成：真实会话/线索/失败任务队列按 Payload 权限读取，四张队列卡提供 Portal 内可复现的 `?queue=` 筛选深链；内容审核、今日发布和飞书失败保持 dependency-gated，并完成桌面/移动视觉验收；
+- P0.6 官网内容 Hub 已完成六类内容的安全摘要、筛选、状态、真实发布字段与图片 alt 的 EN/AR 完整度、英文/阿语公开预览和角色访问测试；桌面与移动 E2E、空结果和响应式视觉已通过。复杂富文本、版本与完整 SEO 编辑继续显示 `dependency-gated`，不通过 `/admin` 深链冒充完成。
+- P0.7 素材库已完成网格/列表、图片/PDF 安全预览、角色访问、桌面/移动 E2E 和响应式视觉验收；上传/复杂编辑继续明确受阻；
+- P0.8a 协作者开发包、Core modules 公共出口、resolver、示例模块和 contract test 已完成本地 checkpoint；协作者 review 仍是 PR-1 Ready 门槛；
+- P0.8b 知识/AI 已完成 manifest、read model、索引 client、Workspace、路由、i18n/CSS、Admin/Operator/Sales 权限集成和桌面/移动 E2E；索引 client 已对齐后端 `created | duplicate` 契约，双状态列表、AI readiness、安全摘要和 CSS 隔离均已验证；
+- 首批页面已经具备读取、权限、索引和响应式验证，但负责人实际复核确认它们尚未形成完整管理工作流：统一会话、线索、AI 内容工作台、平台状态、异常与补偿缺少页面，官网内容、素材和知识缺少新增/编辑/保存等真实写操作；因此撤销此前“编号 1～6 已完成”的结论。
+
+本地 app、migration、seed、E2E、worker 和脚本只允许使用该 worktree 的独立开发库或显式 `_test` / `_ci`
+测试库；本地固定测试库串行使用。当前本地环境没有 production 数据库连接，CI 每个 Job 使用自建自销的
+PostgreSQL + pgvector service 与 `_ci` 库，不复用本机 Compose、端口、volume 或 `.env`。两者均不得连接
+production PostgreSQL，也不得读取 production media、uploads、备份、URL 或真实 token。`db:reset:test`
+已内建 PostgreSQL 协议、loopback host 和 `_test` / `_ci` 后缀保护，Ready 门禁再校验本 worktree 的固定端口；
+全新 `_ci` 空库已验证 16 条 migration 和连续两次 seed，不直接调用 `db:migrate:fresh`。
+
+| 决策 Gate                       | 当前结论  | 设计侧含义                                                         |
+| ------------------------------- | --------- | ------------------------------------------------------------------ |
+| 继续本地模块开发                | **GO**    | 本地数据库与 production 完全隔离，可按最小 checkpoint 门禁继续推进 |
+| 首批只读页面 checkpoint         | **GO**    | 权限、索引契约、桌面/移动读取体验已闭环                             |
+| Portal V1 功能闭环              | **NO-GO** | 仍缺五个菜单模块和官网/素材/知识真实 CRUD                           |
+| PR-1 Ready / 合并               | **NO-GO** | 仍需 xuemusi review、Portal 浏览器 CI 覆盖和最新 head CI policy    |
+| production 数据、真实平台、部署 | **NO-GO** | 仅 PR-2 在备份恢复、补偿、灰度、回滚和人工审批全部满足后才可能开放 |
+
+### Portal V1 最新本地功能状态（2026-07-30）
+
+- 十个菜单模块均有真实 Portal 工作区；截图中原本缺失的统一会话、线索管理、AI 内容工作台、平台状态与异常和补偿已补齐，`/admin` 保持独立维护入口；
+- 官网内容、素材库与知识库已从只读/disabled 状态升级为 Portal 原生受保护命令：内容支持双语新建、编辑、状态和安全删除；素材支持上传、元数据编辑和引用守卫删除；知识支持新增、编辑、审核、索引、删除及 Admin-only AI 调试；
+- 会话中心复用权威接管状态机，线索遵循数据级 Sales 范围；内容工作台完成草稿、审核、内部 assisted 排期和状态时间线，不把已审核或已排期伪装成平台已发布；
+- 平台只展示无凭据 readiness，异常模块只显示安全 Job 摘要和已注册补偿。自动对外发布、真实 token、`available` 判定、社媒 AI 自动出站与 production 部署仍保持关闭；
+- 本地验收已覆盖 `lint`、typecheck、完整 unit、隔离数据库 CRUD/access、桌面/390px Chromium 及 `/admin` 共存。PR Ready 前仍需补齐协作者 review、最终 head 的远程 CI policy 和统一命令幂等/原子冲突处理强化。
+
+### 后续仍受依赖限制
+
+- 飞书 CRM 实际同步与提醒；
+- 真实平台账号、token、授权、`available` 判定、状态回调和受控对外发布；
+- `delivery_unknown` 的外部平台结果核验与完整人工补偿 runbook；
+- production 的备份恢复、灰度、回滚和人工审批。
 
 设计可以覆盖未来状态，但需在 Figma 标注“P1 / Future / dependency-gated”，便于研发分阶段实现。
+本地功能跑通阶段只要求当前页面的主桌面与窄屏检查；完整四视口、全部状态和键盘路径在 Portal V1 Ready
+前统一补齐。此节奏不改变权限、敏感数据和外部副作用的设计边界，也不单独构成开发/合并授权；最终命令和
+Go/No-Go 证据链以 Implementation Plan 的 Global Verification 为准。
 
 ---
 
@@ -518,27 +570,28 @@ ai_active
 
 ## 12. 建议优先设计的页面与顺序
 
-### P0：先增强现有 `/admin` 骨架和核心任务
+### P0：先建立 Portal Core，再按 owner 挂载模块
 
-1. 现有 Payload 登录页与 Admin Shell；
-2. 基于真实四类队列的 Admin / Operator / Sales 角色首页；
-3. Workspace / Content / Intelligence / Operations / System 导航、Header 和账户入口；
-4. 会话中心三栏 Inbox；
-5. 线索列表与详情；Master–Detail / Pipeline 在真实状态和查询就绪前标为 Future；
-6. 产品列表 / 编辑 / 多语言 / 图库 / 发布状态；
-7. 媒体素材库网格 / 表格 / 预览；
-8. 知识文档列表、审核与索引状态。
+1. `/dashboard` 自研登录、Payload session 复用和服务端角色守卫；
+2. Portal Shell、静态模块 registry、五组导航、Header、账户入口和通用状态；
+3. 基于真实四类队列的 Admin / Operator / Sales 角色首页；
+4. 官网内容 Hub、产品/案例/文章入口；未实现的复杂编辑显示明确受阻态；
+5. 媒体素材库网格 / 预览；
+6. 知识文档、审核/索引和 AI 调试模块（xuemusi）；
+7. 会话中心三栏 Inbox 与 AI 客服模块（xuemusi）；
+8. 线索列表与详情；Pipeline 在真实状态和查询就绪前标为 Future。
 
 ### P1：补齐内容获客和平台状态
 
-9. AI 内容生成工作台；
+9. AI 内容生成工作台（jueyunai）；
 10. 内容审核详情；
 11. 发布排期和发布记录；
 12. 平台账号 / readiness；
 13. 飞书同步状态；
 14. 系统异常 / Job 人工补偿。
 
-全局 `Cmd + K`、独立 `/dashboard`、完整 Pipeline 和 AI Copilot 属于 Future，不进入当前 P0 骨架承诺。
+全局 `Cmd + K`、完整 Pipeline、复杂 Data Grid、AI Copilot 和装饰性图表属于 Future，
+不进入当前 P0 基座承诺。
 
 ### 设计交付建议
 
@@ -556,7 +609,7 @@ ai_active
 设计方案应能回答以下问题：
 
 1. Admin、Operator、Sales 登录后，10 秒内是否知道自己最该处理什么？
-2. Operator 能否在 `/admin` 的业务化导航和 Custom Views 内完成大多数日常工作，并只在必要时进入 Collection fallback？
+2. Operator 能否在 `/dashboard` 完成第一阶段日常工作，且未实现能力能否诚实显示受阻和下一步？
 3. Sales 是否只看到自己的会话和线索，并能在同一上下文中完成回复 / 解决？
 4. 用户能否清楚区分“待审核、已批准、已受理、已发布、失败、结果未知”？
 5. 平台被审核、账号、token 或地区限制时，是否能看懂下一步责任人和动作？
@@ -573,7 +626,7 @@ ai_active
 以下输入不阻塞低保真方案，但在高保真视觉定稿前需要确认：
 
 - 后台最终产品名和 Logo 组合方式；
-- 品牌主色是否沿用深青绿；
+- Portal 产品品牌与官网品牌的色彩关系；Portal 交互主色已冻结为 Digital Lattice 靛蓝；
 - 设计师可使用的正式产品、案例、工厂图片；
 - 中文 / 英文后台文案语气；
 - 运营人员日常设备分布和最常用分辨率；
@@ -612,11 +665,15 @@ ai_active
 
 本简报综合了当前需求基线、技术架构、实施计划、后台改造方案、现有代码和自动化测试。设计阶段可以重新组织页面和交互，但以下约束必须保留：
 
-- Payload CMS / PostgreSQL 继续作为数据、身份、权限和唯一 Admin runtime；
-- `/admin` Custom Views 不得绕过服务端 access control；独立 `/dashboard` 仅是 Future proposal；
+- Payload CMS / PostgreSQL 继续作为数据、身份、权限和唯一控制平面；
+- `/dashboard` 是第一阶段模块化运营门户；Payload 已有 `/admin` 在迁移验收前继续供受限维护人员使用，不属于设计或产品验收，验收后再决定维护或下架；
+- Portal 页面和命令不得绕过服务端 Auth/RBAC；面向当前用户的 Payload Local API 必须显式 `overrideAccess: false`；
+- 测试库 reset 命令必须内建 loopback host 和 `_test` / `_ci` 后缀校验，worktree/CI preflight 另校验预期端口；本地/CI 不得读取 production 数据、media、备份、URL 或凭据；
+- migration 和数据完整性、凭据隔离、外部副作用幂等与 `delivery_unknown` 处理均不得后移；
 - 会话接管必须经过 ConversationService；
 - 发布必须经过 PublishingService，且未审核内容不得发布；
 - 平台 token、模型 key 只写不可读；
 - 当前未实现的 Collection / migration 不得为 UI 临时造替代结构；
+- Portal Core 与 AI 内容工作台由 jueyunai 负责；知识/AI、AI 客服/会话、海外社媒账号/连接器和真实平台发布服务由 xuemusi 负责；
 - 第三方平台状态必须诚实区分可用、受控测试、需要动作和受阻；
 - 设计交付应明确 P0 / P1 / Future，支持研发渐进落地。

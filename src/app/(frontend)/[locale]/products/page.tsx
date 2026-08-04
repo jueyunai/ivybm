@@ -34,18 +34,32 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   })
 }
 
-export default async function ProductsPage({ params }: { params: Promise<{ locale: string }> }) {
+export default async function ProductsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string }>
+  searchParams: Promise<{ category?: string | string[] }>
+}) {
   const { locale: value } = await params
   if (!isPublicLocale(value)) notFound()
   const { categories, products } = await loadProducts(value)
   const copy = getWebsiteCopy(value)
+  const requestedCategory = (await searchParams).category
+  const initialCategory = typeof requestedCategory === 'string' ? requestedCategory : undefined
 
   return (
     <>
       <PageHero image={products[0]?.coverImage} subtitle={copy.pages.productsSubtitle} title={copy.navigation.products} />
       <section className="section">
         <div className="container">
-          <ProductFilter categories={categories} locale={value} products={products} />
+          <ProductFilter
+            categories={categories}
+            initialCategory={initialCategory}
+            key={initialCategory ?? 'all'}
+            locale={value}
+            products={products}
+          />
         </div>
       </section>
     </>
