@@ -1,6 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -10,6 +18,7 @@ import {
   IconDeviceFloppy,
   IconEdit,
   IconLanguage,
+  IconPhoto,
   IconPlus,
   IconTrash,
   IconX,
@@ -26,6 +35,10 @@ type EditorOptions = { categories: ContentEditorOption[]; media: ContentEditorOp
 type EditorPayload = { options?: EditorOptions; record?: ContentEditorRecord }
 type EditorMode = 'create' | 'edit'
 export type ContentEditorNotice = null | { tone: 'danger' | 'success'; value: string }
+export interface ContentEditorHandle {
+  isDirty: () => boolean
+  saveCurrent: () => Promise<boolean>
+}
 
 const EMPTY_OPTIONS: EditorOptions = { categories: [], media: [] }
 const VERSIONED = new Set<ContentTypeId>(['pages', 'posts', 'products', 'projects'])
@@ -102,10 +115,13 @@ const copy = {
     },
     publish: 'Publish',
     publishValidation: 'Complete the required fields before publishing.',
+    republish: 'Republish',
     save: 'Save changes',
     saveDraft: 'Save draft',
+    savePublished: 'Save and publish',
+    saveUnpublished: 'Save while unpublished',
     saved: 'Saved. The list has been refreshed.',
-    unpublish: 'Move to draft',
+    unpublish: 'Unpublish',
   },
   zh: {
     activate: '启用',
@@ -164,10 +180,13 @@ const copy = {
     },
     publish: '发布',
     publishValidation: '请先补全必填项，再发布内容。',
+    republish: '重新发布',
     save: '保存修改',
     saveDraft: '保存草稿',
+    savePublished: '保存并发布',
+    saveUnpublished: '保存下架内容',
     saved: '保存成功，列表已刷新。',
-    unpublish: '转为草稿',
+    unpublish: '下架',
   },
 } as const
 
@@ -324,7 +343,13 @@ const errorMessage = async (
 const safeErrorMessage = (error: unknown, fallback: string): string =>
   error instanceof ContentEditorError ? error.message : fallback
 
-export function ContentEditorNotice({ notice }: { notice: Exclude<ContentEditorNotice, null> }) {
+export function ContentEditorNotice({
+  notice,
+  onDismiss,
+}: {
+  notice: Exclude<ContentEditorNotice, null>
+  onDismiss?: () => void
+}) {
   return (
     <div
       aria-atomic="true"
@@ -333,6 +358,11 @@ export function ContentEditorNotice({ notice }: { notice: Exclude<ContentEditorN
       role={notice.tone === 'danger' ? 'alert' : 'status'}
     >
       <StatusBadge label={notice.value} tone={notice.tone} />
+      {onDismiss ? (
+        <button aria-label="关闭提示" onClick={onDismiss} title="关闭提示" type="button">
+          <IconX aria-hidden="true" size={16} />
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -354,191 +384,147 @@ function Field({
   )
 }
 
-function MediaSelect({
+function ImageOption({
+  checked,
+  disabled = false,
+  inputType,
+  name,
+  onChange,
+  option,
+  required = false,
+}: {
+  checked: boolean
+  disabled?: boolean
+  inputType: 'checkbox' | 'radio'
+  name: string
+  onChange: () => void
+  option: ContentEditorOption
+  required?: boolean
+}) {
+  return (
+    <label>
+      <input
+        checked={checked}
+        disabled={disabled}
+        name={name}
+        onChange={onChange}
+        required={required}
+        type={inputType}
+        value={String(option.id)}
+      />
+      <span className="portal-content-editor__image-tile">
+        <span className="portal-content-editor__image-preview">
+          {option.previewUrl ? (
+            <Image alt="" fill sizes="160px" src={option.previewUrl} unoptimized />
+          ) : (
+            <IconPhoto aria-hidden="true" size={22} stroke={1.6} />
+          )}
+        </span>
+        <span title={option.label}>{option.label}</span>
+        <span aria-hidden="true" className="portal-content-editor__image-check">
+          <IconCheck size={14} stroke={2.2} />
+        </span>
+      </span>
+    </label>
+  )
+}
+
+function ImageSelect({
   label,
-  mediaChoicesLabel,
-  mediaPreviewLabel,
+  name,
   onChange,
   options,
   required = false,
   value,
 }: {
   label: string
-  mediaChoicesLabel: string
-  mediaPreviewLabel: string
+  name: string
   onChange: (value: string) => void
   options: ContentEditorOption[]
   required?: boolean
   value: string
 }) {
-  const [hoveredId, setHoveredId] = useState<null | string>(null)
-  const previewId = hoveredId ?? value
-  const previewOption = options.find((option) => String(option.id) === previewId)
-  const previewableOptions = options.filter((option) => option.previewUrl)
-
   return (
-    <Field label={label}>
-      <div className="portal-content-editor__media-picker">
-        <select
-          onChange={(event) => {
-            onChange(event.target.value)
-          }}
-          required={required}
-          value={value}
+    <fieldset className="portal-content-editor__media-field">
+      <legend>{label}</legend>
+      {!required && value ? (
+        <button
+          aria-label={`清除${label}`}
+          className="portal-content-editor__media-clear"
+          onClick={() => onChange('')}
+          title={`清除${label}`}
+          type="button"
         >
-          <option value="">—</option>
-          {options.map((option) => (
-            <option key={option.id} value={String(option.id)}>
-              {option.label}
-              {option.meta ? ` · ${option.meta}` : ''}
-            </option>
-          ))}
-        </select>
-        {previewableOptions.length ? (
-          <div className="portal-content-editor__media-browser">
-            <div aria-label={mediaPreviewLabel} className="portal-content-editor__media-preview">
-              {previewOption?.previewUrl ? (
-                <Image
-                  alt={previewOption.label}
-                  fill
-                  sizes="180px"
-                  src={previewOption.previewUrl}
-                  unoptimized
-                />
-              ) : null}
-            </div>
-            <div
-              aria-label={mediaChoicesLabel}
-              className="portal-content-editor__media-options"
-              role="list"
-            >
-              {previewableOptions.map((option) => {
-                const optionId = String(option.id)
-                return (
-                  <button
-                    aria-label={option.label}
-                    aria-pressed={optionId === value}
-                    key={option.id}
-                    onBlur={() => setHoveredId(null)}
-                    onClick={() => {
-                      onChange(optionId)
-                      setHoveredId(null)
-                    }}
-                    onFocus={() => setHoveredId(optionId)}
-                    onMouseEnter={() => setHoveredId(optionId)}
-                    onMouseLeave={() => setHoveredId(null)}
-                    type="button"
-                  >
-                    <Image alt="" fill sizes="48px" src={option.previewUrl!} unoptimized />
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        ) : null}
+          <IconX aria-hidden="true" size={15} />
+        </button>
+      ) : null}
+      <div className="portal-content-editor__image-grid">
+        {options.map((option) => (
+          <ImageOption
+            checked={String(option.id) === value}
+            inputType="radio"
+            key={option.id}
+            name={name}
+            onChange={() => onChange(String(option.id))}
+            option={option}
+            required={required}
+          />
+        ))}
       </div>
-    </Field>
+    </fieldset>
   )
 }
 
 function GallerySelect({
   label,
-  mediaChoicesLabel,
-  mediaPreviewLabel,
+  name,
   onChange,
   options,
   value,
 }: {
   label: string
-  mediaChoicesLabel: string
-  mediaPreviewLabel: string
+  name: string
   onChange: (value: string[]) => void
   options: ContentEditorOption[]
   value: string[]
 }) {
-  const [hoveredId, setHoveredId] = useState<null | string>(null)
-  const previewId = hoveredId ?? value[0] ?? ''
-  const previewableOptions = options.filter((option) => option.previewUrl)
-  const previewOption = previewableOptions.find((option) => String(option.id) === previewId)
-
   const toggle = (id: string) =>
     onChange(value.includes(id) ? value.filter((current) => current !== id) : [...value, id])
 
   return (
-    <Field label={label} wide>
-      <div className="portal-content-editor__media-picker">
-        <select
-          multiple
-          onChange={(event) =>
-            onChange(Array.from(event.target.selectedOptions, (option) => option.value))
-          }
-          size={Math.min(6, Math.max(3, options.length))}
-          value={value}
-        >
-          {options.map((option) => (
-            <option key={option.id} value={String(option.id)}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <div className="portal-content-editor__media-browser">
-          <div aria-label={mediaPreviewLabel} className="portal-content-editor__media-preview">
-            {previewOption?.previewUrl ? (
-              <Image
-                alt={previewOption.label}
-                fill
-                sizes="180px"
-                src={previewOption.previewUrl}
-                unoptimized
-              />
-            ) : null}
-          </div>
-          <div
-            aria-label={mediaChoicesLabel}
-            className="portal-content-editor__media-options"
-            role="list"
-          >
-            {previewableOptions.map((option) => {
-              const optionId = String(option.id)
-              return (
-                <button
-                  aria-label={option.label}
-                  aria-pressed={value.includes(optionId)}
-                  key={option.id}
-                  onBlur={() => setHoveredId(null)}
-                  onClick={() => {
-                    toggle(optionId)
-                    setHoveredId(null)
-                  }}
-                  onFocus={() => setHoveredId(optionId)}
-                  onMouseEnter={() => setHoveredId(optionId)}
-                  onMouseLeave={() => setHoveredId(null)}
-                  type="button"
-                >
-                  <Image alt="" fill sizes="48px" src={option.previewUrl!} unoptimized />
-                </button>
-              )
-            })}
-          </div>
-        </div>
+    <fieldset className="portal-content-editor__media-field is-wide">
+      <legend>{label}</legend>
+      <div className="portal-content-editor__image-grid">
+        {options.map((option) => {
+          const optionId = String(option.id)
+          const checked = value.includes(optionId)
+          return (
+            <ImageOption
+              checked={checked}
+              disabled={!checked && value.length >= 12}
+              inputType="checkbox"
+              key={option.id}
+              name={name}
+              onChange={() => toggle(optionId)}
+              option={option}
+            />
+          )
+        })}
       </div>
-    </Field>
+    </fieldset>
   )
 }
 
-export function ContentEditor({
-  item,
-  mode,
-  onClose,
-  onNotice,
-  type,
-}: {
-  item: ContentSummaryItem | null
-  mode: EditorMode
-  onClose: () => void
-  onNotice?: (notice: ContentEditorNotice) => void
-  type: ContentTypeId
-}) {
+export const ContentEditor = forwardRef<
+  ContentEditorHandle,
+  {
+    item: ContentSummaryItem | null
+    mode: EditorMode
+    onClose: () => void
+    onNotice?: (notice: ContentEditorNotice) => void
+    type: ContentTypeId
+  }
+>(function ContentEditor({ item, mode, onClose, onNotice, type }, ref) {
   const router = useRouter()
   const { locale: portalLocale } = usePortalPreferences()
   const messages = getPortalMessages(portalLocale).websiteContent
@@ -550,6 +536,7 @@ export function ContentEditor({
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<ContentEditorNotice>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const baselineRef = useRef(JSON.stringify(emptyForm('en')))
   const showNotice = useCallback(
     (nextNotice: ContentEditorNotice) => {
       setNotice(nextNotice)
@@ -583,8 +570,9 @@ export function ContentEditor({
         .then((payload) => {
           if (!active) return
           setOptions(payload.options ?? EMPTY_OPTIONS)
-          if (payload.record) setForm(normalizeForm(payload.record))
-          else setForm((current) => emptyForm(current.locale))
+          const nextForm = payload.record ? normalizeForm(payload.record) : emptyForm(form.locale)
+          baselineRef.current = JSON.stringify(nextForm)
+          setForm(nextForm)
         })
         .catch((error: unknown) => {
           if (active && (error as { name?: string }).name !== 'AbortError') {
@@ -603,7 +591,7 @@ export function ContentEditor({
       clearTimeout(timer)
       controller.abort()
     }
-  }, [portalLocale, recordURL, showNotice, text.error])
+  }, [form.locale, portalLocale, recordURL, showNotice, text.error])
 
   const update = <K extends keyof EditorForm>(key: K, value: EditorForm[K]) =>
     setForm((current) => ({ ...current, [key]: value }))
@@ -615,7 +603,7 @@ export function ContentEditor({
     specifications: parseSpecifications(form.specificationsText),
   })
 
-  const save = async (action: string) => {
+  const save = async (action: string): Promise<boolean> => {
     if (action === 'publish') {
       const invalid = editorRef.current?.querySelector<
         HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
@@ -625,7 +613,7 @@ export function ContentEditor({
         invalid.reportValidity()
         invalid.focus({ preventScroll: true })
         invalid.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        return
+        return false
       }
     }
 
@@ -648,16 +636,36 @@ export function ContentEditor({
         throw new ContentEditorError(await errorMessage(response, portalLocale, text.error))
       }
       const body = (await response.json()) as { result?: { updatedAt?: string } }
-      if (typeof body.result?.updatedAt === 'string') update('updatedAt', body.result.updatedAt)
+      const nextForm = {
+        ...form,
+        ...(typeof body.result?.updatedAt === 'string' ? { updatedAt: body.result.updatedAt } : {}),
+      }
+      baselineRef.current = JSON.stringify(nextForm)
+      setForm(nextForm)
       showNotice({ tone: 'success', value: text.saved })
       router.refresh()
       if (mode === 'create') onClose()
+      return true
     } catch (error) {
       showNotice({ tone: 'danger', value: safeErrorMessage(error, text.error) })
+      return false
     } finally {
       setBusy(false)
     }
   }
+
+  const defaultSaveAction = VERSIONED.has(type)
+    ? item?.status === 'published'
+      ? 'publish'
+      : item?.status === 'unpublished'
+        ? 'unpublish'
+        : 'save-draft'
+    : 'save'
+
+  useImperativeHandle(ref, () => ({
+    isDirty: () => JSON.stringify(form) !== baselineRef.current,
+    saveCurrent: () => save(defaultSaveAction),
+  }))
 
   const remove = async () => {
     if (!item) return
@@ -846,10 +854,9 @@ export function ContentEditor({
         ) : null}
 
         {type === 'pages' ? (
-          <MediaSelect
+          <ImageSelect
             label={text.fields.heroImage}
-            mediaChoicesLabel={text.mediaChoices}
-            mediaPreviewLabel={text.mediaPreview}
+            name="heroImageId"
             onChange={(value) => update('heroImageId', value)}
             options={imageMediaOptions}
             required
@@ -857,10 +864,9 @@ export function ContentEditor({
           />
         ) : null}
         {type === 'products' || type === 'projects' ? (
-          <MediaSelect
+          <ImageSelect
             label={text.fields.coverImage}
-            mediaChoicesLabel={text.mediaChoices}
-            mediaPreviewLabel={text.mediaPreview}
+            name="coverImageId"
             onChange={(value) => update('coverImageId', value)}
             options={imageMediaOptions}
             required
@@ -868,10 +874,9 @@ export function ContentEditor({
           />
         ) : null}
         {type === 'posts' ? (
-          <MediaSelect
+          <ImageSelect
             label={text.fields.featuredImage}
-            mediaChoicesLabel={text.mediaChoices}
-            mediaPreviewLabel={text.mediaPreview}
+            name="featuredImageId"
             onChange={(value) => update('featuredImageId', value)}
             options={imageMediaOptions}
             required
@@ -879,21 +884,26 @@ export function ContentEditor({
           />
         ) : null}
         {type === 'downloads' ? (
-          <MediaSelect
-            label={text.fields.downloadFile}
-            mediaChoicesLabel={text.mediaChoices}
-            mediaPreviewLabel={text.mediaPreview}
-            onChange={(value) => update('fileId', value)}
-            options={options.media}
-            required
-            value={form.fileId}
-          />
+          <Field label={text.fields.downloadFile}>
+            <select
+              onChange={(event) => update('fileId', event.target.value)}
+              required
+              value={form.fileId}
+            >
+              <option value="">—</option>
+              {options.media.map((option) => (
+                <option key={option.id} value={String(option.id)}>
+                  {option.label}
+                  {option.meta ? ` · ${option.meta}` : ''}
+                </option>
+              ))}
+            </select>
+          </Field>
         ) : null}
         {type === 'downloads' ? (
-          <MediaSelect
+          <ImageSelect
             label={text.fields.coverImage}
-            mediaChoicesLabel={text.mediaChoices}
-            mediaPreviewLabel={text.mediaPreview}
+            name="downloadCoverImageId"
             onChange={(value) => update('coverImageId', value)}
             options={imageMediaOptions}
             value={form.coverImageId}
@@ -903,8 +913,7 @@ export function ContentEditor({
         {type === 'products' || type === 'projects' ? (
           <GallerySelect
             label={text.fields.gallery}
-            mediaChoicesLabel={text.mediaChoices}
-            mediaPreviewLabel={text.mediaPreview}
+            name="galleryIds"
             onChange={(value) => update('galleryIds', value)}
             options={imageMediaOptions}
             value={form.galleryIds}
@@ -995,10 +1004,9 @@ export function ContentEditor({
                 value={form.seoKeywords}
               />
             </Field>
-            <MediaSelect
+            <ImageSelect
               label={text.fields.openGraphImage}
-              mediaChoicesLabel={text.mediaChoices}
-              mediaPreviewLabel={text.mediaPreview}
+              name="seoOgImageId"
               onChange={(value) => update('seoOgImageId', value)}
               options={imageMediaOptions}
               value={form.seoOgImageId}
@@ -1027,18 +1035,20 @@ export function ContentEditor({
       </div>
 
       <footer className="portal-content-editor__actions">
-        <Button
-          disabled={busy}
-          onClick={() => void save(VERSIONED.has(type) ? 'save-draft' : 'save')}
-          variant="secondary"
-        >
+        <Button disabled={busy} onClick={() => void save(defaultSaveAction)} variant="secondary">
           <IconDeviceFloppy aria-hidden="true" size={16} />
-          {VERSIONED.has(type) ? text.saveDraft : text.save}
+          {defaultSaveAction === 'publish'
+            ? text.savePublished
+            : defaultSaveAction === 'unpublish'
+              ? text.saveUnpublished
+              : VERSIONED.has(type)
+                ? text.saveDraft
+                : text.save}
         </Button>
-        {VERSIONED.has(type) ? (
+        {VERSIONED.has(type) && item?.status !== 'published' ? (
           <Button disabled={busy} onClick={() => void save('publish')}>
             <IconCheck aria-hidden="true" size={16} />
-            {text.publish}
+            {item?.status === 'unpublished' ? text.republish : text.publish}
           </Button>
         ) : null}
         {mode === 'edit' && item?.status === 'published' && VERSIONED.has(type) ? (
@@ -1077,7 +1087,7 @@ export function ContentEditor({
       </footer>
     </section>
   )
-}
+})
 
 export function ContentEditorActions({
   onCreate,

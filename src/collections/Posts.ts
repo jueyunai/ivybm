@@ -9,6 +9,7 @@ import {
 } from '../access/content'
 import { internalNotesField } from '../fields/internalNotes'
 import { imageMediaFilter } from '../fields/media'
+import { preservePublicationHistory, publicationHistoryField } from '../fields/publicationHistory'
 import { seoField } from '../fields/seo'
 import { stableSlugField } from '../fields/slug'
 import {
@@ -39,6 +40,7 @@ export const Posts: CollectionConfig = {
       required: true,
     },
     stableSlugField(),
+    publicationHistoryField,
     {
       name: 'excerpt',
       type: 'textarea',
@@ -82,6 +84,7 @@ export const Posts: CollectionConfig = {
   hooks: {
     afterChange: [revalidateContentAfterChange, writeAuditLogAfterChange],
     afterDelete: [revalidateContentAfterDelete, writeAuditLogAfterDelete],
+    beforeChange: [preservePublicationHistory],
   },
   versions: {
     drafts: true,

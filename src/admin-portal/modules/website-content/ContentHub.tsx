@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import Link from 'next/link'
 import {
@@ -20,6 +20,7 @@ import {
   ContentEditor,
   ContentEditorActions,
   ContentEditorNotice,
+  type ContentEditorHandle,
   type ContentEditorNotice as ContentEditorNoticeValue,
 } from './ContentEditor'
 import type {
@@ -43,7 +44,25 @@ const statusTone: Record<ContentItemStatus, 'info' | 'neutral' | 'success' | 'wa
   draft: 'warning',
   inactive: 'neutral',
   published: 'success',
+  unpublished: 'neutral',
 }
+
+const switchCopy = {
+  en: {
+    cancel: 'Cancel',
+    description: 'Save your changes before opening “{target}”?',
+    discard: 'Discard and switch',
+    save: 'Save and switch',
+    title: '“{current}” has unsaved changes',
+  },
+  zh: {
+    cancel: '取消',
+    description: '是否先保存当前修改，再切换到“{target}”？',
+    discard: '不保存并切换',
+    save: '保存并切换',
+    title: '正在编辑“{current}”',
+  },
+} as const
 
 const buildContentHref = (query: Partial<ContentQuery> & Pick<ContentQuery, 'type'>): string => {
   const params = new URLSearchParams()
@@ -91,6 +110,89 @@ function CompletenessBar({
   )
 }
 
+function UnsavedChangesDialog({
+  busy,
+  currentTitle,
+  locale,
+  onCancel,
+  onDiscard,
+  onSave,
+  targetTitle,
+}: {
+  busy: boolean
+  currentTitle: string
+  locale: 'en' | 'zh'
+  onCancel: () => void
+  onDiscard: () => void
+  onSave: () => void
+  targetTitle: string
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const saveRef = useRef<HTMLButtonElement>(null)
+  const busyRef = useRef(busy)
+  const text = switchCopy[locale]
+
+  useEffect(() => {
+    busyRef.current = busy
+  }, [busy])
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    saveRef.current?.focus()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busyRef.current) {
+        event.preventDefault()
+        onCancel()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled)')
+      if (!focusable?.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      previouslyFocused?.focus()
+    }
+  }, [onCancel])
+
+  return (
+    <div className="portal-content__dialog-backdrop">
+      <div
+        aria-describedby="content-switch-description"
+        aria-labelledby="content-switch-title"
+        aria-modal="true"
+        className="portal-content__dialog"
+        ref={dialogRef}
+        role="dialog"
+      >
+        <h3 id="content-switch-title">{text.title.replace('{current}', currentTitle)}</h3>
+        <p id="content-switch-description">{text.description.replace('{target}', targetTitle)}</p>
+        <div className="portal-content__dialog-actions">
+          <Button disabled={busy} onClick={onSave} ref={saveRef}>
+            {text.save}
+          </Button>
+          <Button disabled={busy} onClick={onDiscard} variant="secondary">
+            {text.discard}
+          </Button>
+          <Button disabled={busy} onClick={onCancel} variant="ghost">
+            {text.cancel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ItemButton({
   active,
   disabled = false,
@@ -131,7 +233,7 @@ function ItemButton({
 
 const statusOptionsFor = (type: ContentTypeId): ContentStatusFilter[] => {
   if (['pages', 'posts', 'products', 'projects'].includes(type)) {
-    return ['all', 'draft', 'published']
+    return ['all', 'draft', 'published', 'unpublished']
   }
   if (type === 'downloads') return ['all', 'active', 'inactive']
   return ['all']
@@ -143,6 +245,29 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
   const [selectedId, setSelectedId] = useState<number | string | null>(null)
   const [editor, setEditor] = useState<'create' | 'edit' | null>(null)
   const [notice, setNotice] = useState<ContentEditorNoticeValue>(null)
+  const [pendingSwitch, setPendingSwitch] = useState<ContentSummaryItem | null>(null)
+  const [switchBusy, setSwitchBusy] = useState(false)
+  const editorRef = useRef<ContentEditorHandle>(null)
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showNotice = useCallback((nextNotice: ContentEditorNoticeValue) => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
+    setNotice(nextNotice)
+    if (nextNotice) {
+      noticeTimerRef.current = setTimeout(() => {
+        setNotice(null)
+        noticeTimerRef.current = null
+      }, 5_000)
+    }
+  }, [])
+
+  useEffect(
+    () => () => {
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
+    },
+    [],
+  )
+  const cancelSwitch = useCallback(() => setPendingSwitch(null), [])
 
   if (pageState === 'forbidden') {
     return (
@@ -181,7 +306,48 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
   }
 
   const selected =
-    summary.items.find((item) => String(item.id) === String(selectedId)) ?? summary.items[0] ?? null
+    editor === 'create'
+      ? null
+      : (summary.items.find((item) => String(item.id) === String(selectedId)) ??
+        summary.items[0] ??
+        null)
+
+  const openCreate = () => {
+    setSelectedId(null)
+    setPendingSwitch(null)
+    showNotice(null)
+    setEditor('create')
+  }
+
+  const commitSwitch = (item: ContentSummaryItem) => {
+    setSelectedId(item.id)
+    setPendingSwitch(null)
+    showNotice(null)
+    setEditor('edit')
+  }
+
+  const requestSelection = (item: ContentSummaryItem) => {
+    if (!editor) {
+      setSelectedId(item.id)
+      return
+    }
+    if (editor === 'edit' && String(item.id) === String(selected?.id)) return
+    if (editorRef.current?.isDirty()) {
+      setPendingSwitch(item)
+      return
+    }
+    commitSwitch(item)
+  }
+
+  const saveAndSwitch = async () => {
+    if (!pendingSwitch) return
+    setSwitchBusy(true)
+    const target = pendingSwitch
+    const saved = await editorRef.current?.saveCurrent()
+    setSwitchBusy(false)
+    if (saved) commitSwitch(target)
+  }
+
   const statusOptions = statusOptionsFor(summary.query.type)
   const statusLabel: Record<ContentStatusFilter, string> = {
     active: messages.statuses.active,
@@ -189,11 +355,12 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
     draft: messages.statuses.draft,
     inactive: messages.statuses.inactive,
     published: messages.statuses.published,
+    unpublished: messages.statuses.unpublished,
   }
 
   return (
     <main className="portal-page portal-content">
-      {notice ? <ContentEditorNotice notice={notice} /> : null}
+      {notice ? <ContentEditorNotice notice={notice} onDismiss={() => showNotice(null)} /> : null}
       <header className="portal-page__intro portal-content__intro">
         <div>
           <p className="portal-page__eyebrow">{messages.eyebrow}</p>
@@ -202,7 +369,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
         </div>
         <div className="portal-content__intro-actions">
           <StatusBadge label={messages.editorStatus} tone="success" />
-          <ContentEditorActions onCreate={() => setEditor('create')} />
+          <ContentEditorActions onCreate={openCreate} />
         </div>
       </header>
 
@@ -297,10 +464,9 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
                 <li key={item.id}>
                   <ItemButton
                     active={String(item.id) === String(selected?.id)}
-                    disabled={editor !== null}
                     item={item}
                     locale={locale}
-                    onSelect={() => setSelectedId(item.id)}
+                    onSelect={() => requestSelection(item)}
                   />
                 </li>
               ))}
@@ -356,7 +522,8 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
               item={editor === 'edit' ? selected : null}
               mode={editor}
               onClose={() => setEditor(null)}
-              onNotice={setNotice}
+              onNotice={showNotice}
+              ref={editorRef}
               type={summary.query.type}
             />
           </Surface>
@@ -409,10 +576,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
                 />
               </section>
 
-              <ContentEditorActions
-                onCreate={() => setEditor('create')}
-                onEdit={() => setEditor('edit')}
-              />
+              <ContentEditorActions onCreate={openCreate} onEdit={() => setEditor('edit')} />
 
               {selected.previewHrefs.en || selected.previewHrefs.ar ? (
                 <div aria-label={messages.preview} className="portal-content__preview-actions">
@@ -446,6 +610,23 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
           </Surface>
         ) : null}
       </div>
+      {pendingSwitch ? (
+        <UnsavedChangesDialog
+          busy={switchBusy}
+          currentTitle={
+            editor === 'create'
+              ? locale === 'zh'
+                ? '新增内容'
+                : 'New content'
+              : (selected?.title ?? '')
+          }
+          locale={locale}
+          onCancel={cancelSwitch}
+          onDiscard={() => commitSwitch(pendingSwitch)}
+          onSave={() => void saveAndSwitch()}
+          targetTitle={pendingSwitch.title}
+        />
+      ) : null}
     </main>
   )
 }

@@ -13,11 +13,19 @@ export const CONTENT_TYPE_IDS = [
   'downloads',
 ] as const
 
-export const CONTENT_STATUS_FILTERS = ['all', 'draft', 'published', 'active', 'inactive'] as const
+export const CONTENT_STATUS_FILTERS = [
+  'all',
+  'draft',
+  'published',
+  'unpublished',
+  'active',
+  'inactive',
+] as const
 
 export type ContentTypeId = (typeof CONTENT_TYPE_IDS)[number]
 export type ContentStatusFilter = (typeof CONTENT_STATUS_FILTERS)[number]
-export type ContentItemStatus = 'active' | 'always-visible' | 'draft' | 'inactive' | 'published'
+export type ContentItemStatus =
+  'active' | 'always-visible' | 'draft' | 'inactive' | 'published' | 'unpublished'
 export type ContentLocale = 'ar' | 'en'
 
 export interface ContentQuery {
@@ -53,7 +61,9 @@ export interface ContentSummary {
   }
   query: ContentQuery
   statusBreakdown:
-    { active: number; inactive: number } | { draft: number; published: number } | null
+    | { active: number; inactive: number }
+    | { draft: number; published: number; unpublished: number }
+    | null
 }
 
 export type WebsiteContentPageState =
@@ -76,6 +86,7 @@ interface ContentProjection {
   featuredImage?: unknown
   file?: unknown
   gallery?: unknown
+  hasBeenPublished?: boolean | null
   heroImage?: unknown
   id: number | string
   isActive?: boolean | null
@@ -138,7 +149,7 @@ const normalizedStatus = (
   status: ContentStatusFilter,
 ): ContentStatusFilter => {
   if (VERSIONED_TYPES.has(type)) {
-    return status === 'draft' || status === 'published' ? status : 'all'
+    return status === 'draft' || status === 'published' || status === 'unpublished' ? status : 'all'
   }
   if (type === 'downloads') {
     return status === 'active' || status === 'inactive' ? status : 'all'
@@ -155,8 +166,18 @@ const buildWhere = (query: ContentQuery): Where => {
       or: [{ title: { contains: query.q } }, { slug: { contains: query.q } }],
     })
   }
-  if (status === 'draft' || status === 'published') {
-    clauses.push({ _status: { equals: status } })
+  if (status === 'published') {
+    clauses.push({ _status: { equals: 'published' } })
+  }
+  if (status === 'draft') {
+    clauses.push({
+      and: [{ _status: { equals: 'draft' } }, { hasBeenPublished: { equals: false } }],
+    })
+  }
+  if (status === 'unpublished') {
+    clauses.push({
+      and: [{ _status: { equals: 'draft' } }, { hasBeenPublished: { equals: true } }],
+    })
   }
   if (status === 'active' || status === 'inactive') {
     clauses.push({ isActive: { equals: status === 'active' } })
@@ -178,7 +199,14 @@ const selectionFor = (type: ContentTypeId) => {
 
   switch (type) {
     case 'pages':
-      return { ...common, _status: true, body: true, heroImage: true, summary: true } as const
+      return {
+        ...common,
+        _status: true,
+        body: true,
+        hasBeenPublished: true,
+        heroImage: true,
+        summary: true,
+      } as const
     case 'products':
       return {
         ...common,
@@ -187,6 +215,7 @@ const selectionFor = (type: ContentTypeId) => {
         coverImage: true,
         description: true,
         gallery: true,
+        hasBeenPublished: true,
         shortDescription: true,
       } as const
     case 'product-categories':
@@ -199,6 +228,7 @@ const selectionFor = (type: ContentTypeId) => {
         coverImage: true,
         description: true,
         gallery: true,
+        hasBeenPublished: true,
         location: true,
         summary: true,
       } as const
@@ -209,6 +239,7 @@ const selectionFor = (type: ContentTypeId) => {
         content: true,
         excerpt: true,
         featuredImage: true,
+        hasBeenPublished: true,
       } as const
     case 'downloads':
       return {
@@ -486,7 +517,10 @@ const completeness = ({
 }
 
 const statusFor = (type: ContentTypeId, document: ContentProjection): ContentItemStatus => {
-  if (VERSIONED_TYPES.has(type)) return document._status === 'published' ? 'published' : 'draft'
+  if (VERSIONED_TYPES.has(type)) {
+    if (document._status === 'published') return 'published'
+    return document.hasBeenPublished === true ? 'unpublished' : 'draft'
+  }
   if (type === 'downloads') return document.isActive === false ? 'inactive' : 'active'
   return 'always-visible'
 }
@@ -631,13 +665,23 @@ export async function getContentSummary({
             payload,
             req,
             type: normalizedQuery.type,
-            where: { _status: { equals: 'draft' } },
+            where: {
+              and: [{ _status: { equals: 'draft' } }, { hasBeenPublished: { equals: false } }],
+            },
           }),
           published: await countContent({
             payload,
             req,
             type: normalizedQuery.type,
             where: { _status: { equals: 'published' } },
+          }),
+          unpublished: await countContent({
+            payload,
+            req,
+            type: normalizedQuery.type,
+            where: {
+              and: [{ _status: { equals: 'draft' } }, { hasBeenPublished: { equals: true } }],
+            },
           }),
         }
       : normalizedQuery.type === 'downloads'

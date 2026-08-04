@@ -231,7 +231,7 @@ describe.sequential('Portal website content access', () => {
     const localized = await updatePortalContent({
       id: created.id,
       input: {
-        action: 'save-draft',
+        action: 'publish',
         bodyText: 'النص العربي',
         heroImageId,
         locale: 'ar',
@@ -259,6 +259,7 @@ describe.sequential('Portal website content access', () => {
       summary: 'الملخص العربي',
       title: 'صفحة أوامر البوابة',
     })
+    expect(localized.status).toBe('published')
 
     const audit = await payload.find({
       collection: 'audit-logs',
@@ -509,7 +510,7 @@ describe.sequential('Portal website content access', () => {
           type: 'projects',
         }),
       )
-      expect(unpublished.status).toBe('draft')
+      expect(unpublished.status).toBe('unpublished')
 
       const rootDocument = await payload.findByID({
         collection: 'projects',
@@ -538,8 +539,9 @@ describe.sequential('Portal website content access', () => {
         throw new Error('Expected versioned project status breakdown after unpublish')
       }
       expect(afterUnpublish.statusBreakdown).toEqual({
-        draft: beforeUnpublish.statusBreakdown.draft + 1,
+        draft: beforeUnpublish.statusBreakdown.draft,
         published: beforeUnpublish.statusBreakdown.published - 1,
+        unpublished: beforeUnpublish.statusBreakdown.unpublished + 1,
       })
 
       const download = records.get('downloads')!

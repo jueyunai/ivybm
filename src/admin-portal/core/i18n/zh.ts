@@ -140,6 +140,7 @@ export const PORTAL_ZH = {
       draft: '草稿',
       inactive: '停用',
       published: '已发布',
+      unpublished: '已下架',
     },
     title: '官网内容',
     total: '总计',

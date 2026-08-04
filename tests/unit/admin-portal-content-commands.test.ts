@@ -100,9 +100,7 @@ describe('Portal website content commands', () => {
   it('rejects a non-image asset when an image relation is submitted', async () => {
     const create = vi.fn()
     const find = vi.fn(async ({ collection }: { collection: string }) =>
-      collection === 'media'
-        ? { docs: [{ id: 91, mimeType: 'application/pdf' }] }
-        : { docs: [] },
+      collection === 'media' ? { docs: [{ id: 91, mimeType: 'application/pdf' }] } : { docs: [] },
     )
 
     await expect(
@@ -256,11 +254,13 @@ describe('Portal website content commands', () => {
     const create = vi.fn().mockResolvedValue({ id: 1 })
     const findByID = vi.fn().mockResolvedValue({
       _status: 'published',
+      hasBeenPublished: true,
       id: 9,
       updatedAt: '2026-07-30T10:00:00.000Z',
     })
     const update = vi.fn().mockResolvedValue({
       _status: 'draft',
+      hasBeenPublished: true,
       id: 9,
       slug: 'case-study',
       title: 'Case study',
@@ -287,7 +287,7 @@ describe('Portal website content commands', () => {
         req,
         type: 'projects',
       }),
-    ).resolves.toMatchObject({ id: 9, status: 'draft' })
+    ).resolves.toMatchObject({ id: 9, status: 'unpublished' })
 
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -298,6 +298,32 @@ describe('Portal website content commands', () => {
         req,
       }),
     )
+  })
+
+  it('never allows previously published content to return to the initial draft state', async () => {
+    const findByID = vi.fn().mockResolvedValue({
+      _status: 'draft',
+      hasBeenPublished: true,
+      id: 9,
+      updatedAt: '2026-07-30T10:00:00.000Z',
+    })
+
+    await expect(
+      updatePortalContent({
+        id: 9,
+        input: {
+          action: 'save-draft',
+          coverImageId: '91',
+          locale: 'en',
+          slug: 'case-study',
+          title: 'Case study',
+          updatedAt: '2026-07-30T10:00:00.000Z',
+        },
+        payload: { findByID },
+        req,
+        type: 'projects',
+      }),
+    ).rejects.toMatchObject({ code: 'content-invalid-action', status: 409 })
   })
 
   it('blocks deletion of a product category that is still referenced', async () => {
@@ -335,11 +361,13 @@ describe('Portal website content commands', () => {
         updatedAt: '2026-07-30T10:00:00.000Z',
       }),
     ).rejects.toMatchObject({ code: 'content-in-use', status: 409 })
-    expect(findGlobal).toHaveBeenCalledWith(expect.objectContaining({
-      overrideAccess: false,
-      req,
-      slug: 'site-settings',
-    }))
+    expect(findGlobal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        overrideAccess: false,
+        req,
+        slug: 'site-settings',
+      }),
+    )
     expect(deleteDocument).not.toHaveBeenCalled()
   })
 })

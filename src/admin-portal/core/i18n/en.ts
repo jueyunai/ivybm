@@ -170,6 +170,7 @@ export const PORTAL_EN = {
       draft: 'Draft',
       inactive: 'Inactive',
       published: 'Published',
+      unpublished: 'Unpublished',
     },
     title: 'Website content',
     total: 'Total',

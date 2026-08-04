@@ -401,7 +401,10 @@ export function parseContentMutation(type: ContentTypeId, rawInput: unknown): Pa
 }
 
 const statusFromDocument = (type: ContentTypeId, document: LooseRecord): ContentItemStatus => {
-  if (VERSIONED_TYPES.has(type)) return document._status === 'published' ? 'published' : 'draft'
+  if (VERSIONED_TYPES.has(type)) {
+    if (document._status === 'published') return 'published'
+    return document.hasBeenPublished === true ? 'unpublished' : 'draft'
+  }
   if (type === 'downloads') return document.isActive === false ? 'inactive' : 'active'
   return 'always-visible'
 }
@@ -631,6 +634,13 @@ export async function createPortalContent({
   type: ContentTypeId
 }): Promise<ContentCommandResult> {
   const mutation = parseContentMutation(type, input)
+  if (mutation.action === 'unpublish') {
+    throw new ContentCommandError(
+      'content-invalid-action',
+      'New content cannot start in the unpublished state',
+      409,
+    )
+  }
   if (mutation.action === 'publish') assertPublishable(type, mutation.data)
 
   const find = requireMethod(payload, 'find')
@@ -690,6 +700,21 @@ export async function updatePortalContent({
     req,
   })
   assertCurrentRevision(current, mutation.updatedAt)
+  const hasBeenPublished = current.hasBeenPublished === true || current._status === 'published'
+  if (VERSIONED_TYPES.has(type) && hasBeenPublished && mutation.action === 'save-draft') {
+    throw new ContentCommandError(
+      'content-invalid-action',
+      'Published content can only remain published or become unpublished',
+      409,
+    )
+  }
+  if (VERSIONED_TYPES.has(type) && !hasBeenPublished && mutation.action === 'unpublish') {
+    throw new ContentCommandError(
+      'content-invalid-action',
+      'Draft content cannot be unpublished before its first publication',
+      409,
+    )
+  }
   if (mutation.action === 'publish') assertPublishable(type, mutation.data)
   await assertContentMediaReferences({ data: mutation.data, payload, req, type })
 

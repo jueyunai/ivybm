@@ -141,7 +141,10 @@ export interface PortalWebsiteContentMessages {
   selectedItem: string
   slug: string
   status: string
-  statuses: Record<'active' | 'always-visible' | 'draft' | 'inactive' | 'published', string>
+  statuses: Record<
+    'active' | 'always-visible' | 'draft' | 'inactive' | 'published' | 'unpublished',
+    string
+  >
   title: string
   total: string
 }

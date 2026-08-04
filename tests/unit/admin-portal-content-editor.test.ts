@@ -105,7 +105,7 @@ describe('Portal website content editor', () => {
     expect(screen.queryByText(/标题|摘要|正文|头图/)).toBeNull()
   })
 
-  it('shows image previews for selected, hovered, and clicked media options', async () => {
+  it('selects single and gallery images directly through native controls', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       Response.json({
         options: {
@@ -130,24 +130,24 @@ describe('Portal website content editor', () => {
 
     renderEditor('products')
 
-    const coverSelect = await screen.findByLabelText('封面图')
-    const coverField = coverSelect.closest('label')!
-    const firstThumbnail = within(coverField).getByRole('button', { name: 'facade-a.jpg' })
-    const secondThumbnail = within(coverField).getByRole('button', { name: 'facade-b.jpg' })
+    const coverGroup = await screen.findByRole('group', { name: '封面图' })
+    const firstCover = within(coverGroup).getByRole('radio', { name: 'facade-a.jpg' })
+    const secondCover = within(coverGroup).getByRole('radio', { name: 'facade-b.jpg' })
 
-    fireEvent.mouseEnter(secondThumbnail)
-    expect(within(coverField).getByRole('img', { name: 'facade-b.jpg' }).getAttribute('src')).toBe(
-      '/media/facade-b.jpg',
+    fireEvent.click(secondCover)
+    expect((secondCover as HTMLInputElement).checked).toBe(true)
+    expect((firstCover as HTMLInputElement).checked).toBe(false)
+    expect(within(coverGroup).getByText('facade-b.jpg').closest('label')?.innerHTML).toContain(
+      'portal-content-editor__image-check',
     )
-    fireEvent.mouseLeave(secondThumbnail)
-    fireEvent.click(firstThumbnail)
 
-    expect((coverSelect as HTMLSelectElement).value).toBe('91')
-    await waitFor(() =>
-      expect(
-        within(coverField).getByRole('img', { name: 'facade-a.jpg' }).getAttribute('src'),
-      ).toBe('/media/facade-a.jpg'),
-    )
+    const galleryGroup = screen.getByRole('group', { name: '图库' })
+    const firstGallery = within(galleryGroup).getByRole('checkbox', { name: 'facade-a.jpg' })
+    const secondGallery = within(galleryGroup).getByRole('checkbox', { name: 'facade-b.jpg' })
+    fireEvent.click(firstGallery)
+    fireEvent.click(secondGallery)
+    expect((firstGallery as HTMLInputElement).checked).toBe(true)
+    expect((secondGallery as HTMLInputElement).checked).toBe(true)
   })
 
   it('emits create success feedback before closing so the hub-level notice remains visible', async () => {
