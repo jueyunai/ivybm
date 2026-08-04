@@ -132,6 +132,11 @@
     font-size: 13px;
   }
 
+  .portal-field__control input:focus-visible {
+    outline: none;
+    outline-offset: 0;
+  }
+
   .portal-login-form__meta {
     display: flex;
     justify-content: space-between;
