@@ -1,6 +1,7 @@
 # IDE / 编辑器配置
 .mcp.json
-.codex/
+.codex/*
+!.codex/feishu-issues.json
 .trae/
 .codebuddy/
 .kiro/
