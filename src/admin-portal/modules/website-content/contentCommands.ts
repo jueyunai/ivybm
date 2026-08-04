@@ -46,6 +46,7 @@ export interface ContentEditorOption {
   id: number | string
   label: string
   meta?: string
+  previewUrl?: string
 }
 
 export interface ContentEditorRecord {
@@ -581,9 +582,7 @@ const writeOptions = (
   mutation: ParsedContentMutation,
   req: PayloadRequest,
 ) => ({
-  ...(VERSIONED_TYPES.has(type)
-    ? { draft: mutation.action !== 'publish' }
-    : {}),
+  ...(VERSIONED_TYPES.has(type) ? { draft: mutation.action === 'save-draft' } : {}),
   context: { skipAudit: true },
   fallbackLocale: false,
   locale: mutation.locale,
@@ -899,7 +898,15 @@ export async function getPortalContentOptions({
       overrideAccess: false,
       pagination: false,
       req,
-      select: { alt: true, filename: true, id: true, mimeType: true },
+      select: {
+        alt: true,
+        filename: true,
+        id: true,
+        mimeType: true,
+        sizes: { card: { url: true }, thumbnail: { url: true } },
+        thumbnailURL: true,
+        url: true,
+      },
       sort: '-updatedAt',
     }),
   ])
@@ -913,15 +920,39 @@ export async function getPortalContentOptions({
             ? document.slug
             : String(document.id),
     })),
-    media: media.docs.map((document) => ({
-      id: document.id as number | string,
-      label:
-        typeof document.filename === 'string'
-          ? document.filename
-          : typeof document.alt === 'string'
-            ? document.alt
-            : String(document.id),
-      meta: typeof document.mimeType === 'string' ? document.mimeType : undefined,
-    })),
+    media: media.docs.map((document) => {
+      const sizes = asRecord(document.sizes)
+      const card = asRecord(sizes.card)
+      const thumbnail = asRecord(sizes.thumbnail)
+      const safeURL = (value: unknown): string | undefined => {
+        if (typeof value !== 'string' || !value || value.includes('\\')) return undefined
+        if (value.startsWith('/') && !value.startsWith('//')) return value
+        try {
+          const url = new URL(value)
+          return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : undefined
+        } catch {
+          return undefined
+        }
+      }
+      const mimeType = typeof document.mimeType === 'string' ? document.mimeType : undefined
+      const previewUrl = mimeType?.startsWith('image/')
+        ? (safeURL(card.url) ??
+          safeURL(thumbnail.url) ??
+          safeURL(document.thumbnailURL) ??
+          safeURL(document.url))
+        : undefined
+
+      return {
+        id: document.id as number | string,
+        label:
+          typeof document.filename === 'string'
+            ? document.filename
+            : typeof document.alt === 'string'
+              ? document.alt
+              : String(document.id),
+        meta: mimeType,
+        previewUrl,
+      }
+    }),
   }
 }

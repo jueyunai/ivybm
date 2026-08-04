@@ -16,7 +16,12 @@ import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
 
-import { ContentEditor, ContentEditorActions } from './ContentEditor'
+import {
+  ContentEditor,
+  ContentEditorActions,
+  ContentEditorNotice,
+  type ContentEditorNotice as ContentEditorNoticeValue,
+} from './ContentEditor'
 import type {
   ContentItemStatus,
   ContentQuery,
@@ -80,9 +85,7 @@ function CompletenessBar({
         <strong>{value}%</strong>
       </div>
       <small>
-        {missingCount === 0
-          ? completeLabel
-          : missingLabel.replace('{count}', String(missingCount))}
+        {missingCount === 0 ? completeLabel : missingLabel.replace('{count}', String(missingCount))}
       </small>
     </div>
   )
@@ -139,6 +142,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
   const messages = getPortalMessages(locale).websiteContent
   const [selectedId, setSelectedId] = useState<number | string | null>(null)
   const [editor, setEditor] = useState<'create' | 'edit' | null>(null)
+  const [notice, setNotice] = useState<ContentEditorNoticeValue>(null)
 
   if (pageState === 'forbidden') {
     return (
@@ -189,6 +193,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
 
   return (
     <main className="portal-page portal-content">
+      {notice ? <ContentEditorNotice notice={notice} /> : null}
       <header className="portal-page__intro portal-content__intro">
         <div>
           <p className="portal-page__eyebrow">{messages.eyebrow}</p>
@@ -342,12 +347,16 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
         </Surface>
 
         {editor ? (
-          <Surface as="aside" className="portal-content__detail-panel portal-content__detail-panel--editor">
+          <Surface
+            as="aside"
+            className="portal-content__detail-panel portal-content__detail-panel--editor"
+          >
             <ContentEditor
               key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
               item={editor === 'edit' ? selected : null}
               mode={editor}
               onClose={() => setEditor(null)}
+              onNotice={setNotice}
               type={summary.query.type}
             />
           </Surface>
@@ -433,7 +442,6 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
               ) : (
                 <p className="portal-content__preview-note">{messages.noPreview}</p>
               )}
-
             </>
           </Surface>
         ) : null}

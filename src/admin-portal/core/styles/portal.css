@@ -1838,11 +1838,74 @@
     resize: vertical;
   }
 
-  .portal-content-editor__field input:focus,
-  .portal-content-editor__field textarea:focus,
-  .portal-content-editor__field select:focus {
+  .portal-content-editor__notice {
+    position: fixed;
+    z-index: 80;
+    top: 76px;
+    right: 20px;
+    width: min(360px, calc(100vw - 40px));
+    padding: 10px;
+    border: 1px solid var(--portal-border-strong);
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-surface);
+    box-shadow: var(--portal-shadow-overlay);
+  }
+
+  .portal-content-editor__notice .portal-status-badge {
+    width: 100%;
+    justify-content: flex-start;
+    white-space: normal;
+  }
+
+  .portal-content-editor__media-picker,
+  .portal-content-editor__media-browser {
+    display: grid;
+    gap: 8px;
+  }
+
+  .portal-content-editor__media-browser {
+    grid-template-columns: 112px minmax(0, 1fr);
+    min-height: 82px;
+  }
+
+  .portal-content-editor__media-preview {
+    position: relative;
+    min-height: 82px;
+    overflow: hidden;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-surface-subtle);
+  }
+
+  .portal-content-editor__media-preview img {
+    object-fit: contain;
+  }
+
+  .portal-content-editor__media-options {
+    display: grid;
+    max-height: 132px;
+    grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+    align-content: start;
+    gap: 6px;
+    overflow: auto;
+  }
+
+  .portal-content-editor__media-options button {
+    position: relative;
+    min-height: 46px;
+    overflow: hidden;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-surface-subtle);
+    cursor: pointer;
+  }
+
+  .portal-content-editor__media-options button[aria-pressed='true'] {
     border-color: var(--portal-accent);
-    box-shadow: 0 0 0 1px var(--portal-accent);
+  }
+
+  .portal-content-editor__media-options img {
+    object-fit: cover;
   }
 
   .portal-content-editor__seo {

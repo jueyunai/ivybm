@@ -48,6 +48,10 @@ describe('Portal website content summary', () => {
         }
       }
 
+      if (options.limit === 1 && options.where && '_status' in (options.where as object)) {
+        return { docs: [], totalDocs: 1 }
+      }
+
       if (options.limit === 1) {
         return {
           docs: [{ updatedAt: '2026-07-30T08:00:00.000Z' }],
@@ -98,13 +102,22 @@ describe('Portal website content summary', () => {
       req,
     })
 
-    expect(find).toHaveBeenCalledTimes(8)
-    expect(count).toHaveBeenCalledTimes(2)
+    expect(find).toHaveBeenCalledTimes(10)
+    expect(count).not.toHaveBeenCalled()
     for (const [options] of [...find.mock.calls, ...count.mock.calls]) {
       expect(options).toEqual(expect.objectContaining({ overrideAccess: false, req }))
     }
     expect(find).toHaveBeenCalledWith(
       expect.objectContaining({ fallbackLocale: false, locale: 'all', overrideAccess: false, req }),
+    )
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'products',
+        draft: true,
+        limit: 1,
+        pagination: true,
+        where: { _status: { equals: 'draft' } },
+      }),
     )
     expect(summary.statusBreakdown).toEqual({ draft: 1, published: 1 })
     expect(summary.items[0]).toMatchObject({

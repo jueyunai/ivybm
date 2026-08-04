@@ -306,9 +306,23 @@ const countContent = async ({
   type: ContentTypeId
   where: Where
 }): Promise<number> => {
+  if (VERSIONED_TYPES.has(type)) {
+    const result = await findContent({
+      fallbackLocale: false,
+      limit: 1,
+      locale: 'all',
+      pagination: true,
+      payload,
+      req,
+      select: { id: true },
+      type,
+      where,
+    })
+    return result.totalDocs
+  }
+
   const result = await payload.count({
     collection: type,
-    ...(VERSIONED_TYPES.has(type) ? { draft: true } : {}),
     overrideAccess: false,
     req,
     where,

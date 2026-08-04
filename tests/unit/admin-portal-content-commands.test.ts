@@ -4,8 +4,10 @@ import type { PayloadRequest } from 'payload'
 
 import {
   ContentCommandError,
+  type ContentCommandPayload,
   createPortalContent,
   deletePortalContent,
+  getPortalContentOptions,
   parseContentMutation,
   updatePortalContent,
 } from '@/admin-portal/modules/website-content/contentCommands'
@@ -121,6 +123,66 @@ describe('Portal website content commands', () => {
     expect(create).not.toHaveBeenCalled()
   })
 
+  it('returns safe image preview URLs with media editor options', async () => {
+    const find = vi.fn(async ({ collection }: { collection: string }) =>
+      collection === 'media'
+        ? {
+            docs: [
+              {
+                filename: 'facade.jpg',
+                id: 91,
+                mimeType: 'image/jpeg',
+                sizes: { card: { url: '/media/facade-card.jpg' } },
+              },
+              {
+                filename: 'unsafe.jpg',
+                id: 92,
+                mimeType: 'image/jpeg',
+                url: 'javascript:alert(1)',
+              },
+              {
+                filename: 'catalog.pdf',
+                id: 93,
+                mimeType: 'application/pdf',
+                url: '/media/catalog.pdf',
+              },
+            ],
+          }
+        : { docs: [] },
+    )
+
+    await expect(
+      getPortalContentOptions({
+        payload: {
+          find: find as unknown as NonNullable<ContentCommandPayload['find']>,
+        },
+        req,
+      }),
+    ).resolves.toEqual({
+      categories: [],
+      media: [
+        {
+          id: 91,
+          label: 'facade.jpg',
+          meta: 'image/jpeg',
+          previewUrl: '/media/facade-card.jpg',
+        },
+        {
+          id: 92,
+          label: 'unsafe.jpg',
+          meta: 'image/jpeg',
+          previewUrl: undefined,
+        },
+        {
+          id: 93,
+          label: 'catalog.pdf',
+          meta: 'application/pdf',
+          previewUrl: undefined,
+        },
+      ],
+    })
+  })
+
   it('rejects stale updates and publishes posts with a publication timestamp', async () => {
     const create = vi.fn().mockResolvedValue({ id: 1 })
     const update = vi.fn().mockResolvedValue({
@@ -183,6 +245,54 @@ describe('Portal website content commands', () => {
       expect.objectContaining({
         collection: 'posts',
         data: expect.objectContaining({ publishedAt: '2026-07-30T10:30:00.000Z' }),
+        draft: false,
+        overrideAccess: false,
+        req,
+      }),
+    )
+  })
+
+  it('unpublishes the root document instead of only creating a draft version', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 1 })
+    const findByID = vi.fn().mockResolvedValue({
+      _status: 'published',
+      id: 9,
+      updatedAt: '2026-07-30T10:00:00.000Z',
+    })
+    const update = vi.fn().mockResolvedValue({
+      _status: 'draft',
+      id: 9,
+      slug: 'case-study',
+      title: 'Case study',
+      updatedAt: '2026-07-30T11:00:00.000Z',
+    })
+
+    await expect(
+      updatePortalContent({
+        id: 9,
+        input: {
+          action: 'unpublish',
+          coverImageId: '91',
+          locale: 'en',
+          slug: 'case-study',
+          title: 'Case study',
+          updatedAt: '2026-07-30T10:00:00.000Z',
+        },
+        payload: {
+          create,
+          find: vi.fn().mockResolvedValue({ docs: [{ id: 91, mimeType: 'image/jpeg' }] }),
+          findByID,
+          update,
+        },
+        req,
+        type: 'projects',
+      }),
+    ).resolves.toMatchObject({ id: 9, status: 'draft' })
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'projects',
+        data: expect.objectContaining({ _status: 'draft' }),
         draft: false,
         overrideAccess: false,
         req,
