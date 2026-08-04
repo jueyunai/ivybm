@@ -1725,6 +1725,10 @@
     padding: 0;
   }
 
+  .portal-content__editor-frame {
+    min-width: 0;
+  }
+
   .portal-content-editor {
     display: grid;
     min-width: 0;
@@ -2036,6 +2040,7 @@
   }
 
   .portal-content__dialog {
+    position: relative;
     width: min(440px, 100%);
     padding: 20px;
     border: 1px solid var(--portal-border-strong);
@@ -2050,8 +2055,15 @@
   }
 
   .portal-content__dialog h3 {
+    padding-right: 40px;
     color: var(--portal-ink);
     font-size: 16px;
+  }
+
+  .portal-content__dialog-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
   }
 
   .portal-content__dialog p {

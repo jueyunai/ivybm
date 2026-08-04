@@ -10,6 +10,7 @@ import {
   IconFileText,
   IconLanguage,
   IconSearch,
+  IconX,
 } from '@tabler/icons-react'
 
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
@@ -49,16 +50,16 @@ const statusTone: Record<ContentItemStatus, 'info' | 'neutral' | 'success' | 'wa
 
 const switchCopy = {
   en: {
-    cancel: 'Cancel',
+    close: 'Close',
     description: 'Save your changes before opening “{target}”?',
-    discard: 'Discard and switch',
+    discard: 'Discard',
     save: 'Save and switch',
     title: '“{current}” has unsaved changes',
   },
   zh: {
-    cancel: '取消',
+    close: '关闭',
     description: '是否先保存当前修改，再切换到“{target}”？',
-    discard: '不保存并切换',
+    discard: '不保存',
     save: '保存并切换',
     title: '正在编辑“{current}”',
   },
@@ -184,10 +185,17 @@ function UnsavedChangesDialog({
           <Button disabled={busy} onClick={onDiscard} variant="secondary">
             {text.discard}
           </Button>
-          <Button disabled={busy} onClick={onCancel} variant="ghost">
-            {text.cancel}
-          </Button>
         </div>
+        <Button
+          aria-label={text.close}
+          className="portal-content__dialog-close"
+          disabled={busy}
+          onClick={onCancel}
+          size="icon"
+          variant="ghost"
+        >
+          <IconX aria-hidden="true" size={18} />
+        </Button>
       </div>
     </div>
   )
@@ -247,7 +255,9 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
   const [notice, setNotice] = useState<ContentEditorNoticeValue>(null)
   const [pendingSwitch, setPendingSwitch] = useState<ContentSummaryItem | null>(null)
   const [switchBusy, setSwitchBusy] = useState(false)
+  const [editorMinHeight, setEditorMinHeight] = useState<number | null>(null)
   const editorRef = useRef<ContentEditorHandle>(null)
+  const editorFrameRef = useRef<HTMLDivElement>(null)
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const showNotice = useCallback((nextNotice: ContentEditorNoticeValue) => {
@@ -312,7 +322,14 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
         summary.items[0] ??
         null)
 
+  const captureEditorHeight = () => {
+    const height = editorFrameRef.current?.getBoundingClientRect().height ?? 0
+    if (height > 0) setEditorMinHeight(Math.ceil(height))
+  }
+
   const openCreate = () => {
+    if (editor) captureEditorHeight()
+    else setEditorMinHeight(null)
     setSelectedId(null)
     setPendingSwitch(null)
     showNotice(null)
@@ -320,10 +337,16 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
   }
 
   const commitSwitch = (item: ContentSummaryItem) => {
+    captureEditorHeight()
     setSelectedId(item.id)
     setPendingSwitch(null)
     showNotice(null)
     setEditor('edit')
+  }
+
+  const closeEditor = () => {
+    setEditor(null)
+    setEditorMinHeight(null)
   }
 
   const requestSelection = (item: ContentSummaryItem) => {
@@ -517,15 +540,21 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
             as="aside"
             className="portal-content__detail-panel portal-content__detail-panel--editor"
           >
-            <ContentEditor
-              key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
-              item={editor === 'edit' ? selected : null}
-              mode={editor}
-              onClose={() => setEditor(null)}
-              onNotice={showNotice}
-              ref={editorRef}
-              type={summary.query.type}
-            />
+            <div
+              className="portal-content__editor-frame"
+              ref={editorFrameRef}
+              style={editorMinHeight ? { minHeight: `${editorMinHeight}px` } : undefined}
+            >
+              <ContentEditor
+                key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
+                item={editor === 'edit' ? selected : null}
+                mode={editor}
+                onClose={closeEditor}
+                onNotice={showNotice}
+                ref={editorRef}
+                type={summary.query.type}
+              />
+            </div>
           </Surface>
         ) : selected ? (
           <Surface as="aside" className="portal-content__detail-panel">

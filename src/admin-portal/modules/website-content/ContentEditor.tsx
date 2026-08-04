@@ -119,7 +119,8 @@ const copy = {
     save: 'Save changes',
     saveDraft: 'Save draft',
     savePublished: 'Save and publish',
-    saveUnpublished: 'Save while unpublished',
+    saveUnpublished: 'Save',
+    saveValidation: 'Complete the required fields before saving.',
     saved: 'Saved. The list has been refreshed.',
     unpublish: 'Unpublish',
   },
@@ -184,7 +185,8 @@ const copy = {
     save: '保存修改',
     saveDraft: '保存草稿',
     savePublished: '保存并发布',
-    saveUnpublished: '保存下架内容',
+    saveUnpublished: '保存',
+    saveValidation: '请先补全必填项，再保存内容。',
     saved: '保存成功，列表已刷新。',
     unpublish: '下架',
   },
@@ -604,17 +606,30 @@ export const ContentEditor = forwardRef<
   })
 
   const save = async (action: string): Promise<boolean> => {
-    if (action === 'publish') {
-      const invalid = editorRef.current?.querySelector<
-        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-      >(':invalid')
-      if (invalid) {
-        showNotice({ tone: 'danger', value: text.publishValidation })
-        invalid.reportValidity()
-        invalid.focus({ preventScroll: true })
+    const invalid =
+      action === 'publish' || action === 'unpublish'
+        ? editorRef.current?.querySelector<
+            HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+          >(':invalid')
+        : null
+    if (invalid) {
+      const validationMessage =
+        invalid instanceof HTMLInputElement && invalid.validity.patternMismatch
+          ? errorMessages[portalLocale]['content-invalid-slug']
+          : action === 'publish'
+            ? text.publishValidation
+            : text.saveValidation
+      showNotice({ tone: 'danger', value: validationMessage })
+      invalid.setCustomValidity(validationMessage)
+      invalid.reportValidity()
+      invalid.focus({ preventScroll: true })
+      if (typeof invalid.scrollIntoView === 'function') {
         invalid.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        return false
       }
+      const clearCustomValidity = () => invalid.setCustomValidity('')
+      invalid.addEventListener('input', clearCustomValidity, { once: true })
+      invalid.addEventListener('change', clearCustomValidity, { once: true })
+      return false
     }
 
     setBusy(true)

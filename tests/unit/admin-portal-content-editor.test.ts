@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
 import { ContentEditor } from '@/admin-portal/modules/website-content/ContentEditor'
+import type { ContentSummaryItem } from '@/admin-portal/modules/website-content/getContentSummary'
 
 const navigation = vi.hoisted(() => ({ refresh: vi.fn() }))
 
@@ -22,6 +23,31 @@ const renderEditor = (type: 'pages' | 'products' = 'pages') =>
         mode: 'create',
         onClose: vi.fn(),
         type,
+      }),
+    ),
+  )
+
+const unpublishedProject: ContentSummaryItem = {
+  id: 41,
+  localeCompleteness: { ar: 100, en: 100 },
+  localeMissing: { ar: [], en: [] },
+  previewHrefs: { ar: null, en: null },
+  slug: 'shunde-gymnasium',
+  status: 'unpublished',
+  title: 'Shunde Gymnasium',
+  updatedAt: '2026-08-04T10:00:00.000Z',
+}
+
+const renderUnpublishedProject = () =>
+  render(
+    React.createElement(
+      PortalPreferencesProvider,
+      null,
+      React.createElement(ContentEditor, {
+        item: unpublishedProject,
+        mode: 'edit',
+        onClose: vi.fn(),
+        type: 'projects',
       }),
     ),
   )
@@ -87,6 +113,61 @@ describe('Portal website content editor', () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
     expect(screen.getByRole('alert').textContent).toBe('请先补全必填项，再发布内容。')
   })
+
+  it.each(['保存', '重新发布'])(
+    'uses a specific validation message and focuses the invalid field for %s',
+    async (actionLabel) => {
+      const fetcher = vi.mocked(fetch).mockResolvedValueOnce(
+        Response.json({
+          options: {
+            categories: [],
+            media: [
+              {
+                id: 91,
+                label: 'facade.jpg',
+                meta: 'image/jpeg',
+                previewUrl: '/media/facade.jpg',
+              },
+            ],
+          },
+          record: {
+            data: {
+              application: 'Curved aluminum cladding',
+              bodyText: 'Project body',
+              coverImageId: 91,
+              location: 'Shunde, Foshan, China',
+              seoTitle: 'Shunde Gymnasium',
+              slug: 'shunde-gymnasium-not-valid!',
+              summary: 'Project summary',
+              title: 'Shunde Gymnasium',
+            },
+            id: 41,
+            locale: 'en',
+            status: 'unpublished',
+            type: 'projects',
+            updatedAt: '2026-08-04T10:00:00.000Z',
+          },
+        }),
+      )
+      const scrollIntoView = vi.fn()
+      HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+      renderUnpublishedProject()
+
+      const slug = (await screen.findByLabelText('固定链接标识')) as HTMLInputElement
+      fireEvent.click(screen.getByRole('button', { name: actionLabel }))
+
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      expect(document.activeElement).toBe(slug)
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+      expect(screen.getByRole('alert').textContent).toBe(
+        '固定链接标识只能使用小写英文字母、数字和单个连字符。',
+      )
+      expect(slug.validationMessage).toBe(
+        '固定链接标识只能使用小写英文字母、数字和单个连字符。',
+      )
+    },
+  )
 
   it('switches all field labels and fixed options to English with the Portal preference', async () => {
     window.localStorage.setItem(

@@ -138,12 +138,20 @@ describe('Portal content hub editing transitions', () => {
     fireEvent.change(title, { target: { value: '未保存的第一项' } })
 
     fireEvent.click(screen.getByRole('button', { name: /第二项/ }))
-    expect(screen.getByRole('dialog').textContent).toContain('正在编辑“第一项”')
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '取消' }))
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('正在编辑“第一项”')
+    expect(within(dialog).queryByRole('button', { name: '取消' })).toBeNull()
+    expect(within(dialog).queryByRole('button', { name: '不保存并切换' })).toBeNull()
+    expect(
+      within(dialog)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label') ?? button.textContent),
+    ).toEqual(['保存并切换', '不保存', '关闭'])
+    fireEvent.click(within(dialog).getByRole('button', { name: '关闭' }))
     expect((screen.getByLabelText('标题') as HTMLInputElement).value).toBe('未保存的第一项')
 
     fireEvent.click(screen.getByRole('button', { name: /第二项/ }))
-    fireEvent.click(screen.getByRole('button', { name: '不保存并切换' }))
+    fireEvent.click(screen.getByRole('button', { name: '不保存' }))
     await waitFor(() =>
       expect((screen.getByLabelText('标题') as HTMLInputElement).value).toBe('第二项'),
     )
@@ -161,5 +169,51 @@ describe('Portal content hub editing transitions', () => {
       action: 'save',
       title: '第二项已修改',
     })
+  })
+
+  it('keeps the editor frame height stable while switching records', async () => {
+    let resolveSecond: ((response: Response) => void) | undefined
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/2?locale=en')) {
+        return new Promise<Response>((resolve) => {
+          resolveSecond = resolve
+        })
+      }
+      if (url.includes('/product-categories/')) return editorResponse(1)
+      return Response.json({ options: { categories: [], media: [] } })
+    })
+
+    renderHub()
+    fireEvent.click(screen.getByRole('button', { name: '编辑内容' }))
+    await screen.findByLabelText('标题')
+
+    const frame = document.querySelector<HTMLElement>('.portal-content__editor-frame')
+    expect(frame).toBeTruthy()
+    vi.spyOn(frame as HTMLElement, 'getBoundingClientRect').mockReturnValue({
+      bottom: 860,
+      height: 720,
+      left: 620,
+      right: 1180,
+      toJSON: () => ({}),
+      top: 140,
+      width: 560,
+      x: 620,
+      y: 140,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /第二项/ }))
+
+    await screen.findByText('正在加载编辑器…')
+    expect(frame?.style.minHeight).toBe('720px')
+    expect(document.querySelector('.portal-content__editor-frame')).toBe(frame)
+
+    await act(async () => {
+      resolveSecond?.(editorResponse(2))
+    })
+    await waitFor(() =>
+      expect((screen.getByLabelText('标题') as HTMLInputElement).value).toBe('第二项'),
+    )
+    expect(frame?.style.minHeight).toBe('720px')
   })
 })

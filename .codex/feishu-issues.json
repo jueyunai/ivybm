@@ -2,32 +2,32 @@
   "version": 1,
   "project": {
     "name": "IVYBM",
-    "businessIdExample": "IVYBM-0001"
+    "businessIdExample": "HMT-0001"
   },
   "lark": {
-    "baseUrl": "https://my.feishu.cn/base/OozKbx0ZYaUwoUsLpTecWzyfnqb?table=tblgDskiJMMguPK0&view=vewJlCyHtT",
+    "baseUrl": "https://my.feishu.cn/base/OozKbx0ZYaUwoUsLpTecWzyfnqb?table=tblMsup4zkMPVScP&view=vewqNbKnuf",
     "baseToken": "OozKbx0ZYaUwoUsLpTecWzyfnqb",
-    "tableId": "tblgDskiJMMguPK0",
+    "tableId": "tblMsup4zkMPVScP",
     "views": {
-      "all": "vewJlCyHtT",
-      "pending": "vewulvogFJ",
-      "processing": "vewKkB2kU2",
-      "readyForAcceptance": "vewlBUj8pI",
-      "completed": "vew4cT2pHh"
+      "all": "vewqNbKnuf",
+      "pending": "vewwo0aoCz",
+      "processing": "vewS5kS3vr",
+      "readyForAcceptance": "vew8qHwXCH",
+      "completed": "vewgeZhYb5"
     }
   },
   "fields": {
-    "businessId": { "name": "ID", "id": "fldUVGZzP4", "access": "system" },
-    "type": { "name": "类型", "id": "fldAnHN8fh", "access": "protected" },
-    "module": { "name": "模块/位置", "id": "fldfvUUS4i", "access": "protected" },
-    "description": { "name": "问题描述", "id": "fld3P72FPS", "access": "protected" },
-    "screenshots": { "name": "问题截图", "id": "fldz1IMece", "access": "protected" },
-    "priority": { "name": "优先级", "id": "fldczZGDsG", "access": "protected" },
-    "status": { "name": "处理状态", "id": "fldJOQSVuK", "access": "writable" },
-    "fixSummary": { "name": "修复说明", "id": "fldcAfekSA", "access": "writable" },
-    "precheck": { "name": "预检结论", "id": "fldxTYVVgs", "access": "writable" },
-    "acceptanceResult": { "name": "验收结果", "id": "fldxasKPeW", "access": "writable" },
-    "acceptanceNotes": { "name": "验收备注", "id": "fldcHNmBIH", "access": "writable" }
+    "businessId": { "name": "ID", "id": "fldXwCpFA7", "access": "system" },
+    "type": { "name": "类型", "id": "fldtevSmEn", "access": "protected" },
+    "module": { "name": "模块/位置", "id": "fldVyHXneF", "access": "protected" },
+    "description": { "name": "问题描述", "id": "fldzLmwgdY", "access": "protected" },
+    "screenshots": { "name": "问题截图", "id": "fldfggpZns", "access": "protected" },
+    "priority": { "name": "优先级", "id": "fld6B6v9iM", "access": "protected" },
+    "status": { "name": "处理状态", "id": "fldgxvKOfx", "access": "writable" },
+    "fixSummary": { "name": "修复说明", "id": "fld20XoPxP", "access": "writable" },
+    "precheck": { "name": "预检结论", "id": "fld0NdAHFM", "access": "writable" },
+    "acceptanceResult": { "name": "验收结果", "id": "fldZl43pdC", "access": "writable" },
+    "acceptanceNotes": { "name": "验收备注", "id": "fld4Je9JP9", "access": "writable" }
   },
   "statuses": {
     "pending": "待处理",
