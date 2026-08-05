@@ -16,7 +16,7 @@ import {
   readFeishuCredentialEncryptionKey,
 } from '@/modules/feishu/credentials'
 import {
-  completeFeishuAppRegistration,
+  completeFeishuAppRegistrationInTransaction,
   failFeishuAppRegistrationOAuth,
   readRegisteredAppCredentials,
   restartFeishuAppAuthorization,
@@ -42,10 +42,12 @@ const adminURL = (request: NextRequest, result: string): URL => {
 const persistConnection = async ({
   connectionData,
   payload,
+  registrationId,
   tenantKey,
 }: {
   connectionData: RequiredDataFromCollectionSlug<'feishu-connections'>
   payload: Payload
+  registrationId?: number
   tenantKey: string
 }) => {
   const req = await createLocalReq({}, payload)
@@ -97,6 +99,9 @@ const persistConnection = async ({
           req,
         })
       }
+    }
+    if (registrationId !== undefined) {
+      await completeFeishuAppRegistrationInTransaction({ payload, registrationId, req })
     }
     await commitTransaction(req)
     return connection
@@ -246,6 +251,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     const connection = await persistConnection({
       connectionData,
       payload,
+      ...(registration ? { registrationId: registration.id } : {}),
       tenantKey: user.tenantKey,
     })
     connectionPersisted = true
@@ -253,18 +259,9 @@ export async function GET(request: NextRequest): Promise<Response> {
       connection: connection as unknown as Record<string, unknown>,
       payload,
     })
-    if (registration) {
-      await completeFeishuAppRegistration(payload, registration.id)
-    }
     return redirect(request, 'provisioning')
   } catch (error) {
     if (connectionPersisted) {
-      if (registrationId) {
-        const payload = await getPayload({ config }).catch(() => undefined)
-        if (payload) {
-          await completeFeishuAppRegistration(payload, registrationId).catch(() => undefined)
-        }
-      }
       return redirect(request, 'provisioning')
     }
     if (registrationId) {

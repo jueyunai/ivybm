@@ -6,7 +6,9 @@ import {
   getFeishuAppRegistration,
   isFeishuQRRegistrationEnabled,
   launchFeishuAppRegistration,
+  preflightFeishuQRRegistrationConfiguration,
 } from '@/modules/feishu/appRegistration'
+import { FeishuConfigurationError } from '@/modules/feishu/contracts'
 import config from '@/payload.config'
 import type { User } from '@/payload-types'
 
@@ -43,12 +45,17 @@ export async function POST(request: Request): Promise<Response> {
     if (!isSameOriginRequest(request)) {
       return errorResponse(403, 'invalid-origin', 'Same-origin request required')
     }
-    if (!process.env.FEISHU_OAUTH_REDIRECT_URI?.trim()) {
-      return errorResponse(
-        503,
-        'feishu-registration-not-configured',
-        'Feishu redirect URI is not configured',
-      )
+    try {
+      preflightFeishuQRRegistrationConfiguration()
+    } catch (error) {
+      if (error instanceof FeishuConfigurationError) {
+        return errorResponse(
+          503,
+          'feishu-registration-not-configured',
+          'Feishu QR registration is not configured',
+        )
+      }
+      throw error
     }
     const started = await findOrCreateFeishuAppRegistration({
       payload,

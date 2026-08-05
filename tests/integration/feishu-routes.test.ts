@@ -233,6 +233,31 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     )
     expect(missingOrigin.status).toBe(403)
 
+    const registrationCountBeforeConfigurationFailure = await payload.count({
+      collection: 'feishu-app-registrations',
+      overrideAccess: true,
+      where: { requestedBy: { equals: adminID } },
+    })
+    process.env.FEISHU_CREDENTIAL_ENCRYPTION_KEY = 'invalid'
+    const notConfigured = await feishuRegistrationStart(
+      new NextRequest('http://localhost/api/portal/feishu/registration', {
+        headers: { authorization, origin: 'http://localhost' },
+        method: 'POST',
+      }),
+    )
+    expect(notConfigured.status).toBe(503)
+    await expect(notConfigured.json()).resolves.toMatchObject({
+      error: { code: 'feishu-registration-not-configured' },
+    })
+    await expect(
+      payload.count({
+        collection: 'feishu-app-registrations',
+        overrideAccess: true,
+        where: { requestedBy: { equals: adminID } },
+      }),
+    ).resolves.toEqual(registrationCountBeforeConfigurationFailure)
+    process.env.FEISHU_CREDENTIAL_ENCRYPTION_KEY = 'a'.repeat(64)
+
     const admin = await payload.findByID({
       collection: 'users',
       id: adminID,

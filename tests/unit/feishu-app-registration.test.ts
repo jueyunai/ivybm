@@ -5,6 +5,7 @@ import {
   buildFeishuRegisterAppOptions,
   configureRegisteredFeishuApp,
   FEISHU_APP_CONFIG_PROPAGATION_DELAY_MS,
+  preflightFeishuQRRegistrationConfiguration,
   FEISHU_QR_TENANT_SCOPES,
   FEISHU_QR_USER_SCOPES,
   isFeishuQRRegistrationEnabled,
@@ -99,6 +100,36 @@ describe('Feishu QR app registration', () => {
     expect(settle).toHaveBeenCalledWith(FEISHU_APP_CONFIG_PROPAGATION_DELAY_MS)
   })
 
+  it('bounds a hanging tenant-token request and aborts the provider fetch', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
+        const signal = init?.signal
+        if (!signal) throw new Error('expected request signal')
+        await new Promise<never>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+        throw new Error('unreachable')
+      })
+      const result = configureRegisteredFeishuApp({
+        appId: 'cli_registered_fixture',
+        appSecret: 'registered-secret-fixture',
+        fetch,
+        redirectURI: 'https://ivybm.example.invalid/api/integrations/feishu/callback',
+        settle: vi.fn(async () => undefined),
+        timeoutMs: 50,
+      })
+
+      const timedOut = expect(result).rejects.toMatchObject({ code: 'timeout', retryable: true })
+      await vi.advanceTimersByTimeAsync(50)
+      await timedOut
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(fetch.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('fails closed on provider errors without including credentials in the error', async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -123,6 +154,40 @@ describe('Feishu QR app registration', () => {
     expect(isFeishuQRRegistrationEnabled({ FEISHU_QR_REGISTRATION_ENABLED: 'TRUE' })).toBe(false)
     expect(isFeishuQRRegistrationEnabled({ FEISHU_QR_REGISTRATION_ENABLED: 'false' })).toBe(false)
     expect(isFeishuQRRegistrationEnabled({})).toBe(false)
+  })
+
+  it('fails closed before QR registration side effects when runtime configuration drifts', () => {
+    const valid = {
+      FEISHU_CREDENTIAL_ENCRYPTION_KEY: 'a'.repeat(64),
+      FEISHU_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/integrations/feishu/callback',
+      NEXT_PUBLIC_SERVER_URL: 'https://ivybm.com',
+      NODE_ENV: 'production',
+    }
+    expect(() => preflightFeishuQRRegistrationConfiguration(valid)).not.toThrow()
+    expect(() =>
+      preflightFeishuQRRegistrationConfiguration({
+        ...valid,
+        FEISHU_CREDENTIAL_ENCRYPTION_KEY: 'invalid',
+      }),
+    ).toThrow(/FEISHU_CREDENTIAL_ENCRYPTION_KEY/u)
+    expect(() =>
+      preflightFeishuQRRegistrationConfiguration({
+        ...valid,
+        FEISHU_OAUTH_REDIRECT_URI: 'not-a-url',
+      }),
+    ).toThrow(/absolute URL/u)
+    expect(() =>
+      preflightFeishuQRRegistrationConfiguration({
+        ...valid,
+        FEISHU_OAUTH_REDIRECT_URI: 'https://ivybm.com/wrong-callback',
+      }),
+    ).toThrow(/canonical Feishu callback/u)
+    expect(() =>
+      preflightFeishuQRRegistrationConfiguration({
+        ...valid,
+        FEISHU_OAUTH_REDIRECT_URI: 'http://ivybm.com/api/integrations/feishu/callback',
+      }),
+    ).toThrow(/HTTPS/u)
   })
 
   it('uses the registered tenant credentials directly for bot tokens', async () => {
