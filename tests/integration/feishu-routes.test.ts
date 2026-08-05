@@ -15,8 +15,10 @@ import { POST as feishuRegistrationStart } from '@/app/api/portal/feishu/registr
 import { GET as feishuRegistrationStatus } from '@/app/api/portal/feishu/registration/[id]/route'
 import {
   completeFeishuAppRegistration,
+  FEISHU_OAUTH_CALLBACK_PROCESSING_TTL_MS,
   findOrCreateFeishuAppRegistration,
   getFeishuAppRegistration,
+  recoverStaleFeishuOAuthCallbacks,
   runFeishuAppRegistration,
 } from '@/modules/feishu/appRegistration'
 import {
@@ -423,6 +425,16 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
       overrideAccess: true,
     })
     expect(completed).toMatchObject({ appSecretEncrypted: null, status: 'completed' })
+    const callbackStates = await payload.find({
+      collection: 'feishu-oauth-states',
+      depth: 0,
+      limit: 20,
+      overrideAccess: true,
+      where: { registration: { equals: started.registration.id } },
+    })
+    expect(callbackStates.docs.filter((state) => state.usedAt)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ processingAt: null })]),
+    )
 
     const jobs = await payload.find({
       collection: 'jobs',
@@ -549,6 +561,112 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
       status: 'authorization_ready',
     })
     await completeFeishuAppRegistration(payload, resumed.registration.id)
+  })
+
+  it('recovers a stale OAuth callback attempt by issuing a fresh authorization state', async () => {
+    const admin = await payload.findByID({
+      collection: 'users',
+      id: adminID,
+      overrideAccess: true,
+    })
+    const started = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    registrationIDs.add(started.registration.id)
+    await runFeishuAppRegistration({
+      fetch: vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(response({ code: 0, tenant_access_token: 'tenant-recovery-token' }))
+        .mockResolvedValueOnce(response({ code: 0 })),
+      payload,
+      register: vi.fn(async () => ({
+        client_id: 'cli_recovery_registration',
+        client_secret: 'recovery-app-secret-fixture',
+      })) as never,
+      registrationId: started.registration.id,
+    })
+
+    const authorizationReady = await payload.findByID({
+      collection: 'feishu-app-registrations',
+      depth: 0,
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+    const states = await payload.find({
+      collection: 'feishu-oauth-states',
+      depth: 0,
+      limit: 20,
+      overrideAccess: true,
+      where: {
+        and: [
+          { registration: { equals: started.registration.id } },
+          { usedAt: { exists: false } },
+        ],
+      },
+    })
+    const state = states.docs[0]
+    if (!state) throw new Error('Expected authorization state')
+    const processingAt = new Date().toISOString()
+    await payload.update({
+      collection: 'feishu-oauth-states',
+      context,
+      data: { processingAt, usedAt: processingAt },
+      id: state.id,
+      overrideAccess: true,
+    })
+    await payload.update({
+      collection: 'feishu-app-registrations',
+      context,
+      data: { authorizeExpiresAt: new Date(Date.now() - 1_000).toISOString() },
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+
+    await getFeishuAppRegistration({
+      payload,
+      registrationId: started.registration.id,
+      user: admin,
+    })
+    await expect(
+      payload.findByID({
+        collection: 'feishu-oauth-states',
+        depth: 0,
+        id: state.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ processingAt, usedAt: processingAt })
+
+    const staleAt = new Date(
+      Date.now() - FEISHU_OAUTH_CALLBACK_PROCESSING_TTL_MS - 1_000,
+    ).toISOString()
+    await payload.update({
+      collection: 'feishu-oauth-states',
+      context,
+      data: { processingAt: staleAt },
+      id: state.id,
+      overrideAccess: true,
+    })
+
+    const recoveredCount = await recoverStaleFeishuOAuthCallbacks({ payload })
+    expect(recoveredCount).toBe(1)
+    const recoveredRegistration = await payload.findByID({
+      collection: 'feishu-app-registrations',
+      depth: 0,
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+    expect(recoveredRegistration).toMatchObject({
+      lastErrorCode: 'oauth_callback_stale',
+      status: 'authorization_ready',
+    })
+    expect(recoveredRegistration.authorizeUrl).not.toBe(authorizationReady.authorizeUrl)
+    await expect(
+      payload.findByID({
+        collection: 'feishu-oauth-states',
+        depth: 0,
+        id: state.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ processingAt: null, usedAt: processingAt })
+    await completeFeishuAppRegistration(payload, started.registration.id)
   })
 
   it('enforces admin auth and persists OAuth as one asynchronous provisioning job', async () => {

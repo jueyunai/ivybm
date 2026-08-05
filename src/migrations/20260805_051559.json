@@ -8902,6 +8902,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "configuring_started_at": {
+          "name": "configuring_started_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "app_id": {
           "name": "app_id",
           "type": "varchar",
@@ -8992,6 +8998,21 @@
           "columns": [
             {
               "expression": "authorize_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_app_registrations_configuring_started_at_idx": {
+          "name": "feishu_app_registrations_configuring_started_at_idx",
+          "columns": [
+            {
+              "expression": "configuring_started_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -9585,6 +9606,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "processing_at": {
+          "name": "processing_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "requested_by_id": {
           "name": "requested_by_id",
           "type": "integer",
@@ -9648,6 +9675,21 @@
           "columns": [
             {
               "expression": "used_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "feishu_oauth_states_processing_at_idx": {
+          "name": "feishu_oauth_states_processing_at_idx",
+          "columns": [
+            {
+              "expression": "processing_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

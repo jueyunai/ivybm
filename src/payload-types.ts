@@ -1024,6 +1024,7 @@ export interface FeishuAppRegistration {
   qrExpiresAt?: string | null;
   authorizeUrl?: string | null;
   authorizeExpiresAt?: string | null;
+  configuringStartedAt?: string | null;
   appId?: string | null;
   appSecretEncrypted?: string | null;
   lastErrorCode?: string | null;
@@ -1115,6 +1116,7 @@ export interface FeishuOauthState {
   verifierEncrypted: string;
   expiresAt: string;
   usedAt?: string | null;
+  processingAt?: string | null;
   requestedBy: number | User;
   registration?: (number | null) | FeishuAppRegistration;
   updatedAt: string;
@@ -2086,6 +2088,7 @@ export interface FeishuAppRegistrationsSelect<T extends boolean = true> {
   qrExpiresAt?: T;
   authorizeUrl?: T;
   authorizeExpiresAt?: T;
+  configuringStartedAt?: T;
   appId?: T;
   appSecretEncrypted?: T;
   lastErrorCode?: T;
@@ -2141,6 +2144,7 @@ export interface FeishuOauthStatesSelect<T extends boolean = true> {
   verifierEncrypted?: T;
   expiresAt?: T;
   usedAt?: T;
+  processingAt?: T;
   requestedBy?: T;
   registration?: T;
   updatedAt?: T;

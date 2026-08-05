@@ -9,7 +9,7 @@ import {
   type PayloadRequest,
 } from 'payload'
 
-import type { FeishuAppRegistration, User } from '@/payload-types'
+import type { FeishuAppRegistration, FeishuOauthState, User } from '@/payload-types'
 
 import { FeishuApiError, FeishuConfigurationError } from './contracts'
 import {
@@ -25,6 +25,9 @@ type JsonRecord = Record<string, unknown>
 export const FEISHU_QR_REGISTRATION_TTL_MS = 10 * 60 * 1_000
 export const FEISHU_APP_CONFIG_PROPAGATION_DELAY_MS = 3_000
 export const FEISHU_APP_CONFIG_REQUEST_TIMEOUT_MS = 30_000
+export const FEISHU_APP_CONFIGURATION_TTL_MS =
+  FEISHU_APP_CONFIG_REQUEST_TIMEOUT_MS * 2 + FEISHU_APP_CONFIG_PROPAGATION_DELAY_MS + 5_000
+export const FEISHU_OAUTH_CALLBACK_PROCESSING_TTL_MS = 2 * 60_000
 export const FEISHU_OAUTH_CALLBACK_PATH = '/api/integrations/feishu/callback'
 export const FEISHU_QR_TENANT_SCOPES = [
   'application:application:patch',
@@ -127,6 +130,62 @@ const withLockedRegistration = async <T>({
     throw error
   }
 }
+
+const withLockedOAuthState = async <T>({
+  payload,
+  run,
+  stateId,
+}: {
+  payload: Payload
+  run: (state: FeishuOauthState, req: PayloadRequest) => Promise<T>
+  stateId: number
+}): Promise<T> => {
+  const req = await createLocalReq({}, payload)
+  await initTransaction(req)
+  try {
+    const transactionID = await req.transactionID
+    const adapter = payload.db as unknown as PostgresAdapter
+    const database = transactionID ? adapter.sessions[transactionID]?.db : undefined
+    if (!database) {
+      throw new FeishuConfigurationError('Feishu OAuth state transaction is unavailable')
+    }
+    await database.execute(sql`
+      SELECT "id" FROM "feishu_oauth_states" WHERE "id" = ${stateId} FOR UPDATE
+    `)
+    const state = await payload.findByID({
+      collection: 'feishu-oauth-states',
+      depth: 0,
+      id: stateId,
+      overrideAccess: true,
+      req,
+    })
+    const result = await run(state, req)
+    await commitTransaction(req)
+    return result
+  } catch (error) {
+    await killTransaction(req).catch(() => undefined)
+    throw error
+  }
+}
+
+export const clearFeishuOAuthStateProcessing = (
+  payload: Payload,
+  stateId: number,
+): Promise<FeishuOauthState> =>
+  withLockedOAuthState({
+    payload,
+    run: (state, req) => {
+      if (!state.processingAt) return Promise.resolve(state)
+      return payload.update({
+        collection: 'feishu-oauth-states',
+        data: { processingAt: null },
+        id: state.id,
+        overrideAccess: true,
+        req,
+      })
+    },
+    stateId,
+  })
 
 const updateLockedRegistration = (
   payload: Payload,
@@ -238,6 +297,7 @@ const prepareFeishuAuthorizationLocked = async ({
   clock = () => new Date(),
   lastErrorCode = null,
   payload,
+  processingStateId,
   registration,
   req,
   validStatuses,
@@ -245,6 +305,7 @@ const prepareFeishuAuthorizationLocked = async ({
   clock?: () => Date
   lastErrorCode?: null | string
   payload: Payload
+  processingStateId?: number
   registration: FeishuAppRegistration
   req: PayloadRequest
   validStatuses: FeishuAppRegistration['status'][]
@@ -264,14 +325,25 @@ const prepareFeishuAuthorizationLocked = async ({
     overrideAccess: true,
     req,
     where: {
-      and: [{ registration: { equals: registration.id } }, { usedAt: { exists: false } }],
+      and: [
+        { registration: { equals: registration.id } },
+        {
+          or: [
+            { usedAt: { exists: false } },
+            ...(processingStateId === undefined ? [] : [{ id: { equals: processingStateId } }]),
+          ],
+        },
+      ],
     },
   })
   const invalidatedAt = clock().toISOString()
   for (const priorState of priorStates.docs) {
     await payload.update({
       collection: 'feishu-oauth-states',
-      data: { usedAt: invalidatedAt },
+      data: {
+        ...(priorState.usedAt ? {} : { usedAt: invalidatedAt }),
+        processingAt: null,
+      },
       id: priorState.id,
       overrideAccess: true,
       req,
@@ -303,6 +375,7 @@ const prepareFeishuAuthorizationLocked = async ({
       }),
       lastErrorCode,
       qrExpiresAt: null,
+      configuringStartedAt: null,
       status: 'authorization_ready',
     },
     id: registration.id,
@@ -315,12 +388,14 @@ const prepareFeishuAuthorization = ({
   clock = () => new Date(),
   lastErrorCode = null,
   payload,
+  processingStateId,
   registrationId,
   validStatuses,
 }: {
   clock?: () => Date
   lastErrorCode?: null | string
   payload: Payload
+  processingStateId?: number
   registrationId: number
   validStatuses: FeishuAppRegistration['status'][]
 }): Promise<FeishuAppRegistration> =>
@@ -332,6 +407,7 @@ const prepareFeishuAuthorization = ({
         clock,
         lastErrorCode,
         payload,
+        processingStateId,
         registration,
         req,
         validStatuses,
@@ -342,10 +418,12 @@ export const restartFeishuAppAuthorization = (
   payload: Payload,
   registrationId: number,
   lastErrorCode = 'oauth_failed',
+  processingStateId?: number,
 ): Promise<FeishuAppRegistration> =>
   prepareFeishuAuthorization({
     lastErrorCode,
     payload,
+    processingStateId,
     registrationId,
     validStatuses: ['authorization_ready', 'failed'],
   })
@@ -373,6 +451,117 @@ const relationshipID = (value: unknown): number | undefined => {
   if (typeof value === 'number') return value
   const relation = record(value)
   return typeof relation?.id === 'number' ? relation.id : undefined
+}
+
+const isStaleOAuthCallbackProcessing = (state: FeishuOauthState, now: Date): boolean => {
+  if (!state.usedAt || !state.processingAt) return false
+  const processingStartedAt = Date.parse(state.processingAt)
+  return (
+    !Number.isFinite(processingStartedAt) ||
+    processingStartedAt + FEISHU_OAUTH_CALLBACK_PROCESSING_TTL_MS <= now.getTime()
+  )
+}
+
+const recoverStaleRegisteredOAuthState = async ({
+  clock,
+  now,
+  payload,
+  registrationId,
+  stateId,
+}: {
+  clock: () => Date
+  now: Date
+  payload: Payload
+  registrationId: number
+  stateId: number
+}): Promise<boolean> =>
+  withLockedRegistration({
+    payload,
+    registrationId,
+    run: async (registration, req) => {
+      const transactionID = await req.transactionID
+      const adapter = payload.db as unknown as PostgresAdapter
+      const database = transactionID ? adapter.sessions[transactionID]?.db : undefined
+      if (!database) {
+        throw new FeishuConfigurationError('Feishu OAuth state transaction is unavailable')
+      }
+      await database.execute(sql`
+        SELECT "id" FROM "feishu_oauth_states" WHERE "id" = ${stateId} FOR UPDATE
+      `)
+      const state = await payload.findByID({
+        collection: 'feishu-oauth-states',
+        depth: 0,
+        id: stateId,
+        overrideAccess: true,
+        req,
+      })
+      if (!isStaleOAuthCallbackProcessing(state, now)) return false
+
+      if (registration.status === 'authorization_ready' || registration.status === 'failed') {
+        await prepareFeishuAuthorizationLocked({
+          clock,
+          lastErrorCode: 'oauth_callback_stale',
+          payload,
+          processingStateId: state.id,
+          registration,
+          req,
+          validStatuses: [registration.status],
+        })
+      } else {
+        await payload.update({
+          collection: 'feishu-oauth-states',
+          data: { processingAt: null },
+          id: state.id,
+          overrideAccess: true,
+          req,
+        })
+      }
+      return true
+    },
+  })
+
+export const recoverStaleFeishuOAuthCallbacks = async ({
+  clock = () => new Date(),
+  payload,
+}: {
+  clock?: () => Date
+  payload: Payload
+}): Promise<number> => {
+  const now = clock()
+  const states = await payload.find({
+    collection: 'feishu-oauth-states',
+    depth: 0,
+    limit: 1_000,
+    overrideAccess: true,
+    pagination: false,
+    where: { processingAt: { exists: true } },
+  })
+  let recovered = 0
+  for (const state of states.docs) {
+    if (!isStaleOAuthCallbackProcessing(state, now)) continue
+    const registrationId = relationshipID(state.registration)
+    try {
+      if (registrationId) {
+        if (
+          await recoverStaleRegisteredOAuthState({
+            clock,
+            now,
+            payload,
+            registrationId,
+            stateId: state.id,
+          })
+        ) {
+          recovered += 1
+        }
+      } else {
+        await clearFeishuOAuthStateProcessing(payload, state.id)
+        recovered += 1
+      }
+    } catch {
+      payload.logger.error('Stale Feishu OAuth callback recovery failed')
+    }
+  }
+  return recovered
 }
 
 const requireRedirectURI = (
@@ -447,7 +636,10 @@ const registrationDTO = (registration: FeishuAppRegistration): FeishuRegistratio
   status: registration.status,
 })
 
-const activeRegistrationExpired = (registration: FeishuAppRegistration, now: Date): boolean => {
+export const activeRegistrationExpired = (
+  registration: FeishuAppRegistration,
+  now: Date,
+): boolean => {
   if (registration.status === 'authorization_ready') {
     return (
       !registration.authorizeExpiresAt ||
@@ -456,6 +648,14 @@ const activeRegistrationExpired = (registration: FeishuAppRegistration, now: Dat
   }
   if (registration.status === 'qr_ready') {
     return !registration.qrExpiresAt || Date.parse(registration.qrExpiresAt) <= now.getTime()
+  }
+  if (registration.status === 'configuring') {
+    const configuringStartedAt = registration.configuringStartedAt ?? registration.updatedAt
+    const configuringStartedAtMs = configuringStartedAt ? Date.parse(configuringStartedAt) : NaN
+    return (
+      !Number.isFinite(configuringStartedAtMs) ||
+      configuringStartedAtMs + FEISHU_APP_CONFIGURATION_TTL_MS <= now.getTime()
+    )
   }
   return Date.parse(registration.createdAt) + FEISHU_QR_REGISTRATION_TTL_MS <= now.getTime()
 }
@@ -797,7 +997,19 @@ export const runFeishuAppRegistration = async ({
           if (registration.status === 'failed') {
             await payload.update({
               collection: 'feishu-app-registrations',
-              data: { lastErrorCode: null, status: 'configuring' },
+              data: {
+                configuringStartedAt: clock().toISOString(),
+                lastErrorCode: null,
+                status: 'configuring',
+              },
+              id: registration.id,
+              overrideAccess: true,
+              req,
+            })
+          } else {
+            await payload.update({
+              collection: 'feishu-app-registrations',
+              data: { configuringStartedAt: clock().toISOString() },
               id: registration.id,
               overrideAccess: true,
               req,
@@ -859,6 +1071,7 @@ export const runFeishuAppRegistration = async ({
       await updateLockedRegistration(payload, registrationId, {
         appId,
         appSecretEncrypted: encryptFeishuCredential(appSecret, key),
+        configuringStartedAt: clock().toISOString(),
         lastErrorCode: null,
         qrUrl: null,
         status: 'configuring',

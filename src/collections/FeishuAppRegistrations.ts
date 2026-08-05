@@ -111,6 +111,7 @@ export const FeishuAppRegistrations: CollectionConfig = {
     { name: 'qrExpiresAt', type: 'date', index: true },
     { name: 'authorizeUrl', type: 'text', maxLength: 2_000 },
     { name: 'authorizeExpiresAt', type: 'date', index: true },
+    { name: 'configuringStartedAt', type: 'date', index: true },
     { name: 'appId', type: 'text', index: true, maxLength: 160 },
     {
       name: 'appSecretEncrypted',

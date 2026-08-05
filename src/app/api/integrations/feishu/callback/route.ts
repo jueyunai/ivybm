@@ -16,6 +16,7 @@ import {
   readFeishuCredentialEncryptionKey,
 } from '@/modules/feishu/credentials'
 import {
+  clearFeishuOAuthStateProcessing,
   completeFeishuAppRegistrationInTransaction,
   failFeishuAppRegistrationOAuth,
   readRegisteredAppCredentials,
@@ -41,11 +42,13 @@ const adminURL = (request: NextRequest, result: string): URL => {
 
 const persistConnection = async ({
   connectionData,
+  oauthStateId,
   payload,
   registrationId,
   tenantKey,
 }: {
   connectionData: RequiredDataFromCollectionSlug<'feishu-connections'>
+  oauthStateId: number
   payload: Payload
   registrationId?: number
   tenantKey: string
@@ -57,6 +60,24 @@ const persistConnection = async ({
     const adapter = payload.db as unknown as PostgresAdapter
     const database = transactionID ? adapter.sessions[transactionID]?.db : undefined
     if (!database) throw new Error('feishu_connection_transaction_unavailable')
+    if (registrationId !== undefined) {
+      await database.execute(sql`
+        SELECT "id" FROM "feishu_app_registrations" WHERE "id" = ${registrationId} FOR UPDATE
+      `)
+    }
+    await database.execute(sql`
+      SELECT "id" FROM "feishu_oauth_states" WHERE "id" = ${oauthStateId} FOR UPDATE
+    `)
+    const oauthState = await payload.findByID({
+      collection: 'feishu-oauth-states',
+      depth: 0,
+      id: oauthStateId,
+      overrideAccess: true,
+      req,
+    })
+    if (!oauthState.usedAt || !oauthState.processingAt) {
+      throw new Error('feishu_oauth_state_not_processing')
+    }
     await database.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantKey}))`)
     const existingConnections = await payload.find({
       collection: 'feishu-connections',
@@ -103,6 +124,13 @@ const persistConnection = async ({
     if (registrationId !== undefined) {
       await completeFeishuAppRegistrationInTransaction({ payload, registrationId, req })
     }
+    await payload.update({
+      collection: 'feishu-oauth-states',
+      data: { processingAt: null },
+      id: oauthStateId,
+      overrideAccess: true,
+      req,
+    })
     await commitTransaction(req)
     return connection
   } catch (error) {
@@ -152,13 +180,15 @@ const consumeOAuthState = async ({ payload, state }: { payload: Payload; state: 
     if (
       result.totalDocs !== 1 ||
       oauthState.usedAt ||
+      oauthState.processingAt ||
       Date.parse(oauthState.expiresAt) <= Date.now()
     ) {
       throw new Error('invalid_oauth_state')
     }
+    const processingAt = new Date().toISOString()
     const consumed = await payload.update({
       collection: 'feishu-oauth-states',
-      data: { usedAt: new Date().toISOString() },
+      data: { processingAt, usedAt: processingAt },
       id: oauthState.id,
       overrideAccess: true,
       req,
@@ -170,7 +200,7 @@ const consumeOAuthState = async ({ payload, state }: { payload: Payload; state: 
     const registrationId =
       typeof consumed.registration === 'number' ? consumed.registration : consumed.registration?.id
     await commitTransaction(req)
-    return { registrationId, verifier }
+    return { oauthStateId: consumed.id, registrationId, verifier }
   } catch (error) {
     await killTransaction(req).catch(() => undefined)
     throw error
@@ -183,11 +213,13 @@ export async function GET(request: NextRequest): Promise<Response> {
   const providerError = request.nextUrl.searchParams.get('error')?.trim()
   const code = request.nextUrl.searchParams.get('code')?.trim()
 
+  let oauthStateId: number | undefined
   let registrationId: number | undefined
   let connectionPersisted = false
   try {
     const payload = await getPayload({ config })
     const consumed = await consumeOAuthState({ payload, state })
+    oauthStateId = consumed.oauthStateId
     registrationId = consumed.registrationId
     const registration = registrationId
       ? await payload.findByID({
@@ -206,7 +238,10 @@ export async function GET(request: NextRequest): Promise<Response> {
           payload,
           registration.id,
           providerError ? 'oauth_denied' : 'oauth_missing_code',
+          consumed.oauthStateId,
         )
+      } else {
+        await clearFeishuOAuthStateProcessing(payload, consumed.oauthStateId)
       }
       return redirect(request, providerError ? 'denied' : 'missing_code')
     }
@@ -250,6 +285,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
     const connection = await persistConnection({
       connectionData,
+      oauthStateId: consumed.oauthStateId,
       payload,
       ...(registration ? { registrationId: registration.id } : {}),
       tenantKey: user.tenantKey,
@@ -264,19 +300,26 @@ export async function GET(request: NextRequest): Promise<Response> {
     if (connectionPersisted) {
       return redirect(request, 'provisioning')
     }
-    if (registrationId) {
-      const failedRegistrationId = registrationId
-      const payload = await getPayload({ config }).catch(() => undefined)
-      if (payload) {
+    const payload = await getPayload({ config }).catch(() => undefined)
+    if (payload) {
+      if (registrationId) {
+        const failedRegistrationId = registrationId
         const failureCode = oauthFailureCode(error)
         payload.logger.error({
           code: failureCode,
           message: 'Feishu OAuth callback failed',
           ...(error instanceof FeishuApiError ? { status: error.status } : {}),
         })
-        await restartFeishuAppAuthorization(payload, failedRegistrationId, failureCode).catch(() =>
+        await restartFeishuAppAuthorization(
+          payload,
+          failedRegistrationId,
+          failureCode,
+          oauthStateId,
+        ).catch(() =>
           failFeishuAppRegistrationOAuth(payload, failedRegistrationId).catch(() => undefined),
         )
+      } else if (oauthStateId) {
+        await clearFeishuOAuthStateProcessing(payload, oauthStateId).catch(() => undefined)
       }
     }
     return redirect(

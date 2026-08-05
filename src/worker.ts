@@ -20,6 +20,7 @@ import {
   enqueuePendingFeishuConnectionProvisionJobs,
   FEISHU_CONNECTION_PROVISION_JOB_TYPE,
 } from '@/modules/feishu/provisioning'
+import { recoverStaleFeishuOAuthCallbacks } from '@/modules/feishu/appRegistration'
 import {
   DEFAULT_JOB_HEARTBEAT_INTERVAL_MS,
   DEFAULT_JOB_POLL_INTERVAL_MS,
@@ -126,6 +127,14 @@ const relayFeishuOutbox = async (): Promise<void> => {
 
 const runMaintenance = async (): Promise<void> => {
   await recoverDeadKnowledgeDocuments()
+  try {
+    const recovered = await recoverStaleFeishuOAuthCallbacks({ payload })
+    if (recovered > 0) {
+      payload.logger.warn(`Recovered ${recovered} stale Feishu OAuth callback(s)`)
+    }
+  } catch {
+    payload.logger.error('Stale Feishu OAuth callback recovery failed; continuing worker loop')
+  }
   await relayFeishuOutbox()
 }
 

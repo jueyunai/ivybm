@@ -2,14 +2,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Payload } from 'payload'
 
 import {
+  activeRegistrationExpired,
   buildFeishuRegisterAppOptions,
   configureRegisteredFeishuApp,
   FEISHU_APP_CONFIG_PROPAGATION_DELAY_MS,
+  FEISHU_APP_CONFIGURATION_TTL_MS,
   preflightFeishuQRRegistrationConfiguration,
   FEISHU_QR_TENANT_SCOPES,
   FEISHU_QR_USER_SCOPES,
   isFeishuQRRegistrationEnabled,
 } from '@/modules/feishu/appRegistration'
+import type { FeishuAppRegistration } from '@/payload-types'
 import { PayloadFeishuTokenProvider } from '@/modules/feishu/connectionClient'
 import {
   encryptFeishuCredential,
@@ -188,6 +191,30 @@ describe('Feishu QR app registration', () => {
         FEISHU_OAUTH_REDIRECT_URI: 'http://ivybm.com/api/integrations/feishu/callback',
       }),
     ).toThrow(/HTTPS/u)
+  })
+
+  it('starts the configuring deadline when app configuration starts', () => {
+    const registration = {
+      createdAt: '2026-08-05T10:00:00.000Z',
+      configuringStartedAt: '2026-08-05T10:09:00.000Z',
+      status: 'configuring',
+      updatedAt: '2026-08-05T10:09:00.000Z',
+    } as FeishuAppRegistration
+
+    expect(
+      activeRegistrationExpired(
+        registration,
+        new Date(
+          Date.parse(registration.configuringStartedAt!) + FEISHU_APP_CONFIGURATION_TTL_MS - 1,
+        ),
+      ),
+    ).toBe(false)
+    expect(
+      activeRegistrationExpired(
+        registration,
+        new Date(Date.parse(registration.configuringStartedAt!) + FEISHU_APP_CONFIGURATION_TTL_MS),
+      ),
+    ).toBe(true)
   })
 
   it('uses the registered tenant credentials directly for bot tokens', async () => {

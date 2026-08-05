@@ -61,6 +61,7 @@ export const FeishuOAuthStates: CollectionConfig = {
     { name: 'verifierEncrypted', type: 'text', access: { read: () => false }, required: true },
     { name: 'expiresAt', type: 'date', index: true, required: true },
     { name: 'usedAt', type: 'date', index: true },
+    { name: 'processingAt', type: 'date', index: true },
     { name: 'requestedBy', type: 'relationship', relationTo: 'users', required: true },
     { name: 'registration', type: 'relationship', relationTo: 'feishu-app-registrations' },
   ],
