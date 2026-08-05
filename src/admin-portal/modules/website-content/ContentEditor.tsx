@@ -28,18 +28,30 @@ import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, StatusBadge } from '@/admin-portal/core/ui'
 
-import type { ContentEditorOption, ContentEditorRecord } from './contentCommands'
-import type { ContentSummaryItem, ContentTypeId } from './getContentSummary'
+import type {
+  ContentCommandResult,
+  ContentEditorOption,
+  ContentEditorRecord,
+} from './contentCommands'
+import type { ContentLocale, ContentSummaryItem, ContentTypeId } from './getContentSummary'
 
 type EditorOptions = { categories: ContentEditorOption[]; media: ContentEditorOption[] }
 type EditorPayload = { options?: EditorOptions; record?: ContentEditorRecord }
 type EditorMode = 'create' | 'edit'
 export type ContentEditorNotice = null | { tone: 'danger' | 'success'; value: string }
+export interface ContentEditorSaveResult {
+  created: boolean
+  result: ContentCommandResult
+}
 export interface ContentEditorHandle {
   isDirty: () => boolean
-  saveCurrent: () => Promise<boolean>
+  saveCurrent: () => Promise<ContentEditorSaveResult | null>
 }
-export type ContentEditorTransitionRequest = (targetTitle: string, commit: () => void) => void
+export type ContentEditorTransitionRequest = (
+  targetTitle: string,
+  commit: () => void,
+  options?: { locale?: ContentLocale },
+) => void
 
 const EMPTY_OPTIONS: EditorOptions = { categories: [], media: [] }
 const VERSIONED = new Set<ContentTypeId>(['pages', 'posts', 'products', 'projects'])
@@ -522,6 +534,7 @@ function GallerySelect({
 export const ContentEditor = forwardRef<
   ContentEditorHandle,
   {
+    initialLocale?: ContentLocale
     item: ContentSummaryItem | null
     mode: EditorMode
     onClose: (force?: boolean) => void
@@ -531,6 +544,7 @@ export const ContentEditor = forwardRef<
   }
 >(function ContentEditor(
   {
+    initialLocale = 'en',
     item,
     mode,
     onClose,
@@ -545,13 +559,13 @@ export const ContentEditor = forwardRef<
   const messages = getPortalMessages(portalLocale).websiteContent
   const text = copy[portalLocale]
   const editorRef = useRef<HTMLElement>(null)
-  const [form, setForm] = useState<EditorForm>(() => emptyForm('en'))
+  const [form, setForm] = useState<EditorForm>(() => emptyForm(initialLocale))
   const [options, setOptions] = useState<EditorOptions>(EMPTY_OPTIONS)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<ContentEditorNotice>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const baselineRef = useRef(JSON.stringify(emptyForm('en')))
+  const baselineRef = useRef(JSON.stringify(emptyForm(initialLocale)))
   const showNotice = useCallback(
     (nextNotice: ContentEditorNotice) => {
       setNotice(nextNotice)
@@ -613,8 +627,10 @@ export const ContentEditor = forwardRef<
 
   const requestLocaleChange = (nextLocale: 'ar' | 'en') => {
     if (nextLocale === form.locale) return
-    onRequestTransition(nextLocale === 'en' ? text.english : text.arabic, () =>
-      update('locale', nextLocale),
+    onRequestTransition(
+      nextLocale === 'en' ? text.english : text.arabic,
+      () => update('locale', nextLocale),
+      { locale: nextLocale },
     )
   }
 
@@ -625,7 +641,10 @@ export const ContentEditor = forwardRef<
     specifications: parseSpecifications(form.specificationsText),
   })
 
-  const save = async (action: string): Promise<boolean> => {
+  const save = async (
+    action: string,
+    { closeAfterCreate = true }: { closeAfterCreate?: boolean } = {},
+  ): Promise<ContentEditorSaveResult | null> => {
     const invalid =
       action === 'publish' || action === 'unpublish'
         ? editorRef.current?.querySelector<
@@ -649,7 +668,7 @@ export const ContentEditor = forwardRef<
       const clearCustomValidity = () => invalid.setCustomValidity('')
       invalid.addEventListener('input', clearCustomValidity, { once: true })
       invalid.addEventListener('change', clearCustomValidity, { once: true })
-      return false
+      return null
     }
 
     setBusy(true)
@@ -670,20 +689,23 @@ export const ContentEditor = forwardRef<
       if (!response.ok) {
         throw new ContentEditorError(await errorMessage(response, portalLocale, text.error))
       }
-      const body = (await response.json()) as { result?: { updatedAt?: string } }
+      const body = (await response.json()) as { result?: ContentCommandResult }
+      if (!body.result) {
+        throw new ContentEditorError(text.error)
+      }
       const nextForm = {
         ...form,
-        ...(typeof body.result?.updatedAt === 'string' ? { updatedAt: body.result.updatedAt } : {}),
+        updatedAt: body.result.updatedAt,
       }
       baselineRef.current = JSON.stringify(nextForm)
       setForm(nextForm)
       showNotice({ tone: 'success', value: text.saved })
       router.refresh()
-      if (mode === 'create') onClose(true)
-      return true
+      if (mode === 'create' && closeAfterCreate) onClose(true)
+      return { created: mode === 'create', result: body.result }
     } catch (error) {
       showNotice({ tone: 'danger', value: safeErrorMessage(error, text.error) })
-      return false
+      return null
     } finally {
       setBusy(false)
     }
@@ -699,7 +721,7 @@ export const ContentEditor = forwardRef<
 
   useImperativeHandle(ref, () => ({
     isDirty: () => JSON.stringify(form) !== baselineRef.current,
-    saveCurrent: () => save(defaultSaveAction),
+    saveCurrent: () => save(defaultSaveAction, { closeAfterCreate: false }),
   }))
 
   const remove = async () => {

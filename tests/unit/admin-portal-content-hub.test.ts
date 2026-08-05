@@ -82,8 +82,27 @@ describe('Portal content hub editing transitions', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
+        if (init?.method === 'POST') {
+          return Response.json({
+            result: {
+              id: 3,
+              slug: 'new-category',
+              status: 'always-visible',
+              title: '新分类',
+              updatedAt: '2026-08-04T11:00:00.000Z',
+            },
+          })
+        }
         if (init?.method === 'PATCH') {
-          return Response.json({ result: { updatedAt: '2026-08-04T11:00:00.000Z' } })
+          return Response.json({
+            result: {
+              id: 1,
+              slug: 'first',
+              status: 'always-visible',
+              title: '第一项',
+              updatedAt: '2026-08-04T11:00:00.000Z',
+            },
+          })
         }
         if (url.endsWith('/2?locale=en')) return editorResponse(2)
         if (url.includes('/product-categories/')) return editorResponse(1)
@@ -237,6 +256,62 @@ describe('Portal content hub editing transitions', () => {
     expect(dialog.textContent).toContain('切换到“关闭编辑器”')
     fireEvent.click(within(dialog).getByRole('button', { name: '不保存' }))
     await waitFor(() => expect(screen.queryByRole('region', { name: '编辑内容' })).toBeNull())
+  })
+
+  it('promotes a saved create session before switching locale', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (init?.method === 'POST') {
+        return Response.json(
+          {
+            result: {
+              id: 3,
+              slug: 'new-category',
+              status: 'always-visible',
+              title: '新分类',
+              updatedAt: '2026-08-04T11:00:00.000Z',
+            },
+          },
+          { status: 201 },
+        )
+      }
+      if (url.endsWith('/3?locale=ar')) {
+        return Response.json({
+          options: { categories: [], media: [] },
+          record: {
+            data: { description: '', slug: 'new-category', title: 'تصنيف جديد' },
+            id: 3,
+            locale: 'ar',
+            status: 'always-visible',
+            type: 'product-categories',
+            updatedAt: '2026-08-04T11:00:00.000Z',
+          },
+        })
+      }
+      return Response.json({ options: { categories: [], media: [] } })
+    })
+
+    renderHub()
+    fireEvent.click(screen.getAllByRole('button', { name: '新增内容' })[0])
+    fireEvent.change(await screen.findByLabelText('标题'), { target: { value: '新分类' } })
+    fireEvent.change(screen.getByLabelText('固定链接标识'), {
+      target: { value: 'new-category' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '阿语' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存并切换' }))
+
+    await waitFor(() =>
+      expect((screen.getByLabelText('标题') as HTMLInputElement).value).toBe('تصنيف جديد'),
+    )
+    expect(screen.getByRole('region', { name: '编辑内容' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '阿语' }).getAttribute('aria-pressed')).toBe('true')
+
+    const postCalls = vi.mocked(fetch).mock.calls.filter(([, request]) => request?.method === 'POST')
+    expect(postCalls).toHaveLength(1)
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/3?locale=ar'))).toBe(
+      true,
+    )
   })
 
   it('keeps the editor frame height stable while switching records', async () => {

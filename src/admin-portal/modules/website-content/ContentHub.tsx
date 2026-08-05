@@ -23,9 +23,12 @@ import {
   ContentEditorNotice,
   type ContentEditorHandle,
   type ContentEditorNotice as ContentEditorNoticeValue,
+  type ContentEditorSaveResult,
+  type ContentEditorTransitionRequest,
 } from './ContentEditor'
 import type {
   ContentItemStatus,
+  ContentLocale,
   ContentQuery,
   ContentStatusFilter,
   ContentSummary,
@@ -71,6 +74,7 @@ const switchCopy = {
 
 type PendingTransition = {
   commit: () => void
+  locale?: ContentLocale
   targetTitle: string
 }
 
@@ -260,7 +264,9 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).websiteContent
   const [selectedId, setSelectedId] = useState<number | string | null>(null)
+  const [transientItem, setTransientItem] = useState<ContentSummaryItem | null>(null)
   const [editor, setEditor] = useState<'create' | 'edit' | null>(null)
+  const [editorInitialLocale, setEditorInitialLocale] = useState<ContentLocale>('en')
   const [notice, setNotice] = useState<ContentEditorNoticeValue>(null)
   const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null)
   const [switchBusy, setSwitchBusy] = useState(false)
@@ -328,6 +334,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
     editor === 'create'
       ? null
       : (summary.items.find((item) => String(item.id) === String(selectedId)) ??
+        (String(transientItem?.id) === String(selectedId) ? transientItem : null) ??
         summary.items[0] ??
         null)
 
@@ -340,6 +347,8 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
     if (editor) captureEditorHeight()
     else setEditorMinHeight(null)
     setSelectedId(null)
+    setTransientItem(null)
+    setEditorInitialLocale('en')
     setPendingTransition(null)
     showNotice(null)
     setEditor('create')
@@ -348,6 +357,8 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
   const commitSwitch = (item: ContentSummaryItem) => {
     captureEditorHeight()
     setSelectedId(item.id)
+    setTransientItem(null)
+    setEditorInitialLocale('en')
     setPendingTransition(null)
     showNotice(null)
     setEditor('edit')
@@ -359,12 +370,28 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
     setEditorMinHeight(null)
   }
 
-  const requestTransition = (targetTitle: string, commit: () => void) => {
+  const requestTransition: ContentEditorTransitionRequest = (targetTitle, commit, options) => {
     if (editorRef.current?.isDirty()) {
-      setPendingTransition({ commit, targetTitle })
+      setPendingTransition({ commit, locale: options?.locale, targetTitle })
       return
     }
     commit()
+  }
+
+  const promoteCreatedItem = (
+    saved: ContentEditorSaveResult,
+    targetLocale: ContentLocale,
+  ) => {
+    const item: ContentSummaryItem = {
+      ...saved.result,
+      localeCompleteness: { ar: 0, en: 0 },
+      localeMissing: { ar: [], en: [] },
+      previewHrefs: { ar: null, en: null },
+    }
+    setTransientItem(item)
+    setSelectedId(item.id)
+    setEditorInitialLocale(targetLocale)
+    setEditor('edit')
   }
 
   const openCreate = () =>
@@ -387,6 +414,10 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
     setSwitchBusy(false)
     if (saved) {
       setPendingTransition(null)
+      if (saved.created && target.locale) {
+        promoteCreatedItem(saved, target.locale)
+        return
+      }
       target.commit()
     }
   }
@@ -566,6 +597,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
               style={editorMinHeight ? { minHeight: `${editorMinHeight}px` } : undefined}
             >
               <ContentEditor
+                initialLocale={editorInitialLocale}
                 key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
                 item={editor === 'edit' ? selected : null}
                 mode={editor}
