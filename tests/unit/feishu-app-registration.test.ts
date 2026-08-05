@@ -7,10 +7,12 @@ import {
   configureRegisteredFeishuApp,
   FEISHU_APP_CONFIG_PROPAGATION_DELAY_MS,
   FEISHU_APP_CONFIGURATION_TTL_MS,
+  FEISHU_REGISTER_APP_BEGIN_TIMEOUT_MS,
   preflightFeishuQRRegistrationConfiguration,
   FEISHU_QR_TENANT_SCOPES,
   FEISHU_QR_USER_SCOPES,
   isFeishuQRRegistrationEnabled,
+  runBoundedFeishuRegisterApp,
 } from '@/modules/feishu/appRegistration'
 import type { FeishuAppRegistration } from '@/payload-types'
 import { PayloadFeishuTokenProvider } from '@/modules/feishu/connectionClient'
@@ -56,6 +58,33 @@ describe('Feishu QR app registration', () => {
       'im:message:send_as_bot',
     ])
     expect(FEISHU_QR_USER_SCOPES).toEqual(['auth:user.id:read', 'bitable:app', 'offline_access'])
+  })
+
+  it('bounds the SDK begin request before a QR is available', async () => {
+    vi.useFakeTimers()
+    try {
+      const controller = new AbortController()
+      const watchdog = vi.fn(() => controller.abort())
+      const register = vi.fn(async () => new Promise<never>(() => undefined))
+      const result = runBoundedFeishuRegisterApp({
+        onBeginTimeout: watchdog,
+        options: buildFeishuRegisterAppOptions({
+          onQRCodeReady: vi.fn(),
+          signal: controller.signal,
+        }),
+        register: register as never,
+        signal: controller.signal,
+        timeoutMs: FEISHU_REGISTER_APP_BEGIN_TIMEOUT_MS,
+      })
+
+      const timedOut = expect(result).rejects.toMatchObject({ code: 'timeout' })
+      await vi.advanceTimersByTimeAsync(FEISHU_REGISTER_APP_BEGIN_TIMEOUT_MS)
+      await timedOut
+      expect(watchdog).toHaveBeenCalledOnce()
+      expect(controller.signal.aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('configures the registered app with a tenant token and refreshable redirect URL', async () => {
@@ -131,6 +160,27 @@ describe('Feishu QR app registration', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('stops propagation settling when registration is aborted', async () => {
+    const controller = new AbortController()
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response({ code: 0, tenant_access_token: 'tenant-token-fixture' }))
+      .mockResolvedValueOnce(response({ code: 0 }))
+    const settle = vi.fn(() => new Promise<void>(() => undefined))
+    const result = configureRegisteredFeishuApp({
+      appId: 'cli_registered_fixture',
+      appSecret: 'registered-secret-fixture',
+      fetch,
+      redirectURI: 'https://ivybm.example.invalid/api/integrations/feishu/callback',
+      settle,
+      signal: controller.signal,
+    })
+
+    await vi.waitFor(() => expect(settle).toHaveBeenCalledOnce())
+    controller.abort()
+    await expect(result).rejects.toMatchObject({ code: 'abort' })
   })
 
   it('fails closed on provider errors without including credentials in the error', async () => {

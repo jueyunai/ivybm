@@ -34,8 +34,26 @@ const lockStateBeforeUpdate: CollectionBeforeOperationHook = async ({ args, oper
   return args
 }
 
+const normalizedDate = (value: unknown): string | undefined => {
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : value
+}
+
 const consumeStateOnce: CollectionBeforeChangeHook = ({ data, operation, originalDoc, req }) => {
-  if (operation === 'update' && data?.usedAt && originalDoc?.usedAt) {
+  // A consumed state may still need its durable processing marker cleared or replaced.
+  // Only an explicit change to the immutable consumption timestamp is a replay.
+  const originalUsedAt = normalizedDate(originalDoc?.usedAt)
+  const hasUsedAtUpdate = data && Object.prototype.hasOwnProperty.call(data, 'usedAt')
+  const nextUsedAt = data?.usedAt
+  if (
+    operation === 'update' &&
+    originalUsedAt &&
+    hasUsedAtUpdate &&
+    nextUsedAt !== undefined &&
+    (nextUsedAt === null || normalizedDate(nextUsedAt) !== originalUsedAt)
+  ) {
     throw new ValidationError({
       collection: 'feishu-oauth-states',
       errors: [{ message: 'OAuth state has already been consumed', path: 'usedAt' }],

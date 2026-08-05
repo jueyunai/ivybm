@@ -216,6 +216,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   let oauthStateId: number | undefined
   let registrationId: number | undefined
   let connectionPersisted = false
+  let oauthRequestController: AbortController | undefined
   try {
     const payload = await getPayload({ config })
     const consumed = await consumeOAuthState({ payload, state })
@@ -253,14 +254,19 @@ export async function GET(request: NextRequest): Promise<Response> {
     const redirectURI = process.env.FEISHU_OAUTH_REDIRECT_URI?.trim()
     if (!appId || !appSecret || !redirectURI) throw new Error('oauth_not_configured')
 
+    oauthRequestController = new AbortController()
     const token = await exchangeFeishuOAuthCode({
       appId,
       appSecret,
       code,
       ...(registration ? {} : { codeVerifier: consumed.verifier }),
       redirectURI,
+      signal: oauthRequestController.signal,
     })
-    const user = await getFeishuOAuthUser({ accessToken: token.accessToken })
+    const user = await getFeishuOAuthUser({
+      accessToken: token.accessToken,
+      signal: oauthRequestController.signal,
+    })
     const key = readFeishuCredentialEncryptionKey()
     const connectedAt = new Date().toISOString()
     const connectionData = {
@@ -326,5 +332,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       request,
       oauthFailureCode(error) === 'oauth_invalid_state' ? 'invalid_state' : 'failed',
     )
+  } finally {
+    oauthRequestController?.abort()
   }
 }

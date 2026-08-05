@@ -20,12 +20,16 @@ import {
   enqueuePendingFeishuConnectionProvisionJobs,
   FEISHU_CONNECTION_PROVISION_JOB_TYPE,
 } from '@/modules/feishu/provisioning'
-import { recoverStaleFeishuOAuthCallbacks } from '@/modules/feishu/appRegistration'
+import {
+  FEISHU_OAUTH_CALLBACK_RECOVERY_INTERVAL_MS,
+  recoverStaleFeishuOAuthCallbacks,
+} from '@/modules/feishu/appRegistration'
 import {
   DEFAULT_JOB_HEARTBEAT_INTERVAL_MS,
   DEFAULT_JOB_POLL_INTERVAL_MS,
   JobWorker,
 } from '@/modules/jobs/worker'
+import { createIntervalGate } from '@/modules/jobs/maintenance'
 import {
   createKnowledgeIndexJobHandler,
   enqueueLegacyKnowledgeRebuilds,
@@ -61,6 +65,10 @@ const jobHeartbeatIntervalMs = readPositiveInteger(
 const pollIntervalMs = readPositiveInteger('WORKER_POLL_INTERVAL_MS', DEFAULT_JOB_POLL_INTERVAL_MS)
 const knowledgeRecoveryIntervalMs = Math.max(pollIntervalMs, heartbeatIntervalMs)
 const feishuRelayIntervalMs = readPositiveInteger('FEISHU_RELAY_INTERVAL_MS', 30_000)
+const feishuOAuthRecoveryIntervalMs = readPositiveInteger(
+  'FEISHU_OAUTH_RECOVERY_INTERVAL_MS',
+  FEISHU_OAUTH_CALLBACK_RECOVERY_INTERVAL_MS,
+)
 const payload = await getPayload({ config, disableOnInit: true, key: 'job-worker' })
 const handlers: Record<string, JobHandler> = {
   [FEISHU_CONNECTION_PROVISION_JOB_TYPE]: createFeishuConnectionProvisionJobHandler({ payload }),
@@ -87,6 +95,7 @@ const writeHeartbeat = (): void => {
 
 let nextKnowledgeRecoveryAt = 0
 let nextFeishuRelayAt = 0
+const shouldRecoverStaleFeishuOAuth = createIntervalGate(feishuOAuthRecoveryIntervalMs)
 const recoverDeadKnowledgeDocuments = async (): Promise<void> => {
   const now = Date.now()
   if (now < nextKnowledgeRecoveryAt) return
@@ -127,6 +136,10 @@ const relayFeishuOutbox = async (): Promise<void> => {
 
 const runMaintenance = async (): Promise<void> => {
   await recoverDeadKnowledgeDocuments()
+  if (!shouldRecoverStaleFeishuOAuth()) {
+    await relayFeishuOutbox()
+    return
+  }
   try {
     const recovered = await recoverStaleFeishuOAuthCallbacks({ payload })
     if (recovered > 0) {

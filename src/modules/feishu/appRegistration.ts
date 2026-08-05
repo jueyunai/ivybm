@@ -5,6 +5,7 @@ import {
   createLocalReq,
   initTransaction,
   killTransaction,
+  NotFound,
   type Payload,
   type PayloadRequest,
 } from 'payload'
@@ -28,6 +29,8 @@ export const FEISHU_APP_CONFIG_REQUEST_TIMEOUT_MS = 30_000
 export const FEISHU_APP_CONFIGURATION_TTL_MS =
   FEISHU_APP_CONFIG_REQUEST_TIMEOUT_MS * 2 + FEISHU_APP_CONFIG_PROPAGATION_DELAY_MS + 5_000
 export const FEISHU_OAUTH_CALLBACK_PROCESSING_TTL_MS = 2 * 60_000
+export const FEISHU_OAUTH_CALLBACK_RECOVERY_INTERVAL_MS = 30_000
+export const FEISHU_REGISTER_APP_BEGIN_TIMEOUT_MS = 30_000
 export const FEISHU_OAUTH_CALLBACK_PATH = '/api/integrations/feishu/callback'
 export const FEISHU_QR_TENANT_SCOPES = [
   'application:application:patch',
@@ -166,6 +169,33 @@ const withLockedOAuthState = async <T>({
     await killTransaction(req).catch(() => undefined)
     throw error
   }
+}
+
+const findLockedOAuthState = async ({
+  payload,
+  req,
+  stateId,
+}: {
+  payload: Payload
+  req: PayloadRequest
+  stateId: number
+}): Promise<FeishuOauthState> => {
+  const transactionID = await req.transactionID
+  const adapter = payload.db as unknown as PostgresAdapter
+  const database = transactionID ? adapter.sessions[transactionID]?.db : undefined
+  if (!database) {
+    throw new FeishuConfigurationError('Feishu OAuth state transaction is unavailable')
+  }
+  await database.execute(sql`
+    SELECT "id" FROM "feishu_oauth_states" WHERE "id" = ${stateId} FOR UPDATE
+  `)
+  return payload.findByID({
+    collection: 'feishu-oauth-states',
+    depth: 0,
+    id: stateId,
+    overrideAccess: true,
+    req,
+  })
 }
 
 export const clearFeishuOAuthStateProcessing = (
@@ -310,10 +340,22 @@ const prepareFeishuAuthorizationLocked = async ({
   req: PayloadRequest
   validStatuses: FeishuAppRegistration['status'][]
 }): Promise<FeishuAppRegistration> => {
-  const attempt = createOAuthAttempt(clock)
   if (!validStatuses.includes(registration.status)) {
     throw new FeishuConfigurationError('Feishu registration cannot start authorization')
   }
+  if (processingStateId !== undefined) {
+    // A late callback carries its old state ID. Once recovery clears that marker,
+    // it must not restart or invalidate the newer authorization state.
+    let processingState: FeishuOauthState | null
+    try {
+      processingState = await findLockedOAuthState({ payload, req, stateId: processingStateId })
+    } catch (error) {
+      if (!(error instanceof NotFound)) throw error
+      processingState = null
+    }
+    if (!processingState?.usedAt || !processingState.processingAt) return registration
+  }
+  const attempt = createOAuthAttempt(clock)
   const requestedBy = relationshipID(registration.requestedBy)
   if (!requestedBy || !registration.appId) {
     throw new FeishuConfigurationError('Feishu registration owner or App ID is missing')
@@ -479,22 +521,7 @@ const recoverStaleRegisteredOAuthState = async ({
     payload,
     registrationId,
     run: async (registration, req) => {
-      const transactionID = await req.transactionID
-      const adapter = payload.db as unknown as PostgresAdapter
-      const database = transactionID ? adapter.sessions[transactionID]?.db : undefined
-      if (!database) {
-        throw new FeishuConfigurationError('Feishu OAuth state transaction is unavailable')
-      }
-      await database.execute(sql`
-        SELECT "id" FROM "feishu_oauth_states" WHERE "id" = ${stateId} FOR UPDATE
-      `)
-      const state = await payload.findByID({
-        collection: 'feishu-oauth-states',
-        depth: 0,
-        id: stateId,
-        overrideAccess: true,
-        req,
-      })
+      const state = await findLockedOAuthState({ payload, req, stateId })
       if (!isStaleOAuthCallbackProcessing(state, now)) return false
 
       if (registration.status === 'authorization_ready' || registration.status === 'failed') {
@@ -835,6 +862,101 @@ const withFeishuRequestTimeout = async <T>({
   })
 }
 
+const feishuAbortError = (): FeishuApiError =>
+  new FeishuApiError({
+    code: 'abort',
+    message: 'Feishu registration request was aborted',
+    retryable: true,
+  })
+
+export const runBoundedFeishuRegisterApp = async ({
+  onBeginTimeout,
+  options,
+  register,
+  signal,
+  timeoutMs = FEISHU_REGISTER_APP_BEGIN_TIMEOUT_MS,
+}: {
+  onBeginTimeout?: () => void
+  options: Parameters<FeishuRegisterAppPort>[0]
+  register: FeishuRegisterAppPort
+  signal: AbortSignal
+  timeoutMs?: number
+}): Promise<FeishuRegisterAppResult> => {
+  if (signal.aborted) throw feishuAbortError()
+
+  let qrReady = false
+  let beginTimer: ReturnType<typeof setTimeout> | undefined
+  let removeAbortListener: (() => void) | undefined
+  const registerPromise = Promise.resolve().then(() =>
+    register({
+      ...options,
+      onQRCodeReady: (info) => {
+        qrReady = true
+        if (beginTimer) clearTimeout(beginTimer)
+        options.onQRCodeReady(info)
+      },
+    }),
+  )
+  const beginWatchdog = new Promise<never>((_, reject) => {
+    beginTimer = setTimeout(() => {
+      if (qrReady) return
+      reject(
+        new FeishuApiError({
+          code: 'timeout',
+          message: 'Feishu app registration begin request timed out',
+          retryable: true,
+        }),
+      )
+      onBeginTimeout?.()
+    }, timeoutMs)
+  })
+  const externalAbort = new Promise<never>((_, reject) => {
+    const onAbort = (): void => reject(feishuAbortError())
+    signal.addEventListener('abort', onAbort, { once: true })
+    removeAbortListener = () => signal.removeEventListener('abort', onAbort)
+  })
+
+  try {
+    return await Promise.race([registerPromise, beginWatchdog, externalAbort])
+  } finally {
+    if (beginTimer) clearTimeout(beginTimer)
+    removeAbortListener?.()
+    void registerPromise.catch(() => undefined)
+  }
+}
+
+const settleFeishuAppConfiguration = async ({
+  delay,
+  settle,
+  signal,
+}: {
+  delay: number
+  settle: (delay: number) => Promise<void>
+  signal?: AbortSignal
+}): Promise<void> => {
+  if (!signal) {
+    await settle(delay)
+    return
+  }
+  if (signal.aborted) throw feishuAbortError()
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false
+    const finish = (callback: () => void): void => {
+      if (settled) return
+      settled = true
+      signal.removeEventListener('abort', onAbort)
+      callback()
+    }
+    const onAbort = (): void => finish(() => reject(feishuAbortError()))
+    signal.addEventListener('abort', onAbort, { once: true })
+    settle(delay).then(
+      () => finish(resolve),
+      (error: unknown) => finish(() => reject(error)),
+    )
+  })
+}
+
 const requestTenantToken = async ({
   appId,
   appSecret,
@@ -932,7 +1054,11 @@ export const configureRegisteredFeishuApp = async ({
       status: response.status,
     })
   }
-  await settle(FEISHU_APP_CONFIG_PROPAGATION_DELAY_MS)
+  await settleFeishuAppConfiguration({
+    delay: FEISHU_APP_CONFIG_PROPAGATION_DELAY_MS,
+    settle,
+    signal,
+  })
 }
 
 const registrationErrorCode = (error: unknown): string => {
@@ -1026,8 +1152,9 @@ export const runFeishuAppRegistration = async ({
     let appSecret: string
     if (claimed.mode === 'register') {
       let qrPersistence = Promise.resolve()
-      const result = await register(
-        buildFeishuRegisterAppOptions({
+      const result = await runBoundedFeishuRegisterApp({
+        onBeginTimeout: () => controller.abort(),
+        options: buildFeishuRegisterAppOptions({
           onQRCodeReady: ({ expireIn, url }) => {
             const expiresAt = new Date(clock().getTime() + expireIn * 1_000).toISOString()
             const qrUrl = validatedFeishuQRURL(url)
@@ -1060,7 +1187,9 @@ export const runFeishuAppRegistration = async ({
           },
           signal: controller.signal,
         }),
-      )
+        register,
+        signal: controller.signal,
+      })
       await qrPersistence
       appId = result.client_id?.trim()
       appSecret = result.client_secret?.trim()
@@ -1087,6 +1216,7 @@ export const runFeishuAppRegistration = async ({
       signal: controller.signal,
     })
 
+    if (controller.signal.aborted) throw feishuAbortError()
     await prepareFeishuAuthorization({
       clock,
       payload,
@@ -1138,6 +1268,45 @@ export const launchFeishuAppRegistration = (input: {
   void runFeishuAppRegistration(input)
 }
 
+const expireActiveRegistrationIfStale = async ({
+  now,
+  payload,
+  registrationId,
+}: {
+  now: Date
+  payload: Payload
+  registrationId: number
+}): Promise<FeishuAppRegistration> => {
+  let expired = false
+  const registration = await withLockedRegistration({
+    payload,
+    registrationId,
+    run: (latest, req) => {
+      if (
+        !['pending', 'registering', 'qr_ready', 'configuring'].includes(latest.status) ||
+        !activeRegistrationExpired(latest, now)
+      ) {
+        return Promise.resolve(latest)
+      }
+      expired = true
+      const configuring = latest.status === 'configuring'
+      return payload.update({
+        collection: 'feishu-app-registrations',
+        data: {
+          lastErrorCode: configuring ? 'registration_stale' : 'registration_expired',
+          qrUrl: null,
+          status: configuring ? 'failed' : 'expired',
+        },
+        id: latest.id,
+        overrideAccess: true,
+        req,
+      })
+    },
+  })
+  if (expired) registrationProcesses.get(registrationId)?.abort()
+  return registration
+}
+
 export const getFeishuAppRegistration = async ({
   clock = () => new Date(),
   payload,
@@ -1158,23 +1327,23 @@ export const getFeishuAppRegistration = async ({
     })
     .catch(() => null)
   if (!registration || user.role !== 'admin') return null
+  const now = clock()
   if (
     ['pending', 'registering', 'qr_ready', 'configuring', 'authorization_ready'].includes(
       registration.status,
     ) &&
-    activeRegistrationExpired(registration, clock())
+    activeRegistrationExpired(registration, now)
   ) {
     if (registration.status === 'authorization_ready') {
       return registrationDTO(await refreshFeishuAppAuthorization(payload, registration.id))
     }
-    registrationProcesses.get(registration.id)?.abort()
-    const stale = registration.status === 'configuring'
-    const expired = await updateLockedRegistration(payload, registration.id, {
-      lastErrorCode: stale ? 'registration_stale' : 'registration_expired',
-      qrUrl: null,
-      status: stale ? 'failed' : 'expired',
-    })
-    return registrationDTO(expired)
+    return registrationDTO(
+      await expireActiveRegistrationIfStale({
+        now,
+        payload,
+        registrationId: registration.id,
+      }),
+    )
   }
   return registrationDTO(registration)
 }

@@ -19,6 +19,7 @@ import {
   findOrCreateFeishuAppRegistration,
   getFeishuAppRegistration,
   recoverStaleFeishuOAuthCallbacks,
+  restartFeishuAppAuthorization,
   runFeishuAppRegistration,
 } from '@/modules/feishu/appRegistration'
 import {
@@ -596,10 +597,7 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
       limit: 20,
       overrideAccess: true,
       where: {
-        and: [
-          { registration: { equals: started.registration.id } },
-          { usedAt: { exists: false } },
-        ],
+        and: [{ registration: { equals: started.registration.id } }, { usedAt: { exists: false } }],
       },
     })
     const state = states.docs[0]
@@ -666,6 +664,210 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
         overrideAccess: true,
       }),
     ).resolves.toMatchObject({ processingAt: null, usedAt: processingAt })
+    const authorizationAfterRecovery = await payload.findByID({
+      collection: 'feishu-app-registrations',
+      depth: 0,
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+    await restartFeishuAppAuthorization(
+      payload,
+      started.registration.id,
+      'late_callback_failure',
+      state.id,
+    )
+    await expect(
+      payload.findByID({
+        collection: 'feishu-app-registrations',
+        depth: 0,
+        id: started.registration.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      authorizeUrl: authorizationAfterRecovery.authorizeUrl,
+      status: 'authorization_ready',
+    })
+    await completeFeishuAppRegistration(payload, started.registration.id)
+  })
+
+  it('does not overwrite a configuration that completed before the stale CAS', async () => {
+    const admin = await payload.findByID({
+      collection: 'users',
+      id: adminID,
+      overrideAccess: true,
+    })
+    const started = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    registrationIDs.add(started.registration.id)
+    const key = readFeishuCredentialEncryptionKey()
+    const staleStartedAt = '2026-08-05T10:00:00.000Z'
+    await payload.update({
+      collection: 'feishu-app-registrations',
+      context,
+      data: {
+        appId: 'cli_cas_registration',
+        appSecretEncrypted: encryptFeishuCredential('cas-secret-fixture', key),
+        configuringStartedAt: staleStartedAt,
+        status: 'configuring',
+      },
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+
+    const originalFindByID = payload.findByID.bind(payload)
+    let raced = false
+    payload.findByID = (async (args) => {
+      const found = await originalFindByID(args)
+      if (
+        !raced &&
+        args.collection === 'feishu-app-registrations' &&
+        args.id === started.registration.id
+      ) {
+        raced = true
+        await payload.update({
+          collection: 'feishu-app-registrations',
+          context,
+          data: {
+            authorizeExpiresAt: '2026-08-05T12:00:00.000Z',
+            authorizeUrl: 'https://accounts.feishu.cn/authorize/cas-fixture',
+            status: 'authorization_ready',
+          },
+          id: started.registration.id,
+          overrideAccess: true,
+        })
+      }
+      return found
+    }) as typeof payload.findByID
+
+    try {
+      await expect(
+        getFeishuAppRegistration({
+          clock: () => new Date('2026-08-05T11:00:00.000Z'),
+          payload,
+          registrationId: started.registration.id,
+          user: admin,
+        }),
+      ).resolves.toMatchObject({
+        authorizeURL: 'https://accounts.feishu.cn/authorize/cas-fixture',
+        status: 'authorization_ready',
+      })
+    } finally {
+      payload.findByID = originalFindByID
+    }
+  })
+
+  it('does not let a late callback invalidate the authorization recovered by the worker', async () => {
+    const admin = await payload.findByID({
+      collection: 'users',
+      id: adminID,
+      overrideAccess: true,
+    })
+    const started = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    registrationIDs.add(started.registration.id)
+    await runFeishuAppRegistration({
+      fetch: vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(response({ code: 0, tenant_access_token: 'tenant-late-token' }))
+        .mockResolvedValueOnce(response({ code: 0 })),
+      payload,
+      register: vi.fn(async () => ({
+        client_id: 'cli_late_callback_registration',
+        client_secret: 'late-callback-secret-fixture',
+      })) as never,
+      registrationId: started.registration.id,
+    })
+
+    const authorizationReady = await payload.findByID({
+      collection: 'feishu-app-registrations',
+      depth: 0,
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+    const states = await payload.find({
+      collection: 'feishu-oauth-states',
+      depth: 0,
+      limit: 20,
+      overrideAccess: true,
+      where: {
+        and: [{ registration: { equals: started.registration.id } }, { usedAt: { exists: false } }],
+      },
+    })
+    const state = states.docs[0]
+    if (!state) throw new Error('Expected authorization state')
+    let markTokenRequestStarted!: () => void
+    let releaseTokenRequest!: (value: Response) => void
+    const tokenRequestStarted = new Promise<void>((resolve) => {
+      markTokenRequestStarted = resolve
+    })
+    const tokenResponse = new Promise<Response>((resolve) => {
+      releaseTokenRequest = resolve
+    })
+    const slowOAuthFetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      if (String(input).includes('/oauth/v3/token')) {
+        markTokenRequestStarted()
+        return tokenResponse
+      }
+      return response({
+        code: 0,
+        data: {
+          name: 'Late Callback',
+          open_id: `open-late-${suffix}`,
+          tenant_key: `late-${suffix}`,
+        },
+      })
+    })
+    vi.stubGlobal('fetch', slowOAuthFetch)
+
+    const stateURL = new URL(authorizationReady.authorizeUrl!).searchParams.get('state')
+    if (!stateURL) throw new Error('Expected authorization state URL')
+    const callbackPromise = feishuCallback(
+      new NextRequest(
+        `http://localhost/api/integrations/feishu/callback?state=${stateURL}&code=late-code`,
+      ),
+    )
+    await tokenRequestStarted
+
+    const staleAt = new Date(
+      Date.now() - FEISHU_OAUTH_CALLBACK_PROCESSING_TTL_MS - 1_000,
+    ).toISOString()
+    await payload.update({
+      collection: 'feishu-oauth-states',
+      context,
+      data: { processingAt: staleAt },
+      id: state.id,
+      overrideAccess: true,
+    })
+    expect(await recoverStaleFeishuOAuthCallbacks({ payload })).toBe(1)
+    const recoveredRegistration = await payload.findByID({
+      collection: 'feishu-app-registrations',
+      depth: 0,
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+    const recoveredAuthorizationURL = recoveredRegistration.authorizeUrl
+    releaseTokenRequest(
+      response({
+        access_token: 'late-access',
+        code: 0,
+        expires_in: 7_200,
+        refresh_token: 'late-refresh',
+        refresh_token_expires_in: 604_800,
+        scope: 'auth:user.id:read bitable:app offline_access',
+      }),
+    )
+    const lateCallback = await callbackPromise
+    expect(lateCallback).toMatchObject({ status: 302 })
+    expect(lateCallback.headers.get('location')).toContain('feishu=failed')
+    await expect(
+      payload.findByID({
+        collection: 'feishu-app-registrations',
+        depth: 0,
+        id: started.registration.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      authorizeUrl: recoveredAuthorizationURL,
+      status: 'authorization_ready',
+    })
     await completeFeishuAppRegistration(payload, started.registration.id)
   })
 
