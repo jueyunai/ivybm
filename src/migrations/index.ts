@@ -17,6 +17,7 @@ import * as migration_20260725_051208_task13_tiktok_channel from './20260725_051
 import * as migration_20260730_035013_task11_feishu_oauth from './20260730_035013_task11_feishu_oauth'
 import * as migration_20260801_232040_task11_feishu_followup_reminders from './20260801_232040_task11_feishu_followup_reminders'
 import * as migration_20260802_042231_portal_v1 from './20260802_042231_portal_v1'
+import * as migration_20260804_142542_publication_lifecycle from './20260804_142542_publication_lifecycle'
 import * as migration_20260805_051559 from './20260805_051559'
 
 export const migrations = [
@@ -114,6 +115,11 @@ export const migrations = [
     up: migration_20260802_042231_portal_v1.up,
     down: migration_20260802_042231_portal_v1.down,
     name: '20260802_042231_portal_v1',
+  },
+  {
+    up: migration_20260804_142542_publication_lifecycle.up,
+    down: migration_20260804_142542_publication_lifecycle.down,
+    name: '20260804_142542_publication_lifecycle',
   },
   {
     up: migration_20260805_051559.up,

@@ -89,10 +89,10 @@ test('website content editor completes create, update, and safe delete from the 
     await page.goto('/dashboard/content?type=product-categories')
     await page.getByRole('button', { name: '新增内容' }).first().click()
     await expect(page.getByRole('heading', { name: '新增内容' })).toBeVisible()
-    await page.getByLabel('Title / 标题').fill(initialTitle)
-    await page.getByLabel('Stable slug').fill(slug)
+    await page.getByLabel('标题', { exact: true }).fill(initialTitle)
+    await page.getByLabel('固定链接标识', { exact: true }).fill(slug)
     await page
-      .getByLabel('Description / 描述')
+      .getByLabel('描述', { exact: true })
       .fill('Created through the redesigned Portal editor.')
     const [createResponse] = await Promise.all([
       page.waitForResponse(
@@ -109,10 +109,10 @@ test('website content editor completes create, update, and safe delete from the 
     await expect(createdItem).toBeVisible()
     await createdItem.click()
     await page.getByRole('button', { name: '编辑内容' }).click()
-    await expect(page.getByLabel('Stable slug')).toHaveValue(slug)
-    await expect(page.getByLabel('Title / 标题')).toHaveValue(initialTitle)
-    await page.getByLabel('Title / 标题').fill(updatedTitle)
-    await expect(page.getByLabel('Title / 标题')).toHaveValue(updatedTitle)
+    await expect(page.getByLabel('固定链接标识', { exact: true })).toHaveValue(slug)
+    await expect(page.getByLabel('标题', { exact: true })).toHaveValue(initialTitle)
+    await page.getByLabel('标题', { exact: true }).fill(updatedTitle)
+    await expect(page.getByLabel('标题', { exact: true })).toHaveValue(updatedTitle)
     await page.getByRole('button', { name: '保存修改' }).click()
     await expect(page.getByText('保存成功，列表已刷新。')).toBeVisible()
     await page.getByRole('button', { name: '取消' }).click()

@@ -231,7 +231,7 @@ describe.sequential('Portal website content access', () => {
     const localized = await updatePortalContent({
       id: created.id,
       input: {
-        action: 'save-draft',
+        action: 'publish',
         bodyText: 'النص العربي',
         heroImageId,
         locale: 'ar',
@@ -259,6 +259,7 @@ describe.sequential('Portal website content access', () => {
       summary: 'الملخص العربي',
       title: 'صفحة أوامر البوابة',
     })
+    expect(localized.status).toBe('published')
 
     const audit = await payload.find({
       collection: 'audit-logs',
@@ -474,6 +475,74 @@ describe.sequential('Portal website content access', () => {
         )
         expect(published.status).toBe('published')
       }
+
+      const project = records.get('projects')!
+      const beforeUnpublish = await getContentSummary({
+        payload,
+        query: { page: 1, q: '', status: 'all', type: 'projects' },
+        req: operatorReq,
+      })
+      if (!beforeUnpublish.statusBreakdown || !('draft' in beforeUnpublish.statusBreakdown)) {
+        throw new Error('Expected versioned project status breakdown')
+      }
+      const publicBeforeUnpublish = await payload.find({
+        collection: 'projects',
+        draft: false,
+        fallbackLocale: false,
+        limit: 1,
+        locale: 'en',
+        overrideAccess: false,
+        where: { slug: { equals: project.slug } },
+      })
+      expect(publicBeforeUnpublish.docs).toHaveLength(1)
+
+      const unpublished = updateRecord(
+        'projects',
+        await updatePortalContent({
+          id: project.id,
+          input: {
+            ...inputFor('projects', 'en', category.id),
+            action: 'unpublish',
+            updatedAt: project.updatedAt,
+          },
+          payload,
+          req: operatorReq,
+          type: 'projects',
+        }),
+      )
+      expect(unpublished.status).toBe('unpublished')
+
+      const rootDocument = await payload.findByID({
+        collection: 'projects',
+        draft: false,
+        id: project.id,
+        overrideAccess: true,
+      })
+      expect(rootDocument._status).toBe('draft')
+      const publicAfterUnpublish = await payload.find({
+        collection: 'projects',
+        draft: false,
+        fallbackLocale: false,
+        limit: 1,
+        locale: 'en',
+        overrideAccess: false,
+        where: { slug: { equals: project.slug } },
+      })
+      expect(publicAfterUnpublish.docs).toHaveLength(0)
+
+      const afterUnpublish = await getContentSummary({
+        payload,
+        query: { page: 1, q: '', status: 'all', type: 'projects' },
+        req: operatorReq,
+      })
+      if (!afterUnpublish.statusBreakdown || !('draft' in afterUnpublish.statusBreakdown)) {
+        throw new Error('Expected versioned project status breakdown after unpublish')
+      }
+      expect(afterUnpublish.statusBreakdown).toEqual({
+        draft: beforeUnpublish.statusBreakdown.draft,
+        published: beforeUnpublish.statusBreakdown.published - 1,
+        unpublished: beforeUnpublish.statusBreakdown.unpublished + 1,
+      })
 
       const download = records.get('downloads')!
       const deactivated = updateRecord(

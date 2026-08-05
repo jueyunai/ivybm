@@ -48,6 +48,18 @@ describe('Portal website content summary', () => {
         }
       }
 
+      if (options.limit === 1 && options.where) {
+        const serializedWhere = JSON.stringify(options.where)
+        return {
+          docs: [],
+          totalDocs: serializedWhere.includes('hasBeenPublished')
+            ? serializedWhere.includes('true')
+              ? 0
+              : 1
+            : 1,
+        }
+      }
+
       if (options.limit === 1) {
         return {
           docs: [{ updatedAt: '2026-07-30T08:00:00.000Z' }],
@@ -59,6 +71,7 @@ describe('Portal website content summary', () => {
         docs: [
           {
             _status: 'published',
+            hasBeenPublished: true,
             category: 5,
             coverImage: 91,
             description: {
@@ -77,6 +90,7 @@ describe('Portal website content summary', () => {
           },
           {
             _status: 'draft',
+            hasBeenPublished: false,
             id: 22,
             seo: { description: { ar: null, en: null }, title: { ar: null, en: null } },
             slug: 'double-curved-panel',
@@ -98,15 +112,26 @@ describe('Portal website content summary', () => {
       req,
     })
 
-    expect(find).toHaveBeenCalledTimes(8)
-    expect(count).toHaveBeenCalledTimes(2)
+    expect(find).toHaveBeenCalledTimes(11)
+    expect(count).not.toHaveBeenCalled()
     for (const [options] of [...find.mock.calls, ...count.mock.calls]) {
       expect(options).toEqual(expect.objectContaining({ overrideAccess: false, req }))
     }
     expect(find).toHaveBeenCalledWith(
       expect.objectContaining({ fallbackLocale: false, locale: 'all', overrideAccess: false, req }),
     )
-    expect(summary.statusBreakdown).toEqual({ draft: 1, published: 1 })
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'products',
+        draft: true,
+        limit: 1,
+        pagination: true,
+        where: {
+          and: [{ _status: { equals: 'draft' } }, { hasBeenPublished: { equals: false } }],
+        },
+      }),
+    )
+    expect(summary.statusBreakdown).toEqual({ draft: 1, published: 1, unpublished: 0 })
     expect(summary.items[0]).toMatchObject({
       localeCompleteness: { ar: 100, en: 100 },
       localeMissing: { ar: [], en: [] },
@@ -228,7 +253,7 @@ describe('Portal website content summary', () => {
             ],
             pagination: { page: 1, totalDocs: 2, totalPages: 1 },
             query: { page: 1, q: '', status: 'all', type: 'products' },
-            statusBreakdown: { draft: 1, published: 1 },
+            statusBreakdown: { draft: 1, published: 1, unpublished: 0 },
           },
         }),
       ),
