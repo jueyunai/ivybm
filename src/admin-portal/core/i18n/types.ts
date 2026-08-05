@@ -31,6 +31,60 @@ export interface PortalShellMessages {
 }
 
 export interface PortalSettingsMessages {
+  ai: {
+    actionRequired: string
+    apiKey: string
+    apiKeyConfigured: string
+    apiKeyDescription: string
+    baseURL: string
+    capability: string
+    capabilities: Record<'embedding' | 'text', string>
+    cancel: string
+    contentStudio: string
+    create: string
+    delete: string
+    deleteConfirm: string
+    dimensions: string
+    disabled: string
+    edit: string
+    embeddingRoute: string
+    enabled: string
+    encryptionKey: string
+    encryptionKeyMissing: string
+    error: string
+    maxOutputTokens: string
+    model: string
+    modelName: string
+    models: string
+    newModel: string
+    newProvider: string
+    newRoute: string
+    noModels: string
+    noProviders: string
+    noRoutes: string
+    operation: string
+    profile: string
+    provider: string
+    providerName: string
+    providers: string
+    readiness: string
+    readinessReason: Record<'encryption-key' | 'profile' | 'provider' | 'route', string>
+    reasoningEffort: string
+    reasoningEnabled: string
+    routeName: string
+    routes: string
+    save: string
+    saved: string
+    status: string
+    temperature: string
+    textRoute: string
+    timeout: string
+    title: string
+    topP: string
+    usageKey: string
+    customerChat: string
+    knowledgeIndex: string
+  }
   accountDescription: string
   accountTitle: string
   canUpdateSite: string

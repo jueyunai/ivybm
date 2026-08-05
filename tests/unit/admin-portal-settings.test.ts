@@ -13,6 +13,50 @@ import {
   getPortalSettingsSummary,
   selectPortalSettingsSummary,
 } from '@/admin-portal/modules/settings/getPortalSettingsSummary'
+import { portalAiSettingsAdminOnly } from '@/admin-portal/modules/settings/getPortalAiSettings'
+
+const readyAiSettings = {
+  access: 'admin' as const,
+  encryptionKeyConfigured: true,
+  profiles: [
+    {
+      capability: 'text' as const,
+      enabled: true,
+      id: 2,
+      model: 'gpt-example',
+      name: 'Primary text',
+      parameters: {
+        dimensions: null,
+        maxOutputTokens: 2048,
+        reasoningEffort: 'medium',
+        reasoningEnabled: false,
+        temperature: null,
+        timeoutMs: 30000,
+        topP: null,
+      },
+      providerID: 1,
+      providerName: 'Primary provider',
+      updatedAt: '2026-08-05T00:00:00.000Z',
+    },
+  ],
+  providers: [
+    {
+      apiKeyConfigured: true,
+      baseURL: 'https://api.example.invalid/v1',
+      enabled: true,
+      id: 1,
+      name: 'Primary provider',
+      protocol: 'openai-compatible' as const,
+      updatedAt: '2026-08-05T00:00:00.000Z',
+    },
+  ],
+  readiness: [
+    { key: 'customer-chat' as const, reason: 'route' as const, status: 'action-required' as const },
+    { key: 'content-studio' as const, reason: null, status: 'ready' as const },
+    { key: 'knowledge-index' as const, reason: 'route' as const, status: 'action-required' as const },
+  ],
+  routes: [],
+}
 
 beforeEach(() => window.localStorage.clear())
 afterEach(cleanup)
@@ -29,6 +73,7 @@ describe('Portal settings hub', () => {
         PortalPreferencesProvider,
         null,
         React.createElement(SettingsHub, {
+          aiSettings: portalAiSettingsAdminOnly(),
           modules,
           pageState: 'module-disabled',
           summary: null,
@@ -104,6 +149,7 @@ describe('Portal settings hub', () => {
         PortalPreferencesProvider,
         null,
         React.createElement(SettingsHub, {
+          aiSettings: portalAiSettingsAdminOnly(),
           modules,
           summary: {
             canUpdate: false,
@@ -136,7 +182,7 @@ describe('Portal settings hub', () => {
     expect(window.localStorage.getItem('ivybm.portal.preferences')).toContain('"reducedMotion":true')
   })
 
-  it('does not expose technical administration or credential surfaces', () => {
+  it('exposes the safe AI control plane to admins without exposing a stored key', () => {
     const modules = resolvePortalAvailability({
       env: {
         ADMIN_PORTAL_ENABLED: 'true',
@@ -149,6 +195,7 @@ describe('Portal settings hub', () => {
         PortalPreferencesProvider,
         null,
         React.createElement(SettingsHub, {
+          aiSettings: readyAiSettings,
           modules,
           summary: { canUpdate: true, siteDescription: null, siteName: 'IVYBM' },
           user: { email: 'admin@example.com', id: 1, role: 'admin' },
@@ -156,7 +203,66 @@ describe('Portal settings hub', () => {
       ),
     )
 
-    expect(container.textContent).not.toMatch(/用户管理|模型密钥|平台凭据|token|api key/i)
+    expect(screen.getByRole('heading', { name: 'AI 模型配置' })).toBeTruthy()
+    expect(screen.getByText('Primary provider')).toBeTruthy()
+    expect(screen.getByText('Key 已配置')).toBeTruthy()
+    expect(container.textContent).not.toContain('stored-secret')
     expect(container.innerHTML).not.toContain('/admin')
+  })
+
+  it.each(['operator', 'sales'] as const)(
+    'does not render AI configuration for the %s role even if an admin summary is passed',
+    (role) => {
+      const modules = resolvePortalAvailability({
+        env: {
+          ADMIN_PORTAL_ENABLED: 'true',
+          ADMIN_PORTAL_SETTINGS_ENABLED: 'true',
+        },
+        role,
+      }).modules
+
+      render(
+        React.createElement(
+          PortalPreferencesProvider,
+          null,
+          React.createElement(SettingsHub, {
+            aiSettings: readyAiSettings,
+            modules,
+            summary: { canUpdate: false, siteDescription: null, siteName: 'IVYBM' },
+            user: { email: `${role}@example.com`, id: 8, role },
+          }),
+        ),
+      )
+
+      expect(screen.queryByRole('heading', { name: 'AI 模型配置' })).toBeNull()
+      expect(screen.queryByText('Primary provider')).toBeNull()
+    },
+  )
+
+  it('keeps a stable admin-visible error state when the AI summary cannot be read', () => {
+    const modules = resolvePortalAvailability({
+      env: {
+        ADMIN_PORTAL_ENABLED: 'true',
+        ADMIN_PORTAL_SETTINGS_ENABLED: 'true',
+      },
+      role: 'admin',
+    }).modules
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(SettingsHub, {
+          aiReadError: true,
+          aiSettings: portalAiSettingsAdminOnly(),
+          modules,
+          summary: { canUpdate: true, siteDescription: null, siteName: 'IVYBM' },
+          user: { email: 'admin@example.com', id: 1, role: 'admin' },
+        }),
+      ),
+    )
+
+    expect(screen.getByRole('heading', { name: 'AI 模型配置' })).toBeTruthy()
+    expect(screen.getAllByText('读取失败')).toHaveLength(2)
   })
 })
