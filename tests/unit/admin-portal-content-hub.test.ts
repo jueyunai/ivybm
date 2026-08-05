@@ -171,6 +171,74 @@ describe('Portal content hub editing transitions', () => {
     })
   })
 
+  it('guards opening a new record while the current editor is dirty', async () => {
+    renderHub()
+    fireEvent.click(screen.getByRole('button', { name: '编辑内容' }))
+    const title = await screen.findByLabelText('标题')
+    fireEvent.change(title, { target: { value: '尚未保存的标题' } })
+
+    fireEvent.click(screen.getAllByRole('button', { name: '新增内容' })[0])
+    let dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('正在编辑“第一项”')
+    fireEvent.click(within(dialog).getByRole('button', { name: '关闭' }))
+    expect((screen.getByLabelText('标题') as HTMLInputElement).value).toBe('尚未保存的标题')
+
+    fireEvent.click(screen.getAllByRole('button', { name: '新增内容' })[0])
+    dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: '不保存' }))
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: '新增内容' })).toBeTruthy())
+    expect((screen.getByLabelText('标题') as HTMLInputElement).value).toBe('')
+  })
+
+  it('guards locale changes while the current editor is dirty', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/1?locale=ar')) {
+        return Response.json({
+          options: { categories: [], media: [] },
+          record: {
+            data: { description: 'الوصف الأول', slug: 'first', title: 'العنصر الأول' },
+            id: 1,
+            locale: 'ar',
+            status: 'always-visible',
+            type: 'product-categories',
+            updatedAt: '2026-08-04T10:00:00.000Z',
+          },
+        })
+      }
+      if (url.includes('/product-categories/')) return editorResponse(1)
+      return Response.json({ options: { categories: [], media: [] } })
+    })
+
+    renderHub()
+    fireEvent.click(screen.getByRole('button', { name: '编辑内容' }))
+    const title = await screen.findByLabelText('标题')
+    fireEvent.change(title, { target: { value: '尚未保存的标题' } })
+
+    fireEvent.click(screen.getByRole('button', { name: '阿语' }))
+    let dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('切换到“阿语”')
+    fireEvent.click(within(dialog).getByRole('button', { name: '关闭' }))
+    expect((screen.getByLabelText('标题') as HTMLInputElement).value).toBe('尚未保存的标题')
+
+    fireEvent.click(screen.getByRole('button', { name: '阿语' }))
+    dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: '不保存' }))
+
+    await waitFor(() =>
+      expect((screen.getByLabelText('标题') as HTMLInputElement).value).toBe('العنصر الأول'),
+    )
+    expect(screen.getByRole('button', { name: '阿语' }).getAttribute('aria-pressed')).toBe('true')
+
+    fireEvent.change(screen.getByLabelText('标题'), { target: { value: 'عنوان غير محفوظ' } })
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('切换到“关闭编辑器”')
+    fireEvent.click(within(dialog).getByRole('button', { name: '不保存' }))
+    await waitFor(() => expect(screen.queryByRole('region', { name: '编辑内容' })).toBeNull())
+  })
+
   it('keeps the editor frame height stable while switching records', async () => {
     let resolveSecond: ((response: Response) => void) | undefined
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {

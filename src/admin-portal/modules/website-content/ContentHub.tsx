@@ -51,19 +51,28 @@ const statusTone: Record<ContentItemStatus, 'info' | 'neutral' | 'success' | 'wa
 const switchCopy = {
   en: {
     close: 'Close',
+    closeEditor: 'Close editor',
     description: 'Save your changes before opening “{target}”?',
     discard: 'Discard',
+    newContent: 'New content',
     save: 'Save and switch',
     title: '“{current}” has unsaved changes',
   },
   zh: {
     close: '关闭',
+    closeEditor: '关闭编辑器',
     description: '是否先保存当前修改，再切换到“{target}”？',
     discard: '不保存',
+    newContent: '新增内容',
     save: '保存并切换',
     title: '正在编辑“{current}”',
   },
 } as const
+
+type PendingTransition = {
+  commit: () => void
+  targetTitle: string
+}
 
 const buildContentHref = (query: Partial<ContentQuery> & Pick<ContentQuery, 'type'>): string => {
   const params = new URLSearchParams()
@@ -253,7 +262,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
   const [selectedId, setSelectedId] = useState<number | string | null>(null)
   const [editor, setEditor] = useState<'create' | 'edit' | null>(null)
   const [notice, setNotice] = useState<ContentEditorNoticeValue>(null)
-  const [pendingSwitch, setPendingSwitch] = useState<ContentSummaryItem | null>(null)
+  const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null)
   const [switchBusy, setSwitchBusy] = useState(false)
   const [editorMinHeight, setEditorMinHeight] = useState<number | null>(null)
   const editorRef = useRef<ContentEditorHandle>(null)
@@ -277,7 +286,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
     },
     [],
   )
-  const cancelSwitch = useCallback(() => setPendingSwitch(null), [])
+  const cancelTransition = useCallback(() => setPendingTransition(null), [])
 
   if (pageState === 'forbidden') {
     return (
@@ -327,11 +336,11 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
     if (height > 0) setEditorMinHeight(Math.ceil(height))
   }
 
-  const openCreate = () => {
+  const commitOpenCreate = () => {
     if (editor) captureEditorHeight()
     else setEditorMinHeight(null)
     setSelectedId(null)
-    setPendingSwitch(null)
+    setPendingTransition(null)
     showNotice(null)
     setEditor('create')
   }
@@ -339,15 +348,27 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
   const commitSwitch = (item: ContentSummaryItem) => {
     captureEditorHeight()
     setSelectedId(item.id)
-    setPendingSwitch(null)
+    setPendingTransition(null)
     showNotice(null)
     setEditor('edit')
   }
 
-  const closeEditor = () => {
+  const commitCloseEditor = () => {
+    setPendingTransition(null)
     setEditor(null)
     setEditorMinHeight(null)
   }
+
+  const requestTransition = (targetTitle: string, commit: () => void) => {
+    if (editorRef.current?.isDirty()) {
+      setPendingTransition({ commit, targetTitle })
+      return
+    }
+    commit()
+  }
+
+  const openCreate = () =>
+    requestTransition(switchCopy[locale].newContent, commitOpenCreate)
 
   const requestSelection = (item: ContentSummaryItem) => {
     if (!editor) {
@@ -355,20 +376,19 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
       return
     }
     if (editor === 'edit' && String(item.id) === String(selected?.id)) return
-    if (editorRef.current?.isDirty()) {
-      setPendingSwitch(item)
-      return
-    }
-    commitSwitch(item)
+    requestTransition(item.title, () => commitSwitch(item))
   }
 
-  const saveAndSwitch = async () => {
-    if (!pendingSwitch) return
+  const saveAndTransition = async () => {
+    if (!pendingTransition) return
     setSwitchBusy(true)
-    const target = pendingSwitch
+    const target = pendingTransition
     const saved = await editorRef.current?.saveCurrent()
     setSwitchBusy(false)
-    if (saved) commitSwitch(target)
+    if (saved) {
+      setPendingTransition(null)
+      target.commit()
+    }
   }
 
   const statusOptions = statusOptionsFor(summary.query.type)
@@ -549,8 +569,15 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
                 key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
                 item={editor === 'edit' ? selected : null}
                 mode={editor}
-                onClose={closeEditor}
+                onClose={(force = false) => {
+                  if (force) {
+                    commitCloseEditor()
+                    return
+                  }
+                  requestTransition(switchCopy[locale].closeEditor, commitCloseEditor)
+                }}
                 onNotice={showNotice}
+                onRequestTransition={requestTransition}
                 ref={editorRef}
                 type={summary.query.type}
               />
@@ -639,7 +666,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
           </Surface>
         ) : null}
       </div>
-      {pendingSwitch ? (
+      {pendingTransition ? (
         <UnsavedChangesDialog
           busy={switchBusy}
           currentTitle={
@@ -650,10 +677,14 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
               : (selected?.title ?? '')
           }
           locale={locale}
-          onCancel={cancelSwitch}
-          onDiscard={() => commitSwitch(pendingSwitch)}
-          onSave={() => void saveAndSwitch()}
-          targetTitle={pendingSwitch.title}
+          onCancel={cancelTransition}
+          onDiscard={() => {
+            const target = pendingTransition
+            setPendingTransition(null)
+            target.commit()
+          }}
+          onSave={() => void saveAndTransition()}
+          targetTitle={pendingTransition.targetTitle}
         />
       ) : null}
     </main>

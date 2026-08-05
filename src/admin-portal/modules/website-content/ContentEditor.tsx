@@ -39,9 +39,11 @@ export interface ContentEditorHandle {
   isDirty: () => boolean
   saveCurrent: () => Promise<boolean>
 }
+export type ContentEditorTransitionRequest = (targetTitle: string, commit: () => void) => void
 
 const EMPTY_OPTIONS: EditorOptions = { categories: [], media: [] }
 const VERSIONED = new Set<ContentTypeId>(['pages', 'posts', 'products', 'projects'])
+const commitTransitionImmediately: ContentEditorTransitionRequest = (_targetTitle, commit) => commit()
 
 const toDateTimeLocalValue = (value: unknown): string => {
   if (typeof value !== 'string' || !value) return ''
@@ -522,11 +524,22 @@ export const ContentEditor = forwardRef<
   {
     item: ContentSummaryItem | null
     mode: EditorMode
-    onClose: () => void
+    onClose: (force?: boolean) => void
     onNotice?: (notice: ContentEditorNotice) => void
+    onRequestTransition?: ContentEditorTransitionRequest
     type: ContentTypeId
   }
->(function ContentEditor({ item, mode, onClose, onNotice, type }, ref) {
+>(function ContentEditor(
+  {
+    item,
+    mode,
+    onClose,
+    onNotice,
+    onRequestTransition = commitTransitionImmediately,
+    type,
+  },
+  ref,
+) {
   const router = useRouter()
   const { locale: portalLocale } = usePortalPreferences()
   const messages = getPortalMessages(portalLocale).websiteContent
@@ -598,6 +611,13 @@ export const ContentEditor = forwardRef<
   const update = <K extends keyof EditorForm>(key: K, value: EditorForm[K]) =>
     setForm((current) => ({ ...current, [key]: value }))
 
+  const requestLocaleChange = (nextLocale: 'ar' | 'en') => {
+    if (nextLocale === form.locale) return
+    onRequestTransition(nextLocale === 'en' ? text.english : text.arabic, () =>
+      update('locale', nextLocale),
+    )
+  }
+
   const requestBody = (action: string) => ({
     ...form,
     action,
@@ -659,7 +679,7 @@ export const ContentEditor = forwardRef<
       setForm(nextForm)
       showNotice({ tone: 'success', value: text.saved })
       router.refresh()
-      if (mode === 'create') onClose()
+      if (mode === 'create') onClose(true)
       return true
     } catch (error) {
       showNotice({ tone: 'danger', value: safeErrorMessage(error, text.error) })
@@ -699,7 +719,7 @@ export const ContentEditor = forwardRef<
         throw new ContentEditorError(await errorMessage(response, portalLocale, text.error))
       }
       router.refresh()
-      onClose()
+      onClose(true)
     } catch (error) {
       showNotice({ tone: 'danger', value: safeErrorMessage(error, text.error) })
       setConfirmDelete(false)
@@ -723,7 +743,7 @@ export const ContentEditor = forwardRef<
           <p>{messages.collections[type]}</p>
           <h3>{mode === 'create' ? text.add : text.edit}</h3>
         </div>
-        <Button aria-label={text.cancel} onClick={onClose} size="icon" variant="ghost">
+        <Button aria-label={text.cancel} onClick={() => onClose()} size="icon" variant="ghost">
           <IconX aria-hidden="true" size={18} />
         </Button>
       </header>
@@ -733,7 +753,7 @@ export const ContentEditor = forwardRef<
         <button
           aria-pressed={form.locale === 'en'}
           disabled={busy}
-          onClick={() => update('locale', 'en')}
+          onClick={() => requestLocaleChange('en')}
           type="button"
         >
           {text.english}
@@ -741,7 +761,7 @@ export const ContentEditor = forwardRef<
         <button
           aria-pressed={form.locale === 'ar'}
           disabled={busy}
-          onClick={() => update('locale', 'ar')}
+          onClick={() => requestLocaleChange('ar')}
           type="button"
         >
           {text.arabic}
