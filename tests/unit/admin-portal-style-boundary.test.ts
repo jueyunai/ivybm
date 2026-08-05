@@ -51,4 +51,20 @@ describe('Portal style boundary', () => {
     expect(components.iconLibrary).toBe('tabler')
     expect(readProjectFile('postcss.config.mjs')).toContain("'@tailwindcss/postcss': {}")
   })
+
+  it('keeps one accessible focus indicator on website content editor controls', () => {
+    const portalStyles = readProjectFile('src/admin-portal/core/styles/portal.css')
+
+    expect(portalStyles).toContain('.portal-shell :focus-visible')
+    expect(portalStyles).not.toContain('.portal-content-editor__field input:focus')
+  })
+
+  it('keeps one focus indicator on composite login fields', () => {
+    const portalStyles = readProjectFile('src/admin-portal/core/styles/portal.css')
+
+    expect(portalStyles).toMatch(/\.portal-field__control:focus-within\s*\{[^}]*box-shadow:/)
+    expect(portalStyles).toMatch(
+      /\.portal-field__control input:focus-visible\s*\{[^}]*outline: none;[^}]*\}/,
+    )
+  })
 })

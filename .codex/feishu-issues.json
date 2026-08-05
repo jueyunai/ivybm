@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "project": {
+    "name": "IVYBM",
+    "businessIdExample": "HMT-0001"
+  },
+  "lark": {
+    "baseUrl": "https://my.feishu.cn/base/OozKbx0ZYaUwoUsLpTecWzyfnqb?table=tblMsup4zkMPVScP&view=vewqNbKnuf",
+    "baseToken": "OozKbx0ZYaUwoUsLpTecWzyfnqb",
+    "tableId": "tblMsup4zkMPVScP",
+    "views": {
+      "all": "vewqNbKnuf",
+      "pending": "vewwo0aoCz",
+      "processing": "vewS5kS3vr",
+      "readyForAcceptance": "vew8qHwXCH",
+      "completed": "vewgeZhYb5"
+    }
+  },
+  "fields": {
+    "businessId": { "name": "ID", "id": "fldXwCpFA7", "access": "system" },
+    "type": { "name": "类型", "id": "fldtevSmEn", "access": "protected" },
+    "module": { "name": "模块/位置", "id": "fldVyHXneF", "access": "protected" },
+    "description": { "name": "问题描述", "id": "fldzLmwgdY", "access": "protected" },
+    "screenshots": { "name": "问题截图", "id": "fldfggpZns", "access": "protected" },
+    "priority": { "name": "优先级", "id": "fld6B6v9iM", "access": "protected" },
+    "status": { "name": "处理状态", "id": "fldgxvKOfx", "access": "writable" },
+    "fixSummary": { "name": "修复说明", "id": "fld20XoPxP", "access": "writable" },
+    "precheck": { "name": "预检结论", "id": "fld0NdAHFM", "access": "writable" },
+    "acceptanceResult": { "name": "验收结果", "id": "fldZl43pdC", "access": "writable" },
+    "acceptanceNotes": { "name": "验收备注", "id": "fld4Je9JP9", "access": "writable" }
+  },
+  "statuses": {
+    "pending": "待处理",
+    "processing": "处理中",
+    "readyForAcceptance": "待验收",
+    "completed": "已完成",
+    "insufficient": "信息不足",
+    "notReproducible": "无法复现",
+    "deferred": "暂不处理"
+  },
+  "acceptanceResults": {
+    "pending": "待验收",
+    "passed": "通过",
+    "failed": "不通过"
+  },
+  "workflow": {
+    "maxBatchSize": 10,
+    "autoCommit": true,
+    "commitLanguage": "zh-CN",
+    "requiredSourceFields": ["description"],
+    "protectedFields": ["businessId", "type", "module", "description", "screenshots", "priority"],
+    "writableFields": ["status", "fixSummary", "precheck", "acceptanceResult", "acceptanceNotes"],
+    "processingWritableFields": ["status", "fixSummary", "precheck"],
+    "acceptanceWritableFields": ["status", "acceptanceResult", "acceptanceNotes"]
+  },
+  "development": {
+    "progressFile": "docs/开发进度.md",
+    "commands": {
+      "server": ["pnpm lint", "pnpm typecheck", "pnpm test:unit"],
+      "api": ["pnpm test:contract", "pnpm test:integration"],
+      "operations": ["pnpm test:operations"],
+      "build": ["pnpm build"],
+      "e2e": ["PORT=3002 E2E_PORT=3102 pnpm test:e2e"]
+    },
+    "ports": {
+      "dev": 3002,
+      "e2e": 3102
+    }
+  }
+}

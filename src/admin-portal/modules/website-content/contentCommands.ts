@@ -46,6 +46,7 @@ export interface ContentEditorOption {
   id: number | string
   label: string
   meta?: string
+  previewUrl?: string
 }
 
 export interface ContentEditorRecord {
@@ -400,7 +401,10 @@ export function parseContentMutation(type: ContentTypeId, rawInput: unknown): Pa
 }
 
 const statusFromDocument = (type: ContentTypeId, document: LooseRecord): ContentItemStatus => {
-  if (VERSIONED_TYPES.has(type)) return document._status === 'published' ? 'published' : 'draft'
+  if (VERSIONED_TYPES.has(type)) {
+    if (document._status === 'published') return 'published'
+    return document.hasBeenPublished === true ? 'unpublished' : 'draft'
+  }
   if (type === 'downloads') return document.isActive === false ? 'inactive' : 'active'
   return 'always-visible'
 }
@@ -581,9 +585,7 @@ const writeOptions = (
   mutation: ParsedContentMutation,
   req: PayloadRequest,
 ) => ({
-  ...(VERSIONED_TYPES.has(type)
-    ? { draft: mutation.action !== 'publish' }
-    : {}),
+  ...(VERSIONED_TYPES.has(type) ? { draft: mutation.action === 'save-draft' } : {}),
   context: { skipAudit: true },
   fallbackLocale: false,
   locale: mutation.locale,
@@ -632,6 +634,13 @@ export async function createPortalContent({
   type: ContentTypeId
 }): Promise<ContentCommandResult> {
   const mutation = parseContentMutation(type, input)
+  if (mutation.action === 'unpublish') {
+    throw new ContentCommandError(
+      'content-invalid-action',
+      'New content cannot start in the unpublished state',
+      409,
+    )
+  }
   if (mutation.action === 'publish') assertPublishable(type, mutation.data)
 
   const find = requireMethod(payload, 'find')
@@ -691,6 +700,21 @@ export async function updatePortalContent({
     req,
   })
   assertCurrentRevision(current, mutation.updatedAt)
+  const hasBeenPublished = current.hasBeenPublished === true || current._status === 'published'
+  if (VERSIONED_TYPES.has(type) && hasBeenPublished && mutation.action === 'save-draft') {
+    throw new ContentCommandError(
+      'content-invalid-action',
+      'Published content can only remain published or become unpublished',
+      409,
+    )
+  }
+  if (VERSIONED_TYPES.has(type) && !hasBeenPublished && mutation.action === 'unpublish') {
+    throw new ContentCommandError(
+      'content-invalid-action',
+      'Draft content cannot be unpublished before its first publication',
+      409,
+    )
+  }
   if (mutation.action === 'publish') assertPublishable(type, mutation.data)
   await assertContentMediaReferences({ data: mutation.data, payload, req, type })
 
@@ -899,7 +923,15 @@ export async function getPortalContentOptions({
       overrideAccess: false,
       pagination: false,
       req,
-      select: { alt: true, filename: true, id: true, mimeType: true },
+      select: {
+        alt: true,
+        filename: true,
+        id: true,
+        mimeType: true,
+        sizes: { card: { url: true }, thumbnail: { url: true } },
+        thumbnailURL: true,
+        url: true,
+      },
       sort: '-updatedAt',
     }),
   ])
@@ -913,15 +945,39 @@ export async function getPortalContentOptions({
             ? document.slug
             : String(document.id),
     })),
-    media: media.docs.map((document) => ({
-      id: document.id as number | string,
-      label:
-        typeof document.filename === 'string'
-          ? document.filename
-          : typeof document.alt === 'string'
-            ? document.alt
-            : String(document.id),
-      meta: typeof document.mimeType === 'string' ? document.mimeType : undefined,
-    })),
+    media: media.docs.map((document) => {
+      const sizes = asRecord(document.sizes)
+      const card = asRecord(sizes.card)
+      const thumbnail = asRecord(sizes.thumbnail)
+      const safeURL = (value: unknown): string | undefined => {
+        if (typeof value !== 'string' || !value || value.includes('\\')) return undefined
+        if (value.startsWith('/') && !value.startsWith('//')) return value
+        try {
+          const url = new URL(value)
+          return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : undefined
+        } catch {
+          return undefined
+        }
+      }
+      const mimeType = typeof document.mimeType === 'string' ? document.mimeType : undefined
+      const previewUrl = mimeType?.startsWith('image/')
+        ? (safeURL(card.url) ??
+          safeURL(thumbnail.url) ??
+          safeURL(document.thumbnailURL) ??
+          safeURL(document.url))
+        : undefined
+
+      return {
+        id: document.id as number | string,
+        label:
+          typeof document.filename === 'string'
+            ? document.filename
+            : typeof document.alt === 'string'
+              ? document.alt
+              : String(document.id),
+        meta: mimeType,
+        previewUrl,
+      }
+    }),
   }
 }

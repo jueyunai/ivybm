@@ -552,6 +552,7 @@ export interface Page {
    * Stable URL slug shared by all locales. Use Latin letters, numbers, and hyphens.
    */
   slug: string;
+  hasBeenPublished?: boolean | null;
   summary?: string | null;
   body?: {
     root: {
@@ -640,6 +641,7 @@ export interface Product {
    * Stable URL slug shared by all locales. Use Latin letters, numbers, and hyphens.
    */
   slug: string;
+  hasBeenPublished?: boolean | null;
   shortDescription?: string | null;
   description?: {
     root: {
@@ -706,6 +708,7 @@ export interface Project {
    * Stable URL slug shared by all locales. Use Latin letters, numbers, and hyphens.
    */
   slug: string;
+  hasBeenPublished?: boolean | null;
   summary?: string | null;
   description?: {
     root: {
@@ -763,6 +766,7 @@ export interface Post {
    * Stable URL slug shared by all locales. Use Latin letters, numbers, and hyphens.
    */
   slug: string;
+  hasBeenPublished?: boolean | null;
   excerpt?: string | null;
   content?: {
     root: {
@@ -1677,6 +1681,7 @@ export interface PagesSelect<T extends boolean = true> {
   title?: T;
   generateSlug?: T;
   slug?: T;
+  hasBeenPublished?: T;
   summary?: T;
   body?: T;
   heroImage?: T;
@@ -1726,6 +1731,7 @@ export interface ProductsSelect<T extends boolean = true> {
   title?: T;
   generateSlug?: T;
   slug?: T;
+  hasBeenPublished?: T;
   shortDescription?: T;
   description?: T;
   category?: T;
@@ -1761,6 +1767,7 @@ export interface ProjectsSelect<T extends boolean = true> {
   title?: T;
   generateSlug?: T;
   slug?: T;
+  hasBeenPublished?: T;
   summary?: T;
   description?: T;
   location?: T;
@@ -1790,6 +1797,7 @@ export interface PostsSelect<T extends boolean = true> {
   title?: T;
   generateSlug?: T;
   slug?: T;
+  hasBeenPublished?: T;
   excerpt?: T;
   content?: T;
   category?: T;

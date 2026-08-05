@@ -9,6 +9,7 @@ import {
 } from '../access/content'
 import { internalNotesField } from '../fields/internalNotes'
 import { imageMediaFilter } from '../fields/media'
+import { preservePublicationHistory, publicationHistoryField } from '../fields/publicationHistory'
 import { seoField } from '../fields/seo'
 import { stableSlugField } from '../fields/slug'
 import {
@@ -39,6 +40,7 @@ export const Products: CollectionConfig = {
       required: true,
     },
     stableSlugField(),
+    publicationHistoryField,
     {
       name: 'shortDescription',
       type: 'textarea',
@@ -98,6 +100,7 @@ export const Products: CollectionConfig = {
   hooks: {
     afterChange: [revalidateContentAfterChange, writeAuditLogAfterChange],
     afterDelete: [revalidateContentAfterDelete, writeAuditLogAfterDelete],
+    beforeChange: [preservePublicationHistory],
   },
   versions: {
     drafts: true,
