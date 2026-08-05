@@ -62,6 +62,7 @@ export const FeishuOAuthStates: CollectionConfig = {
     { name: 'expiresAt', type: 'date', index: true, required: true },
     { name: 'usedAt', type: 'date', index: true },
     { name: 'requestedBy', type: 'relationship', relationTo: 'users', required: true },
+    { name: 'registration', type: 'relationship', relationTo: 'feishu-app-registrations' },
   ],
   hooks: {
     beforeChange: [consumeStateOnce],

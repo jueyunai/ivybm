@@ -31,11 +31,12 @@
     "test:e2e": "cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" playwright test --config=playwright.config.ts",
     "test:integration": "cross-env NODE_OPTIONS=--no-deprecation NODE_ENV=test vitest run --config ./vitest.integration.config.mts",
     "test:operations": "vitest run --config ./vitest.operations.config.mts",
-    "test:unit": "pnpm run ai:eval:validate && cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts tests/unit",
+    "test:unit": "node scripts/ai-eval/validate.mjs && cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts tests/unit",
     "typecheck": "tsc --noEmit",
     "worker": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=256\" DISABLE_PAYLOAD_HMR=true tsx src/worker.ts"
   },
   "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.72.0",
     "@payloadcms/db-postgres": "3.86.0",
     "@payloadcms/next": "3.86.0",
     "@payloadcms/richtext-lexical": "3.86.0",
@@ -50,6 +51,7 @@
     "graphql": "^16.8.1",
     "next": "16.2.6",
     "payload": "3.86.0",
+    "qrcode.react": "^4.2.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "sharp": "0.34.2",

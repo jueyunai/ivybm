@@ -3349,6 +3349,79 @@
     font-size: 10px;
   }
 
+  .portal-feishu-registration {
+    display: grid;
+    min-width: 0;
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .portal-feishu-registration > header,
+  .portal-feishu-registration > footer {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+  }
+
+  .portal-feishu-registration > header > div {
+    min-width: 0;
+  }
+
+  .portal-feishu-registration h3,
+  .portal-feishu-registration p {
+    margin: 0;
+  }
+
+  .portal-feishu-registration h3 {
+    margin-bottom: 4px;
+    font-size: 15px;
+  }
+
+  .portal-feishu-registration > header p:last-child,
+  .portal-feishu-registration__qr p,
+  .portal-feishu-registration__notice {
+    color: var(--portal-muted);
+    font-size: 11px;
+  }
+
+  .portal-feishu-registration__qr {
+    display: grid;
+    grid-template-columns: 176px minmax(0, 1fr);
+    align-items: center;
+    gap: 18px;
+    padding: 14px;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-canvas);
+  }
+
+  .portal-feishu-registration__qr svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .portal-feishu-registration__qr > div {
+    display: grid;
+    min-width: 0;
+    justify-items: start;
+    gap: 12px;
+  }
+
+  .portal-feishu-registration__error {
+    padding: 9px 12px;
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-danger-soft);
+    color: var(--portal-danger);
+    font-size: 11px;
+  }
+
+  .portal-feishu-registration > footer {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
   .portal-leads__filters {
     display: flex;
     align-items: end;
@@ -4367,6 +4440,26 @@
   .portal-leads__intro {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .portal-feishu-registration > header,
+  .portal-feishu-registration > footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal-feishu-registration__qr {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+
+  .portal-feishu-registration__qr > div {
+    justify-items: stretch;
+    text-align: center;
+  }
+
+  .portal-feishu-registration .portal-button {
+    width: 100%;
   }
 
   .portal-leads__filters {

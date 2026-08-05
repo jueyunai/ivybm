@@ -6,7 +6,7 @@ type FetchLike = typeof fetch
 type JsonRecord = Record<string, unknown>
 
 export const FEISHU_OAUTH_SCOPES = ['auth:user.id:read', 'bitable:app', 'offline_access'] as const
-export const FEISHU_OAUTH_STATE_TTL_MS = 5 * 60 * 1_000
+export const FEISHU_OAUTH_STATE_TTL_MS = 10 * 60 * 1_000
 
 const record = (value: unknown): JsonRecord | undefined =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as JsonRecord) : undefined
@@ -41,7 +41,7 @@ export const buildFeishuAuthorizeURL = ({
   state,
 }: {
   appId: string
-  challenge: string
+  challenge?: string
   redirectURI: string
   state: string
 }): string => {
@@ -54,8 +54,10 @@ export const buildFeishuAuthorizeURL = ({
   url.searchParams.set('redirect_uri', redirectURI.trim())
   url.searchParams.set('scope', FEISHU_OAUTH_SCOPES.join(' '))
   url.searchParams.set('state', state)
-  url.searchParams.set('code_challenge', challenge)
-  url.searchParams.set('code_challenge_method', 'S256')
+  if (challenge) {
+    url.searchParams.set('code_challenge', challenge)
+    url.searchParams.set('code_challenge_method', 'S256')
+  }
   return url.toString()
 }
 
@@ -125,7 +127,7 @@ export const exchangeFeishuOAuthCode = (input: {
   appId: string
   appSecret: string
   code: string
-  codeVerifier: string
+  codeVerifier?: string
   redirectURI: string
   clock?: () => Date
   fetch?: FetchLike
@@ -135,7 +137,7 @@ export const exchangeFeishuOAuthCode = (input: {
       client_id: input.appId,
       client_secret: input.appSecret,
       code: input.code,
-      code_verifier: input.codeVerifier,
+      ...(input.codeVerifier ? { code_verifier: input.codeVerifier } : {}),
       grant_type: 'authorization_code',
       redirect_uri: input.redirectURI,
     },

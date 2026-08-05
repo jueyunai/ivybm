@@ -25,6 +25,7 @@ PAYLOAD_SECRET=operation-test-payload-secret-at-least-32-characters
 NEXT_PUBLIC_SERVER_URL=https://ivybm.com
 TRUST_PROXY_HEADERS=true
 AI_CONFIG_ENCRYPTION_KEY=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+FEISHU_QR_REGISTRATION_ENABLED=false
 `
 
 const runPreflight = (environment: string) => {
@@ -179,4 +180,48 @@ META_WEBHOOK_ALLOWED_ACCOUNT_IDS=1234567890,9876543210
       'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
     )
   })
+  it('requires safe QR registration configuration before enabling the production switch', () => {
+    const enabled = `${productionEnvironment.replace(
+      'FEISHU_QR_REGISTRATION_ENABLED=false',
+      'FEISHU_QR_REGISTRATION_ENABLED=true',
+    )}FEISHU_OAUTH_REDIRECT_URI=https://ivybm.com/api/integrations/feishu/callback
+FEISHU_CREDENTIAL_ENCRYPTION_KEY=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+`
+    const valid = runPreflight(enabled)
+    const missingKey = runPreflight(
+      enabled.replace(
+        'FEISHU_CREDENTIAL_ENCRYPTION_KEY=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n',
+        '',
+      ),
+    )
+    const insecureRedirect = runPreflight(
+      enabled.replace(
+        'https://ivybm.com/api/integrations/feishu/callback',
+        'http://ivybm.com/callback',
+      ),
+    )
+    const wrongCallbackPath = runPreflight(
+      enabled.replace(
+        'https://ivybm.com/api/integrations/feishu/callback',
+        'https://ivybm.com/api/integrations/feishu/other',
+      ),
+    )
+    const invalidSwitch = runPreflight(
+      productionEnvironment.replace(
+        'FEISHU_QR_REGISTRATION_ENABLED=false',
+        'FEISHU_QR_REGISTRATION_ENABLED=yes',
+      ),
+    )
+
+    expect(valid.status).toBe(0)
+    expect(missingKey.status).not.toBe(0)
+    expect(missingKey.stderr).toContain('FEISHU_CREDENTIAL_ENCRYPTION_KEY')
+    expect(insecureRedirect.status).not.toBe(0)
+    expect(insecureRedirect.stderr).toContain('FEISHU_OAUTH_REDIRECT_URI')
+    expect(wrongCallbackPath.status).not.toBe(0)
+    expect(wrongCallbackPath.stderr).toContain('FEISHU_OAUTH_REDIRECT_URI')
+    expect(invalidSwitch.status).not.toBe(0)
+    expect(invalidSwitch.stderr).toContain('FEISHU_QR_REGISTRATION_ENABLED')
+  })
+
 })

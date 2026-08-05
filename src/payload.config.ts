@@ -17,6 +17,7 @@ import { AiUsageRoutes } from './collections/AiUsageRoutes'
 import { Downloads } from './collections/Downloads'
 import { GeneratedContents } from './collections/GeneratedContents'
 import { FeishuConnections } from './collections/FeishuConnections'
+import { FeishuAppRegistrations } from './collections/FeishuAppRegistrations'
 import { FeishuMappings } from './collections/FeishuMappings'
 import { FeishuOAuthStates } from './collections/FeishuOAuthStates'
 import { Conversations } from './collections/Conversations'
@@ -102,6 +103,7 @@ export default buildConfig({
     LeadSources,
     Leads,
     FeishuConnections,
+    FeishuAppRegistrations,
     FeishuMappings,
     FeishuOAuthStates,
     VisitorSessions,

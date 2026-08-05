@@ -62,6 +62,8 @@ export const disconnectFeishuConnection = async ({
       data: {
         accessTokenEncrypted: null,
         accessTokenExpiresAt: null,
+        appId: null,
+        appSecretEncrypted: null,
         lastErrorCode: null,
         refreshTokenEncrypted: null,
         refreshTokenExpiresAt: null,

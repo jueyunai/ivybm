@@ -34,12 +34,25 @@ describe('Feishu OAuth connection', () => {
     )
 
     expect(attempt.stateHash).toBe(hashOAuthState(attempt.state))
-    expect(attempt.expiresAt).toBe('2026-07-30T00:05:00.000Z')
+    expect(attempt.expiresAt).toBe('2026-07-30T00:10:00.000Z')
     expect(attempt.verifier.length).toBeGreaterThanOrEqual(43)
     expect(url.origin).toBe('https://accounts.feishu.cn')
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
     expect(url.searchParams.get('scope')).toBe(FEISHU_OAUTH_SCOPES.join(' '))
     expect(url.searchParams.get('state')).toBe(attempt.state)
+  })
+
+  it('supports confidential server apps without PKCE parameters', () => {
+    const url = new URL(
+      buildFeishuAuthorizeURL({
+        appId: 'cli_confidential_fixture',
+        redirectURI: 'https://ivybm.example.invalid/api/integrations/feishu/callback',
+        state: 'state-fixture',
+      }),
+    )
+
+    expect(url.searchParams.has('code_challenge')).toBe(false)
+    expect(url.searchParams.has('code_challenge_method')).toBe(false)
   })
 
   it('encrypts OAuth credentials with the independent Feishu key', () => {

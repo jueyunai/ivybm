@@ -11,7 +11,16 @@ import {
   POST as feishuDisconnect,
 } from '@/app/api/integrations/feishu/disconnect/route'
 import { GET as feishuStatus } from '@/app/api/integrations/feishu/status/route'
+import { POST as feishuRegistrationStart } from '@/app/api/portal/feishu/registration/route'
+import { GET as feishuRegistrationStatus } from '@/app/api/portal/feishu/registration/[id]/route'
 import {
+  completeFeishuAppRegistration,
+  findOrCreateFeishuAppRegistration,
+  getFeishuAppRegistration,
+  runFeishuAppRegistration,
+} from '@/modules/feishu/appRegistration'
+import {
+  decryptFeishuCredential,
   encryptFeishuCredential,
   readFeishuCredentialEncryptionKey,
 } from '@/modules/feishu/credentials'
@@ -52,6 +61,7 @@ let callbackJobID: number
 const connectionIDs = new Set<number>()
 const jobIDs = new Set<number>()
 const mappingIDs = new Set<number>()
+const registrationIDs = new Set<number>()
 
 const claimed = (job: JobRecord, attempts = 1, maxAttempts = job.maxAttempts): ClaimedJob => ({
   ...job,
@@ -104,6 +114,7 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     process.env.FEISHU_APP_SECRET = 'secret_task11_routes'
     process.env.FEISHU_OAUTH_REDIRECT_URI = 'http://localhost/api/integrations/feishu/callback'
     process.env.FEISHU_CREDENTIAL_ENCRYPTION_KEY = 'a'.repeat(64)
+    process.env.NEXT_PUBLIC_SERVER_URL = 'http://localhost'
     payload = await getPayload({ config, disableOnInit: true, key: 'task11-feishu-routes' })
     const admin = await payload.create({
       collection: 'users',
@@ -161,6 +172,13 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
       overrideAccess: true,
       where: { requestedBy: { equals: adminID } },
     })
+    if (registrationIDs.size > 0)
+      await payload.delete({
+        collection: 'feishu-app-registrations',
+        context,
+        overrideAccess: true,
+        where: { id: { in: [...registrationIDs] } },
+      })
     if (connectionIDs.size > 0)
       await payload.delete({
         collection: 'feishu-connections',
@@ -184,6 +202,328 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     delete process.env.FEISHU_APP_SECRET
     delete process.env.FEISHU_OAUTH_REDIRECT_URI
     delete process.env.FEISHU_CREDENTIAL_ENCRYPTION_KEY
+    delete process.env.FEISHU_QR_REGISTRATION_ENABLED
+    delete process.env.NEXT_PUBLIC_SERVER_URL
+  })
+
+  it('registers a tenant app by QR, stores only encrypted credentials, and completes OAuth once', async () => {
+    process.env.FEISHU_QR_REGISTRATION_ENABLED = 'false'
+    const disabled = await feishuRegistrationStart(
+      new NextRequest('http://localhost/api/portal/feishu/registration', { method: 'POST' }),
+    )
+    expect(disabled.status).toBe(503)
+
+    process.env.FEISHU_QR_REGISTRATION_ENABLED = 'true'
+    const unauthenticated = await feishuRegistrationStart(
+      new NextRequest('http://localhost/api/portal/feishu/registration', { method: 'POST' }),
+    )
+    expect(unauthenticated.status).toBe(401)
+    const forbidden = await feishuRegistrationStart(
+      new NextRequest('http://localhost/api/portal/feishu/registration', {
+        headers: { authorization: operatorAuthorization, origin: 'http://localhost' },
+        method: 'POST',
+      }),
+    )
+    expect(forbidden.status).toBe(403)
+    const missingOrigin = await feishuRegistrationStart(
+      new NextRequest('http://localhost/api/portal/feishu/registration', {
+        headers: { authorization },
+        method: 'POST',
+      }),
+    )
+    expect(missingOrigin.status).toBe(403)
+
+    const admin = await payload.findByID({
+      collection: 'users',
+      id: adminID,
+      overrideAccess: true,
+    })
+    const started = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    registrationIDs.add(started.registration.id)
+    const registerPort = vi.fn(
+      async (options: { onQRCodeReady: (info: { expireIn: number; url: string }) => void }) => {
+        options.onQRCodeReady({ expireIn: 600, url: 'https://open.feishu.cn/qr/fixture' })
+        return { client_id: 'cli_qr_registered', client_secret: 'qr-app-secret-fixture' }
+      },
+    )
+    const configureFetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response({ code: 0, tenant_access_token: 'tenant-config-token' }))
+      .mockResolvedValueOnce(response({ code: 0 }))
+
+    await runFeishuAppRegistration({
+      fetch: configureFetch,
+      payload,
+      register: registerPort as never,
+      registrationId: started.registration.id,
+    })
+    expect(registerPort).toHaveBeenCalledTimes(1)
+    const registered = await payload.findByID({
+      collection: 'feishu-app-registrations',
+      depth: 0,
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+    expect(registered).toMatchObject({
+      appId: 'cli_qr_registered',
+      qrUrl: null,
+      status: 'authorization_ready',
+    })
+    expect(registered.appSecretEncrypted).not.toContain('qr-app-secret-fixture')
+    expect(
+      decryptFeishuCredential(registered.appSecretEncrypted!, readFeishuCredentialEncryptionKey()),
+    ).toBe('qr-app-secret-fixture')
+
+    const refreshedAuthorization = await getFeishuAppRegistration({
+      clock: () => new Date(Date.now() + 10 * 60 * 1_000),
+      payload,
+      registrationId: started.registration.id,
+      user: admin,
+    })
+    expect(refreshedAuthorization).toMatchObject({ status: 'authorization_ready' })
+    expect(refreshedAuthorization?.authorizeURL).not.toBe(registered.authorizeUrl)
+    const reusedExpiredAuthorization = await findOrCreateFeishuAppRegistration({
+      clock: () => new Date(Date.now() + 20 * 60 * 1_000),
+      payload,
+      user: admin,
+    })
+    expect(reusedExpiredAuthorization).toMatchObject({
+      created: false,
+      registration: { id: started.registration.id, status: 'authorization_ready' },
+    })
+    expect(reusedExpiredAuthorization.registration.authorizeUrl).not.toBe(
+      refreshedAuthorization?.authorizeURL,
+    )
+
+    const registrationStatus = await feishuRegistrationStatus(
+      new NextRequest(
+        `http://localhost/api/portal/feishu/registration/${started.registration.id}`,
+        { headers: { authorization } },
+      ),
+      { params: Promise.resolve({ id: String(started.registration.id) }) },
+    )
+    expect(registrationStatus.status).toBe(200)
+    const registrationBody = (await registrationStatus.json()) as {
+      registration: { authorizeURL: string }
+    }
+    const state = new URL(registrationBody.registration.authorizeURL).searchParams.get('state')
+    expect(state).toBeTruthy()
+
+    const deniedCallback = await feishuCallback(
+      new NextRequest(
+        `http://localhost/api/integrations/feishu/callback?state=${state}&error=access_denied`,
+      ),
+    )
+    expect(deniedCallback.headers.get('location')).toContain('feishu=denied')
+    const deniedRegistration = await payload.findByID({
+      collection: 'feishu-app-registrations',
+      depth: 0,
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+    const deniedRetryState = new URL(deniedRegistration.authorizeUrl!).searchParams.get('state')
+    expect(deniedRetryState).toBeTruthy()
+    expect(deniedRetryState).not.toBe(state)
+
+    const transientFailureFetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(response({ code: 99991400, msg: 'temporary provider failure' }, 503))
+    vi.stubGlobal('fetch', transientFailureFetch)
+    const failedCallback = await feishuCallback(
+      new NextRequest(
+        `http://localhost/api/integrations/feishu/callback?state=${deniedRetryState}&code=temporary-code`,
+      ),
+    )
+    expect(failedCallback.headers.get('location')).toContain('feishu=failed')
+    const retryRegistration = await payload.findByID({
+      collection: 'feishu-app-registrations',
+      depth: 0,
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+    expect(retryRegistration).toMatchObject({
+      lastErrorCode: 'oauth_provider_99991400',
+      status: 'authorization_ready',
+    })
+    const retryState = new URL(retryRegistration.authorizeUrl!).searchParams.get('state')
+    expect(retryState).toBeTruthy()
+    expect(retryState).not.toBe(deniedRetryState)
+
+    const qrTenantKey = `task11-qr-tenant-${suffix}`
+    const oauthFetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        response({
+          access_token: 'task11-qr-access',
+          code: 0,
+          expires_in: 7200,
+          refresh_token: 'task11-qr-refresh',
+          refresh_token_expires_in: 604800,
+          scope: 'auth:user.id:read bitable:app offline_access',
+        }),
+      )
+      .mockResolvedValueOnce(
+        response({
+          code: 0,
+          data: { name: 'QR Admin', open_id: `open-qr-${suffix}`, tenant_key: qrTenantKey },
+        }),
+      )
+    vi.stubGlobal('fetch', oauthFetch)
+    const callback = await feishuCallback(
+      new NextRequest(
+        `http://localhost/api/integrations/feishu/callback?state=${retryState}&code=qr-code-fixture`,
+      ),
+    )
+    expect(callback.status).toBe(302)
+    expect(callback.headers.get('location')).toContain('feishu=provisioning')
+
+    const connections = await payload.find({
+      collection: 'feishu-connections',
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      where: { tenantKey: { equals: qrTenantKey } },
+    })
+    const connection = connections.docs[0]
+    if (!connection) throw new Error('Expected QR connection')
+    connectionIDs.add(connection.id)
+    expect(connection).toMatchObject({ appId: 'cli_qr_registered', authMode: 'qr_registered' })
+    expect(
+      decryptFeishuCredential(connection.appSecretEncrypted!, readFeishuCredentialEncryptionKey()),
+    ).toBe('qr-app-secret-fixture')
+    const completed = await payload.findByID({
+      collection: 'feishu-app-registrations',
+      depth: 0,
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+    expect(completed).toMatchObject({ appSecretEncrypted: null, status: 'completed' })
+
+    const jobs = await payload.find({
+      collection: 'jobs',
+      depth: 0,
+      limit: 2,
+      overrideAccess: true,
+      where: { 'payload.connectionId': { equals: connection.id } },
+    })
+    expect(jobs.totalDocs).toBe(1)
+    const qrJobID = jobs.docs[0]!.id
+    await payload.delete({ collection: 'jobs', context, id: qrJobID, overrideAccess: true })
+    await payload.delete({
+      collection: 'feishu-connections',
+      context,
+      id: connection.id,
+      overrideAccess: true,
+    })
+    connectionIDs.delete(connection.id)
+  })
+
+  it('deduplicates concurrent registration starts and persists provider expiry safely', async () => {
+    const admin = await payload.findByID({
+      collection: 'users',
+      id: adminID,
+      overrideAccess: true,
+    })
+    const [first, second] = await Promise.all([
+      findOrCreateFeishuAppRegistration({ payload, user: admin }),
+      findOrCreateFeishuAppRegistration({ payload, user: admin }),
+    ])
+    expect(first.registration.id).toBe(second.registration.id)
+    expect([first.created, second.created].filter(Boolean)).toHaveLength(1)
+    registrationIDs.add(first.registration.id)
+
+    const registerPort = vi.fn(async () => {
+      throw Object.assign(new Error('provider detail must not be persisted'), {
+        code: 'expired_token',
+      })
+    })
+    await Promise.all([
+      runFeishuAppRegistration({
+        payload,
+        register: registerPort as never,
+        registrationId: first.registration.id,
+      }),
+      runFeishuAppRegistration({
+        payload,
+        register: registerPort as never,
+        registrationId: first.registration.id,
+      }),
+    ])
+    expect(registerPort).toHaveBeenCalledTimes(1)
+    await expect(
+      payload.findByID({
+        collection: 'feishu-app-registrations',
+        depth: 0,
+        id: first.registration.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      appSecretEncrypted: null,
+      lastErrorCode: 'registration_expired',
+      status: 'expired',
+    })
+
+    const retry = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    registrationIDs.add(retry.registration.id)
+    const failedConfigurationRegister = vi.fn(async () => ({
+      client_id: 'cli_failed_configuration',
+      client_secret: 'must-be-preserved-after-failure',
+    }))
+    await runFeishuAppRegistration({
+      fetch: vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(response({ code: 99991400, msg: 'temporary failure' }, 503)),
+      payload,
+      register: failedConfigurationRegister as never,
+      registrationId: retry.registration.id,
+    })
+    const failedConfiguration = await payload.findByID({
+      collection: 'feishu-app-registrations',
+      depth: 0,
+      id: retry.registration.id,
+      overrideAccess: true,
+    })
+    expect(failedConfiguration).toMatchObject({
+      appId: 'cli_failed_configuration',
+      lastErrorCode: 'provider_99991400',
+      status: 'failed',
+    })
+    expect(
+      decryptFeishuCredential(
+        failedConfiguration.appSecretEncrypted!,
+        readFeishuCredentialEncryptionKey(),
+      ),
+    ).toBe('must-be-preserved-after-failure')
+
+    const resumed = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    expect(resumed).toMatchObject({
+      created: false,
+      registration: { id: retry.registration.id, status: 'failed' },
+    })
+    const unexpectedSecondRegistration = vi.fn()
+    await runFeishuAppRegistration({
+      fetch: vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(response({ code: 0, tenant_access_token: 'tenant-retry-token' }))
+        .mockResolvedValueOnce(response({ code: 0 })),
+      payload,
+      register: unexpectedSecondRegistration as never,
+      registrationId: resumed.registration.id,
+    })
+    expect(unexpectedSecondRegistration).not.toHaveBeenCalled()
+    await expect(
+      payload.findByID({
+        collection: 'feishu-app-registrations',
+        depth: 0,
+        id: resumed.registration.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      appId: 'cli_failed_configuration',
+      lastErrorCode: null,
+      status: 'authorization_ready',
+    })
+    await completeFeishuAppRegistration(payload, resumed.registration.id)
   })
 
   it('enforces admin auth and persists OAuth as one asynchronous provisioning job', async () => {
@@ -255,9 +595,15 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
       new NextRequest(
         `http://localhost/api/integrations/feishu/callback?state=${oauthState}&code=single-use-code`,
       )
-    const callback = await feishuCallback(callbackRequest())
-    expect(callback.status).toBe(302)
-    expect(callback.headers.get('location')).toContain('result=provisioning')
+    const callbackResults = await Promise.all([
+      feishuCallback(callbackRequest()),
+      feishuCallback(callbackRequest()),
+    ])
+    expect(callbackResults.map((result) => result.status)).toEqual([302, 302])
+    expect(callbackResults.map((result) => result.headers.get('location')).sort()).toEqual([
+      expect.stringContaining('feishu=invalid_state'),
+      expect.stringContaining('feishu=provisioning'),
+    ])
     expect(fetch).toHaveBeenCalledTimes(2)
     expect(fetch.mock.calls.map(([url]) => String(url))).not.toContain(
       'https://open.feishu.cn/open-apis/bitable/v1/apps',
@@ -302,8 +648,32 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
       duplicate: 1,
     })
 
-    const replay = await feishuCallback(callbackRequest())
-    expect(replay.headers.get('location')).toContain('result=failed')
+    await payload.delete({
+      collection: 'jobs',
+      id: callbackJobID,
+      overrideAccess: true,
+    })
+    jobIDs.delete(callbackJobID)
+    await expect(enqueuePendingFeishuConnectionProvisionJobs({ payload })).resolves.toEqual({
+      created: 1,
+      duplicate: 0,
+    })
+    const recoveredJobs = await payload.find({
+      collection: 'jobs',
+      depth: 0,
+      limit: 2,
+      overrideAccess: true,
+      where: {
+        and: [
+          { type: { equals: FEISHU_CONNECTION_PROVISION_JOB_TYPE } },
+          { 'payload.connectionId': { equals: callbackConnectionID } },
+        ],
+      },
+    })
+    expect(recoveredJobs.totalDocs).toBe(1)
+    callbackJobID = recoveredJobs.docs[0]!.id
+    jobIDs.add(callbackJobID)
+
     expect(fetch).toHaveBeenCalledTimes(2)
 
     const unauthenticatedStatus = await feishuStatus(
@@ -468,6 +838,8 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     })
     expect(disconnectedConnection).toMatchObject({
       accessTokenEncrypted: null,
+      appId: null,
+      appSecretEncrypted: null,
       refreshTokenEncrypted: null,
       status: 'disconnected',
     })

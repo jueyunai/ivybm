@@ -10,6 +10,7 @@ import type { PortalRole } from '@/admin-portal/core/modules/types'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
 
+import { FeishuRegistrationPanel } from './FeishuRegistrationPanel'
 import type { LeadSummaryItem, LeadsSummary } from './getLeadsPage'
 
 type EditorMode = 'create' | 'edit'
@@ -51,7 +52,7 @@ export const getLeadMutationPayload = (
 
 const formatDate = (value: string, locale: 'en' | 'zh') => new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value))
 
-export function LeadsHub({ pageState, role, summary }: { pageState: PageState; role: PortalRole; summary: LeadsSummary | null }) {
+export function LeadsHub({ feishuRegistrationEnabled = false, pageState, role, summary }: { feishuRegistrationEnabled?: boolean; pageState: PageState; role: PortalRole; summary: LeadsSummary | null }) {
   const router = useRouter()
   const { locale } = usePortalPreferences()
   const text = copy[locale]
@@ -85,6 +86,7 @@ export function LeadsHub({ pageState, role, summary }: { pageState: PageState; r
 
   return <main className="portal-page portal-leads">
     <header className="portal-page__intro portal-leads__intro"><div><p className="portal-page__eyebrow">WORKSPACE / LEADS</p><h2>{text.title}</h2><p>{text.description}</p></div>{role === 'admin' ? <Button onClick={() => { setEditor('create'); setFeedback(null) }}><IconPlus aria-hidden="true" size={16} />{text.add}</Button> : null}</header>
+    {role === 'admin' ? <FeishuRegistrationPanel enabled={feishuRegistrationEnabled} /> : null}
     {feedback ? <p className="portal-leads__feedback" role="status">{feedback}</p> : null}
     {editor ? <Surface as="section" className="portal-leads__editor"><LeadEditor key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`} mode={editor} onClose={() => setEditor(null)} onDone={(message, mutation) => { setEditor(null); setFeedback(message); if (mutation.deleted) { setItems((current) => current.filter((item) => String(item.id) !== String(mutation.id))); setSelectedID(null) } else if (mutation.values) { setItems((current) => current.map((item) => String(item.id) === String(mutation.id) ? { ...item, ...mutation.values, updatedAt: mutation.updatedAt ?? item.updatedAt } : item)) } else { setSelectedID(mutation.id) }; router.refresh() }} options={summary.options} role={role} selected={editor === 'edit' ? selected : null} text={text} /></Surface> : null}
     <Surface as="section" className="portal-leads__filters"><form action="/dashboard/leads" method="get"><label><span>{text.filter}</span><span className="portal-field__control"><IconSearch aria-hidden="true" size={16} /><input defaultValue={summary.query.q} name="q" placeholder={`${text.name} / ${text.company} / ${text.email}`} type="search" /></span></label><label><span>{text.status}</span><select name="status" value={summary.query.status} onChange={(event) => updateFilters('status', event.target.value)}><option value="all">{text.allStatus}</option>{Object.entries(text.state).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label><span>{text.intent}</span><select name="intent" value={summary.query.intent} onChange={(event) => updateFilters('intent', event.target.value)}><option value="all">{text.allIntent}</option>{Object.entries(text.intentState).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><Button type="submit"><IconSearch aria-hidden="true" size={16} />{text.filter}</Button></form><span>{summary.pagination.totalDocs} {text.total}</span></Surface>
