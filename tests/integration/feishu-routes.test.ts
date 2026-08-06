@@ -896,6 +896,28 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     const started = await findOrCreateFeishuAppRegistration({ payload, user: admin })
     registrationIDs.add(started.registration.id)
 
+    // Keep this race test independent from the active registration left by earlier
+    // sequential cases. `findOrCreate...` intentionally reuses a live qr_ready row;
+    // without resetting it here runFeishuAppRegistration has nothing to claim and
+    // the test waits forever for registerStarted (the observed 30s timeout).
+    await payload.update({
+      collection: 'feishu-app-registrations',
+      context,
+      data: {
+        appId: null,
+        appSecretEncrypted: null,
+        authorizeExpiresAt: null,
+        authorizeUrl: null,
+        configuringStartedAt: null,
+        lastErrorCode: null,
+        qrExpiresAt: null,
+        qrUrl: null,
+        status: 'pending',
+      },
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+
     let markRegisterStarted!: () => void
     let releaseRegister!: (result: { client_id: string; client_secret: string }) => void
     const registerResult = new Promise<{ client_id: string; client_secret: string }>((resolve) => {
