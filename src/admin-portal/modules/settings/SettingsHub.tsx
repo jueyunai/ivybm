@@ -9,8 +9,12 @@ import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/u
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 
 import type { PortalSettingsSummary } from './getPortalSettingsSummary'
+import type { PortalAiSettingsSummary } from './getPortalAiSettings'
+import { AiSettingsPanel } from './AiSettingsPanel'
 
 export interface SettingsHubProps {
+  aiReadError?: boolean
+  aiSettings: PortalAiSettingsSummary
   modules: readonly ResolvedPortalModule[]
   pageState?: 'available' | 'module-disabled' | 'portal-disabled'
   readError?: boolean
@@ -37,7 +41,7 @@ const statusTone = (
   return 'neutral'
 }
 
-export function SettingsHub({ modules, pageState = 'available', readError = false, summary, user }: SettingsHubProps) {
+export function SettingsHub({ aiReadError = false, aiSettings, modules, pageState = 'available', readError = false, summary, user }: SettingsHubProps) {
   const { locale, reducedMotion, setLocale, setReducedMotion, setTheme, theme } =
     usePortalPreferences()
   const messages = getPortalMessages(locale)
@@ -151,6 +155,27 @@ export function SettingsHub({ modules, pageState = 'available', readError = fals
             </span>
           </label>
         </Surface>
+
+        {user.role === 'admin' && aiReadError ? (
+          <Surface
+            as="section"
+            className="portal-settings__section portal-settings__section--wide portal-ai-settings"
+          >
+            <header className="portal-ai-settings__header">
+              <div>
+                <h3>{messages.settings.ai.title}</h3>
+                <p>{messages.settings.ai.readiness}</p>
+              </div>
+            </header>
+            <PortalState
+              description={messages.states.error}
+              title={messages.states.error}
+              type="error"
+            />
+          </Surface>
+        ) : user.role === 'admin' && aiSettings.access === 'admin' ? (
+          <AiSettingsPanel initialSummary={aiSettings} />
+        ) : null}
 
         <Surface as="section" className="portal-settings__section portal-settings__section--wide">
           <div className="portal-settings__section-heading">

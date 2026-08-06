@@ -14,6 +14,7 @@ const devPort = process.env.PORT || '3001'
 const defaultBaseURL = `http://localhost:${isCI ? e2ePort : devPort}`
 const baseURL = process.env.BASE_URL || defaultBaseURL
 const usesExternalServer = Boolean(process.env.BASE_URL)
+const e2eEncryptionKey = process.env.AI_CONFIG_ENCRYPTION_KEY || 'e'.repeat(64)
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -48,12 +49,10 @@ export default defineConfig({
     ? undefined
     : {
         command: isCI ? 'pnpm e2e:server' : 'pnpm dev',
-        env: isCI
-          ? {
-              HOSTNAME: '127.0.0.1',
-              PORT: e2ePort,
-            }
-          : undefined,
+        env: {
+          AI_CONFIG_ENCRYPTION_KEY: e2eEncryptionKey,
+          ...(isCI ? { HOSTNAME: '127.0.0.1', PORT: e2ePort } : {}),
+        },
         reuseExistingServer: !isCI,
         timeout: 120_000,
         url: isCI ? `${baseURL}/api/health/ready` : baseURL,

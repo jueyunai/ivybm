@@ -1,5 +1,6 @@
 import { ValidationError, type CollectionBeforeChangeHook, type CollectionConfig } from 'payload'
 
+import { aiCredentialRead } from '../access/aiCredentials'
 import { admins } from '../access/roles'
 import {
   decryptAiCredential,
@@ -135,7 +136,7 @@ export const AiProviders: CollectionConfig = {
       name: 'apiKey',
       type: 'text',
       access: {
-        read: () => false,
+        read: aiCredentialRead,
       },
       admin: {
         description:
