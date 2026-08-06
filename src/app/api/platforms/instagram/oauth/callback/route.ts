@@ -11,6 +11,10 @@ import {
   verifyInstagramOAuthTransaction,
   type InstagramOAuthTransaction,
 } from '@/modules/platforms/instagram/oauth'
+import {
+  PlatformOAuthAccountChangedError,
+  withLockedPlatformOAuthAccount,
+} from '@/modules/platforms/accountOAuthConcurrency'
 import config from '@/payload.config'
 import type { PlatformAccount, User } from '@/payload-types'
 
@@ -46,6 +50,7 @@ const resultRedirect = ({
 }
 
 const callbackErrorCode = (error: unknown): string => {
+  if (error instanceof PlatformOAuthAccountChangedError) return 'account_changed'
   if (!(error instanceof InstagramOAuthError)) return 'unavailable'
   switch (error.code) {
     case 'state_mismatch':
@@ -132,7 +137,10 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
     if (
       account.accountKind !== transaction.accountKind ||
-      !account.externalAccountId?.trim() ||
+      account.externalAccountId?.trim() !== transaction.externalAccountId ||
+      new Date(account.updatedAt).toISOString() !== transaction.authorizationRevision ||
+      account.authorization.state === 'blocked' ||
+      account.authorization.state === 'disabled' ||
       account.platformFamily !== 'meta'
     ) {
       return resultRedirect({
@@ -142,6 +150,8 @@ export async function GET(request: NextRequest): Promise<Response> {
         secure: secureCookie,
       })
     }
+    const callbackPayload = payload
+    const callbackTransaction = transaction
 
     if (request.nextUrl.searchParams.has('error')) {
       return resultRedirect({
@@ -156,29 +166,36 @@ export async function GET(request: NextRequest): Promise<Response> {
 
     const userToken = await exchangeInstagramAuthorizationCode({ code, config: oauth })
     const authorizedAccount = await resolveInstagramAuthorizedAccount({
-      externalAccountId: account.externalAccountId,
+      externalAccountId: transaction.externalAccountId,
       userAccessToken: userToken.accessToken,
     })
-    await payload.update({
-      collection: 'platform-accounts',
-      data: {
-        authorization: {
-          accessToken: authorizedAccount.accessToken,
-          appId: oauth.appId,
-          clearAccessToken: false,
-          clearRefreshToken: true,
-          expiresAt: userToken.expiresAt,
-          scopes: authorizedAccount.scopes.map((scope) => ({ scope })),
-          state: 'connected',
-        },
-      },
-      id: Number(transaction.accountId),
-      overrideAccess: false,
+    await withLockedPlatformOAuthAccount({
+      operation: (req) =>
+        callbackPayload.update({
+          collection: 'platform-accounts',
+          data: {
+            authorization: {
+              accessToken: authorizedAccount.accessToken,
+              appId: oauth.appId,
+              clearAccessToken: false,
+              clearRefreshToken: true,
+              expiresAt: userToken.expiresAt,
+              scopes: authorizedAccount.scopes.map((scope) => ({ scope })),
+              state: 'connected',
+            },
+          },
+          id: Number(callbackTransaction.accountId),
+          overrideAccess: false,
+          req,
+          user: actor,
+        }),
+      payload: callbackPayload,
+      snapshot: callbackTransaction,
       user: actor,
     })
 
     return resultRedirect({
-      accountId: transaction.accountId,
+      accountId: callbackTransaction.accountId,
       origin: redirectOrigin,
       result: 'connected',
       secure: secureCookie,

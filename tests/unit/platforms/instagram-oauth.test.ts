@@ -58,7 +58,9 @@ describe('Instagram OAuth', () => {
     const issued = createInstagramOAuthTransaction({
       accountId: 42,
       accountKind: 'instagram-professional',
+      authorizationRevision: '2026-07-31T00:00:00.000Z',
       environment,
+      externalAccountId: '987654321098765',
       nowMilliseconds: 1_000,
     })
 
@@ -74,6 +76,8 @@ describe('Instagram OAuth', () => {
     ).toMatchObject({
       accountId: '42',
       accountKind: 'instagram-professional',
+      authorizationRevision: '2026-07-31T00:00:00.000Z',
+      externalAccountId: '987654321098765',
       state: issued.state,
     })
 
@@ -151,8 +155,23 @@ describe('Instagram OAuth', () => {
   })
 
   it('binds the Instagram professional account by user id and username', async () => {
+    const grantedScopes = [
+      ...requiredInstagramPermissions('instagram-professional'),
+      'instagram_business_content_publish',
+    ]
     const fetcher = vi
       .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: grantedScopes.map((permission) => ({
+              permission,
+              status: 'granted',
+            })),
+          }),
+          { status: 200 },
+        ),
+      )
       .mockResolvedValue(
         new Response(
           JSON.stringify({
@@ -174,24 +193,54 @@ describe('Instagram OAuth', () => {
       accessToken: 'long-user-token',
       accountId: '987654321098765',
       displayName: '@ivymetalglass',
-      scopes: requiredInstagramPermissions('instagram-professional'),
+      scopes: grantedScopes,
     })
   })
 
   it('fails closed on personal accounts, identity mismatch, and provider errors', async () => {
+    const missingPermissionFetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [{ permission: 'instagram_business_basic', status: 'granted' }],
+        }),
+        { status: 200 },
+      ),
+    )
     await expect(
       resolveInstagramAuthorizedAccount({
         externalAccountId: '987654321098765',
-        fetcher: vi.fn<typeof fetch>().mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              account_type: 'PERSONAL',
-              id: '987654321098765',
-              username: 'ivymetalglass',
-            }),
-            { status: 200 },
+        fetcher: missingPermissionFetcher,
+        userAccessToken: 'long-user-token',
+      }),
+    ).rejects.toMatchObject({ code: 'required_permission_missing' })
+    expect(missingPermissionFetcher).toHaveBeenCalledTimes(1)
+
+    await expect(
+      resolveInstagramAuthorizedAccount({
+        externalAccountId: '987654321098765',
+        fetcher: vi
+          .fn<typeof fetch>()
+          .mockResolvedValueOnce(
+            new Response(
+              JSON.stringify({
+                data: requiredInstagramPermissions('instagram-professional').map((permission) => ({
+                  permission,
+                  status: 'granted',
+                })),
+              }),
+              { status: 200 },
+            ),
+          )
+          .mockResolvedValueOnce(
+            new Response(
+              JSON.stringify({
+                account_type: 'PERSONAL',
+                id: '987654321098765',
+                username: 'ivymetalglass',
+              }),
+              { status: 200 },
+            ),
           ),
-        ),
         userAccessToken: 'long-user-token',
       }),
     ).rejects.toMatchObject({ code: 'required_permission_missing' })
@@ -199,16 +248,29 @@ describe('Instagram OAuth', () => {
     await expect(
       resolveInstagramAuthorizedAccount({
         externalAccountId: '987654321098765',
-        fetcher: vi.fn<typeof fetch>().mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              account_type: 'BUSINESS',
-              id: '111111111111111',
-              username: 'other',
-            }),
-            { status: 200 },
+        fetcher: vi
+          .fn<typeof fetch>()
+          .mockResolvedValueOnce(
+            new Response(
+              JSON.stringify({
+                data: requiredInstagramPermissions('instagram-professional').map((permission) => ({
+                  permission,
+                  status: 'granted',
+                })),
+              }),
+              { status: 200 },
+            ),
+          )
+          .mockResolvedValueOnce(
+            new Response(
+              JSON.stringify({
+                account_type: 'BUSINESS',
+                id: '111111111111111',
+                username: 'other',
+              }),
+              { status: 200 },
+            ),
           ),
-        ),
         userAccessToken: 'long-user-token',
       }),
     ).rejects.toMatchObject({ code: 'identity_mismatch' })
@@ -218,7 +280,9 @@ describe('Instagram OAuth', () => {
       exchangeInstagramAuthorizationCode({
         code: 'authorization-code',
         config: readInstagramOAuthConfiguration(environment),
-        fetcher: vi.fn<typeof fetch>().mockResolvedValue(new Response(secretBearingBody, { status: 401 })),
+        fetcher: vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(new Response(secretBearingBody, { status: 401 })),
       }),
     ).rejects.toMatchObject({
       code: 'token_exchange_failed',

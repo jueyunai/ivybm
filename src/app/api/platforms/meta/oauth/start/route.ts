@@ -73,6 +73,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     const transaction = createMetaOAuthTransaction({
       accountId: account.id,
       accountKind: account.accountKind,
+      authorizationRevision: account.updatedAt,
+      externalAccountId: account.externalAccountId,
     })
     const response = NextResponse.redirect(
       buildMetaAuthorizationURL({ config: oauth, state: transaction.state }),

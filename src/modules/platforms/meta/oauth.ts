@@ -68,7 +68,9 @@ export type MetaOAuthConfiguration = {
 export type MetaOAuthTransaction = {
   accountId: string
   accountKind: MetaAccountKind
+  authorizationRevision: string
   expiresAtMilliseconds: number
+  externalAccountId: string
   state: string
 }
 
@@ -158,8 +160,7 @@ export const requiredMetaPermissions = (_accountKind: MetaAccountKind): string[]
   ...FACEBOOK_PAGE_PERMISSIONS,
 ]
 
-const isMetaAccountKind = (value: unknown): value is MetaAccountKind =>
-  value === 'facebook-page'
+const isMetaAccountKind = (value: unknown): value is MetaAccountKind => value === 'facebook-page'
 
 const normalizedAccountId = (value: number | string): string => {
   const normalized = String(value).trim()
@@ -174,24 +175,41 @@ const normalizedAccountId = (value: number | string): string => {
   return normalized
 }
 
+const normalizedAuthorizationRevision = (value: string | undefined): string => {
+  if (!value) throw new MetaOAuthError('invalid_transaction')
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) throw new MetaOAuthError('invalid_transaction')
+  return new Date(timestamp).toISOString()
+}
+
 export const createMetaOAuthTransaction = ({
   accountId,
   accountKind,
+  authorizationRevision,
   environment = process.env,
+  externalAccountId,
   nowMilliseconds = Date.now(),
 }: {
   accountId: number | string
   accountKind: MetaAccountKind
+  authorizationRevision: string
   environment?: Environment
+  externalAccountId: string
   nowMilliseconds?: number
 }): { cookieValue: string; state: string } => {
   const state = randomBytes(32).toString('base64url')
+  const normalizedExternalAccountId = externalAccountId.trim()
   const transaction = {
     accountId: normalizedAccountId(accountId),
     accountKind,
+    authorizationRevision: normalizedAuthorizationRevision(authorizationRevision),
     expiresAtMilliseconds: nowMilliseconds + META_OAUTH_TRANSACTION_TTL_SECONDS * 1_000,
+    externalAccountId: normalizedExternalAccountId,
     state,
     version: OAUTH_TRANSACTION_VERSION,
+  }
+  if (!META_ID_PATTERN.test(normalizedExternalAccountId)) {
+    throw new MetaOAuthError('invalid_transaction')
   }
 
   try {
@@ -228,10 +246,7 @@ export const verifyMetaOAuthTransaction = ({
   let candidate: unknown
   try {
     candidate = JSON.parse(
-      decryptPlatformCredential(
-        cookieValue,
-        readPlatformCredentialEncryptionKey(environment),
-      ),
+      decryptPlatformCredential(cookieValue, readPlatformCredentialEncryptionKey(environment)),
     ) as unknown
   } catch {
     throw new MetaOAuthError('invalid_transaction')
@@ -250,9 +265,13 @@ export const verifyMetaOAuthTransaction = ({
     !Number.isSafeInteger(numericAccountId) ||
     String(numericAccountId) !== transaction.accountId ||
     !isMetaAccountKind(transaction.accountKind) ||
+    typeof transaction.authorizationRevision !== 'string' ||
+    !Number.isFinite(Date.parse(transaction.authorizationRevision)) ||
     typeof transaction.expiresAtMilliseconds !== 'number' ||
     !Number.isSafeInteger(transaction.expiresAtMilliseconds) ||
     transaction.expiresAtMilliseconds <= nowMilliseconds ||
+    typeof transaction.externalAccountId !== 'string' ||
+    !META_ID_PATTERN.test(transaction.externalAccountId) ||
     typeof transaction.state !== 'string'
   ) {
     throw new MetaOAuthError('invalid_transaction')
@@ -264,7 +283,9 @@ export const verifyMetaOAuthTransaction = ({
   return {
     accountId: transaction.accountId,
     accountKind: transaction.accountKind,
+    authorizationRevision: new Date(Date.parse(transaction.authorizationRevision)).toISOString(),
     expiresAtMilliseconds: transaction.expiresAtMilliseconds,
+    externalAccountId: transaction.externalAccountId,
     state: transaction.state,
   }
 }
@@ -516,8 +537,7 @@ export const resolveMetaAuthorizedAccount = async ({
   if (!page) throw new MetaOAuthError('identity_mismatch')
 
   const pageId = typeof page.id === 'string' ? page.id.trim() : ''
-  const pageAccessToken =
-    typeof page.access_token === 'string' ? page.access_token.trim() : ''
+  const pageAccessToken = typeof page.access_token === 'string' ? page.access_token.trim() : ''
   if (
     !META_ID_PATTERN.test(pageId) ||
     !pageAccessToken ||

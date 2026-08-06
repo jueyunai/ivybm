@@ -7,9 +7,21 @@ import {
   requiredMetaPermissions,
 } from '@/modules/platforms/meta/oauth'
 
-const mocks = vi.hoisted(() => ({ getPayload: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  commitTransaction: vi.fn(),
+  createLocalReq: vi.fn(),
+  getPayload: vi.fn(),
+  initTransaction: vi.fn(),
+  killTransaction: vi.fn(),
+}))
 
-vi.mock('payload', () => ({ getPayload: mocks.getPayload }))
+vi.mock('payload', () => ({
+  commitTransaction: mocks.commitTransaction,
+  createLocalReq: mocks.createLocalReq,
+  getPayload: mocks.getPayload,
+  initTransaction: mocks.initTransaction,
+  killTransaction: mocks.killTransaction,
+}))
 vi.mock('@/payload.config', () => ({ default: {} }))
 
 import { GET as metaOAuthCallback } from '@/app/api/platforms/meta/oauth/callback/route'
@@ -58,12 +70,34 @@ const createPayload = ({
 }: {
   authenticatedUser?: null | typeof admin
   foundAccount?: TestAccount
-} = {}) => ({
-  auth: vi.fn().mockResolvedValue({ user: authenticatedUser }),
-  findByID: vi.fn().mockResolvedValue(foundAccount),
-  logger: { error: vi.fn() },
-  update: vi.fn().mockResolvedValue(foundAccount),
-})
+} = {}) => {
+  const oauthRow: {
+    account_kind: string
+    authorization_state: string
+    external_account_id: null | string
+    updated_at: string
+  } = {
+    account_kind: foundAccount.accountKind,
+    authorization_state: foundAccount.authorization.state,
+    external_account_id: foundAccount.externalAccountId,
+    updated_at: foundAccount.updatedAt,
+  }
+  return {
+    auth: vi.fn().mockResolvedValue({ user: authenticatedUser }),
+    findByID: vi.fn().mockResolvedValue(foundAccount),
+    logger: { error: vi.fn() },
+    db: {
+      drizzle: {
+        execute: vi.fn().mockResolvedValue({
+          rows: [oauthRow],
+        }),
+      },
+      sessions: {},
+    },
+    __oauthRow: oauthRow,
+    update: vi.fn().mockResolvedValue(foundAccount),
+  }
+}
 
 const startRequest = (): NextRequest =>
   new NextRequest('http://localhost:3000/api/platforms/meta/oauth/start?accountId=42')
@@ -76,7 +110,11 @@ const cookieHeader = (response: Response): string => {
 
 describe('Meta OAuth routes', () => {
   beforeEach(() => {
-    mocks.getPayload.mockReset()
+    for (const mock of Object.values(mocks)) mock.mockReset()
+    mocks.createLocalReq.mockResolvedValue({ transactionID: undefined })
+    mocks.commitTransaction.mockResolvedValue(undefined)
+    mocks.initTransaction.mockResolvedValue(undefined)
+    mocks.killTransaction.mockResolvedValue(undefined)
     process.env.META_APP_ID = '1111111111111111'
     process.env.META_LOGIN_CONFIG_ID = '2222222222222222'
     process.env.META_OAUTH_REDIRECT_URI = `http://localhost:3000${META_OAUTH_CALLBACK_PATH}`
@@ -159,10 +197,9 @@ describe('Meta OAuth routes', () => {
         }),
       )
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ access_token: 'long-user-token', expires_in: 5_184_000 }),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: 5_184_000 }), {
+          status: 200,
+        }),
       )
       .mockResolvedValueOnce(
         new Response(
@@ -218,8 +255,158 @@ describe('Meta OAuth routes', () => {
       },
       id: 42,
       overrideAccess: false,
+      req: expect.any(Object),
       user: admin,
     })
+  })
+
+  it('does not persist a late callback after the account is disconnected', async () => {
+    const payload = createPayload()
+    mocks.getPayload.mockResolvedValue(payload)
+    const startResponse = await metaOAuthStart(startRequest())
+    const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
+    let resolvePermissions!: (response: Response) => void
+    let markPermissionsStarted!: () => void
+    const permissionsStarted = new Promise<void>((resolve) => {
+      markPermissionsStarted = resolve
+    })
+    const permissionsResponse = new Promise<Response>((resolve) => {
+      resolvePermissions = resolve
+    })
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'short-user-token', expires_in: 3_600 }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: 5_184_000 }), {
+          status: 200,
+        }),
+      )
+      .mockImplementationOnce(async () => {
+        markPermissionsStarted()
+        return permissionsResponse
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [
+              { id: account.externalAccountId, name: account.name, access_token: 'page-token' },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
+    vi.stubGlobal('fetch', fetcher)
+
+    const callbackPromise = metaOAuthCallback(
+      new NextRequest(
+        `http://localhost:3000${META_OAUTH_CALLBACK_PATH}?code=authorization-code&state=${state}`,
+        { headers: { cookie: cookieHeader(startResponse) } },
+      ),
+    )
+    await permissionsStarted
+
+    const disconnect = await metaOAuthDisconnect(
+      new NextRequest('http://localhost:3000/api/platforms/meta/oauth/disconnect', {
+        body: JSON.stringify({ accountId: 42 }),
+        headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+        method: 'POST',
+      }),
+    )
+    expect(disconnect.status).toBe(200)
+    payload.__oauthRow.authorization_state = 'not_started'
+    payload.__oauthRow.updated_at = '2026-07-31T00:01:00.000Z'
+    resolvePermissions(
+      new Response(
+        JSON.stringify({
+          data: requiredMetaPermissions('facebook-page').map((permission) => ({
+            permission,
+            status: 'granted',
+          })),
+        }),
+        { status: 200 },
+      ),
+    )
+
+    const response = await callbackPromise
+
+    expect(response.headers.get('location')).toBe(
+      'http://localhost:3000/admin/collections/platform-accounts/42?metaOAuth=account_changed',
+    )
+    expect(payload.update).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not persist a callback after the provider identity changes', async () => {
+    const payload = createPayload()
+    mocks.getPayload.mockResolvedValue(payload)
+    const startResponse = await metaOAuthStart(startRequest())
+    const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
+    let resolvePermissions!: (response: Response) => void
+    let markPermissionsStarted!: () => void
+    const permissionsStarted = new Promise<void>((resolve) => {
+      markPermissionsStarted = resolve
+    })
+    const permissionsResponse = new Promise<Response>((resolve) => {
+      resolvePermissions = resolve
+    })
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'short-user-token', expires_in: 3_600 }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: 5_184_000 }), {
+          status: 200,
+        }),
+      )
+      .mockImplementationOnce(async () => {
+        markPermissionsStarted()
+        return permissionsResponse
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [
+              { id: account.externalAccountId, name: account.name, access_token: 'page-token' },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
+    vi.stubGlobal('fetch', fetcher)
+
+    const callbackPromise = metaOAuthCallback(
+      new NextRequest(
+        `http://localhost:3000${META_OAUTH_CALLBACK_PATH}?code=authorization-code&state=${state}`,
+        { headers: { cookie: cookieHeader(startResponse) } },
+      ),
+    )
+    await permissionsStarted
+    payload.__oauthRow.external_account_id = '999999999999999'
+    payload.__oauthRow.updated_at = '2026-07-31T00:01:00.000Z'
+    resolvePermissions(
+      new Response(
+        JSON.stringify({
+          data: requiredMetaPermissions('facebook-page').map((permission) => ({
+            permission,
+            status: 'granted',
+          })),
+        }),
+        { status: 200 },
+      ),
+    )
+
+    const response = await callbackPromise
+
+    expect(response.headers.get('location')).toBe(
+      'http://localhost:3000/admin/collections/platform-accounts/42?metaOAuth=account_changed',
+    )
+    expect(payload.update).not.toHaveBeenCalled()
   })
 
   it('does not call Meta or store credentials when state validation fails', async () => {

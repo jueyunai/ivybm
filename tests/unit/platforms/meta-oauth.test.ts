@@ -60,7 +60,9 @@ describe('Meta OAuth', () => {
     const issued = createMetaOAuthTransaction({
       accountId: 42,
       accountKind: 'facebook-page',
+      authorizationRevision: '2026-07-31T00:00:00.000Z',
       environment,
+      externalAccountId: '123456789012345',
       nowMilliseconds: 1_000,
     })
 
@@ -76,6 +78,8 @@ describe('Meta OAuth', () => {
     ).toMatchObject({
       accountId: '42',
       accountKind: 'facebook-page',
+      authorizationRevision: '2026-07-31T00:00:00.000Z',
+      externalAccountId: '123456789012345',
       state: issued.state,
     })
 
@@ -109,16 +113,14 @@ describe('Meta OAuth', () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ access_token: 'short-user-token', expires_in: 3_600 }),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify({ access_token: 'short-user-token', expires_in: 3_600 }), {
+          status: 200,
+        }),
       )
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ access_token: 'long-user-token', expires_in: 5_184_000 }),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: 5_184_000 }), {
+          status: 200,
+        }),
       )
 
     await expect(
@@ -195,12 +197,14 @@ describe('Meta OAuth', () => {
         accountKind: 'facebook-page',
         appSecret: 'test-meta-app-secret',
         externalAccountId: '123456789012345',
-        fetcher: vi.fn<typeof fetch>().mockResolvedValue(
-          new Response(
-            JSON.stringify({ data: [{ permission: 'pages_show_list', status: 'granted' }] }),
-            { status: 200 },
+        fetcher: vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(
+            new Response(
+              JSON.stringify({ data: [{ permission: 'pages_show_list', status: 'granted' }] }),
+              { status: 200 },
+            ),
           ),
-        ),
         userAccessToken: 'long-user-token',
       }),
     ).rejects.toMatchObject({ code: 'required_permission_missing' })

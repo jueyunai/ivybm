@@ -67,7 +67,9 @@ export type InstagramOAuthConfiguration = {
 export type InstagramOAuthTransaction = {
   accountId: string
   accountKind: InstagramAccountKind
+  authorizationRevision: string
   expiresAtMilliseconds: number
+  externalAccountId: string
   state: string
 }
 
@@ -154,9 +156,9 @@ const INSTAGRAM_PROFESSIONAL_PERMISSIONS = [
   'instagram_business_manage_messages',
 ] as const
 
-export const requiredInstagramPermissions = (
-  _accountKind: InstagramAccountKind,
-): string[] => [...INSTAGRAM_PROFESSIONAL_PERMISSIONS]
+export const requiredInstagramPermissions = (_accountKind: InstagramAccountKind): string[] => [
+  ...INSTAGRAM_PROFESSIONAL_PERMISSIONS,
+]
 
 const isInstagramAccountKind = (value: unknown): value is InstagramAccountKind =>
   value === 'instagram-professional'
@@ -174,24 +176,41 @@ const normalizedAccountId = (value: number | string): string => {
   return normalized
 }
 
+const normalizedAuthorizationRevision = (value: string | undefined): string => {
+  if (!value) throw new InstagramOAuthError('invalid_transaction')
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) throw new InstagramOAuthError('invalid_transaction')
+  return new Date(timestamp).toISOString()
+}
+
 export const createInstagramOAuthTransaction = ({
   accountId,
   accountKind,
+  authorizationRevision,
   environment = process.env,
+  externalAccountId,
   nowMilliseconds = Date.now(),
 }: {
   accountId: number | string
   accountKind: InstagramAccountKind
+  authorizationRevision: string
   environment?: Environment
+  externalAccountId: string
   nowMilliseconds?: number
 }): { cookieValue: string; state: string } => {
   const state = randomBytes(32).toString('base64url')
+  const normalizedExternalAccountId = externalAccountId.trim()
   const transaction = {
     accountId: normalizedAccountId(accountId),
     accountKind,
+    authorizationRevision: normalizedAuthorizationRevision(authorizationRevision),
     expiresAtMilliseconds: nowMilliseconds + INSTAGRAM_OAUTH_TRANSACTION_TTL_SECONDS * 1_000,
+    externalAccountId: normalizedExternalAccountId,
     state,
     version: OAUTH_TRANSACTION_VERSION,
+  }
+  if (!INSTAGRAM_ID_PATTERN.test(normalizedExternalAccountId)) {
+    throw new InstagramOAuthError('invalid_transaction')
   }
 
   try {
@@ -228,10 +247,7 @@ export const verifyInstagramOAuthTransaction = ({
   let candidate: unknown
   try {
     candidate = JSON.parse(
-      decryptPlatformCredential(
-        cookieValue,
-        readPlatformCredentialEncryptionKey(environment),
-      ),
+      decryptPlatformCredential(cookieValue, readPlatformCredentialEncryptionKey(environment)),
     ) as unknown
   } catch {
     throw new InstagramOAuthError('invalid_transaction')
@@ -250,9 +266,13 @@ export const verifyInstagramOAuthTransaction = ({
     !Number.isSafeInteger(numericAccountId) ||
     String(numericAccountId) !== transaction.accountId ||
     !isInstagramAccountKind(transaction.accountKind) ||
+    typeof transaction.authorizationRevision !== 'string' ||
+    !Number.isFinite(Date.parse(transaction.authorizationRevision)) ||
     typeof transaction.expiresAtMilliseconds !== 'number' ||
     !Number.isSafeInteger(transaction.expiresAtMilliseconds) ||
     transaction.expiresAtMilliseconds <= nowMilliseconds ||
+    typeof transaction.externalAccountId !== 'string' ||
+    !INSTAGRAM_ID_PATTERN.test(transaction.externalAccountId) ||
     typeof transaction.state !== 'string'
   ) {
     throw new InstagramOAuthError('invalid_transaction')
@@ -264,7 +284,9 @@ export const verifyInstagramOAuthTransaction = ({
   return {
     accountId: transaction.accountId,
     accountKind: transaction.accountKind,
+    authorizationRevision: new Date(Date.parse(transaction.authorizationRevision)).toISOString(),
     expiresAtMilliseconds: transaction.expiresAtMilliseconds,
+    externalAccountId: transaction.externalAccountId,
     state: transaction.state,
   }
 }
@@ -491,6 +513,18 @@ const instagramGraphRequest = async ({
   return readProviderJSON(response, 'identity_verification_failed')
 }
 
+const providerArray = (value: unknown): Record<string, unknown>[] => {
+  if (!Array.isArray(value) || value.length > 100) {
+    throw new InstagramOAuthError('identity_verification_failed')
+  }
+  return value.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new InstagramOAuthError('identity_verification_failed')
+    }
+    return item as Record<string, unknown>
+  })
+}
+
 const requireInstagramExternalId = (value: string): string => {
   const normalized = value.trim()
   if (!INSTAGRAM_ID_PATTERN.test(normalized)) throw new InstagramOAuthError('identity_mismatch')
@@ -512,6 +546,19 @@ export const resolveInstagramAuthorizedAccount = async ({
     throw new InstagramOAuthError('identity_verification_failed')
   }
 
+  const permissionPayload = await instagramGraphRequest({
+    accessToken: normalizedToken,
+    fetcher,
+    path: '/me/permissions',
+  })
+  const grantedPermissions = providerArray(permissionPayload.data)
+    .filter((item) => item.status === 'granted' && typeof item.permission === 'string')
+    .map((item) => String(item.permission))
+  const requiredPermissions = requiredInstagramPermissions('instagram-professional')
+  if (requiredPermissions.some((permission) => !grantedPermissions.includes(permission))) {
+    throw new InstagramOAuthError('required_permission_missing')
+  }
+
   const profile = await instagramGraphRequest({
     accessToken: normalizedToken,
     fetcher,
@@ -526,10 +573,8 @@ export const resolveInstagramAuthorizedAccount = async ({
       : typeof rawAccountId === 'string'
         ? rawAccountId.trim()
         : ''
-  const username =
-    typeof profile.username === 'string' ? profile.username.trim() : ''
-  const accountType =
-    typeof profile.account_type === 'string' ? profile.account_type.trim() : ''
+  const username = typeof profile.username === 'string' ? profile.username.trim() : ''
+  const accountType = typeof profile.account_type === 'string' ? profile.account_type.trim() : ''
   if (!accountId || !INSTAGRAM_ID_PATTERN.test(accountId)) {
     throw new InstagramOAuthError('identity_verification_failed')
   }
@@ -544,6 +589,6 @@ export const resolveInstagramAuthorizedAccount = async ({
     accessToken: normalizedToken,
     accountId,
     displayName: username ? `@${username}` : accountId,
-    scopes: requiredInstagramPermissions('instagram-professional'),
+    scopes: [...new Set(grantedPermissions)],
   }
 }

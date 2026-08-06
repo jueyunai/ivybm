@@ -69,6 +69,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     const transaction = createInstagramOAuthTransaction({
       accountId: account.id,
       accountKind: account.accountKind,
+      authorizationRevision: account.updatedAt,
+      externalAccountId: account.externalAccountId,
     })
     const response = NextResponse.redirect(
       buildInstagramAuthorizationURL({ config: oauth, state: transaction.state }),
