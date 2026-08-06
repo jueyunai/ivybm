@@ -92,6 +92,7 @@ export interface Config {
     'lead-sources': LeadSource;
     leads: Lead;
     'feishu-connections': FeishuConnection;
+    'feishu-app-registrations': FeishuAppRegistration;
     'feishu-mappings': FeishuMapping;
     'feishu-oauth-states': FeishuOauthState;
     'visitor-sessions': VisitorSession;
@@ -132,6 +133,7 @@ export interface Config {
     'lead-sources': LeadSourcesSelect<false> | LeadSourcesSelect<true>;
     leads: LeadsSelect<false> | LeadsSelect<true>;
     'feishu-connections': FeishuConnectionsSelect<false> | FeishuConnectionsSelect<true>;
+    'feishu-app-registrations': FeishuAppRegistrationsSelect<false> | FeishuAppRegistrationsSelect<true>;
     'feishu-mappings': FeishuMappingsSelect<false> | FeishuMappingsSelect<true>;
     'feishu-oauth-states': FeishuOauthStatesSelect<false> | FeishuOauthStatesSelect<true>;
     'visitor-sessions': VisitorSessionsSelect<false> | VisitorSessionsSelect<true>;
@@ -976,7 +978,7 @@ export interface Lead {
 export interface FeishuConnection {
   id: number;
   name: string;
-  authMode: 'store_oauth';
+  authMode: 'store_oauth' | 'qr_registered';
   tenantKey: string;
   installerOpenId: string;
   status: 'provisioning' | 'connected' | 'reconnect_required' | 'disconnected' | 'error';
@@ -990,12 +992,43 @@ export interface FeishuConnection {
   refreshTokenEncrypted?: string | null;
   accessTokenExpiresAt?: string | null;
   refreshTokenExpiresAt?: string | null;
+  appId?: string | null;
+  appSecretEncrypted?: string | null;
   appToken?: string | null;
   tableId?: string | null;
   baseURL?: string | null;
   lastConnectedAt?: string | null;
   lastRefreshedAt?: string | null;
   lastErrorCode?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "feishu-app-registrations".
+ */
+export interface FeishuAppRegistration {
+  id: number;
+  status:
+    | 'pending'
+    | 'registering'
+    | 'qr_ready'
+    | 'configuring'
+    | 'authorization_ready'
+    | 'completed'
+    | 'failed'
+    | 'expired'
+    | 'cancelled';
+  requestedBy?: (number | null) | User;
+  qrUrl?: string | null;
+  qrExpiresAt?: string | null;
+  authorizeUrl?: string | null;
+  authorizeExpiresAt?: string | null;
+  configuringStartedAt?: string | null;
+  appId?: string | null;
+  appSecretEncrypted?: string | null;
+  lastErrorCode?: string | null;
+  completedAt?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -1083,7 +1116,9 @@ export interface FeishuOauthState {
   verifierEncrypted: string;
   expiresAt: string;
   usedAt?: string | null;
+  processingAt?: string | null;
   requestedBy: number | User;
+  registration?: (number | null) | FeishuAppRegistration;
   updatedAt: string;
   createdAt: string;
 }
@@ -1360,6 +1395,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'feishu-connections';
         value: number | FeishuConnection;
+      } | null)
+    | ({
+        relationTo: 'feishu-app-registrations';
+        value: number | FeishuAppRegistration;
       } | null)
     | ({
         relationTo: 'feishu-mappings';
@@ -2027,12 +2066,33 @@ export interface FeishuConnectionsSelect<T extends boolean = true> {
   refreshTokenEncrypted?: T;
   accessTokenExpiresAt?: T;
   refreshTokenExpiresAt?: T;
+  appId?: T;
+  appSecretEncrypted?: T;
   appToken?: T;
   tableId?: T;
   baseURL?: T;
   lastConnectedAt?: T;
   lastRefreshedAt?: T;
   lastErrorCode?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "feishu-app-registrations_select".
+ */
+export interface FeishuAppRegistrationsSelect<T extends boolean = true> {
+  status?: T;
+  requestedBy?: T;
+  qrUrl?: T;
+  qrExpiresAt?: T;
+  authorizeUrl?: T;
+  authorizeExpiresAt?: T;
+  configuringStartedAt?: T;
+  appId?: T;
+  appSecretEncrypted?: T;
+  lastErrorCode?: T;
+  completedAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -2084,7 +2144,9 @@ export interface FeishuOauthStatesSelect<T extends boolean = true> {
   verifierEncrypted?: T;
   expiresAt?: T;
   usedAt?: T;
+  processingAt?: T;
   requestedBy?: T;
+  registration?: T;
   updatedAt?: T;
   createdAt?: T;
 }

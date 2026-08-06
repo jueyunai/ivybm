@@ -1,0 +1,303 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Payload } from 'payload'
+
+import {
+  activeRegistrationExpired,
+  buildFeishuRegisterAppOptions,
+  configureRegisteredFeishuApp,
+  FEISHU_APP_CONFIG_PROPAGATION_DELAY_MS,
+  FEISHU_APP_CONFIGURATION_TTL_MS,
+  FEISHU_REGISTER_APP_BEGIN_TIMEOUT_MS,
+  preflightFeishuQRRegistrationConfiguration,
+  FEISHU_QR_TENANT_SCOPES,
+  FEISHU_QR_USER_SCOPES,
+  isFeishuQRRegistrationEnabled,
+  runBoundedFeishuRegisterApp,
+} from '@/modules/feishu/appRegistration'
+import type { FeishuAppRegistration } from '@/payload-types'
+import { PayloadFeishuTokenProvider } from '@/modules/feishu/connectionClient'
+import {
+  encryptFeishuCredential,
+  readFeishuCredentialEncryptionKey,
+} from '@/modules/feishu/credentials'
+
+const response = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), {
+    headers: { 'content-type': 'application/json' },
+    status,
+  })
+
+describe('Feishu QR app registration', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+  it('requests only the reviewed app capabilities and user OAuth scopes', () => {
+    const onQRCodeReady = vi.fn()
+    const signal = new AbortController().signal
+
+    expect(buildFeishuRegisterAppOptions({ onQRCodeReady, signal })).toEqual({
+      addons: {
+        preset: false,
+        scopes: {
+          tenant: [...FEISHU_QR_TENANT_SCOPES],
+          user: [...FEISHU_QR_USER_SCOPES],
+        },
+      },
+      appPreset: {
+        desc: 'IVYBM 客户线索、飞书多维表格与销售提醒',
+        name: 'IVYBM CRM - {user}',
+      },
+      createOnly: true,
+      onQRCodeReady,
+      onStatusChange: expect.any(Function),
+      signal,
+      source: 'ivybm-crm',
+    })
+    expect(FEISHU_QR_TENANT_SCOPES).toEqual([
+      'application:application:patch',
+      'im:message:send_as_bot',
+    ])
+    expect(FEISHU_QR_USER_SCOPES).toEqual(['auth:user.id:read', 'bitable:app', 'offline_access'])
+  })
+
+  it('bounds the SDK begin request before a QR is available', async () => {
+    vi.useFakeTimers()
+    try {
+      const controller = new AbortController()
+      const watchdog = vi.fn(() => controller.abort())
+      const register = vi.fn(async () => new Promise<never>(() => undefined))
+      const result = runBoundedFeishuRegisterApp({
+        onBeginTimeout: watchdog,
+        options: buildFeishuRegisterAppOptions({
+          onQRCodeReady: vi.fn(),
+          signal: controller.signal,
+        }),
+        register: register as never,
+        signal: controller.signal,
+        timeoutMs: FEISHU_REGISTER_APP_BEGIN_TIMEOUT_MS,
+      })
+
+      const timedOut = expect(result).rejects.toMatchObject({ code: 'timeout' })
+      await vi.advanceTimersByTimeAsync(FEISHU_REGISTER_APP_BEGIN_TIMEOUT_MS)
+      await timedOut
+      expect(watchdog).toHaveBeenCalledOnce()
+      expect(controller.signal.aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('configures the registered app with a tenant token and refreshable redirect URL', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        response({ code: 0, expire: 7200, tenant_access_token: 'tenant-token-fixture' }),
+      )
+      .mockResolvedValueOnce(response({ code: 0, msg: 'success' }))
+    const settle = vi.fn(async () => undefined)
+
+    await configureRegisteredFeishuApp({
+      appId: 'cli_registered_fixture',
+      appSecret: 'registered-secret-fixture',
+      fetch,
+      redirectURI: 'https://ivybm.example.invalid/api/integrations/feishu/callback',
+      settle,
+    })
+
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
+    )
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      app_id: 'cli_registered_fixture',
+      app_secret: 'registered-secret-fixture',
+    })
+    expect(fetch.mock.calls[1]?.[0]).toBe(
+      'https://open.feishu.cn/open-apis/application/v7/applications/cli_registered_fixture/config',
+    )
+    expect(fetch.mock.calls[1]?.[1]).toMatchObject({
+      headers: {
+        authorization: 'Bearer tenant-token-fixture',
+        'content-type': 'application/json; charset=utf-8',
+      },
+      method: 'PATCH',
+    })
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      security: {
+        add: {
+          redirect_urls: ['https://ivybm.example.invalid/api/integrations/feishu/callback'],
+        },
+        allow_refresh_token: true,
+      },
+    })
+    expect(settle).toHaveBeenCalledWith(FEISHU_APP_CONFIG_PROPAGATION_DELAY_MS)
+  })
+
+  it('bounds a hanging tenant-token request and aborts the provider fetch', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
+        const signal = init?.signal
+        if (!signal) throw new Error('expected request signal')
+        await new Promise<never>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+        throw new Error('unreachable')
+      })
+      const result = configureRegisteredFeishuApp({
+        appId: 'cli_registered_fixture',
+        appSecret: 'registered-secret-fixture',
+        fetch,
+        redirectURI: 'https://ivybm.example.invalid/api/integrations/feishu/callback',
+        settle: vi.fn(async () => undefined),
+        timeoutMs: 50,
+      })
+
+      const timedOut = expect(result).rejects.toMatchObject({ code: 'timeout', retryable: true })
+      await vi.advanceTimersByTimeAsync(50)
+      await timedOut
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(fetch.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops propagation settling when registration is aborted', async () => {
+    const controller = new AbortController()
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response({ code: 0, tenant_access_token: 'tenant-token-fixture' }))
+      .mockResolvedValueOnce(response({ code: 0 }))
+    const settle = vi.fn(() => new Promise<void>(() => undefined))
+    const result = configureRegisteredFeishuApp({
+      appId: 'cli_registered_fixture',
+      appSecret: 'registered-secret-fixture',
+      fetch,
+      redirectURI: 'https://ivybm.example.invalid/api/integrations/feishu/callback',
+      settle,
+      signal: controller.signal,
+    })
+
+    await vi.waitFor(() => expect(settle).toHaveBeenCalledOnce())
+    controller.abort()
+    await expect(result).rejects.toMatchObject({ code: 'abort' })
+  })
+
+  it('fails closed on provider errors without including credentials in the error', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(
+        response({ code: 99991663, msg: 'secret registered-secret-fixture was rejected' }, 403),
+      )
+
+    const result = configureRegisteredFeishuApp({
+      appId: 'cli_registered_fixture',
+      appSecret: 'registered-secret-fixture',
+      fetch,
+      redirectURI: 'https://ivybm.example.invalid/api/integrations/feishu/callback',
+      settle: vi.fn(async () => undefined),
+    })
+
+    await expect(result).rejects.toMatchObject({ code: 99991663, status: 403 })
+    await expect(result).rejects.not.toThrow(/registered-secret-fixture/u)
+  })
+
+  it('enables registration only for the exact true feature flag', () => {
+    expect(isFeishuQRRegistrationEnabled({ FEISHU_QR_REGISTRATION_ENABLED: 'true' })).toBe(true)
+    expect(isFeishuQRRegistrationEnabled({ FEISHU_QR_REGISTRATION_ENABLED: 'TRUE' })).toBe(false)
+    expect(isFeishuQRRegistrationEnabled({ FEISHU_QR_REGISTRATION_ENABLED: 'false' })).toBe(false)
+    expect(isFeishuQRRegistrationEnabled({})).toBe(false)
+  })
+
+  it('fails closed before QR registration side effects when runtime configuration drifts', () => {
+    const valid = {
+      FEISHU_CREDENTIAL_ENCRYPTION_KEY: 'a'.repeat(64),
+      FEISHU_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/integrations/feishu/callback',
+      NEXT_PUBLIC_SERVER_URL: 'https://ivybm.com',
+      NODE_ENV: 'production',
+    }
+    expect(() => preflightFeishuQRRegistrationConfiguration(valid)).not.toThrow()
+    expect(() =>
+      preflightFeishuQRRegistrationConfiguration({
+        ...valid,
+        FEISHU_CREDENTIAL_ENCRYPTION_KEY: 'invalid',
+      }),
+    ).toThrow(/FEISHU_CREDENTIAL_ENCRYPTION_KEY/u)
+    expect(() =>
+      preflightFeishuQRRegistrationConfiguration({
+        ...valid,
+        FEISHU_OAUTH_REDIRECT_URI: 'not-a-url',
+      }),
+    ).toThrow(/absolute URL/u)
+    expect(() =>
+      preflightFeishuQRRegistrationConfiguration({
+        ...valid,
+        FEISHU_OAUTH_REDIRECT_URI: 'https://ivybm.com/wrong-callback',
+      }),
+    ).toThrow(/canonical Feishu callback/u)
+    expect(() =>
+      preflightFeishuQRRegistrationConfiguration({
+        ...valid,
+        FEISHU_OAUTH_REDIRECT_URI: 'http://ivybm.com/api/integrations/feishu/callback',
+      }),
+    ).toThrow(/HTTPS/u)
+  })
+
+  it('starts the configuring deadline when app configuration starts', () => {
+    const registration = {
+      createdAt: '2026-08-05T10:00:00.000Z',
+      configuringStartedAt: '2026-08-05T10:09:00.000Z',
+      status: 'configuring',
+      updatedAt: '2026-08-05T10:09:00.000Z',
+    } as FeishuAppRegistration
+
+    expect(
+      activeRegistrationExpired(
+        registration,
+        new Date(
+          Date.parse(registration.configuringStartedAt!) + FEISHU_APP_CONFIGURATION_TTL_MS - 1,
+        ),
+      ),
+    ).toBe(false)
+    expect(
+      activeRegistrationExpired(
+        registration,
+        new Date(Date.parse(registration.configuringStartedAt!) + FEISHU_APP_CONFIGURATION_TTL_MS),
+      ),
+    ).toBe(true)
+  })
+
+  it('uses the registered tenant credentials directly for bot tokens', async () => {
+    vi.stubEnv('FEISHU_CREDENTIAL_ENCRYPTION_KEY', 'a'.repeat(64))
+    vi.stubEnv('FEISHU_APP_ID', 'cli_store_app_must_not_be_used')
+    vi.stubEnv('FEISHU_APP_SECRET', 'store-secret-must-not-be-used')
+    const key = readFeishuCredentialEncryptionKey()
+    const payload = {
+      findByID: vi.fn(async () => ({
+        appId: 'cli_registered_fixture',
+        appSecretEncrypted: encryptFeishuCredential('registered-secret-fixture', key),
+        authMode: 'qr_registered',
+        id: 42,
+        status: 'connected',
+        tenantKey: 'tenant-fixture',
+      })),
+      logger: { error: vi.fn() },
+    } as unknown as Payload
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(
+        response({ code: 0, expire: 7200, tenant_access_token: 'registered-tenant-token' }),
+      )
+
+    const provider = new PayloadFeishuTokenProvider({ connectionId: 42, fetch, payload })
+    await expect(provider.getToken('im')).resolves.toBe('registered-tenant-token')
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
+    )
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      app_id: 'cli_registered_fixture',
+      app_secret: 'registered-secret-fixture',
+    })
+  })
+})

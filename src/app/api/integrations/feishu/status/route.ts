@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 
 import { canDecryptFeishuCredential } from '@/modules/feishu/credentials'
+import { isFeishuQRRegistrationEnabled } from '@/modules/feishu/appRegistration'
 import config from '@/payload.config'
 import type { User } from '@/payload-types'
 
@@ -48,6 +49,7 @@ export async function GET(request: NextRequest): Promise<Response> {
           process.env.FEISHU_OAUTH_REDIRECT_URI?.trim() &&
           process.env.FEISHU_CREDENTIAL_ENCRYPTION_KEY?.trim(),
         ),
+        qrRegistrationEnabled: isFeishuQRRegistrationEnabled(),
       },
       { headers: noStore },
     )

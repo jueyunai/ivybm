@@ -9,7 +9,9 @@ import {
   buildFeishuAuthorizeURL,
   createOAuthAttempt,
   exchangeFeishuOAuthCode,
+  FEISHU_OAUTH_REQUEST_TIMEOUT_MS,
   FEISHU_OAUTH_SCOPES,
+  getFeishuOAuthUser,
   hashOAuthState,
   refreshFeishuOAuthToken,
 } from '@/modules/feishu/oauth'
@@ -34,12 +36,25 @@ describe('Feishu OAuth connection', () => {
     )
 
     expect(attempt.stateHash).toBe(hashOAuthState(attempt.state))
-    expect(attempt.expiresAt).toBe('2026-07-30T00:05:00.000Z')
+    expect(attempt.expiresAt).toBe('2026-07-30T00:10:00.000Z')
     expect(attempt.verifier.length).toBeGreaterThanOrEqual(43)
     expect(url.origin).toBe('https://accounts.feishu.cn')
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
     expect(url.searchParams.get('scope')).toBe(FEISHU_OAUTH_SCOPES.join(' '))
     expect(url.searchParams.get('state')).toBe(attempt.state)
+  })
+
+  it('supports confidential server apps without PKCE parameters', () => {
+    const url = new URL(
+      buildFeishuAuthorizeURL({
+        appId: 'cli_confidential_fixture',
+        redirectURI: 'https://ivybm.example.invalid/api/integrations/feishu/callback',
+        state: 'state-fixture',
+      }),
+    )
+
+    expect(url.searchParams.has('code_challenge')).toBe(false)
+    expect(url.searchParams.has('code_challenge_method')).toBe(false)
   })
 
   it('encrypts OAuth credentials with the independent Feishu key', () => {
@@ -104,6 +119,57 @@ describe('Feishu OAuth connection', () => {
       expect.objectContaining({ grant_type: 'refresh_token', refresh_token: 'refresh-1' }),
     )
     expect(refreshed.refreshToken).toBe('refresh-2')
+  })
+
+  it('bounds OAuth provider requests and forwards an abort signal', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
+        const signal = init?.signal
+        if (!signal) throw new Error('expected OAuth request signal')
+        await new Promise<never>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+        throw new Error('unreachable')
+      })
+      const result = exchangeFeishuOAuthCode({
+        appId: 'cli_fixture',
+        appSecret: 'secret-fixture',
+        code: 'single-use-code',
+        fetch,
+        redirectURI: 'https://ivybm.example.invalid/api/integrations/feishu/callback',
+        timeoutMs: 50,
+      })
+
+      const timedOut = expect(result).rejects.toMatchObject({ code: 'timeout', retryable: true })
+      await vi.advanceTimersByTimeAsync(50)
+      await timedOut
+      expect(fetch.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
+      expect(FEISHU_OAUTH_REQUEST_TIMEOUT_MS).toBeLessThan(120_000)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('applies the same bounded request contract to OAuth user lookup', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
+        const signal = init?.signal
+        if (!signal) throw new Error('expected OAuth user request signal')
+        await new Promise<never>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+        throw new Error('unreachable')
+      })
+      const result = getFeishuOAuthUser({ accessToken: 'access-fixture', fetch, timeoutMs: 50 })
+      const timedOut = expect(result).rejects.toMatchObject({ code: 'timeout', retryable: true })
+      await vi.advanceTimersByTimeAsync(50)
+      await timedOut
+      expect(fetch.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('creates a free-tier-compatible Base and customer table without advanced permissions', async () => {
