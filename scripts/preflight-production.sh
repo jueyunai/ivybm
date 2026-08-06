@@ -14,6 +14,32 @@ if [[ ! -r "$env_file" ]]; then
   exit 66
 fi
 
+# Docker Compose gives exported shell variables precedence over --env-file.
+# Reject release variables from the caller so the reviewed env file remains the
+# single source of truth for both preflight and the final container config.
+release_environment_keys=(
+  IMAGE_TAG RUNTIME_IMAGE RUNTIME_IMAGE_DIGEST WORKER_IMAGE WORKER_IMAGE_DIGEST APP_VERSION
+  POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL PAYLOAD_SECRET NEXT_PUBLIC_SERVER_URL APP_PORT
+  TRUST_PROXY_HEADERS ADMIN_PORTAL_ENABLED ADMIN_PORTAL_SETTINGS_ENABLED ADMIN_PORTAL_OVERVIEW_ENABLED
+  ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED ADMIN_PORTAL_MEDIA_ENABLED ADMIN_PORTAL_KNOWLEDGE_ENABLED
+  ADMIN_PORTAL_CONVERSATIONS_ENABLED ADMIN_PORTAL_LEADS_ENABLED ADMIN_PORTAL_CONTENT_STUDIO_ENABLED
+  ADMIN_PORTAL_PLATFORMS_ENABLED ADMIN_PORTAL_OPERATIONS_ENABLED ADMIN_PORTAL_PUBLISHING_ENABLED
+  AI_CONFIG_ENCRYPTION_KEY PLATFORM_CREDENTIAL_ENCRYPTION_KEY AI_PROVIDER_BASE_URL AI_PROVIDER_API_KEY
+  AI_TEXT_MODEL AI_EMBEDDING_MODEL AI_EMBEDDING_DIMENSIONS AI_TEXT_TIMEOUT_MS AI_EMBEDDING_TIMEOUT_MS
+  AI_REASONING_ENABLED AI_REASONING_EFFORT META_WEBHOOK_APP_SECRET META_WEBHOOK_VERIFY_TOKEN
+  META_WEBHOOK_ALLOWED_ACCOUNT_IDS FEISHU_APP_ID FEISHU_APP_SECRET FEISHU_OAUTH_REDIRECT_URI
+  FEISHU_CREDENTIAL_ENCRYPTION_KEY FEISHU_QR_REGISTRATION_ENABLED FEISHU_RELAY_INTERVAL_MS
+  FEISHU_OAUTH_RECOVERY_INTERVAL_MS WORKER_HEARTBEAT_INTERVAL_MS WORKER_JOB_HEARTBEAT_INTERVAL_MS
+  WORKER_POLL_INTERVAL_MS
+)
+
+for key in "${release_environment_keys[@]}"; do
+  if printenv "$key" >/dev/null 2>&1; then
+    echo "Production release variable must be unset in the caller environment: $key" >&2
+    exit 1
+  fi
+done
+
 read_env_value() {
   local key="$1"
   local line
@@ -67,11 +93,24 @@ runtime_digest="$(read_env_value RUNTIME_IMAGE_DIGEST)"
 worker_image="$(read_env_value WORKER_IMAGE)"
 worker_digest="$(read_env_value WORKER_IMAGE_DIGEST)"
 app_version="$(read_env_value APP_VERSION)"
+app_port="$(read_env_value APP_PORT)"
 postgres_password="$(read_env_value POSTGRES_PASSWORD)"
 database_url="$(read_env_value DATABASE_URL)"
 payload_secret="$(read_env_value PAYLOAD_SECRET)"
 public_url="$(read_env_value NEXT_PUBLIC_SERVER_URL)"
 trust_proxy_headers="$(read_env_value TRUST_PROXY_HEADERS)"
+portal_enabled="$(read_env_value ADMIN_PORTAL_ENABLED)"
+portal_settings_enabled="$(read_env_value ADMIN_PORTAL_SETTINGS_ENABLED)"
+portal_overview_enabled="$(read_env_value ADMIN_PORTAL_OVERVIEW_ENABLED)"
+portal_website_content_enabled="$(read_env_value ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED)"
+portal_media_enabled="$(read_env_value ADMIN_PORTAL_MEDIA_ENABLED)"
+portal_knowledge_enabled="$(read_env_value ADMIN_PORTAL_KNOWLEDGE_ENABLED)"
+portal_conversations_enabled="$(read_env_value ADMIN_PORTAL_CONVERSATIONS_ENABLED)"
+portal_leads_enabled="$(read_env_value ADMIN_PORTAL_LEADS_ENABLED)"
+portal_content_studio_enabled="$(read_env_value ADMIN_PORTAL_CONTENT_STUDIO_ENABLED)"
+portal_platforms_enabled="$(read_env_value ADMIN_PORTAL_PLATFORMS_ENABLED)"
+portal_operations_enabled="$(read_env_value ADMIN_PORTAL_OPERATIONS_ENABLED)"
+portal_publishing_enabled="$(read_env_value ADMIN_PORTAL_PUBLISHING_ENABLED)"
 ai_configuration_encryption_key="$(read_env_value AI_CONFIG_ENCRYPTION_KEY)"
 platform_credential_encryption_key="$(read_optional_env_value PLATFORM_CREDENTIAL_ENCRYPTION_KEY)"
 reasoning_enabled="$(read_optional_env_value AI_REASONING_ENABLED)"
@@ -117,6 +156,11 @@ if ((${#payload_secret} < 32)); then
   exit 1
 fi
 
+if [[ ! "$app_port" =~ ^[1-9][0-9]{0,4}$ ]] || ((10#$app_port > 65535)); then
+  echo 'APP_PORT must be an integer between 1 and 65535' >&2
+  exit 1
+fi
+
 if [[ ! "$database_url" =~ ^postgres(ql)?:// || "$database_url" != *'@db:5432/'* ]]; then
   echo 'DATABASE_URL must use a PostgreSQL URL with the Compose db:5432 host' >&2
   exit 1
@@ -129,6 +173,33 @@ fi
 
 if [[ "$trust_proxy_headers" != 'true' ]]; then
   echo 'TRUST_PROXY_HEADERS must be true behind the sole OpenResty ingress' >&2
+  exit 1
+fi
+
+if [[ "$portal_enabled" != 'true' && "$portal_enabled" != 'false' ]]; then
+  echo 'ADMIN_PORTAL_ENABLED must be true or false' >&2
+  exit 1
+fi
+for key_value in \
+  "ADMIN_PORTAL_SETTINGS_ENABLED=$portal_settings_enabled" \
+  "ADMIN_PORTAL_OVERVIEW_ENABLED=$portal_overview_enabled" \
+  "ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED=$portal_website_content_enabled" \
+  "ADMIN_PORTAL_MEDIA_ENABLED=$portal_media_enabled" \
+  "ADMIN_PORTAL_KNOWLEDGE_ENABLED=$portal_knowledge_enabled" \
+  "ADMIN_PORTAL_CONVERSATIONS_ENABLED=$portal_conversations_enabled" \
+  "ADMIN_PORTAL_LEADS_ENABLED=$portal_leads_enabled" \
+  "ADMIN_PORTAL_CONTENT_STUDIO_ENABLED=$portal_content_studio_enabled" \
+  "ADMIN_PORTAL_PLATFORMS_ENABLED=$portal_platforms_enabled" \
+  "ADMIN_PORTAL_OPERATIONS_ENABLED=$portal_operations_enabled"; do
+  key="${key_value%%=*}"
+  value="${key_value#*=}"
+  if [[ "$value" != 'true' && "$value" != 'false' ]]; then
+    echo "$key must be true or false" >&2
+    exit 1
+  fi
+done
+if [[ "$portal_publishing_enabled" != 'false' ]]; then
+  echo 'ADMIN_PORTAL_PUBLISHING_ENABLED must remain false for this release' >&2
   exit 1
 fi
 
@@ -215,5 +286,75 @@ if grep -Eq '^[[:space:]]*SEED_ADMIN_(EMAIL|PASSWORD)=' "$env_file"; then
   echo 'Production environment must not contain demo seed credentials' >&2
   exit 1
 fi
+
+if ! command -v docker >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
+  echo 'Production preflight requires docker and python3 to validate the final Compose configuration' >&2
+  exit 1
+fi
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+compose_config_file="$(mktemp)"
+trap 'rm -f "$compose_config_file"' EXIT
+
+if ! "$script_dir/production-compose.sh" "$env_file" config --format json >"$compose_config_file"; then
+  echo 'Production Compose configuration failed to resolve from the reviewed env file' >&2
+  exit 1
+fi
+
+python3 - "$compose_config_file" "$image_tag" "$runtime_image" "$runtime_digest" "$worker_image" "$worker_digest" "$app_port" <<'PY'
+import json
+import sys
+
+config_path, image_tag, runtime_image, runtime_digest, worker_image, worker_digest, app_port = sys.argv[1:]
+with open(config_path, encoding='utf-8') as handle:
+    config = json.load(handle)
+
+services = config.get('services', {})
+app = services.get('app', {})
+worker = services.get('worker', {})
+migrate = services.get('migrate', {})
+app_environment = app.get('environment', {})
+
+expected_images = {
+    'app': f'{runtime_image}:{image_tag}@{runtime_digest}',
+    'worker': f'{worker_image}:{image_tag}@{worker_digest}',
+    'migrate': f'{worker_image}:{image_tag}@{worker_digest}',
+}
+for service_name, expected in expected_images.items():
+    actual = services.get(service_name, {}).get('image')
+    if actual != expected:
+        raise SystemExit(f'Compose {service_name} image does not match the env-file release reference')
+
+portal_keys = [
+    'ADMIN_PORTAL_ENABLED',
+    'ADMIN_PORTAL_SETTINGS_ENABLED',
+    'ADMIN_PORTAL_OVERVIEW_ENABLED',
+    'ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED',
+    'ADMIN_PORTAL_MEDIA_ENABLED',
+    'ADMIN_PORTAL_KNOWLEDGE_ENABLED',
+    'ADMIN_PORTAL_CONVERSATIONS_ENABLED',
+    'ADMIN_PORTAL_LEADS_ENABLED',
+    'ADMIN_PORTAL_CONTENT_STUDIO_ENABLED',
+    'ADMIN_PORTAL_PLATFORMS_ENABLED',
+    'ADMIN_PORTAL_OPERATIONS_ENABLED',
+]
+for key in portal_keys:
+    if app_environment.get(key) not in {'true', 'false'}:
+        raise SystemExit(f'Compose app environment has an invalid {key}')
+if app_environment.get('ADMIN_PORTAL_PUBLISHING_ENABLED') != 'false':
+    raise SystemExit('Compose app environment must keep ADMIN_PORTAL_PUBLISHING_ENABLED=false')
+if app.get('build') is not None or worker.get('build') is not None or migrate.get('build') is not None:
+    raise SystemExit('Production services must use immutable images and must not build on the server')
+ports = app.get('ports', [])
+if len(ports) != 1:
+    raise SystemExit('Production app must expose exactly one loopback port')
+port = ports[0]
+if (
+    port.get('host_ip') != '127.0.0.1'
+    or str(port.get('published')) != app_port
+    or str(port.get('target')) != '3000'
+):
+    raise SystemExit('Production app must remain bound to the reviewed loopback APP_PORT')
+PY
 
 echo 'Production environment preflight passed; no values were printed.'

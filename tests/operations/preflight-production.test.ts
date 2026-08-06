@@ -23,20 +23,69 @@ POSTGRES_PASSWORD=operation-test-postgres-password
 DATABASE_URL=postgresql://ivybm:operation-password@db:5432/ivybm
 PAYLOAD_SECRET=operation-test-payload-secret-at-least-32-characters
 NEXT_PUBLIC_SERVER_URL=https://ivybm.com
+APP_PORT=3000
 TRUST_PROXY_HEADERS=true
+ADMIN_PORTAL_ENABLED=true
+ADMIN_PORTAL_SETTINGS_ENABLED=true
+ADMIN_PORTAL_OVERVIEW_ENABLED=true
+ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED=true
+ADMIN_PORTAL_MEDIA_ENABLED=true
+ADMIN_PORTAL_KNOWLEDGE_ENABLED=true
+ADMIN_PORTAL_CONVERSATIONS_ENABLED=true
+ADMIN_PORTAL_LEADS_ENABLED=true
+ADMIN_PORTAL_CONTENT_STUDIO_ENABLED=true
+ADMIN_PORTAL_PLATFORMS_ENABLED=true
+ADMIN_PORTAL_OPERATIONS_ENABLED=true
+ADMIN_PORTAL_PUBLISHING_ENABLED=false
 AI_CONFIG_ENCRYPTION_KEY=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 FEISHU_QR_REGISTRATION_ENABLED=false
 `
 
-const runPreflight = (environment: string) => {
+const runPreflight = (environment: string, overrides: Record<string, string | undefined> = {}) => {
   const directory = mkdtempSync(resolve(tmpdir(), 'ivybm-production-preflight-'))
   const environmentFile = resolve(directory, '.env')
   writeFileSync(environmentFile, environment)
 
   try {
+    const childEnvironment = { ...process.env }
+    for (const key of [
+      'IMAGE_TAG',
+      'RUNTIME_IMAGE',
+      'RUNTIME_IMAGE_DIGEST',
+      'WORKER_IMAGE',
+      'WORKER_IMAGE_DIGEST',
+      'APP_VERSION',
+      'POSTGRES_DB',
+      'POSTGRES_USER',
+      'POSTGRES_PASSWORD',
+      'DATABASE_URL',
+      'PAYLOAD_SECRET',
+      'NEXT_PUBLIC_SERVER_URL',
+      'APP_PORT',
+      'TRUST_PROXY_HEADERS',
+      'ADMIN_PORTAL_ENABLED',
+      'ADMIN_PORTAL_SETTINGS_ENABLED',
+      'ADMIN_PORTAL_OVERVIEW_ENABLED',
+      'ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED',
+      'ADMIN_PORTAL_MEDIA_ENABLED',
+      'ADMIN_PORTAL_KNOWLEDGE_ENABLED',
+      'ADMIN_PORTAL_CONVERSATIONS_ENABLED',
+      'ADMIN_PORTAL_LEADS_ENABLED',
+      'ADMIN_PORTAL_CONTENT_STUDIO_ENABLED',
+      'ADMIN_PORTAL_PLATFORMS_ENABLED',
+      'ADMIN_PORTAL_OPERATIONS_ENABLED',
+      'ADMIN_PORTAL_PUBLISHING_ENABLED',
+      'AI_CONFIG_ENCRYPTION_KEY',
+      'FEISHU_QR_REGISTRATION_ENABLED',
+    ]) {
+      delete childEnvironment[key]
+    }
+    Object.assign(childEnvironment, overrides)
+
     return spawnSync('bash', ['scripts/preflight-production.sh', environmentFile], {
       cwd: projectRoot,
       encoding: 'utf8',
+      env: childEnvironment,
     })
   } finally {
     rmSync(directory, { force: true, recursive: true })
@@ -99,6 +148,39 @@ describe('production environment preflight', () => {
     )
 
     expect(result.status).toBe(0)
+  })
+
+  it('requires the Portal switches and keeps external publishing disabled', () => {
+    const missingPortalSwitch = runPreflight(
+      productionEnvironment.replace('ADMIN_PORTAL_ENABLED=true\n', ''),
+    )
+    const enabledPublishing = runPreflight(
+      productionEnvironment.replace('ADMIN_PORTAL_PUBLISHING_ENABLED=false', 'ADMIN_PORTAL_PUBLISHING_ENABLED=true'),
+    )
+
+    expect(missingPortalSwitch.status).not.toBe(0)
+    expect(missingPortalSwitch.stderr).toContain('ADMIN_PORTAL_ENABLED')
+    expect(enabledPublishing.status).not.toBe(0)
+    expect(enabledPublishing.stderr).toContain('ADMIN_PORTAL_PUBLISHING_ENABLED')
+  })
+
+  it('requires every Portal module switch and rejects shell overrides', () => {
+    const missingModule = runPreflight(
+      productionEnvironment.replace('ADMIN_PORTAL_MEDIA_ENABLED=true\n', ''),
+    )
+    const invalidModule = runPreflight(
+      productionEnvironment.replace('ADMIN_PORTAL_MEDIA_ENABLED=true', 'ADMIN_PORTAL_MEDIA_ENABLED=maybe'),
+    )
+    const shellOverride = runPreflight(productionEnvironment, {
+      ADMIN_PORTAL_PUBLISHING_ENABLED: 'true',
+    })
+
+    expect(missingModule.status).not.toBe(0)
+    expect(missingModule.stderr).toContain('ADMIN_PORTAL_MEDIA_ENABLED')
+    expect(invalidModule.status).not.toBe(0)
+    expect(invalidModule.stderr).toContain('ADMIN_PORTAL_MEDIA_ENABLED')
+    expect(shellOverride.status).not.toBe(0)
+    expect(shellOverride.stderr).toContain('caller environment')
   })
 
   it('accepts a per-operation environment fallback and rejects missing or invalid encryption keys', () => {
