@@ -257,6 +257,9 @@ export function classifyChangedFiles(paths) {
     } else if (/^compose(?:\.[a-z0-9-]+)?\.ya?ml$/.test(path)) {
       result.code = true
       result.operations = true
+      if (path === 'compose.prod.yaml') {
+        result.production_image = true
+      }
       recognized = true
     } else if (path === 'package.json' || path === 'pnpm-lock.yaml') {
       result.code = true
