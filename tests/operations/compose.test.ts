@@ -30,6 +30,16 @@ const workerDigest = 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 const requiredEnvironment = {
   AI_CONFIG_ENCRYPTION_KEY: 'c'.repeat(64),
   ADMIN_PORTAL_ENABLED: 'true',
+  ADMIN_PORTAL_SETTINGS_ENABLED: 'true',
+  ADMIN_PORTAL_OVERVIEW_ENABLED: 'true',
+  ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED: 'true',
+  ADMIN_PORTAL_MEDIA_ENABLED: 'true',
+  ADMIN_PORTAL_KNOWLEDGE_ENABLED: 'true',
+  ADMIN_PORTAL_CONVERSATIONS_ENABLED: 'true',
+  ADMIN_PORTAL_LEADS_ENABLED: 'true',
+  ADMIN_PORTAL_CONTENT_STUDIO_ENABLED: 'true',
+  ADMIN_PORTAL_PLATFORMS_ENABLED: 'true',
+  ADMIN_PORTAL_OPERATIONS_ENABLED: 'true',
   ADMIN_PORTAL_PUBLISHING_ENABLED: 'false',
   APP_PORT: '3000',
   APP_VERSION: 'operation-test',
@@ -162,6 +172,24 @@ describe('production Compose configuration', () => {
       `registry.example.invalid/ivybm-worker:${imageTag}@${workerDigest}`,
     )
     expect(config.services.migrate.restart).toBe('no')
+  })
+
+  it('fails closed when a Portal module switch is omitted', () => {
+    const environment: NodeJS.ProcessEnv = { ...process.env, ...requiredEnvironment }
+    delete environment.ADMIN_PORTAL_MEDIA_ENABLED
+
+    const result = spawnSync(
+      'docker',
+      ['compose', '-f', 'compose.yaml', '-f', 'compose.prod.yaml', 'config', '--format', 'json'],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: environment,
+      },
+    )
+
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('ADMIN_PORTAL_MEDIA_ENABLED')
   })
 
   it('keeps database private, binds the app to loopback, and retains named volumes', () => {

@@ -29,20 +29,33 @@ fi
 
 smoke_response=''
 smoke_http_status=''
+smoke_location=''
+
+fetch_response() {
+  local path="$1"
+  local response_file
+  local header_file
+
+  response_file="$(mktemp)"
+  header_file="$(mktemp)"
+
+  if ! smoke_http_status="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
+    --dump-header "$header_file" --output "$response_file" --write-out '%{http_code}' \
+    "$base_url$path")"; then
+    smoke_http_status="${smoke_http_status:-000}"
+  fi
+  smoke_response="$(cat "$response_file")"
+  smoke_location="$(grep -i '^location:' "$header_file" | head -n 1 | cut -d: -f2- | \
+    sed 's/^[[:space:]]*//; s/\r$//' || true)"
+  rm -f "$response_file" "$header_file"
+}
 
 fetch_200() {
   local path="$1"
   local attempt
-  local response_file
 
   for ((attempt = 1; attempt <= smoke_max_attempts; attempt++)); do
-    response_file="$(mktemp)"
-
-    if ! smoke_http_status="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output "$response_file" --write-out '%{http_code}' "$base_url$path")"; then
-      smoke_http_status="${smoke_http_status:-000}"
-    fi
-    smoke_response="$(cat "$response_file")"
-    rm -f "$response_file"
+    fetch_response "$path"
 
     if [[ "$smoke_http_status" == '200' ]]; then
       return 0
@@ -54,6 +67,32 @@ fetch_200() {
   done
 
   echo "Smoke check failed: $path did not return HTTP 200 (last HTTP status: $smoke_http_status)" >&2
+  return 1
+}
+
+check_admin_entry() {
+  local attempt
+
+  for ((attempt = 1; attempt <= smoke_max_attempts; attempt++)); do
+    fetch_response '/admin'
+
+    if [[ "$smoke_http_status" == '200' ]]; then
+      echo 'OK /admin (200)'
+      return 0
+    fi
+
+    if [[ "$smoke_http_status" =~ ^30[12378]$ ]] && \
+      [[ "$smoke_location" =~ ^/admin/(login|create-first-user)([?#].*)?$ ]]; then
+      echo "OK /admin ($smoke_http_status -> $smoke_location)"
+      return 0
+    fi
+
+    if ((attempt < smoke_max_attempts)); then
+      sleep "$smoke_retry_delay_seconds"
+    fi
+  done
+
+  echo "Smoke check failed: /admin must return 200 or a safe admin login redirect (last HTTP status: $smoke_http_status, location: ${smoke_location:-<none>})" >&2
   return 1
 }
 
@@ -88,4 +127,4 @@ check_json_status '/api/health/ready' 'ready'
 check_page '/en'
 check_page '/ar'
 check_page '/dashboard/login'
-check_page '/admin'
+check_admin_entry

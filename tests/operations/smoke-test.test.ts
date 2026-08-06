@@ -53,6 +53,12 @@ describe('smoke-test script', () => {
 
   it('requires healthy live, ready, and locale routes', async () => {
     const server = createServer((request, response) => {
+      if (request.url === '/admin') {
+        response.writeHead(307, { location: '/admin/login' })
+        response.end()
+        return
+      }
+
       const bodyByPath: Record<string, string> = {
         '/api/health/live': '{"status":"ok"}',
         '/api/health/ready': '{"status":"ready"}',
@@ -75,6 +81,7 @@ describe('smoke-test script', () => {
     expect(result.code).toBe(0)
     expect(result.stdout).toContain('/api/health/live')
     expect(result.stdout).toContain('/api/health/ready')
+    expect(result.stdout).toContain('/admin (307 -> /admin/login)')
   })
 
   it('fails when readiness does not report ready', async () => {
@@ -157,5 +164,35 @@ describe('smoke-test script', () => {
     expect(result.code).not.toBe(0)
     expect(result.stderr).toContain('/en did not return HTTP 200')
     expect(result.stderr).toContain('302')
+  })
+
+  it('rejects an unsafe admin redirect location', async () => {
+    const server = createServer((request, response) => {
+      if (request.url === '/admin') {
+        response.writeHead(302, { location: 'https://attacker.example.invalid/login' })
+        response.end()
+        return
+      }
+
+      const bodyByPath: Record<string, string> = {
+        '/api/health/live': '{"status":"ok"}',
+        '/api/health/ready': '{"status":"ready"}',
+      }
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(bodyByPath[request.url ?? ''] ?? '<html></html>')
+    })
+    servers.push(server)
+    await new Promise<void>((resolvePromise) => server.listen(0, '127.0.0.1', resolvePromise))
+    const address = server.address()
+
+    if (!address || typeof address === 'string') {
+      throw new Error('Expected a TCP test server address')
+    }
+
+    const result = await runSmokeTest(`http://127.0.0.1:${address.port}`)
+
+    expect(result.code).not.toBe(0)
+    expect(result.stderr).toContain('/admin must return 200 or a safe admin login redirect')
+    expect(result.stderr).toContain('attacker.example.invalid')
   })
 })
