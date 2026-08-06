@@ -846,6 +846,32 @@ export const findOrCreateFeishuAppRegistration = async ({
       return { created: false, registration: stale }
     }
     if (existing && !activeRegistrationExpired(existing, clock())) {
+      if (existing.status === 'failed' && (!existing.appId || !existing.appSecretEncrypted)) {
+        // A registration failure before the provider returned credentials has no
+        // configuration state to resume. Within the QR TTL, make the retry an
+        // explicit new register attempt instead of returning a failed row that
+        // launchFeishuAppRegistration cannot claim.
+        const retry = await payload.update({
+          collection: 'feishu-app-registrations',
+          data: {
+            appId: null,
+            appSecretEncrypted: null,
+            authorizeExpiresAt: null,
+            authorizeUrl: null,
+            completedAt: null,
+            configuringStartedAt: null,
+            lastErrorCode: null,
+            qrExpiresAt: null,
+            qrUrl: null,
+            status: 'pending',
+          },
+          id: existing.id,
+          overrideAccess: true,
+          req,
+        })
+        await commitTransaction(req)
+        return { created: false, registration: retry }
+      }
       await commitTransaction(req)
       return { created: false, registration: existing }
     }

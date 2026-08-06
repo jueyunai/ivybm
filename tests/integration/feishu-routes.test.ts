@@ -457,6 +457,90 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     connectionIDs.delete(connection.id)
   })
 
+  it('retries a failed register without credentials before the registration TTL expires', async () => {
+    const admin = await payload.findByID({
+      collection: 'users',
+      id: adminID,
+      overrideAccess: true,
+    })
+    const started = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    registrationIDs.add(started.registration.id)
+
+    const qrURLs: string[] = []
+    const registerPort = vi
+      .fn()
+      .mockImplementationOnce(
+        async (options: { onQRCodeReady: (info: { expireIn: number; url: string }) => void }) => {
+          const qrURL = 'https://open.feishu.cn/qr/failed-register-fixture'
+          qrURLs.push(qrURL)
+          options.onQRCodeReady({ expireIn: 600, url: qrURL })
+          throw new Error('registerApp failed before returning credentials')
+        },
+      )
+      .mockImplementationOnce(
+        async (options: { onQRCodeReady: (info: { expireIn: number; url: string }) => void }) => {
+          const qrURL = 'https://open.feishu.cn/qr/retry-register-fixture'
+          qrURLs.push(qrURL)
+          options.onQRCodeReady({ expireIn: 600, url: qrURL })
+          return { client_id: 'cli_retry_registered', client_secret: 'retry-app-secret-fixture' }
+        },
+      )
+
+    await runFeishuAppRegistration({
+      payload,
+      register: registerPort as never,
+      registrationId: started.registration.id,
+    })
+    await expect(
+      payload.findByID({
+        collection: 'feishu-app-registrations',
+        depth: 0,
+        id: started.registration.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      appId: null,
+      appSecretEncrypted: null,
+      lastErrorCode: 'registration_failed',
+      status: 'failed',
+    })
+
+    const retry = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    expect(retry).toMatchObject({
+      created: false,
+      registration: { id: started.registration.id, status: 'pending' },
+    })
+
+    await runFeishuAppRegistration({
+      fetch: vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(response({ code: 0, tenant_access_token: 'retry-tenant-token' }))
+        .mockResolvedValueOnce(response({ code: 0 })),
+      payload,
+      register: registerPort as never,
+      registrationId: retry.registration.id,
+    })
+
+    expect(registerPort).toHaveBeenCalledTimes(2)
+    expect(qrURLs).toEqual([
+      'https://open.feishu.cn/qr/failed-register-fixture',
+      'https://open.feishu.cn/qr/retry-register-fixture',
+    ])
+    await expect(
+      payload.findByID({
+        collection: 'feishu-app-registrations',
+        depth: 0,
+        id: retry.registration.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      appId: 'cli_retry_registered',
+      authorizeUrl: expect.any(String),
+      lastErrorCode: null,
+      status: 'authorization_ready',
+    })
+  })
+
   it('deduplicates concurrent registration starts and persists provider expiry safely', async () => {
     const admin = await payload.findByID({
       collection: 'users',
