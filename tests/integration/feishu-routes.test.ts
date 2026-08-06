@@ -539,6 +539,22 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
       lastErrorCode: null,
       status: 'authorization_ready',
     })
+
+    // The next case asserts that concurrent starts create exactly one fresh registration.
+    // Remove this case's active authorization so it cannot be reused as that registration.
+    await payload.delete({
+      collection: 'feishu-oauth-states',
+      context,
+      overrideAccess: true,
+      where: { registration: { equals: retry.registration.id } },
+    })
+    await payload.delete({
+      collection: 'feishu-app-registrations',
+      context,
+      id: retry.registration.id,
+      overrideAccess: true,
+    })
+    registrationIDs.delete(retry.registration.id)
   })
 
   it('deduplicates concurrent registration starts and persists provider expiry safely', async () => {
