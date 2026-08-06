@@ -15,6 +15,7 @@ import { POST as feishuRegistrationStart } from '@/app/api/portal/feishu/registr
 import { GET as feishuRegistrationStatus } from '@/app/api/portal/feishu/registration/[id]/route'
 import {
   completeFeishuAppRegistration,
+  FEISHU_APP_CONFIGURATION_TTL_MS,
   FEISHU_OAUTH_CALLBACK_PROCESSING_TTL_MS,
   findOrCreateFeishuAppRegistration,
   getFeishuAppRegistration,
@@ -753,6 +754,214 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     } finally {
       payload.findByID = originalFindByID
     }
+  })
+
+  it('re-reads a registration after locking before POST stale conversion', async () => {
+    const admin = await payload.findByID({
+      collection: 'users',
+      id: adminID,
+      overrideAccess: true,
+    })
+    const started = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    registrationIDs.add(started.registration.id)
+    const key = readFeishuCredentialEncryptionKey()
+    await payload.update({
+      collection: 'feishu-app-registrations',
+      context,
+      data: {
+        appId: 'cli_post_cas_registration',
+        appSecretEncrypted: encryptFeishuCredential('post-cas-secret-fixture', key),
+        configuringStartedAt: '2026-08-06T00:00:00.000Z',
+        status: 'configuring',
+      },
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+
+    const originalFind = payload.find.bind(payload)
+    let raced = false
+    payload.find = (async (args) => {
+      const found = await originalFind(args)
+      if (!raced && args.collection === 'feishu-app-registrations') {
+        raced = true
+        await payload.update({
+          collection: 'feishu-app-registrations',
+          context,
+          data: {
+            authorizeExpiresAt: '2026-08-06T02:00:00.000Z',
+            authorizeUrl: 'https://accounts.feishu.cn/authorize/post-cas-fixture',
+            status: 'authorization_ready',
+          },
+          id: started.registration.id,
+          overrideAccess: true,
+        })
+      }
+      return found
+    }) as typeof payload.find
+
+    try {
+      await expect(
+        findOrCreateFeishuAppRegistration({
+          clock: () => new Date('2026-08-06T01:00:00.000Z'),
+          payload,
+          user: admin,
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        registration: {
+          authorizeUrl: 'https://accounts.feishu.cn/authorize/post-cas-fixture',
+          status: 'authorization_ready',
+        },
+      })
+    } finally {
+      payload.find = originalFind
+    }
+  })
+
+  it('uses the persisted configuring lease to deduplicate concurrent runners', async () => {
+    const admin = await payload.findByID({
+      collection: 'users',
+      id: adminID,
+      overrideAccess: true,
+    })
+    const started = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    registrationIDs.add(started.registration.id)
+    const key = readFeishuCredentialEncryptionKey()
+    await payload.update({
+      collection: 'feishu-app-registrations',
+      context,
+      data: {
+        appId: 'cli_live_lease_registration',
+        appSecretEncrypted: encryptFeishuCredential('live-lease-secret-fixture', key),
+        lastErrorCode: 'previous_failure',
+        status: 'failed',
+      },
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+
+    let markFetchStarted!: () => void
+    let releaseFetch!: (value: Response) => void
+    const fetchStarted = new Promise<void>((resolve) => {
+      markFetchStarted = resolve
+    })
+    const fetchResponse = new Promise<Response>((resolve) => {
+      releaseFetch = resolve
+    })
+    const firstFetch = vi.fn<typeof globalThis.fetch>(async () => {
+      markFetchStarted()
+      return fetchResponse
+    })
+    const secondFetch = vi.fn<typeof globalThis.fetch>(async () =>
+      response({ code: 888, msg: 'second runner must not call provider' }, 503),
+    )
+    const claimStartedAt = new Date('2026-08-06T01:00:00.000Z')
+    const firstRun = runFeishuAppRegistration({
+      clock: () => claimStartedAt,
+      fetch: firstFetch,
+      payload,
+      register: vi.fn() as never,
+      registrationId: started.registration.id,
+    })
+
+    await fetchStarted
+    await runFeishuAppRegistration({
+      clock: () => claimStartedAt,
+      fetch: secondFetch,
+      payload,
+      register: vi.fn() as never,
+      registrationId: started.registration.id,
+    })
+    expect(secondFetch).not.toHaveBeenCalled()
+
+    releaseFetch(response({ code: 777, msg: 'first runner failure' }, 503))
+    await firstRun
+    expect(firstFetch).toHaveBeenCalledOnce()
+    await expect(
+      payload.findByID({
+        collection: 'feishu-app-registrations',
+        depth: 0,
+        id: started.registration.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ lastErrorCode: 'provider_777', status: 'failed' })
+  })
+
+  it('fences a runner after a stale configuring lease is reclaimed', async () => {
+    const admin = await payload.findByID({
+      collection: 'users',
+      id: adminID,
+      overrideAccess: true,
+    })
+    const started = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    registrationIDs.add(started.registration.id)
+    const key = readFeishuCredentialEncryptionKey()
+    await payload.update({
+      collection: 'feishu-app-registrations',
+      context,
+      data: {
+        appId: 'cli_stale_lease_registration',
+        appSecretEncrypted: encryptFeishuCredential('stale-lease-secret-fixture', key),
+        lastErrorCode: 'previous_failure',
+        status: 'failed',
+      },
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+
+    let markFetchStarted!: () => void
+    let releaseFirstFetch!: (value: Response) => void
+    const fetchStarted = new Promise<void>((resolve) => {
+      markFetchStarted = resolve
+    })
+    const firstResponse = new Promise<Response>((resolve) => {
+      releaseFirstFetch = resolve
+    })
+    const firstFetch = vi.fn<typeof globalThis.fetch>(async () => {
+      markFetchStarted()
+      return firstResponse
+    })
+    const secondFetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response({ code: 0, tenant_access_token: 'new-runner-token' }))
+      .mockResolvedValueOnce(response({ code: 0 }))
+    const firstClaimAt = new Date('2026-08-06T01:00:00.000Z')
+    const firstRun = runFeishuAppRegistration({
+      clock: () => firstClaimAt,
+      fetch: firstFetch,
+      payload,
+      register: vi.fn() as never,
+      registrationId: started.registration.id,
+    })
+
+    await fetchStarted
+    await runFeishuAppRegistration({
+      clock: () => new Date(firstClaimAt.getTime() + FEISHU_APP_CONFIGURATION_TTL_MS + 1_000),
+      fetch: secondFetch,
+      payload,
+      register: vi.fn() as never,
+      registrationId: started.registration.id,
+    })
+    await expect(
+      payload.findByID({
+        collection: 'feishu-app-registrations',
+        depth: 0,
+        id: started.registration.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ status: 'authorization_ready' })
+
+    releaseFirstFetch(response({ code: 777, msg: 'stale runner failure' }, 503))
+    await firstRun
+    expect(firstFetch).toHaveBeenCalledOnce()
+    await expect(
+      payload.findByID({
+        collection: 'feishu-app-registrations',
+        depth: 0,
+        id: started.registration.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ status: 'authorization_ready' })
   })
 
   it('does not let a late callback invalidate the authorization recovered by the worker', async () => {

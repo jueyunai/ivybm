@@ -97,6 +97,33 @@ export type FeishuRegistrationDTO = {
 
 const registrationProcesses = new Map<number, AbortController>()
 
+const findLockedRegistration = async ({
+  payload,
+  registrationId,
+  req,
+}: {
+  payload: Payload
+  registrationId: number
+  req: PayloadRequest
+}): Promise<FeishuAppRegistration> => {
+  const transactionID = await req.transactionID
+  const adapter = payload.db as unknown as PostgresAdapter
+  const database = transactionID ? adapter.sessions[transactionID]?.db : undefined
+  if (!database) {
+    throw new FeishuConfigurationError('Feishu registration transaction is unavailable')
+  }
+  await database.execute(sql`
+    SELECT "id" FROM "feishu_app_registrations" WHERE "id" = ${registrationId} FOR UPDATE
+  `)
+  return payload.findByID({
+    collection: 'feishu-app-registrations',
+    depth: 0,
+    id: registrationId,
+    overrideAccess: true,
+    req,
+  })
+}
+
 const withLockedRegistration = async <T>({
   payload,
   registrationId,
@@ -109,22 +136,7 @@ const withLockedRegistration = async <T>({
   const req = await createLocalReq({}, payload)
   await initTransaction(req)
   try {
-    const transactionID = await req.transactionID
-    const adapter = payload.db as unknown as PostgresAdapter
-    const database = transactionID ? adapter.sessions[transactionID]?.db : undefined
-    if (!database) {
-      throw new FeishuConfigurationError('Feishu registration transaction is unavailable')
-    }
-    await database.execute(sql`
-      SELECT "id" FROM "feishu_app_registrations" WHERE "id" = ${registrationId} FOR UPDATE
-    `)
-    const registration = await payload.findByID({
-      collection: 'feishu-app-registrations',
-      depth: 0,
-      id: registrationId,
-      overrideAccess: true,
-      req,
-    })
+    const registration = await findLockedRegistration({ payload, registrationId, req })
     const result = await run(registration, req)
     await commitTransaction(req)
     return result
@@ -325,6 +337,7 @@ export const failFeishuAppRegistrationOAuth = (
 
 const prepareFeishuAuthorizationLocked = async ({
   clock = () => new Date(),
+  expectedConfiguringStartedAt,
   lastErrorCode = null,
   payload,
   processingStateId,
@@ -333,6 +346,7 @@ const prepareFeishuAuthorizationLocked = async ({
   validStatuses,
 }: {
   clock?: () => Date
+  expectedConfiguringStartedAt?: string
   lastErrorCode?: null | string
   payload: Payload
   processingStateId?: number
@@ -340,6 +354,13 @@ const prepareFeishuAuthorizationLocked = async ({
   req: PayloadRequest
   validStatuses: FeishuAppRegistration['status'][]
 }): Promise<FeishuAppRegistration> => {
+  if (
+    expectedConfiguringStartedAt !== undefined &&
+    (registration.status !== 'configuring' ||
+      registration.configuringStartedAt !== expectedConfiguringStartedAt)
+  ) {
+    return registration
+  }
   if (!validStatuses.includes(registration.status)) {
     throw new FeishuConfigurationError('Feishu registration cannot start authorization')
   }
@@ -428,6 +449,7 @@ const prepareFeishuAuthorizationLocked = async ({
 
 const prepareFeishuAuthorization = ({
   clock = () => new Date(),
+  expectedConfiguringStartedAt,
   lastErrorCode = null,
   payload,
   processingStateId,
@@ -435,6 +457,7 @@ const prepareFeishuAuthorization = ({
   validStatuses,
 }: {
   clock?: () => Date
+  expectedConfiguringStartedAt?: string
   lastErrorCode?: null | string
   payload: Payload
   processingStateId?: number
@@ -447,6 +470,7 @@ const prepareFeishuAuthorization = ({
     run: (registration, req) =>
       prepareFeishuAuthorizationLocked({
         clock,
+        expectedConfiguringStartedAt,
         lastErrorCode,
         payload,
         processingStateId,
@@ -726,7 +750,28 @@ export const findOrCreateFeishuAppRegistration = async ({
         },
       },
     })
-    const existing = active.docs[0]
+    let existing: FeishuAppRegistration | undefined = active.docs[0]
+    if (existing) {
+      const lockedExisting = await findLockedRegistration({
+        payload,
+        registrationId: existing.id,
+        req,
+      })
+      if (
+        ![
+          'pending',
+          'registering',
+          'qr_ready',
+          'configuring',
+          'authorization_ready',
+          'failed',
+        ].includes(lockedExisting.status)
+      ) {
+        existing = undefined
+      } else {
+        existing = lockedExisting
+      }
+    }
     const recoverableConfiguration =
       existing &&
       (existing.status === 'configuring' || existing.status === 'failed') &&
@@ -734,11 +779,11 @@ export const findOrCreateFeishuAppRegistration = async ({
       typeof existing.appSecretEncrypted === 'string'
     const staleConfiguration =
       existing?.status === 'configuring' && activeRegistrationExpired(existing, clock())
-    if (recoverableConfiguration && !staleConfiguration) {
+    if (existing && recoverableConfiguration && !staleConfiguration) {
       await commitTransaction(req)
       return { created: false, registration: existing }
     }
-    if (staleConfiguration) {
+    if (staleConfiguration && existing) {
       const stale = await payload.update({
         collection: 'feishu-app-registrations',
         data: { lastErrorCode: 'registration_stale', status: 'failed' },
@@ -1096,6 +1141,7 @@ export const runFeishuAppRegistration = async ({
 }): Promise<void> => {
   const controller = registrationProcesses.get(registrationId) ?? new AbortController()
   registrationProcesses.set(registrationId, controller)
+  let configurationLeaseStartedAt: string | undefined
   try {
     const claimed = await withLockedRegistration({
       payload,
@@ -1116,15 +1162,22 @@ export const runFeishuAppRegistration = async ({
           registration.appId &&
           registration.appSecretEncrypted
         ) {
+          if (
+            registration.status === 'configuring' &&
+            !activeRegistrationExpired(registration, clock())
+          ) {
+            return null
+          }
           const appSecret = decryptFeishuCredential(
             registration.appSecretEncrypted,
             readFeishuCredentialEncryptionKey(),
           )
+          const configuringStartedAt = clock().toISOString()
           if (registration.status === 'failed') {
             await payload.update({
               collection: 'feishu-app-registrations',
               data: {
-                configuringStartedAt: clock().toISOString(),
+                configuringStartedAt,
                 lastErrorCode: null,
                 status: 'configuring',
               },
@@ -1135,13 +1188,18 @@ export const runFeishuAppRegistration = async ({
           } else {
             await payload.update({
               collection: 'feishu-app-registrations',
-              data: { configuringStartedAt: clock().toISOString() },
+              data: { configuringStartedAt },
               id: registration.id,
               overrideAccess: true,
               req,
             })
           }
-          return { appId: registration.appId, appSecret, mode: 'configure' as const }
+          return {
+            appId: registration.appId,
+            appSecret,
+            configuringStartedAt,
+            mode: 'configure' as const,
+          }
         }
         return null
       },
@@ -1197,17 +1255,20 @@ export const runFeishuAppRegistration = async ({
         throw new FeishuConfigurationError('Feishu registration response is incomplete')
       }
       const key = readFeishuCredentialEncryptionKey()
-      await updateLockedRegistration(payload, registrationId, {
+      const configuringStartedAt = clock().toISOString()
+      const configured = await updateLockedRegistration(payload, registrationId, {
         appId,
         appSecretEncrypted: encryptFeishuCredential(appSecret, key),
-        configuringStartedAt: clock().toISOString(),
+        configuringStartedAt,
         lastErrorCode: null,
         qrUrl: null,
         status: 'configuring',
       })
+      configurationLeaseStartedAt = configured.configuringStartedAt ?? configuringStartedAt
     } else {
       appId = claimed.appId
       appSecret = claimed.appSecret
+      configurationLeaseStartedAt = claimed.configuringStartedAt
     }
     await configureRegisteredFeishuApp({
       appId,
@@ -1219,6 +1280,7 @@ export const runFeishuAppRegistration = async ({
     if (controller.signal.aborted) throw feishuAbortError()
     await prepareFeishuAuthorization({
       clock,
+      expectedConfiguringStartedAt: configurationLeaseStartedAt,
       payload,
       registrationId,
       validStatuses: ['configuring'],
@@ -1233,6 +1295,10 @@ export const runFeishuAppRegistration = async ({
           registration.status === 'completed' ||
           registration.status === 'expired' ||
           registration.status === 'cancelled' ||
+          registration.status === 'authorization_ready' ||
+          (configurationLeaseStartedAt !== undefined &&
+            (registration.status !== 'configuring' ||
+              registration.configuringStartedAt !== configurationLeaseStartedAt)) ||
           (registration.status === 'failed' && registration.lastErrorCode === 'registration_stale')
         ) {
           return Promise.resolve(registration)
