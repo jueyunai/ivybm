@@ -887,6 +887,64 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     ).resolves.toMatchObject({ lastErrorCode: 'provider_777', status: 'failed' })
   })
 
+  it('does not revive an expired registration after a late QR register result', async () => {
+    const admin = await payload.findByID({
+      collection: 'users',
+      id: adminID,
+      overrideAccess: true,
+    })
+    const started = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    registrationIDs.add(started.registration.id)
+
+    let markRegisterStarted!: () => void
+    let releaseRegister!: (result: { client_id: string; client_secret: string }) => void
+    const registerResult = new Promise<{ client_id: string; client_secret: string }>((resolve) => {
+      releaseRegister = resolve
+    })
+    const registerStarted = new Promise<void>((resolve) => {
+      markRegisterStarted = resolve
+    })
+    const registerPort = vi.fn(async () => {
+      markRegisterStarted()
+      return registerResult
+    })
+    const run = runFeishuAppRegistration({
+      clock: () => new Date('2026-08-06T01:00:00.000Z'),
+      payload,
+      register: registerPort as never,
+      registrationId: started.registration.id,
+    })
+
+    await registerStarted
+    await payload.update({
+      collection: 'feishu-app-registrations',
+      context,
+      data: {
+        lastErrorCode: 'registration_expired',
+        qrUrl: null,
+        status: 'expired',
+      },
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+    releaseRegister({ client_id: 'cli_late_register', client_secret: 'late-register-secret' })
+    await run
+
+    await expect(
+      payload.findByID({
+        collection: 'feishu-app-registrations',
+        depth: 0,
+        id: started.registration.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      appId: null,
+      appSecretEncrypted: null,
+      lastErrorCode: 'registration_expired',
+      status: 'expired',
+    })
+  })
+
   it('fences a runner after a stale configuring lease is reclaimed', async () => {
     const admin = await payload.findByID({
       collection: 'users',
@@ -962,6 +1020,103 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
         overrideAccess: true,
       }),
     ).resolves.toMatchObject({ status: 'authorization_ready' })
+  })
+
+  it('keeps the replacement runner controller after the old runner finishes', async () => {
+    const admin = await payload.findByID({
+      collection: 'users',
+      id: adminID,
+      overrideAccess: true,
+    })
+    const started = await findOrCreateFeishuAppRegistration({ payload, user: admin })
+    registrationIDs.add(started.registration.id)
+    const key = readFeishuCredentialEncryptionKey()
+    await payload.update({
+      collection: 'feishu-app-registrations',
+      context,
+      data: {
+        appId: 'cli_controller_owner_registration',
+        appSecretEncrypted: encryptFeishuCredential('controller-owner-secret-fixture', key),
+        lastErrorCode: 'previous_failure',
+        status: 'failed',
+      },
+      id: started.registration.id,
+      overrideAccess: true,
+    })
+
+    let markFirstFetchStarted!: () => void
+    let releaseFirstFetch!: (value: Response) => void
+    const firstFetchStarted = new Promise<void>((resolve) => {
+      markFirstFetchStarted = resolve
+    })
+    const firstResponse = new Promise<Response>((resolve) => {
+      releaseFirstFetch = resolve
+    })
+    const firstFetch = vi.fn<typeof globalThis.fetch>(async () => {
+      markFirstFetchStarted()
+      return firstResponse
+    })
+
+    let markSecondFetchStarted!: () => void
+    let releaseSecondFetch!: (value: Response) => void
+    let secondFetchAborted = false
+    const secondFetchStarted = new Promise<void>((resolve) => {
+      markSecondFetchStarted = resolve
+    })
+    const secondFetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
+      markSecondFetchStarted()
+      return new Promise<Response>((resolve) => {
+        releaseSecondFetch = resolve
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            secondFetchAborted = true
+            resolve(response({ code: 777, msg: 'replacement runner aborted' }, 503))
+          },
+          { once: true },
+        )
+      })
+    })
+
+    const firstClaimAt = new Date('2026-08-06T01:00:00.000Z')
+    const replacementClaimAt = new Date(
+      firstClaimAt.getTime() + FEISHU_APP_CONFIGURATION_TTL_MS + 1_000,
+    )
+    const firstRun = runFeishuAppRegistration({
+      clock: () => firstClaimAt,
+      fetch: firstFetch,
+      payload,
+      register: vi.fn() as never,
+      registrationId: started.registration.id,
+    })
+    await firstFetchStarted
+
+    const replacementRun = runFeishuAppRegistration({
+      clock: () => replacementClaimAt,
+      fetch: secondFetch,
+      payload,
+      register: vi.fn() as never,
+      registrationId: started.registration.id,
+    })
+    await secondFetchStarted
+
+    releaseFirstFetch(response({ code: 777, msg: 'stale runner failure' }, 503))
+    await firstRun
+
+    await expect(
+      getFeishuAppRegistration({
+        clock: () =>
+          new Date(replacementClaimAt.getTime() + FEISHU_APP_CONFIGURATION_TTL_MS + 1_000),
+        payload,
+        registrationId: started.registration.id,
+        user: admin,
+      }),
+    ).resolves.toMatchObject({ status: 'failed' })
+    expect(secondFetchAborted).toBe(true)
+    if (!secondFetchAborted) {
+      releaseSecondFetch(response({ code: 778, msg: 'test cleanup' }, 503))
+    }
+    await replacementRun
   })
 
   it('does not let a late callback invalidate the authorization recovered by the worker', async () => {

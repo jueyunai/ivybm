@@ -95,7 +95,12 @@ export type FeishuRegistrationDTO = {
   status: FeishuAppRegistration['status']
 }
 
-const registrationProcesses = new Map<number, AbortController>()
+type RegistrationProcess = {
+  controller: AbortController
+  owner: symbol
+}
+
+const registrationProcesses = new Map<number, RegistrationProcess>()
 
 const findLockedRegistration = async ({
   payload,
@@ -227,24 +232,6 @@ export const clearFeishuOAuthStateProcessing = (
       })
     },
     stateId,
-  })
-
-const updateLockedRegistration = (
-  payload: Payload,
-  registrationId: number,
-  data: Record<string, unknown>,
-): Promise<FeishuAppRegistration> =>
-  withLockedRegistration({
-    payload,
-    registrationId,
-    run: (registration, req) =>
-      payload.update({
-        collection: 'feishu-app-registrations',
-        data,
-        id: registration.id,
-        overrideAccess: true,
-        req,
-      }),
   })
 
 const completeFeishuAppRegistrationLocked = ({
@@ -711,6 +698,70 @@ export const activeRegistrationExpired = (
   return Date.parse(registration.createdAt) + FEISHU_QR_REGISTRATION_TTL_MS <= now.getTime()
 }
 
+const persistRegisteredFeishuApp = async ({
+  appId,
+  appSecret,
+  clock,
+  payload,
+  registrationId,
+}: {
+  appId: string
+  appSecret: string
+  clock: () => Date
+  payload: Payload
+  registrationId: number
+}): Promise<{
+  appId: string
+  appSecret: string
+  configuringStartedAt: string
+} | null> =>
+  withLockedRegistration({
+    payload,
+    registrationId,
+    run: async (registration, req) => {
+      // The SDK result is external and may arrive after expiry recovery. Never persist its
+      // credentials unless the locked row still belongs to the active QR registration.
+      if (!['registering', 'qr_ready'].includes(registration.status)) return null
+      if (activeRegistrationExpired(registration, clock())) {
+        await payload.update({
+          collection: 'feishu-app-registrations',
+          data: {
+            lastErrorCode: 'registration_expired',
+            qrUrl: null,
+            status: 'expired',
+          },
+          id: registration.id,
+          overrideAccess: true,
+          req,
+        })
+        return null
+      }
+      const configuringStartedAt = clock().toISOString()
+      const configured = await payload.update({
+        collection: 'feishu-app-registrations',
+        data: {
+          appId,
+          appSecretEncrypted: encryptFeishuCredential(
+            appSecret,
+            readFeishuCredentialEncryptionKey(),
+          ),
+          configuringStartedAt,
+          lastErrorCode: null,
+          qrUrl: null,
+          status: 'configuring',
+        },
+        id: registration.id,
+        overrideAccess: true,
+        req,
+      })
+      return {
+        appId,
+        appSecret,
+        configuringStartedAt: configured.configuringStartedAt ?? configuringStartedAt,
+      }
+    },
+  })
+
 export const findOrCreateFeishuAppRegistration = async ({
   clock = () => new Date(),
   payload,
@@ -1139,8 +1190,17 @@ export const runFeishuAppRegistration = async ({
   register?: FeishuRegisterAppPort
   registrationId: number
 }): Promise<void> => {
-  const controller = registrationProcesses.get(registrationId) ?? new AbortController()
-  registrationProcesses.set(registrationId, controller)
+  const process: RegistrationProcess = {
+    controller: new AbortController(),
+    owner: Symbol('feishu-registration-process'),
+  }
+  const controller = process.controller
+  const claimProcess = <T>(claimed: T): T => {
+    // Only a durable database claim may replace the in-process controller entry. An overlapping
+    // invocation that observes an active lease must leave the current owner untouched.
+    registrationProcesses.set(registrationId, process)
+    return claimed
+  }
   let configurationLeaseStartedAt: string | undefined
   try {
     const claimed = await withLockedRegistration({
@@ -1155,7 +1215,7 @@ export const runFeishuAppRegistration = async ({
             overrideAccess: true,
             req,
           })
-          return { mode: 'register' as const }
+          return claimProcess({ mode: 'register' as const })
         }
         if (
           (registration.status === 'configuring' || registration.status === 'failed') &&
@@ -1194,12 +1254,12 @@ export const runFeishuAppRegistration = async ({
               req,
             })
           }
-          return {
+          return claimProcess({
             appId: registration.appId,
             appSecret,
             configuringStartedAt,
             mode: 'configure' as const,
-          }
+          })
         }
         return null
       },
@@ -1254,17 +1314,17 @@ export const runFeishuAppRegistration = async ({
       if (!appId || !appSecret) {
         throw new FeishuConfigurationError('Feishu registration response is incomplete')
       }
-      const key = readFeishuCredentialEncryptionKey()
-      const configuringStartedAt = clock().toISOString()
-      const configured = await updateLockedRegistration(payload, registrationId, {
+      const configured = await persistRegisteredFeishuApp({
         appId,
-        appSecretEncrypted: encryptFeishuCredential(appSecret, key),
-        configuringStartedAt,
-        lastErrorCode: null,
-        qrUrl: null,
-        status: 'configuring',
+        appSecret,
+        clock,
+        payload,
+        registrationId,
       })
-      configurationLeaseStartedAt = configured.configuringStartedAt ?? configuringStartedAt
+      if (!configured) return
+      appId = configured.appId
+      appSecret = configured.appSecret
+      configurationLeaseStartedAt = configured.configuringStartedAt
     } else {
       appId = claimed.appId
       appSecret = claimed.appSecret
@@ -1320,7 +1380,10 @@ export const runFeishuAppRegistration = async ({
       },
     }).catch(() => payload.logger.error('Feishu registration failure state could not be persisted'))
   } finally {
-    registrationProcesses.delete(registrationId)
+    // A stale runner must not remove the controller owned by a replacement runner.
+    if (registrationProcesses.get(registrationId)?.owner === process.owner) {
+      registrationProcesses.delete(registrationId)
+    }
   }
 }
 
@@ -1329,8 +1392,6 @@ export const launchFeishuAppRegistration = (input: {
   registrationId: number
 }): void => {
   if (registrationProcesses.has(input.registrationId)) return
-  const controller = new AbortController()
-  registrationProcesses.set(input.registrationId, controller)
   void runFeishuAppRegistration(input)
 }
 
@@ -1369,7 +1430,7 @@ const expireActiveRegistrationIfStale = async ({
       })
     },
   })
-  if (expired) registrationProcesses.get(registrationId)?.abort()
+  if (expired) registrationProcesses.get(registrationId)?.controller.abort()
   return registration
 }
 
