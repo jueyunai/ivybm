@@ -61,6 +61,12 @@ const validateConnectedCredentials: CollectionBeforeChangeHook = ({ data, origin
     const key = readFeishuCredentialEncryptionKey()
     decryptFeishuCredential(accessToken, key)
     decryptFeishuCredential(refreshToken, key)
+    if (candidate.authMode === 'qr_registered') {
+      if (typeof candidate.appId !== 'string' || typeof candidate.appSecretEncrypted !== 'string') {
+        throw new Error('missing tenant application credential')
+      }
+      decryptFeishuCredential(candidate.appSecretEncrypted, key)
+    }
   } catch {
     throw new ValidationError({
       collection: 'feishu-connections',
@@ -92,7 +98,7 @@ export const FeishuConnections: CollectionConfig = {
       name: 'authMode',
       type: 'select',
       defaultValue: 'store_oauth',
-      options: ['store_oauth'],
+      options: ['store_oauth', 'qr_registered'],
       required: true,
     },
     { name: 'tenantKey', type: 'text', index: true, maxLength: 160, required: true, unique: true },
@@ -120,6 +126,13 @@ export const FeishuConnections: CollectionConfig = {
     },
     { name: 'accessTokenExpiresAt', type: 'date' },
     { name: 'refreshTokenExpiresAt', type: 'date' },
+    { name: 'appId', type: 'text', maxLength: 160 },
+    {
+      name: 'appSecretEncrypted',
+      type: 'text',
+      access: { read: () => false },
+      admin: { hidden: true },
+    },
     { name: 'appToken', type: 'text', maxLength: 200 },
     { name: 'tableId', type: 'text', maxLength: 200 },
     { name: 'baseURL', type: 'text', maxLength: 600 },

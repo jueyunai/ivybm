@@ -17,7 +17,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     data = await loadLeadsPageData({ env: process.env, payload, query: parseLeadQuery(await searchParams), req, role: user.role })
   } catch (error) {
     console.error('portal_leads_read_failed', { error: error instanceof LeadsPageReadError ? error.code : 'unknown' })
-    return <LeadsHub pageState="read-failed" role={user.role} summary={null} />
+    return <LeadsHub feishuRegistrationEnabled={process.env.FEISHU_QR_REGISTRATION_ENABLED === 'true'} pageState="read-failed" role={user.role} summary={null} />
   }
-  return <LeadsHub pageState={data.state} role={user.role} summary={data.summary} />
+  return <LeadsHub feishuRegistrationEnabled={process.env.FEISHU_QR_REGISTRATION_ENABLED === 'true'} pageState={data.state} role={user.role} summary={data.summary} />
 }

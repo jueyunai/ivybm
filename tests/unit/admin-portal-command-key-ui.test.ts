@@ -13,10 +13,11 @@ import { LeadsHub } from '@/admin-portal/modules/leads/LeadsHub'
 import type { LeadsSummary } from '@/admin-portal/modules/leads/getLeadsPage'
 import { MediaEditor } from '@/admin-portal/modules/media/MediaEditor'
 
-const router = { refresh: vi.fn() }
+const router = { refresh: vi.fn(), replace: vi.fn() }
 
 vi.mock('next/navigation', () => ({
   useRouter: () => router,
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -40,6 +41,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   router.refresh.mockReset()
+  router.replace.mockReset()
 })
 
 describe('Portal create command keys', () => {

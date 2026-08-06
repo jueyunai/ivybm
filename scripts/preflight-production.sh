@@ -90,6 +90,9 @@ meta_oauth_redirect_uri="$(read_optional_env_value META_OAUTH_REDIRECT_URI)"
 instagram_app_id="$(read_optional_env_value INSTAGRAM_APP_ID)"
 instagram_app_secret="$(read_optional_env_value INSTAGRAM_APP_SECRET)"
 instagram_oauth_redirect_uri="$(read_optional_env_value INSTAGRAM_OAUTH_REDIRECT_URI)"
+feishu_qr_registration_enabled="$(read_env_value FEISHU_QR_REGISTRATION_ENABLED)"
+feishu_oauth_redirect_uri="$(read_optional_env_value FEISHU_OAUTH_REDIRECT_URI)"
+feishu_credential_encryption_key="$(read_optional_env_value FEISHU_CREDENTIAL_ENCRYPTION_KEY)"
 
 for key in POSTGRES_DB POSTGRES_USER; do
   read_env_value "$key" >/dev/null
@@ -133,6 +136,22 @@ fi
 if [[ "$trust_proxy_headers" != 'true' ]]; then
   echo 'TRUST_PROXY_HEADERS must be true behind the sole OpenResty ingress' >&2
   exit 1
+fi
+
+if [[ "$feishu_qr_registration_enabled" != 'true' && "$feishu_qr_registration_enabled" != 'false' ]]; then
+  echo 'FEISHU_QR_REGISTRATION_ENABLED must be true or false' >&2
+  exit 1
+fi
+if [[ "$feishu_qr_registration_enabled" == 'true' ]]; then
+  require_pattern FEISHU_CREDENTIAL_ENCRYPTION_KEY "$feishu_credential_encryption_key" '^[a-fA-F0-9]{64}$'
+  if [[ ! "$feishu_oauth_redirect_uri" =~ ^https:// ]]; then
+    echo 'FEISHU_OAUTH_REDIRECT_URI must be an absolute HTTPS URL when QR registration is enabled' >&2
+    exit 1
+  fi
+  if [[ "$feishu_oauth_redirect_uri" != "$public_url/api/integrations/feishu/callback" ]]; then
+    echo 'FEISHU_OAUTH_REDIRECT_URI must be the canonical Feishu callback under NEXT_PUBLIC_SERVER_URL' >&2
+    exit 1
+  fi
 fi
 
 for value in "$ai_provider_base_url" "$ai_provider_api_key" "$ai_text_model" "$ai_embedding_model" "$ai_embedding_dimensions"; do

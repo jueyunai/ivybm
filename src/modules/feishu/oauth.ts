@@ -6,7 +6,8 @@ type FetchLike = typeof fetch
 type JsonRecord = Record<string, unknown>
 
 export const FEISHU_OAUTH_SCOPES = ['auth:user.id:read', 'bitable:app', 'offline_access'] as const
-export const FEISHU_OAUTH_STATE_TTL_MS = 5 * 60 * 1_000
+export const FEISHU_OAUTH_STATE_TTL_MS = 10 * 60 * 1_000
+export const FEISHU_OAUTH_REQUEST_TIMEOUT_MS = 30_000
 
 const record = (value: unknown): JsonRecord | undefined =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as JsonRecord) : undefined
@@ -16,6 +17,79 @@ const string = (value: unknown): string | undefined =>
 
 const number = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+const oauthAbortError = (): FeishuApiError =>
+  new FeishuApiError({
+    code: 'abort',
+    message: 'Feishu OAuth request was aborted',
+    retryable: true,
+  })
+
+const withFeishuOAuthRequestTimeout = async <T>({
+  operation,
+  signal: externalSignal,
+  timeoutMs,
+}: {
+  operation: (signal: AbortSignal) => Promise<T>
+  signal?: AbortSignal
+  timeoutMs: number
+}): Promise<T> => {
+  const requestController = new AbortController()
+
+  return await new Promise<T>((resolve, reject) => {
+    let settled = false
+    const finish = (callback: () => void): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      externalSignal?.removeEventListener('abort', onExternalAbort)
+      callback()
+    }
+    const onExternalAbort = (): void => {
+      requestController.abort(externalSignal?.reason)
+      finish(() => reject(oauthAbortError()))
+    }
+
+    const timer = setTimeout(() => {
+      requestController.abort()
+      finish(() =>
+        reject(
+          new FeishuApiError({
+            code: 'timeout',
+            message: 'Feishu OAuth request timed out',
+            retryable: true,
+          }),
+        ),
+      )
+    }, timeoutMs)
+
+    if (externalSignal?.aborted) {
+      onExternalAbort()
+      return
+    }
+    externalSignal?.addEventListener('abort', onExternalAbort, { once: true })
+
+    operation(requestController.signal).then(
+      (value) => finish(() => resolve(value)),
+      (error: unknown) => {
+        if (externalSignal?.aborted) {
+          onExternalAbort()
+          return
+        }
+        finish(() => reject(error))
+      },
+    )
+  })
+}
+
+const readOAuthJSON = async (response: Response, signal: AbortSignal): Promise<JsonRecord> => {
+  try {
+    return record(await response.json()) ?? {}
+  } catch (error) {
+    if (signal.aborted) throw error
+    return {}
+  }
+}
 
 const base64url = (value: Buffer): string => value.toString('base64url')
 
@@ -41,7 +115,7 @@ export const buildFeishuAuthorizeURL = ({
   state,
 }: {
   appId: string
-  challenge: string
+  challenge?: string
   redirectURI: string
   state: string
 }): string => {
@@ -54,8 +128,10 @@ export const buildFeishuAuthorizeURL = ({
   url.searchParams.set('redirect_uri', redirectURI.trim())
   url.searchParams.set('scope', FEISHU_OAUTH_SCOPES.join(' '))
   url.searchParams.set('state', state)
-  url.searchParams.set('code_challenge', challenge)
-  url.searchParams.set('code_challenge_method', 'S256')
+  if (challenge) {
+    url.searchParams.set('code_challenge', challenge)
+    url.searchParams.set('code_challenge_method', 'S256')
+  }
   return url.toString()
 }
 
@@ -98,17 +174,28 @@ const requestOAuthToken = async ({
   body,
   clock = () => new Date(),
   fetch: fetchImpl = globalThis.fetch,
+  signal,
+  timeoutMs = FEISHU_OAUTH_REQUEST_TIMEOUT_MS,
 }: {
   body: JsonRecord
   clock?: () => Date
   fetch?: FetchLike
+  signal?: AbortSignal
+  timeoutMs?: number
 }): Promise<FeishuOAuthToken> => {
-  const response = await fetchImpl('https://accounts.feishu.cn/oauth/v3/token', {
-    body: JSON.stringify(body),
-    headers: { 'content-type': 'application/json; charset=utf-8' },
-    method: 'POST',
+  const { payload, response } = await withFeishuOAuthRequestTimeout({
+    operation: async (requestSignal) => {
+      const response = await fetchImpl('https://accounts.feishu.cn/oauth/v3/token', {
+        body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+        method: 'POST',
+        signal: requestSignal,
+      })
+      return { payload: await readOAuthJSON(response, requestSignal), response }
+    },
+    signal,
+    timeoutMs,
   })
-  const payload = record(await response.json().catch(() => undefined)) ?? {}
   if (!response.ok || (number(payload.code) ?? 0) !== 0 || string(payload.error)) {
     throw new FeishuApiError({
       code: number(payload.code) ?? string(payload.error) ?? response.status,
@@ -125,22 +212,26 @@ export const exchangeFeishuOAuthCode = (input: {
   appId: string
   appSecret: string
   code: string
-  codeVerifier: string
+  codeVerifier?: string
   redirectURI: string
   clock?: () => Date
   fetch?: FetchLike
+  signal?: AbortSignal
+  timeoutMs?: number
 }): Promise<FeishuOAuthToken> =>
   requestOAuthToken({
     body: {
       client_id: input.appId,
       client_secret: input.appSecret,
       code: input.code,
-      code_verifier: input.codeVerifier,
+      ...(input.codeVerifier ? { code_verifier: input.codeVerifier } : {}),
       grant_type: 'authorization_code',
       redirect_uri: input.redirectURI,
     },
     clock: input.clock,
     fetch: input.fetch,
+    signal: input.signal,
+    timeoutMs: input.timeoutMs,
   })
 
 export const refreshFeishuOAuthToken = (input: {
@@ -149,6 +240,8 @@ export const refreshFeishuOAuthToken = (input: {
   refreshToken: string
   clock?: () => Date
   fetch?: FetchLike
+  signal?: AbortSignal
+  timeoutMs?: number
 }): Promise<FeishuOAuthToken> =>
   requestOAuthToken({
     body: {
@@ -159,6 +252,8 @@ export const refreshFeishuOAuthToken = (input: {
     },
     clock: input.clock,
     fetch: input.fetch,
+    signal: input.signal,
+    timeoutMs: input.timeoutMs,
   })
 
 export type FeishuOAuthUser = {
@@ -170,14 +265,25 @@ export type FeishuOAuthUser = {
 export const getFeishuOAuthUser = async ({
   accessToken,
   fetch: fetchImpl = globalThis.fetch,
+  signal,
+  timeoutMs = FEISHU_OAUTH_REQUEST_TIMEOUT_MS,
 }: {
   accessToken: string
   fetch?: FetchLike
+  signal?: AbortSignal
+  timeoutMs?: number
 }): Promise<FeishuOAuthUser> => {
-  const response = await fetchImpl('https://open.feishu.cn/open-apis/authen/v1/user_info', {
-    headers: { authorization: `Bearer ${accessToken}` },
+  const { payload: body, response } = await withFeishuOAuthRequestTimeout({
+    operation: async (requestSignal) => {
+      const response = await fetchImpl('https://open.feishu.cn/open-apis/authen/v1/user_info', {
+        headers: { authorization: `Bearer ${accessToken}` },
+        signal: requestSignal,
+      })
+      return { payload: await readOAuthJSON(response, requestSignal), response }
+    },
+    signal,
+    timeoutMs,
   })
-  const body = record(await response.json().catch(() => undefined)) ?? {}
   const data = record(body.data) ?? body
   const openId = string(data.open_id)
   const tenantKey = string(data.tenant_key)

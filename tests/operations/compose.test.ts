@@ -36,6 +36,7 @@ const requiredEnvironment = {
   FEISHU_APP_SECRET: 'operation-test-feishu-secret',
   FEISHU_CREDENTIAL_ENCRYPTION_KEY: 'd'.repeat(64),
   FEISHU_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/integrations/feishu/callback',
+  FEISHU_QR_REGISTRATION_ENABLED: 'true',
   FEISHU_RELAY_INTERVAL_MS: '45000',
   IMAGE_TAG: imageTag,
   META_APP_ID: '1111111111111111',
@@ -271,6 +272,9 @@ describe('production Compose configuration', () => {
         FEISHU_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/integrations/feishu/callback',
       }
       expect(config.services.app.environment).toMatchObject(expected)
+      expect(config.services.app.environment).toMatchObject({
+        FEISHU_QR_REGISTRATION_ENABLED: 'true',
+      })
       expect(config.services.worker.environment).toMatchObject({
         ...expected,
         FEISHU_RELAY_INTERVAL_MS: '45000',
@@ -279,10 +283,15 @@ describe('production Compose configuration', () => {
       expect(config.services.migrate.environment).not.toHaveProperty(
         'FEISHU_CREDENTIAL_ENCRYPTION_KEY',
       )
+      expect(config.services.worker.environment).not.toHaveProperty(
+        'FEISHU_QR_REGISTRATION_ENABLED',
+      )
+      expect(config.services.migrate.environment).not.toHaveProperty(
+        'FEISHU_QR_REGISTRATION_ENABLED',
+      )
     }
   })
 })
-
 describe('local Compose worker configuration', () => {
   it('passes CMS encryption and legacy AI fallback settings to the worker', () => {
     const config = getLocalComposeConfig()

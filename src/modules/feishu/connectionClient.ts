@@ -40,6 +40,25 @@ const connectionCredential = (connection: UnknownRecord, field: string): string 
   return decryptFeishuCredential(encrypted, readFeishuCredentialEncryptionKey())
 }
 
+const connectionAppCredentials = (
+  connection: UnknownRecord,
+): { appId: string; appSecret: string; authMode: 'qr_registered' | 'store_oauth' } => {
+  if (connection.authMode === 'qr_registered') {
+    const appId = string(connection.appId)
+    if (!appId) throw new FeishuConfigurationError('Feishu connection appId is missing')
+    return {
+      appId,
+      appSecret: connectionCredential(connection, 'appSecretEncrypted'),
+      authMode: 'qr_registered',
+    }
+  }
+  return {
+    appId: requiredEnvironment('FEISHU_APP_ID'),
+    appSecret: requiredEnvironment('FEISHU_APP_SECRET'),
+    authMode: 'store_oauth',
+  }
+}
+
 const expiresSoon = (value: unknown): boolean => {
   if (typeof value !== 'string') return true
   const expiresAt = Date.parse(value)
@@ -124,8 +143,7 @@ export class PayloadFeishuTokenProvider {
       }
 
       const refreshed = await refreshFeishuOAuthToken({
-        appId: requiredEnvironment('FEISHU_APP_ID'),
-        appSecret: requiredEnvironment('FEISHU_APP_SECRET'),
+        ...connectionAppCredentials(connection),
         fetch: this.fetch,
         refreshToken: connectionCredential(connection, 'refreshTokenEncrypted'),
       })
@@ -177,10 +195,15 @@ export class PayloadFeishuTokenProvider {
     if (!forceRefresh && this.appToken && this.appToken.expiresAt > Date.now() + 60_000) {
       return this.appToken.value
     }
+    const connection = await this.findConnection()
+    const credentials = connectionAppCredentials(connection)
+    if (credentials.authMode !== 'store_oauth') {
+      throw new FeishuConfigurationError('App access token is only used by Store App connections')
+    }
     const response = await this.fetch('https://open.feishu.cn/open-apis/auth/v3/app_access_token', {
       body: JSON.stringify({
-        app_id: requiredEnvironment('FEISHU_APP_ID'),
-        app_secret: requiredEnvironment('FEISHU_APP_SECRET'),
+        app_id: credentials.appId,
+        app_secret: credentials.appSecret,
       }),
       headers: { 'content-type': 'application/json; charset=utf-8' },
       method: 'POST',
@@ -208,6 +231,36 @@ export class PayloadFeishuTokenProvider {
     const tenantKey = string(connection.tenantKey)
     if (connection.status !== 'connected' || !tenantKey) {
       throw new FeishuConfigurationError('Feishu tenant connection is unavailable')
+    }
+    const credentials = connectionAppCredentials(connection)
+    if (credentials.authMode === 'qr_registered') {
+      const response = await this.fetch(
+        'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
+        {
+          body: JSON.stringify({
+            app_id: credentials.appId,
+            app_secret: credentials.appSecret,
+          }),
+          headers: { 'content-type': 'application/json; charset=utf-8' },
+          method: 'POST',
+          signal,
+        },
+      )
+      const body = record(await response.json().catch(() => undefined)) ?? {}
+      const value = string(body.tenant_access_token)
+      if (!response.ok || number(body.code) !== 0 || !value) {
+        throw new FeishuApiError({
+          code: number(body.code) ?? response.status,
+          message: 'Feishu tenant token request failed',
+          retryable: response.status >= 500,
+          status: response.status,
+        })
+      }
+      this.tenantToken = {
+        expiresAt: Date.now() + (number(body.expire) ?? 7_200) * 1_000,
+        value,
+      }
+      return value
     }
     const response = await this.fetch(
       'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token',
