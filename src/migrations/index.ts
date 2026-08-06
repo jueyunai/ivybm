@@ -19,6 +19,7 @@ import * as migration_20260801_232040_task11_feishu_followup_reminders from './2
 import * as migration_20260802_042231_portal_v1 from './20260802_042231_portal_v1'
 import * as migration_20260804_142542_publication_lifecycle from './20260804_142542_publication_lifecycle'
 import * as migration_20260805_051559 from './20260805_051559'
+import * as migration_20260806_170400_task13_oauth_authorization_revision from './20260806_170400_task13_oauth_authorization_revision'
 
 export const migrations = [
   {
@@ -125,5 +126,10 @@ export const migrations = [
     up: migration_20260805_051559.up,
     down: migration_20260805_051559.down,
     name: '20260805_051559',
+  },
+  {
+    up: migration_20260806_170400_task13_oauth_authorization_revision.up,
+    down: migration_20260806_170400_task13_oauth_authorization_revision.down,
+    name: '20260806_170400_task13_oauth_authorization_revision',
   },
 ]

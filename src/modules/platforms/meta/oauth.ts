@@ -25,7 +25,7 @@ const MAX_AUTHORIZATION_CODE_LENGTH = 4_096
 const MAX_CREDENTIAL_LENGTH = 16_384
 const MAX_PROVIDER_RESPONSE_LENGTH = 256 * 1_024
 const MAX_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60
-const OAUTH_TRANSACTION_VERSION = 1
+const OAUTH_TRANSACTION_VERSION = 2
 const PROVIDER_TIMEOUT_MILLISECONDS = 15_000
 const STATE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/
 const META_ID_PATTERN = /^[1-9][0-9]{0,31}$/
@@ -68,7 +68,7 @@ export type MetaOAuthConfiguration = {
 export type MetaOAuthTransaction = {
   accountId: string
   accountKind: MetaAccountKind
-  authorizationRevision: string
+  authorizationRevision: number
   expiresAtMilliseconds: number
   externalAccountId: string
   state: string
@@ -175,11 +175,11 @@ const normalizedAccountId = (value: number | string): string => {
   return normalized
 }
 
-const normalizedAuthorizationRevision = (value: string | undefined): string => {
-  if (!value) throw new MetaOAuthError('invalid_transaction')
-  const timestamp = Date.parse(value)
-  if (!Number.isFinite(timestamp)) throw new MetaOAuthError('invalid_transaction')
-  return new Date(timestamp).toISOString()
+const normalizedAuthorizationRevision = (value: number | undefined): number => {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new MetaOAuthError('invalid_transaction')
+  }
+  return Number(value)
 }
 
 export const createMetaOAuthTransaction = ({
@@ -192,7 +192,7 @@ export const createMetaOAuthTransaction = ({
 }: {
   accountId: number | string
   accountKind: MetaAccountKind
-  authorizationRevision: string
+  authorizationRevision: number
   environment?: Environment
   externalAccountId: string
   nowMilliseconds?: number
@@ -265,8 +265,9 @@ export const verifyMetaOAuthTransaction = ({
     !Number.isSafeInteger(numericAccountId) ||
     String(numericAccountId) !== transaction.accountId ||
     !isMetaAccountKind(transaction.accountKind) ||
-    typeof transaction.authorizationRevision !== 'string' ||
-    !Number.isFinite(Date.parse(transaction.authorizationRevision)) ||
+    typeof transaction.authorizationRevision !== 'number' ||
+    !Number.isSafeInteger(transaction.authorizationRevision) ||
+    transaction.authorizationRevision < 0 ||
     typeof transaction.expiresAtMilliseconds !== 'number' ||
     !Number.isSafeInteger(transaction.expiresAtMilliseconds) ||
     transaction.expiresAtMilliseconds <= nowMilliseconds ||
@@ -283,7 +284,7 @@ export const verifyMetaOAuthTransaction = ({
   return {
     accountId: transaction.accountId,
     accountKind: transaction.accountKind,
-    authorizationRevision: new Date(Date.parse(transaction.authorizationRevision)).toISOString(),
+    authorizationRevision: transaction.authorizationRevision,
     expiresAtMilliseconds: transaction.expiresAtMilliseconds,
     externalAccountId: transaction.externalAccountId,
     state: transaction.state,

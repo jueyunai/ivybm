@@ -49,6 +49,7 @@ const account = {
     scopes: [],
     state: 'pending' as const,
   },
+  authorizationRevision: 7,
   capabilities: { messagingInbound: 'pending' as const, publishing: 'pending' as const },
   connectionKey: 'facebook-page:123456789012345',
   createdAt: '2026-07-31T00:00:00.000Z',
@@ -73,11 +74,13 @@ const createPayload = ({
 } = {}) => {
   const oauthRow: {
     account_kind: string
+    authorization_revision: number
     authorization_state: string
     external_account_id: null | string
     updated_at: string
   } = {
     account_kind: foundAccount.accountKind,
+    authorization_revision: foundAccount.authorizationRevision,
     authorization_state: foundAccount.authorization.state,
     external_account_id: foundAccount.externalAccountId,
     updated_at: foundAccount.updatedAt,
@@ -318,7 +321,8 @@ describe('Meta OAuth routes', () => {
     )
     expect(disconnect.status).toBe(200)
     payload.__oauthRow.authorization_state = 'not_started'
-    payload.__oauthRow.updated_at = '2026-07-31T00:01:00.000Z'
+    payload.__oauthRow.authorization_revision += 1
+    payload.__oauthRow.updated_at = account.updatedAt
     resolvePermissions(
       new Response(
         JSON.stringify({
@@ -388,7 +392,85 @@ describe('Meta OAuth routes', () => {
     )
     await permissionsStarted
     payload.__oauthRow.external_account_id = '999999999999999'
-    payload.__oauthRow.updated_at = '2026-07-31T00:01:00.000Z'
+    payload.__oauthRow.authorization_revision += 1
+    payload.__oauthRow.updated_at = account.updatedAt
+    resolvePermissions(
+      new Response(
+        JSON.stringify({
+          data: requiredMetaPermissions('facebook-page').map((permission) => ({
+            permission,
+            status: 'granted',
+          })),
+        }),
+        { status: 200 },
+      ),
+    )
+
+    const response = await callbackPromise
+
+    expect(response.headers.get('location')).toBe(
+      'http://localhost:3000/admin/collections/platform-accounts/42?metaOAuth=account_changed',
+    )
+    expect(payload.update).not.toHaveBeenCalled()
+  })
+
+  it('does not overwrite replacement credentials when the timestamp is unchanged', async () => {
+    const payload = createPayload()
+    mocks.getPayload.mockResolvedValue(payload)
+    const startResponse = await metaOAuthStart(startRequest())
+    const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
+    let resolvePermissions!: (response: Response) => void
+    let markPermissionsStarted!: () => void
+    const permissionsStarted = new Promise<void>((resolve) => {
+      markPermissionsStarted = resolve
+    })
+    const permissionsResponse = new Promise<Response>((resolve) => {
+      resolvePermissions = resolve
+    })
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'short-user-token', expires_in: 3_600 }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: 5_184_000 }), {
+          status: 200,
+        }),
+      )
+      .mockImplementationOnce(async () => {
+        markPermissionsStarted()
+        return permissionsResponse
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: account.externalAccountId,
+                name: account.name,
+                access_token: 'stale-page-token',
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
+    vi.stubGlobal('fetch', fetcher)
+
+    const callbackPromise = metaOAuthCallback(
+      new NextRequest(
+        `http://localhost:3000${META_OAUTH_CALLBACK_PATH}?code=authorization-code&state=${state}`,
+        { headers: { cookie: cookieHeader(startResponse) } },
+      ),
+    )
+    await permissionsStarted
+
+    // Simulate the PlatformAccounts hook committing a credential replacement in
+    // the same timestamp(3) tick. Only the monotonic revision changes.
+    payload.__oauthRow.authorization_revision += 1
+    payload.__oauthRow.updated_at = account.updatedAt
     resolvePermissions(
       new Response(
         JSON.stringify({

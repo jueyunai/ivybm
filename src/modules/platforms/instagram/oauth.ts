@@ -25,10 +25,11 @@ const MAX_AUTHORIZATION_CODE_LENGTH = 4_096
 const MAX_CREDENTIAL_LENGTH = 16_384
 const MAX_PROVIDER_RESPONSE_LENGTH = 256 * 1_024
 const MAX_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60
-const OAUTH_TRANSACTION_VERSION = 1
+const OAUTH_TRANSACTION_VERSION = 2
 const PROVIDER_TIMEOUT_MILLISECONDS = 15_000
 const STATE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/
 const INSTAGRAM_ID_PATTERN = /^[1-9][0-9]{0,31}$/
+const INSTAGRAM_PERMISSION_PATTERN = /^[a-z][a-z0-9_]{0,127}$/
 
 export type InstagramOAuthErrorCode =
   | 'identity_mismatch'
@@ -67,9 +68,10 @@ export type InstagramOAuthConfiguration = {
 export type InstagramOAuthTransaction = {
   accountId: string
   accountKind: InstagramAccountKind
-  authorizationRevision: string
+  authorizationRevision: number
   expiresAtMilliseconds: number
   externalAccountId: string
+  requestedScopes: string[]
   state: string
 }
 
@@ -77,13 +79,15 @@ export type InstagramAuthorizedAccount = {
   accessToken: string
   accountId: string
   displayName: string
-  scopes: string[]
 }
 
 export type InstagramUserToken = {
   accessToken: string
   expiresAt: string
+  scopes: string[]
 }
+
+type InstagramLongLivedToken = Omit<InstagramUserToken, 'scopes'>
 
 const nonEmpty = (value: string | undefined, maximumLength = MAX_CREDENTIAL_LENGTH): string => {
   const normalized = value?.trim()
@@ -176,11 +180,23 @@ const normalizedAccountId = (value: number | string): string => {
   return normalized
 }
 
-const normalizedAuthorizationRevision = (value: string | undefined): string => {
-  if (!value) throw new InstagramOAuthError('invalid_transaction')
-  const timestamp = Date.parse(value)
-  if (!Number.isFinite(timestamp)) throw new InstagramOAuthError('invalid_transaction')
-  return new Date(timestamp).toISOString()
+const normalizedAuthorizationRevision = (value: number | undefined): number => {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new InstagramOAuthError('invalid_transaction')
+  }
+  return Number(value)
+}
+
+const normalizedRequestedScopes = (value: unknown): string[] => {
+  const expected = requiredInstagramPermissions('instagram-professional')
+  if (
+    !Array.isArray(value) ||
+    value.length !== expected.length ||
+    value.some((scope, index) => scope !== expected[index])
+  ) {
+    throw new InstagramOAuthError('invalid_transaction')
+  }
+  return [...expected]
 }
 
 export const createInstagramOAuthTransaction = ({
@@ -193,7 +209,7 @@ export const createInstagramOAuthTransaction = ({
 }: {
   accountId: number | string
   accountKind: InstagramAccountKind
-  authorizationRevision: string
+  authorizationRevision: number
   environment?: Environment
   externalAccountId: string
   nowMilliseconds?: number
@@ -206,6 +222,7 @@ export const createInstagramOAuthTransaction = ({
     authorizationRevision: normalizedAuthorizationRevision(authorizationRevision),
     expiresAtMilliseconds: nowMilliseconds + INSTAGRAM_OAUTH_TRANSACTION_TTL_SECONDS * 1_000,
     externalAccountId: normalizedExternalAccountId,
+    requestedScopes: requiredInstagramPermissions(accountKind),
     state,
     version: OAUTH_TRANSACTION_VERSION,
   }
@@ -266,8 +283,9 @@ export const verifyInstagramOAuthTransaction = ({
     !Number.isSafeInteger(numericAccountId) ||
     String(numericAccountId) !== transaction.accountId ||
     !isInstagramAccountKind(transaction.accountKind) ||
-    typeof transaction.authorizationRevision !== 'string' ||
-    !Number.isFinite(Date.parse(transaction.authorizationRevision)) ||
+    typeof transaction.authorizationRevision !== 'number' ||
+    !Number.isSafeInteger(transaction.authorizationRevision) ||
+    transaction.authorizationRevision < 0 ||
     typeof transaction.expiresAtMilliseconds !== 'number' ||
     !Number.isSafeInteger(transaction.expiresAtMilliseconds) ||
     transaction.expiresAtMilliseconds <= nowMilliseconds ||
@@ -284,9 +302,10 @@ export const verifyInstagramOAuthTransaction = ({
   return {
     accountId: transaction.accountId,
     accountKind: transaction.accountKind,
-    authorizationRevision: new Date(Date.parse(transaction.authorizationRevision)).toISOString(),
+    authorizationRevision: transaction.authorizationRevision,
     expiresAtMilliseconds: transaction.expiresAtMilliseconds,
     externalAccountId: transaction.externalAccountId,
+    requestedScopes: normalizedRequestedScopes(transaction.requestedScopes),
     state: transaction.state,
   }
 }
@@ -349,7 +368,7 @@ const readProviderJSON = async (
 const readTokenPayload = (
   payload: Record<string, unknown>,
   nowMilliseconds: number,
-): InstagramUserToken => {
+): InstagramLongLivedToken => {
   const accessToken = typeof payload.access_token === 'string' ? payload.access_token.trim() : ''
   const expiresIn = payload.expires_in
   if (
@@ -376,7 +395,7 @@ const exchangeCodeForShortToken = async ({
   code: string
   config: InstagramOAuthConfiguration
   fetcher: typeof fetch
-}): Promise<{ accessToken: string; userId: string }> => {
+}): Promise<{ accessToken: string; scopes: string[]; userId: string }> => {
   const body = new URLSearchParams({
     client_id: config.appId,
     client_secret: config.appSecret,
@@ -402,8 +421,12 @@ const exchangeCodeForShortToken = async ({
   }
 
   const payload = await readProviderJSON(response, 'token_exchange_failed')
-  const accessToken = typeof payload.access_token === 'string' ? payload.access_token.trim() : ''
-  const rawUserId = payload.user_id
+  if (!Array.isArray(payload.data) || payload.data.length !== 1) {
+    throw new InstagramOAuthError('token_response_invalid')
+  }
+  const grant = parseProviderRecord(payload.data[0])
+  const accessToken = typeof grant.access_token === 'string' ? grant.access_token.trim() : ''
+  const rawUserId = grant.user_id
   const userId =
     typeof rawUserId === 'number'
       ? String(rawUserId)
@@ -418,7 +441,24 @@ const exchangeCodeForShortToken = async ({
   ) {
     throw new InstagramOAuthError('token_response_invalid')
   }
-  return { accessToken, userId }
+
+  if (typeof grant.permissions !== 'string') {
+    throw new InstagramOAuthError('required_permission_missing')
+  }
+  const rawScopes = grant.permissions.split(',').map((scope) => scope.trim())
+  if (
+    rawScopes.length === 0 ||
+    rawScopes.length > 100 ||
+    rawScopes.some((scope) => !INSTAGRAM_PERMISSION_PATTERN.test(scope))
+  ) {
+    throw new InstagramOAuthError('token_response_invalid')
+  }
+  const scopes = [...new Set(rawScopes)]
+  const requiredScopes = requiredInstagramPermissions('instagram-professional')
+  if (requiredScopes.some((scope) => !scopes.includes(scope))) {
+    throw new InstagramOAuthError('required_permission_missing')
+  }
+  return { accessToken, scopes, userId }
 }
 
 const exchangeShortTokenForLongToken = async ({
@@ -431,7 +471,7 @@ const exchangeShortTokenForLongToken = async ({
   appSecret: string
   fetcher: typeof fetch
   nowMilliseconds: number
-}): Promise<InstagramUserToken> => {
+}): Promise<InstagramLongLivedToken> => {
   const url = new URL('/access_token', INSTAGRAM_GRAPH_ORIGIN)
   url.searchParams.set('grant_type', 'ig_exchange_token')
   url.searchParams.set('client_secret', appSecret)
@@ -474,12 +514,13 @@ export const exchangeInstagramAuthorizationCode = async ({
     config,
     fetcher,
   })
-  return exchangeShortTokenForLongToken({
+  const longToken = await exchangeShortTokenForLongToken({
     accessToken: shortToken.accessToken,
     appSecret: config.appSecret,
     fetcher,
     nowMilliseconds,
   })
+  return { ...longToken, scopes: shortToken.scopes }
 }
 
 const instagramGraphRequest = async ({
@@ -513,18 +554,6 @@ const instagramGraphRequest = async ({
   return readProviderJSON(response, 'identity_verification_failed')
 }
 
-const providerArray = (value: unknown): Record<string, unknown>[] => {
-  if (!Array.isArray(value) || value.length > 100) {
-    throw new InstagramOAuthError('identity_verification_failed')
-  }
-  return value.map((item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      throw new InstagramOAuthError('identity_verification_failed')
-    }
-    return item as Record<string, unknown>
-  })
-}
-
 const requireInstagramExternalId = (value: string): string => {
   const normalized = value.trim()
   if (!INSTAGRAM_ID_PATTERN.test(normalized)) throw new InstagramOAuthError('identity_mismatch')
@@ -544,19 +573,6 @@ export const resolveInstagramAuthorizedAccount = async ({
   const targetId = requireInstagramExternalId(externalAccountId)
   if (!normalizedToken || normalizedToken.length > MAX_CREDENTIAL_LENGTH) {
     throw new InstagramOAuthError('identity_verification_failed')
-  }
-
-  const permissionPayload = await instagramGraphRequest({
-    accessToken: normalizedToken,
-    fetcher,
-    path: '/me/permissions',
-  })
-  const grantedPermissions = providerArray(permissionPayload.data)
-    .filter((item) => item.status === 'granted' && typeof item.permission === 'string')
-    .map((item) => String(item.permission))
-  const requiredPermissions = requiredInstagramPermissions('instagram-professional')
-  if (requiredPermissions.some((permission) => !grantedPermissions.includes(permission))) {
-    throw new InstagramOAuthError('required_permission_missing')
   }
 
   const profile = await instagramGraphRequest({
@@ -589,6 +605,5 @@ export const resolveInstagramAuthorizedAccount = async ({
     accessToken: normalizedToken,
     accountId,
     displayName: username ? `@${username}` : accountId,
-    scopes: [...new Set(grantedPermissions)],
   }
 }

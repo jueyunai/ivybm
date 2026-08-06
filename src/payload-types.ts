@@ -485,6 +485,7 @@ export interface PlatformAccount {
    */
   externalAccountId?: string | null;
   connectionKey?: string | null;
+  authorizationRevision: number;
   authorization: {
     state: 'not_started' | 'pending' | 'connected' | 'expired' | 'blocked' | 'disabled';
     /**
@@ -1954,6 +1955,7 @@ export interface PlatformAccountsSelect<T extends boolean = true> {
   platformFamily?: T;
   externalAccountId?: T;
   connectionKey?: T;
+  authorizationRevision?: T;
   authorization?:
     | T
     | {

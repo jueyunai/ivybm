@@ -60,7 +60,7 @@ describe('Meta OAuth', () => {
     const issued = createMetaOAuthTransaction({
       accountId: 42,
       accountKind: 'facebook-page',
-      authorizationRevision: '2026-07-31T00:00:00.000Z',
+      authorizationRevision: 7,
       environment,
       externalAccountId: '123456789012345',
       nowMilliseconds: 1_000,
@@ -78,7 +78,7 @@ describe('Meta OAuth', () => {
     ).toMatchObject({
       accountId: '42',
       accountKind: 'facebook-page',
-      authorizationRevision: '2026-07-31T00:00:00.000Z',
+      authorizationRevision: 7,
       externalAccountId: '123456789012345',
       state: issued.state,
     })

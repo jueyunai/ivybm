@@ -404,6 +404,7 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
         context: { skipAudit: true },
         data: {
           accountKind: 'facebook-page',
+          authorizationRevision: 0,
           authorization: {
             accessToken: `worker-state-change-token-${randomUUID()}`,
             accessTokenConfigured: false,

@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import instagramOAuthFixture from '../../fixtures/platforms/instagram-oauth-success.json'
+
 import {
   INSTAGRAM_OAUTH_CALLBACK_PATH,
   INSTAGRAM_OAUTH_TRANSACTION_COOKIE,
@@ -48,6 +50,7 @@ const account = {
     scopes: [],
     state: 'pending' as const,
   },
+  authorizationRevision: 7,
   capabilities: { messagingInbound: 'pending' as const, publishing: 'pending' as const },
   connectionKey: 'instagram-professional:987654321098765',
   createdAt: '2026-07-31T00:00:00.000Z',
@@ -74,11 +77,13 @@ const createPayload = ({
 } = {}) => {
   const oauthRow: {
     account_kind: string
+    authorization_revision: number
     authorization_state: string
     external_account_id: null | string
     updated_at: string
   } = {
     account_kind: foundAccount.accountKind,
+    authorization_revision: foundAccount.authorizationRevision,
     authorization_state: foundAccount.authorization.state,
     external_account_id: foundAccount.externalAccountId,
     updated_at: foundAccount.updatedAt,
@@ -169,10 +174,6 @@ describe('Instagram OAuth routes', () => {
   })
 
   it('binds and stores the Instagram professional account token after callback', async () => {
-    const grantedScopes = [
-      ...requiredInstagramPermissions('instagram-professional'),
-      'instagram_business_content_publish',
-    ]
     const payload = createPayload()
     mocks.getPayload.mockResolvedValue(payload)
     const startResponse = await instagramOAuthStart(startRequest())
@@ -180,41 +181,13 @@ describe('Instagram OAuth routes', () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ access_token: 'short-user-token', user_id: 987654321098765 }),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify(instagramOAuthFixture.responses.shortToken), { status: 200 }),
       )
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            access_token: 'long-user-token',
-            expires_in: 5_184_000,
-            token_type: 'bearer',
-          }),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify(instagramOAuthFixture.responses.longToken), { status: 200 }),
       )
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            data: grantedScopes.map((permission) => ({
-              permission,
-              status: 'granted',
-            })),
-          }),
-          { status: 200 },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            account_type: 'BUSINESS',
-            id: account.externalAccountId,
-            username: 'ivymetalglass',
-          }),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify(instagramOAuthFixture.responses.profile), { status: 200 }),
       )
     vi.stubGlobal('fetch', fetcher)
 
@@ -234,12 +207,12 @@ describe('Instagram OAuth routes', () => {
       collection: 'platform-accounts',
       data: {
         authorization: {
-          accessToken: 'long-user-token',
+          accessToken: instagramOAuthFixture.responses.longToken.access_token,
           appId: '1221206873460693',
           clearAccessToken: false,
           clearRefreshToken: true,
           expiresAt: expect.any(String),
-          scopes: grantedScopes.map((scope) => ({
+          scopes: requiredInstagramPermissions('instagram-professional').map((scope) => ({
             scope,
           })),
           state: 'connected',
@@ -250,6 +223,19 @@ describe('Instagram OAuth routes', () => {
       req: expect.any(Object),
       user: admin,
     })
+
+    const actualRequests = fetcher.mock.calls.map(([input, init]) => {
+      const url = new URL(String(input))
+      const fields = url.searchParams.get('fields')
+      return {
+        ...(fields ? { fields } : {}),
+        method: init?.method ?? 'GET',
+        origin: url.origin,
+        pathname: url.pathname,
+      }
+    })
+    expect(actualRequests).toEqual(instagramOAuthFixture.requests)
+    expect(actualRequests.every(({ pathname }) => !pathname.includes('permissions'))).toBe(true)
   })
 
   it('does not persist a late Instagram callback after the account is disconnected', async () => {
@@ -257,21 +243,18 @@ describe('Instagram OAuth routes', () => {
     mocks.getPayload.mockResolvedValue(payload)
     const startResponse = await instagramOAuthStart(startRequest())
     const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
-    let resolvePermissions!: (response: Response) => void
-    let markPermissionsStarted!: () => void
-    const permissionsStarted = new Promise<void>((resolve) => {
-      markPermissionsStarted = resolve
+    let resolveProfile!: (response: Response) => void
+    let markProfileStarted!: () => void
+    const profileStarted = new Promise<void>((resolve) => {
+      markProfileStarted = resolve
     })
-    const permissionsResponse = new Promise<Response>((resolve) => {
-      resolvePermissions = resolve
+    const profileResponse = new Promise<Response>((resolve) => {
+      resolveProfile = resolve
     })
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ access_token: 'short-user-token', user_id: 987654321098765 }),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify(instagramOAuthFixture.responses.shortToken), { status: 200 }),
       )
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: 5_184_000 }), {
@@ -279,19 +262,9 @@ describe('Instagram OAuth routes', () => {
         }),
       )
       .mockImplementationOnce(async () => {
-        markPermissionsStarted()
-        return permissionsResponse
+        markProfileStarted()
+        return profileResponse
       })
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            account_type: 'BUSINESS',
-            id: account.externalAccountId,
-            username: 'ivymetalglass',
-          }),
-          { status: 200 },
-        ),
-      )
     vi.stubGlobal('fetch', fetcher)
 
     const callbackPromise = instagramOAuthCallback(
@@ -300,7 +273,7 @@ describe('Instagram OAuth routes', () => {
         { headers: { cookie: cookieHeader(startResponse) } },
       ),
     )
-    await permissionsStarted
+    await profileStarted
 
     const disconnect = await instagramOAuthDisconnect(
       new NextRequest('http://localhost:3000/api/platforms/instagram/oauth/disconnect', {
@@ -311,17 +284,12 @@ describe('Instagram OAuth routes', () => {
     )
     expect(disconnect.status).toBe(200)
     payload.__oauthRow.authorization_state = 'not_started'
-    payload.__oauthRow.updated_at = '2026-07-31T00:01:00.000Z'
-    resolvePermissions(
-      new Response(
-        JSON.stringify({
-          data: requiredInstagramPermissions('instagram-professional').map((permission) => ({
-            permission,
-            status: 'granted',
-          })),
-        }),
-        { status: 200 },
-      ),
+    payload.__oauthRow.authorization_revision += 1
+    // Deliberately retain the same timestamp to prove timestamp(3) collisions
+    // cannot let the stale callback pass the monotonic generation check.
+    payload.__oauthRow.updated_at = account.updatedAt
+    resolveProfile(
+      new Response(JSON.stringify(instagramOAuthFixture.responses.profile), { status: 200 }),
     )
 
     const response = await callbackPromise
@@ -332,32 +300,22 @@ describe('Instagram OAuth routes', () => {
     expect(payload.update).toHaveBeenCalledTimes(1)
   })
 
-  it('rejects a token with missing provider permissions before persistence', async () => {
+  it('rejects a code grant missing a required permission before persistence', async () => {
     const payload = createPayload()
     mocks.getPayload.mockResolvedValue(payload)
     const startResponse = await instagramOAuthStart(startRequest())
     const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
+    const shortToken = {
+      data: [
+        {
+          ...instagramOAuthFixture.responses.shortToken.data[0],
+          permissions: 'instagram_business_basic',
+        },
+      ],
+    }
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ access_token: 'short-user-token', user_id: 987654321098765 }),
-          { status: 200 },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: 5_184_000 }), {
-          status: 200,
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            data: [{ permission: 'instagram_business_basic', status: 'granted' }],
-          }),
-          { status: 200 },
-        ),
-      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(shortToken), { status: 200 }))
     vi.stubGlobal('fetch', fetcher)
 
     const response = await instagramOAuthCallback(
@@ -370,6 +328,7 @@ describe('Instagram OAuth routes', () => {
     expect(response.headers.get('location')).toBe(
       'http://localhost:3000/admin/collections/platform-accounts/42?instagramOAuth=required_permission_missing',
     )
+    expect(fetcher).toHaveBeenCalledTimes(1)
     expect(payload.update).not.toHaveBeenCalled()
   })
 

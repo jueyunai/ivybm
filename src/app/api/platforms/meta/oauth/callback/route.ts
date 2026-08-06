@@ -138,7 +138,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     if (
       account.accountKind !== transaction.accountKind ||
       account.externalAccountId?.trim() !== transaction.externalAccountId ||
-      new Date(account.updatedAt).toISOString() !== transaction.authorizationRevision ||
+      account.authorizationRevision !== transaction.authorizationRevision ||
       account.authorization.state === 'blocked' ||
       account.authorization.state === 'disabled' ||
       account.platformFamily !== 'meta'

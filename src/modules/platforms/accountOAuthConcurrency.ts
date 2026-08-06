@@ -18,15 +18,15 @@ type PlatformOAuthAccountKind = Extract<
 export type PlatformOAuthAccountSnapshot = {
   accountId: string
   accountKind: PlatformOAuthAccountKind
-  authorizationRevision: string
+  authorizationRevision: number
   externalAccountId: string
 }
 
 type LockedPlatformAccount = {
   account_kind: string
+  authorization_revision: number | string
   authorization_state: string
   external_account_id: null | string
-  updated_at: Date | string
 }
 
 export class PlatformOAuthAccountChangedError extends Error {
@@ -36,11 +36,14 @@ export class PlatformOAuthAccountChangedError extends Error {
   }
 }
 
-const normalizeRevision = (value: unknown): string | undefined => {
-  if (value instanceof Date) return value.toISOString()
-  if (typeof value !== 'string') return undefined
-  const timestamp = Date.parse(value)
-  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : undefined
+const normalizeRevision = (value: unknown): number | undefined => {
+  const revision =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim()
+        ? Number(value)
+        : Number.NaN
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : undefined
 }
 
 const databaseForRequest = async (payload: Payload, req: PayloadRequest) => {
@@ -61,7 +64,7 @@ const matchesSnapshot = (
   return (
     account.account_kind === snapshot.accountKind &&
     externalAccountId === snapshot.externalAccountId &&
-    normalizeRevision(account.updated_at) === snapshot.authorizationRevision &&
+    normalizeRevision(account.authorization_revision) === snapshot.authorizationRevision &&
     account.authorization_state !== 'blocked' &&
     account.authorization_state !== 'disabled'
   )
@@ -70,10 +73,10 @@ const matchesSnapshot = (
 /**
  * Serialize the final OAuth write against disconnects and account edits.
  *
- * `updated_at` is the durable account revision already maintained by Payload.
- * The encrypted OAuth transaction carries the value observed at start; the
- * callback locks the row after provider I/O and refuses to write when the
- * revision, provider identity, or account kind changed in the meantime.
+ * PlatformAccounts increments `authorization_revision` under the same row lock
+ * for every account update. The encrypted OAuth transaction carries the value
+ * observed at start; the callback locks and compares that generation before
+ * writing in this same transaction, so disconnects and edits invalidate it.
  */
 export const withLockedPlatformOAuthAccount = async <T>({
   operation,
@@ -93,9 +96,9 @@ export const withLockedPlatformOAuthAccount = async <T>({
     const locked = await database.execute(sql`
       SELECT
         "account_kind",
+        "authorization_revision",
         "authorization_state",
-        "external_account_id",
-        "updated_at"
+        "external_account_id"
       FROM "platform_accounts"
       WHERE "id" = ${Number(snapshot.accountId)}
       FOR UPDATE

@@ -1,0 +1,48 @@
+{
+  "authorization": {
+    "scopes": [
+      "instagram_business_basic",
+      "instagram_business_manage_comments",
+      "instagram_business_manage_messages"
+    ]
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "origin": "https://api.instagram.com",
+      "pathname": "/oauth/access_token"
+    },
+    {
+      "method": "GET",
+      "origin": "https://graph.instagram.com",
+      "pathname": "/access_token"
+    },
+    {
+      "fields": "id,username,account_type",
+      "method": "GET",
+      "origin": "https://graph.instagram.com",
+      "pathname": "/v22.0/me"
+    }
+  ],
+  "responses": {
+    "longToken": {
+      "access_token": "synthetic-long-lived-instagram-token",
+      "expires_in": 5184000,
+      "token_type": "bearer"
+    },
+    "profile": {
+      "account_type": "BUSINESS",
+      "id": "987654321098765",
+      "username": "ivymetalglass"
+    },
+    "shortToken": {
+      "data": [
+        {
+          "access_token": "synthetic-short-lived-instagram-token",
+          "permissions": "instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages",
+          "user_id": "987654321098765"
+        }
+      ]
+    }
+  }
+}

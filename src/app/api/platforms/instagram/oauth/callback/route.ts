@@ -138,7 +138,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     if (
       account.accountKind !== transaction.accountKind ||
       account.externalAccountId?.trim() !== transaction.externalAccountId ||
-      new Date(account.updatedAt).toISOString() !== transaction.authorizationRevision ||
+      account.authorizationRevision !== transaction.authorizationRevision ||
       account.authorization.state === 'blocked' ||
       account.authorization.state === 'disabled' ||
       account.platformFamily !== 'meta'
@@ -165,6 +165,9 @@ export async function GET(request: NextRequest): Promise<Response> {
     if (!code) throw new InstagramOAuthError('token_exchange_failed')
 
     const userToken = await exchangeInstagramAuthorizationCode({ code, config: oauth })
+    if (transaction.requestedScopes.some((scope) => !userToken.scopes.includes(scope))) {
+      throw new InstagramOAuthError('required_permission_missing')
+    }
     const authorizedAccount = await resolveInstagramAuthorizedAccount({
       externalAccountId: transaction.externalAccountId,
       userAccessToken: userToken.accessToken,
@@ -180,7 +183,9 @@ export async function GET(request: NextRequest): Promise<Response> {
               clearAccessToken: false,
               clearRefreshToken: true,
               expiresAt: userToken.expiresAt,
-              scopes: authorizedAccount.scopes.map((scope) => ({ scope })),
+              // Instagram Login returns granted permissions during the code
+              // exchange; graph.instagram.com has no supported readback edge.
+              scopes: userToken.scopes.map((scope) => ({ scope })),
               state: 'connected',
             },
           },

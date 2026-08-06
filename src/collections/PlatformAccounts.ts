@@ -28,6 +28,7 @@ import {
 type UnknownRecord = Record<string, unknown>
 
 const requestedAuthorizationContextKey = '__platformAccountRequestedAuthorization'
+const MAX_AUTHORIZATION_REVISION = Number.MAX_SAFE_INTEGER
 
 const isRecord = (value: unknown): value is UnknownRecord =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -137,6 +138,36 @@ const retainOrReplaceCredential = ({
   return { configured: true, value: encryptPlatformCredential(nextCredential, encryptionKey) }
 }
 
+const nextAuthorizationRevision = ({
+  current,
+  operation,
+  req,
+}: {
+  current: unknown
+  operation: 'create' | 'update'
+  req: Parameters<CollectionBeforeChangeHook>[0]['req']
+}): number => {
+  if (operation === 'create') return 0
+
+  // Every update is serialized by lockPlatformAccountBeforeUpdate. Incrementing
+  // this value while that row lock is held gives OAuth callbacks a strict,
+  // monotonic generation marker that cannot collide like timestamp(3).
+  const revision =
+    typeof current === 'number'
+      ? current
+      : typeof current === 'string' && current.trim()
+        ? Number(current)
+        : Number.NaN
+  if (!Number.isSafeInteger(revision) || revision < 0 || revision >= MAX_AUTHORIZATION_REVISION) {
+    throw validationError(
+      req,
+      'Platform account authorization revision is invalid',
+      'authorizationRevision',
+    )
+  }
+  return revision + 1
+}
+
 const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
   context,
   data,
@@ -192,6 +223,11 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
   authorization.clearRefreshToken = false
   authorization.refreshToken = refreshToken.value
   authorization.refreshTokenConfigured = refreshToken.configured
+  candidate.authorizationRevision = nextAuthorizationRevision({
+    current: originalDoc?.authorizationRevision,
+    operation,
+    req,
+  })
 
   // A token is scoped to a concrete provider-side account identity. A record
   // without retained credentials can be corrected freely, but never silently
@@ -338,6 +374,16 @@ export const PlatformAccounts: CollectionConfig = {
       access: { create: () => false, update: () => false },
       admin: { hidden: true, readOnly: true },
       unique: true,
+    },
+    {
+      name: 'authorizationRevision',
+      type: 'number',
+      access: { create: () => false, update: () => false },
+      admin: { hidden: true, readOnly: true },
+      defaultValue: 0,
+      max: MAX_AUTHORIZATION_REVISION,
+      min: 0,
+      required: true,
     },
     {
       name: 'authorization',

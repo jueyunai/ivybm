@@ -1,6 +1,6 @@
 # 一期平台接入 PoC 记录
 
-更新日期：2026-07-27
+更新日期：2026-08-07
 
 > 范围冻结（2026-07-20）：一期会话接入为 Facebook Messenger、Instagram DM、TikTok 私信；一期图文发布为 Facebook、Instagram、LinkedIn。WhatsApp 移出一期，二期再评估网页插件等替代接入；LinkedIn 私信不属于一期自动会话范围。
 >
@@ -33,7 +33,8 @@ fixture / mock 通过只表示接口契约完成。只有在 production 受控�
 
 - 统一归一化事件、connector、批次原子幂等 repository port、Webhook verifier / rate limiter port、conversation writer port 和 message-status writer port 已在 Task 13 分支实现。
 - Meta Messenger / Instagram 使用合成官方结构 fixture；测试覆盖 raw bytes HMAC、challenge、JSON content type、body 大小、48 小时时间窗、延迟重投、账号 allowlist、每账号限流、重复事件和 digest 冲突，不访问真实平台网络。
-- Facebook Page OAuth 使用 Facebook Login for Business 的 `config_id` 发起授权，App Secret 仅出现在服务器到 Meta 的 POST body；回调 URL 运行时绑定登记的站点 origin，不信任请求 Host。state / account context 以平台凭据主密钥加密，Page identity 与 `pages_show_list`、`pages_manage_metadata`、`pages_messaging` 在 Token 入库前逐项验证。Facebook 发布权限不作为 Messenger 连接硬门槛。Instagram 从该流程拆开，改走独立 Instagram Login for Business。
+- Facebook Page OAuth 使用 Facebook Login for Business 的 `config_id` 发起授权，App Secret 仅出现在服务器到 Meta 的 POST body；回调 URL 运行时绑定登记的站点 origin，不信任请求 Host。state / account context 以平台凭据主密钥加密，Page identity 与 `pages_show_list`、`pages_manage_metadata`、`pages_messaging` 在 Token 入库前逐项验证。Facebook 发布权限不作为 Messenger 连接硬门槛。Instagram 从该流程拆开，改走独立 Instagram Login for Business；初始 code exchange 解析 provider 返回的实际 `permissions`，不调用未受支持的 `graph.instagram.com/.../me/permissions`，再用 long token exchange 与 `/me` 完成 token 生命周期和身份绑定。
+- Meta 与 Instagram OAuth transaction 绑定账号类型、external ID 和同一账号更新事务内单调递增的 `authorizationRevision`；provider I/O 返回后，callback 在同一 PostgreSQL 行锁事务中比较 revision 并写入。disconnect、身份或凭据修改都会使旧 callback 失效，不依赖可能同毫秒碰撞的 `updated_at timestamp(3)`。
 - 官网已提供英文 / 阿语隐私政策、服务条款与数据删除说明，并为 Meta Dashboard 提供 `/privacy`、`/terms`、`/data-deletion` 三条稳定入口；提交 App Review 前仍需客户核对法律文本和公开联系邮箱。
 - raw body 摘要仅用于审计；幂等冲突按规范化单事件摘要判断，避免同一平台事件因外层批次重组被误判冲突。
 - Meta durable inbound 阶段将规范化事件作为 `Jobs` 的原子 inbox，worker 在租约前后围栏检查后，通过 Task 9 权威会话服务写入会话、消息、接管与审计；已覆盖“业务提交后 worker 死亡、lease 过期重领”的无重复恢复场景。
