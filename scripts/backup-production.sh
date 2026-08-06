@@ -32,6 +32,10 @@ umask 077
 mkdir -p "$backup_root"
 chmod 700 "$backup_root"
 backup_dir="$backup_root/$(date -u +%Y%m%dT%H%M%SZ)-pre-release"
+if [[ -e "$backup_dir" ]]; then
+  echo "Refusing to overwrite an existing production backup: $backup_dir" >&2
+  exit 1
+fi
 temporary_dir="$(mktemp -d "$backup_root/.pre-release.XXXXXX")"
 
 cleanup() {

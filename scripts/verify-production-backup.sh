@@ -51,6 +51,12 @@ if [[ "$local_device" == "$offsite_device" ]]; then
   exit 1
 fi
 
+if ! cmp -s "$local_backup_dir/SHA256SUMS" "$offsite_copy_dir/SHA256SUMS" || \
+  ! cmp -s "$local_backup_dir/MANIFEST" "$offsite_copy_dir/MANIFEST"; then
+  echo 'Offsite backup does not match the verified production backup manifest' >&2
+  exit 1
+fi
+
 "$compose_script" "$env_file" exec -T db sh -c 'pg_restore --list >/dev/null' <"$offsite_copy_dir/database.dump"
 
 echo 'Production backup verification passed: checksums, archive readability, permissions, database listing, and offsite device are valid.'
