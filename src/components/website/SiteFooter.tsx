@@ -13,6 +13,12 @@ const navItems = [
   ['contact', '/contact'],
 ] as const
 
+const legalItems = [
+  ['privacy', '/privacy'],
+  ['terms', '/terms'],
+  ['dataDeletion', '/data-deletion'],
+] as const
+
 export function SiteFooter({ locale, settings }: { locale: Locale; settings: SiteSetting }) {
   const copy = getWebsiteCopy(locale)
   const contactLines = [settings.contact?.email, settings.contact?.phone, settings.contact?.address]
@@ -35,6 +41,13 @@ export function SiteFooter({ locale, settings }: { locale: Locale; settings: Sit
             {navItems.map(([key, route]) => (
               <Link href={localePath(locale, route)} key={key}>
                 {copy.navigation[key]}
+              </Link>
+            ))}
+          </div>
+          <div className="footer-links footer-links--legal">
+            {legalItems.map(([key, route]) => (
+              <Link href={localePath(locale, route)} key={key}>
+                {copy.legal[key]}
               </Link>
             ))}
           </div>

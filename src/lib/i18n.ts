@@ -162,6 +162,11 @@ export const WEBSITE_COPY = {
         ['Quality Certified', 'Inspection-ready control for material, dimensions, color, coating, packing, VMU, and PMU samples.'],
       ],
     },
+    legal: {
+      dataDeletion: 'Data Deletion',
+      privacy: 'Privacy Policy',
+      terms: 'Terms of Service',
+    },
     navigation: {
       about: 'About Us',
       contact: 'Contact',
@@ -312,6 +317,11 @@ export const WEBSITE_COPY = {
         ['تسليم عالمي', 'تعبئة للتصدير وتنسيق الخدمات اللوجستية ووثائق المشاريع الخارجية.'],
         ['رقابة الجودة', 'فحص المواد والأبعاد والألوان والطلاء والتعبئة وعينات VMU وPMU.'],
       ],
+    },
+    legal: {
+      dataDeletion: 'حذف البيانات',
+      privacy: 'سياسة الخصوصية',
+      terms: 'شروط الخدمة',
     },
     navigation: {
       about: 'من نحن',
