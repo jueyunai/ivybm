@@ -393,6 +393,7 @@ export const PORTAL_EN = {
       providers: 'Providers',
       readiness: 'Business readiness',
       readinessReason: {
+        credential: 'The configured API key cannot be decrypted by this server',
         'encryption-key': 'Server credential encryption key is missing',
         profile: 'A compatible enabled model is missing',
         provider: 'The provider is disabled or has no API key',

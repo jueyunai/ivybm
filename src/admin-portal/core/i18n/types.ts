@@ -68,7 +68,10 @@ export interface PortalSettingsMessages {
     providerName: string
     providers: string
     readiness: string
-    readinessReason: Record<'encryption-key' | 'profile' | 'provider' | 'route', string>
+    readinessReason: Record<
+      'credential' | 'encryption-key' | 'profile' | 'provider' | 'route',
+      string
+    >
     reasoningEffort: string
     reasoningEnabled: string
     routeName: string

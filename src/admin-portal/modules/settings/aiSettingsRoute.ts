@@ -67,6 +67,17 @@ export const aiSettingsErrorResponse = (error: unknown): Response => {
     )
   }
   const candidate = error as { name?: unknown; status?: unknown }
+  if (candidate?.status === 404) {
+    return aiSettingsJSON(
+      {
+        error: {
+          code: 'ai-settings-not-found',
+          message: 'The AI configuration no longer exists.',
+        },
+      },
+      { status: 404 },
+    )
+  }
   if (candidate?.name === 'ValidationError' || candidate?.status === 400) {
     return aiSettingsJSON(
       { error: { code: 'ai-settings-validation-failed', message: 'AI configuration validation failed.' } },

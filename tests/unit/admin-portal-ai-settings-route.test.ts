@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
+import { NotFound } from 'payload'
 import { AiCredentialError } from '@/modules/ai/credentials'
 
 const mocks = vi.hoisted(() => ({
@@ -10,7 +11,11 @@ const mocks = vi.hoisted(() => ({
   getPayload: vi.fn(),
 }))
 
-vi.mock('payload', () => ({ createLocalReq: mocks.createLocalReq, getPayload: mocks.getPayload }))
+vi.mock('payload', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('payload')>()),
+  createLocalReq: mocks.createLocalReq,
+  getPayload: mocks.getPayload,
+}))
 vi.mock('@/payload.config', () => ({ default: {} }))
 vi.mock('@/admin-portal/core/commands/portalCommandReceipts', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/admin-portal/core/commands/portalCommandReceipts')>()
@@ -93,6 +98,28 @@ describe('Portal AI settings route', () => {
         scope: 'portal.ai-settings:providers:create',
       }),
     )
+  })
+
+  it.each([
+    ['PATCH', PATCH],
+    ['DELETE', DELETE],
+  ] as const)('returns a stable 404 when %s targets a deleted resource', async (method, handler) => {
+    mocks.getPayload.mockResolvedValue({
+      auth: vi.fn().mockResolvedValue({ user: { collection: 'users', id: 1, role: 'admin' } }),
+    })
+    mocks.executePortalRouteCommand.mockRejectedValueOnce(
+      Object.assign(new NotFound(), { message: 'secret-resource' }),
+    )
+
+    const response = await handler(request({ updatedAt: 'current' }, method), {
+      params: Promise.resolve({ id: '1', resource: 'providers' }),
+    })
+    const body = await response.text()
+
+    expect(response.status).toBe(404)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(body).toContain('ai-settings-not-found')
+    expect(body).not.toContain('secret-resource')
   })
 
   it.each([

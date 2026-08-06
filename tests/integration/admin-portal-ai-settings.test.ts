@@ -103,6 +103,19 @@ describe.sequential('Portal AI settings', () => {
       { key: 'knowledge-index', reason: null, status: 'ready' },
     ])
     expect(JSON.stringify(summary)).not.toContain(providerInput.apiKey)
+
+    process.env.AI_CONFIG_ENCRYPTION_KEY = 'e'.repeat(64)
+    try {
+      const unreadableSummary = await getPortalAiSettings({ payload, req })
+      expect(unreadableSummary.readiness).toEqual([
+        { key: 'customer-chat', reason: 'credential', status: 'action-required' },
+        { key: 'content-studio', reason: 'credential', status: 'action-required' },
+        { key: 'knowledge-index', reason: 'credential', status: 'action-required' },
+      ])
+      expect(JSON.stringify(unreadableSummary)).not.toContain(stored.apiKey)
+    } finally {
+      process.env.AI_CONFIG_ENCRYPTION_KEY = 'd'.repeat(64)
+    }
   })
 
   it('preserves encrypted keys, rejects stale writes, and deletes in dependency order', async () => {

@@ -355,6 +355,7 @@ export const PORTAL_ZH = {
       providers: '供应商',
       readiness: '业务可用状态',
       readinessReason: {
+        credential: '当前服务器无法解密已配置的 API Key',
         'encryption-key': '缺少服务器凭据加密密钥',
         profile: '缺少可用的匹配模型',
         provider: '供应商停用或 Key 未配置',

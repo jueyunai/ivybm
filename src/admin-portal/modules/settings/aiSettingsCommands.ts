@@ -7,6 +7,7 @@ import {
   mapPortalAiProfile,
   mapPortalAiProvider,
   mapPortalAiRoute,
+  portalAiRelationshipID,
   type PortalAiCapability,
 } from './getPortalAiSettings'
 
@@ -207,10 +208,43 @@ const dataFor = (resource: PortalAiResource, input: JsonInput) => ({
   routes: routeData,
 })[resource](input)
 
-const resultFor = (resource: PortalAiResource, document: unknown) => {
+const resultFor = async ({
+  document,
+  payload,
+  req,
+  resource,
+}: {
+  document: unknown
+  payload: Payload
+  req: PayloadRequest
+  resource: PortalAiResource
+}) => {
   if (resource === 'providers') return mapPortalAiProvider(document)
-  if (resource === 'profiles') return mapPortalAiProfile(document, [])
-  return mapPortalAiRoute(document, [])
+  const relation = document && typeof document === 'object'
+    ? (document as Record<string, unknown>)
+    : {}
+  if (resource === 'profiles') {
+    const providerID = portalAiRelationshipID(relation.provider)
+    const provider = await payload.findByID({
+      collection: 'ai-providers',
+      depth: 0,
+      id: providerID,
+      overrideAccess: false,
+      req,
+      select: { id: true, name: true },
+    })
+    return mapPortalAiProfile(document, [mapPortalAiProvider(provider)])
+  }
+  const profileID = portalAiRelationshipID(relation.profile)
+  const profile = await payload.findByID({
+    collection: 'ai-model-profiles',
+    depth: 0,
+    id: profileID,
+    overrideAccess: false,
+    req,
+    select: { id: true, name: true },
+  })
+  return mapPortalAiRoute(document, [mapPortalAiProfile(profile, [])])
 }
 
 export const createPortalAiResource = async ({
@@ -231,7 +265,7 @@ export const createPortalAiResource = async ({
     overrideAccess: false,
     req,
   })
-  return { item: resultFor(resource, document), resource }
+  return { item: await resultFor({ document, payload, req, resource }), resource }
 }
 
 export const updatePortalAiResource = async ({
@@ -256,7 +290,7 @@ export const updatePortalAiResource = async ({
     overrideAccess: false,
     req,
   })
-  return { item: resultFor(resource, document), resource }
+  return { item: await resultFor({ document, payload, req, resource }), resource }
 }
 
 export const deletePortalAiResource = async ({

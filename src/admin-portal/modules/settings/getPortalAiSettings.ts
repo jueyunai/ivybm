@@ -1,11 +1,20 @@
 import type { Payload, PayloadRequest } from 'payload'
 
-import { readAiConfigurationEncryptionKey } from '@/modules/ai/credentials'
+import { portalAiReadinessCredentialReadContext } from '@/access/aiCredentials'
+import {
+  canDecryptAiCredential,
+  readAiConfigurationEncryptionKey,
+} from '@/modules/ai/credentials'
 import { AI_USAGE_KEYS } from '@/modules/ai/registry'
 
 export type PortalAiCapability = 'embedding' | 'text'
 export type PortalAiSettingsAccess = 'admin' | 'admin-only'
-export type PortalAiReadinessReason = 'encryption-key' | 'profile' | 'provider' | 'route'
+export type PortalAiReadinessReason =
+  | 'credential'
+  | 'encryption-key'
+  | 'profile'
+  | 'provider'
+  | 'route'
 
 export interface PortalAiProviderSummary {
   apiKeyConfigured: boolean
@@ -74,6 +83,31 @@ const record = (value: unknown): UnknownRecord =>
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 const nullableNumber = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
+
+interface PortalAiPage<Document> {
+  docs: Document[]
+  hasNextPage?: boolean
+  nextPage?: null | number
+}
+
+const readAllPortalAiPages = async <Document>(
+  findPage: (page: number) => Promise<PortalAiPage<Document>>,
+): Promise<Document[]> => {
+  const documents: Document[] = []
+  let page = 1
+
+  while (true) {
+    const result = await findPage(page)
+    documents.push(...result.docs)
+    if (!result.hasNextPage) return documents
+
+    const nextPage = result.nextPage
+    if (typeof nextPage !== 'number' || !Number.isSafeInteger(nextPage) || nextPage <= page) {
+      throw new Error('AI settings pagination did not advance')
+    }
+    page = nextPage
+  }
+}
 
 export const portalAiRelationshipID = (value: unknown): number => {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value
@@ -144,6 +178,7 @@ const routeReadiness = ({
   encryptionKeyConfigured,
   profiles,
   providers,
+  readableProviderIDs,
   routes,
   usageKey,
 }: {
@@ -151,6 +186,7 @@ const routeReadiness = ({
   encryptionKeyConfigured: boolean
   profiles: readonly PortalAiModelProfileSummary[]
   providers: readonly PortalAiProviderSummary[]
+  readableProviderIDs: ReadonlySet<number>
   routes: readonly PortalAiUsageRouteSummary[]
   usageKey: string
 }): PortalAiReadinessReason | null => {
@@ -173,23 +209,25 @@ const routeReadiness = ({
     (candidate) =>
       candidate.id === profile.providerID && candidate.enabled && candidate.apiKeyConfigured,
   )
-  return provider ? null : 'provider'
+  if (!provider) return 'provider'
+  return readableProviderIDs.has(provider.id) ? null : 'credential'
 }
 
 export const buildPortalAiReadiness = ({
   encryptionKeyConfigured,
   profiles,
   providers,
+  readableProviderIDs,
   routes,
-}: Pick<
-  PortalAiSettingsSummary,
-  'encryptionKeyConfigured' | 'profiles' | 'providers' | 'routes'
->): PortalAiReadinessSummary[] => {
+}: Pick<PortalAiSettingsSummary, 'encryptionKeyConfigured' | 'profiles' | 'providers' | 'routes'> & {
+  readableProviderIDs: ReadonlySet<number>
+}): PortalAiReadinessSummary[] => {
   const textReason = routeReadiness({
     capability: 'text',
     encryptionKeyConfigured,
     profiles,
     providers,
+    readableProviderIDs,
     routes,
     usageKey: AI_USAGE_KEYS.chatReply,
   })
@@ -198,6 +236,7 @@ export const buildPortalAiReadiness = ({
     encryptionKeyConfigured,
     profiles,
     providers,
+    readableProviderIDs,
     routes,
     usageKey: AI_USAGE_KEYS.knowledgeEmbedding,
   })
@@ -223,15 +262,25 @@ export const getPortalAiSettings = async ({
   payload: Payload
   req: PayloadRequest
 }): Promise<PortalAiSettingsSummary> => {
-  const [providerResult, profileResult, routeResult] = await Promise.all([
-    payload.find({
+  // Payload merges Local API context back into the supplied request. Use a
+  // scoped clone so ciphertext read permission cannot survive this query.
+  const credentialReadReq = {
+    ...req,
+    context: { ...req.context },
+    query: { ...req.query },
+  } as PayloadRequest
+  const [providerDocuments, profileDocuments, routeDocuments] = await Promise.all([
+    readAllPortalAiPages((page) => payload.find({
       collection: 'ai-providers',
+      context: portalAiReadinessCredentialReadContext,
       depth: 0,
       limit: 100,
       overrideAccess: false,
-      pagination: false,
-      req,
+      page,
+      pagination: true,
+      req: credentialReadReq,
       select: {
+        apiKey: true,
         apiKeyConfigured: true,
         baseURL: true,
         enabled: true,
@@ -241,13 +290,14 @@ export const getPortalAiSettings = async ({
         updatedAt: true,
       },
       sort: 'name',
-    }),
-    payload.find({
+    })),
+    readAllPortalAiPages((page) => payload.find({
       collection: 'ai-model-profiles',
       depth: 0,
       limit: 100,
       overrideAccess: false,
-      pagination: false,
+      page,
+      pagination: true,
       req,
       select: {
         capability: true,
@@ -260,13 +310,14 @@ export const getPortalAiSettings = async ({
         updatedAt: true,
       },
       sort: 'name',
-    }),
-    payload.find({
+    })),
+    readAllPortalAiPages((page) => payload.find({
       collection: 'ai-usage-routes',
       depth: 0,
       limit: 100,
       overrideAccess: false,
-      pagination: false,
+      page,
+      pagination: true,
       req,
       select: {
         enabled: true,
@@ -277,11 +328,20 @@ export const getPortalAiSettings = async ({
         usageKey: true,
       },
       sort: 'usageKey',
-    }),
+    })),
   ])
-  const providers = providerResult.docs.map(mapPortalAiProvider)
-  const profiles = profileResult.docs.map((profile) => mapPortalAiProfile(profile, providers))
-  const routes = routeResult.docs.map((route) => mapPortalAiRoute(route, profiles))
+  const providers = providerDocuments.map(mapPortalAiProvider)
+  const profiles = profileDocuments.map((profile) => mapPortalAiProfile(profile, providers))
+  const routes = routeDocuments.map((route) => mapPortalAiRoute(route, profiles))
+  const readableProviderIDs = new Set(
+    providerDocuments.flatMap((provider) => {
+      const value = record(provider)
+      const id = portalAiRelationshipID(value.id)
+      return value.apiKeyConfigured === true && canDecryptAiCredential(value.apiKey) && id > 0
+        ? [id]
+        : []
+    }),
+  )
   let encryptionKeyConfigured = false
   try {
     readAiConfigurationEncryptionKey()
@@ -294,7 +354,13 @@ export const getPortalAiSettings = async ({
     encryptionKeyConfigured,
     profiles,
     providers,
-    readiness: buildPortalAiReadiness({ encryptionKeyConfigured, profiles, providers, routes }),
+    readiness: buildPortalAiReadiness({
+      encryptionKeyConfigured,
+      profiles,
+      providers,
+      readableProviderIDs,
+      routes,
+    }),
     routes,
   }
 }
