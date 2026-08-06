@@ -1032,6 +1032,242 @@
     font-weight: 700;
   }
 
+  .portal-ai-settings {
+    gap: 14px;
+  }
+
+  .portal-ai-settings__header {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .portal-ai-settings__header > div {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .portal-ai-settings__header h3,
+  .portal-ai-settings__header p,
+  .portal-ai-settings__list h4,
+  .portal-ai-settings__form h4 {
+    margin: 0;
+  }
+
+  .portal-ai-settings__header h3 {
+    color: var(--portal-ink);
+    font-size: 15px;
+  }
+
+  .portal-ai-settings__header p {
+    margin-top: 3px;
+    color: var(--portal-muted);
+    font-size: 12px;
+  }
+
+  .portal-ai-settings__warning,
+  .portal-ai-settings__feedback {
+    margin: 0;
+    padding: 10px 12px;
+    border-left: 3px solid var(--portal-warning);
+    background: var(--portal-warning-soft);
+    color: var(--portal-ink-2);
+    font-size: 12px;
+  }
+
+  .portal-ai-settings__feedback.is-success {
+    border-left-color: var(--portal-success);
+    background: var(--portal-success-soft);
+  }
+
+  .portal-ai-settings__feedback.is-error {
+    border-left-color: var(--portal-danger);
+    background: var(--portal-danger-soft);
+  }
+
+  .portal-ai-settings__readiness {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .portal-ai-settings__readiness article {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-surface-subtle);
+  }
+
+  .portal-ai-settings__readiness article > div {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .portal-ai-settings__readiness strong {
+    color: var(--portal-ink);
+    font-size: 12px;
+  }
+
+  .portal-ai-settings__readiness small {
+    overflow-wrap: anywhere;
+    color: var(--portal-muted);
+    font-size: 10px;
+  }
+
+  .portal-ai-settings__tabs {
+    width: 100%;
+  }
+
+  .portal-ai-settings__tabs .portal-button {
+    flex: 1 1 0;
+  }
+
+  .portal-ai-settings__workspace {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+    gap: 14px;
+  }
+
+  .portal-ai-settings__list,
+  .portal-ai-settings__form {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-surface-subtle);
+  }
+
+  .portal-ai-settings__list-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--portal-border);
+  }
+
+  .portal-ai-settings__list-heading h4,
+  .portal-ai-settings__form h4 {
+    color: var(--portal-ink);
+    font-size: 13px;
+  }
+
+  .portal-ai-settings__list > article {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--portal-border);
+  }
+
+  .portal-ai-settings__list > article > div:first-child {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .portal-ai-settings__list > article strong,
+  .portal-ai-settings__list > article span,
+  .portal-ai-settings__list > article small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .portal-ai-settings__list > article strong {
+    color: var(--portal-ink);
+    font-size: 12px;
+  }
+
+  .portal-ai-settings__list > article span,
+  .portal-ai-settings__list > article small,
+  .portal-ai-settings__empty {
+    color: var(--portal-muted);
+    font-size: 10px;
+  }
+
+  .portal-ai-settings__row-actions,
+  .portal-ai-settings__form-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .portal-ai-settings__form {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+  }
+
+  .portal-ai-settings__form header {
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--portal-border);
+  }
+
+  .portal-ai-settings__form label {
+    display: grid;
+    min-width: 0;
+    gap: 5px;
+  }
+
+  .portal-ai-settings__form label > span {
+    color: var(--portal-ink-2);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .portal-ai-settings__form label > small {
+    color: var(--portal-muted);
+    font-size: 9px;
+    line-height: 1.45;
+  }
+
+  .portal-ai-settings__form input,
+  .portal-ai-settings__form select {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    padding: 7px 9px;
+    border: 1px solid var(--portal-border-strong);
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-surface);
+    color: var(--portal-ink);
+    font: inherit;
+  }
+
+  .portal-ai-settings__form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .portal-ai-settings__form .portal-ai-settings__check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .portal-ai-settings__check input {
+    width: 17px;
+    min-height: 17px;
+    accent-color: var(--portal-accent);
+  }
+
+  .portal-ai-settings__form-actions {
+    padding-top: 4px;
+  }
+
   .portal-overview {
     display: grid;
     gap: 20px;
@@ -5273,6 +5509,29 @@
   }
 
   @media (max-width: 720px) {
+    .portal-ai-settings__readiness,
+    .portal-ai-settings__workspace,
+    .portal-ai-settings__form-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .portal-ai-settings__header {
+      flex-wrap: wrap;
+    }
+
+    .portal-ai-settings__header .portal-status-badge {
+      margin-left: 48px;
+    }
+
+    .portal-ai-settings__list > article {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .portal-ai-settings__row-actions {
+      grid-column: 1 / -1;
+      justify-content: flex-end;
+    }
+
     .portal-platforms__intro,
     .portal-operations__intro,
     .portal-operations__filters form {

@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  aiCredentialRead,
+  portalAiReadinessCredentialReadContext,
+} from '@/access/aiCredentials'
+import {
   AiCredentialError,
+  canDecryptAiCredential,
   decryptAiCredential,
   encryptAiCredential,
   readAiConfigurationEncryptionKey,
@@ -38,5 +43,28 @@ describe('AI provider credential encryption', () => {
     } catch (error) {
       expect((error as Error).message).not.toContain('provider-secret-key')
     }
+  })
+
+  it('checks credential readability without exposing decryption failures', () => {
+    const key = readAiConfigurationEncryptionKey(encryptionEnvironment)
+    const encrypted = encryptAiCredential('provider-secret-key', key)
+
+    expect(canDecryptAiCredential(encrypted, encryptionEnvironment)).toBe(true)
+    expect(canDecryptAiCredential(encrypted, {})).toBe(false)
+    expect(
+      canDecryptAiCredential(encrypted, { AI_CONFIG_ENCRYPTION_KEY: 'b'.repeat(64) }),
+    ).toBe(false)
+    expect(canDecryptAiCredential('not-a-credential', encryptionEnvironment)).toBe(false)
+  })
+
+  it('keeps ciphertext unreadable outside the server-only readiness context', () => {
+    expect(
+      aiCredentialRead({ req: { context: {} } } as never),
+    ).toBe(false)
+    expect(
+      aiCredentialRead({
+        req: { context: portalAiReadinessCredentialReadContext },
+      } as never),
+    ).toBe(true)
   })
 })
