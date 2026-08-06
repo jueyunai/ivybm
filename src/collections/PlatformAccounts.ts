@@ -286,6 +286,14 @@ export const PlatformAccounts: CollectionConfig = {
     update: accessFor('platformAccounts', 'update'),
   },
   admin: {
+    components: {
+      edit: {
+        beforeDocumentControls: [
+          '/admin/components/PlatformAccountOAuthControls',
+          '/admin/components/InstagramAccountOAuthControls',
+        ],
+      },
+    },
     defaultColumns: [
       'name',
       'platformFamily',

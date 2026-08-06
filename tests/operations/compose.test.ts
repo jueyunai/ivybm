@@ -38,9 +38,15 @@ const requiredEnvironment = {
   FEISHU_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/integrations/feishu/callback',
   FEISHU_RELAY_INTERVAL_MS: '45000',
   IMAGE_TAG: imageTag,
+  META_APP_ID: '1111111111111111',
+  META_LOGIN_CONFIG_ID: '2222222222222222',
+  META_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/meta/oauth/callback',
   META_WEBHOOK_ALLOWED_ACCOUNT_IDS: '1234567890,9876543210',
   META_WEBHOOK_APP_SECRET: 'operation-test-meta-app-secret',
   META_WEBHOOK_VERIFY_TOKEN: 'operation-test-meta-verify-token',
+  INSTAGRAM_APP_ID: '3333333333333333',
+  INSTAGRAM_APP_SECRET: 'operation-test-instagram-app-secret',
+  INSTAGRAM_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/instagram/oauth/callback',
   PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'e'.repeat(64),
   PAYLOAD_SECRET: 'operation-test-secret-at-least-32-characters',
   POSTGRES_DB: 'ivybm',
@@ -193,9 +199,15 @@ describe('production Compose configuration', () => {
       AI_CONFIG_ENCRYPTION_KEY: 'c'.repeat(64),
       AI_REASONING_EFFORT: 'medium',
       AI_REASONING_ENABLED: 'false',
+      META_APP_ID: '1111111111111111',
+      META_LOGIN_CONFIG_ID: '2222222222222222',
+      META_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/meta/oauth/callback',
       META_WEBHOOK_ALLOWED_ACCOUNT_IDS: '1234567890,9876543210',
       META_WEBHOOK_APP_SECRET: 'operation-test-meta-app-secret',
       META_WEBHOOK_VERIFY_TOKEN: 'operation-test-meta-verify-token',
+      INSTAGRAM_APP_ID: '3333333333333333',
+      INSTAGRAM_APP_SECRET: 'operation-test-instagram-app-secret',
+      INSTAGRAM_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/instagram/oauth/callback',
     })
     expect(config.services.worker.environment).toMatchObject({
       AI_CONFIG_ENCRYPTION_KEY: 'c'.repeat(64),
@@ -214,15 +226,25 @@ describe('production Compose configuration', () => {
     }
   })
 
-  it('passes optional Meta webhook configuration only to the app in production and staging', () => {
+  it('passes optional Meta OAuth and webhook configuration only to the app in production and staging', () => {
     for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
       expect(config.services.app.environment).toMatchObject({
+        META_APP_ID: '1111111111111111',
+        META_LOGIN_CONFIG_ID: '2222222222222222',
+        META_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/meta/oauth/callback',
         META_WEBHOOK_ALLOWED_ACCOUNT_IDS: '1234567890,9876543210',
         META_WEBHOOK_APP_SECRET: 'operation-test-meta-app-secret',
         META_WEBHOOK_VERIFY_TOKEN: 'operation-test-meta-verify-token',
+        INSTAGRAM_APP_ID: '3333333333333333',
+        INSTAGRAM_APP_SECRET: 'operation-test-instagram-app-secret',
+        INSTAGRAM_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/instagram/oauth/callback',
       })
       expect(config.services.migrate.environment).not.toHaveProperty('META_WEBHOOK_APP_SECRET')
       expect(config.services.worker.environment).not.toHaveProperty('META_WEBHOOK_APP_SECRET')
+      expect(config.services.migrate.environment).not.toHaveProperty('META_APP_ID')
+      expect(config.services.worker.environment).not.toHaveProperty('META_APP_ID')
+      expect(config.services.migrate.environment).not.toHaveProperty('INSTAGRAM_APP_ID')
+      expect(config.services.worker.environment).not.toHaveProperty('INSTAGRAM_APP_SECRET')
     }
   })
 

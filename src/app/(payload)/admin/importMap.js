@@ -23,6 +23,8 @@ import { UnderlineFeatureClient as UnderlineFeatureClient_e70f5e05f09f93e00b997e
 import { BoldFeatureClient as BoldFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { ItalicFeatureClient as ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { default as default_4696b4ba63b9202d3bf6f5aa25717111 } from '../../../admin/components/KnowledgeIndexActions'
+import { default as default_4ff07288f375e45ff61f3b7275c00df3 } from '../../../admin/components/PlatformAccountOAuthControls'
+import { default as default_8ee3d656acd43bbf15b8f9a8b5d1289e } from '../../../admin/components/InstagramAccountOAuthControls'
 import { default as default_41b46242f1c6803b112f706342fd9b41 } from '../../../admin/components/OperationsNav'
 import { default as default_360b490f12137ea3a38a08695fc2faab } from '../../../admin/components/AdminAccountMenu'
 import { default as default_3fa7a7e39163aa3e1bba593eb53d72b8 } from '../../../admin/views/OperationsDashboard'
@@ -57,6 +59,8 @@ export const importMap = {
   "@payloadcms/richtext-lexical/client#BoldFeatureClient": BoldFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "@payloadcms/richtext-lexical/client#ItalicFeatureClient": ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "/admin/components/KnowledgeIndexActions#default": default_4696b4ba63b9202d3bf6f5aa25717111,
+  "/admin/components/PlatformAccountOAuthControls#default": default_4ff07288f375e45ff61f3b7275c00df3,
+  "/admin/components/InstagramAccountOAuthControls#default": default_8ee3d656acd43bbf15b8f9a8b5d1289e,
   "/admin/components/OperationsNav#default": default_41b46242f1c6803b112f706342fd9b41,
   "/admin/components/AdminAccountMenu#default": default_360b490f12137ea3a38a08695fc2faab,
   "/admin/views/OperationsDashboard#default": default_3fa7a7e39163aa3e1bba593eb53d72b8,
