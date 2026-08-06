@@ -12,6 +12,15 @@ describe('CI change classifier', () => {
     })
   })
 
+  it('publishes immutable production images when the CI classifier changes', () => {
+    expect(classifyChangedFiles(['scripts/ci/classify-changes.mjs'])).toMatchObject({
+      code: true,
+      operations: true,
+      production_image: true,
+      full_fallback: false,
+    })
+  })
+
   it.each([
     'src/admin-portal/modules/media/MediaEditor.tsx',
     'src/app/(dashboard)/dashboard/(protected)/media/page.tsx',
