@@ -20,6 +20,9 @@ const UNKNOWN_RESULT_CODE = 'portal-command-result-unknown'
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:._-]{7,199}$/
 
 const TARGET_TABLES = {
+  'ai-model-profiles': 'ai_model_profiles',
+  'ai-providers': 'ai_providers',
+  'ai-usage-routes': 'ai_usage_routes',
   'generated-contents': 'generated_contents',
   'knowledge-documents': 'knowledge_documents',
   leads: 'leads',

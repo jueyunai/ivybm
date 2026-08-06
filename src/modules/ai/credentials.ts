@@ -106,3 +106,19 @@ export const isEncryptedAiCredential = (value: unknown): value is string => {
     return false
   }
 }
+
+// Readiness only needs a boolean. Never return the plaintext, ciphertext,
+// encryption key, or cryptographic error details to the caller.
+export const canDecryptAiCredential = (
+  encrypted: unknown,
+  environment: Environment = process.env,
+): boolean => {
+  if (!isEncryptedAiCredential(encrypted)) return false
+
+  try {
+    decryptAiCredential(encrypted, readAiConfigurationEncryptionKey(environment))
+    return true
+  } catch {
+    return false
+  }
+}
