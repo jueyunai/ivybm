@@ -24,6 +24,8 @@ DATABASE_URL=postgresql://ivybm:operation-password@db:5432/ivybm
 PAYLOAD_SECRET=operation-test-payload-secret-at-least-32-characters
 NEXT_PUBLIC_SERVER_URL=https://ivybm.com
 TRUST_PROXY_HEADERS=true
+ADMIN_PORTAL_ENABLED=true
+ADMIN_PORTAL_PUBLISHING_ENABLED=false
 AI_CONFIG_ENCRYPTION_KEY=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 FEISHU_QR_REGISTRATION_ENABLED=false
 `
@@ -99,6 +101,20 @@ describe('production environment preflight', () => {
     )
 
     expect(result.status).toBe(0)
+  })
+
+  it('requires the Portal switches and keeps external publishing disabled', () => {
+    const missingPortalSwitch = runPreflight(
+      productionEnvironment.replace('ADMIN_PORTAL_ENABLED=true\n', ''),
+    )
+    const enabledPublishing = runPreflight(
+      productionEnvironment.replace('ADMIN_PORTAL_PUBLISHING_ENABLED=false', 'ADMIN_PORTAL_PUBLISHING_ENABLED=true'),
+    )
+
+    expect(missingPortalSwitch.status).not.toBe(0)
+    expect(missingPortalSwitch.stderr).toContain('ADMIN_PORTAL_ENABLED')
+    expect(enabledPublishing.status).not.toBe(0)
+    expect(enabledPublishing.stderr).toContain('ADMIN_PORTAL_PUBLISHING_ENABLED')
   })
 
   it('accepts a per-operation environment fallback and rejects missing or invalid encryption keys', () => {

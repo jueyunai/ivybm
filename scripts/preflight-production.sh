@@ -72,6 +72,8 @@ database_url="$(read_env_value DATABASE_URL)"
 payload_secret="$(read_env_value PAYLOAD_SECRET)"
 public_url="$(read_env_value NEXT_PUBLIC_SERVER_URL)"
 trust_proxy_headers="$(read_env_value TRUST_PROXY_HEADERS)"
+portal_enabled="$(read_env_value ADMIN_PORTAL_ENABLED)"
+portal_publishing_enabled="$(read_env_value ADMIN_PORTAL_PUBLISHING_ENABLED)"
 ai_configuration_encryption_key="$(read_env_value AI_CONFIG_ENCRYPTION_KEY)"
 platform_credential_encryption_key="$(read_optional_env_value PLATFORM_CREDENTIAL_ENCRYPTION_KEY)"
 reasoning_enabled="$(read_optional_env_value AI_REASONING_ENABLED)"
@@ -129,6 +131,15 @@ fi
 
 if [[ "$trust_proxy_headers" != 'true' ]]; then
   echo 'TRUST_PROXY_HEADERS must be true behind the sole OpenResty ingress' >&2
+  exit 1
+fi
+
+if [[ "$portal_enabled" != 'true' && "$portal_enabled" != 'false' ]]; then
+  echo 'ADMIN_PORTAL_ENABLED must be true or false' >&2
+  exit 1
+fi
+if [[ "$portal_publishing_enabled" != 'false' ]]; then
+  echo 'ADMIN_PORTAL_PUBLISHING_ENABLED must remain false for this release' >&2
   exit 1
 fi
 
