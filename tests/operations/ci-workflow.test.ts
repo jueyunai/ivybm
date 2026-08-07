@@ -126,6 +126,24 @@ describe('CI workflow policy', () => {
     expect(validationJob).toContain('pnpm test:e2e -- "${specs[@]}"')
   })
 
+  it('uploads only short-lived visual evidence after website visual E2E failures', () => {
+    expect(validationJob).toContain('name: Upload failed website visual evidence')
+    expect(validationJob).toContain(
+      "always() && steps.e2e.outcome == 'failure' && steps.classification.outputs.website_visual_e2e == 'true'",
+    )
+    expect(validationJob).toContain(
+      'uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02',
+    )
+    expect(validationJob).toContain(
+      'test-results/website-visual-*/**/*-actual.png',
+    )
+    expect(validationJob).toContain('test-results/website-visual-*/**/*-diff.png')
+    expect(validationJob).toContain('retention-days: 3')
+    expect(validationJob).toContain('include-hidden-files: false')
+    expect(validationJob).not.toContain('playwright-report/')
+    expect(validationJob).not.toContain('path: test-results/**')
+  })
+
   it('preserves the production-disabled Portal test environment', () => {
     expect(validationJob).toContain('ADMIN_PORTAL_ENABLED: true')
     expect(validationJob).toContain('ADMIN_PORTAL_SETTINGS_ENABLED: true')
