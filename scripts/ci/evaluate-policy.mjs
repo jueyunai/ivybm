@@ -1,51 +1,17 @@
 import { appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
-const booleanKeys = [
-  'docs_only',
-  'code',
-  'database',
-  'website_e2e',
-  'admin_e2e',
-  'chat_e2e',
-  'operations',
-  'production_image',
-  'full_fallback',
-]
+import { classificationKeys } from './classify-changes.mjs'
+import { createValidationPlan, validateClassification } from './plan-validation.mjs'
 
 const resultValues = new Set(['success', 'failure', 'cancelled', 'skipped'])
 
-const validateClassification = (classification, errors) => {
-  const initialErrorCount = errors.length
-  for (const key of booleanKeys) {
-    if (typeof classification[key] !== 'boolean') {
-      errors.push(`classification.${key} is missing or not boolean`)
-    }
+const validateSha = (name, value, errors) => {
+  if (typeof value !== 'string' || !/^[0-9a-f]{40}$/.test(value)) {
+    errors.push(`${name} SHA is missing or invalid`)
+    return false
   }
-
-  if (errors.length > initialErrorCount) {
-    return
-  }
-
-  const heavyFlags = [
-    classification.database,
-    classification.website_e2e,
-    classification.admin_e2e,
-    classification.chat_e2e,
-    classification.operations,
-    classification.production_image,
-    classification.full_fallback,
-  ]
-
-  if (classification.docs_only && (classification.code || heavyFlags.some(Boolean))) {
-    errors.push('docs_only classification cannot enable code or heavy flags')
-  }
-  if (!classification.docs_only && !classification.code) {
-    errors.push('non-document classification must enable code')
-  }
-  if (classification.full_fallback && (!classification.code || heavyFlags.some((flag) => !flag))) {
-    errors.push('full_fallback must enable every code and heavy flag')
-  }
+  return true
 }
 
 const expectResult = (name, expected, actual, errors) => {
@@ -58,8 +24,17 @@ const expectResult = (name, expected, actual, errors) => {
   }
 }
 
-export function evaluateCiPolicy({ eventName, isDraft, headSha, classification, results }) {
-  const errors = []
+export function evaluateCiPolicy({
+  eventName,
+  isDraft,
+  expectedHeadSha,
+  resolvedHeadSha,
+  checkedOutSha,
+  classification,
+  results,
+}) {
+  const errors = validateClassification(classification)
+  let plan = null
 
   if (eventName !== 'pull_request' && eventName !== 'push') {
     errors.push(`unsupported event: ${eventName || 'missing'}`)
@@ -67,47 +42,62 @@ export function evaluateCiPolicy({ eventName, isDraft, headSha, classification, 
   if (typeof isDraft !== 'boolean') {
     errors.push('isDraft is missing or not boolean')
   }
-  if (typeof headSha !== 'string' || !/^[0-9a-f]{40}$/.test(headSha)) {
-    errors.push('head SHA is missing or invalid')
+  if (eventName === 'push' && isDraft === true) {
+    errors.push('push events cannot be Draft')
   }
 
-  validateClassification(classification, errors)
-  expectResult('changes', 'success', results.changes, errors)
+  const expectedValid = validateSha('expected head', expectedHeadSha, errors)
+  const resolvedValid = validateSha('resolved head', resolvedHeadSha, errors)
+  const checkedOutValid = validateSha('checked out', checkedOutSha, errors)
+  if (expectedValid && resolvedValid && expectedHeadSha !== resolvedHeadSha) {
+    errors.push('resolved head SHA does not match expected head SHA')
+  }
+  if (expectedValid && checkedOutValid && expectedHeadSha !== checkedOutSha) {
+    errors.push('checked out SHA does not match expected head SHA')
+  }
 
-  const validClassification = booleanKeys.every((key) => typeof classification[key] === 'boolean')
-  let heavyRequired = true
-  let fullGateRequired = true
-  let mode = 'invalid'
-
-  if (validClassification) {
-    heavyRequired =
-      classification.database ||
-      classification.website_e2e ||
-      classification.admin_e2e ||
-      classification.chat_e2e ||
-      classification.operations ||
-      classification.production_image ||
-      classification.full_fallback
-
-    const readyOrMain = eventName === 'push' || isDraft === false
-    fullGateRequired = classification.code && heavyRequired && readyOrMain
-
-    expectResult('fast', classification.code ? 'success' : 'skipped', results.fast, errors)
-    expectResult('full_gate', fullGateRequired ? 'success' : 'skipped', results.fullGate, errors)
-
-    if (eventName === 'pull_request' && isDraft) {
-      mode = 'fast-only'
-    } else {
-      mode = 'full-policy'
+  try {
+    plan = createValidationPlan({ classification, eventName, isDraft })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'invalid validation plan'
+    for (const part of message.split('; ')) {
+      if (!errors.includes(part)) errors.push(part)
     }
+  }
+
+  const safeResults = results && typeof results === 'object' ? results : {}
+  expectResult('validation', 'success', safeResults.validation, errors)
+
+  if (plan) {
+    expectResult('fast', plan.fastRequired ? 'success' : 'skipped', safeResults.fast, errors)
+    expectResult(
+      'database',
+      plan.databaseRequired ? 'success' : 'skipped',
+      safeResults.database,
+      errors,
+    )
+    expectResult('build', plan.buildRequired ? 'success' : 'skipped', safeResults.build, errors)
+    expectResult('e2e', plan.e2eRequired ? 'success' : 'skipped', safeResults.e2e, errors)
+    expectResult(
+      'operations',
+      plan.operationsRequired ? 'success' : 'skipped',
+      safeResults.operations,
+      errors,
+    )
+    expectResult(
+      'cleanup',
+      plan.databaseRequired ? 'success' : 'skipped',
+      safeResults.cleanup,
+      errors,
+    )
   }
 
   return {
     errors,
-    fullGateRequired,
-    heavyRequired,
-    mode,
+    heavyRequired: plan?.heavyRequired ?? true,
+    mode: plan?.mode ?? 'invalid',
     ok: errors.length === 0,
+    plan,
   }
 }
 
@@ -122,17 +112,23 @@ const runCli = () => {
 
   try {
     const classification = Object.fromEntries(
-      booleanKeys.map((key) => [key, parseBoolean(key, process.env[key.toUpperCase()])]),
+      classificationKeys.map((key) => [key, parseBoolean(key, process.env[key.toUpperCase()])]),
     )
     evaluation = evaluateCiPolicy({
-      eventName: process.env.EVENT_NAME,
-      isDraft: parseBoolean('IS_DRAFT', process.env.IS_DRAFT),
-      headSha: process.env.HEAD_SHA,
+      checkedOutSha: process.env.CHECKED_OUT_SHA,
       classification,
+      eventName: process.env.EVENT_NAME,
+      expectedHeadSha: process.env.EXPECTED_HEAD_SHA,
+      isDraft: parseBoolean('IS_DRAFT', process.env.IS_DRAFT),
+      resolvedHeadSha: process.env.RESOLVED_HEAD_SHA,
       results: {
-        changes: process.env.CHANGES_RESULT,
+        build: process.env.BUILD_RESULT,
+        cleanup: process.env.CLEANUP_RESULT,
+        database: process.env.DATABASE_RESULT,
+        e2e: process.env.E2E_RESULT,
         fast: process.env.FAST_RESULT,
-        fullGate: process.env.FULL_GATE_RESULT,
+        operations: process.env.OPERATIONS_RESULT,
+        validation: process.env.VALIDATION_RESULT,
       },
     })
   } catch (error) {
@@ -143,19 +139,41 @@ const runCli = () => {
     }
   }
 
-  const classificationSummary = booleanKeys
+  const classificationSummary = classificationKeys
     .map((key) => `${key}=${process.env[key.toUpperCase()] ?? 'missing'}`)
     .join(', ')
+  const resultSummary = ['validation', 'fast', 'database', 'build', 'e2e', 'operations', 'cleanup']
+    .map((key) => `${key}=${process.env[`${key.toUpperCase()}_RESULT`] ?? 'missing'}`)
+    .join(', ')
+  const prState =
+    process.env.EVENT_NAME === 'pull_request'
+      ? process.env.IS_DRAFT === 'true'
+        ? 'Draft'
+        : process.env.IS_DRAFT === 'false'
+          ? 'Ready'
+          : 'Invalid'
+      : 'Not applicable'
+  const modeSummary =
+    evaluation.mode === 'fast-only'
+      ? 'Fast CI only; Draft PR is not merge-ready.'
+      : evaluation.mode === 'docs-only'
+        ? 'Documentation-only validation.'
+        : evaluation.mode === 'full-policy'
+          ? 'Full policy for the current revision.'
+          : 'Invalid policy state.'
 
   const summary = [
     '## CI policy',
     '',
     `- Event: \`${process.env.EVENT_NAME ?? 'missing'}\``,
-    `- Revision: \`${process.env.HEAD_SHA ?? 'missing'}\``,
+    `- Expected revision: \`${process.env.EXPECTED_HEAD_SHA ?? 'missing'}\``,
+    `- Resolved revision: \`${process.env.RESOLVED_HEAD_SHA ?? 'missing'}\``,
+    `- Checked out revision: \`${process.env.CHECKED_OUT_SHA ?? 'missing'}\``,
+    `- CI control source: \`${process.env.CONTROL_SOURCE ?? 'missing'}\``,
+    `- PR state: ${prState}`,
     `- Classification: ${classificationSummary}`,
-    evaluation.mode === 'fast-only'
-      ? '- Mode: Fast CI only; Draft PR is not merge-ready.'
-      : '- Mode: Full policy for the current revision.',
+    `- Stage results: ${resultSummary}`,
+    `- Mode: ${modeSummary}`,
   ]
 
   if (!evaluation.ok) {

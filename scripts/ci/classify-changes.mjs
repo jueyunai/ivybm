@@ -2,11 +2,13 @@ import { appendFileSync, readFileSync } from 'node:fs'
 import { isAbsolute, posix } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const outputKeys = [
+export const classificationKeys = [
   'docs_only',
   'code',
   'database',
   'website_e2e',
+  'website_visual_e2e',
+  'inquiry_e2e',
   'admin_e2e',
   'chat_e2e',
   'operations',
@@ -19,6 +21,8 @@ const lightClassification = () => ({
   code: false,
   database: false,
   website_e2e: false,
+  website_visual_e2e: false,
+  inquiry_e2e: false,
   admin_e2e: false,
   chat_e2e: false,
   operations: false,
@@ -31,6 +35,8 @@ const fullClassification = () => ({
   code: true,
   database: true,
   website_e2e: true,
+  website_visual_e2e: true,
+  inquiry_e2e: true,
   admin_e2e: true,
   chat_e2e: true,
   operations: true,
@@ -41,7 +47,6 @@ const fullClassification = () => ({
 const exactDocumentationPaths = new Set([
   '.env.example',
   '.env.production.example',
-  '.github/CODEOWNERS',
   '.github/pull_request_template.md',
   '.gitignore',
 ])
@@ -68,6 +73,8 @@ const isDocumentationPath = (path) =>
 
 const enableAllE2e = (classification) => {
   classification.website_e2e = true
+  classification.website_visual_e2e = true
+  classification.inquiry_e2e = true
   classification.admin_e2e = true
   classification.chat_e2e = true
 }
@@ -75,6 +82,17 @@ const enableAllE2e = (classification) => {
 const classifyE2eTest = (path, classification) => {
   if (path === 'tests/e2e/website.spec.ts') {
     classification.website_e2e = true
+    return true
+  }
+  if (
+    path === 'tests/e2e/website-visual.spec.ts' ||
+    path.startsWith('tests/e2e/website-visual.spec.ts-snapshots/')
+  ) {
+    classification.website_visual_e2e = true
+    return true
+  }
+  if (path === 'tests/e2e/inquiry.spec.ts') {
+    classification.inquiry_e2e = true
     return true
   }
   if (path === 'tests/e2e/admin-visual.spec.ts' || path.startsWith('tests/e2e/admin-portal-')) {
@@ -101,8 +119,12 @@ const classifySourceE2e = (path, classification) => {
     return true
   }
 
-  if (path.startsWith('src/components/website/') || path.startsWith('src/components/inquiry/')) {
+  if (path.startsWith('src/components/website/')) {
     classification.website_e2e = true
+    return true
+  }
+  if (path.startsWith('src/components/inquiry/')) {
+    classification.inquiry_e2e = true
     return true
   }
   if (path.startsWith('src/components/chat/')) {
@@ -118,6 +140,7 @@ const classifySourceE2e = (path, classification) => {
     path === 'src/app/(frontend)/website.css'
   ) {
     classification.website_e2e = true
+    classification.website_visual_e2e = true
     classification.chat_e2e = true
     return true
   }
@@ -135,11 +158,11 @@ const classifySourceE2e = (path, classification) => {
     return true
   }
   if (path.startsWith('src/app/api/inquiries/')) {
-    classification.website_e2e = true
+    classification.inquiry_e2e = true
     return true
   }
   if (path.startsWith('src/app/api/')) {
-    return true
+    return false
   }
   if (path.startsWith('src/app/')) {
     return false
@@ -147,6 +170,29 @@ const classifySourceE2e = (path, classification) => {
 
   return true
 }
+
+const knownNonUiSourcePrefixes = [
+  'src/access/',
+  'src/collections/',
+  'src/fields/',
+  'src/globals/',
+  'src/hooks/',
+  'src/lib/',
+  'src/migrations/',
+  'src/modules/',
+  'src/seed/',
+]
+
+const knownSourceFiles = new Set([
+  'src/payload-types.ts',
+  'src/payload.config.ts',
+  'src/payload-generated-schema.ts',
+  'src/proxy.ts',
+  'src/worker.ts',
+])
+
+const isKnownNonUiSource = (path) =>
+  knownSourceFiles.has(path) || knownNonUiSourcePrefixes.some((prefix) => path.startsWith(prefix))
 
 const normalizeRepositoryPath = (path) => {
   if (typeof path !== 'string' || path.length === 0 || path.includes('\\')) {
@@ -190,7 +236,11 @@ export function classifyChangedFiles(paths) {
     result.docs_only = false
     let recognized = false
 
-    if (path.startsWith('.github/workflows/') || path.startsWith('scripts/ci/')) {
+    if (
+      path === '.github/CODEOWNERS' ||
+      path.startsWith('.github/workflows/') ||
+      path.startsWith('scripts/ci/')
+    ) {
       result.code = true
       result.operations = true
       if (path === 'scripts/ci/classify-changes.mjs') {
@@ -239,6 +289,15 @@ export function classifyChangedFiles(paths) {
           path.startsWith('src/app/') ||
           path.startsWith('src/components/')) &&
         !classifySourceE2e(path, result)
+      ) {
+        return fullClassification()
+      }
+      if (
+        !path.startsWith('src/admin/') &&
+        !path.startsWith('src/admin-portal/') &&
+        !path.startsWith('src/app/') &&
+        !path.startsWith('src/components/') &&
+        !isKnownNonUiSource(path)
       ) {
         return fullClassification()
       }
@@ -313,7 +372,7 @@ const parseNulSeparatedPaths = (input) => {
 }
 
 const writeOutputs = (classification) => {
-  const output = `${outputKeys.map((key) => `${key}=${String(classification[key])}`).join('\n')}\n`
+  const output = `${classificationKeys.map((key) => `${key}=${String(classification[key])}`).join('\n')}\n`
 
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT, output)
