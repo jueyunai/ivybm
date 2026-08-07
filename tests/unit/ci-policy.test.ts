@@ -1,3 +1,6 @@
+import { spawnSync } from 'node:child_process'
+import { resolve } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import { evaluateCiPolicy } from '../../scripts/ci/evaluate-policy.mjs'
@@ -10,128 +13,158 @@ const docs = {
   database: false,
   docs_only: true,
   full_fallback: false,
+  inquiry_e2e: false,
   operations: false,
   production_image: false,
   website_e2e: false,
+  website_visual_e2e: false,
 }
-const runtime = {
-  ...docs,
-  code: true,
-  docs_only: false,
-  production_image: true,
-}
-const website = {
-  ...runtime,
-  website_e2e: true,
+const runtime = { ...docs, code: true, docs_only: false, production_image: true }
+
+const skippedHeavy = {
+  build: 'skipped',
+  cleanup: 'skipped',
+  database: 'skipped',
+  e2e: 'skipped',
+  fast: 'success',
+  operations: 'skipped',
+  validation: 'success',
 }
 
 const evaluate = ({
   classification = runtime,
   eventName = 'pull_request',
-  fast = 'success',
-  fullGate = 'success',
   isDraft = false,
+  results = { ...skippedHeavy, build: 'success' },
+  resolvedHeadSha = sha,
+  checkedOutSha = sha,
 }: {
   classification?: typeof docs
   eventName?: string
-  fast?: string
-  fullGate?: string
   isDraft?: boolean
+  results?: Record<string, string>
+  resolvedHeadSha?: string
+  checkedOutSha?: string
 } = {}) =>
   evaluateCiPolicy({
+    checkedOutSha,
     classification,
     eventName,
-    headSha: sha,
+    expectedHeadSha: sha,
     isDraft,
-    results: { changes: 'success', fast, fullGate },
+    resolvedHeadSha,
+    results,
   })
 
 describe('CI policy evaluator', () => {
-  it('accepts documentation-only pull requests without Fast or heavy jobs', () => {
-    expect(evaluate({ classification: docs, fast: 'skipped', fullGate: 'skipped' })).toMatchObject({
-      fullGateRequired: false,
-      mode: 'full-policy',
-      ok: true,
-    })
+  it('accepts documentation-only changes with every execution stage skipped', () => {
+    expect(
+      evaluate({
+        classification: docs,
+        results: { ...skippedHeavy, fast: 'skipped' },
+      }),
+    ).toMatchObject({ mode: 'docs-only', ok: true })
   })
 
-  it('accepts Draft code only when Fast CI succeeds and the heavy job is skipped', () => {
-    expect(evaluate({ classification: website, fullGate: 'skipped', isDraft: true })).toMatchObject({
-      fullGateRequired: false,
+  it('accepts Draft code only when Fast succeeds and every heavy stage is skipped', () => {
+    expect(evaluate({ isDraft: true, results: skippedHeavy })).toMatchObject({
       mode: 'fast-only',
       ok: true,
     })
   })
 
-  it('requires the heavy job for a Ready Website change', () => {
-    expect(evaluate({ classification: website })).toMatchObject({
-      fullGateRequired: true,
-      heavyRequired: true,
-      mode: 'full-policy',
-      ok: true,
-    })
+  it('requires database, build, E2E, and cleanup for a Ready browser change', () => {
+    const classification = { ...runtime, inquiry_e2e: true }
+    const results = {
+      ...skippedHeavy,
+      build: 'success',
+      cleanup: 'success',
+      database: 'success',
+      e2e: 'success',
+    }
+
+    expect(evaluate({ classification, results })).toMatchObject({ mode: 'full-policy', ok: true })
   })
 
-  it('requires the heavy job for runtime changes pushed to main', () => {
-    expect(evaluate({ eventName: 'push' })).toMatchObject({
-      fullGateRequired: true,
-      ok: true,
-    })
-  })
-
-  it.each(['failure', 'cancelled', 'skipped'])(
-    'rejects a Ready Website change when the heavy job is %s',
-    (fullGate) => {
-      expect(evaluate({ classification: website, fullGate })).toMatchObject({ ok: false })
-    },
-  )
-
-  it('rejects a Draft PR when Fast CI fails', () => {
-    expect(
-      evaluate({ classification: website, fast: 'failure', fullGate: 'skipped', isDraft: true }),
-    ).toMatchObject({ ok: false })
-  })
-
-  it('accepts Ready test-only changes without starting an inapplicable heavy job', () => {
-    expect(
-      evaluate({
-        classification: { ...docs, code: true, docs_only: false },
-        fullGate: 'skipped',
-      }),
-    ).toMatchObject({
-      fullGateRequired: false,
-      heavyRequired: false,
-      ok: true,
-    })
-  })
-
-  it('rejects missing outputs and inconsistent classifications', () => {
-    const result = evaluateCiPolicy({
-      classification: { ...docs, code: true },
-      eventName: 'pull_request',
-      headSha: '',
-      isDraft: false,
-      results: { changes: 'success', fast: '', fullGate: 'skipped' },
-    })
-
-    expect(result.ok).toBe(false)
-    expect(result.errors).toEqual(
-      expect.arrayContaining([
-        'head SHA is missing or invalid',
-        'docs_only classification cannot enable code or heavy flags',
-        'fast result is missing or invalid',
-      ]),
+  it('rejects stale or mismatched revisions', () => {
+    expect(evaluate({ resolvedHeadSha: 'a'.repeat(40) }).errors).toContain(
+      'resolved head SHA does not match expected head SHA',
+    )
+    expect(evaluate({ checkedOutSha: 'b'.repeat(40) }).errors).toContain(
+      'checked out SHA does not match expected head SHA',
     )
   })
 
-  it('requires full fallback to enable every E2E and heavy flag', () => {
+  it.each(['failure', 'cancelled', 'skipped', 'abandoned', ''])(
+    'rejects a required stage result of %j',
+    (build) => {
+      expect(evaluate({ results: { ...skippedHeavy, build } })).toMatchObject({ ok: false })
+    },
+  )
+
+  it('rejects push events represented as Draft', () => {
+    expect(evaluate({ eventName: 'push', isDraft: true })).toMatchObject({ ok: false })
+  })
+
+  it('returns a policy failure instead of throwing for malformed input', () => {
+    expect(() =>
+      evaluateCiPolicy({
+        checkedOutSha: sha,
+        classification: null,
+        eventName: 'pull_request',
+        expectedHeadSha: sha,
+        isDraft: false,
+        resolvedHeadSha: sha,
+        results: null,
+      }),
+    ).not.toThrow()
+
     expect(
-      evaluate({
-        classification: {
-          ...runtime,
-          full_fallback: true,
-        },
-      }).errors,
-    ).toContain('full_fallback must enable every code and heavy flag')
+      evaluateCiPolicy({
+        checkedOutSha: sha,
+        classification: null,
+        eventName: 'pull_request',
+        expectedHeadSha: sha,
+        isDraft: false,
+        resolvedHeadSha: sha,
+        results: null,
+      }),
+    ).toMatchObject({ mode: 'invalid', ok: false })
+  })
+
+  it('requires full fallback to enable every E2E and heavy flag', () => {
+    expect(evaluate({ classification: { ...runtime, full_fallback: true } }).errors).toContain(
+      'full_fallback must enable every code and heavy flag',
+    )
+  })
+
+  it('prints the Draft state and explicit non-merge-ready warning', () => {
+    const classificationEnv = Object.fromEntries(
+      Object.entries(runtime).map(([key, value]) => [key.toUpperCase(), String(value)]),
+    )
+    const result = spawnSync(process.execPath, [resolve('scripts/ci/evaluate-policy.mjs')], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ...classificationEnv,
+        BUILD_RESULT: 'skipped',
+        CHECKED_OUT_SHA: sha,
+        CLEANUP_RESULT: 'skipped',
+        CONTROL_SOURCE: 'candidate-control-change',
+        DATABASE_RESULT: 'skipped',
+        E2E_RESULT: 'skipped',
+        EVENT_NAME: 'pull_request',
+        EXPECTED_HEAD_SHA: sha,
+        FAST_RESULT: 'success',
+        IS_DRAFT: 'true',
+        OPERATIONS_RESULT: 'skipped',
+        RESOLVED_HEAD_SHA: sha,
+        VALIDATION_RESULT: 'success',
+      },
+    })
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('- PR state: Draft')
+    expect(result.stdout).toContain('- Mode: Fast CI only; Draft PR is not merge-ready.')
   })
 })

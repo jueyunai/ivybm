@@ -19,8 +19,9 @@ describe('production image publishing policy', () => {
     expect(publishJob).toContain("github.event_name == 'push'")
     expect(publishJob).toContain("github.ref == 'refs/heads/main'")
     expect(publishJob).toContain("needs.ci_policy.result == 'success'")
-    expect(publishJob).toContain("needs.changes.outputs.production_image == 'true'")
-    expect(publishJob).toContain('ref: ${{ needs.changes.outputs.head_sha }}')
+    expect(publishJob).toContain("needs.validation.outputs.production_image == 'true'")
+    expect(publishJob).toContain('ref: ${{ needs.validation.outputs.expected_head_sha }}')
+    expect(publishJob).not.toContain('ls-remote origin refs/heads/main')
   })
 
   it('scopes package write access and pins privileged third-party actions', () => {
@@ -40,8 +41,14 @@ describe('production image publishing policy', () => {
   })
 
   it('shares a stable Buildx cache without granting deployment access', () => {
-    expect(publishJob.match(/cache-from: type=gha,scope=ivybm-production/g)).toHaveLength(2)
-    expect(publishJob.match(/cache-to: type=gha,mode=max,scope=ivybm-production/g)).toHaveLength(2)
+    expect(publishJob).toContain('cache-from: type=gha,scope=ivybm-production-runtime')
+    expect(publishJob).toContain('cache-from: type=gha,scope=ivybm-production-worker')
+    expect(publishJob).toContain(
+      'cache-to: type=gha,mode=max,scope=ivybm-production-runtime,ignore-error=true',
+    )
+    expect(publishJob).toContain(
+      'cache-to: type=gha,mode=max,scope=ivybm-production-worker,ignore-error=true',
+    )
     expect(publishJob).not.toMatch(/\bssh\b/i)
     expect(publishJob).not.toMatch(/\bscp\b/i)
     expect(publishJob).not.toMatch(/docker compose/i)
@@ -51,5 +58,7 @@ describe('production image publishing policy', () => {
     expect(publishJob).toContain('${{ steps.runtime.outputs.digest }}')
     expect(publishJob).toContain('${{ steps.worker.outputs.digest }}')
     expect(publishJob).toContain('Revision tag')
+    expect(publishJob).toContain('Release receipt: complete')
+    expect(publishJob).toContain('^sha256:[0-9a-f]{64}$')
   })
 })

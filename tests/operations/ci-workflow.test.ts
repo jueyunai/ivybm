@@ -6,115 +6,100 @@ import { describe, expect, it } from 'vitest'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const workflow = readFileSync(resolve(projectRoot, '.github/workflows/ci.yml'), 'utf8')
+const validationJob = workflow.slice(
+  workflow.indexOf('  validation:'),
+  workflow.indexOf('  ci_policy:'),
+)
+const policyJob = workflow.slice(
+  workflow.indexOf('  ci_policy:'),
+  workflow.indexOf('  publish_production_images:'),
+)
 const prJobs = workflow.slice(0, workflow.indexOf('  publish_production_images:'))
 
 describe('CI workflow policy', () => {
-  it('uses native Draft and Ready pull request events', () => {
+  it('uses native Draft and Ready events with PR-only cancellation', () => {
     expect(workflow).toContain('types: [opened, synchronize, reopened, ready_for_review]')
     expect(workflow).not.toContain('converted_to_draft')
     expect(workflow).not.toContain('pull_request_target')
     expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}")
   })
 
-  it('classifies paths before selecting Fast or path-specific gates', () => {
-    expect(workflow).toContain('name: Classify and validate changes')
-    expect(workflow).toContain('node scripts/ci/classify-changes.mjs')
-    expect(workflow).toContain('name: Fast CI')
-    expect(workflow).toContain('name: Path-specific full gate')
-    expect(workflow).toContain('github.event.pull_request.draft == false')
+  it('uses one read-only validation runner for classification, Fast CI, and heavy gates', () => {
+    expect(validationJob).toContain('name: CI validation')
+    expect(validationJob).toContain('timeout-minutes: 45')
+    expect(validationJob).toContain('classify-changes.mjs')
+    expect(validationJob).toContain('plan-validation.mjs')
+    expect(validationJob).toContain('name: Fast CI')
+    expect(validationJob).toContain('name: Database gate')
+    expect(validationJob).toContain('name: Browser E2E')
+    expect(validationJob).toContain('name: Operations gate')
+    expect(workflow).not.toContain('  changes:')
+    expect(workflow).not.toContain('  fast:')
+    expect(workflow).not.toContain('  full_gate:')
+    expect(validationJob.match(/pnpm install --frozen-lockfile/g)).toHaveLength(1)
   })
 
-  it('budgets enough time for the complete path-specific gate', () => {
-    const fullGate = workflow.slice(
-      workflow.indexOf('  full_gate:'),
-      workflow.indexOf('  ci_policy:'),
+  it('uses the trusted base CI control plane for ordinary pull requests', () => {
+    expect(validationJob).toContain('name: Prepare CI control plane')
+    expect(validationJob).toContain('PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}')
+    expect(validationJob).toContain(".github/workflows/'*")
+    expect(validationJob).toContain("scripts/ci/'*")
+    expect(validationJob).toContain('control_source=trusted-base')
+    expect(policyJob).toContain('ref: ${{ needs.validation.outputs.control_ref || github.sha }}')
+  })
+
+  it('starts PostgreSQL only when planned and always cleans it up', () => {
+    expect(validationJob).not.toContain('services:')
+    expect(validationJob).toContain('name: Start database when required')
+    expect(validationJob).toContain("steps.plan.outputs.database_required == 'true'")
+    expect(validationJob).toContain('pgvector/pgvector:0.8.5-pg18@sha256:')
+    expect(validationJob).toContain('name: Clean up database')
+    expect(validationJob).toContain("always() && steps.plan.outputs.database_required == 'true'")
+    expect(validationJob).toContain('docker rm --force "$CI_DB_CONTAINER"')
+  })
+
+  it('keeps a stable independent fail-closed policy check', () => {
+    expect(policyJob).toContain('name: CI policy')
+    expect(policyJob).toContain('needs: [validation]')
+    expect(policyJob).toContain('if: ${{ always() }}')
+    expect(policyJob).toContain('VALIDATION_RESULT: ${{ needs.validation.result }}')
+    expect(policyJob).toContain(
+      'EXPECTED_HEAD_SHA: ${{ needs.validation.outputs.expected_head_sha }}',
     )
-
-    expect(fullGate).toContain('timeout-minutes: 30')
-    expect(fullGate).toContain('ADMIN_PORTAL_ENABLED: true')
-    expect(fullGate).toContain('ADMIN_PORTAL_SETTINGS_ENABLED: true')
-    expect(fullGate).toContain('ADMIN_PORTAL_OVERVIEW_ENABLED: true')
-    expect(fullGate).toContain('ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED: true')
-    expect(fullGate).toContain('ADMIN_PORTAL_MEDIA_ENABLED: true')
-    expect(fullGate).toContain('ADMIN_PORTAL_KNOWLEDGE_ENABLED: true')
-    expect(fullGate).toContain('ADMIN_PORTAL_CONVERSATIONS_ENABLED: true')
-    expect(fullGate).toContain('ADMIN_PORTAL_LEADS_ENABLED: true')
-    expect(fullGate).toContain('ADMIN_PORTAL_CONTENT_STUDIO_ENABLED: true')
-    expect(fullGate).toContain('ADMIN_PORTAL_PUBLISHING_ENABLED: false')
-    expect(fullGate).toContain('ADMIN_PORTAL_PLATFORMS_ENABLED: true')
-    expect(fullGate).toContain('ADMIN_PORTAL_OPERATIONS_ENABLED: true')
+    expect(policyJob).toContain('CHECKED_OUT_SHA: ${{ needs.validation.outputs.checked_out_sha }}')
+    expect(policyJob).toContain('node scripts/ci/evaluate-policy.mjs')
+    expect(policyJob).toContain('CONTROL_SOURCE: ${{ needs.validation.outputs.control_source }}')
   })
 
-  it('always evaluates a stable fail-closed policy for the current head', () => {
-    expect(workflow).toContain('name: CI policy')
-    expect(workflow).toContain('if: ${{ always() }}')
-    expect(workflow).toContain('node scripts/ci/evaluate-policy.mjs')
-    expect(workflow).toContain('HEAD_SHA: ${{ needs.changes.outputs.head_sha }}')
-  })
-
-  it('keeps default workflow permissions read-only', () => {
+  it('keeps all PR execution read-only and pins every action by commit SHA', () => {
     expect(workflow).toMatch(/permissions:\n  contents: read\n/)
     expect(prJobs).not.toContain('packages: write')
+
+    for (const action of workflow.matchAll(/uses:\s+[^@\s]+@([^\s#]+)/g)) {
+      expect(action[1]).toMatch(/^[0-9a-f]{40}$/)
+    }
   })
 
-  it('blocks root runtime data without rejecting source modules named media', () => {
-    const sensitivePathStep = workflow.slice(
-      workflow.indexOf('      - name: Validate repository diff and sensitive path boundary'),
-      workflow.indexOf('  fast:'),
-    )
-
-    expect(sensitivePathStep).toContain(
-      '.env|.env.*|data/*|media/*|uploads/*|backups/*|*.sqlite|*.sqlite3|*.dump)',
-    )
-    expect(sensitivePathStep).not.toContain('*/data/*')
-    expect(sensitivePathStep).not.toContain('*/media/*')
-    expect(sensitivePathStep).not.toContain('*/uploads/*')
-    expect(sensitivePathStep).not.toContain('*/backups/*')
+  it('installs Chromium only for selected E2E and invokes the exact suite set once', () => {
+    expect(validationJob).toContain("steps.plan.outputs.e2e_required == 'true'")
+    expect(validationJob).toContain('pnpm exec playwright install --with-deps chromium')
+    expect(validationJob).toContain('specs+=(tests/e2e/website.spec.ts)')
+    expect(validationJob).toContain('specs+=(tests/e2e/website-visual.spec.ts)')
+    expect(validationJob).toContain('specs+=(tests/e2e/inquiry.spec.ts)')
+    expect(validationJob).toContain('specs+=(tests/e2e/admin-visual.spec.ts)')
+    expect(validationJob).toContain('specs+=(tests/e2e/admin-portal-*.spec.ts)')
+    expect(validationJob).toContain('specs+=(tests/e2e/chat-handoff.spec.ts)')
+    expect(validationJob).toContain('pnpm test:e2e -- "${specs[@]}"')
   })
 
-  it('exports three E2E classifications and preserves full fallback', () => {
-    expect(workflow).toContain('website_e2e: ${{ steps.classify.outcome')
-    expect(workflow).toContain('admin_e2e: ${{ steps.classify.outcome')
-    expect(workflow).toContain('chat_e2e: ${{ steps.classify.outcome')
-    expect(workflow).not.toContain('ui_e2e')
-    expect(workflow).toContain("echo 'website_e2e=true'")
-    expect(workflow).toContain("echo 'admin_e2e=true'")
-    expect(workflow).toContain("echo 'chat_e2e=true'")
-  })
-
-  it('installs Chromium only when at least one E2E suite is selected', () => {
-    const installStep = workflow.slice(
-      workflow.indexOf('      - name: Install Chromium for browser E2E'),
-      workflow.indexOf('      - name: Browser E2E'),
-    )
-
-    expect(installStep).toContain("needs.changes.outputs.website_e2e == 'true'")
-    expect(installStep).toContain("needs.changes.outputs.admin_e2e == 'true'")
-    expect(installStep).toContain("needs.changes.outputs.chat_e2e == 'true'")
-    expect(installStep).toContain('pnpm exec playwright install --with-deps chromium')
-  })
-
-  it('runs selected Website, Admin, and Chat specs in one Playwright invocation', () => {
-    const e2eStep = workflow.slice(
-      workflow.indexOf('      - name: Browser E2E'),
-      workflow.indexOf('      - name: Build runtime image for PR validation'),
-    )
-
-    expect(e2eStep).toContain('WEBSITE_E2E: ${{ needs.changes.outputs.website_e2e }}')
-    expect(e2eStep).toContain('ADMIN_E2E: ${{ needs.changes.outputs.admin_e2e }}')
-    expect(e2eStep).toContain('CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}')
-    expect(e2eStep).toContain('specs+=(tests/e2e/website.spec.ts)')
-    expect(e2eStep).toContain('specs+=(tests/e2e/admin-visual.spec.ts)')
-    expect(e2eStep).toContain('specs+=(tests/e2e/admin-portal-*.spec.ts)')
-    expect(e2eStep).toContain('specs+=(tests/e2e/chat-handoff.spec.ts)')
-    expect(e2eStep.match(/pnpm test:e2e/g)).toHaveLength(2)
-    expect(e2eStep).toContain('pnpm test:e2e -- "${specs[@]}"')
-    expect(e2eStep).toContain('if [[ "$FULL_FALLBACK" == \'true\' ]]')
+  it('preserves the production-disabled Portal test environment', () => {
+    expect(validationJob).toContain('ADMIN_PORTAL_ENABLED: true')
+    expect(validationJob).toContain('ADMIN_PORTAL_SETTINGS_ENABLED: true')
+    expect(validationJob).toContain('ADMIN_PORTAL_PUBLISHING_ENABLED: false')
   })
 
   it('keeps visual baselines isolated by runner platform', () => {
     const playwrightConfig = readFileSync(resolve(projectRoot, 'playwright.config.ts'), 'utf8')
-
     expect(playwrightConfig).toContain(
       "snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{platform}/{arg}-{projectName}{ext}'",
     )
