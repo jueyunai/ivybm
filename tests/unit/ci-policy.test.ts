@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process'
-import { resolve } from 'node:path'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
@@ -20,6 +22,19 @@ const docs = {
   website_visual_e2e: false,
 }
 const runtime = { ...docs, code: true, docs_only: false, production_image: true }
+const fullFallback = {
+  admin_e2e: true,
+  chat_e2e: true,
+  code: true,
+  database: true,
+  docs_only: false,
+  full_fallback: true,
+  inquiry_e2e: true,
+  operations: true,
+  production_image: true,
+  website_e2e: true,
+  website_visual_e2e: true,
+}
 
 const skippedHeavy = {
   build: 'skipped',
@@ -38,9 +53,13 @@ const evaluate = ({
   results = { ...skippedHeavy, build: 'success' },
   resolvedHeadSha = sha,
   checkedOutSha = sha,
+  controlSource = 'trusted-base',
+  forceFull = false,
 }: {
   classification?: typeof docs
+  controlSource?: string
   eventName?: string
+  forceFull?: boolean
   isDraft?: boolean
   results?: Record<string, string>
   resolvedHeadSha?: string
@@ -49,8 +68,10 @@ const evaluate = ({
   evaluateCiPolicy({
     checkedOutSha,
     classification,
+    controlSource,
     eventName,
     expectedHeadSha: sha,
+    forceFull,
     isDraft,
     resolvedHeadSha,
     results,
@@ -138,6 +159,38 @@ describe('CI policy evaluator', () => {
     )
   })
 
+  it('forces full policy for a Draft candidate control-plane change', () => {
+    expect(
+      evaluate({
+        classification: fullFallback,
+        controlSource: 'candidate-control-change',
+        forceFull: true,
+        isDraft: true,
+        results: {
+          build: 'success',
+          cleanup: 'success',
+          database: 'success',
+          e2e: 'success',
+          fast: 'success',
+          operations: 'success',
+          validation: 'success',
+        },
+      }),
+    ).toMatchObject({ mode: 'full-policy', ok: true })
+  })
+
+  it('rejects a candidate control-plane change that is not forced full', () => {
+    expect(
+      evaluate({
+        classification: fullFallback,
+        controlSource: 'candidate-control-change',
+        forceFull: false,
+        isDraft: true,
+        results: skippedHeavy,
+      }).errors,
+    ).toContain('candidate control changes must force full validation')
+  })
+
   it('prints the Draft state and explicit non-merge-ready warning', () => {
     const classificationEnv = Object.fromEntries(
       Object.entries(runtime).map(([key, value]) => [key.toUpperCase(), String(value)]),
@@ -150,12 +203,14 @@ describe('CI policy evaluator', () => {
         BUILD_RESULT: 'skipped',
         CHECKED_OUT_SHA: sha,
         CLEANUP_RESULT: 'skipped',
-        CONTROL_SOURCE: 'candidate-control-change',
+        CONTROL_SOURCE: 'trusted-base',
         DATABASE_RESULT: 'skipped',
         E2E_RESULT: 'skipped',
         EVENT_NAME: 'pull_request',
         EXPECTED_HEAD_SHA: sha,
         FAST_RESULT: 'success',
+        FORCE_FULL: 'false',
+        GITHUB_STEP_SUMMARY: '',
         IS_DRAFT: 'true',
         OPERATIONS_RESULT: 'skipped',
         RESOLVED_HEAD_SHA: sha,
@@ -166,5 +221,44 @@ describe('CI policy evaluator', () => {
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('- PR state: Draft')
     expect(result.stdout).toContain('- Mode: Fast CI only; Draft PR is not merge-ready.')
+  })
+
+  it('writes the policy summary to the GitHub step summary file when configured', () => {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'ivybm-ci-policy-'))
+    const summaryPath = join(tempDirectory, 'summary.md')
+    const classificationEnv = Object.fromEntries(
+      Object.entries(runtime).map(([key, value]) => [key.toUpperCase(), String(value)]),
+    )
+
+    try {
+      const result = spawnSync(process.execPath, [resolve('scripts/ci/evaluate-policy.mjs')], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          ...classificationEnv,
+          BUILD_RESULT: 'skipped',
+          CHECKED_OUT_SHA: sha,
+          CLEANUP_RESULT: 'skipped',
+          CONTROL_SOURCE: 'trusted-base',
+          DATABASE_RESULT: 'skipped',
+          E2E_RESULT: 'skipped',
+          EVENT_NAME: 'pull_request',
+          EXPECTED_HEAD_SHA: sha,
+          FAST_RESULT: 'success',
+          FORCE_FULL: 'false',
+          GITHUB_STEP_SUMMARY: summaryPath,
+          IS_DRAFT: 'true',
+          OPERATIONS_RESULT: 'skipped',
+          RESOLVED_HEAD_SHA: sha,
+          VALIDATION_RESULT: 'success',
+        },
+      })
+
+      expect(result.status).toBe(0)
+      expect(result.stdout).toBe('')
+      expect(readFileSync(summaryPath, 'utf8')).toContain('- PR state: Draft')
+    } finally {
+      rmSync(tempDirectory, { force: true, recursive: true })
+    }
   })
 })

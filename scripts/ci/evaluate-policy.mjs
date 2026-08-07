@@ -5,6 +5,16 @@ import { classificationKeys } from './classify-changes.mjs'
 import { createValidationPlan, validateClassification } from './plan-validation.mjs'
 
 const resultValues = new Set(['success', 'failure', 'cancelled', 'skipped'])
+const controlSources = new Set([
+  'bootstrap-candidate-control-change',
+  'candidate-control-change',
+  'trusted-base',
+  'trusted-main',
+])
+const candidateControlSources = new Set([
+  'bootstrap-candidate-control-change',
+  'candidate-control-change',
+])
 
 const validateSha = (name, value, errors) => {
   if (typeof value !== 'string' || !/^[0-9a-f]{40}$/.test(value)) {
@@ -31,6 +41,8 @@ export function evaluateCiPolicy({
   resolvedHeadSha,
   checkedOutSha,
   classification,
+  controlSource = 'trusted-base',
+  forceFull = false,
   results,
 }) {
   const errors = validateClassification(classification)
@@ -45,6 +57,15 @@ export function evaluateCiPolicy({
   if (eventName === 'push' && isDraft === true) {
     errors.push('push events cannot be Draft')
   }
+  if (!controlSources.has(controlSource)) {
+    errors.push('control source is missing or invalid')
+  }
+  if (candidateControlSources.has(controlSource) && forceFull !== true) {
+    errors.push('candidate control changes must force full validation')
+  }
+  if (eventName === 'push' && controlSource !== 'trusted-main') {
+    errors.push('push events must use the trusted main control plane')
+  }
 
   const expectedValid = validateSha('expected head', expectedHeadSha, errors)
   const resolvedValid = validateSha('resolved head', resolvedHeadSha, errors)
@@ -57,7 +78,7 @@ export function evaluateCiPolicy({
   }
 
   try {
-    plan = createValidationPlan({ classification, eventName, isDraft })
+    plan = createValidationPlan({ classification, eventName, forceFull, isDraft })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'invalid validation plan'
     for (const part of message.split('; ')) {
@@ -117,8 +138,10 @@ const runCli = () => {
     evaluation = evaluateCiPolicy({
       checkedOutSha: process.env.CHECKED_OUT_SHA,
       classification,
+      controlSource: process.env.CONTROL_SOURCE,
       eventName: process.env.EVENT_NAME,
       expectedHeadSha: process.env.EXPECTED_HEAD_SHA,
+      forceFull: parseBoolean('FORCE_FULL', process.env.FORCE_FULL),
       isDraft: parseBoolean('IS_DRAFT', process.env.IS_DRAFT),
       resolvedHeadSha: process.env.RESOLVED_HEAD_SHA,
       results: {
@@ -170,6 +193,7 @@ const runCli = () => {
     `- Resolved revision: \`${process.env.RESOLVED_HEAD_SHA ?? 'missing'}\``,
     `- Checked out revision: \`${process.env.CHECKED_OUT_SHA ?? 'missing'}\``,
     `- CI control source: \`${process.env.CONTROL_SOURCE ?? 'missing'}\``,
+    `- Forced full validation: \`${process.env.FORCE_FULL ?? 'missing'}\``,
     `- PR state: ${prState}`,
     `- Classification: ${classificationSummary}`,
     `- Stage results: ${resultSummary}`,

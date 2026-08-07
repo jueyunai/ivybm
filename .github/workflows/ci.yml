@@ -26,7 +26,6 @@ jobs:
       checked_out_sha: ${{ steps.revision.outputs.checked_out_sha }}
       cleanup_result: ${{ steps.results.outputs.cleanup }}
       code: ${{ steps.classification.outputs.code }}
-      control_ref: ${{ steps.control.outputs.control_ref }}
       control_source: ${{ steps.control.outputs.control_source }}
       database: ${{ steps.classification.outputs.database }}
       database_result: ${{ steps.results.outputs.database }}
@@ -35,11 +34,14 @@ jobs:
       event_name: ${{ steps.revision.outputs.event_name }}
       expected_head_sha: ${{ steps.revision.outputs.expected_head_sha }}
       fast_result: ${{ steps.results.outputs.fast }}
+      force_full: ${{ steps.control.outputs.force_full }}
       full_fallback: ${{ steps.classification.outputs.full_fallback }}
       inquiry_e2e: ${{ steps.classification.outputs.inquiry_e2e }}
       is_draft: ${{ steps.revision.outputs.is_draft }}
       operations: ${{ steps.classification.outputs.operations }}
       operations_result: ${{ steps.results.outputs.operations }}
+      policy_contract: ${{ steps.control.outputs.policy_contract }}
+      policy_ref: ${{ steps.control.outputs.policy_ref }}
       production_image: ${{ steps.classification.outputs.production_image }}
       resolved_head_sha: ${{ steps.diff.outputs.head_sha }}
       website_e2e: ${{ steps.classification.outputs.website_e2e }}
@@ -177,47 +179,78 @@ jobs:
         run: |
           set -euo pipefail
 
-          control_ref="$EXPECTED_HEAD_SHA"
+          classifier_ref="$EXPECTED_HEAD_SHA"
+          planner_ref="$EXPECTED_HEAD_SHA"
+          policy_ref="$EXPECTED_HEAD_SHA"
+          policy_contract=v2
           control_source=trusted-main
+          force_full=false
           ci_control_change=false
           while IFS= read -r -d '' path; do
-            if [[ "$path" == '.github/workflows/'* || "$path" == 'scripts/ci/'* ]]; then
+            if [[ "$path" == '.github/CODEOWNERS' ||
+                  "$path" == '.github/workflows/'* ||
+                  "$path" == 'scripts/ci/'* ]]; then
               ci_control_change=true
               break
             fi
           done < "$RUNNER_TEMP/changed-files.zlist"
 
-          if [[ "$EVENT_NAME" == 'pull_request' && "$ci_control_change" == 'false' ]] &&
-             [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] &&
-             git cat-file -e "${PR_BASE_SHA}:scripts/ci/plan-validation.mjs"; then
-            control_ref="$PR_BASE_SHA"
+          if [[ "$EVENT_NAME" == 'pull_request' ]]; then
+            if [[ ! "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] ||
+               ! git cat-file -e "${PR_BASE_SHA}^{commit}" ||
+               ! git cat-file -e "${PR_BASE_SHA}:scripts/ci/classify-changes.mjs" ||
+               ! git cat-file -e "${PR_BASE_SHA}:scripts/ci/evaluate-policy.mjs"; then
+              echo 'Trusted PR base control plane is unavailable.' >&2
+              exit 1
+            fi
+
+            classifier_ref="$PR_BASE_SHA"
+            policy_ref="$PR_BASE_SHA"
             control_source=trusted-base
-          elif [[ "$EVENT_NAME" == 'pull_request' && "$ci_control_change" == 'true' ]]; then
-            control_source=candidate-control-change
-          elif [[ "$EVENT_NAME" == 'pull_request' ]]; then
-            control_source=bootstrap-head
+            if git cat-file -e "${PR_BASE_SHA}:scripts/ci/plan-validation.mjs"; then
+              planner_ref="$PR_BASE_SHA"
+            else
+              policy_contract=legacy
+              control_source=bootstrap-trusted-base-policy
+            fi
+
+            if [[ "$ci_control_change" == 'true' ]]; then
+              force_full=true
+              if [[ "$policy_contract" == 'legacy' ]]; then
+                control_source=bootstrap-candidate-control-change
+              else
+                control_source=candidate-control-change
+              fi
+            fi
           fi
 
-          control_dir="$RUNNER_TEMP/ci-control"
-          mkdir -p "$control_dir"
-          for script in classify-changes.mjs plan-validation.mjs; do
-            git show "${control_ref}:scripts/ci/${script}" > "$control_dir/$script"
-          done
+          classifier_dir="$RUNNER_TEMP/ci-classifier"
+          planner_dir="$RUNNER_TEMP/ci-planner"
+          mkdir -p "$classifier_dir" "$planner_dir"
+          git show "${classifier_ref}:scripts/ci/classify-changes.mjs" \
+            > "$classifier_dir/classify-changes.mjs"
+          git show "${planner_ref}:scripts/ci/classify-changes.mjs" \
+            > "$planner_dir/classify-changes.mjs"
+          git show "${planner_ref}:scripts/ci/plan-validation.mjs" \
+            > "$planner_dir/plan-validation.mjs"
 
           {
-            echo "control_dir=$control_dir"
-            echo "control_ref=$control_ref"
+            echo "classifier_path=$classifier_dir/classify-changes.mjs"
             echo "control_source=$control_source"
+            echo "force_full=$force_full"
+            echo "planner_path=$planner_dir/plan-validation.mjs"
+            echo "policy_contract=$policy_contract"
+            echo "policy_ref=$policy_ref"
           } >> "$GITHUB_OUTPUT"
 
       - name: Classify changed paths
         id: classify
         continue-on-error: true
-        run: node "${{ steps.control.outputs.control_dir }}/classify-changes.mjs" < "$RUNNER_TEMP/changed-files.zlist"
+        run: node "${{ steps.control.outputs.classifier_path }}" < "$RUNNER_TEMP/changed-files.zlist"
 
       - name: Preserve fail-closed outputs after classifier error
         id: fallback
-        if: steps.classify.outcome != 'success'
+        if: steps.control.outputs.force_full == 'true' || steps.classify.outcome != 'success'
         shell: bash
         run: |
           {
@@ -238,17 +271,17 @@ jobs:
         id: classification
         shell: bash
         env:
-          ADMIN_E2E: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.admin_e2e || steps.fallback.outputs.admin_e2e }}
-          CHAT_E2E: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.chat_e2e || steps.fallback.outputs.chat_e2e }}
-          CODE: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.code || steps.fallback.outputs.code }}
-          DATABASE: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.database || steps.fallback.outputs.database }}
-          DOCS_ONLY: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.docs_only || steps.fallback.outputs.docs_only }}
-          FULL_FALLBACK: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.full_fallback || steps.fallback.outputs.full_fallback }}
-          INQUIRY_E2E: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.inquiry_e2e || steps.fallback.outputs.inquiry_e2e }}
-          OPERATIONS: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.operations || steps.fallback.outputs.operations }}
-          PRODUCTION_IMAGE: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.production_image || steps.fallback.outputs.production_image }}
-          WEBSITE_E2E: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.website_e2e || steps.fallback.outputs.website_e2e }}
-          WEBSITE_VISUAL_E2E: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.website_visual_e2e || steps.fallback.outputs.website_visual_e2e }}
+          ADMIN_E2E: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.admin_e2e || steps.fallback.outputs.admin_e2e }}
+          CHAT_E2E: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.chat_e2e || steps.fallback.outputs.chat_e2e }}
+          CODE: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.code || steps.fallback.outputs.code }}
+          DATABASE: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.database || steps.fallback.outputs.database }}
+          DOCS_ONLY: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.docs_only || steps.fallback.outputs.docs_only }}
+          FULL_FALLBACK: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.full_fallback || steps.fallback.outputs.full_fallback }}
+          INQUIRY_E2E: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.inquiry_e2e || steps.fallback.outputs.inquiry_e2e }}
+          OPERATIONS: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.operations || steps.fallback.outputs.operations }}
+          PRODUCTION_IMAGE: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.production_image || steps.fallback.outputs.production_image }}
+          WEBSITE_E2E: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.website_e2e || steps.fallback.outputs.website_e2e }}
+          WEBSITE_VISUAL_E2E: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.website_visual_e2e || steps.fallback.outputs.website_visual_e2e }}
         run: |
           set -euo pipefail
 
@@ -317,6 +350,7 @@ jobs:
           DATABASE: ${{ steps.classification.outputs.database }}
           DOCS_ONLY: ${{ steps.classification.outputs.docs_only }}
           EVENT_NAME: ${{ steps.revision.outputs.event_name }}
+          FORCE_FULL: ${{ steps.control.outputs.force_full }}
           FULL_FALLBACK: ${{ steps.classification.outputs.full_fallback }}
           INQUIRY_E2E: ${{ steps.classification.outputs.inquiry_e2e }}
           IS_DRAFT: ${{ steps.revision.outputs.is_draft }}
@@ -324,17 +358,17 @@ jobs:
           PRODUCTION_IMAGE: ${{ steps.classification.outputs.production_image }}
           WEBSITE_E2E: ${{ steps.classification.outputs.website_e2e }}
           WEBSITE_VISUAL_E2E: ${{ steps.classification.outputs.website_visual_e2e }}
-        run: node "${{ steps.control.outputs.control_dir }}/plan-validation.mjs"
+        run: node "${{ steps.control.outputs.planner_path }}"
 
       - name: Set up pnpm
-        if: steps.plan.outputs.fast_required == 'true'
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.fast_required == 'true'
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 10.15.1
           run_install: false
 
       - name: Set up Node.js
-        if: steps.plan.outputs.fast_required == 'true'
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.fast_required == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
@@ -342,12 +376,12 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies once
-        if: steps.plan.outputs.fast_required == 'true'
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.fast_required == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Fast CI
         id: fast
-        if: steps.plan.outputs.fast_required == 'true'
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.fast_required == 'true'
         run: |
           pnpm lint
           pnpm typecheck
@@ -356,7 +390,7 @@ jobs:
 
       - name: Start database when required
         id: database_start
-        if: steps.plan.outputs.database_required == 'true'
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.database_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -382,7 +416,7 @@ jobs:
 
       - name: Database gate
         id: database
-        if: steps.plan.outputs.database_required == 'true'
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.database_required == 'true'
         env:
           DATABASE_CHANGE: ${{ steps.classification.outputs.database }}
         shell: bash
@@ -401,12 +435,12 @@ jobs:
 
       - name: Production build
         id: build
-        if: steps.plan.outputs.build_required == 'true'
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.build_required == 'true'
         run: pnpm build
 
       - name: Browser E2E
         id: e2e
-        if: steps.plan.outputs.e2e_required == 'true'
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.e2e_required == 'true'
         env:
           ADMIN_E2E: ${{ steps.classification.outputs.admin_e2e }}
           CHAT_E2E: ${{ steps.classification.outputs.chat_e2e }}
@@ -452,7 +486,7 @@ jobs:
 
       - name: Operations gate
         id: operations
-        if: steps.plan.outputs.operations_required == 'true'
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.operations_required == 'true'
         env:
           AI_CONFIG_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           EVENT_NAME: ${{ steps.revision.outputs.event_name }}
@@ -477,7 +511,7 @@ jobs:
 
       - name: Clean up database
         id: cleanup
-        if: ${{ always() && steps.plan.outputs.database_required == 'true' }}
+        if: ${{ always() && (steps.control.outputs.force_full == 'true' || steps.plan.outputs.database_required == 'true') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -540,6 +574,7 @@ jobs:
       EVENT_NAME: ${{ needs.validation.outputs.event_name }}
       EXPECTED_HEAD_SHA: ${{ needs.validation.outputs.expected_head_sha }}
       FAST_RESULT: ${{ needs.validation.outputs.fast_result }}
+      FORCE_FULL: ${{ needs.validation.outputs.force_full }}
       FULL_FALLBACK: ${{ needs.validation.outputs.full_fallback }}
       INQUIRY_E2E: ${{ needs.validation.outputs.inquiry_e2e }}
       IS_DRAFT: ${{ needs.validation.outputs.is_draft }}
@@ -554,11 +589,29 @@ jobs:
       - name: Checkout policy implementation
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          ref: ${{ needs.validation.outputs.control_ref || github.sha }}
+          ref: ${{ needs.validation.outputs.policy_ref || github.sha }}
           persist-credentials: false
 
-      - name: Enforce expected stage results for this revision
+      - name: Enforce trusted v2 policy
+        if: needs.validation.outputs.policy_contract == 'v2'
         run: node scripts/ci/evaluate-policy.mjs
+
+      - name: Enforce trusted legacy bootstrap policy
+        if: needs.validation.outputs.policy_contract == 'legacy'
+        env:
+          CHANGES_RESULT: ${{ needs.validation.result }}
+          FULL_GATE_RESULT: ${{ needs.validation.result }}
+          HEAD_SHA: ${{ needs.validation.outputs.expected_head_sha }}
+          IS_DRAFT: false
+        run: node scripts/ci/evaluate-policy.mjs
+
+      - name: Reject an unknown policy contract
+        if: >-
+          needs.validation.outputs.policy_contract != 'v2' &&
+          needs.validation.outputs.policy_contract != 'legacy'
+        run: |
+          echo 'Trusted policy contract is missing or invalid.' >&2
+          exit 1
 
   publish_production_images:
     name: Publish immutable runtime and worker images

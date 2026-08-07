@@ -38,7 +38,7 @@ export function validateClassification(classification) {
   return errors
 }
 
-export function createValidationPlan({ eventName, isDraft, classification }) {
+export function createValidationPlan({ eventName, isDraft, classification, forceFull = false }) {
   const errors = validateClassification(classification)
 
   if (eventName !== 'pull_request' && eventName !== 'push') {
@@ -50,12 +50,18 @@ export function createValidationPlan({ eventName, isDraft, classification }) {
   if (eventName === 'push' && isDraft === true) {
     errors.push('push events cannot be Draft')
   }
+  if (typeof forceFull !== 'boolean') {
+    errors.push('forceFull is missing or not boolean')
+  }
+  if (forceFull && classification?.full_fallback !== true) {
+    errors.push('forceFull requires full_fallback')
+  }
 
   if (errors.length > 0) {
     throw new Error(errors.join('; '))
   }
 
-  const readyOrMain = eventName === 'push' || isDraft === false
+  const readyOrMain = forceFull || eventName === 'push' || isDraft === false
   const e2eSelected = e2eKeys.some((key) => classification[key])
   const heavyRequired = heavyKeys.some((key) => classification[key])
   const fastRequired = classification.code
@@ -88,6 +94,7 @@ const runCli = () => {
     const plan = createValidationPlan({
       classification,
       eventName: process.env.EVENT_NAME,
+      forceFull: parseBoolean('FORCE_FULL', process.env.FORCE_FULL),
       isDraft: parseBoolean('IS_DRAFT', process.env.IS_DRAFT),
     })
 

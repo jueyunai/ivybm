@@ -1,6 +1,7 @@
 # 免费私有仓库下 CODEOWNERS 只用于自动请求 review，不能替代 branch protection。
 # 普通自有范围 PR 允许负责人自检合并，因此不设置全仓库默认 owner。
 # 下列高频冲突和共享接口文件自动请求双方关注；跨人契约和板块边界仍需作者人工识别并请求 review。
+/.github/CODEOWNERS @jueyunai @xuemusi
 /.github/workflows/ @jueyunai @xuemusi
 /scripts/ci/ @jueyunai @xuemusi
 /src/payload.config.ts @jueyunai @xuemusi

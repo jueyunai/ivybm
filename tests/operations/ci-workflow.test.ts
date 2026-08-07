@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const workflow = readFileSync(resolve(projectRoot, '.github/workflows/ci.yml'), 'utf8')
+const codeowners = readFileSync(resolve(projectRoot, '.github/CODEOWNERS'), 'utf8')
 const validationJob = workflow.slice(
   workflow.indexOf('  validation:'),
   workflow.indexOf('  ci_policy:'),
@@ -39,13 +40,44 @@ describe('CI workflow policy', () => {
     expect(validationJob.match(/pnpm install --frozen-lockfile/g)).toHaveLength(1)
   })
 
-  it('uses the trusted base CI control plane for ordinary pull requests', () => {
+  it('uses trusted base classifier, planner, and policy for pull requests', () => {
     expect(validationJob).toContain('name: Prepare CI control plane')
     expect(validationJob).toContain('PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}')
     expect(validationJob).toContain(".github/workflows/'*")
     expect(validationJob).toContain("scripts/ci/'*")
+    expect(validationJob).toContain('.github/CODEOWNERS')
+    expect(validationJob).toContain('classifier_ref="$PR_BASE_SHA"')
+    expect(validationJob).toContain('policy_ref="$PR_BASE_SHA"')
     expect(validationJob).toContain('control_source=trusted-base')
-    expect(policyJob).toContain('ref: ${{ needs.validation.outputs.control_ref || github.sha }}')
+    expect(validationJob).toContain('force_full=true')
+    expect(policyJob).toContain('ref: ${{ needs.validation.outputs.policy_ref || github.sha }}')
+    expect(policyJob).toContain('name: Enforce trusted v2 policy')
+    expect(policyJob).toContain('name: Enforce trusted legacy bootstrap policy')
+    expect(policyJob).toContain('name: Reject an unknown policy contract')
+  })
+
+  it('forces every validation stage for candidate control-plane changes', () => {
+    expect(validationJob).toContain(
+      "steps.control.outputs.force_full == 'true' || steps.plan.outputs.fast_required == 'true'",
+    )
+    expect(validationJob).toContain(
+      "steps.control.outputs.force_full == 'true' || steps.plan.outputs.database_required == 'true'",
+    )
+    expect(validationJob).toContain(
+      "steps.control.outputs.force_full == 'true' || steps.plan.outputs.build_required == 'true'",
+    )
+    expect(validationJob).toContain(
+      "steps.control.outputs.force_full == 'true' || steps.plan.outputs.e2e_required == 'true'",
+    )
+    expect(validationJob).toContain(
+      "steps.control.outputs.force_full == 'true' || steps.plan.outputs.operations_required == 'true'",
+    )
+    expect(validationJob).toContain('FORCE_FULL: ${{ steps.control.outputs.force_full }}')
+    expect(policyJob).toContain('FORCE_FULL: ${{ needs.validation.outputs.force_full }}')
+  })
+
+  it('makes CODEOWNERS a self-owned CI control-plane boundary', () => {
+    expect(codeowners).toContain('/.github/CODEOWNERS @jueyunai @xuemusi')
   })
 
   it('starts PostgreSQL only when planned and always cleans it up', () => {
@@ -54,7 +86,9 @@ describe('CI workflow policy', () => {
     expect(validationJob).toContain("steps.plan.outputs.database_required == 'true'")
     expect(validationJob).toContain('pgvector/pgvector:0.8.5-pg18@sha256:')
     expect(validationJob).toContain('name: Clean up database')
-    expect(validationJob).toContain("always() && steps.plan.outputs.database_required == 'true'")
+    expect(validationJob).toContain(
+      "always() && (steps.control.outputs.force_full == 'true' || steps.plan.outputs.database_required == 'true')",
+    )
     expect(validationJob).toContain('docker rm --force "$CI_DB_CONTAINER"')
   })
 

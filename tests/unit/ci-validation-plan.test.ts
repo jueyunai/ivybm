@@ -81,6 +81,48 @@ describe('CI validation planner', () => {
     })
   })
 
+  it('forces every heavy stage for a Draft CI control-plane change', () => {
+    expect(
+      createValidationPlan({
+        classification: {
+          admin_e2e: true,
+          chat_e2e: true,
+          code: true,
+          database: true,
+          docs_only: false,
+          full_fallback: true,
+          inquiry_e2e: true,
+          operations: true,
+          production_image: true,
+          website_e2e: true,
+          website_visual_e2e: true,
+        },
+        eventName: 'pull_request',
+        forceFull: true,
+        isDraft: true,
+      }),
+    ).toMatchObject({
+      buildRequired: true,
+      databaseRequired: true,
+      e2eRequired: true,
+      fastRequired: true,
+      mode: 'full-policy',
+      operationsRequired: true,
+      readyOrMain: true,
+    })
+  })
+
+  it('rejects forced execution without a full fallback classification', () => {
+    expect(() =>
+      createValidationPlan({
+        classification: { ...docs, code: true, docs_only: false },
+        eventName: 'pull_request',
+        forceFull: true,
+        isDraft: true,
+      }),
+    ).toThrow('forceFull requires full_fallback')
+  })
+
   it('rejects malformed event state and classifications', () => {
     expect(() =>
       createValidationPlan({ classification: docs, eventName: 'push', isDraft: true }),
