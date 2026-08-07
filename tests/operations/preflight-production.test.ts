@@ -245,6 +245,66 @@ META_WEBHOOK_ALLOWED_ACCOUNT_IDS=1234567890,9876543210
     expect(complete.stdout).not.toContain('operation-meta-app-secret')
   })
 
+  it('requires a complete Meta OAuth set, exact callback, and credential encryption', () => {
+    const webhook = `META_WEBHOOK_APP_SECRET=operation-meta-app-secret
+META_WEBHOOK_VERIFY_TOKEN=operation-meta-verify-token
+META_WEBHOOK_ALLOWED_ACCOUNT_IDS=1234567890,9876543210
+`
+    const partial = runPreflight(`${productionEnvironment}${webhook}META_APP_ID=1111111111111111
+`)
+    const wrongCallback = runPreflight(`${productionEnvironment}${webhook}META_APP_ID=1111111111111111
+META_LOGIN_CONFIG_ID=2222222222222222
+META_OAUTH_REDIRECT_URI=https://evil.example/api/platforms/meta/oauth/callback
+PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+`)
+    const missingEncryption = runPreflight(`${productionEnvironment}${webhook}META_APP_ID=1111111111111111
+META_LOGIN_CONFIG_ID=2222222222222222
+META_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/meta/oauth/callback
+`)
+    const complete = runPreflight(`${productionEnvironment}${webhook}META_APP_ID=1111111111111111
+META_LOGIN_CONFIG_ID=2222222222222222
+META_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/meta/oauth/callback
+PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+`)
+
+    expect(partial.status).not.toBe(0)
+    expect(partial.stderr).toContain('META_LOGIN_CONFIG_ID')
+    expect(wrongCallback.status).not.toBe(0)
+    expect(wrongCallback.stderr).toContain('META_OAUTH_REDIRECT_URI')
+    expect(missingEncryption.status).not.toBe(0)
+    expect(missingEncryption.stderr).toContain('PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
+    expect(complete.status).toBe(0)
+    expect(complete.stdout).not.toContain('operation-meta-app-secret')
+  })
+
+  it('requires a complete Instagram OAuth set and exact callback', () => {
+    const partial = runPreflight(`${productionEnvironment}INSTAGRAM_APP_ID=3333333333333333
+`)
+    const wrongCallback = runPreflight(`${productionEnvironment}INSTAGRAM_APP_ID=3333333333333333
+INSTAGRAM_APP_SECRET=operation-instagram-secret
+INSTAGRAM_OAUTH_REDIRECT_URI=https://evil.example/api/platforms/instagram/oauth/callback
+PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+`)
+    const missingEncryption = runPreflight(`${productionEnvironment}INSTAGRAM_APP_ID=3333333333333333
+INSTAGRAM_APP_SECRET=operation-instagram-secret
+INSTAGRAM_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/instagram/oauth/callback
+`)
+    const complete = runPreflight(`${productionEnvironment}INSTAGRAM_APP_ID=3333333333333333
+INSTAGRAM_APP_SECRET=operation-instagram-secret
+INSTAGRAM_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/instagram/oauth/callback
+PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+`)
+
+    expect(partial.status).not.toBe(0)
+    expect(partial.stderr).toContain('INSTAGRAM_APP_SECRET')
+    expect(wrongCallback.status).not.toBe(0)
+    expect(wrongCallback.stderr).toContain('INSTAGRAM_OAUTH_REDIRECT_URI')
+    expect(missingEncryption.status).not.toBe(0)
+    expect(missingEncryption.stderr).toContain('PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
+    expect(complete.status).toBe(0)
+    expect(complete.stdout).not.toContain('operation-instagram-secret')
+  })
+
   it('accepts an omitted platform credential key but rejects an invalid configured value', () => {
     const omitted = runPreflight(productionEnvironment)
     const invalid = runPreflight(

@@ -123,6 +123,12 @@ ai_embedding_dimensions="$(read_optional_env_value AI_EMBEDDING_DIMENSIONS)"
 meta_webhook_app_secret="$(read_optional_env_value META_WEBHOOK_APP_SECRET)"
 meta_webhook_verify_token="$(read_optional_env_value META_WEBHOOK_VERIFY_TOKEN)"
 meta_webhook_allowed_account_ids="$(read_optional_env_value META_WEBHOOK_ALLOWED_ACCOUNT_IDS)"
+meta_app_id="$(read_optional_env_value META_APP_ID)"
+meta_login_config_id="$(read_optional_env_value META_LOGIN_CONFIG_ID)"
+meta_oauth_redirect_uri="$(read_optional_env_value META_OAUTH_REDIRECT_URI)"
+instagram_app_id="$(read_optional_env_value INSTAGRAM_APP_ID)"
+instagram_app_secret="$(read_optional_env_value INSTAGRAM_APP_SECRET)"
+instagram_oauth_redirect_uri="$(read_optional_env_value INSTAGRAM_OAUTH_REDIRECT_URI)"
 feishu_qr_registration_enabled="$(read_env_value FEISHU_QR_REGISTRATION_ENABLED)"
 feishu_oauth_redirect_uri="$(read_optional_env_value FEISHU_OAUTH_REDIRECT_URI)"
 feishu_credential_encryption_key="$(read_optional_env_value FEISHU_CREDENTIAL_ENCRYPTION_KEY)"
@@ -278,6 +284,54 @@ if [[ -n "$meta_webhook_app_secret" || -n "$meta_webhook_verify_token" || -n "$m
   done
   if [[ "$meta_webhook_allowed_account_ids" == ,* || "$meta_webhook_allowed_account_ids" == *, || "$meta_webhook_allowed_account_ids" == *',,'* ]]; then
     echo 'META_WEBHOOK_ALLOWED_ACCOUNT_IDS must be a comma-separated list without empty values' >&2
+    exit 1
+  fi
+fi
+
+if [[ -n "$meta_app_id" || -n "$meta_login_config_id" || -n "$meta_oauth_redirect_uri" ]]; then
+  for key in META_APP_ID META_LOGIN_CONFIG_ID META_OAUTH_REDIRECT_URI META_WEBHOOK_APP_SECRET; do
+    case "$key" in
+      META_APP_ID) value="$meta_app_id" ;;
+      META_LOGIN_CONFIG_ID) value="$meta_login_config_id" ;;
+      META_OAUTH_REDIRECT_URI) value="$meta_oauth_redirect_uri" ;;
+      META_WEBHOOK_APP_SECRET) value="$meta_webhook_app_secret" ;;
+    esac
+    if [[ -z "$value" || "$value" == *'REPLACE_'* || "$value" == *'replace-with'* ]]; then
+      echo "META_APP_ID, META_LOGIN_CONFIG_ID, META_OAUTH_REDIRECT_URI and META_WEBHOOK_APP_SECRET must be configured together when Meta OAuth is enabled (missing or invalid: $key)" >&2
+      exit 1
+    fi
+  done
+  require_pattern META_APP_ID "$meta_app_id" '^[1-9][0-9]{5,31}$'
+  require_pattern META_LOGIN_CONFIG_ID "$meta_login_config_id" '^[1-9][0-9]{5,31}$'
+  if [[ "$meta_oauth_redirect_uri" != 'https://ivybm.com/api/platforms/meta/oauth/callback' ]]; then
+    echo 'META_OAUTH_REDIRECT_URI must be https://ivybm.com/api/platforms/meta/oauth/callback in production' >&2
+    exit 1
+  fi
+  if [[ -z "$platform_credential_encryption_key" ]]; then
+    echo 'PLATFORM_CREDENTIAL_ENCRYPTION_KEY is required when Meta OAuth is enabled' >&2
+    exit 1
+  fi
+fi
+
+if [[ -n "$instagram_app_id" || -n "$instagram_app_secret" || -n "$instagram_oauth_redirect_uri" ]]; then
+  for key in INSTAGRAM_APP_ID INSTAGRAM_APP_SECRET INSTAGRAM_OAUTH_REDIRECT_URI; do
+    case "$key" in
+      INSTAGRAM_APP_ID) value="$instagram_app_id" ;;
+      INSTAGRAM_APP_SECRET) value="$instagram_app_secret" ;;
+      INSTAGRAM_OAUTH_REDIRECT_URI) value="$instagram_oauth_redirect_uri" ;;
+    esac
+    if [[ -z "$value" || "$value" == *'REPLACE_'* || "$value" == *'replace-with'* ]]; then
+      echo "INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET and INSTAGRAM_OAUTH_REDIRECT_URI must be configured together when Instagram OAuth is enabled (missing or invalid: $key)" >&2
+      exit 1
+    fi
+  done
+  require_pattern INSTAGRAM_APP_ID "$instagram_app_id" '^[1-9][0-9]{5,31}$'
+  if [[ "$instagram_oauth_redirect_uri" != 'https://ivybm.com/api/platforms/instagram/oauth/callback' ]]; then
+    echo 'INSTAGRAM_OAUTH_REDIRECT_URI must be https://ivybm.com/api/platforms/instagram/oauth/callback in production' >&2
+    exit 1
+  fi
+  if [[ -z "$platform_credential_encryption_key" ]]; then
+    echo 'PLATFORM_CREDENTIAL_ENCRYPTION_KEY is required when Instagram OAuth is enabled' >&2
     exit 1
   fi
 fi

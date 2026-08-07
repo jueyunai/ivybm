@@ -23,6 +23,20 @@ const global = ({ label, slug }: { label: string; slug: string }) =>
   }) as ClientConfig['globals'][number]
 
 describe('task-oriented Admin navigation', () => {
+  it('adds separate Meta and Instagram OAuth controls without replacing Payload controls', async () => {
+    const payloadConfig = await config
+    const platformAccounts = payloadConfig.collections?.find(
+      (collectionConfig) => collectionConfig.slug === 'platform-accounts',
+    )
+
+    expect(platformAccounts?.admin?.components?.edit?.beforeDocumentControls).toEqual([
+      '/admin/components/PlatformAccountOAuthControls',
+      '/admin/components/InstagramAccountOAuthControls',
+    ])
+    expect(platformAccounts?.admin?.components?.edit?.PublishButton).toBeUndefined()
+    expect(platformAccounts?.admin?.components?.edit?.SaveButton).toBeUndefined()
+  })
+
   it('uses the public Nav and Dashboard extension points', async () => {
     const payloadConfig = await config
     const components = payloadConfig.admin?.components

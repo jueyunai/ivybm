@@ -42,6 +42,7 @@ const accountData = ({
   state: 'connected' | 'pending'
 }) => ({
   accountKind,
+  authorizationRevision: 0,
   authorization: {
     accessToken: accessToken ?? null,
     accessTokenConfigured: false,
@@ -158,6 +159,75 @@ describe.sequential('platform accounts', () => {
     if (originalPortalPlatformsEnabled === undefined)
       delete process.env.ADMIN_PORTAL_PLATFORMS_ENABLED
     else process.env.ADMIN_PORTAL_PLATFORMS_ENABLED = originalPortalPlatformsEnabled
+  })
+
+  it('increments the authorization revision for every serialized account update', async () => {
+    const suffix = randomUUID()
+    const created = await payload.create({
+      collection: 'platform-accounts',
+      data: accountData({
+        accountKind: 'facebook-page',
+        externalAccountId: `revision-page-${suffix}`,
+        name: `Revision Page ${suffix}`,
+        state: 'pending',
+      }),
+      overrideAccess: false,
+      user: admin,
+    })
+    createdAccountIDs.push(created.id)
+    expect(created.authorizationRevision).toBe(0)
+
+    const metadataUpdated = await payload.update({
+      collection: 'platform-accounts',
+      data: { notes: 'Invalidate any OAuth transaction started before this edit.' },
+      id: created.id,
+      overrideAccess: false,
+      user: admin,
+    })
+    expect(metadataUpdated.authorizationRevision).toBe(1)
+
+    const credentialAdded = await payload.update({
+      collection: 'platform-accounts',
+      data: { authorization: { accessToken: `revision-token-a-${suffix}` } },
+      id: created.id,
+      overrideAccess: false,
+      user: admin,
+    })
+    expect(credentialAdded.authorizationRevision).toBe(2)
+
+    const credentialReplaced = await payload.update({
+      collection: 'platform-accounts',
+      data: { authorization: { accessToken: `revision-token-b-${suffix}` } },
+      id: created.id,
+      overrideAccess: false,
+      user: admin,
+    })
+    expect(credentialReplaced.authorizationRevision).toBe(3)
+
+    const disconnected = await payload.update({
+      collection: 'platform-accounts',
+      data: {
+        authorization: {
+          clearAccessToken: true,
+          clearRefreshToken: true,
+          scopes: [],
+          state: 'not_started',
+        },
+      },
+      id: created.id,
+      overrideAccess: false,
+      user: admin,
+    })
+    expect(disconnected.authorizationRevision).toBe(4)
+
+    const identityUpdated = await payload.update({
+      collection: 'platform-accounts',
+      data: { externalAccountId: `revision-page-next-${suffix}` },
+      id: created.id,
+      overrideAccess: false,
+      user: admin,
+    })
+    expect(identityUpdated.authorizationRevision).toBe(5)
   })
 
   it('keeps account tokens write-only, encrypted, and visible only to administrators', async () => {
@@ -572,6 +642,7 @@ describe.sequential('platform accounts', () => {
         collection: 'platform-accounts',
         data: {
           accountKind: 'tiktok-business',
+          authorizationRevision: 0,
           authorization: { state: 'not_started' },
           name: `TikTok staging ${suffix}`,
           platformFamily: 'tiktok',

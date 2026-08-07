@@ -71,6 +71,7 @@ describe.sequential('Meta webhook route durable ingress', () => {
       context: { skipAudit: true },
       data: {
         accountKind: 'facebook-page',
+        authorizationRevision: 0,
         authorization: {
           accessToken: `meta-route-access-token-${suffix}`,
           accessTokenConfigured: false,
@@ -176,6 +177,7 @@ describe.sequential('Meta webhook route durable ingress', () => {
       context: { skipAudit: true },
       data: {
         accountKind: 'facebook-page',
+        authorizationRevision: 0,
         authorization: {
           accessToken: `connected-meta-route-token-${suffix}`,
           accessTokenConfigured: false,
@@ -203,6 +205,7 @@ describe.sequential('Meta webhook route durable ingress', () => {
       context: { skipAudit: true },
       data: {
         accountKind: 'facebook-page',
+        authorizationRevision: 0,
         authorization: {
           accessToken: null,
           accessTokenConfigured: false,

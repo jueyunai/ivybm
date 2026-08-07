@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next'
 
 import { localePath, type Locale, PUBLIC_LOCALES } from '@/lib/i18n'
+import { LEGAL_PATHS } from '@/lib/legal'
 import { absoluteURL, getSiteOrigin } from '@/lib/seo'
 import {
   getPageBySlug,
@@ -44,6 +45,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
       if (!settings.defaultSeo?.noIndex) {
         for (const path of ['/products', '/projects', '/news']) addPath(paths, path, locale)
+        for (const path of LEGAL_PATHS) addPath(paths, path, locale)
       }
 
       for (const item of products) {
