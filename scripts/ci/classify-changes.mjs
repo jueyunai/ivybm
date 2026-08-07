@@ -193,7 +193,9 @@ export function classifyChangedFiles(paths) {
     if (path.startsWith('.github/workflows/') || path.startsWith('scripts/ci/')) {
       result.code = true
       result.operations = true
-      result.production_image = true
+      if (path === 'scripts/ci/classify-changes.mjs') {
+        result.production_image = true
+      }
       recognized = true
     } else if (path.startsWith('.githooks/')) {
       result.code = true
