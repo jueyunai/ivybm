@@ -159,14 +159,22 @@ describe('CI change classifier', () => {
     },
   )
 
-  it('runs workflow and classifier changes through operations without publishing business images', () => {
-    expect(
-      classifyChangedFiles(['.github/workflows/ci.yml', 'scripts/ci/classify-changes.mjs']),
-    ).toEqual({
+  it('runs workflow changes through operations without publishing business images', () => {
+    expect(classifyChangedFiles(['.github/workflows/ci.yml'])).toEqual({
       ...lightClassification,
       code: true,
       docs_only: false,
       operations: true,
+    })
+  })
+
+  it('publishes images when the production-image classifier changes', () => {
+    expect(classifyChangedFiles(['scripts/ci/classify-changes.mjs'])).toEqual({
+      ...lightClassification,
+      code: true,
+      docs_only: false,
+      operations: true,
+      production_image: true,
     })
   })
 
