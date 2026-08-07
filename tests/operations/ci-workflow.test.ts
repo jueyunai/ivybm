@@ -132,11 +132,9 @@ describe('CI workflow policy', () => {
       "always() && steps.e2e.outcome == 'failure' && steps.classification.outputs.website_visual_e2e == 'true'",
     )
     expect(validationJob).toContain(
-      'uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02',
+      'uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     )
-    expect(validationJob).toContain(
-      'test-results/website-visual-*/**/*-actual.png',
-    )
+    expect(validationJob).toContain('test-results/website-visual-*/**/*-actual.png')
     expect(validationJob).toContain('test-results/website-visual-*/**/*-diff.png')
     expect(validationJob).toContain('retention-days: 3')
     expect(validationJob).toContain('include-hidden-files: false')
