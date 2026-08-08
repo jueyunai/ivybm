@@ -48,7 +48,9 @@ export function evaluateCiPolicy({
   const errors = validateClassification(classification)
   let plan = null
 
-  if (eventName !== 'pull_request' && eventName !== 'push') {
+  if (eventName === 'pull_request') {
+    errors.push('candidate-owned pull_request cannot authorize CI policy')
+  } else if (eventName !== 'pull_request_target' && eventName !== 'push') {
     errors.push(`unsupported event: ${eventName || 'missing'}`)
   }
   if (typeof isDraft !== 'boolean') {
@@ -169,7 +171,7 @@ const runCli = () => {
     .map((key) => `${key}=${process.env[`${key.toUpperCase()}_RESULT`] ?? 'missing'}`)
     .join(', ')
   const prState =
-    process.env.EVENT_NAME === 'pull_request'
+    process.env.EVENT_NAME === 'pull_request' || process.env.EVENT_NAME === 'pull_request_target'
       ? process.env.IS_DRAFT === 'true'
         ? 'Draft'
         : process.env.IS_DRAFT === 'false'

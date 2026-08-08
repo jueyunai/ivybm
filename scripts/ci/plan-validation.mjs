@@ -41,7 +41,7 @@ export function validateClassification(classification) {
 export function createValidationPlan({ eventName, isDraft, classification, forceFull = false }) {
   const errors = validateClassification(classification)
 
-  if (eventName !== 'pull_request' && eventName !== 'push') {
+  if (eventName !== 'pull_request' && eventName !== 'pull_request_target' && eventName !== 'push') {
     errors.push(`unsupported event: ${eventName || 'missing'}`)
   }
   if (typeof isDraft !== 'boolean') {

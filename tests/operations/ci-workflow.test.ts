@@ -11,8 +11,12 @@ const validationJob = workflow.slice(
   workflow.indexOf('  validation:'),
   workflow.indexOf('  ci_policy:'),
 )
-const policyJob = workflow.slice(
+const mainPolicyJob = workflow.slice(
   workflow.indexOf('  ci_policy:'),
+  workflow.indexOf('  ci_policy_target:'),
+)
+const trustedPolicyJob = workflow.slice(
+  workflow.indexOf('  ci_policy_target:'),
   workflow.indexOf('  publish_production_images:'),
 )
 const prJobs = workflow.slice(0, workflow.indexOf('  publish_production_images:'))
@@ -21,12 +25,15 @@ describe('CI workflow policy', () => {
   it('uses native Draft and Ready events with PR-only cancellation', () => {
     expect(workflow).toContain('types: [opened, synchronize, reopened, ready_for_review]')
     expect(workflow).not.toContain('converted_to_draft')
-    expect(workflow).not.toContain('pull_request_target')
-    expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}")
+    expect(workflow).toContain('pull_request_target:')
+    expect(workflow).toContain(
+      "cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}",
+    )
   })
 
   it('uses one read-only validation runner for classification, Fast CI, and heavy gates', () => {
     expect(validationJob).toContain('name: CI validation')
+    expect(validationJob).toContain("if: ${{ github.event_name != 'pull_request_target' }}")
     expect(validationJob).toContain('timeout-minutes: 45')
     expect(validationJob).toContain('classify-changes.mjs')
     expect(validationJob).toContain('plan-validation.mjs')
@@ -50,10 +57,14 @@ describe('CI workflow policy', () => {
     expect(validationJob).toContain('policy_ref="$PR_BASE_SHA"')
     expect(validationJob).toContain('control_source=trusted-base')
     expect(validationJob).toContain('force_full=true')
-    expect(policyJob).toContain('ref: ${{ needs.validation.outputs.policy_ref || github.sha }}')
-    expect(policyJob).toContain('name: Enforce trusted v2 policy')
-    expect(policyJob).toContain('name: Enforce trusted legacy bootstrap policy')
-    expect(policyJob).toContain('name: Reject an unknown policy contract')
+    expect(mainPolicyJob).toContain('ref: ${{ needs.validation.outputs.policy_ref || github.sha }}')
+    expect(mainPolicyJob).toContain('name: Enforce trusted v2 policy')
+    expect(mainPolicyJob).toContain('name: Enforce trusted legacy bootstrap policy')
+    expect(mainPolicyJob).toContain('name: Reject an unknown policy contract')
+    expect(mainPolicyJob).toContain("if: ${{ always() && github.event_name == 'push' }}")
+    expect(trustedPolicyJob).toContain("if: ${{ github.event_name == 'pull_request_target' }}")
+    expect(trustedPolicyJob).toContain('node scripts/ci/verify-trusted-policy.mjs')
+    expect(workflow).toContain("github.event_name == 'pull_request_target'")
   })
 
   it('forces every validation stage for candidate control-plane changes', () => {
@@ -73,7 +84,7 @@ describe('CI workflow policy', () => {
       "steps.control.outputs.force_full == 'true' || steps.plan.outputs.operations_required == 'true'",
     )
     expect(validationJob).toContain('FORCE_FULL: ${{ steps.control.outputs.force_full }}')
-    expect(policyJob).toContain('FORCE_FULL: ${{ needs.validation.outputs.force_full }}')
+    expect(mainPolicyJob).toContain('FORCE_FULL: ${{ needs.validation.outputs.force_full }}')
   })
 
   it('makes CODEOWNERS a self-owned CI control-plane boundary', () => {
@@ -93,16 +104,20 @@ describe('CI workflow policy', () => {
   })
 
   it('keeps a stable independent fail-closed policy check', () => {
-    expect(policyJob).toContain('name: CI policy')
-    expect(policyJob).toContain('needs: [validation]')
-    expect(policyJob).toContain('if: ${{ always() }}')
-    expect(policyJob).toContain('VALIDATION_RESULT: ${{ needs.validation.result }}')
-    expect(policyJob).toContain(
-      'EXPECTED_HEAD_SHA: ${{ needs.validation.outputs.expected_head_sha }}',
-    )
-    expect(policyJob).toContain('CHECKED_OUT_SHA: ${{ needs.validation.outputs.checked_out_sha }}')
-    expect(policyJob).toContain('node scripts/ci/evaluate-policy.mjs')
-    expect(policyJob).toContain('CONTROL_SOURCE: ${{ needs.validation.outputs.control_source }}')
+    expect(trustedPolicyJob).toContain('name: CI policy')
+    expect(trustedPolicyJob).not.toContain('needs: [validation]')
+    expect(trustedPolicyJob).toContain("if: ${{ github.event_name == 'pull_request_target' }}")
+    expect(trustedPolicyJob).toContain('ref: ${{ github.event.pull_request.base.sha }}')
+    expect(trustedPolicyJob).toContain('actions: read')
+    expect(trustedPolicyJob).toContain('pull-requests: read')
+    expect(trustedPolicyJob).toContain('node scripts/ci/verify-trusted-policy.mjs')
+    expect(trustedPolicyJob).not.toContain('needs.validation.outputs')
+  })
+
+  it('does not present candidate-owned pull_request results as the merge policy', () => {
+    expect(mainPolicyJob).toContain("if: ${{ always() && github.event_name == 'push' }}")
+    expect(workflow).toContain("if: ${{ github.event_name == 'pull_request_target' }}")
+    expect(trustedPolicyJob).not.toContain('needs.validation.outputs')
   })
 
   it('keeps all PR execution read-only and pins every action by commit SHA', () => {

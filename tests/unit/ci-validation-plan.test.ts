@@ -49,6 +49,22 @@ describe('CI validation planner', () => {
     })
   })
 
+  it('treats the base-owned pull_request_target event as a PR', () => {
+    expect(
+      createValidationPlan({
+        classification: { ...docs, code: true, docs_only: false, website_e2e: true },
+        eventName: 'pull_request_target',
+        isDraft: false,
+      }),
+    ).toMatchObject({
+      buildRequired: true,
+      databaseRequired: true,
+      e2eRequired: true,
+      mode: 'full-policy',
+      readyOrMain: true,
+    })
+  })
+
   it('starts database, build, and E2E only for a Ready browser change', () => {
     expect(
       createValidationPlan({

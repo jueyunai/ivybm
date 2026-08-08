@@ -48,7 +48,7 @@ const skippedHeavy = {
 
 const evaluate = ({
   classification = runtime,
-  eventName = 'pull_request',
+  eventName = 'pull_request_target',
   isDraft = false,
   results = { ...skippedHeavy, build: 'success' },
   resolvedHeadSha = sha,
@@ -125,6 +125,36 @@ describe('CI policy evaluator', () => {
 
   it('rejects push events represented as Draft', () => {
     expect(evaluate({ eventName: 'push', isDraft: true })).toMatchObject({ ok: false })
+  })
+
+  it('accepts the base-owned pull_request_target event as a PR policy input', () => {
+    expect(evaluate({ eventName: 'pull_request_target' })).toMatchObject({
+      mode: 'full-policy',
+      ok: true,
+    })
+  })
+
+  it('rejects a forged candidate pull_request ledger even when every value is green', () => {
+    expect(
+      evaluate({
+        classification: fullFallback,
+        eventName: 'pull_request',
+        forceFull: true,
+        isDraft: false,
+        results: {
+          build: 'success',
+          cleanup: 'success',
+          database: 'success',
+          e2e: 'success',
+          fast: 'success',
+          operations: 'success',
+          validation: 'success',
+        },
+      }),
+    ).toMatchObject({
+      errors: expect.arrayContaining(['candidate-owned pull_request cannot authorize CI policy']),
+      ok: false,
+    })
   })
 
   it('returns a policy failure instead of throwing for malformed input', () => {
@@ -206,7 +236,7 @@ describe('CI policy evaluator', () => {
         CONTROL_SOURCE: 'trusted-base',
         DATABASE_RESULT: 'skipped',
         E2E_RESULT: 'skipped',
-        EVENT_NAME: 'pull_request',
+        EVENT_NAME: 'pull_request_target',
         EXPECTED_HEAD_SHA: sha,
         FAST_RESULT: 'success',
         FORCE_FULL: 'false',
@@ -242,7 +272,7 @@ describe('CI policy evaluator', () => {
           CONTROL_SOURCE: 'trusted-base',
           DATABASE_RESULT: 'skipped',
           E2E_RESULT: 'skipped',
-          EVENT_NAME: 'pull_request',
+          EVENT_NAME: 'pull_request_target',
           EXPECTED_HEAD_SHA: sha,
           FAST_RESULT: 'success',
           FORCE_FULL: 'false',
