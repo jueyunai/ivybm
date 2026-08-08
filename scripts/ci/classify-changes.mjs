@@ -121,6 +121,7 @@ const classifySourceE2e = (path, classification) => {
 
   if (path.startsWith('src/components/website/')) {
     classification.website_e2e = true
+    classification.website_visual_e2e = true
     return true
   }
   if (path.startsWith('src/components/inquiry/')) {
@@ -151,6 +152,7 @@ const classifySourceE2e = (path, classification) => {
     path === 'src/app/sitemap.ts'
   ) {
     classification.website_e2e = true
+    classification.website_visual_e2e = true
     return true
   }
   if (path.startsWith('src/app/api/chat/')) {

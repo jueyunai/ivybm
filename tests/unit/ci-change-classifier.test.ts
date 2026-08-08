@@ -80,14 +80,40 @@ describe('CI change classifier', () => {
   it.each([
     'src/app/(frontend)/[locale]/products/page.tsx',
     'src/components/website/SiteHeader.tsx',
-    'tests/e2e/website.spec.ts',
-  ])('selects only Website E2E for %s', (path) => {
+  ])('selects Website and visual E2E for visual website source %s', (path) => {
     expect(classifyChangedFiles([path])).toMatchObject({
       admin_e2e: false,
       chat_e2e: false,
       code: true,
       docs_only: false,
       website_e2e: true,
+      website_visual_e2e: true,
+    })
+  })
+
+  it('selects only Website E2E for the functional Website test', () => {
+    expect(classifyChangedFiles(['tests/e2e/website.spec.ts'])).toMatchObject({
+      admin_e2e: false,
+      chat_e2e: false,
+      code: true,
+      docs_only: false,
+      website_e2e: true,
+      website_visual_e2e: false,
+    })
+  })
+
+  it.each([
+    'src/app/(frontend-root)/page.tsx',
+    'src/app/(frontend)/[locale]/privacy/page.tsx',
+    'src/components/website/SiteFooter.tsx',
+  ])('selects visual E2E for public website route/component %s', (path) => {
+    expect(classifyChangedFiles([path])).toMatchObject({
+      admin_e2e: false,
+      chat_e2e: false,
+      code: true,
+      docs_only: false,
+      website_e2e: true,
+      website_visual_e2e: true,
     })
   })
 
@@ -173,6 +199,7 @@ describe('CI change classifier', () => {
       code: true,
       docs_only: false,
       website_e2e: true,
+      website_visual_e2e: true,
     })
   })
 
