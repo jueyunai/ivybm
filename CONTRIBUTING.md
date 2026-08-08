@@ -126,7 +126,7 @@ git worktree prune --dry-run
 - 本地完整门禁、PR 描述、测试记录、风险 / 回滚、共享边界和 Review 请求全部完成，并得到当前任务级明确授权时，人工和 AI 可以直接创建 Ready PR。否则必须从 Draft 开始并保持到真实 Ready 检查点，禁止 Draft 创建后几十秒内立即转 Ready；Ready 后需要连续大改时先转回 Draft。
 - 每次 push 前先运行本地定向验证，同一轮细小修改必须集中完成后一次 push；不要用 GitHub Actions 逐提交试错。
 - CI 自动按路径分类，作者不选择 Fast / Full 档次，也不得使用 `[skip ci]`。Draft 代码运行 Fast CI；Ready 和 `main` 针对当前 head 运行数据库、build、E2E、operations 等适用门禁；未知路径或 diff / 分类失败走完整 fallback。
-- 稳定的 `CI policy` 汇总 job 负责核对预期 job。Review 与合并前必须记录并复核当前 base / head SHA，只接受当前 head 的成功 policy；Draft Fast-only、旧 head、pending、neutral、skipped、cancelled 或 failure 都不是合并证据。Ready 后的新提交会使旧结论失效并重新运行门禁。
+- 稳定的 `CI policy` 汇总 job 必须由 base-owned 的 `pull_request_target` workflow 负责核对预期 job；候选分支 `pull_request` 运行只能提供诊断，不能授权合并。Review 与合并前必须记录并复核当前 base / head SHA，只接受当前 head 的成功 policy；Draft Fast-only、旧 head、pending、neutral、skipped、cancelled 或 failure 都不是合并证据。Ready 后的新提交会使旧结论失效并重新运行门禁。
 - `.github/workflows/**`、`scripts/ci/**`、policy 和 production image 触发边界必须由另一名开发者独立 Review。docs-only 轻量检查不豁免共享结构 / 跨人边界 Review；镜像成功只提供不可变 SHA + digest，不授权 production 部署。
 
 本项目内的编码代理还必须遵守 `AGENTS.md`；Claude Code 同时读取 `CLAUDE.md`。这些文件用于阻止代理主动直推，并统一人工操作预期。
