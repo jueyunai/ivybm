@@ -22,5 +22,5 @@ official private-message event schema is available for the target business accou
 `instagram-oauth-success.json` records the supported provider request sequence and representative
 response fields with synthetic values. Instagram Login returns the granted permission string during
 the initial code exchange and does not document a `/me/permissions` readback endpoint; the fixture
-therefore validates that grant before exchanging the long-lived token, then verifies token identity
-through `/me`.
+mirrors the observed flat short-token response, validates that grant before exchanging the
+long-lived token, then verifies token identity through `/me`.

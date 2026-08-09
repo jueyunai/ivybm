@@ -36,13 +36,9 @@
       "username": "ivymetalglass"
     },
     "shortToken": {
-      "data": [
-        {
-          "access_token": "synthetic-short-lived-instagram-token",
-          "permissions": "instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages",
-          "user_id": "987654321098765"
-        }
-      ]
+      "access_token": "synthetic-short-lived-instagram-token",
+      "permissions": "instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages",
+      "user_id": "987654321098765"
     }
   }
 }
