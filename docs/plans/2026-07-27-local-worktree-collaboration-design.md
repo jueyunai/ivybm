@@ -12,7 +12,7 @@
 - Task、修复和文档改动分别使用与短分支同生命周期的 `ivybm-task<编号>-<简述>`、`ivybm-fix-<简述>` 和 `ivybm-docs-<简述>`。
 - 协作者 PR 使用 detached HEAD 的 `ivybm-review-pr-<编号>`，审查结束立即删除。
 - 有明确退出条件的实验使用 `ivybm-poc-<简述>`；采用实验结果时，从最新 `origin/main` 建正式分支，只迁移选定改动。
-- 每人最多并行保留 2 个开发类 worktree 和 2 个审查 worktree，避免目录数量随远程分支增长。
+- 开发类与审查 worktree 不设置固定数量上限，按实际并行 Task/PR 创建；通过明确归属、资源隔离、周度审计和完成即清理，避免目录无约束地随远程分支增长。
 
 `main`、GitHub PR 和 CI 继续构成唯一集成基线。production 从已 review 的 `main` SHA + image digest 发布，不需要本地 production worktree。
 

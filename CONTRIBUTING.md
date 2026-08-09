@@ -26,7 +26,7 @@ worktree 是本地检出环境，不是新的分支层级。远程有多少协�
 | `ivybm-review-pr-<编号>`                 | 一次 PR 审查     | 默认 detached HEAD           | 审查协作者 PR、运行测试、验证合并风险                                  |
 | `ivybm-poc-<简述>`                       | 最长一个决策周期 | `poc/<简述>`                 | 有明确问题和退出条件的实验，不直接合入 `main`                          |
 
-每人同时最多保留 1 个主工作区、2 个开发类 worktree（PoC / hotfix 计入）和 2 个审查 worktree。无需长期 `develop`、integration、release、production 或“某协作者专用”工作区；`main` + GitHub PR + CI 是唯一集成基线。
+每人只保留 1 个主工作区；开发类和审查 worktree 不设置固定数量上限，按实际并行 Task/PR 创建。数量增加时必须保证每个目录都有明确归属、分支与目录一一对应、运行时资源完全隔离，并通过定期审计清理已完成或失去归属的 worktree。无需长期 `develop`、integration、release、production 或“某协作者专用”工作区；`main` + GitHub PR + CI 是唯一集成基线。
 
 ### 创建开发 worktree
 
