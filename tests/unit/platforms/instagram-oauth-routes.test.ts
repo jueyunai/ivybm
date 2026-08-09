@@ -238,6 +238,56 @@ describe('Instagram OAuth routes', () => {
     expect(actualRequests.every(({ pathname }) => !pathname.includes('permissions'))).toBe(true)
   })
 
+  it('logs only safe structured diagnostics when the provider rejects token exchange', async () => {
+    const payload = createPayload()
+    mocks.getPayload.mockResolvedValue(payload)
+    const startResponse = await instagramOAuthStart(startRequest())
+    const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
+    const providerMessage =
+      'invalid authorization-code test-instagram-app-secret leaked-provider-token'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            access_token: 'leaked-provider-token',
+            code: 400,
+            error_message: providerMessage,
+            error_type: 'OAuthException',
+          }),
+          { status: 401 },
+        ),
+      ),
+    )
+
+    const response = await instagramOAuthCallback(
+      new NextRequest(
+        `http://localhost:3000${INSTAGRAM_OAUTH_CALLBACK_PATH}?code=authorization-code&state=${state}`,
+        { headers: { cookie: cookieHeader(startResponse) } },
+      ),
+    )
+
+    expect(response.headers.get('location')).toBe(
+      'http://localhost:3000/admin/collections/platform-accounts/42?instagramOAuth=token_exchange_failed',
+    )
+    expect(payload.logger.error).toHaveBeenCalledWith({
+      code: 'token_exchange_failed',
+      message: 'Instagram OAuth callback failed',
+      oauthCode: 'token_exchange_failed',
+      providerErrorCode: 400,
+      providerErrorType: 'OAuthException',
+      providerResponseKeys: ['access_token', 'code', 'error_message', 'error_type'],
+      providerStatus: 401,
+      stage: 'short_token_exchange',
+    })
+    const serializedLog = JSON.stringify(payload.logger.error.mock.calls)
+    expect(serializedLog).not.toContain('authorization-code')
+    expect(serializedLog).not.toContain(String(state))
+    expect(serializedLog).not.toContain('test-instagram-app-secret')
+    expect(serializedLog).not.toContain('leaked-provider-token')
+    expect(serializedLog).not.toContain(providerMessage)
+  })
+
   it('does not persist a late Instagram callback after the account is disconnected', async () => {
     const payload = createPayload()
     mocks.getPayload.mockResolvedValue(payload)
