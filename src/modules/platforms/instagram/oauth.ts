@@ -41,6 +41,21 @@ export type InstagramOAuthErrorCode =
   | 'token_exchange_failed'
   | 'token_response_invalid'
 
+export type InstagramOAuthDiagnosticStage =
+  | 'authorization_code_validation'
+  | 'identity_profile'
+  | 'long_token_exchange'
+  | 'short_token_exchange'
+
+export type InstagramOAuthDiagnostic = {
+  providerErrorCode?: number
+  providerErrorSubcode?: number
+  providerErrorType?: string
+  providerResponseKeys?: string[]
+  providerStatus?: number
+  stage: InstagramOAuthDiagnosticStage
+}
+
 const errorMessages: Record<InstagramOAuthErrorCode, string> = {
   identity_mismatch: 'Instagram OAuth identity does not match the configured account',
   identity_verification_failed: 'Instagram OAuth identity verification failed',
@@ -53,7 +68,10 @@ const errorMessages: Record<InstagramOAuthErrorCode, string> = {
 }
 
 export class InstagramOAuthError extends Error {
-  constructor(public readonly code: InstagramOAuthErrorCode) {
+  constructor(
+    public readonly code: InstagramOAuthErrorCode,
+    public readonly diagnostic?: InstagramOAuthDiagnostic,
+  ) {
     super(errorMessages[code])
     this.name = 'InstagramOAuthError'
   }
@@ -328,46 +346,152 @@ export const buildInstagramAuthorizationURL = ({
   return url
 }
 
-const parseProviderRecord = (value: unknown): Record<string, unknown> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new InstagramOAuthError('token_response_invalid')
+const asProviderRecord = (value: unknown): Record<string, unknown> | undefined =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+
+const PROVIDER_RESPONSE_TOP_LEVEL_KEYS = [
+  'access_token',
+  'account_type',
+  'code',
+  'data',
+  'error',
+  'error_code',
+  'error_message',
+  'error_subcode',
+  'error_type',
+  'expires_in',
+  'id',
+  'permissions',
+  'token_type',
+  'user_id',
+  'username',
+] as const
+const PROVIDER_RESPONSE_DATA_KEYS = ['access_token', 'permissions', 'user_id'] as const
+const PROVIDER_RESPONSE_ERROR_KEYS = [
+  'code',
+  'error_subcode',
+  'message',
+  'type',
+] as const
+const PROVIDER_ERROR_TYPE_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/
+
+const hasOwn = (record: Record<string, unknown>, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(record, key)
+
+const boundedProviderInteger = (value: unknown): number | undefined => {
+  const candidate =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && /^[0-9]{1,15}$/.test(value)
+        ? Number(value)
+        : Number.NaN
+  return Number.isSafeInteger(candidate) && candidate >= 0 ? candidate : undefined
+}
+
+const boundedProviderErrorType = (value: unknown): string | undefined => {
+  const candidate = typeof value === 'string' ? value.trim() : ''
+  return PROVIDER_ERROR_TYPE_PATTERN.test(candidate) ? candidate : undefined
+}
+
+const providerResponseKeys = (payload: Record<string, unknown>): string[] => {
+  const keys = PROVIDER_RESPONSE_TOP_LEVEL_KEYS.filter((key) => hasOwn(payload, key)).map(String)
+  const firstDataRecord = Array.isArray(payload.data) ? asProviderRecord(payload.data[0]) : undefined
+  if (firstDataRecord) {
+    for (const key of PROVIDER_RESPONSE_DATA_KEYS) {
+      if (hasOwn(firstDataRecord, key)) keys.push(`data[].${key}`)
+    }
   }
-  return value as Record<string, unknown>
+  const errorRecord = asProviderRecord(payload.error)
+  if (errorRecord) {
+    for (const key of PROVIDER_RESPONSE_ERROR_KEYS) {
+      if (hasOwn(errorRecord, key)) keys.push(`error.${key}`)
+    }
+  }
+  return keys.sort()
+}
+
+const providerDiagnostic = ({
+  payload,
+  stage,
+  status,
+}: {
+  payload?: Record<string, unknown>
+  stage: InstagramOAuthDiagnosticStage
+  status?: number
+}): InstagramOAuthDiagnostic => {
+  const errorRecord = payload ? asProviderRecord(payload.error) : undefined
+  const providerErrorType = boundedProviderErrorType(
+    errorRecord?.type ?? payload?.error_type,
+  )
+  const providerErrorCode = boundedProviderInteger(
+    errorRecord?.code ?? payload?.code ?? payload?.error_code,
+  )
+  const providerErrorSubcode = boundedProviderInteger(
+    errorRecord?.error_subcode ?? payload?.error_subcode,
+  )
+  const responseKeys = payload ? providerResponseKeys(payload) : []
+  return {
+    stage,
+    ...(status === undefined ? {} : { providerStatus: status }),
+    ...(providerErrorType === undefined ? {} : { providerErrorType }),
+    ...(providerErrorCode === undefined ? {} : { providerErrorCode }),
+    ...(providerErrorSubcode === undefined ? {} : { providerErrorSubcode }),
+    ...(responseKeys.length === 0 ? {} : { providerResponseKeys: responseKeys }),
+  }
+}
+
+type ProviderJSONResult = {
+  diagnostic: InstagramOAuthDiagnostic
+  payload: Record<string, unknown>
 }
 
 const readProviderJSON = async (
   response: Response,
   errorCode: 'identity_verification_failed' | 'token_exchange_failed',
-): Promise<Record<string, unknown>> => {
+  stage: InstagramOAuthDiagnosticStage,
+): Promise<ProviderJSONResult> => {
+  const invalidResponseCode =
+    errorCode === 'token_exchange_failed'
+      ? 'token_response_invalid'
+      : 'identity_verification_failed'
   let body: string
   try {
     body = await response.text()
   } catch {
-    throw new InstagramOAuthError(errorCode)
+    throw new InstagramOAuthError(
+      errorCode,
+      providerDiagnostic({ stage, status: response.status }),
+    )
   }
-  if (!response.ok) throw new InstagramOAuthError(errorCode)
   if (!body || body.length > MAX_PROVIDER_RESPONSE_LENGTH) {
     throw new InstagramOAuthError(
-      errorCode === 'token_exchange_failed'
-        ? 'token_response_invalid'
-        : 'identity_verification_failed',
+      response.ok ? invalidResponseCode : errorCode,
+      providerDiagnostic({ stage, status: response.status }),
     )
   }
+  let payload: Record<string, unknown> | undefined
   try {
-    return parseProviderRecord(JSON.parse(body) as unknown)
-  } catch (error) {
-    if (error instanceof InstagramOAuthError) throw error
+    payload = asProviderRecord(JSON.parse(body) as unknown)
+  } catch {
+    payload = undefined
+  }
+  if (!payload) {
     throw new InstagramOAuthError(
-      errorCode === 'token_exchange_failed'
-        ? 'token_response_invalid'
-        : 'identity_verification_failed',
+      response.ok ? invalidResponseCode : errorCode,
+      providerDiagnostic({ stage, status: response.status }),
     )
   }
+  const diagnostic = providerDiagnostic({ payload, stage, status: response.status })
+  if (!response.ok) throw new InstagramOAuthError(errorCode, diagnostic)
+  return { diagnostic, payload }
 }
 
 const readTokenPayload = (
   payload: Record<string, unknown>,
   nowMilliseconds: number,
+  diagnostic: InstagramOAuthDiagnostic,
 ): InstagramLongLivedToken => {
   const accessToken = typeof payload.access_token === 'string' ? payload.access_token.trim() : ''
   const expiresIn = payload.expires_in
@@ -379,7 +503,7 @@ const readTokenPayload = (
     expiresIn <= 0 ||
     expiresIn > MAX_TOKEN_TTL_SECONDS
   ) {
-    throw new InstagramOAuthError('token_response_invalid')
+    throw new InstagramOAuthError('token_response_invalid', diagnostic)
   }
   return {
     accessToken,
@@ -417,14 +541,22 @@ const exchangeCodeForShortToken = async ({
       signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MILLISECONDS),
     })
   } catch {
-    throw new InstagramOAuthError('token_exchange_failed')
+    throw new InstagramOAuthError(
+      'token_exchange_failed',
+      providerDiagnostic({ stage: 'short_token_exchange' }),
+    )
   }
 
-  const payload = await readProviderJSON(response, 'token_exchange_failed')
+  const { diagnostic, payload } = await readProviderJSON(
+    response,
+    'token_exchange_failed',
+    'short_token_exchange',
+  )
   if (!Array.isArray(payload.data) || payload.data.length !== 1) {
-    throw new InstagramOAuthError('token_response_invalid')
+    throw new InstagramOAuthError('token_response_invalid', diagnostic)
   }
-  const grant = parseProviderRecord(payload.data[0])
+  const grant = asProviderRecord(payload.data[0])
+  if (!grant) throw new InstagramOAuthError('token_response_invalid', diagnostic)
   const accessToken = typeof grant.access_token === 'string' ? grant.access_token.trim() : ''
   const rawUserId = grant.user_id
   const userId =
@@ -439,11 +571,11 @@ const exchangeCodeForShortToken = async ({
     !userId ||
     !INSTAGRAM_ID_PATTERN.test(userId)
   ) {
-    throw new InstagramOAuthError('token_response_invalid')
+    throw new InstagramOAuthError('token_response_invalid', diagnostic)
   }
 
   if (typeof grant.permissions !== 'string') {
-    throw new InstagramOAuthError('required_permission_missing')
+    throw new InstagramOAuthError('required_permission_missing', diagnostic)
   }
   const rawScopes = grant.permissions.split(',').map((scope) => scope.trim())
   if (
@@ -451,12 +583,12 @@ const exchangeCodeForShortToken = async ({
     rawScopes.length > 100 ||
     rawScopes.some((scope) => !INSTAGRAM_PERMISSION_PATTERN.test(scope))
   ) {
-    throw new InstagramOAuthError('token_response_invalid')
+    throw new InstagramOAuthError('token_response_invalid', diagnostic)
   }
   const scopes = [...new Set(rawScopes)]
   const requiredScopes = requiredInstagramPermissions('instagram-professional')
   if (requiredScopes.some((scope) => !scopes.includes(scope))) {
-    throw new InstagramOAuthError('required_permission_missing')
+    throw new InstagramOAuthError('required_permission_missing', diagnostic)
   }
   return { accessToken, scopes, userId }
 }
@@ -486,11 +618,18 @@ const exchangeShortTokenForLongToken = async ({
       signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MILLISECONDS),
     })
   } catch {
-    throw new InstagramOAuthError('token_exchange_failed')
+    throw new InstagramOAuthError(
+      'token_exchange_failed',
+      providerDiagnostic({ stage: 'long_token_exchange' }),
+    )
   }
 
-  const payload = await readProviderJSON(response, 'token_exchange_failed')
-  return readTokenPayload(payload, nowMilliseconds)
+  const { diagnostic, payload } = await readProviderJSON(
+    response,
+    'token_exchange_failed',
+    'long_token_exchange',
+  )
+  return readTokenPayload(payload, nowMilliseconds, diagnostic)
 }
 
 export const exchangeInstagramAuthorizationCode = async ({
@@ -506,7 +645,10 @@ export const exchangeInstagramAuthorizationCode = async ({
 }): Promise<InstagramUserToken> => {
   const normalizedCode = code?.trim()
   if (!normalizedCode || normalizedCode.length > MAX_AUTHORIZATION_CODE_LENGTH) {
-    throw new InstagramOAuthError('token_exchange_failed')
+    throw new InstagramOAuthError(
+      'token_exchange_failed',
+      providerDiagnostic({ stage: 'authorization_code_validation' }),
+    )
   }
 
   const shortToken = await exchangeCodeForShortToken({
@@ -533,7 +675,7 @@ const instagramGraphRequest = async ({
   fetcher: typeof fetch
   path: string
   searchParams?: Record<string, string>
-}): Promise<Record<string, unknown>> => {
+}): Promise<ProviderJSONResult> => {
   const url = new URL(`/${INSTAGRAM_GRAPH_API_VERSION}${path}`, INSTAGRAM_GRAPH_ORIGIN)
   url.searchParams.set('access_token', accessToken)
   for (const [key, value] of Object.entries(searchParams ?? {})) {
@@ -549,9 +691,12 @@ const instagramGraphRequest = async ({
       signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MILLISECONDS),
     })
   } catch {
-    throw new InstagramOAuthError('identity_verification_failed')
+    throw new InstagramOAuthError(
+      'identity_verification_failed',
+      providerDiagnostic({ stage: 'identity_profile' }),
+    )
   }
-  return readProviderJSON(response, 'identity_verification_failed')
+  return readProviderJSON(response, 'identity_verification_failed', 'identity_profile')
 }
 
 const requireInstagramExternalId = (value: string): string => {
@@ -572,10 +717,13 @@ export const resolveInstagramAuthorizedAccount = async ({
   const normalizedToken = userAccessToken.trim()
   const targetId = requireInstagramExternalId(externalAccountId)
   if (!normalizedToken || normalizedToken.length > MAX_CREDENTIAL_LENGTH) {
-    throw new InstagramOAuthError('identity_verification_failed')
+    throw new InstagramOAuthError(
+      'identity_verification_failed',
+      providerDiagnostic({ stage: 'identity_profile' }),
+    )
   }
 
-  const profile = await instagramGraphRequest({
+  const { diagnostic, payload: profile } = await instagramGraphRequest({
     accessToken: normalizedToken,
     fetcher,
     path: '/me',
@@ -592,13 +740,13 @@ export const resolveInstagramAuthorizedAccount = async ({
   const username = typeof profile.username === 'string' ? profile.username.trim() : ''
   const accountType = typeof profile.account_type === 'string' ? profile.account_type.trim() : ''
   if (!accountId || !INSTAGRAM_ID_PATTERN.test(accountId)) {
-    throw new InstagramOAuthError('identity_verification_failed')
+    throw new InstagramOAuthError('identity_verification_failed', diagnostic)
   }
   if (accountType !== 'BUSINESS' && accountType !== 'MEDIA_CREATOR') {
-    throw new InstagramOAuthError('required_permission_missing')
+    throw new InstagramOAuthError('required_permission_missing', diagnostic)
   }
   if (accountId !== targetId) {
-    throw new InstagramOAuthError('identity_mismatch')
+    throw new InstagramOAuthError('identity_mismatch', diagnostic)
   }
 
   return {
