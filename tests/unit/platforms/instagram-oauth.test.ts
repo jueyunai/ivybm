@@ -112,7 +112,7 @@ describe('Instagram OAuth', () => {
     expect(url.toString()).not.toContain('test-instagram-app-secret')
   })
 
-  it('exchanges a callback code for a long-lived token without putting secrets in URLs', async () => {
+  it('exchanges a flat provider callback response without putting secrets in URLs', async () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -146,6 +146,32 @@ describe('Instagram OAuth', () => {
     // the client secret as a query parameter; this is their documented design.
     expect(String(longTokenCall[0])).toContain('client_secret=test-instagram-app-secret')
     expect(longTokenCall[1]).toMatchObject({ method: 'GET' })
+  })
+
+  it('keeps accepting a one-item wrapped short-token response', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [instagramOAuthFixture.responses.shortToken] }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(instagramOAuthFixture.responses.longToken), { status: 200 }),
+      )
+
+    await expect(
+      exchangeInstagramAuthorizationCode({
+        code: 'authorization-code',
+        config: readInstagramOAuthConfiguration(environment),
+        fetcher,
+        nowMilliseconds: 1_000,
+      }),
+    ).resolves.toEqual({
+      accessToken: instagramOAuthFixture.responses.longToken.access_token,
+      expiresAt: new Date(5_184_001_000).toISOString(),
+      scopes: requiredInstagramPermissions('instagram-professional'),
+    })
   })
 
   it('binds the Instagram professional account by user id and username', async () => {
@@ -302,26 +328,28 @@ describe('Instagram OAuth', () => {
     expect(JSON.stringify(longTokenFailure)).not.toContain('long-user-token')
     expect(JSON.stringify(longTokenFailure)).not.toContain('test-instagram-app-secret')
 
-    const invalidShortTokenShape = await exchangeInstagramAuthorizationCode({
+    const shortTokenMissingPermissions = await exchangeInstagramAuthorizationCode({
       code: 'authorization-code',
       config: readInstagramOAuthConfiguration(environment),
-      fetcher: vi.fn<typeof fetch>().mockResolvedValue(
-        new Response(
-          JSON.stringify({ access_token: 'unexpected-flat-token', user_id: '987654321098765' }),
-          { status: 200 },
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ access_token: 'unexpected-flat-token', user_id: '987654321098765' }),
+            { status: 200 },
+          ),
         ),
-      ),
     }).catch((error: unknown) => error)
 
-    expect(invalidShortTokenShape).toMatchObject({
-      code: 'token_response_invalid',
+    expect(shortTokenMissingPermissions).toMatchObject({
+      code: 'required_permission_missing',
       diagnostic: {
         providerResponseKeys: ['access_token', 'user_id'],
         providerStatus: 200,
         stage: 'short_token_exchange',
       },
     })
-    expect(JSON.stringify(invalidShortTokenShape)).not.toContain('unexpected-flat-token')
+    expect(JSON.stringify(shortTokenMissingPermissions)).not.toContain('unexpected-flat-token')
 
     const identityFailure = await resolveInstagramAuthorizedAccount({
       externalAccountId: '987654321098765',

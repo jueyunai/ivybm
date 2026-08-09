@@ -356,12 +356,8 @@ describe('Instagram OAuth routes', () => {
     const startResponse = await instagramOAuthStart(startRequest())
     const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
     const shortToken = {
-      data: [
-        {
-          ...instagramOAuthFixture.responses.shortToken.data[0],
-          permissions: 'instagram_business_basic',
-        },
-      ],
+      ...instagramOAuthFixture.responses.shortToken,
+      permissions: 'instagram_business_basic',
     }
     const fetcher = vi
       .fn<typeof fetch>()
