@@ -10,67 +10,67 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   CREATE TYPE "public"."enum_knowledge_source_documents_processing_stage" AS ENUM('queued', 'parsing', 'translating', 'finalizing', 'complete');
   CREATE TYPE "public"."enum_knowledge_source_assets_accessibility" AS ENUM('private', 'preview-only');
   CREATE TABLE "knowledge_documents_risk_topics" (
-  	"order" integer NOT NULL,
-  	"parent_id" integer NOT NULL,
-  	"value" "enum_knowledge_documents_risk_topics",
-  	"id" serial PRIMARY KEY NOT NULL
+   "order" integer NOT NULL,
+   "parent_id" integer NOT NULL,
+   "value" "enum_knowledge_documents_risk_topics",
+   "id" serial PRIMARY KEY NOT NULL
   );
-  
+
   CREATE TABLE "knowledge_source_documents" (
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"source_title" varchar NOT NULL,
-  	"source_type" "enum_knowledge_source_documents_source_type" NOT NULL,
-  	"source_version" varchar NOT NULL,
-  	"original_language" "enum_knowledge_source_documents_original_language" DEFAULT 'auto' NOT NULL,
-  	"source_hash" varchar NOT NULL,
-  	"ingestion_revision" varchar NOT NULL,
-  	"detected_language" "enum_knowledge_source_documents_detected_language",
-  	"extracted_text" varchar,
-  	"page_count" numeric,
-  	"paragraph_count" numeric,
-  	"image_count" numeric,
-  	"parser_version" varchar,
-  	"processing_status" "enum_knowledge_source_documents_processing_status" DEFAULT 'queued' NOT NULL,
-  	"processing_stage" "enum_knowledge_source_documents_processing_stage" DEFAULT 'queued' NOT NULL,
-  	"current_job_id" numeric,
-  	"current_job_owner_token" varchar,
-  	"error_code" varchar,
-  	"error_summary" varchar,
-  	"completed_at" timestamp(3) with time zone,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"url" varchar,
-  	"thumbnail_u_r_l" varchar,
-  	"filename" varchar,
-  	"mime_type" varchar,
-  	"filesize" numeric,
-  	"width" numeric,
-  	"height" numeric,
-  	"focal_x" numeric,
-  	"focal_y" numeric
+   "id" serial PRIMARY KEY NOT NULL,
+   "source_title" varchar NOT NULL,
+   "source_type" "enum_knowledge_source_documents_source_type" NOT NULL,
+   "source_version" varchar NOT NULL,
+   "original_language" "enum_knowledge_source_documents_original_language" DEFAULT 'auto' NOT NULL,
+   "source_hash" varchar NOT NULL,
+   "ingestion_revision" varchar NOT NULL,
+   "detected_language" "enum_knowledge_source_documents_detected_language",
+   "extracted_text" varchar,
+   "page_count" numeric,
+   "paragraph_count" numeric,
+   "image_count" numeric,
+   "parser_version" varchar,
+   "processing_status" "enum_knowledge_source_documents_processing_status" DEFAULT 'queued' NOT NULL,
+   "processing_stage" "enum_knowledge_source_documents_processing_stage" DEFAULT 'queued' NOT NULL,
+   "current_job_id" numeric,
+   "current_job_owner_token" varchar,
+   "error_code" varchar,
+   "error_summary" varchar,
+   "completed_at" timestamp(3) with time zone,
+   "updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+   "created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+   "url" varchar,
+   "thumbnail_u_r_l" varchar,
+   "filename" varchar,
+   "mime_type" varchar,
+   "filesize" numeric,
+   "width" numeric,
+   "height" numeric,
+   "focal_x" numeric,
+   "focal_y" numeric
   );
-  
+
   CREATE TABLE "knowledge_source_assets" (
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"source_id" integer NOT NULL,
-  	"sequence" numeric NOT NULL,
-  	"original_name" varchar NOT NULL,
-  	"sha256" varchar NOT NULL,
-  	"byte_size" numeric NOT NULL,
-  	"accessibility" "enum_knowledge_source_assets_accessibility" DEFAULT 'private' NOT NULL,
-  	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
-  	"url" varchar,
-  	"thumbnail_u_r_l" varchar,
-  	"filename" varchar,
-  	"mime_type" varchar,
-  	"filesize" numeric,
-  	"width" numeric,
-  	"height" numeric,
-  	"focal_x" numeric,
-  	"focal_y" numeric
+   "id" serial PRIMARY KEY NOT NULL,
+   "source_id" integer NOT NULL,
+   "sequence" numeric NOT NULL,
+   "original_name" varchar NOT NULL,
+   "sha256" varchar NOT NULL,
+   "byte_size" numeric NOT NULL,
+   "accessibility" "enum_knowledge_source_assets_accessibility" DEFAULT 'private' NOT NULL,
+   "updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+   "created_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
+   "url" varchar,
+   "thumbnail_u_r_l" varchar,
+   "filename" varchar,
+   "mime_type" varchar,
+   "filesize" numeric,
+   "width" numeric,
+   "height" numeric,
+   "focal_x" numeric,
+   "focal_y" numeric
   );
-  
+
   ALTER TABLE "knowledge_documents" ADD COLUMN "ingestion_source_id" integer;
   ALTER TABLE "knowledge_documents" ADD COLUMN "source_hash" varchar;
   ALTER TABLE "knowledge_documents" ADD COLUMN "source_anchor" varchar;
@@ -111,11 +111,11 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   ALTER TABLE "knowledge_source_documents" DISABLE ROW LEVEL SECURITY;
   ALTER TABLE "knowledge_source_assets" DISABLE ROW LEVEL SECURITY;
   ALTER TABLE "knowledge_documents" DROP CONSTRAINT "knowledge_documents_ingestion_source_id_knowledge_source_documents_id_fk";
-  
+
   ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_knowledge_source_documents_fk";
-  
+
   ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_knowledge_source_assets_fk";
-  
+
   DROP INDEX "knowledge_documents_ingestion_source_idx";
   DROP INDEX "ingestionSource_locale_idx";
   DROP INDEX "payload_locked_documents_rels_knowledge_source_documents_idx";
