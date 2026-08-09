@@ -60,7 +60,7 @@ bash scripts/install-git-hooks.sh
 - Portal V1 本地功能跑通期允许只运行当前 checkpoint 的定向验证；完整回归可以后置到转 Ready 前，但不得后置服务端 Auth/RBAC、数据/migration 完整性、凭据隔离、外部副作用幂等、feature flag、`delivery_unknown` 和发布 kill switch。
 - 审核时记录 base SHA、head SHA、mergeability、完整 diff、Review 状态和 `CI policy`。只有与当前 head SHA 一致的成功 `CI policy` 可作为门禁证据；Draft Fast CI、旧 head，以及 pending、neutral、skipped、cancelled 或 failure 均不能授权合并。
 - `.github/workflows/**`、`scripts/ci/**`、CI policy 或 production image 触发边界的修改必须由另一名开发者独立 Review，不适用负责人自检合并。
-- 唯一一次 CI 可信锚 bootstrap 例外受 `docs/plans/2026-08-09-ci-trusted-bootstrap-plan.md` 约束：由于新增的 base-owned `pull_request_target` 在进入 `main` 前不能验证自身，bootstrap PR 必须保持 Draft，记录固定 base / 最终 head、本地完整门禁、完整 diff、权限与回滚证据，并由 jueyunai、xuemusi 双方明确确认后才可合并。任何新 head 使旧确认失效；例外在该 PR 合并或关闭后立即失效，不得复用于 PR #64 或后续 PR。
+- 唯一一次 CI 可信锚 bootstrap 例外受 `docs/plans/2026-08-09-ci-trusted-bootstrap-plan.md` 约束：由于新增的 base-owned `pull_request_target` 在进入 `main` 前不能验证自身，bootstrap PR 必须保持 Draft，记录固定 base / 最终 head、本地完整门禁、完整 diff、权限与回滚证据，并由 jueyunai、xuemusi 双方明确确认后才可合并。回滚单元是最终 PR merge commit，而不是分支上的单个审查修复 commit。任何新 head 使旧确认失效；例外在该 PR 合并或关闭后立即失效，不得复用于 PR #64 或后续 PR。
 - docs-only 轻量门禁不改变共享结构、跨人契约和协作者边界的人工 Review 规则。production image 构建成功也不代表 production 部署授权；部署仍需 jueyunai 人工审批和既有 smoke / rollback 流程。
 
 ## 分工与依赖

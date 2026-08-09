@@ -50,11 +50,6 @@ const isPlainObject = (value) =>
 const normalizeExpression = (value) =>
   typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
 
-const unwrapExpression = (value) =>
-  normalizeExpression(value)
-    .replace(/^\$\{\{\s*/, '')
-    .replace(/\s*\}\}$/, '')
-
 const canonicalize = (value) => {
   if (Array.isArray(value)) return value.map(canonicalize)
   if (!isPlainObject(value)) return value
@@ -192,11 +187,27 @@ const hasGithubTokenAccess = (value) =>
   /\bgithub\s*\[/i.test(value) ||
   /\btojson\s*\(\s*github\s*\)/i.test(value)
 
+const actionRepository = (value) => {
+  if (typeof value !== 'string') return ''
+  const separator = value.lastIndexOf('@')
+  const [owner, repository] = value.slice(0, separator).split('/')
+  return owner && repository ? `${owner}/${repository}`.toLowerCase() : ''
+}
+
 const validateActionsAndCredentials = ({ errors, path, trustedContract, workflow }) => {
   visitValues(workflow, 'workflow', ({ key, location, value }) => {
+    if (typeof key === 'string' && key.toLowerCase() === 'secrets') {
+      errors.push(`${path}:${location}: secrets mapping is forbidden in candidate workflows`)
+    }
     if (key === 'uses') {
       if (typeof value !== 'string' || !remoteActionPattern.test(value)) {
         errors.push(`${path}:${location}: remote action must be pinned to a 40-character SHA`)
+      }
+      if (
+        actionRepository(value) === 'actions/checkout' &&
+        value !== trustedContract.checkoutAction
+      ) {
+        errors.push(`${path}:${location}: checkout action must match the trusted pinned action`)
       }
     }
     if (typeof value !== 'string') return
@@ -216,7 +227,7 @@ const validateActionsAndCredentials = ({ errors, path, trustedContract, workflow
   for (const [jobId, job] of Object.entries(workflow.jobs ?? {})) {
     if (!Array.isArray(job?.steps)) continue
     job.steps.forEach((step, index) => {
-      if (!isPlainObject(step) || !String(step.uses).startsWith('actions/checkout@')) return
+      if (!isPlainObject(step) || actionRepository(step.uses) !== 'actions/checkout') return
       if (
         !isPlainObject(step.with) ||
         step.with['persist-credentials'] !== false ||
@@ -230,214 +241,10 @@ const validateActionsAndCredentials = ({ errors, path, trustedContract, workflow
   }
 }
 
-const exactKeys = (value, expected) =>
-  isPlainObject(value) && Object.keys(value).sort().join('\0') === [...expected].sort().join('\0')
-
-const needsExactly = (value, expected) => {
-  const actual = Array.isArray(value) ? value : typeof value === 'string' ? [value] : []
-  return [...actual].sort().join('\0') === [...expected].sort().join('\0')
-}
-
 const findStep = (job, predicate) =>
   Array.isArray(job?.steps)
     ? job.steps.find((step) => isPlainObject(step) && predicate(step))
     : null
-
-const collectRunCommands = (job) =>
-  Array.isArray(job?.steps)
-    ? job.steps
-        .filter((step) => isPlainObject(step) && typeof step.run === 'string')
-        .map((step) => step.run)
-        .join('\n')
-    : ''
-
-const containsKey = (value, target) => {
-  if (Array.isArray(value)) return value.some((item) => containsKey(item, target))
-  if (!isPlainObject(value)) return false
-  return Object.entries(value).some(([key, child]) => key === target || containsKey(child, target))
-}
-
-const checkoutMatches = ({ checkoutAction, job, path, ref, repository }) =>
-  Boolean(
-    findStep(
-      job,
-      (step) =>
-        step.uses === checkoutAction &&
-        isPlainObject(step.with) &&
-        step.with.path === path &&
-        step.with.ref === ref &&
-        step.with['persist-credentials'] === false &&
-        (repository === undefined || step.with.repository === repository),
-    ),
-  )
-
-const validateTrustedWorkflowContract = (workflow, trustedContract) => {
-  const violations = []
-  const trigger = workflow.on
-  const triggerTypes = trigger?.pull_request_target?.types
-  if (
-    workflow.name !== 'Trusted PR CI' ||
-    !exactKeys(trigger, ['pull_request_target']) ||
-    !Array.isArray(triggerTypes) ||
-    triggerTypes.join('\0') !== 'opened\0synchronize\0reopened\0ready_for_review'
-  ) {
-    violations.push('event contract must be the canonical pull_request_target trigger')
-  }
-  if (!exactKeys(workflow.permissions, ['contents']) || workflow.permissions.contents !== 'read') {
-    violations.push('top-level permissions must be exactly contents: read')
-  }
-  if (!exactKeys(workflow.jobs, ['control', 'validation', 'policy'])) {
-    violations.push('jobs must be exactly control, validation, and policy')
-    return violations
-  }
-
-  const { control, validation, policy } = workflow.jobs
-  if (!isPlainObject(control) || !isPlainObject(validation) || !isPlainObject(policy)) {
-    violations.push('trusted jobs must be mappings')
-    return violations
-  }
-
-  if (
-    control.outputs?.base_sha !== '${{ steps.revision.outputs.base_sha }}' ||
-    control.outputs?.head_sha !== '${{ steps.revision.outputs.head_sha }}'
-  ) {
-    violations.push('control outputs must bind the verified base and head revisions')
-  }
-  if (
-    !checkoutMatches({
-      checkoutAction: trustedContract.checkoutAction,
-      job: control,
-      path: 'control',
-      ref: '${{ github.event.pull_request.base.sha }}',
-    }) ||
-    !checkoutMatches({
-      checkoutAction: trustedContract.checkoutAction,
-      job: control,
-      path: 'candidate',
-      ref: '${{ github.event.pull_request.head.sha }}',
-      repository: '${{ github.event.pull_request.head.repo.full_name }}',
-    })
-  ) {
-    violations.push('control must isolate trusted base and exact candidate checkouts')
-  }
-
-  const revisionStep = findStep(control, (step) => step.id === 'revision')
-  const revisionCommand = typeof revisionStep?.run === 'string' ? revisionStep.run : ''
-  const requiredRevisionFragments = [
-    'git -C candidate fetch --no-tags "$GITHUB_WORKSPACE/control" "$BASE_SHA"',
-    'git -C candidate cat-file -e "${BASE_SHA}^{commit}"',
-    'git -C candidate cat-file -e "${HEAD_SHA}^{commit}"',
-    'git -C candidate rev-parse HEAD',
-    'git -C candidate diff --check "$diff_range"',
-    'git -C candidate diff --name-only -z "$diff_range"',
-    'git -C candidate diff --name-only --diff-filter=ACMR -z "$diff_range"',
-  ]
-  if (
-    revisionStep?.env?.BASE_SHA !== '${{ github.event.pull_request.base.sha }}' ||
-    revisionStep?.env?.HEAD_SHA !== '${{ github.event.pull_request.head.sha }}' ||
-    requiredRevisionFragments.some((fragment) => !revisionCommand.includes(fragment))
-  ) {
-    violations.push(
-      'control revision step must verify immutable SHAs and the complete diff boundary',
-    )
-  }
-
-  const controlCommands = collectRunCommands(control)
-  if (
-    !controlCommands.includes('pnpm --dir control install --frozen-lockfile --ignore-scripts') ||
-    !controlCommands.includes(
-      'node control/scripts/ci/validate-workflow-permissions.mjs candidate/.github/workflows',
-    )
-  ) {
-    violations.push('control must install and execute only the trusted workflow validator')
-  }
-
-  if (
-    !needsExactly(validation.needs, ['control']) ||
-    unwrapExpression(validation.if) !== "needs.control.result == 'success'" ||
-    validation.defaults?.run?.['working-directory'] !== 'candidate' ||
-    validation.env?.GH_TOKEN !== '' ||
-    validation.env?.GITHUB_TOKEN !== '' ||
-    validation.env?.ACTIONS_RUNTIME_TOKEN !== '' ||
-    validation.env?.ACTIONS_ID_TOKEN_REQUEST_TOKEN !== '' ||
-    containsKey(validation, 'cache')
-  ) {
-    violations.push(
-      'validation must depend on control and run candidate code without tokens or cache',
-    )
-  }
-  if (
-    !checkoutMatches({
-      checkoutAction: trustedContract.checkoutAction,
-      job: validation,
-      path: 'candidate',
-      ref: '${{ needs.control.outputs.head_sha }}',
-      repository: '${{ github.event.pull_request.head.repo.full_name }}',
-    })
-  ) {
-    violations.push('validation must checkout the exact verified candidate revision')
-  }
-  const validationCommands = collectRunCommands(validation)
-  const requiredValidationCommands = [
-    'pnpm install --frozen-lockfile --ignore-scripts',
-    'pnpm lint',
-    'pnpm typecheck',
-    'pnpm test:unit',
-    'pnpm test:contract',
-    'pnpm db:migrate',
-    'pnpm db:reset:test',
-    'pnpm db:seed',
-    'pnpm test:integration',
-    'pnpm db:test:persistence',
-    'pnpm build',
-    'pnpm test:e2e',
-    'docker build --target runtime',
-    'docker build --target worker',
-    'docker compose -f compose.yaml -f compose.staging.yaml config',
-    'pnpm test:operations',
-  ]
-  if (requiredValidationCommands.some((command) => !validationCommands.includes(command))) {
-    violations.push('validation must retain the complete candidate gate')
-  }
-
-  if (
-    !needsExactly(policy.needs, ['control', 'validation']) ||
-    unwrapExpression(policy.if) !== 'always()' ||
-    !checkoutMatches({
-      checkoutAction: trustedContract.checkoutAction,
-      job: policy,
-      path: 'control',
-      ref: '${{ github.event.pull_request.base.sha }}',
-    })
-  ) {
-    violations.push('policy must always consume control and validation from the same run')
-  }
-  const policyStep = findStep(
-    policy,
-    (step) =>
-      typeof step.run === 'string' &&
-      step.run.includes('node control/scripts/ci/evaluate-trusted-pr-policy.mjs'),
-  )
-  if (
-    !policyStep ||
-    policyStep.env?.CHECKED_HEAD_SHA !== '${{ needs.control.outputs.head_sha }}' ||
-    policyStep.env?.CONTROL_RESULT !== '${{ needs.control.result }}' ||
-    policyStep.env?.VALIDATION_RESULT !== '${{ needs.validation.result }}'
-  ) {
-    violations.push('policy must execute the trusted evaluator with same-run results')
-  }
-
-  const serialized = stableSerialize(workflow)
-  if (
-    serialized.includes('/actions/runs') ||
-    serialized.includes('workflow_run') ||
-    serialized.includes('workflow_dispatch') ||
-    serialized.includes('verify-trusted-policy')
-  ) {
-    violations.push('trusted workflow must not poll or delegate policy authority')
-  }
-  return violations
-}
 
 const validateWorkflow = (entry, errors, trustedContract) => {
   const workflow = parseWorkflow(entry, errors)
@@ -505,10 +312,9 @@ const validateWorkflow = (entry, errors, trustedContract) => {
   }
 
   if (entry.path === trustedWorkflowPath) {
-    const violations = validateTrustedWorkflowContract(workflow, trustedContract)
-    if (violations.length > 0) {
+    if (stableSerialize(workflow) !== trustedContract.trustedWorkflow) {
       errors.push(`${entry.path}: trusted PR workflow contract is invalid`)
-      for (const violation of violations) errors.push(`${entry.path}: ${violation}`)
+      errors.push(`${entry.path}: trusted PR workflow must exactly match the base-owned contract`)
     }
   }
 
@@ -560,6 +366,7 @@ export function createTrustedWorkflowContract(workflows) {
     checkoutAction: checkout.uses,
     publisherJob: stableSerialize(publisher),
     publisherSecrets,
+    trustedWorkflow: stableSerialize(trustedWorkflow),
   })
 }
 
@@ -573,6 +380,7 @@ export function validateWorkflowSet(workflows, trustedContract) {
     !isPlainObject(trustedContract) ||
     typeof trustedContract.publisherJob !== 'string' ||
     typeof trustedContract.checkoutAction !== 'string' ||
+    typeof trustedContract.trustedWorkflow !== 'string' ||
     !(trustedContract.publisherSecrets instanceof Map)
   ) {
     return ['trusted workflow contract is missing or invalid']

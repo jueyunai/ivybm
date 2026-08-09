@@ -21,11 +21,18 @@ const repositoryWorkflows = ['ci.yml', 'trusted-pr-ci.yml'].map((name) => ({
 const trustedContract = createTrustedWorkflowContract(repositoryWorkflows)
 const temporaryDirectories: string[] = []
 type ParsedWorkflow = {
-  jobs: {
-    publish_production_images: {
-      steps: Array<{ name?: string; with?: Record<string, unknown> }>
+  jobs: Record<
+    string,
+    {
+      [key: string]: unknown
+      steps?: Array<{
+        [key: string]: unknown
+        name?: string
+        run?: string
+        with?: Record<string, unknown>
+      }>
     }
-  }
+  >
 }
 
 const validate = (workflows = repositoryWorkflows) =>
@@ -64,6 +71,17 @@ describe('candidate workflow permission validator', () => {
     expect(validate()).toEqual([])
   })
 
+  it('accepts semantically identical trusted YAML after formatting and mapping-key reordering', () => {
+    const reformatted = repositoryWorkflows.map((entry) => {
+      if (entry.path !== '.github/workflows/trusted-pr-ci.yml') return entry
+      const parsed = parse(entry.content) as Record<string, unknown>
+      const reordered = Object.fromEntries(Object.entries(parsed).reverse())
+      return { ...entry, content: stringify(reordered) }
+    })
+
+    expect(validate(reformatted)).toEqual([])
+  })
+
   it.each([
     ['missing permissions', 'name: Test\non: pull_request\njobs: {}'],
     ['flow write', 'name: Test\non: pull_request\npermissions: { contents: write }\njobs: {}'],
@@ -87,7 +105,7 @@ describe('candidate workflow permission validator', () => {
 
   it('rejects a publisher that sends the packages-write token outside GHCR', () => {
     const workflows = replaceWorkflow('.github/workflows/ci.yml', (candidate) => {
-      const login = candidate.jobs.publish_production_images.steps.find(
+      const login = candidate.jobs.publish_production_images.steps?.find(
         (step: { name?: string }) => step.name === 'Log in to GitHub Container Registry',
       )
       if (!login?.with) throw new Error('publisher login step is missing')
@@ -174,6 +192,32 @@ describe('candidate workflow permission validator', () => {
     )
   })
 
+  it('rejects reusable workflows that inherit job secrets', () => {
+    const content = workflow(`  reusable:
+    uses: jueyunai/ivybm/.github/workflows/trusted-pr-ci.yml@0123456789abcdef0123456789abcdef01234567
+    secrets: inherit`)
+
+    expect(validate(extraWorkflow(content))).toContain(
+      '.github/workflows/test.yml:workflow.jobs.reusable.secrets: secrets mapping is forbidden in candidate workflows',
+    )
+  })
+
+  it.each([
+    'Actions/Checkout@df4cb1c069e1874edd31b4311f1884172cec0e10',
+    'actions/checkout@0123456789abcdef0123456789abcdef01234567',
+  ])('rejects a non-canonical checkout action reference %s', (action) => {
+    const content = workflow(`  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ${action}
+        with:
+          persist-credentials: false`)
+
+    expect(validate(extraWorkflow(content))).toContain(
+      '.github/workflows/test.yml:workflow.jobs.test.steps.0.uses: checkout action must match the trusted pinned action',
+    )
+  })
+
   it('requires both canonical workflow paths', () => {
     const safe = {
       content: workflow('  test:\n    runs-on: ubuntu-latest\n    steps: []'),
@@ -245,6 +289,75 @@ describe('candidate workflow permission validator', () => {
 
     expect(validate(workflows)).toContain(
       '.github/workflows/trusted-pr-ci.yml: trusted PR workflow contract is invalid',
+    )
+  })
+
+  it.each([
+    [
+      'false conditions on trusted jobs and every command step',
+      (candidate: ParsedWorkflow) => {
+        for (const job of Object.values(candidate.jobs)) {
+          job.if = '${{ false }}'
+          for (const step of job.steps ?? []) {
+            if (step.run) step.if = '${{ false }}'
+          }
+        }
+      },
+    ],
+    [
+      'job and step continue-on-error',
+      (candidate: ParsedWorkflow) => {
+        candidate.jobs.validation['continue-on-error'] = true
+        const evaluator = candidate.jobs.policy.steps?.find((step) =>
+          step.run?.includes('evaluate-trusted-pr-policy.mjs'),
+        )
+        if (!evaluator) throw new Error('trusted evaluator step is missing')
+        evaluator['continue-on-error'] = true
+      },
+    ],
+    [
+      'self-hosted runners',
+      (candidate: ParsedWorkflow) => {
+        for (const job of Object.values(candidate.jobs)) job['runs-on'] = 'self-hosted'
+      },
+    ],
+    [
+      'echo-only evaluator',
+      (candidate: ParsedWorkflow) => {
+        const evaluator = candidate.jobs.policy.steps?.find((step) =>
+          step.run?.includes('evaluate-trusted-pr-policy.mjs'),
+        )
+        if (!evaluator?.run) throw new Error('trusted evaluator step is missing')
+        evaluator.run = `echo ${evaluator.run}`
+      },
+    ],
+    [
+      'additional control step',
+      (candidate: ParsedWorkflow) => {
+        candidate.jobs.control.steps?.push({ run: 'echo extra control step' })
+      },
+    ],
+    [
+      'reordered validation steps',
+      (candidate: ParsedWorkflow) => {
+        candidate.jobs.validation.steps?.reverse()
+      },
+    ],
+    [
+      'alternate command shell',
+      (candidate: ParsedWorkflow) => {
+        const evaluator = candidate.jobs.policy.steps?.find((step) =>
+          step.run?.includes('evaluate-trusted-pr-policy.mjs'),
+        )
+        if (!evaluator) throw new Error('trusted evaluator step is missing')
+        evaluator.shell = 'python'
+      },
+    ],
+  ])('rejects trusted workflow structural bypass: %s', (_name, mutate) => {
+    const workflows = replaceWorkflow('.github/workflows/trusted-pr-ci.yml', mutate)
+
+    expect(validate(workflows)).toContain(
+      '.github/workflows/trusted-pr-ci.yml: trusted PR workflow must exactly match the base-owned contract',
     )
   })
 
