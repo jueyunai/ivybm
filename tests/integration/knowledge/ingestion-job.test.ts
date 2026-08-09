@@ -276,6 +276,24 @@ describe.sequential('knowledge source ingestion job', () => {
     expect(new Set(results.map((result) => result.job.id))).toHaveProperty('size', 1)
     sourceIDs.push(results[0].source.id)
     jobIDs.push(results[0].job.id)
+
+    const worker = new JobWorker({
+      handlers: {
+        [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({
+          payload,
+          resolveGateway: async () => gateway(),
+        }),
+      },
+      queue: new PayloadJobQueue({ payload }),
+    })
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-source-documents',
+        id: results[0].source.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ processingStatus: 'needs_review' })
   })
 
   it('deduplicates upload, creates private EN/AR drafts, and protects source files', async () => {
