@@ -60,13 +60,15 @@ jobs:
           fi
 
           diff_range="${BASE_SHA}...${HEAD_SHA}"
-          changed_files="$RUNNER_TEMP/trusted-pr-changed-files.zlist"
+          all_changed_files="$RUNNER_TEMP/trusted-pr-all-files.zlist"
+          sensitive_files="$RUNNER_TEMP/trusted-pr-sensitive-files.zlist"
           git -C candidate diff --check "$diff_range"
-          git -C candidate diff --name-only --diff-filter=ACMR -z "$diff_range" > "$changed_files"
-          if [[ ! -s "$changed_files" ]]; then
+          git -C candidate diff --name-only -z "$diff_range" > "$all_changed_files"
+          if [[ ! -s "$all_changed_files" ]]; then
             echo 'Trusted PR diff is empty or unavailable.' >&2
             exit 1
           fi
+          git -C candidate diff --name-only --diff-filter=ACMR -z "$diff_range" > "$sensitive_files"
 
           forbidden=0
           while IFS= read -r -d '' path; do
@@ -78,7 +80,7 @@ jobs:
                 forbidden=1
                 ;;
             esac
-          done < "$changed_files"
+          done < "$sensitive_files"
           if [[ "$forbidden" -ne 0 ]]; then
             exit 1
           fi

@@ -19,6 +19,9 @@ jobs:
     name: Classify and validate changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      GH_TOKEN: ''
+      GITHUB_TOKEN: ''
     outputs:
       code: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.code || steps.fallback.outputs.code }}
       database: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.database || steps.fallback.outputs.database }}
@@ -391,6 +394,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
+      GH_TOKEN: ''
+      GITHUB_TOKEN: ''
       CHANGES_RESULT: ${{ needs.changes.result }}
       CODE: ${{ needs.changes.outputs.code }}
       DATABASE: ${{ needs.changes.outputs.database }}

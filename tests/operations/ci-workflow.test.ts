@@ -54,6 +54,19 @@ describe('CI workflow policy', () => {
     expect(workflow).toContain('HEAD_SHA: ${{ needs.changes.outputs.head_sha }}')
   })
 
+  it('clears token variables from every PR job that executes candidate scripts', () => {
+    const changesJob = workflow.slice(workflow.indexOf('  changes:'), workflow.indexOf('  fast:'))
+    const policyJob = workflow.slice(
+      workflow.indexOf('  ci_policy:'),
+      workflow.indexOf('  publish_production_images:'),
+    )
+
+    for (const job of [changesJob, policyJob]) {
+      expect(job).toContain("GH_TOKEN: ''")
+      expect(job).toContain("GITHUB_TOKEN: ''")
+    }
+  })
+
   it('keeps default workflow permissions read-only', () => {
     expect(workflow).toMatch(/permissions:\n  contents: read\n/)
     expect(prJobs).not.toContain('packages: write')

@@ -38,6 +38,16 @@ describe('base-owned trusted PR workflow', () => {
     expect(controlJob).toContain('node control/scripts/ci/validate-workflow-permissions.mjs')
   })
 
+  it('accepts deletion-only diffs while scanning only surviving sensitive paths', () => {
+    expect(controlJob).toContain('all_changed_files="$RUNNER_TEMP/trusted-pr-all-files.zlist"')
+    expect(controlJob).toContain('sensitive_files="$RUNNER_TEMP/trusted-pr-sensitive-files.zlist"')
+    expect(controlJob).toContain('git -C candidate diff --name-only -z "$diff_range"')
+    expect(controlJob).toContain(
+      'git -C candidate diff --name-only --diff-filter=ACMR -z "$diff_range"',
+    )
+    expect(controlJob).toContain('done < "$sensitive_files"')
+  })
+
   it('runs the complete candidate gate without secrets, reusable cache, or write tokens', () => {
     expect(validationJob).toContain('needs: control')
     expect(validationJob).toContain('path: candidate')

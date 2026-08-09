@@ -38,10 +38,16 @@ pull_request_target event metadata
 
 - 新增独立 `pull_request_target` workflow，job 顺序为 trusted control -> isolated full validation -> stable `CI policy`。
 - 新增结构化 YAML workflow 权限验证：重复键、alias/merge、缺失 permissions、任意 write scope、OIDC、非发布 job 的 secret、未固定 SHA 的远程 action 全部拒绝。
-- 唯一 write 例外为 `.github/workflows/ci.yml` 的 `publish_production_images` job；只允许 `contents: read` + `packages: write`、固定 allowlist 的 main push 条件和 `secrets.GITHUB_TOKEN` 登录 GHCR。
+- 唯一 write 例外为 `.github/workflows/ci.yml` 的 `publish_production_images` job；publisher job 必须与 base-owned contract 结构一致，只允许 `contents: read` + `packages: write`、固定 main push 条件和固定 `docker/login-action` 使用 `secrets.GITHUB_TOKEN` 登录 `ghcr.io`。
+- 候选 workflow 集合必须保留普通文件形式的 canonical `ci.yml` 与 `trusted-pr-ci.yml`；trusted workflow 必须保持唯一 `pull_request_target` trigger、control / validation / policy DAG、精确候选 SHA、无 token/cache 的隔离验证和 same-run base-owned policy。删除、改名、空壳替换、symlink 或拓扑削弱全部 fail closed。
+- token 扫描同时拒绝 `github.token`、`github.*`、任意 `github[...]` 动态索引和 `toJSON(github)`；所有 checkout 必须关闭 credential persistence 且不得覆盖 token input，所有执行候选脚本的 diagnostics job 显式清空 `GH_TOKEN` / `GITHUB_TOKEN`。
 - 现有 PR workflow 的 policy check 改名为 `CI diagnostics`；main push 保留 `CI policy (main)`，避免与 trusted `CI policy` 同名。
 - 现有 PR diagnostics 不使用共享 pnpm cache，候选 shell 环境显式清空 GitHub token 变量；所有 Actions 固定完整 commit SHA。
 - 更新冲突的 CI 设计基线、实施计划和 `docs/开发进度.md`。
+
+### 3.3 首次独立 Review 修复
+
+Review `4890917115` 的两项 P1 与一项 P2 已按 test-first 收口：publisher 例外改为 base contract 全结构比较；validator 从 trusted script 自身位置加载 base workflow contract 并强制 canonical/trusted topology；diff 使用未过滤列表判断真实空 diff，再用 `ACMR` 列表扫描仍存在的敏感路径，因此 deletion-only PR 不再被误拒绝。PR #64 在 Phase B 必须恢复与 bootstrap/main 完全一致的 publisher job，再迁移可信 validation，不得保留候选 publisher 变体。
 
 ### 3.2 一次性 bootstrap 验收
 
@@ -70,6 +76,9 @@ Phase A 合入 `main` 后：
 
 - 合法 main publish workflow 通过结构化权限验证。
 - flow / quoted / commented YAML、`write-all`、任意 write scope、`id-token: write`、缺失 permissions、alias/merge、额外 secrets 和未固定 action 全部失败。
+- publisher registry/action/username/password 或 step graph 任一变化均失败；`github.token`、通配、索引、动态索引和 GitHub context 整体序列化均失败，普通 `github.actor` / `github.ref` 保持可用；checkout 保留凭据或显式 token input 同样失败。
+- canonical workflow 删除、重复、空壳替换、symlink，以及 trusted trigger、候选 SHA、`--ignore-scripts`、same-run needs、`always()` 或 trusted evaluator 任一削弱均失败。
+- deletion-only diff 被识别为真实非空 diff，敏感路径扫描仍只检查 `ACMR` 路径。
 - trusted policy 拒绝非法 event、非法或不一致 SHA、control/validation 的 failure、skipped、cancelled 和缺失结果。
 - trusted workflow 只使用 `pull_request_target`，trusted/candidate checkout 隔离，candidate 精确绑定 head SHA，无 secrets、write、cache、polling 或 ledger。
 - 完整 lint、typecheck、unit、contract、operations、build、数据库、E2E 和 Docker/Compose 门禁按 bootstrap 验收记录执行。

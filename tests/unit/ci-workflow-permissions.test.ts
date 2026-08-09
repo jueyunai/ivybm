@@ -1,20 +1,48 @@
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it } from 'vitest'
+import { parse, stringify } from 'yaml'
+import { afterEach, describe, expect, it } from 'vitest'
 
-import { validateWorkflowSet } from '../../scripts/ci/validate-workflow-permissions.mjs'
+import {
+  createTrustedWorkflowContract,
+  loadWorkflowDirectory,
+  validateWorkflowSet,
+} from '../../scripts/ci/validate-workflow-permissions.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const pinnedCheckout = 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10'
-const mainPublishCondition = [
-  "github.event_name == 'push'",
-  "github.ref == 'refs/heads/main'",
-  "needs.changes.result == 'success'",
-  "needs.ci_policy.result == 'success'",
-  "needs.changes.outputs.production_image == 'true'",
-].join(' && ')
+const workflowDirectory = resolve(projectRoot, '.github/workflows')
+const repositoryWorkflows = ['ci.yml', 'trusted-pr-ci.yml'].map((name) => ({
+  content: readFileSync(resolve(workflowDirectory, name), 'utf8'),
+  path: `.github/workflows/${name}`,
+}))
+const trustedContract = createTrustedWorkflowContract(repositoryWorkflows)
+const temporaryDirectories: string[] = []
+type ParsedWorkflow = {
+  jobs: {
+    publish_production_images: {
+      steps: Array<{ name?: string; with?: Record<string, unknown> }>
+    }
+  }
+}
+
+const validate = (workflows = repositoryWorkflows) =>
+  validateWorkflowSet(workflows, trustedContract)
+
+const extraWorkflow = (content: string, path = '.github/workflows/test.yml') => [
+  ...repositoryWorkflows,
+  { content, path },
+]
+
+const replaceWorkflow = (path: string, update: (workflow: ParsedWorkflow) => void) =>
+  repositoryWorkflows.map((entry) => {
+    if (entry.path !== path) return entry
+    const workflow = parse(entry.content) as ParsedWorkflow
+    update(workflow)
+    return { ...entry, content: stringify(workflow) }
+  })
 
 const workflow = (body: string) => `
 name: Test
@@ -25,36 +53,15 @@ jobs:
 ${body}
 `
 
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { force: true, recursive: true })
+  }
+})
+
 describe('candidate workflow permission validator', () => {
-  it('accepts the repository workflows after structural validation', () => {
-    const workflows = ['ci.yml', 'trusted-pr-ci.yml'].map((name) => ({
-      content: readFileSync(resolve(projectRoot, '.github/workflows', name), 'utf8'),
-      path: `.github/workflows/${name}`,
-    }))
-
-    expect(validateWorkflowSet(workflows)).toEqual([])
-  })
-
-  it('allows the exact main-only image publisher and GHCR token use', () => {
-    const content = `
-name: CI
-on:
-  push:
-    branches: [main]
-permissions: { contents: read }
-jobs:
-  publish_production_images:
-    if: ${mainPublishCondition}
-    permissions: { contents: read, packages: write }
-    runs-on: ubuntu-latest
-    steps:
-      - uses: ${pinnedCheckout}
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
-        with:
-          password: \${{ secrets.GITHUB_TOKEN }}
-`
-
-    expect(validateWorkflowSet([{ content, path: '.github/workflows/ci.yml' }])).toEqual([])
+  it('accepts the canonical repository workflows after structural validation', () => {
+    expect(validate()).toEqual([])
   })
 
   it.each([
@@ -75,17 +82,52 @@ jobs:
       'name: Test\non: pull_request\npermissions: { contents: read }\nbase: &p { contents: write }\njobs:\n  test:\n    permissions:\n      <<: *p\n    runs-on: ubuntu-latest\n    steps: []',
     ],
   ])('rejects %s', (_name, content) => {
-    expect(validateWorkflowSet([{ content, path: '.github/workflows/test.yml' }])).not.toEqual([])
+    expect(validate(extraWorkflow(content))).not.toEqual([])
   })
 
-  it('rejects packages write when a comment only pretends to provide the main gate', () => {
-    const content = workflow(`  publish_production_images:
-    # github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions: { contents: read, packages: write }
-    runs-on: ubuntu-latest
-    steps: []`)
+  it('rejects a publisher that sends the packages-write token outside GHCR', () => {
+    const workflows = replaceWorkflow('.github/workflows/ci.yml', (candidate) => {
+      const login = candidate.jobs.publish_production_images.steps.find(
+        (step: { name?: string }) => step.name === 'Log in to GitHub Container Registry',
+      )
+      if (!login?.with) throw new Error('publisher login step is missing')
+      login.with.registry = 'attacker.example'
+    })
 
-    expect(validateWorkflowSet([{ content, path: '.github/workflows/ci.yml' }])).not.toEqual([])
+    expect(validate(workflows)).toContain(
+      '.github/workflows/ci.yml.jobs.publish_production_images: publisher job is not allowlisted',
+    )
+  })
+
+  it.each([
+    '${{ github.token }}',
+    "${{ github['token'] }}",
+    "${{ github[format('{0}', 'token')] }}",
+    "${{ join(github.*, ',') }}",
+    '${{ toJSON(github) }}',
+  ])('rejects GitHub token context access %s', (expression) => {
+    const content = workflow(`  test:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          LEAK: "${expression.replaceAll('"', '\\"')}"
+        run: echo blocked`)
+
+    expect(validate(extraWorkflow(content))).toContain(
+      '.github/workflows/test.yml:workflow.jobs.test.steps.0.env.LEAK: GitHub token context is forbidden',
+    )
+  })
+
+  it('allows non-token GitHub context properties', () => {
+    const content = workflow(`  test:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          ACTOR: "\${{ github.actor }}"
+          REF: "\${{ github.ref }}"
+        run: echo allowed`)
+
+    expect(validate(extraWorkflow(content))).toEqual([])
   })
 
   it('rejects secrets outside the exact main publisher', () => {
@@ -94,7 +136,7 @@ jobs:
     steps:
       - run: echo \"\${{ secrets.DEPLOY_TOKEN }}\"`)
 
-    expect(validateWorkflowSet([{ content, path: '.github/workflows/test.yml' }])).not.toEqual([])
+    expect(validate(extraWorkflow(content))).not.toEqual([])
   })
 
   it.each([
@@ -109,7 +151,7 @@ jobs:
           LEAK: "${expression.replaceAll('"', '\\"')}"
         run: echo blocked`)
 
-    expect(validateWorkflowSet([{ content, path: '.github/workflows/test.yml' }])).not.toEqual([])
+    expect(validate(extraWorkflow(content))).not.toEqual([])
   })
 
   it('rejects unpinned remote actions', () => {
@@ -118,6 +160,115 @@ jobs:
     steps:
       - uses: actions/checkout@v6`)
 
-    expect(validateWorkflowSet([{ content, path: '.github/workflows/test.yml' }])).not.toEqual([])
+    expect(validate(extraWorkflow(content))).not.toEqual([])
+  })
+
+  it('rejects checkout steps that retain the automatic workflow token', () => {
+    const content = workflow(`  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10`)
+
+    expect(validate(extraWorkflow(content))).toContain(
+      '.github/workflows/test.yml:workflow.jobs.test.steps.0: checkout must disable credential persistence',
+    )
+  })
+
+  it('requires both canonical workflow paths', () => {
+    const safe = {
+      content: workflow('  test:\n    runs-on: ubuntu-latest\n    steps: []'),
+      path: '.github/workflows/safe.yml',
+    }
+
+    expect(validate([safe])).toEqual(
+      expect.arrayContaining([
+        'canonical workflow .github/workflows/ci.yml is missing',
+        'canonical workflow .github/workflows/trusted-pr-ci.yml is missing',
+      ]),
+    )
+  })
+
+  it('rejects deletion of either canonical workflow', () => {
+    for (const deletedPath of ['.github/workflows/ci.yml', '.github/workflows/trusted-pr-ci.yml']) {
+      expect(validate(repositoryWorkflows.filter((entry) => entry.path !== deletedPath))).toContain(
+        `canonical workflow ${deletedPath} is missing`,
+      )
+    }
+  })
+
+  it('rejects duplicate canonical workflow paths', () => {
+    expect(validate([...repositoryWorkflows, repositoryWorkflows[0]])).toContain(
+      '.github/workflows/ci.yml: duplicate workflow path',
+    )
+  })
+
+  it('rejects read-only noop replacements for both canonical workflows', () => {
+    const noop = workflow('  noop:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo noop')
+    const errors = validate([
+      { content: noop, path: '.github/workflows/ci.yml' },
+      { content: noop, path: '.github/workflows/trusted-pr-ci.yml' },
+    ])
+
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        '.github/workflows/ci.yml.jobs.publish_production_images: publisher job is missing',
+        '.github/workflows/trusted-pr-ci.yml: trusted PR workflow contract is invalid',
+      ]),
+    )
+  })
+
+  it.each([
+    ['trigger', '  pull_request_target:', '  workflow_dispatch:'],
+    [
+      'candidate revision',
+      'ref: ${{ github.event.pull_request.head.sha }}',
+      'ref: ${{ github.sha }}',
+    ],
+    [
+      'trusted dependency install',
+      'pnpm --dir control install --frozen-lockfile --ignore-scripts',
+      'pnpm --dir control install --frozen-lockfile',
+    ],
+    ['same-run policy needs', 'needs: [control, validation]', 'needs: validation'],
+    ['always policy', 'if: ${{ always() }}', 'if: ${{ success() }}'],
+    [
+      'trusted policy evaluator',
+      'node control/scripts/ci/evaluate-trusted-pr-policy.mjs',
+      'echo policy bypassed',
+    ],
+  ])('rejects a trusted workflow with a weakened %s contract', (_name, source, replacement) => {
+    const workflows = repositoryWorkflows.map((entry) =>
+      entry.path === '.github/workflows/trusted-pr-ci.yml'
+        ? { ...entry, content: entry.content.replace(source, replacement) }
+        : entry,
+    )
+
+    expect(validate(workflows)).toContain(
+      '.github/workflows/trusted-pr-ci.yml: trusted PR workflow contract is invalid',
+    )
+  })
+
+  it('rejects a symlinked canonical workflow file', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ivybm-workflow-contract-'))
+    temporaryDirectories.push(directory)
+    writeFileSync(
+      join(directory, 'safe.yml'),
+      workflow('  test:\n    runs-on: ubuntu-latest\n    steps: []'),
+    )
+    symlinkSync(join(directory, 'safe.yml'), join(directory, 'ci.yml'))
+
+    expect(() => loadWorkflowDirectory(directory)).toThrow('ci.yml must be a regular file')
+  })
+
+  it('rejects a workflow directory reached through a symlinked parent', () => {
+    const repository = mkdtempSync(join(tmpdir(), 'ivybm-workflow-parent-contract-'))
+    temporaryDirectories.push(repository)
+    const actualDirectory = join(repository, 'actual', 'workflows')
+    mkdirSync(actualDirectory, { recursive: true })
+    symlinkSync(join(repository, 'actual'), join(repository, '.github'))
+
+    expect(() => loadWorkflowDirectory(join(repository, '.github', 'workflows'))).toThrow(
+      'workflow directory and its parent must be regular directories',
+    )
   })
 })
