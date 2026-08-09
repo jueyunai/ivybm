@@ -71,6 +71,39 @@ const callbackErrorCode = (error: unknown): string => {
   }
 }
 
+const callbackErrorLog = (error: unknown): Record<string, unknown> => {
+  const code = callbackErrorCode(error)
+  if (!(error instanceof InstagramOAuthError)) {
+    return { code, message: 'Instagram OAuth callback failed' }
+  }
+  const diagnostic = error.diagnostic
+  return {
+    code,
+    message: 'Instagram OAuth callback failed',
+    oauthCode: error.code,
+    ...(diagnostic
+      ? {
+          stage: diagnostic.stage,
+          ...(diagnostic.providerStatus === undefined
+            ? {}
+            : { providerStatus: diagnostic.providerStatus }),
+          ...(diagnostic.providerErrorType === undefined
+            ? {}
+            : { providerErrorType: diagnostic.providerErrorType }),
+          ...(diagnostic.providerErrorCode === undefined
+            ? {}
+            : { providerErrorCode: diagnostic.providerErrorCode }),
+          ...(diagnostic.providerErrorSubcode === undefined
+            ? {}
+            : { providerErrorSubcode: diagnostic.providerErrorSubcode }),
+          ...(diagnostic.providerResponseKeys === undefined
+            ? {}
+            : { providerResponseKeys: diagnostic.providerResponseKeys }),
+        }
+      : {}),
+  }
+}
+
 const loadInstagramAccount = async (
   payload: Payload,
   transaction: InstagramOAuthTransaction,
@@ -161,8 +194,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         secure: secureCookie,
       })
     }
-    const code = request.nextUrl.searchParams.get('code')
-    if (!code) throw new InstagramOAuthError('token_exchange_failed')
+    const code = request.nextUrl.searchParams.get('code') ?? ''
 
     const userToken = await exchangeInstagramAuthorizationCode({ code, config: oauth })
     if (transaction.requestedScopes.some((scope) => !userToken.scopes.includes(scope))) {
@@ -206,7 +238,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       secure: secureCookie,
     })
   } catch (error) {
-    if (payload) payload.logger.error('Instagram OAuth callback failed')
+    if (payload) payload.logger.error(callbackErrorLog(error))
     return resultRedirect({
       accountId: transaction?.accountId,
       origin: redirectOrigin,
