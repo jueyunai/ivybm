@@ -1,6 +1,16 @@
 # 协作与分支规范
 
-本文档约定两名开发者在同一个仓库上的协作方式。板块级分工见 [`docs/requirements/一期需求说明文档.md`](docs/requirements/一期需求说明文档.md#L495) 第10节；总体任务排期和负责人见 [`docs/plans/2026-07-16-一期开发实施计划.md`](docs/plans/2026-07-16-一期开发实施计划.md) 里程碑表。管理后台 Portal 的任务顺序、PR 批次、owner、依赖和门禁以 [`docs/plans/2026-07-29-modular-admin-portal-implementation.md`](docs/plans/2026-07-29-modular-admin-portal-implementation.md) 为准；与总体计划冲突时以 Portal 专项计划和 ADR-0004 为准。
+本文档约定两名开发者在同一个仓库上的协作方式。当前冲刺范围、顺序和完成定义以 [`MVP 范围冻结与交付冲刺`](docs/plans/2026-08-10-MVP范围冻结与交付冲刺.md) 为最高执行基线；板块级分工见 [`docs/requirements/一期需求说明文档.md`](docs/requirements/一期需求说明文档.md#L495) 第10节。历史总体计划、Portal 专项计划和 ADR 与当前冲刺计划冲突时，以当前冲刺计划为准。
+
+## 2026-08-10 MVP 冲刺协作规则
+
+- Payload `/admin` 只用于受限内部维护；`/dashboard` 是唯一客户后台和验收入口。
+- 每名开发者同时最多推进一个功能 PR；优先真实联调、P0 缺陷和客户 UAT，暂停通用框架、流程优化和非阻断精修。
+- CI 架构演进冻结，PR #64/#65 暂停。现有工作流继续运行；只有直接阻断业务 PR 合并或 production 发布时，才可在负责人明确批准后做最小 CI 修复。
+- checkpoint 只运行与 diff 相关的定向门禁；Ready、merge 和 production 继续接受现有当前 head CI。不得为追求测试数量重复跑全量矩阵。
+- Facebook、Instagram、LinkedIn 发布由用户在工作台点击后触发服务端官方 API；不做无人值守/定时发布，不以人工复制粘贴替代。
+- 自动审查继续处理 `xuemusi` 的开放 PR，按当前 `AGENTS.md`、本文件和 Scope Freeze 判断范围与门禁；自动审查不自行合并，也不取代共享边界的人类 Review。
+- 备份按需手动执行：production migration、批量正式内容/媒体导入、高风险数据变更上线或负责人要求阶段快照时触发，不建设每日自动备份。
 
 ## 分支策略
 

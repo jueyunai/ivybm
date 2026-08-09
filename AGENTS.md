@@ -2,6 +2,17 @@
 
 本文件适用于在本仓库工作的 Codex、Claude Code 及其他编码代理。开始任务前必须先阅读本文件、`CONTRIBUTING.md` 和当前任务对应的实施计划。
 
+## 当前 MVP 冲刺基线（2026-08-10，最高执行优先级）
+
+- 当前唯一冲刺计划是 [`docs/plans/2026-08-10-MVP范围冻结与交付冲刺.md`](docs/plans/2026-08-10-MVP范围冻结与交付冲刺.md)。它与旧需求、计划、ADR 或流程冲突时，以该文件为准；安全底线、共享结构 Review、production 人工审批和敏感资料边界不变。
+- Payload `/admin` 的客户后台选型已判定失败，只保留为受限内部维护入口；`/dashboard` 是唯一客户后台、培训和验收入口，不得以 `/admin` 深链或操作替代 Portal 交付。
+- 冲刺期只优先完成四条真实闭环：官网询盘→Lead→飞书、官网 AI 客服→人工接管→Lead→飞书、Portal CMS→公开官网、AI 内容审核→用户点击→Facebook/Instagram/LinkedIn 官方 API 发布。
+- 三平台发布是用户在工作台明确点击后由服务端调用官方 API；不做无人值守/定时发布，也不得降级为人工复制粘贴。多平台分别记录结果，结果未知时停止自动重发。
+- CI 架构演进已冻结，PR #64/#65 暂停。除非现有 CI 直接阻断业务 PR 合并或 production 发布且得到负责人明确批准，不得修改 `.github/workflows/**`、`scripts/ci/**`、CI policy 或可信控制面。
+- checkpoint 只运行与改动直接相关的 lint/typecheck/test；现有 Ready/merge/production CI 继续生效。不得为了测试数量、跨平台视觉矩阵或非阻断边界重复执行全仓库完整门禁。
+- 不建设每日自动数据库/媒体备份。只在 production migration、批量正式内容/媒体导入、高风险数据变更上线或负责人要求阶段快照时执行现有手动备份流程。
+- 每名开发者同时最多推进一个功能 PR。新增工作预计超过 1 个工作日，必须先说明替换范围或日期影响；不允许以通用框架、流程优化或文档扩张填充外部依赖等待时间。
+
 ## 仓库与分支
 
 - 仓库必须保持 private，禁止改为 public。
@@ -67,7 +78,7 @@ bash scripts/install-git-hooks.sh
 - jueyunai 负责 Portal Core、登录、首页、Shell、模块 Registry、UI contract、基础设置、官网/CMS/SEO、素材库、AI 内容工作台、内容生成/人工审核流程、`GeneratedContents` / `ContentReviews` / `PublishJobs` / `PublishLogs`、线索/飞书入口、通用 Jobs 异常外壳、整体 IA/Digital Lattice 和集成验收。Task 9 中 jueyunai 只负责官网 ChatWidget 与 Portal 公共基座，不负责统一会话工作区。
 - xuemusi 负责业务知识库与 AI 调试、AI 客服公共能力、统一会话入口、海外社媒账号/连接器/readiness，以及第三方平台 capability / publish / status、adapter、结果回调和真实发布执行。责任覆盖这些模块的页面或服务、读模型、命令、领域状态机、幂等、权限和审计；不负责 AI 内容工作台 UI、内容生成/审核流程或其共享结构。
 - 责任边界以 [`ADR-0004`](docs/architecture/adr/0004-modular-admin-portal.md) 和 [管理后台模块化架构与责任边界](docs/architecture/管理后台模块化架构与责任边界.mermaid) 为准。依赖箭头不改变 owner；共享 Core、Collection、migration、`src/payload.config.ts` 和跨模块 contract 继续强制另一人 review。
-- 一期平台范围冻结：入站会话仅为 Facebook Messenger、Instagram DM（企业 / 商业账号）和 TikTok 私信（商业账号）；图文发布仅为 Facebook、Instagram（企业账号）和 LinkedIn（账号类型不限制，但 API 发布权限仍需验证）。WhatsApp 不纳入一期系统 connector、Webhook、自动回复或发布能力，二期再评估网页插件等替代接入；官网静态链接不等于系统接入。
+- 一期平台范围冻结：入站会话仅为 Facebook Messenger、Instagram DM（企业 / 商业账号）和 TikTok 私信（商业账号）；图文发布仅为 Facebook、Instagram（企业账号）和 LinkedIn（账号类型不限制，但 API 发布权限仍需验证）。三平台发布由用户在 AI 内容工作台点击一次后触发服务端官方 API 调用，不是无人值守/定时发布，也不接受人工复制粘贴作为交付替代。WhatsApp 不纳入一期系统 connector、Webhook、自动回复或发布能力，二期再评估网页插件等替代接入；官网静态链接不等于系统接入。
 - Task 9 的官网前端可以先依赖 `ChatService` mock 开发；其后端服务和数据库集成必须等待 Task 7 的 `Leads` 合并到 `main`，并消费 Task 8 的 AI 网关 contract。
 - Task 12 的 AI 内容工作台由 jueyunai 负责，可先依赖共同冻结的 `PublishingService` mock 开发；范围包括页面、内容生成/人工审核流程、状态机和 `GeneratedContents` / `ContentReviews` / `PublishJobs` / `PublishLogs`。xuemusi 提供平台 capability / publish / status、账号 readiness、adapter、结果回调和真实发布执行。任何前端都不能直接接入平台 SDK 或 token。
 - Task 9 / Task 12 的跨人接口必须先冻结 TypeScript port/interface、请求响应 schema、错误码、状态枚举和 fixture；双方各自用 fake service / fake repository 完成测试后再替换真实 adapter。
@@ -89,8 +100,8 @@ bash scripts/install-git-hooks.sh
 
 - 需求基线：`docs/requirements/一期需求说明文档.md`。
 - 技术基线：`docs/architecture/一期技术选型与部署架构规划.md`。
-- 总体实施计划：`docs/plans/2026-07-16-一期开发实施计划.md`；管理后台 Portal 任务以
-  `docs/plans/2026-07-29-modular-admin-portal-implementation.md` 和 ADR-0004 为当前实施基线，
-  与总体计划冲突时以 Portal 专项计划为准。
+- 当前冲刺计划：`docs/plans/2026-08-10-MVP范围冻结与交付冲刺.md`。
+- 历史总体实施计划为 `docs/plans/2026-07-16-一期开发实施计划.md`；Portal 历史计划为
+  `docs/plans/2026-07-29-modular-admin-portal-implementation.md` 和 ADR-0004。与当前冲刺计划冲突时，以当前冲刺计划为准。
 - 完成阶段性任务后及时更新 `docs/开发进度.md`。
 - 代码、需求、架构或计划不一致时，先指出冲突并修正文档基线，再继续实施。

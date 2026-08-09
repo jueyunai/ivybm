@@ -81,6 +81,7 @@ GitHub CI 只负责质量门禁与私有镜像发布；1Panel 手动拉取指定
 
 一期执行依据：
 
+- [`docs/plans/2026-08-10-MVP范围冻结与交付冲刺.md`](docs/plans/2026-08-10-MVP范围冻结与交付冲刺.md)（当前冲刺最高执行基线）
 - [`docs/requirements/一期需求说明文档.md`](docs/requirements/一期需求说明文档.md)
 - [`docs/architecture/一期技术选型与部署架构规划.md`](docs/architecture/一期技术选型与部署架构规划.md)
 - [`docs/plans/2026-07-16-一期开发实施计划.md`](docs/plans/2026-07-16-一期开发实施计划.md)
