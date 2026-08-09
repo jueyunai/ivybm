@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createKnowledgeConversationResponder } from '@/modules/conversations/responder'
+import { createKnowledgeConversationResponder, requiresHumanReview } from '@/modules/conversations/responder'
 import type { ChatSession } from '@/modules/conversations/contracts'
 
 const session: ChatSession = {
@@ -30,6 +30,34 @@ describe('knowledge conversation responder', () => {
       handoff: { reason: 'high_risk_topic', source: 'ai_policy' },
     })
     expect(generateText).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['price', 'What is the price?', '价格是多少？', 'ما هو السعر؟'],
+    ['discount', 'Can you give a discount?', '可以打折吗？', 'هل يوجد خصم؟'],
+    ['payment', 'What are the payment terms?', '付款方式是什么？', 'ما شروط الدفع؟'],
+    ['lead-time', 'What is the lead time?', '交期是多久？', 'ما مدة التوريد؟'],
+    ['warranty', 'What warranty do you provide?', '质保多久？', 'ما مدة الضمان؟'],
+    ['lifespan', 'What is the product lifespan?', '产品寿命是多少？', 'ما العمر الافتراضي للمنتج؟'],
+    ['certification', 'Do you have certification?', '有认证证书吗？', 'هل توجد شهادة معتمدة؟'],
+    ['structural-performance', 'What is the structural performance?', '结构性能如何？', 'ما الأداء الإنشائي؟'],
+    ['fire-performance', 'What is the fire resistance rating?', '防火性能如何？', 'ما مقاومة الحريق؟'],
+    ['customs', 'How do customs duties work?', '海关和关税怎么办？', 'كيف تكون إجراءات الجمارك؟'],
+    ['freight', 'How much is freight and shipping?', '运费和运输怎么计算？', 'كم تكلفة الشحن؟'],
+    ['insurance', 'Can you arrange insurance?', '可以购买保险吗？', 'هل يشمل التأمين؟'],
+    ['liability', 'Who accepts liability?', '责任归属是谁？', 'من يتحمل المسؤولية؟'],
+  ])('uses the authoritative policy for %s in English, Chinese, and Arabic', (_topic, en, zh, ar) => {
+    expect(requiresHumanReview(en)).toBe(true)
+    expect(requiresHumanReview(zh)).toBe(true)
+    expect(requiresHumanReview(ar)).toBe(true)
+  })
+
+  it.each([
+    ['quote', 'Please quote the panels.'],
+    ['quotation', 'I need a quotation today.'],
+    ['Arabic quotation', 'أرسل عرض سعر من فضلك.'],
+  ])('keeps quotation aliases on the handoff path (%s)', (_label, message) => {
+    expect(requiresHumanReview(message)).toBe(true)
   })
 
   it('uses reviewed knowledge and preserves citations, model and prompt version', async () => {

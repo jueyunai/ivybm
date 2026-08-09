@@ -1,5 +1,6 @@
 import type { ChatLocale, ChatSession } from './contracts'
 import type { ConversationResponder } from './service'
+import { detectKnowledgeRiskTopics } from '@/modules/knowledge/ingestion/translation'
 
 type ReviewedKnowledge = {
   citation: { documentId: number | string; title: string; url?: string; version: string }
@@ -19,13 +20,8 @@ type ConversationResponderOptions = {
   retrieve(input: { locale: ChatLocale; query: string }): Promise<ReviewedKnowledge[]>
 }
 
-const highRiskPatterns = [
-  /\b(price|pricing|quotation|quote|discount|payment|delivery|lead time|certificate|certification|warranty)\b/i,
-  /(السعر|الأسعار|عرض سعر|الدفع|التسليم|مدة التوريد|شهادة|ضمان)/,
-]
-
 export const requiresHumanReview = (message: string): boolean =>
-  highRiskPatterns.some((pattern) => pattern.test(message))
+  detectKnowledgeRiskTopics(message).length > 0
 
 export const createKnowledgeConversationResponder = ({
   generateText,

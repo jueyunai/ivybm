@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import type { PostgresAdapter } from '@payloadcms/db-postgres'
+import { sql, type PostgresAdapter } from '@payloadcms/db-postgres'
 import {
   commitTransaction,
   createLocalReq,
@@ -176,6 +176,18 @@ export class PayloadJobQueue {
     return (this.payload.db as unknown as PostgresAdapter).pool
   }
 
+  private async transactionDatabase(req?: PayloadRequest) {
+    const transactionID = await req?.transactionID
+    if (!transactionID) return null
+
+    const adapter = this.payload.db as unknown as PostgresAdapter
+    const database = adapter.sessions[transactionID]?.db
+    if (!database) {
+      throw new JobQueueError('conflict', 'Job queue transaction session is unavailable')
+    }
+    return database
+  }
+
   private async transaction<T>(actor: User, operation: (req: PayloadRequest) => Promise<T>): Promise<T> {
     const req = await createLocalReq({ user: actor }, this.payload)
     await initTransaction(req)
@@ -189,7 +201,10 @@ export class PayloadJobQueue {
     }
   }
 
-  async enqueue(input: CreateJobInput): Promise<{ job: JobRecord; state: 'created' | 'duplicate' }> {
+  async enqueue(
+    input: CreateJobInput,
+    req?: PayloadRequest,
+  ): Promise<{ job: JobRecord; state: 'created' | 'duplicate' }> {
     if (!input.type.trim()) {
       throw new JobQueueError('validation', 'Job type is required')
     }
@@ -198,6 +213,42 @@ export class PayloadJobQueue {
     const nextRunAt = input.nextRunAt ?? now
     const maxAttempts = validateMaxAttempts(input.maxAttempts ?? 5)
     const idempotencyKey = input.idempotencyKey ?? null
+
+    const transactionDatabase = await this.transactionDatabase(req)
+    if (transactionDatabase) {
+      const inserted = await transactionDatabase.execute<JobDatabaseRow>(sql`
+        INSERT INTO "jobs" (
+          "type", "idempotency_key", "payload", "status", "attempts", "max_attempts", "next_run_at",
+          "manual_retry_count", "updated_at", "created_at"
+        ) VALUES (
+          ${input.type}, ${idempotencyKey}, ${JSON.stringify(input.payload)}::jsonb, 'pending', 0,
+          ${maxAttempts}, ${nextRunAt.toISOString()}, 0, ${now.toISOString()}, ${now.toISOString()}
+        )
+        ON CONFLICT ("type", "idempotency_key") DO NOTHING
+        RETURNING ${sql.raw(selectedJobColumns)}
+      `)
+
+      if (inserted.rows[0]) {
+        return { job: mapDatabaseJob(inserted.rows[0]), state: 'created' }
+      }
+
+      if (!idempotencyKey) {
+        throw new JobQueueError('conflict', 'Job insert did not return a row')
+      }
+
+      const existing = await transactionDatabase.execute<JobDatabaseRow>(sql`
+        SELECT ${sql.raw(selectedJobColumns)}
+        FROM "jobs"
+        WHERE "type" = ${input.type} AND "idempotency_key" = ${idempotencyKey}
+        LIMIT 1
+      `)
+      if (!existing.rows[0]) {
+        throw new JobQueueError('conflict', 'Idempotent job was not found after insert conflict')
+      }
+
+      return { job: mapDatabaseJob(existing.rows[0]), state: 'duplicate' }
+    }
+
     const inserted = await this.pool.query<JobDatabaseRow>(
       `INSERT INTO jobs (
         type, idempotency_key, payload, status, attempts, max_attempts, next_run_at,

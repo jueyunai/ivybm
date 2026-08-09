@@ -23,7 +23,7 @@
 | UI-003 | Retry boundary | operator/admin + failed source | 点击重试 | operator 无越权；admin 幂等重试 | E2E |
 | SEC-001 | Private files | anonymous/sales/admin | 请求原件和 asset URL | 仅有权限角色可读；不泄露绝对路径 | integration |
 | REG-001 | Existing knowledge | 既有手工知识 | CRUD→review→index→preview | 现有流程不回归 | existing suites |
-| MIG-001 | Migration | PostgreSQL 18 + pgvector 空库/升级库 | full up/down/up | 线性通过，既有数据保持 | migration log |
+| MIG-001 | Migration | 一次性隔离 PostgreSQL 18 + pgvector 验证库 | full up/down/up | 仅验证 migration 线性可执行；`down` 的破坏性仅限 disposable 库。Production rollback 只回滚应用并保留 schema/data | migration log |
 | REAL-001 | Local DOCX | 4 份仓库外真实 DOCX | 本地上传处理 | 全部进入明确成功或可行动失败状态；20MB 样本不 OOM | acceptance report |
 | REAL-002 | Real model | 本地加密测试 route | 翻译代表性片段 | EN/AR 生成；usage log 有证据；Key 不出日志 | acceptance report |
 | PROD-001 | Production | 未获部署批准 | 检查本 PR | 不部署；记录正式 route/prompt/Key 人工动作 | PR checklist |
@@ -46,7 +46,7 @@
 - 自动产物门禁：真实 Payload worker 生成 EN/AR 两条 `draft / customerVisible=false / pending` 草稿；来源新版本会立即撤回旧版本的 reviewed/ready/visible 状态。
 - 失败与重试：阿语单侧翻译失败时不写入任何部分草稿；Operator 重试被拒绝，Admin 可重新排队并完成。
 - 私有访问：匿名、Sales 不能读取原件；Operator 可读取原件和同来源图片，响应 `private, no-store`，API 不返回 owner token 或绝对路径。
-- 回归：同步最新 `origin/main` 后 unit 113 files / 779 tests、integration 29 files / 172 tests、contract 7 files / 70 tests、知识 Portal Chromium E2E 3 tests、build、migration up/down/up 均通过。
+- 回归：同步最新 `origin/main` 后 unit 115 files / 806 tests、integration 29 files / 172 tests、contract 7 files / 70 tests、知识 Portal Chromium E2E 3/3（无 skip）、build、migration down/up 均通过；非 Docker operations 32/32 通过。
 - 真实资料：4 份仓库外 DOCX 解析统计分别为 3241/531/1884/1776 字符和 0/0/4/70 张图片；未复制或提交原件。
 - 真实模型：88996 本地加密测试 route 返回阿语，型号、数字+单位和图片占位符经保真占位机制完整恢复；不输出正文或 Key，不作为 production 凭据。
-- 外部缺口：本机未安装 Docker，Compose/production preflight operations 无法本地执行，交由 GitHub CI；未获 production 部署批准。
+- 外部缺口：本机未安装 Docker，Compose 8 项和 production preflight 成功路径 9 项无法完成最终 Compose 校验，交由 GitHub Full CI；未获 production 部署批准。

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { Payload } from 'payload'
 
 import { createAiGateway, type AiProvider } from '@/modules/ai/gateway'
+import { AiConfigurationError } from '@/modules/ai/config'
+import { AI_USAGE_KEYS, resolveAiGateway } from '@/modules/ai/registry'
 import {
   detectKnowledgeRiskTopics,
   resolveKnowledgeTranslationPrompt,
@@ -78,5 +81,57 @@ describe('knowledge translation safeguards', () => {
 
   it('returns stable multilingual high-risk labels', () => {
     expect(detectKnowledgeRiskTopics('价格、交期、质保、السعر والضمان')).toEqual(['price', 'lead-time', 'warranty'])
+  })
+
+  it('covers every Task 8 risk topic in English, Chinese, and Arabic', () => {
+    const messages = [
+      'price 价格 السعر',
+      'discount 折扣 الخصم',
+      'payment terms 付款方式 شروط الدفع',
+      'lead time 交期 مدة التوريد',
+      'warranty 质保 الضمان',
+      'lifespan 寿命 العمر الافتراضي',
+      'certification 认证 شهادة',
+      'structural performance 结构性能 الأداء الإنشائي',
+      'fire resistance 防火 مقاومة الحريق',
+      'customs 关税 الجمارك',
+      'freight 运费 الشحن',
+      'insurance 保险 التأمين',
+      'liability 责任 المسؤولية',
+    ]
+    expect(detectKnowledgeRiskTopics(messages.join(' '))).toEqual([
+      'price',
+      'discount',
+      'payment',
+      'lead-time',
+      'warranty',
+      'lifespan',
+      'certification',
+      'structural-performance',
+      'fire-performance',
+      'customs',
+      'freight',
+      'insurance',
+      'liability',
+    ])
+  })
+
+  it.each(['quote', 'quotation', '报价', 'عرض سعر'])('detects quotation aliases: %s', (term) => {
+    expect(detectKnowledgeRiskTopics(term)).toContain('price')
+  })
+
+  it('fails closed when the CMS translation route is missing, even if legacy env text config exists', async () => {
+    await expect(
+      resolveAiGateway({
+        allowEnvironmentFallback: false,
+        environment: {
+          AI_PROVIDER_API_KEY: 'test-key',
+          AI_PROVIDER_BASE_URL: 'https://provider.example.invalid/v1',
+          AI_TEXT_MODEL: 'legacy-model',
+        },
+        payload: { find: vi.fn().mockResolvedValue({ docs: [] }) } as unknown as Payload,
+        routes: [{ operation: 'text', usageKey: AI_USAGE_KEYS.knowledgeTranslation }],
+      }),
+    ).rejects.toBeInstanceOf(AiConfigurationError)
   })
 })

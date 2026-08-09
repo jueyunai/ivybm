@@ -48,10 +48,11 @@ export default defineConfig({
   webServer: usesExternalServer
     ? undefined
     : {
-        command: isCI ? 'pnpm e2e:server' : 'pnpm dev',
+        command: isCI ? 'corepack pnpm e2e:server' : 'corepack pnpm dev',
         env: {
           AI_CONFIG_ENCRYPTION_KEY: e2eEncryptionKey,
-          ...(isCI ? { HOSTNAME: '127.0.0.1', PORT: e2ePort } : {}),
+          PORT: isCI ? e2ePort : devPort,
+          ...(isCI ? { HOSTNAME: '127.0.0.1' } : {}),
         },
         reuseExistingServer: !isCI,
         timeout: 120_000,

@@ -5554,12 +5554,14 @@
     display: grid;
     gap: 3px;
     min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .portal-knowledge__sources article span,
   .portal-knowledge__sources article small {
     color: var(--portal-muted);
     font-size: 11px;
+    overflow-wrap: anywhere;
   }
 
   .portal-knowledge__source-detail {

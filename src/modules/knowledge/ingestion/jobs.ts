@@ -79,7 +79,15 @@ export const parseKnowledgeIngestJobPayload = (value: Record<string, unknown>): 
 })
 
 const sourceFilePath = (filename: string): string => {
-  if (!filename || path.basename(filename) !== filename) throw new Error('Invalid source file name')
+  if (
+    !filename ||
+    filename === '.' ||
+    filename === '..' ||
+    filename.includes('\0') ||
+    path.basename(filename) !== filename
+  ) {
+    throw new Error('Invalid source file name')
+  }
   return path.join(process.cwd(), 'private/knowledge-sources', filename)
 }
 
@@ -457,6 +465,7 @@ const finalizeKnowledgeIngestion = async ({
 export const enqueueKnowledgeIngestJob = async ({
   manualRetryActor,
   payload,
+  req,
   requestedBy,
   sourceHash,
   sourceId,
@@ -464,6 +473,7 @@ export const enqueueKnowledgeIngestJob = async ({
 }: {
   manualRetryActor?: JobRetryActor
   payload: KnowledgeIngestionPayloadPort
+  req?: PayloadRequest
   requestedBy: number | null
   sourceHash: string
   sourceId: number
@@ -474,7 +484,7 @@ export const enqueueKnowledgeIngestJob = async ({
     idempotencyKey: [KNOWLEDGE_INGEST_JOB_TYPE, sourceId, sourceRevision].join(':'),
     payload: { requestedBy, sourceHash, sourceId, sourceRevision },
     type: KNOWLEDGE_INGEST_JOB_TYPE,
-  })
+  }, req)
   if (
     manualRetryActor?.role === 'admin' &&
     enqueued.state === 'duplicate' &&
@@ -538,7 +548,11 @@ export const createKnowledgeIngestJobHandler = ({
       sourceRevision: input.sourceRevision,
     })
     const [gateway, enPrompt, arPrompt] = await Promise.all([
-      resolveTranslationGateway({ payload: payload as Payload, routes: [{ operation: 'text', usageKey: AI_USAGE_KEYS.knowledgeTranslation }] }),
+      resolveTranslationGateway({
+        allowEnvironmentFallback: false,
+        payload: payload as Payload,
+        routes: [{ operation: 'text', usageKey: AI_USAGE_KEYS.knowledgeTranslation }],
+      }),
       resolveTranslationPrompt({ locale: 'en', payload: payload as Payload }),
       resolveTranslationPrompt({ locale: 'ar', payload: payload as Payload }),
     ])

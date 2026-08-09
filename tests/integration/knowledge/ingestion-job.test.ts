@@ -215,16 +215,23 @@ describe.sequential('knowledge source ingestion job', () => {
     expect((await uploadKnowledgeSource(request(salesAuthorization))).status).toBe(403)
     const created = await uploadKnowledgeSource(request(operatorAuthorization))
     expect(created.status).toBe(201)
-    const createdBody = (await created.json()) as { job: { id: number }; source: { id: number } }
+    const createdBody = (await created.json()) as { job: { id: number } & Record<string, unknown>; source: { id: number } }
     sourceIDs.push(createdBody.source.id)
     jobIDs.push(createdBody.job.id)
+    for (const forbidden of ['payload', 'ownerToken', 'leaseExpiresAt', 'lastError']) {
+      expect(createdBody.job).not.toHaveProperty(forbidden)
+    }
     const duplicate = await uploadKnowledgeSource(request(operatorAuthorization))
     // An idempotency receipt replays the original HTTP result exactly.
     expect(duplicate.status).toBe(201)
-    await expect(duplicate.json()).resolves.toMatchObject({
+    const duplicateBody = (await duplicate.json()) as { job: { id: number } & Record<string, unknown>; source: { id: number } }
+    expect(duplicateBody).toMatchObject({
       job: { id: createdBody.job.id },
       source: { id: createdBody.source.id },
     })
+    for (const forbidden of ['payload', 'ownerToken', 'leaseExpiresAt', 'lastError']) {
+      expect(duplicateBody.job).not.toHaveProperty(forbidden)
+    }
     const worker = new JobWorker({
       handlers: { [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload, resolveGateway: async () => gateway() }) },
       queue: new PayloadJobQueue({ payload }),

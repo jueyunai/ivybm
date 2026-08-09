@@ -129,7 +129,12 @@ export const safeKnowledgeSourceSummary = (source: Record<string, unknown>) => (
   filesize: typeof source.filesize === 'number' ? source.filesize : 0,
   id: source.id as number | string,
   imageCount: typeof source.imageCount === 'number' ? source.imageCount : 0,
-  mimeType: typeof source.mimeType === 'string' && KNOWLEDGE_SOURCE_MIME_TYPES.includes(source.mimeType as never) ? source.mimeType : null,
+  mimeType:
+    typeof source.mimeType === 'string' && KNOWLEDGE_SOURCE_MIME_TYPES.includes(source.mimeType as never)
+      ? source.mimeType
+      : source.mimeType === 'application/zip' && typeof source.filename === 'string' && source.filename.toLowerCase().endsWith('.docx')
+        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        : null,
   processingStage: typeof source.processingStage === 'string' ? source.processingStage : 'queued',
   processingStatus: typeof source.processingStatus === 'string' ? source.processingStatus : 'queued',
   sourceTitle: typeof source.sourceTitle === 'string' ? source.sourceTitle : '',

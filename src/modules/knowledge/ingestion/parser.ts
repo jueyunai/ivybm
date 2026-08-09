@@ -468,8 +468,12 @@ export const parsePdf = async (data: Buffer): Promise<ParsedKnowledgeSource> => 
 }
 
 export const parseKnowledgeSource = async (file: KnowledgeSourceFile): Promise<ParsedKnowledgeSource> => {
-  validateKnowledgeSourceFile(file)
-  return file.mimetype === 'application/pdf' ? parsePdf(file.data) : parseDocx(file.data)
+  // Payload may persist an OOXML upload as `application/zip` after its own
+  // content sniffing. Normalize that representation before dispatching so a
+  // valid DOCX cannot be rejected only because it crossed the storage
+  // boundary. Ordinary ZIP files still fail signature/OOXML validation.
+  const validFile = validateStoredKnowledgeSourceFile(file)
+  return validFile.mimetype === 'application/pdf' ? parsePdf(validFile.data) : parseDocx(validFile.data)
 }
 
 /** Port used by the ingestion worker; keeping it injectable makes fixture and lease tests cheap. */

@@ -2,8 +2,8 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { readKnowledgeSourceUpload } from '@/admin-portal/modules/knowledge/knowledgeSourceRoute'
-import { KnowledgeSourceCommandError } from '@/modules/knowledge/ingestion/source'
+import { readKnowledgeSourceUpload, safeKnowledgeSourceSummary } from '@/admin-portal/modules/knowledge/knowledgeSourceRoute'
+import { KnowledgeSourceCommandError, knowledgeSourceStoragePath } from '@/modules/knowledge/ingestion/source'
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
@@ -46,5 +46,20 @@ describe('knowledge source upload request boundary', () => {
       code: 'request-too-large',
       status: 413,
     } satisfies Partial<KnowledgeSourceCommandError>)
+  })
+
+  it('rejects dot-path storage names before touching the private directory', () => {
+    expect(() => knowledgeSourceStoragePath('..')).toThrow('safe file name')
+    expect(() => knowledgeSourceStoragePath('.')).toThrow('safe file name')
+    expect(() => knowledgeSourceStoragePath('nested/source.docx')).toThrow('safe file name')
+  })
+
+  it('normalizes Payload ZIP sniffing to the private DOCX MIME in summaries', () => {
+    expect(
+      safeKnowledgeSourceSummary({ filename: 'guide.docx', mimeType: 'application/zip' }),
+    ).toMatchObject({
+      filename: 'guide.docx',
+      mimeType: DOCX_MIME,
+    })
   })
 })

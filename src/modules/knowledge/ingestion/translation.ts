@@ -223,19 +223,19 @@ export const translateKnowledgeText = async ({
 }
 
 const topicPatterns: Record<KnowledgeRiskTopic, RegExp> = {
-  price: /(?:\bprice\b|\bpricing\b|报价|价格|价钱|سعر|أسعار)/i,
-  discount: /(?:\bdiscount\b|折扣|优惠|خصم)/i,
-  payment: /(?:\bpayment\b|付款|支付|付款方式|دفعة|الدفع)/i,
-  'lead-time': /(?:\blead[- ]?time\b|\bdelivery(?: time| date)?\b|交期|交货期|交付|工期|مدة التسليم|مدة التوريد|موعد التسليم)/i,
-  warranty: /(?:\bwarranty\b|\bguarantee\b|质保|保修|ضمان)/i,
-  lifespan: /(?:\blifespan\b|\bservice life\b|寿命|使用年限|العمر الافتراضي)/i,
-  certification: /(?:\bcertification\b|\bcertificate\b|认证|证书|شهادة|اعتماد)/i,
-  'structural-performance': /(?:\bstructural\b|\bload[- ]?bearing\b|结构|承重|إنشائي|تحمل الأحمال)/i,
-  'fire-performance': /(?:\bfire[- ]?(?:rating|resistance|performance)\b|防火|耐火|مقاومة الحريق)/i,
-  customs: /(?:\bcustoms\b|\btariff\b|关税|海关|الجمارك|التعرفة)/i,
-  freight: /(?:\bfreight\b|\bshipping\b|运费|运输|الشحن)/i,
+  price: /(?:\bprice\b|\bpricing\b|\bquote\b|\bquotation\b|报价|价格|价钱|报盘|سعر|أسعار|عرض سعر|عرض أسعار|تسعيرة|التسعير)/i,
+  discount: /(?:\bdiscount\b|折扣|打折|优惠|خصم|الخصم)/i,
+  payment: /(?:\bpayment\b|\bpay(?:ment)? terms?\b|付款|支付|付款方式|دفعة|الدفع|شروط الدفع)/i,
+  'lead-time': /(?:\blead[- ]?time\b|\bdelivery(?: time| date)?\b|\bshipping time\b|交期|交货期|交付|工期|交货时间|مدة التسليم|مدة التوريد|موعد التسليم|وقت التسليم)/i,
+  warranty: /(?:\bwarranty\b|\bguarantee\b|质保|保修|保固|ضمان|الضمان)/i,
+  lifespan: /(?:\blifespan\b|\bservice life\b|\blife expectancy\b|寿命|使用年限|使用寿命|العمر الافتراضي|العمر المتوقع)/i,
+  certification: /(?:\bcertification\b|\bcertificate\b|\bcertified\b|认证|证书|合规|شهادة|اعتماد|معتمد)/i,
+  'structural-performance': /(?:\bstructur(?:al|e)\b|\bload[- ]?bearing\b|结构|结构性能|承重|إنشائي|هيكلي|تحمل الأحمال)/i,
+  'fire-performance': /(?:\bfire[- ]?(?:rating|resistance|performance)\b|防火|耐火|防火性能|مقاومة الحريق|أداء الحريق)/i,
+  customs: /(?:\bcustoms\b|\btariff\b|\bcustoms duty\b|关税|海关|清关|الجمارك|التعرفة|الرسوم الجمركية)/i,
+  freight: /(?:\bfreight\b|\bshipping\b|\btransport(?:ation)?\b|运费|运输|货运|الشحن|النقل)/i,
   insurance: /(?:\binsurance\b|保险|التأمين)/i,
-  liability: /(?:\bliability\b|\bresponsibility\b|责任|赔偿|المسؤولية|تعويض)/i,
+  liability: /(?:\bliability\b|\bresponsibility\b|\bindemnity\b|责任|赔偿|责任归属|المسؤولية|تعويض|التعويض)/i,
 }
 
 export const detectKnowledgeRiskTopics = (text: string): KnowledgeRiskTopic[] =>

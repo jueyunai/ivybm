@@ -1,6 +1,13 @@
 import path from 'node:path'
 
-import type { Payload, PayloadRequest } from 'payload'
+import {
+  commitTransaction,
+  createLocalReq,
+  initTransaction,
+  killTransaction,
+  type Payload,
+  type PayloadRequest,
+} from 'payload'
 
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import type { JobRecord, JobRetryActor } from '@/modules/jobs/contracts'
@@ -96,7 +103,21 @@ const sourceMatch = (source: Record<string, unknown>, hash: string, version: str
   source.sourceHash === hash && source.sourceVersion === version
 
 export type KnowledgeSourceCommandResult = {
-  job: JobRecord
+  /** Job metadata safe to return through the Portal API; lease/payload data is server-only. */
+  job: Pick<
+    JobRecord,
+    | 'attempts'
+    | 'completedAt'
+    | 'createdAt'
+    | 'deadAt'
+    | 'id'
+    | 'manualRetryCount'
+    | 'maxAttempts'
+    | 'nextRunAt'
+    | 'status'
+    | 'type'
+    | 'updatedAt'
+  >
   source: {
     id: number | string
     ingestionRevision: string
@@ -109,8 +130,22 @@ export type KnowledgeSourceCommandResult = {
   state: 'created' | 'duplicate'
 }
 
+const safeJob = (job: JobRecord): KnowledgeSourceCommandResult['job'] => ({
+  attempts: job.attempts,
+  completedAt: job.completedAt,
+  createdAt: job.createdAt,
+  deadAt: job.deadAt,
+  id: job.id,
+  manualRetryCount: job.manualRetryCount,
+  maxAttempts: job.maxAttempts,
+  nextRunAt: job.nextRunAt,
+  status: job.status,
+  type: job.type,
+  updatedAt: job.updatedAt,
+})
+
 const resultFrom = (source: Record<string, unknown>, job: JobRecord, state: 'created' | 'duplicate'): KnowledgeSourceCommandResult => ({
-  job,
+  job: safeJob(job),
   source: {
     id: source.id as number | string,
     ingestionRevision: typeof source.ingestionRevision === 'string' ? source.ingestionRevision : '',
@@ -134,134 +169,151 @@ export const createKnowledgeSourceAndEnqueue = async ({
   payload: KnowledgeIngestionPayload
   req: PayloadRequest
 }): Promise<KnowledgeSourceCommandResult> => {
-  const validFile = validateKnowledgeSourceFile(file)
-  const parsedMetadata = parseKnowledgeSourceMetadata(metadata)
-  const sourceHash = sha256(validFile.data)
-  const ingestionRevision = sourceIngestionRevision(sourceHash, parsedMetadata.sourceVersion)
-  const existingResult = await payload.find({
-    collection: 'knowledge-source-documents',
-    depth: 0,
-    limit: 2,
-    overrideAccess: false,
-    pagination: false,
-    req,
-    where: {
-      and: [
-        { sourceHash: { equals: sourceHash } },
-        { sourceVersion: { equals: parsedMetadata.sourceVersion } },
-      ],
-    },
-  })
-  const existing = (existingResult.docs as unknown[]).map(asRecord).find((source) => sourceMatch(source, sourceHash, parsedMetadata.sourceVersion))
-  if (existing?.id !== undefined) {
-    const jobResult = await enqueueKnowledgeIngestJob({
-      payload,
-      requestedBy: Number(req.user?.id) || null,
-      sourceId: existing.id as number,
-      sourceHash,
-      sourceRevision: ingestionRevision,
-    })
-    return resultFrom(existing, jobResult.job, jobResult.state)
-  }
-
-  // A new version of the same titled source invalidates every prior generated
-  // output before the new worker can produce drafts. This prevents an old
-  // reviewed/visible translation from remaining customer-retrievable while a
-  // replacement is being parsed.
-  const previousSources = await payload.find({
-    collection: 'knowledge-source-documents',
-    depth: 0,
-    limit: 100,
-    overrideAccess: true,
-    pagination: false,
-    req,
-    where: {
-      and: [
-        { sourceTitle: { equals: parsedMetadata.sourceTitle } },
-        { sourceType: { equals: parsedMetadata.sourceType } },
-      ],
-    },
-  })
-  for (const previous of previousSources.docs.map(asRecord)) {
-    if (sourceMatch(previous, sourceHash, parsedMetadata.sourceVersion) || typeof previous.id !== 'number') continue
-    const outputs = await payload.find({
-      collection: 'knowledge-documents',
+  const run = async (commandReq: PayloadRequest): Promise<KnowledgeSourceCommandResult> => {
+    const validFile = validateKnowledgeSourceFile(file)
+    const parsedMetadata = parseKnowledgeSourceMetadata(metadata)
+    const sourceHash = sha256(validFile.data)
+    const ingestionRevision = sourceIngestionRevision(sourceHash, parsedMetadata.sourceVersion)
+    const existingResult = await payload.find({
+      collection: 'knowledge-source-documents',
       depth: 0,
-      limit: 10,
-      overrideAccess: true,
+      limit: 2,
+      overrideAccess: false,
       pagination: false,
-      req,
-      where: { ingestionSource: { equals: previous.id } },
+      req: commandReq,
+      where: {
+        and: [
+          { sourceHash: { equals: sourceHash } },
+          { sourceVersion: { equals: parsedMetadata.sourceVersion } },
+        ],
+      },
     })
-    for (const output of outputs.docs.map(asRecord)) {
-      if (typeof output.id !== 'number') continue
-      await payload.update({
-        collection: 'knowledge-documents',
-        context: { knowledgeIngestion: true, skipAudit: true },
-        data: {
-          customerVisible: false,
-          embeddingModel: null,
-          embeddingSpace: null,
-          indexJobId: null,
-          indexOwnerToken: null,
-          indexStatus: 'pending',
-          indexedAt: null,
-          reviewStatus: 'draft',
-          reviewedAt: null,
-          reviewedBy: null,
-        },
-        id: output.id,
-        overrideAccess: true,
-        req,
+    const existing = (existingResult.docs as unknown[]).map(asRecord).find((source) => sourceMatch(source, sourceHash, parsedMetadata.sourceVersion))
+    if (existing?.id !== undefined) {
+      const jobResult = await enqueueKnowledgeIngestJob({
+        payload,
+        req: commandReq,
+        requestedBy: Number(commandReq.user?.id) || null,
+        sourceId: existing.id as number,
+        sourceHash,
+        sourceRevision: ingestionRevision,
       })
+      return resultFrom(existing, jobResult.job, jobResult.state)
     }
-  }
 
-  const source = asRecord(await payload.create({
-    collection: 'knowledge-source-documents',
-    context: { knowledgeIngestion: true, skipAudit: false },
-    data: {
-      ...parsedMetadata,
-      ingestionRevision,
-      processingStage: 'queued',
-      processingStatus: 'queued',
-      sourceHash,
-    },
-    file: knowledgeSourceFileToUpload(validFile),
-    overrideAccess: false,
-    req,
-  }))
-  const sourceId = source.id
-  if (typeof sourceId !== 'number' && typeof sourceId !== 'string') {
-    throw new KnowledgeSourceCommandError('source-create-failed', 'The source could not be created', 500)
-  }
-  try {
+    // Keep source creation, queue association, and historical invalidation in
+    // one transaction. The queue insert uses the same Payload transaction
+    // session, so workers cannot observe the Job before the source commits.
+    const source = asRecord(await payload.create({
+      collection: 'knowledge-source-documents',
+      context: { knowledgeIngestion: true, skipAudit: false },
+      data: {
+        ...parsedMetadata,
+        ingestionRevision,
+        processingStage: 'queued',
+        processingStatus: 'queued',
+        sourceHash,
+      },
+      file: knowledgeSourceFileToUpload(validFile),
+      overrideAccess: false,
+      req: commandReq,
+    }))
+    const sourceId = source.id
+    if (typeof sourceId !== 'number' && typeof sourceId !== 'string') {
+      throw new KnowledgeSourceCommandError('source-create-failed', 'The source could not be created', 500)
+    }
     const jobResult = await enqueueKnowledgeIngestJob({
       payload,
-      requestedBy: Number(req.user?.id) || null,
+      req: commandReq,
+      requestedBy: Number(commandReq.user?.id) || null,
       sourceId: Number(sourceId),
       sourceHash,
       sourceRevision: ingestionRevision,
     })
+
+    // A new version of the same titled source invalidates every prior output.
+    // Paginate both dimensions: there is no safe fixed cap on historical
+    // sources or generated outputs.
+    const previousSources: Record<string, unknown>[] = []
+    for (let page = 1; ; page += 1) {
+      const result = await payload.find({
+        collection: 'knowledge-source-documents',
+        depth: 0,
+        limit: 100,
+        overrideAccess: true,
+        page,
+        pagination: true,
+        req: commandReq,
+        where: {
+          and: [
+            { sourceTitle: { equals: parsedMetadata.sourceTitle } },
+            { sourceType: { equals: parsedMetadata.sourceType } },
+          ],
+        },
+      })
+      previousSources.push(...result.docs.map(asRecord))
+      if (!result.hasNextPage || result.docs.length === 0) break
+    }
+    for (const previous of previousSources) {
+      if (sourceMatch(previous, sourceHash, parsedMetadata.sourceVersion) || typeof previous.id !== 'number') continue
+      for (let page = 1; ; page += 1) {
+        const outputs = await payload.find({
+          collection: 'knowledge-documents',
+          depth: 0,
+          limit: 100,
+          overrideAccess: true,
+          page,
+          pagination: true,
+          req: commandReq,
+          where: { ingestionSource: { equals: previous.id } },
+        })
+        for (const output of outputs.docs.map(asRecord)) {
+          if (typeof output.id !== 'number') continue
+          await payload.update({
+            collection: 'knowledge-documents',
+            context: { knowledgeIngestion: true, skipAudit: true },
+            data: {
+              customerVisible: false,
+              embeddingModel: null,
+              embeddingSpace: null,
+              indexJobId: null,
+              indexOwnerToken: null,
+              indexStatus: 'pending',
+              indexedAt: null,
+              reviewStatus: 'draft',
+              reviewedAt: null,
+              reviewedBy: null,
+            },
+            id: output.id,
+            overrideAccess: true,
+            req: commandReq,
+          })
+        }
+        if (!outputs.hasNextPage || outputs.docs.length === 0) break
+      }
+    }
+
     await payload.update({
       collection: 'knowledge-source-documents',
       context: { knowledgeIngestion: true, skipAudit: true },
       data: { currentJobId: jobResult.job.id },
       id: sourceId,
       overrideAccess: true,
-      req,
+      req: commandReq,
     })
     const refreshed = asRecord({ ...source, currentJobId: jobResult.job.id })
     return resultFrom(refreshed, jobResult.job, jobResult.state)
+  }
+
+  if (await req.transactionID) return run(req)
+  const transactionReq = await createLocalReq({ user: req.user ?? undefined }, payload as Payload)
+  await initTransaction(transactionReq)
+  try {
+    const result = await run(transactionReq)
+    await commitTransaction(transactionReq)
+    return result
   } catch (error) {
-    await payload.update({
-      collection: 'knowledge-source-documents',
-      context: { knowledgeIngestion: true, skipAudit: true },
-      data: { errorCode: 'queue-failed', errorSummary: 'The ingestion task could not be queued', processingStatus: 'failed' },
-      id: sourceId,
-      overrideAccess: true,
-      req,
-    }).catch(() => undefined)
+    await killTransaction(transactionReq).catch(() => undefined)
     throw error
   }
 }
@@ -292,6 +344,7 @@ export const retryKnowledgeSource = async ({
   } else {
     const enqueued = await enqueueKnowledgeIngestJob({
       payload,
+      req,
       requestedBy: Number(req.user?.id) || null,
       sourceId: Number(source.id),
       sourceHash: String(source.sourceHash),
@@ -312,7 +365,15 @@ export const retryKnowledgeSource = async ({
 }
 
 export const knowledgeSourceStoragePath = (filename: string, asset = false): string => {
-  if (!filename || path.basename(filename) !== filename) throw new KnowledgeSourceCommandError('invalid-file-name', 'A safe file name is required')
+  if (
+    !filename ||
+    filename === '.' ||
+    filename === '..' ||
+    filename.includes('\0') ||
+    path.basename(filename) !== filename
+  ) {
+    throw new KnowledgeSourceCommandError('invalid-file-name', 'A safe file name is required')
+  }
   return path.join(process.cwd(), asset ? 'private/knowledge-source-assets' : 'private/knowledge-sources', filename)
 }
 

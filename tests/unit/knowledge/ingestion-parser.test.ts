@@ -118,4 +118,16 @@ describe('knowledge source parser', () => {
     const file = { data, mimetype: 'application/pdf', name: 'source.pdf', size: data.length }
     await expect(parseKnowledgeSource(file)).resolves.toMatchObject({ detectedLanguage: 'en' })
   })
+
+  it('accepts a valid DOCX whose stored MIME was sniffed as ZIP', async () => {
+    const data = makeDocx()
+    await expect(
+      parseKnowledgeSource({
+        data,
+        mimetype: 'application/zip',
+        name: 'source.docx',
+        size: data.length,
+      }),
+    ).resolves.toMatchObject({ detectedLanguage: 'en' })
+  })
 })

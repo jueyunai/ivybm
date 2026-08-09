@@ -83,9 +83,9 @@ Portal multipart upload
 
 ## Deployment / Rollback
 
-- 本 PR 不部署 production。migration 在独立 PostgreSQL 18 + pgvector 库验证 up/down 和全量线性历史。
+- 本 PR 不部署 production。migration 的 up/down/up 只允许在一次性、隔离的 PostgreSQL 18 + pgvector 验证库执行；`down` 会删除 Task 8 表/字段，绝不能作为 production rollback，也不能连接含客户数据的环境。
 - 发布前先停止旧 worker、运行 migration，再启动 app/worker；新增 handler 未启用时不会被旧 worker消费。
-- 回滚应用前先停止新 ingestion；保留新增表和 nullable 字段，避免删除客户原件。数据删除另需人工批准。
+- production 回滚只回滚应用镜像/代码：先停止新 ingestion，保留新增表、nullable 字段和全部数据，避免删除客户原件。任何 schema/data 删除另需人工批准；若需验证 down/up，必须使用隔离 disposable 库并在验证后销毁。
 - `ADMIN_PORTAL_KNOWLEDGE_ENABLED=false` 时不暴露上传/重试入口。
 
 ## Concurrency And Review Boundary
