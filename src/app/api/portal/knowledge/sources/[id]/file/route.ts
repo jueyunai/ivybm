@@ -1,0 +1,52 @@
+import { readFile } from 'node:fs/promises'
+
+import { NextRequest } from 'next/server'
+
+import {
+  authorizeKnowledgeSourceRequest,
+  knowledgeSourceErrorResponse,
+  requireKnowledgeSourceID,
+} from '@/admin-portal/modules/knowledge/knowledgeSourceRoute'
+import { knowledgeSourceStoragePath } from '@/modules/knowledge/ingestion/source'
+import { KNOWLEDGE_SOURCE_MIME_TYPES } from '@/modules/knowledge/ingestion/parser'
+
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  try {
+    const id = requireKnowledgeSourceID((await params).id)
+    const { payload, req } = await authorizeKnowledgeSourceRequest(request)
+    const source = await payload.findByID({
+      collection: 'knowledge-source-documents',
+      depth: 0,
+      id,
+      overrideAccess: false,
+      req,
+    })
+    if (
+      typeof source.filename !== 'string' ||
+      typeof source.mimeType !== 'string' ||
+      !KNOWLEDGE_SOURCE_MIME_TYPES.includes(source.mimeType as never)
+    ) {
+      return new Response('Not found', { status: 404 })
+    }
+    const data = await readFile(knowledgeSourceStoragePath(source.filename))
+    return new Response(data, {
+      headers: {
+        'Cache-Control': 'private, no-store',
+        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(source.filename)}`,
+        'Content-Type': source.mimeType,
+        'X-Content-Type-Options': 'nosniff',
+      },
+    })
+  } catch (error) {
+    if ((error as { status?: unknown })?.status === 404) {
+      return new Response('Not found', { status: 404 })
+    }
+    return knowledgeSourceErrorResponse(error)
+  }
+}

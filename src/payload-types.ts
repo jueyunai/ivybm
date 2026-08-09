@@ -85,6 +85,8 @@ export interface Config {
     posts: Post;
     downloads: Download;
     'knowledge-documents': KnowledgeDocument;
+    'knowledge-source-documents': KnowledgeSourceDocument;
+    'knowledge-source-assets': KnowledgeSourceAsset;
     'knowledge-chunks': KnowledgeChunk;
     'prompt-templates': PromptTemplate;
     'platform-accounts': PlatformAccount;
@@ -126,6 +128,8 @@ export interface Config {
     posts: PostsSelect<false> | PostsSelect<true>;
     downloads: DownloadsSelect<false> | DownloadsSelect<true>;
     'knowledge-documents': KnowledgeDocumentsSelect<false> | KnowledgeDocumentsSelect<true>;
+    'knowledge-source-documents': KnowledgeSourceDocumentsSelect<false> | KnowledgeSourceDocumentsSelect<true>;
+    'knowledge-source-assets': KnowledgeSourceAssetsSelect<false> | KnowledgeSourceAssetsSelect<true>;
     'knowledge-chunks': KnowledgeChunksSelect<false> | KnowledgeChunksSelect<true>;
     'prompt-templates': PromptTemplatesSelect<false> | PromptTemplatesSelect<true>;
     'platform-accounts': PlatformAccountsSelect<false> | PlatformAccountsSelect<true>;
@@ -413,6 +417,28 @@ export interface KnowledgeDocument {
   customerVisible?: boolean | null;
   sourceURL?: string | null;
   sourceFile?: (number | null) | Media;
+  ingestionSource?: (number | null) | KnowledgeSourceDocument;
+  sourceHash?: string | null;
+  sourceAnchor?: string | null;
+  generationModel?: string | null;
+  generationPromptVersion?: number | null;
+  riskTopics?:
+    | (
+        | 'price'
+        | 'discount'
+        | 'payment'
+        | 'lead-time'
+        | 'warranty'
+        | 'lifespan'
+        | 'certification'
+        | 'structural-performance'
+        | 'fire-performance'
+        | 'customs'
+        | 'freight'
+        | 'insurance'
+        | 'liability'
+      )[]
+    | null;
   sourceVersion: string;
   locale: 'en' | 'ar';
   content: string;
@@ -427,6 +453,43 @@ export interface KnowledgeDocument {
   indexOwnerToken?: string | null;
   updatedAt: string;
   createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-source-documents".
+ */
+export interface KnowledgeSourceDocument {
+  id: number;
+  sourceTitle: string;
+  sourceType: 'faq' | 'product-manual' | 'technical-specification' | 'sales-script' | 'project-case' | 'other';
+  sourceVersion: string;
+  originalLanguage: 'auto' | 'en' | 'ar' | 'zh';
+  sourceHash: string;
+  ingestionRevision: string;
+  detectedLanguage?: ('unknown' | 'en' | 'ar' | 'zh') | null;
+  extractedText?: string | null;
+  pageCount?: number | null;
+  paragraphCount?: number | null;
+  imageCount?: number | null;
+  parserVersion?: string | null;
+  processingStatus: 'queued' | 'processing' | 'needs_review' | 'failed' | 'archived';
+  processingStage: 'queued' | 'parsing' | 'translating' | 'finalizing' | 'complete';
+  currentJobId?: number | null;
+  currentJobOwnerToken?: string | null;
+  errorCode?: string | null;
+  errorSummary?: string | null;
+  completedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -847,6 +910,30 @@ export interface Download {
   };
   updatedAt: string;
   createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-source-assets".
+ */
+export interface KnowledgeSourceAsset {
+  id: number;
+  source: number | KnowledgeSourceDocument;
+  sequence: number;
+  originalName: string;
+  sha256: string;
+  byteSize: number;
+  accessibility: 'private' | 'preview-only';
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -1368,6 +1455,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'knowledge-documents';
         value: number | KnowledgeDocument;
+      } | null)
+    | ({
+        relationTo: 'knowledge-source-documents';
+        value: number | KnowledgeSourceDocument;
+      } | null)
+    | ({
+        relationTo: 'knowledge-source-assets';
+        value: number | KnowledgeSourceAsset;
       } | null)
     | ({
         relationTo: 'knowledge-chunks';
@@ -1894,6 +1989,12 @@ export interface KnowledgeDocumentsSelect<T extends boolean = true> {
   customerVisible?: T;
   sourceURL?: T;
   sourceFile?: T;
+  ingestionSource?: T;
+  sourceHash?: T;
+  sourceAnchor?: T;
+  generationModel?: T;
+  generationPromptVersion?: T;
+  riskTopics?: T;
   sourceVersion?: T;
   locale?: T;
   content?: T;
@@ -1908,6 +2009,65 @@ export interface KnowledgeDocumentsSelect<T extends boolean = true> {
   indexOwnerToken?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-source-documents_select".
+ */
+export interface KnowledgeSourceDocumentsSelect<T extends boolean = true> {
+  sourceTitle?: T;
+  sourceType?: T;
+  sourceVersion?: T;
+  originalLanguage?: T;
+  sourceHash?: T;
+  ingestionRevision?: T;
+  detectedLanguage?: T;
+  extractedText?: T;
+  pageCount?: T;
+  paragraphCount?: T;
+  imageCount?: T;
+  parserVersion?: T;
+  processingStatus?: T;
+  processingStage?: T;
+  currentJobId?: T;
+  currentJobOwnerToken?: T;
+  errorCode?: T;
+  errorSummary?: T;
+  completedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  url?: T;
+  thumbnailURL?: T;
+  filename?: T;
+  mimeType?: T;
+  filesize?: T;
+  width?: T;
+  height?: T;
+  focalX?: T;
+  focalY?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "knowledge-source-assets_select".
+ */
+export interface KnowledgeSourceAssetsSelect<T extends boolean = true> {
+  source?: T;
+  sequence?: T;
+  originalName?: T;
+  sha256?: T;
+  byteSize?: T;
+  accessibility?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  url?: T;
+  thumbnailURL?: T;
+  filename?: T;
+  mimeType?: T;
+  filesize?: T;
+  width?: T;
+  height?: T;
+  focalX?: T;
+  focalY?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

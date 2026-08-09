@@ -27,6 +27,7 @@ type UnknownRecord = Record<string, unknown>
 export const AI_USAGE_KEYS = {
   chatReply: 'chat.reply',
   knowledgeEmbedding: 'knowledge.embedding',
+  knowledgeTranslation: 'knowledge.translation',
 } as const
 
 export type AiUsageRouteRequest = {

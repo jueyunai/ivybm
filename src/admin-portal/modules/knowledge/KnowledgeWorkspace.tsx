@@ -38,6 +38,7 @@ import type {
 import { KnowledgeIndexClientError, requestKnowledgeIndex } from './requestKnowledgeIndex'
 import { KnowledgeAiDebug } from './KnowledgeAiDebug'
 import { KnowledgeEditor, KnowledgeEditButton } from './KnowledgeEditor'
+import { KnowledgeSourcePanel } from './KnowledgeSourcePanel'
 
 export interface KnowledgeWorkspaceProps {
   pageState: KnowledgePageState | 'read-failed'
@@ -291,6 +292,8 @@ export function KnowledgeWorkspace({ pageState, summary }: KnowledgeWorkspacePro
           />
         </Surface>
       ) : null}
+
+      <KnowledgeSourcePanel role={summary.role} />
 
       <section aria-label={messages.metricsLabel} className="portal-knowledge__metrics">
         {metrics.map((metric) => (

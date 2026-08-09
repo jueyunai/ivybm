@@ -25,6 +25,7 @@ const TARGET_TABLES = {
   'ai-usage-routes': 'ai_usage_routes',
   'generated-contents': 'generated_contents',
   'knowledge-documents': 'knowledge_documents',
+  'knowledge-source-documents': 'knowledge_source_documents',
   leads: 'leads',
   media: 'media',
   pages: 'pages',

@@ -360,6 +360,52 @@ export interface PortalKnowledgeMessages {
   visibilityColumn: string
   visibilityLabel: string
   yes: string
+  ingestion: {
+    adminRetry: string
+    arabic: string
+    archived: string
+    chooseFile: string
+    english: string
+    failed: string
+    file: string
+    imageCount: string
+    language: string
+    needsReview: string
+    noSources: string
+    originalLanguage: string
+    outputDrafts: string
+    processing: string
+    queued: string
+    retry: string
+    retryError: string
+    retrySuccess: string
+    riskTopics: Record<
+      | 'certification'
+      | 'customs'
+      | 'discount'
+      | 'fire-performance'
+      | 'freight'
+      | 'insurance'
+      | 'lead-time'
+      | 'liability'
+      | 'lifespan'
+      | 'payment'
+      | 'price'
+      | 'structural-performance'
+      | 'warranty',
+      string
+    >
+    riskWarning: string
+    sourceTitle: string
+    sourceType: string
+    sourceVersion: string
+    submit: string
+    stages: Record<'complete' | 'finalizing' | 'parsing' | 'queued' | 'translating', string>
+    title: string
+    uploadDescription: string
+    uploadError: string
+    uploadSuccess: string
+  }
 }
 
 export interface PortalMessages {

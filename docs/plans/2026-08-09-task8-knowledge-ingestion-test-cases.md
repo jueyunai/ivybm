@@ -40,3 +40,13 @@
 - `corepack pnpm build`
 - `git diff --check`
 - 独立测试 agent 报告 + 主代理逐项复核
+
+## 2026-08-09 本地验收结果
+
+- 自动产物门禁：真实 Payload worker 生成 EN/AR 两条 `draft / customerVisible=false / pending` 草稿；来源新版本会立即撤回旧版本的 reviewed/ready/visible 状态。
+- 失败与重试：阿语单侧翻译失败时不写入任何部分草稿；Operator 重试被拒绝，Admin 可重新排队并完成。
+- 私有访问：匿名、Sales 不能读取原件；Operator 可读取原件和同来源图片，响应 `private, no-store`，API 不返回 owner token 或绝对路径。
+- 回归：unit 113 files / 777 tests、integration 29 files / 172 tests、contract 7 files / 70 tests、知识 Portal Chromium E2E 3 tests、build、migration up/down/up 均通过。
+- 真实资料：4 份仓库外 DOCX 解析统计分别为 3241/531/1884/1776 字符和 0/0/4/70 张图片；未复制或提交原件。
+- 真实模型：88996 本地加密测试 route 返回阿语，型号、数字+单位和图片占位符经保真占位机制完整恢复；不输出正文或 Key，不作为 production 凭据。
+- 外部缺口：本机未安装 Docker，Compose/production preflight operations 无法本地执行，交由 GitHub CI；未获 production 部署批准。

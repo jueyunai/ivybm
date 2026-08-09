@@ -141,6 +141,7 @@ const PROMPT_LIMIT = 6
 const REQUIRED_AI_ROUTES = [
   { operation: 'embedding' as const, usageKey: 'knowledge.embedding' },
   { operation: 'text' as const, usageKey: 'chat.reply' },
+  { operation: 'text' as const, usageKey: 'knowledge.translation' },
 ]
 
 const firstValue = (value: string | string[] | undefined): string | undefined =>

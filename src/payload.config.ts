@@ -26,6 +26,8 @@ import { Handoffs } from './collections/Handoffs'
 import { Jobs } from './collections/Jobs'
 import { KnowledgeChunks } from './collections/KnowledgeChunks'
 import { KnowledgeDocuments } from './collections/KnowledgeDocuments'
+import { KnowledgeSourceAssets } from './collections/KnowledgeSourceAssets'
+import { KnowledgeSourceDocuments } from './collections/KnowledgeSourceDocuments'
 import { Leads } from './collections/Leads'
 import { LeadSources } from './collections/LeadSources'
 import { Media } from './collections/Media'
@@ -96,6 +98,8 @@ export default buildConfig({
     Posts,
     Downloads,
     KnowledgeDocuments,
+    KnowledgeSourceDocuments,
+    KnowledgeSourceAssets,
     KnowledgeChunks,
     PromptTemplates,
     PlatformAccounts,
@@ -131,7 +135,7 @@ export default buildConfig({
   upload: {
     abortOnLimit: true,
     limits: {
-      fileSize: 20 * 1024 * 1024,
+      fileSize: 30 * 1024 * 1024,
       files: 1,
     },
     responseOnLimit: 'File size limit has been reached.',

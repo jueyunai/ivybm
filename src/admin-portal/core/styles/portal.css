@@ -5508,6 +5508,113 @@
     font-weight: 700;
   }
 
+  .portal-knowledge__ingestion {
+    display: grid;
+    gap: 16px;
+  }
+
+  .portal-knowledge__ingestion-form {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .portal-knowledge__ingestion-form label {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .portal-knowledge__ingestion-form label:last-of-type {
+    grid-column: span 2;
+  }
+
+  .portal-knowledge__ingestion-form input,
+  .portal-knowledge__ingestion-form select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .portal-knowledge__sources {
+    display: grid;
+    gap: 8px;
+  }
+
+  .portal-knowledge__sources article {
+    align-items: center;
+    border-top: 1px solid var(--portal-border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: space-between;
+    padding-top: 10px;
+  }
+
+  .portal-knowledge__sources article > div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .portal-knowledge__sources article span,
+  .portal-knowledge__sources article small {
+    color: var(--portal-muted);
+    font-size: 11px;
+  }
+
+  .portal-knowledge__source-detail {
+    border-top: 1px solid var(--portal-border);
+    display: grid;
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  .portal-knowledge__source-outputs {
+    display: grid;
+    gap: 6px;
+  }
+
+  .portal-knowledge__source-outputs > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 10px;
+  }
+
+  .portal-knowledge__source-outputs a {
+    color: var(--portal-accent);
+    font-weight: 700;
+  }
+
+  .portal-knowledge__source-outputs span {
+    color: var(--portal-warning);
+    font-size: 11px;
+  }
+
+  .portal-knowledge__source-assets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .portal-knowledge__source-assets img {
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-control);
+    height: 88px;
+    object-fit: contain;
+    width: 88px;
+  }
+
+  @media (max-width: 720px) {
+    .portal-knowledge__ingestion-form {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .portal-knowledge__ingestion-form label:last-of-type {
+      grid-column: auto;
+    }
+  }
+
   @media (max-width: 720px) {
     .portal-ai-settings__readiness,
     .portal-ai-settings__workspace,
