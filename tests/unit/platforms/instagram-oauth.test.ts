@@ -219,7 +219,138 @@ describe('Instagram OAuth', () => {
       }),
     ).rejects.toMatchObject({
       code: 'token_exchange_failed',
+      diagnostic: {
+        providerStatus: 401,
+        stage: 'short_token_exchange',
+      },
       message: 'Instagram OAuth token exchange failed',
     })
+  })
+
+  it('keeps only bounded diagnostics from secret-bearing provider failures', async () => {
+    const shortTokenFailure = await exchangeInstagramAuthorizationCode({
+      code: 'authorization-code',
+      config: readInstagramOAuthConfiguration(environment),
+      fetcher: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            access_token: 'leaked-short-token',
+            code: 400,
+            error_message:
+              'invalid code authorization-code test-instagram-app-secret leaked-short-token',
+            error_type: 'OAuthException',
+          }),
+          { status: 401 },
+        ),
+      ),
+    }).catch((error: unknown) => error)
+
+    expect(shortTokenFailure).toMatchObject({
+      code: 'token_exchange_failed',
+      diagnostic: {
+        providerErrorCode: 400,
+        providerErrorType: 'OAuthException',
+        providerResponseKeys: ['access_token', 'code', 'error_message', 'error_type'],
+        providerStatus: 401,
+        stage: 'short_token_exchange',
+      },
+    })
+    expect(JSON.stringify(shortTokenFailure)).not.toContain('authorization-code')
+    expect(JSON.stringify(shortTokenFailure)).not.toContain('test-instagram-app-secret')
+    expect(JSON.stringify(shortTokenFailure)).not.toContain('leaked-short-token')
+
+    const longTokenFailure = await exchangeInstagramAuthorizationCode({
+      code: 'authorization-code',
+      config: readInstagramOAuthConfiguration(environment),
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(instagramOAuthFixture.responses.shortToken), { status: 200 }),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              error: {
+                code: 190,
+                error_subcode: 463,
+                message: 'expired long-user-token test-instagram-app-secret',
+                type: 'OAuthException',
+              },
+            }),
+            { status: 400 },
+          ),
+        ),
+    }).catch((error: unknown) => error)
+
+    expect(longTokenFailure).toMatchObject({
+      code: 'token_exchange_failed',
+      diagnostic: {
+        providerErrorCode: 190,
+        providerErrorSubcode: 463,
+        providerErrorType: 'OAuthException',
+        providerResponseKeys: [
+          'error',
+          'error.code',
+          'error.error_subcode',
+          'error.message',
+          'error.type',
+        ],
+        providerStatus: 400,
+        stage: 'long_token_exchange',
+      },
+    })
+    expect(JSON.stringify(longTokenFailure)).not.toContain('long-user-token')
+    expect(JSON.stringify(longTokenFailure)).not.toContain('test-instagram-app-secret')
+
+    const invalidShortTokenShape = await exchangeInstagramAuthorizationCode({
+      code: 'authorization-code',
+      config: readInstagramOAuthConfiguration(environment),
+      fetcher: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({ access_token: 'unexpected-flat-token', user_id: '987654321098765' }),
+          { status: 200 },
+        ),
+      ),
+    }).catch((error: unknown) => error)
+
+    expect(invalidShortTokenShape).toMatchObject({
+      code: 'token_response_invalid',
+      diagnostic: {
+        providerResponseKeys: ['access_token', 'user_id'],
+        providerStatus: 200,
+        stage: 'short_token_exchange',
+      },
+    })
+    expect(JSON.stringify(invalidShortTokenShape)).not.toContain('unexpected-flat-token')
+
+    const identityFailure = await resolveInstagramAuthorizedAccount({
+      externalAccountId: '987654321098765',
+      fetcher: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 190,
+              message: 'invalid long-user-token test-instagram-app-secret',
+              type: 'OAuthException',
+            },
+          }),
+          { status: 403 },
+        ),
+      ),
+      userAccessToken: 'long-user-token',
+    }).catch((error: unknown) => error)
+
+    expect(identityFailure).toMatchObject({
+      code: 'identity_verification_failed',
+      diagnostic: {
+        providerErrorCode: 190,
+        providerErrorType: 'OAuthException',
+        providerResponseKeys: ['error', 'error.code', 'error.message', 'error.type'],
+        providerStatus: 403,
+        stage: 'identity_profile',
+      },
+    })
+    expect(JSON.stringify(identityFailure)).not.toContain('long-user-token')
+    expect(JSON.stringify(identityFailure)).not.toContain('test-instagram-app-secret')
   })
 })
