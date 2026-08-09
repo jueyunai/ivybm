@@ -62,6 +62,18 @@ const canonicalize = (value) => {
 
 const stableSerialize = (value) => JSON.stringify(canonicalize(value))
 
+const createPublisherAuthorityEnvelope = (workflow) => {
+  // Freeze every workflow-level field so newly supported inherited settings cannot
+  // silently change the effective environment of the packages-write publisher.
+  const workflowSettings = Object.fromEntries(
+    Object.entries(workflow).filter(([key]) => key !== 'jobs'),
+  )
+  return stableSerialize({
+    job: workflow.jobs?.[publishJobId],
+    workflow: workflowSettings,
+  })
+}
+
 const inspectYamlNode = (node, location, errors) => {
   if (!node) return
   if (isAlias(node)) {
@@ -306,9 +318,11 @@ const validateWorkflow = (entry, errors, trustedContract) => {
     errors.push(`${entry.path}.jobs.${publishJobId}: publisher job is missing`)
   } else if (
     entry.path === ciWorkflowPath &&
-    stableSerialize(publisher) !== trustedContract.publisherJob
+    createPublisherAuthorityEnvelope(workflow) !== trustedContract.publisherAuthorityEnvelope
   ) {
-    errors.push(`${entry.path}.jobs.${publishJobId}: publisher job is not allowlisted`)
+    errors.push(
+      `${entry.path}.jobs.${publishJobId}: publisher authority envelope is not allowlisted`,
+    )
   }
 
   if (entry.path === trustedWorkflowPath) {
@@ -364,7 +378,7 @@ export function createTrustedWorkflowContract(workflows) {
 
   return Object.freeze({
     checkoutAction: checkout.uses,
-    publisherJob: stableSerialize(publisher),
+    publisherAuthorityEnvelope: createPublisherAuthorityEnvelope(ciWorkflow),
     publisherSecrets,
     trustedWorkflow: stableSerialize(trustedWorkflow),
   })
@@ -378,7 +392,7 @@ export function validateWorkflowSet(workflows, trustedContract) {
   if (workflows.length > 50) return ['candidate workflow set exceeds the 50-file limit']
   if (
     !isPlainObject(trustedContract) ||
-    typeof trustedContract.publisherJob !== 'string' ||
+    typeof trustedContract.publisherAuthorityEnvelope !== 'string' ||
     typeof trustedContract.checkoutAction !== 'string' ||
     typeof trustedContract.trustedWorkflow !== 'string' ||
     !(trustedContract.publisherSecrets instanceof Map)

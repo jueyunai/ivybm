@@ -21,6 +21,7 @@ const repositoryWorkflows = ['ci.yml', 'trusted-pr-ci.yml'].map((name) => ({
 const trustedContract = createTrustedWorkflowContract(repositoryWorkflows)
 const temporaryDirectories: string[] = []
 type ParsedWorkflow = {
+  [key: string]: unknown
   jobs: Record<
     string,
     {
@@ -82,6 +83,29 @@ describe('candidate workflow permission validator', () => {
     expect(validate(reformatted)).toEqual([])
   })
 
+  it('accepts semantically identical CI YAML after formatting and mapping-key reordering', () => {
+    const reformatted = repositoryWorkflows.map((entry) => {
+      if (entry.path !== '.github/workflows/ci.yml') return entry
+      const parsed = parse(entry.content) as Record<string, unknown>
+      const reordered = Object.fromEntries(Object.entries(parsed).reverse())
+      return { ...entry, content: stringify(reordered) }
+    })
+
+    expect(validate(reformatted)).toEqual([])
+  })
+
+  it('allows read-only non-publisher jobs outside the publisher authority envelope', () => {
+    const workflows = replaceWorkflow('.github/workflows/ci.yml', (candidate) => {
+      candidate.jobs.extra_diagnostics = {
+        permissions: { contents: 'read' },
+        'runs-on': 'ubuntu-latest',
+        steps: [],
+      }
+    })
+
+    expect(validate(workflows)).toEqual([])
+  })
+
   it.each([
     ['missing permissions', 'name: Test\non: pull_request\njobs: {}'],
     ['flow write', 'name: Test\non: pull_request\npermissions: { contents: write }\njobs: {}'],
@@ -113,7 +137,76 @@ describe('candidate workflow permission validator', () => {
     })
 
     expect(validate(workflows)).toContain(
-      '.github/workflows/ci.yml.jobs.publish_production_images: publisher job is not allowlisted',
+      '.github/workflows/ci.yml.jobs.publish_production_images: publisher authority envelope is not allowlisted',
+    )
+  })
+
+  it.each([
+    [
+      'Docker credential directory',
+      (candidate: ParsedWorkflow) => {
+        candidate.env = { DOCKER_CONFIG: '${{ github.workspace }}' }
+      },
+    ],
+    [
+      'non-interactive Bash startup file',
+      (candidate: ParsedWorkflow) => {
+        candidate.env = { BASH_ENV: './scripts/ci/attacker.sh' }
+      },
+    ],
+    [
+      'default command shell',
+      (candidate: ParsedWorkflow) => {
+        candidate.defaults = { run: { shell: './scripts/ci/attacker.sh {0}' } }
+      },
+    ],
+    [
+      'default command working directory',
+      (candidate: ParsedWorkflow) => {
+        candidate.defaults = { run: { 'working-directory': './scripts/ci' } }
+      },
+    ],
+    [
+      'workflow concurrency',
+      (candidate: ParsedWorkflow) => {
+        candidate.concurrency = { group: 'attacker-controlled', 'cancel-in-progress': true }
+      },
+    ],
+    [
+      'workflow run name',
+      (candidate: ParsedWorkflow) => {
+        candidate['run-name'] = '${{ github.actor }} controls publisher'
+      },
+    ],
+    [
+      'workflow display name',
+      (candidate: ParsedWorkflow) => {
+        candidate.name = 'Attacker-controlled publisher'
+      },
+    ],
+    [
+      'workflow trigger',
+      (candidate: ParsedWorkflow) => {
+        candidate.on = { workflow_dispatch: null }
+      },
+    ],
+    [
+      'workflow default permissions',
+      (candidate: ParsedWorkflow) => {
+        candidate.permissions = { contents: 'none' }
+      },
+    ],
+    [
+      'removed workflow concurrency',
+      (candidate: ParsedWorkflow) => {
+        delete candidate.concurrency
+      },
+    ],
+  ])('rejects publisher workflow-level authority drift: %s', (_name, mutate) => {
+    const workflows = replaceWorkflow('.github/workflows/ci.yml', mutate)
+
+    expect(validate(workflows)).toContain(
+      '.github/workflows/ci.yml.jobs.publish_production_images: publisher authority envelope is not allowlisted',
     )
   })
 

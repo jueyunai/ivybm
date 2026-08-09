@@ -38,7 +38,7 @@ pull_request_target event metadata
 
 - 新增独立 `pull_request_target` workflow，job 顺序为 trusted control -> isolated full validation -> stable `CI policy`。
 - 新增结构化 YAML workflow 权限验证：重复键、alias/merge、缺失 permissions、任意 write scope、OIDC、非发布 job 的 secret、未固定 SHA 的远程 action 全部拒绝。
-- 唯一 write 例外为 `.github/workflows/ci.yml` 的 `publish_production_images` job；publisher job 必须与 base-owned contract 结构一致，只允许 `contents: read` + `packages: write`、固定 main push 条件和固定 `docker/login-action` 使用 `secrets.GITHUB_TOKEN` 登录 `ghcr.io`。
+- 唯一 write 例外为 `.github/workflows/ci.yml` 的 `publish_production_images` job；publisher authority envelope 必须与 base-owned contract 结构一致。该 envelope 包含除 `jobs` 映射外的全部 workflow-level 配置和完整 publisher job，因此 trigger、默认权限、concurrency、workflow `env` / `defaults`，以及 publisher 的 `needs` / `if` / step graph 都不能漂移；publisher 只允许 `contents: read` + `packages: write`、固定 main push 条件和固定 `docker/login-action` 使用 `secrets.GITHUB_TOKEN` 登录 `ghcr.io`。
 - 候选 workflow 集合必须保留普通文件形式的 canonical `ci.yml` 与 `trusted-pr-ci.yml`；base-owned `trusted-pr-ci.yml` 的解析后完整结构是唯一允许契约。YAML 注释、空白和 mapping key 顺序可以变化，但 trigger、权限、runner、job keys、`needs`、`if`、`continue-on-error`、step graph / 顺序 / keys、action SHA、run、shell、env 或任何额外字段的语义变化全部 fail closed。普通 PR 不得升级或重写该可信锚。
 - token 扫描同时拒绝 `github.token`、`github.*`、任意 `github[...]` 动态索引和 `toJSON(github)`；结构化拒绝所有非 publisher `secrets` mapping（包括 reusable workflow 的 `secrets: inherit`）。action owner / repository 规范化大小写后，所有 checkout 必须精确等于 base contract 固定 SHA、关闭 credential persistence 且不得覆盖 token input；所有执行候选脚本的 diagnostics job 显式清空 `GH_TOKEN` / `GITHUB_TOKEN`。
 - 现有 PR workflow 的 policy check 改名为 `CI diagnostics`；main push 保留 `CI policy (main)`，避免与 trusted `CI policy` 同名。
@@ -55,7 +55,13 @@ Review `4891201996` 的两个 P1 已按绕过类别整体收口，而不是只�
 
 该精确契约有意将 `trusted-pr-ci.yml` 设为普通 PR 不可变锚点。PR #64 不得修改它；未来可信分类节流或锚点拓扑升级必须作为单独授权、固定 base/head、完整本地门禁和双人独立确认的版本化 bootstrap，不能复用本 PR 例外。
 
-### 3.4 一次性 bootstrap 验收
+### 3.4 第三次独立 Review 修复
+
+Review `4891343780` 的 P1 已复现：只冻结 publisher job 节点会遗漏其继承的 workflow-level `env` / `defaults`，候选可通过 `DOCKER_CONFIG`、`BASH_ENV` 或默认 shell / working directory 改写登录后的有效执行环境。修复不按危险变量名建立黑名单，而是把除 `jobs` 映射外的全部 workflow-level 配置与 publisher job 合并为一个解析后 authority envelope；任何新增、删除或语义漂移都 fail closed。这样同时覆盖当前 GitHub 顶层 trigger、name / run-name、permissions、concurrency、env、defaults，以及未来进入该层的新配置。
+
+对 PR #64 的只读联动审计同时确认：当前单 runner job id 为 `validation`，而冻结 publisher 依赖 `changes` 的 `head_sha` / `production_image` 输出，简单恢复 publisher 会形成不存在的 `needs.changes`。Phase B 必须让合并后的单 validation runner 继续使用兼容 job id `changes` 并暴露这两个固定输出；这是零额外 runner 的接口兼容，不是放松 publisher contract。
+
+### 3.5 一次性 bootstrap 验收
 
 新增的 `pull_request_target` workflow 只有进入 `main` 后才会成为 base-owned；它不能为自己的 bootstrap PR 提供可信 check。本 PR 只允许采用一次性人工验收：
 
@@ -73,17 +79,20 @@ Bootstrap 分支不复制 PR #64 已更新的 72 张 Linux / Darwin 视觉基线
 Phase A 合入 `main` 后：
 
 1. PR #64 使用普通 merge 合入最新 `origin/main`，禁止 rebase 后 force push。
-2. `trusted-pr-ci.yml` 必须与合入后的 base contract 完全一致，不得在 #64 中加入分类、节流或其他语义修改；`ci.yml` 的 publisher job 同样恢复为 bootstrap/main 的精确结构。
-3. 仅从候选 diagnostics 路径删除 `verify-trusted-policy.mjs`、Actions API 轮询、候选 job/step ledger 和临时 verifier；CI v2 的候选单 validation runner 可保留为开发反馈，但没有授权权力。
-4. 当前 head 自动运行不可变 trusted workflow 的完整门禁；policy 绑定 base/head SHA、同一 run DAG 和 validation 结果。
-5. 未来若确需把可信 classification / 节流迁入锚点，另建版本化 bootstrap 计划和 PR，不继承本次一次性例外。
-6. 更新 PR 描述与复审评论，逐项映射 review `4890428099` 的四个 P1 和文档 P3。
+2. `trusted-pr-ci.yml` 必须与合入后的 base contract 完全一致，不得在 #64 中加入分类、节流或其他语义修改。
+3. `ci.yml` 除 `jobs` 外的全部顶层配置和 `publish_production_images` job 必须恢复为 bootstrap/main 的精确 authority envelope；删除候选 `pull_request_target` trigger，并恢复原 concurrency，不保留 #64 的 publisher cache / digest 变体。
+4. #64 的合并 validation runner 使用兼容 job id `changes`，继续输出不可变 current-head `head_sha` 和分类结果 `production_image`；内部仍可一次安装并执行 Fast / database / build / E2E / operations，不增加 adapter runner。main `ci_policy` 消费该 job，冻结 publisher 继续精确依赖 `[changes, ci_policy]`。
+5. 仅从候选 diagnostics 路径删除 `verify-trusted-policy.mjs`、Actions API 轮询、候选 job/step ledger 和临时 verifier；候选 CI 只提供开发反馈，没有授权权力。
+6. 当前 head 自动运行不可变 trusted workflow 的完整门禁；policy 绑定 base/head SHA、同一 run DAG 和 validation 结果。
+7. 未来若确需把可信 classification / 节流迁入锚点，另建版本化 bootstrap 计划和 PR，不继承本次一次性例外。
+8. 更新 PR 描述与复审评论，逐项映射 review `4890428099` 的四个 P1 和文档 P3。
 
 ## 5. 测试矩阵
 
 - 合法 main publish workflow 通过结构化权限验证。
 - flow / quoted / commented YAML、`write-all`、任意 write scope、`id-token: write`、缺失 permissions、alias/merge、额外 secrets 和未固定 action 全部失败。
 - publisher registry/action/username/password 或 step graph 任一变化均失败；`github.token`、通配、索引、动态索引和 GitHub context 整体序列化均失败，普通 `github.actor` / `github.ref` 保持可用；checkout 保留凭据或显式 token input 同样失败。
+- workflow-level `DOCKER_CONFIG`、`BASH_ENV`、默认 shell / working directory、name / run-name、trigger、permissions 或 concurrency 的任意新增、删除和漂移均使 publisher authority envelope 失败。
 - canonical workflow 删除、重复、空壳替换、symlink，以及 trusted trigger、候选 SHA、`--ignore-scripts`、same-run needs、`always()` 或 trusted evaluator 任一削弱均失败。
 - trusted workflow 的 `if:false`、job / step `continue-on-error`、runner、run / shell、额外或重排 step 等任意结构语义变化均失败；仅注释、空白和 mapping key 顺序变化保持通过。
 - reusable workflow `secrets: inherit`、大小写 checkout 和非 base-contract checkout SHA 均失败；canonical checkout 必须继续关闭凭据持久化且没有 token override。
