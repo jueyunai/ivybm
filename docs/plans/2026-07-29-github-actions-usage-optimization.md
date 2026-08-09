@@ -221,7 +221,7 @@ git commit -m "ci: split draft and ready quality gates"
 
 **Step 4: 验证权限边界**
 
-确认 PR job 无 `packages: write`，publish job 不接受 PR-controlled secret，不使用 `pull_request_target`，且 fork / collaborator PR 无法进入发布条件。
+确认 PR job 无 `packages: write`，publish job 不接受 PR-controlled secret，且 fork / collaborator PR 无法进入发布条件。PR 授权门禁自 2026-08-09 起按 [`CI 可信锚两阶段迁移计划`](2026-08-09-ci-trusted-bootstrap-plan.md) 使用 base-owned `pull_request_target`；候选代码与 trusted control 必须隔离，且 target job 禁止 secrets、写权限和共享 main cache。
 
 **Step 5: 静态验证与 Commit**
 
@@ -425,6 +425,6 @@ CI 优化提交包含 workflow / scripts / docs，但不改变业务 runtime；�
 2. `CI policy` 始终出现并绑定当前 head；AI 规则禁止用 Fast-only 或旧 head 合并。
 3. 当前 migration、integration、build、E2E、operations 和容器验证没有被删除，只改变触发条件。
 4. docs-only main 不构建 production images；生产相关 main SHA 只构建一次 runtime / worker。
-5. PR workflow 无写 packages 权限，不使用 `pull_request_target`，不读取 production secret。
+5. PR workflow 无写 packages 权限，不读取 production secret；授权 check 来自 base-owned `pull_request_target`，候选 `pull_request` 结果只作 diagnostics，详见 2026-08-09 可信锚迁移计划。
 6. `AGENTS.md`、`CLAUDE.md`、`CONTRIBUTING.md` 和 PR 模板已约束 AI 提交、审核与合并行为。
 7. CI 优化 PR 获得另一名开发者独立 Review，用户明确授权后才合并。

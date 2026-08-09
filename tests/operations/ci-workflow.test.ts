@@ -45,8 +45,10 @@ describe('CI workflow policy', () => {
     expect(fullGate).toContain('ADMIN_PORTAL_OPERATIONS_ENABLED: true')
   })
 
-  it('always evaluates a stable fail-closed policy for the current head', () => {
-    expect(workflow).toContain('name: CI policy')
+  it('labels candidate PR policy as diagnostics while preserving the main policy', () => {
+    expect(workflow).toContain(
+      "github.event_name == 'push' && 'CI policy (main)' || 'CI diagnostics'",
+    )
     expect(workflow).toContain('if: ${{ always() }}')
     expect(workflow).toContain('node scripts/ci/evaluate-policy.mjs')
     expect(workflow).toContain('HEAD_SHA: ${{ needs.changes.outputs.head_sha }}')

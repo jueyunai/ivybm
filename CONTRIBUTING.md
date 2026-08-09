@@ -127,6 +127,7 @@ git worktree prune --dry-run
 - 每次 push 前先运行本地定向验证，同一轮细小修改必须集中完成后一次 push；不要用 GitHub Actions 逐提交试错。
 - CI 自动按路径分类，作者不选择 Fast / Full 档次，也不得使用 `[skip ci]`。Draft 代码运行 Fast CI；Ready 和 `main` 针对当前 head 运行数据库、build、E2E、operations 等适用门禁；未知路径或 diff / 分类失败走完整 fallback。
 - 稳定的 `CI policy` 汇总 job 负责核对预期 job。Review 与合并前必须记录并复核当前 base / head SHA，只接受当前 head 的成功 policy；Draft Fast-only、旧 head、pending、neutral、skipped、cancelled 或 failure 都不是合并证据。Ready 后的新提交会使旧结论失效并重新运行门禁。
+- 2026-08-09 的 CI 可信锚 bootstrap PR 是上述规则的唯一一次迁移例外，具体范围见 `docs/plans/2026-08-09-ci-trusted-bootstrap-plan.md`。该 PR 新增的 `pull_request_target` 在进入 `main` 前不会运行，必须以固定 base / 最终 head、本地完整门禁、权限扫描、完整 diff、单 commit revert 和双方明确确认替代自动 trusted check；head 变化即重新确认，合并或关闭后例外立即失效。PR #64 及后续 PR 必须使用合入后的真实 `CI policy`，不得继承该例外。
 - `.github/workflows/**`、`scripts/ci/**`、policy 和 production image 触发边界必须由另一名开发者独立 Review。docs-only 轻量检查不豁免共享结构 / 跨人边界 Review；镜像成功只提供不可变 SHA + digest，不授权 production 部署。
 
 本项目内的编码代理还必须遵守 `AGENTS.md`；Claude Code 同时读取 `CLAUDE.md`。这些文件用于阻止代理主动直推，并统一人工操作预期。

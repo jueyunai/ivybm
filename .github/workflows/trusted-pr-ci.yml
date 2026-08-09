@@ -1,0 +1,270 @@
+name: Trusted PR CI
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trusted-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  control:
+    name: Trusted PR control
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      base_sha: ${{ steps.revision.outputs.base_sha }}
+      head_sha: ${{ steps.revision.outputs.head_sha }}
+    steps:
+      - name: Checkout trusted control plane
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          path: control
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Checkout exact candidate revision
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          path: candidate
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Verify immutable event revisions and diff boundary
+        id: revision
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'Trusted PR base/head SHA is missing or invalid.' >&2
+            exit 1
+          fi
+
+          git -C candidate fetch --no-tags "$GITHUB_WORKSPACE/control" "$BASE_SHA"
+          if ! git -C candidate cat-file -e "${BASE_SHA}^{commit}" ||
+             ! git -C candidate cat-file -e "${HEAD_SHA}^{commit}" ||
+             [[ "$(git -C candidate rev-parse HEAD)" != "$HEAD_SHA" ]]; then
+            echo 'Candidate checkout is stale or does not contain the trusted comparison.' >&2
+            exit 1
+          fi
+
+          diff_range="${BASE_SHA}...${HEAD_SHA}"
+          changed_files="$RUNNER_TEMP/trusted-pr-changed-files.zlist"
+          git -C candidate diff --check "$diff_range"
+          git -C candidate diff --name-only --diff-filter=ACMR -z "$diff_range" > "$changed_files"
+          if [[ ! -s "$changed_files" ]]; then
+            echo 'Trusted PR diff is empty or unavailable.' >&2
+            exit 1
+          fi
+
+          forbidden=0
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              .env.example|.env.production.example)
+                ;;
+              .env|.env.*|data/*|media/*|uploads/*|backups/*|*.sqlite|*.sqlite3|*.dump)
+                echo "Forbidden tracked path in change set: $path" >&2
+                forbidden=1
+                ;;
+            esac
+          done < "$changed_files"
+          if [[ "$forbidden" -ne 0 ]]; then
+            exit 1
+          fi
+
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Set up trusted pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          run_install: false
+          version: 10.15.1
+
+      - name: Set up trusted Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: control/.nvmrc
+
+      - name: Install trusted control dependencies without lifecycle scripts
+        run: pnpm --dir control install --frozen-lockfile --ignore-scripts
+
+      - name: Structurally validate candidate workflow permissions
+        run: node control/scripts/ci/validate-workflow-permissions.mjs candidate/.github/workflows
+
+  validation:
+    name: Trusted full validation
+    needs: control
+    if: ${{ needs.control.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      db:
+        image: pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
+        env:
+          POSTGRES_DB: ivybm_ci
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ivybm_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ACTIONS_CACHE_URL: ''
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
+      ACTIONS_ID_TOKEN_REQUEST_URL: ''
+      ACTIONS_RESULTS_URL: ''
+      ACTIONS_RUNTIME_TOKEN: ''
+      ADMIN_PORTAL_CONTENT_STUDIO_ENABLED: true
+      ADMIN_PORTAL_CONVERSATIONS_ENABLED: true
+      ADMIN_PORTAL_ENABLED: true
+      ADMIN_PORTAL_KNOWLEDGE_ENABLED: true
+      ADMIN_PORTAL_LEADS_ENABLED: true
+      ADMIN_PORTAL_MEDIA_ENABLED: true
+      ADMIN_PORTAL_OPERATIONS_ENABLED: true
+      ADMIN_PORTAL_OVERVIEW_ENABLED: true
+      ADMIN_PORTAL_PLATFORMS_ENABLED: true
+      ADMIN_PORTAL_PUBLISHING_ENABLED: false
+      ADMIN_PORTAL_SETTINGS_ENABLED: true
+      ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED: true
+      AI_CONFIG_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      APP_VERSION: ci
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ivybm_ci
+      E2E_ADMIN_EMAIL: admin@example.invalid
+      E2E_ADMIN_PASSWORD: ci-demo-admin-password
+      GH_TOKEN: ''
+      GITHUB_TOKEN: ''
+      NEXT_PUBLIC_SERVER_URL: http://localhost:3000
+      NODE_AUTH_TOKEN: ''
+      PAYLOAD_SECRET: ci-build-only-secret-at-least-32-characters
+      POSTGRES_DB: ivybm_ci
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      SEED_ADMIN_EMAIL: admin@example.invalid
+      SEED_ADMIN_PASSWORD: ci-demo-admin-password
+    defaults:
+      run:
+        working-directory: candidate
+    steps:
+      - name: Checkout exact candidate revision
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          path: candidate
+          persist-credentials: false
+          ref: ${{ needs.control.outputs.head_sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Verify candidate checkout
+        shell: bash
+        env:
+          EXPECTED_HEAD_SHA: ${{ needs.control.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_HEAD_SHA" ]]
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          run_install: false
+          version: 10.15.1
+
+      - name: Set up Node.js without a shared candidate cache
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: candidate/.nvmrc
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test:unit
+
+      - name: Contract tests
+        run: pnpm test:contract
+
+      - name: Apply database migrations
+        run: pnpm db:migrate
+
+      - name: Reset test database
+        run: pnpm db:reset:test
+
+      - name: Seed demo data twice
+        run: |
+          pnpm db:seed
+          pnpm db:seed
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+      - name: Verify Compose database persistence
+        run: pnpm db:test:persistence
+
+      - name: Production build
+        run: pnpm build
+
+      - name: Install Chromium for browser E2E
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Browser E2E
+        run: pnpm test:e2e
+
+      - name: Build runtime image
+        run: >-
+          docker build --target runtime
+          --build-arg NEXT_PUBLIC_SERVER_URL=http://localhost:3000
+          --tag ivybm:trusted-pr .
+
+      - name: Build worker image
+        run: docker build --target worker --tag ivybm-worker:trusted-pr .
+
+      - name: Validate Compose configuration
+        run: docker compose -f compose.yaml -f compose.staging.yaml config >/dev/null
+
+      - name: Operations tests
+        run: pnpm test:operations
+
+  policy:
+    name: CI policy
+    needs: [control, validation]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted policy implementation
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          path: control
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Enforce same-run trusted policy
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CHECKED_HEAD_SHA: ${{ needs.control.outputs.head_sha }}
+          CONTROL_RESULT: ${{ needs.control.result }}
+          EVENT_NAME: ${{ github.event_name }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          VALIDATION_RESULT: ${{ needs.validation.result }}
+        run: node control/scripts/ci/evaluate-trusted-pr-policy.mjs
