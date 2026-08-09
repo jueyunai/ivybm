@@ -299,6 +299,7 @@ describe('Feishu CRM contract', () => {
 
     await notifyNewLead({
       client,
+      eventRevision: 'notification-event-fixture',
       lead,
       mapping: {
         ...mapping,
@@ -308,7 +309,11 @@ describe('Feishu CRM contract', () => {
 
     expect(sendText).toHaveBeenCalledTimes(1)
     expect(sendText).toHaveBeenCalledWith(
-      expect.objectContaining({ receiveId: 'ou-sales-fixture', receiveIdType: 'open_id' }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining('notification-event-fixture'),
+        receiveId: 'ou-sales-fixture',
+        receiveIdType: 'open_id',
+      }),
     )
   })
 })
