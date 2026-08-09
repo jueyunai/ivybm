@@ -7,8 +7,9 @@ import {
   authorizeKnowledgeSourceRequest,
   knowledgeSourceErrorResponse,
   knowledgeSourceJSON,
+  listKnowledgeSources,
+  parseKnowledgeSourcePage,
   readKnowledgeSourceUpload,
-  safeKnowledgeSourceSummary,
 } from '@/admin-portal/modules/knowledge/knowledgeSourceRoute'
 
 export const dynamic = 'force-dynamic'
@@ -17,17 +18,8 @@ export const runtime = 'nodejs'
 export async function GET(request: NextRequest): Promise<Response> {
   try {
     const { payload, req } = await authorizeKnowledgeSourceRequest(request)
-    const result = await payload.find({
-      collection: 'knowledge-source-documents',
-      depth: 0,
-      limit: 50,
-      overrideAccess: false,
-      pagination: false,
-      req,
-      select: { completedAt: true, detectedLanguage: true, errorCode: true, errorSummary: true, filename: true, filesize: true, id: true, imageCount: true, mimeType: true, processingStage: true, processingStatus: true, sourceTitle: true, sourceType: true, sourceVersion: true, updatedAt: true },
-      sort: '-updatedAt',
-    })
-    return knowledgeSourceJSON({ sources: result.docs.map((doc) => safeKnowledgeSourceSummary(doc as unknown as Record<string, unknown>)) })
+    const page = parseKnowledgeSourcePage(request.nextUrl.searchParams.get('page'))
+    return knowledgeSourceJSON(await listKnowledgeSources({ page, payload, req }))
   } catch (error) {
     return knowledgeSourceErrorResponse(error)
   }

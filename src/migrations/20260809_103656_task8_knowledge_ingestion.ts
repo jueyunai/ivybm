@@ -79,7 +79,7 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "knowledge_source_documents_id" integer;
   ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "knowledge_source_assets_id" integer;
   ALTER TABLE "knowledge_documents_risk_topics" ADD CONSTRAINT "knowledge_documents_risk_topics_parent_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."knowledge_documents"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "knowledge_source_assets" ADD CONSTRAINT "knowledge_source_assets_source_id_knowledge_source_documents_id_fk" FOREIGN KEY ("source_id") REFERENCES "public"."knowledge_source_documents"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "knowledge_source_assets" ADD CONSTRAINT "knowledge_source_assets_source_id_knowledge_source_documents_id_fk" FOREIGN KEY ("source_id") REFERENCES "public"."knowledge_source_documents"("id") ON DELETE cascade ON UPDATE no action;
   CREATE INDEX "knowledge_documents_risk_topics_order_idx" ON "knowledge_documents_risk_topics" USING btree ("order");
   CREATE INDEX "knowledge_documents_risk_topics_parent_idx" ON "knowledge_documents_risk_topics" USING btree ("parent_id");
   CREATE INDEX "knowledge_source_documents_source_hash_idx" ON "knowledge_source_documents" USING btree ("source_hash");

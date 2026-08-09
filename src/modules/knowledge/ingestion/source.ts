@@ -1,5 +1,6 @@
 import path from 'node:path'
 
+import { sql, type PostgresAdapter } from '@payloadcms/db-postgres'
 import {
   commitTransaction,
   createLocalReq,
@@ -102,6 +103,19 @@ export const knowledgeSourceFileToUpload = (file: KnowledgeSourceFile) => ({
 const sourceMatch = (source: Record<string, unknown>, hash: string, version: string): boolean =>
   source.sourceHash === hash && source.sourceVersion === version
 
+const lockKnowledgeSourceRevision = async (
+  payload: KnowledgeIngestionPayload,
+  req: PayloadRequest,
+  ingestionRevision: string,
+): Promise<void> => {
+  const transactionID = await req.transactionID
+  if (!transactionID) throw new Error('Knowledge source transaction session is unavailable')
+  const adapter = (payload as Payload).db as unknown as PostgresAdapter
+  const database = adapter.sessions[transactionID]?.db
+  if (!database) throw new Error('Knowledge source transaction database is unavailable')
+  await database.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ingestionRevision}, 0))`)
+}
+
 export type KnowledgeSourceCommandResult = {
   /** Job metadata safe to return through the Portal API; lease/payload data is server-only. */
   job: Pick<
@@ -174,6 +188,10 @@ export const createKnowledgeSourceAndEnqueue = async ({
     const parsedMetadata = parseKnowledgeSourceMetadata(metadata)
     const sourceHash = sha256(validFile.data)
     const ingestionRevision = sourceIngestionRevision(sourceHash, parsedMetadata.sourceVersion)
+    // Serialize the empty-read/create boundary for one hash + version. The lock
+    // belongs to the surrounding transaction, so a concurrent command waits
+    // until the winner's source and Job are both committed before re-reading.
+    await lockKnowledgeSourceRevision(payload, commandReq, ingestionRevision)
     const existingResult = await payload.find({
       collection: 'knowledge-source-documents',
       depth: 0,

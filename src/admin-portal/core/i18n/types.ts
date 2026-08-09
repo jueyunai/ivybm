@@ -371,9 +371,12 @@ export interface PortalKnowledgeMessages {
     imageCount: string
     language: string
     needsReview: string
+    nextPage: string
     noSources: string
     originalLanguage: string
     outputDrafts: string
+    pageLabel: string
+    previousPage: string
     processing: string
     queued: string
     retry: string
@@ -397,6 +400,8 @@ export interface PortalKnowledgeMessages {
     >
     riskWarning: string
     sourceTitle: string
+    sourceCountLabel: string
+    sourcePagination: string
     sourceType: string
     sourceVersion: string
     submit: string

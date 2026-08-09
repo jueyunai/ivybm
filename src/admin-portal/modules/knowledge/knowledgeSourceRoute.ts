@@ -143,6 +143,62 @@ export const safeKnowledgeSourceSummary = (source: Record<string, unknown>) => (
   updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : '',
 })
 
+export const KNOWLEDGE_SOURCE_PAGE_SIZE = 25
+
+export const parseKnowledgeSourcePage = (value: null | string): number => {
+  if (!value || !/^[1-9]\d*$/.test(value)) return 1
+  const page = Number(value)
+  return Number.isSafeInteger(page) ? page : 1
+}
+
+export const listKnowledgeSources = async ({
+  page,
+  payload,
+  req,
+}: {
+  page: number
+  payload: Pick<Payload, 'find'>
+  req: PayloadRequest
+}) => {
+  const result = await payload.find({
+    collection: 'knowledge-source-documents',
+    depth: 0,
+    limit: KNOWLEDGE_SOURCE_PAGE_SIZE,
+    overrideAccess: false,
+    page,
+    pagination: true,
+    req,
+    select: {
+      completedAt: true,
+      detectedLanguage: true,
+      errorCode: true,
+      errorSummary: true,
+      filename: true,
+      filesize: true,
+      id: true,
+      imageCount: true,
+      mimeType: true,
+      processingStage: true,
+      processingStatus: true,
+      sourceTitle: true,
+      sourceType: true,
+      sourceVersion: true,
+      updatedAt: true,
+    },
+    sort: '-updatedAt',
+  })
+  return {
+    pagination: {
+      hasNextPage: result.hasNextPage === true,
+      page: result.page ?? page,
+      pageSize: KNOWLEDGE_SOURCE_PAGE_SIZE,
+      totalDocs: result.totalDocs,
+      totalPages: Math.max(result.totalPages, 1),
+    },
+    sources: result.docs.map((doc) => safeKnowledgeSourceSummary(doc as unknown as Record<string, unknown>)),
+  }
+}
+
 export const safeKnowledgeSourceOutput = (document: Record<string, unknown>) => ({
   customerVisible: document.customerVisible === true,
   id: document.id as number | string,

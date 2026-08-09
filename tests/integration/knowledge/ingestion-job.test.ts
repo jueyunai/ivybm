@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { deflateRawSync } from 'node:zlib'
 
 import { NextRequest } from 'next/server'
+import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createLocalReq, getPayload, type Payload } from 'payload'
 
@@ -15,6 +16,7 @@ import {
   createKnowledgeIngestJobHandler,
   KNOWLEDGE_INGEST_JOB_TYPE,
 } from '@/modules/knowledge/ingestion/jobs'
+import { sha256 } from '@/modules/knowledge/ingestion/parser'
 import {
   createKnowledgeSourceAndEnqueue,
   retryKnowledgeSource,
@@ -239,6 +241,43 @@ describe.sequential('knowledge source ingestion job', () => {
     await expect(worker.runOnce()).resolves.toBe('succeeded')
   })
 
+  it('serializes concurrent uploads with different command keys for the same hash and version', async () => {
+    const data = makeDocx()
+    const version = `concurrent-${randomUUID()}`
+    const request = (key: string) => {
+      const form = new FormData()
+      form.set('file', new File([data], 'concurrent-source.docx', { type: DOCX_MIME }))
+      form.set('originalLanguage', 'en')
+      form.set('sourceTitle', `Concurrent source ${version}`)
+      form.set('sourceType', 'technical-specification')
+      form.set('sourceVersion', version)
+      return new NextRequest('http://localhost/api/portal/knowledge/sources', {
+        body: form,
+        headers: {
+          authorization: operatorAuthorization,
+          'Idempotency-Key': `knowledge-ingestion-${version}-${key}`,
+        },
+        method: 'POST',
+      })
+    }
+
+    const responses = await Promise.all([
+      uploadKnowledgeSource(request('first')),
+      uploadKnowledgeSource(request('second')),
+    ])
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 201])
+    const results = await Promise.all(responses.map(async (response) => response.json() as Promise<{
+      job: { id: number }
+      source: { id: number }
+      state: 'created' | 'duplicate'
+    }>))
+    expect(results.map((result) => result.state).sort()).toEqual(['created', 'duplicate'])
+    expect(new Set(results.map((result) => result.source.id))).toHaveProperty('size', 1)
+    expect(new Set(results.map((result) => result.job.id))).toHaveProperty('size', 1)
+    sourceIDs.push(results[0].source.id)
+    jobIDs.push(results[0].job.id)
+  })
+
   it('deduplicates upload, creates private EN/AR drafts, and protects source files', async () => {
     const uploaded = await upload(`happy-${randomUUID()}`)
     const duplicate = await createKnowledgeSourceAndEnqueue({
@@ -346,5 +385,46 @@ describe.sequential('knowledge source ingestion job', () => {
     })
     await expect(succeedingWorker.runOnce()).resolves.toBe('succeeded')
     await expect(payload.findByID({ collection: 'knowledge-source-documents', id: uploaded.result.source.id, overrideAccess: true })).resolves.toMatchObject({ processingStatus: 'needs_review' })
+  })
+
+  it('cascades private assets when their required source is deleted', async () => {
+    const sourceFile = makeDocx()
+    const suffix = randomUUID()
+    const source = await payload.create({
+      collection: 'knowledge-source-documents',
+      context: { knowledgeIngestion: true, skipAudit: true },
+      data: {
+        ingestionRevision: `cascade-${suffix}`,
+        originalLanguage: 'en',
+        processingStage: 'queued',
+        processingStatus: 'queued',
+        sourceHash: sha256(sourceFile),
+        sourceTitle: `Cascade source ${suffix}`,
+        sourceType: 'technical-specification',
+        sourceVersion: suffix,
+      },
+      file: { data: sourceFile, mimetype: DOCX_MIME, name: `cascade-${suffix}.docx`, size: sourceFile.length },
+      overrideAccess: true,
+    })
+    sourceIDs.push(source.id)
+
+    const database = (payload.db as unknown as PostgresAdapter).pool
+    const inserted = await database.query<{ id: number }>(
+      `INSERT INTO knowledge_source_assets
+        (source_id, sequence, original_name, sha256, byte_size, accessibility)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [source.id, 1, 'cascade.png', 'a'.repeat(64), 1, 'private'],
+    )
+    const assetID = inserted.rows[0].id
+
+    await payload.delete({ collection: 'knowledge-source-documents', id: source.id, overrideAccess: true })
+    const remaining = await payload.find({
+      collection: 'knowledge-source-assets',
+      overrideAccess: true,
+      pagination: false,
+      where: { id: { equals: assetID } },
+    })
+    expect(remaining.docs).toHaveLength(0)
   })
 })

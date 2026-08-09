@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- previews are private same-origin asset responses. */
 'use client'
 
-import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button, StatusBadge, Surface } from '@/admin-portal/core/ui'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
@@ -38,20 +38,60 @@ type SourceDetail = {
 
 type RiskTopic = keyof ReturnType<typeof getPortalMessages>['knowledgeWorkspace']['ingestion']['riskTopics']
 
+type SourcePagination = {
+  hasNextPage: boolean
+  page: number
+  pageSize: number
+  totalDocs: number
+  totalPages: number
+}
+
+const initialPagination: SourcePagination = {
+  hasNextPage: false,
+  page: 1,
+  pageSize: 25,
+  totalDocs: 0,
+  totalPages: 1,
+}
+
 export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).knowledgeWorkspace.ingestion
   const [sources, setSources] = useState<Source[]>([])
+  const [pagination, setPagination] = useState<SourcePagination>(initialPagination)
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState<{ message: string; tone: 'danger' | 'success' } | null>(null)
   const [detail, setDetail] = useState<{ data: SourceDetail; id: number | string } | null>(null)
+  const currentPage = useRef(1)
+  const refreshSequence = useRef(0)
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (requestedPage = currentPage.current) => {
+    const sequence = ++refreshSequence.current
+    const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1
     try {
-      const response = await fetch('/api/portal/knowledge/sources', { cache: 'no-store' })
+      const response = await fetch(`/api/portal/knowledge/sources?page=${page}`, { cache: 'no-store' })
       if (!response.ok) return
-      const body = (await response.json()) as { sources?: Source[] }
+      const body = (await response.json()) as { pagination?: Partial<SourcePagination>; sources?: Source[] }
+      if (sequence !== refreshSequence.current) return
+      const totalPages = Number.isSafeInteger(body.pagination?.totalPages) && Number(body.pagination?.totalPages) > 0
+        ? Number(body.pagination?.totalPages)
+        : 1
+      const nextPagination = {
+        hasNextPage: body.pagination?.hasNextPage === true,
+        page: Number.isSafeInteger(body.pagination?.page) && Number(body.pagination?.page) > 0
+          ? Number(body.pagination?.page)
+          : page,
+        pageSize: Number.isSafeInteger(body.pagination?.pageSize) && Number(body.pagination?.pageSize) > 0
+          ? Number(body.pagination?.pageSize)
+          : initialPagination.pageSize,
+        totalDocs: Number.isSafeInteger(body.pagination?.totalDocs) && Number(body.pagination?.totalDocs) >= 0
+          ? Number(body.pagination?.totalDocs)
+          : Array.isArray(body.sources) ? body.sources.length : 0,
+        totalPages,
+      }
+      currentPage.current = nextPagination.page
       setSources(Array.isArray(body.sources) ? body.sources : [])
+      setPagination(nextPagination)
     } catch {
       // Server components and unit tests can render without an absolute browser URL.
     }
@@ -76,7 +116,7 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
       if (!response.ok) throw new Error('upload')
       setFeedback({ message: messages.uploadSuccess, tone: 'success' })
       form.reset()
-      await refresh()
+      await refresh(1)
     } catch {
       setFeedback({ message: messages.uploadError, tone: 'danger' })
     } finally {
@@ -127,6 +167,11 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
   const fileSizeLabel = (bytes: number) =>
     bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB` : '—'
 
+  const changePage = (page: number) => {
+    setDetail(null)
+    void refresh(page)
+  }
+
   return (
     <Surface as="section" className="portal-knowledge__ingestion">
       <header className="portal-knowledge__panel-heading">
@@ -157,6 +202,30 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
           </article>
         ))}
       </div>
+      {pagination.totalDocs > 0 ? (
+        <nav aria-label={messages.sourcePagination} className="portal-knowledge__source-pagination">
+          <Button
+            disabled={pagination.page <= 1}
+            onClick={() => changePage(pagination.page - 1)}
+            size="compact"
+            variant="ghost"
+          >
+            {messages.previousPage}
+          </Button>
+          <span aria-live="polite">
+            {messages.pageLabel} {pagination.page}/{pagination.totalPages} · {pagination.totalDocs}{' '}
+            {messages.sourceCountLabel}
+          </span>
+          <Button
+            disabled={!pagination.hasNextPage || pagination.page >= pagination.totalPages}
+            onClick={() => changePage(pagination.page + 1)}
+            size="compact"
+            variant="ghost"
+          >
+            {messages.nextPage}
+          </Button>
+        </nav>
+      ) : null}
       {detail ? <div className="portal-knowledge__source-detail">
         <strong>{messages.outputDrafts}</strong>
         <div className="portal-knowledge__source-outputs">
