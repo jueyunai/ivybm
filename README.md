@@ -13,7 +13,7 @@
 - Task 1 正式应用工程已初始化，当前具备 Next.js 前台、Payload Admin、REST API、GraphQL API 和基础测试能力。
 - 当前技术栈：Next.js 16.2.6、Payload CMS 3.86.0、React 19.2.6、PostgreSQL Adapter、Node.js 24、pnpm 10.15.1。
 - 当前已具备 PostgreSQL + pgvector、Docker Compose 和 1Panel OpenResty 的运行时基础；后续按实施计划继续完成 production 镜像发布和业务模块。
-- 管理后台目标架构已冻结为“Payload 唯一控制平面 + 自研 `/dashboard` 运营门户”；第一阶段只设计、开发和验收 `/dashboard`。Payload 已有 `/admin` 在新版迁移验收前继续供受限维护人员使用，不进入 Portal 导航、不新增 UI，也不作为 Portal 业务回退；验收后再决定继续维护或下架。
+- 管理后台已落地为“Payload 唯一控制平面 + 自研 `/dashboard` 运营门户”；Portal V1 十个模块已完成，当前冲刺只修复阻断四条 MVP 闭环或客户 UAT 的问题。Payload 已有 `/admin` 仅供受限内部维护，不进入 Portal 导航、不新增 UI，也不作为 Portal 业务回退。
 
 ## 本地开发
 
@@ -32,7 +32,7 @@ pnpm dev
 
 - 前台：`http://localhost:3000/`
 - Payload Admin（迁移期受限维护入口，非一期 Portal 交付）：`http://localhost:3000/admin`
-- 运营门户（目标路由，按计划开发中）：`http://localhost:3000/dashboard`
+- 运营门户（当前唯一客户后台、培训和一期验收入口）：`http://localhost:3000/dashboard`
 - REST API：`http://localhost:3000/api`
 - GraphQL API：`http://localhost:3000/api/graphql`
 
