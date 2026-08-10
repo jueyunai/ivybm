@@ -99,6 +99,24 @@ const callbackErrorLog = (error: unknown): Record<string, unknown> => {
           ...(diagnostic.providerResponseKeys === undefined
             ? {}
             : { providerResponseKeys: diagnostic.providerResponseKeys }),
+          ...(diagnostic.permissionsType === undefined
+            ? {}
+            : { permissionsType: diagnostic.permissionsType }),
+          ...(diagnostic.permissionsCount === undefined
+            ? {}
+            : { permissionsCount: diagnostic.permissionsCount }),
+          ...(diagnostic.permissionsItemTypes === undefined
+            ? {}
+            : { permissionsItemTypes: diagnostic.permissionsItemTypes }),
+          ...(diagnostic.providerScopes === undefined
+            ? {}
+            : { providerScopes: diagnostic.providerScopes }),
+          ...(diagnostic.grantedScopes === undefined
+            ? {}
+            : { grantedScopes: diagnostic.grantedScopes }),
+          ...(diagnostic.missingScopes === undefined
+            ? {}
+            : { missingScopes: diagnostic.missingScopes }),
         }
       : {}),
   }
@@ -200,6 +218,22 @@ export async function GET(request: NextRequest): Promise<Response> {
     if (transaction.requestedScopes.some((scope) => !userToken.scopes.includes(scope))) {
       throw new InstagramOAuthError('required_permission_missing')
     }
+    payload.logger.info({
+      grantedScopes: transaction.requestedScopes.filter((scope) =>
+        userToken.scopes.includes(scope),
+      ),
+      message: 'Instagram OAuth permissions resolved',
+      missingScopes: transaction.requestedScopes.filter(
+        (scope) => !userToken.scopes.includes(scope),
+      ),
+      permissionsCount: userToken.permissionsCount,
+      ...(userToken.permissionsItemTypes === undefined
+        ? {}
+        : { permissionsItemTypes: userToken.permissionsItemTypes }),
+      permissionsType: userToken.permissionsType,
+      providerScopes: userToken.scopes,
+      stage: 'short_token_exchange',
+    })
     const authorizedAccount = await resolveInstagramAuthorizedAccount({
       externalAccountId: transaction.externalAccountId,
       userAccessToken: userToken.accessToken,
