@@ -47,7 +47,23 @@ export type InstagramOAuthDiagnosticStage =
   | 'long_token_exchange'
   | 'short_token_exchange'
 
+export type InstagramOAuthPermissionsType =
+  | 'array'
+  | 'boolean'
+  | 'missing'
+  | 'null'
+  | 'number'
+  | 'object'
+  | 'other'
+  | 'string'
+
 export type InstagramOAuthDiagnostic = {
+  grantedScopes?: string[]
+  missingScopes?: string[]
+  permissionsCount?: number
+  permissionsItemTypes?: InstagramOAuthPermissionsType[]
+  permissionsType?: InstagramOAuthPermissionsType
+  providerScopes?: string[]
   providerErrorCode?: number
   providerErrorSubcode?: number
   providerErrorType?: string
@@ -102,10 +118,16 @@ export type InstagramAuthorizedAccount = {
 export type InstagramUserToken = {
   accessToken: string
   expiresAt: string
+  permissionsCount: number
+  permissionsItemTypes?: InstagramOAuthPermissionsType[]
+  permissionsType: Extract<InstagramOAuthPermissionsType, 'array' | 'string'>
   scopes: string[]
 }
 
-type InstagramLongLivedToken = Omit<InstagramUserToken, 'scopes'>
+type InstagramLongLivedToken = Omit<
+  InstagramUserToken,
+  'permissionsCount' | 'permissionsItemTypes' | 'permissionsType' | 'scopes'
+>
 
 const nonEmpty = (value: string | undefined, maximumLength = MAX_CREDENTIAL_LENGTH): string => {
   const normalized = value?.trim()
@@ -511,6 +533,121 @@ const readTokenPayload = (
   }
 }
 
+const permissionsDiagnostic = ({
+  diagnostic,
+  permissionsCount,
+  permissionsItemTypes,
+  permissionsType,
+  providerScopes: rawProviderScopes,
+  scopes,
+}: {
+  diagnostic: InstagramOAuthDiagnostic
+  permissionsCount?: number
+  permissionsItemTypes?: InstagramOAuthPermissionsType[]
+  permissionsType: InstagramOAuthPermissionsType
+  providerScopes: string[]
+  scopes: string[]
+}): InstagramOAuthDiagnostic => {
+  const requiredScopes = requiredInstagramPermissions('instagram-professional')
+  const grantedScopes = requiredScopes.filter((scope) => scopes.includes(scope))
+  const providerScopes = [
+    ...new Set(rawProviderScopes.filter((scope) => INSTAGRAM_PERMISSION_PATTERN.test(scope))),
+  ].slice(0, 100)
+  return {
+    ...diagnostic,
+    grantedScopes,
+    missingScopes: requiredScopes.filter((scope) => !grantedScopes.includes(scope)),
+    ...(permissionsCount === undefined ? {} : { permissionsCount }),
+    ...(permissionsItemTypes === undefined ? {} : { permissionsItemTypes }),
+    permissionsType,
+    providerScopes,
+  }
+}
+
+const permissionsValueType = (value: unknown): InstagramOAuthPermissionsType => {
+  if (value === undefined) return 'missing'
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return 'array'
+  if (typeof value === 'boolean') return 'boolean'
+  if (typeof value === 'number') return 'number'
+  if (typeof value === 'string') return 'string'
+  if (typeof value === 'object') return 'object'
+  return 'other'
+}
+
+const readGrantedPermissions = (
+  value: unknown,
+  diagnostic: InstagramOAuthDiagnostic,
+): {
+  permissionsCount: number
+  permissionsItemTypes?: InstagramOAuthPermissionsType[]
+  permissionsType: Extract<InstagramOAuthPermissionsType, 'array' | 'string'>
+  scopes: string[]
+} => {
+  const permissionsType = permissionsValueType(value)
+  const rawScopes =
+    permissionsType === 'string'
+      ? (value as string).split(',').map((scope) => scope.trim())
+      : permissionsType === 'array'
+        ? (value as unknown[])
+            .filter((scope): scope is string => typeof scope === 'string')
+            .map((scope) => scope.trim())
+        : []
+  const permissionsCount =
+    permissionsType === 'string'
+      ? rawScopes.length
+      : permissionsType === 'array'
+        ? (value as unknown[]).length
+        : undefined
+  const permissionsItemTypes =
+    permissionsType === 'array'
+      ? [...new Set((value as unknown[]).map(permissionsValueType))].sort()
+      : undefined
+  const validScopeShape =
+    (permissionsType === 'array' || permissionsType === 'string') &&
+    (permissionsType !== 'array' ||
+      !(value as unknown[]).some((scope) => typeof scope !== 'string')) &&
+    rawScopes.length > 0 &&
+    rawScopes.length <= 100 &&
+    rawScopes.every((scope) => INSTAGRAM_PERMISSION_PATTERN.test(scope))
+  const safeDiagnostic = permissionsDiagnostic({
+    diagnostic,
+    permissionsCount,
+    permissionsItemTypes,
+    permissionsType,
+    providerScopes: validScopeShape ? rawScopes : [],
+    scopes: rawScopes,
+  })
+
+  if (permissionsType === 'missing') {
+    throw new InstagramOAuthError('required_permission_missing', safeDiagnostic)
+  }
+  if (
+    (permissionsType !== 'array' && permissionsType !== 'string') ||
+    (permissionsType === 'array' &&
+      (value as unknown[]).some((scope) => typeof scope !== 'string')) ||
+    rawScopes.length === 0 ||
+    rawScopes.length > 100 ||
+    rawScopes.some((scope) => !INSTAGRAM_PERMISSION_PATTERN.test(scope))
+  ) {
+    throw new InstagramOAuthError('token_response_invalid', safeDiagnostic)
+  }
+
+  const scopes = [...new Set(rawScopes)]
+  const completeDiagnostic = permissionsDiagnostic({
+    diagnostic,
+    permissionsCount,
+    permissionsItemTypes,
+    permissionsType,
+    providerScopes: scopes,
+    scopes,
+  })
+  if (completeDiagnostic.missingScopes?.length) {
+    throw new InstagramOAuthError('required_permission_missing', completeDiagnostic)
+  }
+  return { permissionsCount: permissionsCount ?? scopes.length, permissionsItemTypes, permissionsType, scopes }
+}
+
 const exchangeCodeForShortToken = async ({
   code,
   config,
@@ -519,7 +656,14 @@ const exchangeCodeForShortToken = async ({
   code: string
   config: InstagramOAuthConfiguration
   fetcher: typeof fetch
-}): Promise<{ accessToken: string; scopes: string[]; userId: string }> => {
+}): Promise<{
+  accessToken: string
+  permissionsCount: number
+  permissionsItemTypes?: InstagramOAuthPermissionsType[]
+  permissionsType: Extract<InstagramOAuthPermissionsType, 'array' | 'string'>
+  scopes: string[]
+  userId: string
+}> => {
   const body = new URLSearchParams({
     client_id: config.appId,
     client_secret: config.appSecret,
@@ -575,23 +719,8 @@ const exchangeCodeForShortToken = async ({
     throw new InstagramOAuthError('token_response_invalid', diagnostic)
   }
 
-  if (typeof grant.permissions !== 'string') {
-    throw new InstagramOAuthError('required_permission_missing', diagnostic)
-  }
-  const rawScopes = grant.permissions.split(',').map((scope) => scope.trim())
-  if (
-    rawScopes.length === 0 ||
-    rawScopes.length > 100 ||
-    rawScopes.some((scope) => !INSTAGRAM_PERMISSION_PATTERN.test(scope))
-  ) {
-    throw new InstagramOAuthError('token_response_invalid', diagnostic)
-  }
-  const scopes = [...new Set(rawScopes)]
-  const requiredScopes = requiredInstagramPermissions('instagram-professional')
-  if (requiredScopes.some((scope) => !scopes.includes(scope))) {
-    throw new InstagramOAuthError('required_permission_missing', diagnostic)
-  }
-  return { accessToken, scopes, userId }
+  const permissions = readGrantedPermissions(grant.permissions, diagnostic)
+  return { accessToken, ...permissions, userId }
 }
 
 const exchangeShortTokenForLongToken = async ({
@@ -663,7 +792,15 @@ export const exchangeInstagramAuthorizationCode = async ({
     fetcher,
     nowMilliseconds,
   })
-  return { ...longToken, scopes: shortToken.scopes }
+  return {
+    ...longToken,
+    permissionsCount: shortToken.permissionsCount,
+    ...(shortToken.permissionsItemTypes === undefined
+      ? {}
+      : { permissionsItemTypes: shortToken.permissionsItemTypes }),
+    permissionsType: shortToken.permissionsType,
+    scopes: shortToken.scopes,
+  }
 }
 
 const instagramGraphRequest = async ({

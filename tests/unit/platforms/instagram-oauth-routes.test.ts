@@ -93,7 +93,7 @@ const createPayload = ({
     findByID: findByIDError
       ? vi.fn().mockRejectedValue(new Error('not found'))
       : vi.fn().mockResolvedValue(foundAccount),
-    logger: { error: vi.fn() },
+    logger: { error: vi.fn(), info: vi.fn() },
     db: {
       drizzle: {
         execute: vi.fn().mockResolvedValue({
@@ -178,10 +178,14 @@ describe('Instagram OAuth routes', () => {
     mocks.getPayload.mockResolvedValue(payload)
     const startResponse = await instagramOAuthStart(startRequest())
     const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
+    const shortToken = {
+      ...instagramOAuthFixture.responses.shortToken,
+      permissions: requiredInstagramPermissions('instagram-professional'),
+    }
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify(instagramOAuthFixture.responses.shortToken), { status: 200 }),
+        new Response(JSON.stringify(shortToken), { status: 200 }),
       )
       .mockResolvedValueOnce(
         new Response(JSON.stringify(instagramOAuthFixture.responses.longToken), { status: 200 }),
@@ -203,6 +207,16 @@ describe('Instagram OAuth routes', () => {
       'http://localhost:3000/admin/collections/platform-accounts/42?instagramOAuth=connected',
     )
     expect(response.headers.get('set-cookie')).toContain(`${INSTAGRAM_OAUTH_TRANSACTION_COOKIE}=;`)
+    expect(payload.logger.info).toHaveBeenCalledWith({
+      grantedScopes: requiredInstagramPermissions('instagram-professional'),
+      message: 'Instagram OAuth permissions resolved',
+      missingScopes: [],
+      permissionsCount: 3,
+      permissionsItemTypes: ['string'],
+      permissionsType: 'array',
+      providerScopes: requiredInstagramPermissions('instagram-professional'),
+      stage: 'short_token_exchange',
+    })
     expect(payload.update).toHaveBeenCalledWith({
       collection: 'platform-accounts',
       data: {
@@ -357,7 +371,7 @@ describe('Instagram OAuth routes', () => {
     const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
     const shortToken = {
       ...instagramOAuthFixture.responses.shortToken,
-      permissions: 'instagram_business_basic',
+      permissions: 'instagram_business_basic,unexpected_provider_scope',
     }
     const fetcher = vi
       .fn<typeof fetch>()
@@ -376,6 +390,26 @@ describe('Instagram OAuth routes', () => {
     )
     expect(fetcher).toHaveBeenCalledTimes(1)
     expect(payload.update).not.toHaveBeenCalled()
+    expect(payload.logger.error).toHaveBeenCalledWith({
+      code: 'required_permission_missing',
+      grantedScopes: ['instagram_business_basic'],
+      message: 'Instagram OAuth callback failed',
+      missingScopes: [
+        'instagram_business_manage_comments',
+        'instagram_business_manage_messages',
+      ],
+      oauthCode: 'required_permission_missing',
+      permissionsCount: 2,
+      permissionsType: 'string',
+      providerScopes: ['instagram_business_basic', 'unexpected_provider_scope'],
+      providerResponseKeys: ['access_token', 'permissions', 'user_id'],
+      providerStatus: 200,
+      stage: 'short_token_exchange',
+    })
+    const serializedLog = JSON.stringify(payload.logger.error.mock.calls)
+    expect(serializedLog).not.toContain('synthetic-short-lived-instagram-token')
+    expect(serializedLog).not.toContain('987654321098765')
+    expect(serializedLog).toContain('unexpected_provider_scope')
   })
 
   it('does not call Instagram or store credentials when state validation fails', async () => {
