@@ -552,10 +552,11 @@ const exchangeCodeForShortToken = async ({
     'token_exchange_failed',
     'short_token_exchange',
   )
-  if (!Array.isArray(payload.data) || payload.data.length !== 1) {
-    throw new InstagramOAuthError('token_response_invalid', diagnostic)
-  }
-  const grant = asProviderRecord(payload.data[0])
+  const grant = hasOwn(payload, 'data')
+    ? Array.isArray(payload.data) && payload.data.length === 1
+      ? asProviderRecord(payload.data[0])
+      : undefined
+    : payload
   if (!grant) throw new InstagramOAuthError('token_response_invalid', diagnostic)
   const accessToken = typeof grant.access_token === 'string' ? grant.access_token.trim() : ''
   const rawUserId = grant.user_id

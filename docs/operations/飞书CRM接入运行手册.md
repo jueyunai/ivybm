@@ -86,8 +86,14 @@ no-op。“最近跟进记录”仍只保留在飞书侧，回写范围另行确
   payload 显式区分 `new_lead` / `high_intent` / `none`；首次连接时 relay 扫描的历史 Lead
   一律为 `none`，只做回填同步，不发“新客户”或“新高意向”通知。高意向与 Dashboard
   共用 `status in (new, qualified) AND intentLevel = a`，`contacted` / `disqualified` 不会误报。
+- Lead 内容 hash 只作为远端写入的 stale fence，不再等同于业务事件身份。首次出现的内容 revision
+  使用 canonical Job key；A → B → A 等回到历史内容的真实变更使用额外 change-event key，因此会重新
+  同步当前状态，并对新的非高意向 → 高意向跃迁再次通知。内容未变的重复保存仍由 canonical key 去重；
+  pending 通知被新 revision 携带时沿用原 notification-event identity，避免重复提醒。
 - 当前 relay 每 30 秒扫描本地 Leads 和 durable Handoffs；一期数据量下可接受。数据量显著
   增长后应改为游标或数据库 outbox，而不是缩短轮询间隔。
+- Lead after-change 与 Job insert 在同一数据库事务中，是状态跃迁事件的权威入口；relay 使用 canonical
+  key 负责历史 / 当前快照回填，不从最终状态猜测已经发生过的中间通知事件。
 - 同一 Lead 的多个内容 revision 在 PostgreSQL Lead 行锁事务内校验 revision，并串行执行远端
   search + create / update，避免旧 revision 覆盖新数据或并发空查后重复创建。飞书接受 create 但响应
   丢失时，普通 Job 重试会在同一锁内先按本地 Lead ID 重新查询；仍不宣称第三方副作用 exactly-once。
@@ -108,3 +114,7 @@ no-op。“最近跟进记录”仍只保留在飞书侧，回写范围另行确
   发给飞书的创建请求；如果断开恰好发生在远端请求执行期间，也应按上一条核对并清理未关联空 Base。
 - 后台主动断开使用同源 POST，并在单一数据库事务中清空本地凭据、过期时间和错误状态，同时停用
   所有关联 mapping；任一步失败会整体回滚。该操作不会调用飞书撤销 API，也不会删除客户 Base。
+- 扫码重连会创建新的租户自建应用，飞书 `open_id` 不跨应用复用。provisioning 在重新激活 mapping 前
+  会清空旧销售成员映射，并把默认通知收件人更新为本次安装管理员；未重新配置销售映射的已分配 Lead
+  会安全回退给默认收件人。管理员应在重连完成后重新维护销售成员映射，不得复制旧应用 `open_id`。
+  统一商店 `store_oauth` 复用同一应用身份，重新 provisioning 时继续保留已有销售映射。

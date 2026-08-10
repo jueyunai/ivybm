@@ -1,5 +1,7 @@
 # IVYBM 模块化运营门户 Implementation Plan
 
+> **2026-08-10 supersession：** Portal V1 已完成并继续作为唯一客户后台；Payload `/admin` 已确认不适合客户日常使用，只保留为受限内部维护入口。冲刺期冻结 Portal 横向扩张，剩余开发和验收以 [`2026-08-10-MVP范围冻结与交付冲刺.md`](2026-08-10-MVP范围冻结与交付冲刺.md) 为准；本文保留为历史实施与验证记录。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 在不重建 Payload 后端、认证和数据模型的前提下，交付可独立挂载业务模块的 `/dashboard` 运营门户基座，并按负责人和依赖逐步迁移高价值后台工作流。
@@ -236,8 +238,8 @@ migration。PR-1 在基座后接入 P0.6 官网内容、P0.7 素材、P0.8a 模�
 
 ### 2.1 一个 Portal V1 Draft PR（2026-08-02 现行决策）
 
-| PR | 覆盖 Task | Owner / Review | 发布边界 |
-| --- | --- | --- | --- |
+| PR                 | 覆盖 Task                                               | Owner / Review                                                       | 发布边界                                                                                    |
+| ------------------ | ------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Portal V1 Draft PR | 当前设计/ADR/计划 + P0.1–P1.4、生产开关配置、测试与文档 | jueyunai 集成；各模块按既定 owner；xuemusi review 共享结构与跨人契约 | 完成十个模块和内部工作流后一次合并；production 仅在再次人工批准后部署一次，真实发布保持关闭 |
 
 PR-1 使用当前提交历史，但 Development Readiness Gate 完成前不得写功能代码。不得先创建 docs-only PR，

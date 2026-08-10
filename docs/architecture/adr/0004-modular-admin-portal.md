@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted，2026-07-29；2026-07-30 补充明确 PR 任务边界、维护态术语、技术后台非一期范围和 Portal V1 十模块本地功能闭环。
+Accepted，2026-07-29；2026-07-30 补充明确 PR 任务边界、维护态术语、技术后台非一期范围和 Portal V1 十模块本地功能闭环；2026-08-10 确认 `/admin` 客户交付选型失败、`/dashboard` 为唯一客户后台，并进入 MVP 范围冻结。
 
 Supersedes [ADR-0002](0002-admin-ui-composition.md) 中“`/admin` 是一期唯一后台入口”的决策。
 ADR-0002 已落地的 Payload Nav、Operations Dashboard、账户菜单和安全约束继续保留。
@@ -11,8 +11,7 @@ ADR-0002 已落地的 Payload Nav、Operations Dashboard、账户菜单和安全
 
 IVYBM 已经具备可靠的 Payload CMS / PostgreSQL 后端、认证、三角色权限、内容草稿与版本、
 媒体、知识索引、AI 网关、会话状态机、线索、Jobs 和平台连接器基础。Payload 自带的
-`/admin` 已作为内部维护入口存在，但高频运营流程仍然受 Collection 信息架构、跨页跳转
-和 Payload UI 扩展边界限制。第一阶段不继续建设或设计这套内部界面。
+`/admin` 已作为内部维护入口存在，但其 Collection 信息架构、跨页操作、学习成本和 Payload UI 扩展边界已经证明不适合客户日常运营，不能作为一期客户交付或验收界面。它只保留内部维护用途，不继续建设或设计。
 
 新的 Pencil 设计稿覆盖登录、工作台、官网内容、媒体、知识库、内容生产、会话、平台状态、
 异常补偿和响应式状态。直接继续改造 Payload DOM 会让设计系统受制于上游 Admin 结构；
@@ -28,6 +27,7 @@ IVYBM 已经具备可靠的 Payload CMS / PostgreSQL 后端、认证、三角色
 
 - Payload CMS、PostgreSQL、Auth、RBAC、Collections、migration、审计和领域服务仍是唯一后端与控制平面。
 - `/dashboard` 是自研运营门户，服务 Admin、Operator、Sales 的日常任务。
+- `/dashboard` 是唯一客户后台、培训与一期验收入口；它不是可选视觉层，也不得由 `/admin` 替代。
 - 第一阶段只设计、开发和验收 `/dashboard`；Portal 导航、模块注册和故障处理均不依赖 `/admin`。
 - Payload 已有 `/admin` 在 `/dashboard` 迁移验收前继续供受限维护人员使用，不新增 UI、不进入 Portal 导航，也不作为 Portal 的业务回退路径。
 - `/dashboard` 覆盖目标流程、权限、数据、回滚和运营培训并完成迁移验收后，再用单独决策决定 `/admin` 继续维护或下架；在此之前不得删除、破坏或降低其现有维护能力。
