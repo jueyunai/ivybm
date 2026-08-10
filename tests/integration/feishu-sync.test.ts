@@ -691,6 +691,219 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     }
   })
 
+  it('delivers a new high-intent event when a lead returns to a prior content revision', async () => {
+    const lead = await payload.create({
+      collection: 'leads',
+      context,
+      data: {
+        country: 'United Arab Emirates',
+        email: `revisited-intent-${runID}@example.invalid`,
+        idempotencyKey: randomUUID(),
+        intentLevel: 'b',
+        locale: 'en',
+        message: 'Revisit a previously synchronized high-intent state.',
+        name: 'Revisited Intent Buyer',
+        requestId: randomUUID(),
+        source: sourceID,
+        status: 'new',
+      },
+      overrideAccess: true,
+    })
+    extraLeadIDs.push(lead.id)
+
+    const leadJobs = async () => {
+      const result = await payload.find({
+        collection: 'jobs',
+        limit: 100,
+        overrideAccess: true,
+        sort: 'id',
+        where: { type: { equals: FEISHU_LEAD_SYNC_JOB_TYPE } },
+      })
+      return result.docs.filter((job) => jobPayload(job.payload).entityId === lead.id)
+    }
+    const complete = async (jobId: number) => {
+      await payload.update({
+        collection: 'jobs',
+        context,
+        data: {
+          attempts: 1,
+          completedAt: new Date().toISOString(),
+          status: 'succeeded',
+        },
+        id: jobId,
+        overrideAccess: true,
+      })
+    }
+    const sendText = vi.fn(async () => ({ messageId: randomUUID() }))
+    const client: FeishuClientPort = {
+      sendText,
+      upsertRecord: vi.fn(async () => ({ recordId: randomUUID(), state: 'updated' as const })),
+    }
+    const handler = createFeishuLeadSyncJobHandler({ client: () => client, payload })
+    const lease = {
+      assertLease: vi.fn(),
+      renewLease: vi.fn(),
+      signal: new AbortController().signal,
+    }
+
+    const createdJobs = await leadJobs()
+    expect(createdJobs).toHaveLength(1)
+    await complete(createdJobs[0]!.id)
+
+    await payload.update({
+      collection: 'leads',
+      context,
+      data: { message: 'Revisit a previously synchronized high-intent state.' },
+      id: lead.id,
+      overrideAccess: true,
+    })
+    expect(await leadJobs()).toHaveLength(1)
+
+    await payload.update({
+      collection: 'leads',
+      context,
+      data: { intentLevel: 'a' },
+      id: lead.id,
+      overrideAccess: true,
+    })
+    const firstHighJobs = await leadJobs()
+    expect(firstHighJobs).toHaveLength(2)
+    const firstHigh = firstHighJobs[1]!
+    expect(jobPayload(firstHigh.payload).notificationIntent).toBe('high_intent')
+    await handler(await claimedJob(firstHigh.id), lease)
+    await complete(firstHigh.id)
+
+    await payload.update({
+      collection: 'leads',
+      context,
+      data: { intentLevel: 'b' },
+      id: lead.id,
+      overrideAccess: true,
+    })
+    const lowJobs = await leadJobs()
+    expect(lowJobs).toHaveLength(3)
+    await complete(lowJobs[2]!.id)
+
+    await payload.update({
+      collection: 'leads',
+      context,
+      data: { intentLevel: 'a' },
+      id: lead.id,
+      overrideAccess: true,
+    })
+    const revisitedJobs = await leadJobs()
+    expect(revisitedJobs).toHaveLength(4)
+    const revisitedHigh = revisitedJobs[3]!
+    expect(jobPayload(revisitedHigh.payload).notificationIntent).toBe('high_intent')
+    expect(jobPayload(revisitedHigh.payload).entityRevision).toBe(
+      jobPayload(firstHigh.payload).entityRevision,
+    )
+    expect(jobPayload(revisitedHigh.payload).notificationEventRevision).not.toBe(
+      jobPayload(firstHigh.payload).notificationEventRevision,
+    )
+    expect(revisitedHigh.idempotencyKey).not.toBe(firstHigh.idempotencyKey)
+
+    await handler(await claimedJob(revisitedHigh.id), lease)
+    const highIntentMessages = (sendText.mock.calls as unknown as Array<[SendTextInput]>).filter(
+      ([input]) => input.text.includes('发现高意向客户'),
+    )
+    expect(highIntentMessages).toHaveLength(2)
+    expect(highIntentMessages.map(([input]) => input.idempotencyKey)).toEqual([
+      expect.stringContaining(String(jobPayload(firstHigh.payload).notificationEventRevision)),
+      expect.stringContaining(String(jobPayload(revisitedHigh.payload).notificationEventRevision)),
+    ])
+    expect(highIntentMessages[0]?.[0].idempotencyKey).not.toBe(
+      highIntentMessages[1]?.[0].idempotencyKey,
+    )
+  })
+
+  it('carries one pending notification event across lead revisions', async () => {
+    const lead = await payload.create({
+      collection: 'leads',
+      context,
+      data: {
+        country: 'Saudi Arabia',
+        email: `pending-notification-${runID}@example.invalid`,
+        idempotencyKey: randomUUID(),
+        intentLevel: 'b',
+        locale: 'en',
+        message: 'Initial pending notification revision.',
+        name: 'Pending Notification Buyer',
+        requestId: randomUUID(),
+        source: sourceID,
+        status: 'new',
+      },
+      overrideAccess: true,
+    })
+    extraLeadIDs.push(lead.id)
+    const leadJobs = async () => {
+      const result = await payload.find({
+        collection: 'jobs',
+        limit: 100,
+        overrideAccess: true,
+        sort: 'id',
+        where: { type: { equals: FEISHU_LEAD_SYNC_JOB_TYPE } },
+      })
+      return result.docs.filter((job) => jobPayload(job.payload).entityId === lead.id)
+    }
+
+    const createdJobs = await leadJobs()
+    expect(createdJobs).toHaveLength(1)
+    const createdJob = createdJobs[0]!
+    const eventRevision = jobPayload(createdJob.payload).notificationEventRevision
+    expect(jobPayload(createdJob.payload).notificationIntent).toBe('new_lead')
+    expect(eventRevision).toEqual(expect.any(String))
+
+    await payload.update({
+      collection: 'leads',
+      context,
+      data: { message: 'A newer revision carries the same pending notification.' },
+      id: lead.id,
+      overrideAccess: true,
+    })
+    const revisedJobs = await leadJobs()
+    expect(revisedJobs).toHaveLength(2)
+    const revisedJob = revisedJobs[1]!
+    expect(jobPayload(revisedJob.payload)).toMatchObject({
+      notificationEventRevision: eventRevision,
+      notificationIntent: 'new_lead',
+    })
+
+    await payload.update({
+      collection: 'leads',
+      context,
+      data: { message: 'A newer revision carries the same pending notification.' },
+      id: lead.id,
+      overrideAccess: true,
+    })
+    expect(await leadJobs()).toHaveLength(2)
+
+    const sendText = vi.fn(async () => ({ messageId: randomUUID() }))
+    const upsertRecord = vi.fn(async () => ({
+      recordId: randomUUID(),
+      state: 'updated' as const,
+    }))
+    const handler = createFeishuLeadSyncJobHandler({
+      client: () => ({ sendText, upsertRecord }),
+      payload,
+    })
+    const lease = {
+      assertLease: vi.fn(),
+      renewLease: vi.fn(),
+      signal: new AbortController().signal,
+    }
+    await handler(await claimedJob(createdJob.id), lease)
+    expect(upsertRecord).not.toHaveBeenCalled()
+    expect(sendText).not.toHaveBeenCalled()
+
+    await handler(await claimedJob(revisedJob.id), lease)
+    expect(upsertRecord).toHaveBeenCalledTimes(1)
+    expect(sendText).toHaveBeenCalledTimes(1)
+    expect(sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('收到新客户线索') }),
+    )
+  })
+
   it('relays each lead revision and durable handoff event into idempotent jobs', async () => {
     const visitor = await payload.create({
       collection: 'visitor-sessions',

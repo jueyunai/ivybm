@@ -48,6 +48,7 @@ const FEISHU_LEAD_NOTIFICATION_INTENTS = ['none', 'new_lead', 'high_intent'] as 
 type FeishuLeadNotificationIntent = (typeof FEISHU_LEAD_NOTIFICATION_INTENTS)[number]
 type FeishuLeadSyncJobPayload = FeishuJobPayload & {
   entityRevision: string
+  notificationEventRevision?: string
   notificationIntent: FeishuLeadNotificationIntent
 }
 type FeishuFollowUpJobPayload = FeishuJobPayload & { dueAt: string }
@@ -70,6 +71,9 @@ const requiredString = (value: unknown, field: string): string => {
   if (typeof value === 'string' && value.trim()) return value.trim()
   throw new FeishuConfigurationError(`Feishu job ${field} is invalid`)
 }
+
+const optionalString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value.trim() : undefined
 
 export const feishuLeadSyncRevision = (value: unknown): string => {
   const lead = record(value)
@@ -110,18 +114,55 @@ export const parseFeishuJobPayload = (value: unknown): FeishuJobPayload => {
 
 const notificationIntent = (value: unknown): FeishuLeadNotificationIntent => {
   // Draft jobs created before notification intent existed are safe historical backfill.
-  if (value === undefined) return 'none'
+  if (value === undefined || value === null) return 'none'
   if (FEISHU_LEAD_NOTIFICATION_INTENTS.some((intent) => intent === value)) {
     return value as FeishuLeadNotificationIntent
   }
   throw new FeishuConfigurationError('Feishu job notificationIntent is invalid')
 }
 
-const parseFeishuLeadSyncJobPayload = (value: unknown): FeishuLeadSyncJobPayload => ({
-  ...parseFeishuJobPayload(value),
-  entityRevision: requiredString(record(value)?.entityRevision, 'entityRevision'),
-  notificationIntent: notificationIntent(record(value)?.notificationIntent),
-})
+const parseFeishuLeadSyncJobPayload = (value: unknown): FeishuLeadSyncJobPayload => {
+  const notificationEventRevision = optionalString(record(value)?.notificationEventRevision)
+  return {
+    ...parseFeishuJobPayload(value),
+    entityRevision: requiredString(record(value)?.entityRevision, 'entityRevision'),
+    ...(notificationEventRevision ? { notificationEventRevision } : {}),
+    notificationIntent: notificationIntent(record(value)?.notificationIntent),
+  }
+}
+
+const leadChangeEventRevision = ({
+  lead,
+  previousRevision,
+  previousUpdatedAt,
+}: {
+  lead: unknown
+  previousRevision?: string
+  previousUpdatedAt?: string
+}): string =>
+  createHash('sha256')
+    .update(
+      JSON.stringify({
+        previousRevision: previousRevision ?? null,
+        previousUpdatedAt: previousUpdatedAt ?? null,
+        updatedAt: requiredString(record(lead)?.updatedAt, 'change updatedAt'),
+      }),
+    )
+    .digest('hex')
+
+const leadNotificationEventRevision = (
+  changeEventRevision: string,
+  intent: Exclude<FeishuLeadNotificationIntent, 'none'>,
+): string =>
+  createHash('sha256').update(JSON.stringify({ changeEventRevision, intent })).digest('hex')
+
+const legacyNotificationEventRevision = ({
+  id: jobId,
+  intent,
+}: {
+  id: number | string
+  intent: Exclude<FeishuLeadNotificationIntent, 'none'>
+}): string => createHash('sha256').update(`legacy:${jobId}:${intent}`).digest('hex')
 
 const dateString = (value: unknown, field: string): string => {
   const candidate = requiredString(value, field)
@@ -324,10 +365,27 @@ export const enqueueFeishuLeadChange: CollectionAfterChangeHook = async ({
       : isHighIntentLead(doc) && !isHighIntentLead(previousDoc)
         ? 'high_intent'
         : 'none'
+  const revision = feishuLeadSyncRevision(doc)
+  const previousRevision = record(previousDoc) ? feishuLeadSyncRevision(previousDoc) : undefined
+  const contentChanged = operation === 'create' || previousRevision !== revision
+  const changeEventRevision = contentChanged
+    ? leadChangeEventRevision({
+        lead: doc,
+        previousRevision,
+        previousUpdatedAt: optionalString(record(previousDoc)?.updatedAt),
+      })
+    : undefined
+  let notificationEventRevision =
+    intent === 'none' || !changeEventRevision
+      ? undefined
+      : leadNotificationEventRevision(changeEventRevision, intent)
 
   if (operation === 'update') {
     const pendingNotifications = await database.execute(sql`
-      SELECT "payload"->>'notificationIntent' AS "notification_intent"
+      SELECT
+        "id",
+        "payload"->>'notificationEventRevision' AS "notification_event_revision",
+        "payload"->>'notificationIntent' AS "notification_intent"
       FROM "jobs"
       WHERE "type" = ${FEISHU_LEAD_SYNC_JOB_TYPE}
         AND "status" <> 'succeeded'
@@ -336,19 +394,66 @@ export const enqueueFeishuLeadChange: CollectionAfterChangeHook = async ({
         AND "payload"->>'mappingRevision' = ${mapping.revision}
       ORDER BY "id" DESC
     `)
-    const carried = pendingNotifications.rows.map((row) => row.notification_intent)
-    if (carried.includes('new_lead')) intent = 'new_lead'
-    else if (intent === 'none' && carried.includes('high_intent')) intent = 'high_intent'
+    const carried = pendingNotifications.rows
+      .map((value) => {
+        const row = record(value)
+        const carriedIntent = row?.notification_intent
+        if (carriedIntent !== 'new_lead' && carriedIntent !== 'high_intent') return undefined
+        return {
+          eventRevision:
+            optionalString(row?.notification_event_revision) ??
+            legacyNotificationEventRevision({
+              id: id(row?.id, 'pending notification id'),
+              intent: carriedIntent,
+            }),
+          intent: carriedIntent,
+        }
+      })
+      .filter((value) => value !== undefined)
+    const carriedNewLead = carried.find((value) => value.intent === 'new_lead')
+    const carriedHighIntent = carried.find((value) => value.intent === 'high_intent')
+    if (carriedNewLead) {
+      intent = 'new_lead'
+      notificationEventRevision = carriedNewLead.eventRevision
+    } else if (intent === 'none' && carriedHighIntent) {
+      intent = 'high_intent'
+      notificationEventRevision = carriedHighIntent.eventRevision
+    }
   }
 
-  const revision = feishuLeadSyncRevision(doc)
+  if (intent !== 'none' && !notificationEventRevision) {
+    notificationEventRevision = leadNotificationEventRevision(
+      changeEventRevision ??
+        leadChangeEventRevision({
+          lead: doc,
+          previousRevision,
+          previousUpdatedAt: optionalString(record(previousDoc)?.updatedAt),
+        }),
+      intent,
+    )
+  }
   const now = new Date().toISOString()
   const jobPayload: FeishuLeadSyncJobPayload = {
     entityId: doc.id,
     entityRevision: revision,
     mappingId: mapping.id,
     mappingRevision: mapping.revision,
+    ...(notificationEventRevision ? { notificationEventRevision } : {}),
     notificationIntent: intent,
+  }
+  const baseIdempotencyKey = `${mapping.key}:lead:${doc.id}:${revision}`
+  let idempotencyKey = baseIdempotencyKey
+  if (changeEventRevision) {
+    const existingBaseJob = await database.execute(sql`
+      SELECT "id"
+      FROM "jobs"
+      WHERE "type" = ${FEISHU_LEAD_SYNC_JOB_TYPE}
+        AND "idempotency_key" = ${baseIdempotencyKey}
+      LIMIT 1
+    `)
+    if (existingBaseJob.rows[0]) {
+      idempotencyKey = `${baseIdempotencyKey}:change:${changeEventRevision}`
+    }
   }
   await database.execute(sql`
     INSERT INTO "jobs" (
@@ -356,7 +461,7 @@ export const enqueueFeishuLeadChange: CollectionAfterChangeHook = async ({
       "next_run_at", "manual_retry_count", "updated_at", "created_at"
     ) VALUES (
       ${FEISHU_LEAD_SYNC_JOB_TYPE},
-      ${`${mapping.key}:lead:${doc.id}:${revision}`},
+      ${idempotencyKey},
       ${JSON.stringify(jobPayload)}::jsonb,
       'pending', 0, 5, ${now}, 0, ${now}, ${now}
     )
@@ -406,12 +511,19 @@ export const createFeishuLeadSyncJobHandler =
     if (!lead) return
     execution.assertLease()
     if (input.notificationIntent === 'new_lead') {
-      await notifyNewLead({ client: resolvedClient, lead, mapping, signal: execution.signal })
+      await notifyNewLead({
+        client: resolvedClient,
+        eventRevision: input.notificationEventRevision,
+        lead,
+        mapping,
+        signal: execution.signal,
+      })
       execution.assertLease()
     }
     if (input.notificationIntent !== 'none' && isHighIntentLead(lead)) {
       await notifyHighIntentLead({
         client: resolvedClient,
+        eventRevision: input.notificationEventRevision,
         lead,
         mapping,
         signal: execution.signal,
