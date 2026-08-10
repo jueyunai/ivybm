@@ -19,6 +19,9 @@ jobs:
     name: Classify and validate changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      GH_TOKEN: ''
+      GITHUB_TOKEN: ''
     outputs:
       code: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.code || steps.fallback.outputs.code }}
       database: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.database || steps.fallback.outputs.database }}
@@ -157,6 +160,9 @@ jobs:
     if: needs.changes.result == 'success' && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      GH_TOKEN: ''
+      GITHUB_TOKEN: ''
     steps:
       - name: Checkout verified revision
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -165,17 +171,15 @@ jobs:
           persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 10.15.1
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -241,6 +245,8 @@ jobs:
       APP_VERSION: ci
       E2E_ADMIN_EMAIL: admin@example.invalid
       E2E_ADMIN_PASSWORD: ci-demo-admin-password
+      GH_TOKEN: ''
+      GITHUB_TOKEN: ''
       SEED_ADMIN_EMAIL: admin@example.invalid
       SEED_ADMIN_PASSWORD: ci-demo-admin-password
     steps:
@@ -251,17 +257,15 @@ jobs:
           persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 10.15.1
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -384,12 +388,14 @@ jobs:
         run: pnpm test:operations
 
   ci_policy:
-    name: CI policy
+    name: ${{ github.event_name == 'push' && 'CI policy (main)' || 'CI diagnostics' }}
     needs: [changes, fast, full_gate]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
+      GH_TOKEN: ''
+      GITHUB_TOKEN: ''
       CHANGES_RESULT: ${{ needs.changes.result }}
       CODE: ${{ needs.changes.outputs.code }}
       DATABASE: ${{ needs.changes.outputs.database }}

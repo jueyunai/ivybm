@@ -2,14 +2,29 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { parse } from 'yaml'
 import { describe, expect, it } from 'vitest'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const workflow = readFileSync(resolve(projectRoot, '.github/workflows/ci.yml'), 'utf8')
+const parsedWorkflow = parse(workflow) as Record<string, unknown>
 const publishJob = workflow.slice(workflow.indexOf('  publish_production_images:'))
 const prJobs = workflow.slice(0, workflow.indexOf('  publish_production_images:'))
 
 describe('production image publishing policy', () => {
+  it('keeps the workflow-level publisher authority envelope canonical', () => {
+    expect(Object.keys(parsedWorkflow).sort()).toEqual([
+      'concurrency',
+      'jobs',
+      'name',
+      'on',
+      'permissions',
+    ])
+    expect(parsedWorkflow).not.toHaveProperty('env')
+    expect(parsedWorkflow).not.toHaveProperty('defaults')
+    expect(parsedWorkflow).not.toHaveProperty('run-name')
+  })
+
   it('removes the duplicate workflow_run publishing path', () => {
     expect(existsSync(resolve(projectRoot, '.github/workflows/build-image.yml'))).toBe(false)
     expect(workflow).not.toContain('workflow_run:')

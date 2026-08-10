@@ -126,7 +126,7 @@ Buildx 使用 GitHub Actions cache，runtime 与 worker 共享稳定 scope。cac
 ## 安全与故障处理
 
 - 分类器不读取 secret、`.env`、数据库或客户资料，只处理仓库相对路径。
-- PR workflow 使用 `pull_request`，不使用会给 PR 代码更高权限的 `pull_request_target`。
+- 2026-08-09 起，PR 授权门禁按 [`CI 可信锚两阶段迁移计划`](2026-08-09-ci-trusted-bootstrap-plan.md) 改为 base-owned `pull_request_target`。该 workflow 只使用只读权限、无 secrets、无共享 main cache，并把 trusted control 与候选代码隔离；候选 `pull_request` 结果只能作为 diagnostics。
 - PR job 不授予 `packages: write`；发布 job 只在可信 `main` push 且 policy 成功后运行。
 - 无法获取 base SHA、Git 历史不足或路径超过分类能力时运行完整门禁。
 - 工作流自身修改必须在 Draft PR 中先通过 Fast CI，再转 Ready 触发新 workflow 的完整验证。
