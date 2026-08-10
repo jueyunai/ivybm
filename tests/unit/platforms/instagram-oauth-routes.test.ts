@@ -211,7 +211,10 @@ describe('Instagram OAuth routes', () => {
       grantedScopes: requiredInstagramPermissions('instagram-professional'),
       message: 'Instagram OAuth permissions resolved',
       missingScopes: [],
+      permissionsCount: 3,
+      permissionsItemTypes: ['string'],
       permissionsType: 'array',
+      providerScopes: requiredInstagramPermissions('instagram-professional'),
       stage: 'short_token_exchange',
     })
     expect(payload.update).toHaveBeenCalledWith({
@@ -396,7 +399,9 @@ describe('Instagram OAuth routes', () => {
         'instagram_business_manage_messages',
       ],
       oauthCode: 'required_permission_missing',
+      permissionsCount: 2,
       permissionsType: 'string',
+      providerScopes: ['instagram_business_basic', 'unexpected_provider_scope'],
       providerResponseKeys: ['access_token', 'permissions', 'user_id'],
       providerStatus: 200,
       stage: 'short_token_exchange',
@@ -404,7 +409,7 @@ describe('Instagram OAuth routes', () => {
     const serializedLog = JSON.stringify(payload.logger.error.mock.calls)
     expect(serializedLog).not.toContain('synthetic-short-lived-instagram-token')
     expect(serializedLog).not.toContain('987654321098765')
-    expect(serializedLog).not.toContain('unexpected_provider_scope')
+    expect(serializedLog).toContain('unexpected_provider_scope')
   })
 
   it('does not call Instagram or store credentials when state validation fails', async () => {

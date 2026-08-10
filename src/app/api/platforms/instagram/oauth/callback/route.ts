@@ -102,6 +102,15 @@ const callbackErrorLog = (error: unknown): Record<string, unknown> => {
           ...(diagnostic.permissionsType === undefined
             ? {}
             : { permissionsType: diagnostic.permissionsType }),
+          ...(diagnostic.permissionsCount === undefined
+            ? {}
+            : { permissionsCount: diagnostic.permissionsCount }),
+          ...(diagnostic.permissionsItemTypes === undefined
+            ? {}
+            : { permissionsItemTypes: diagnostic.permissionsItemTypes }),
+          ...(diagnostic.providerScopes === undefined
+            ? {}
+            : { providerScopes: diagnostic.providerScopes }),
           ...(diagnostic.grantedScopes === undefined
             ? {}
             : { grantedScopes: diagnostic.grantedScopes }),
@@ -217,7 +226,12 @@ export async function GET(request: NextRequest): Promise<Response> {
       missingScopes: transaction.requestedScopes.filter(
         (scope) => !userToken.scopes.includes(scope),
       ),
+      permissionsCount: userToken.permissionsCount,
+      ...(userToken.permissionsItemTypes === undefined
+        ? {}
+        : { permissionsItemTypes: userToken.permissionsItemTypes }),
       permissionsType: userToken.permissionsType,
+      providerScopes: userToken.scopes,
       stage: 'short_token_exchange',
     })
     const authorizedAccount = await resolveInstagramAuthorizedAccount({

@@ -55,7 +55,7 @@ fixture / mock 通过只表示接口契约完成。只有在 production 受控�
 
 - production 受控联调确认 Instagram short-token endpoint 返回 HTTP 200，响应包含 `access_token`、`permissions`、`user_id` 顶层字段；原实现只接受 `data[0]`，已改为兼容 provider 的顶层 grant。
 - Meta Access Token Debugger 已确认测试账号 token 有效，并同时包含 `instagram_business_basic`、`instagram_business_manage_messages`、`instagram_business_manage_comments`；Instagram 授权页也显示基础、消息和评论权限均已开启，但 callback 仍返回 `required_permission_missing`。因此账号角色、App ID 和所需权限配置不再是当前首要阻塞，剩余问题指向 short-token `permissions` 值的运行时格式兼容与可观测性。
-- 本轮修复的验收条件：兼容逗号分隔字符串和字符串数组两种 `permissions` 格式；缺字段、类型错误、空值、超量、非法 scope 继续 fail closed；失败日志记录 `permissionsType`、白名单内 `grantedScopes` 和 `missingScopes`，不得记录 token、authorization code、user ID、App Secret、原始响应或未知 scope。
+- 本轮修复的验收条件：兼容逗号分隔字符串和字符串数组两种 `permissions` 格式；缺字段、类型错误、空值、超量、非法 scope 继续 fail closed；日志记录 `permissionsType`、数量、数组元素类型、完整的有界合法 `providerScopes` 及白名单内 `grantedScopes` / `missingScopes`，不得记录 token、authorization code、user ID、App Secret 或原始响应正文。
 - 回归矩阵覆盖 flat / wrapped grant、字符串 / 数组 permissions、缺少必需权限、畸形数组、未知 scope 脱敏和 callback 结构化日志。修复与自动化测试通过仍不把能力标记为 `available`；只有 production 重新授权、身份绑定和 token 加密入库成功后才能提升状态。
 
 ## 数据库集成阻塞

@@ -132,6 +132,7 @@ describe('Instagram OAuth', () => {
     ).resolves.toEqual({
       accessToken: instagramOAuthFixture.responses.longToken.access_token,
       expiresAt: new Date(5_184_001_000).toISOString(),
+      permissionsCount: 3,
       permissionsType: 'string',
       scopes: requiredInstagramPermissions('instagram-professional'),
     })
@@ -171,6 +172,7 @@ describe('Instagram OAuth', () => {
     ).resolves.toEqual({
       accessToken: instagramOAuthFixture.responses.longToken.access_token,
       expiresAt: new Date(5_184_001_000).toISOString(),
+      permissionsCount: 3,
       permissionsType: 'string',
       scopes: requiredInstagramPermissions('instagram-professional'),
     })
@@ -202,6 +204,8 @@ describe('Instagram OAuth', () => {
     ).resolves.toEqual({
       accessToken: instagramOAuthFixture.responses.longToken.access_token,
       expiresAt: new Date(5_184_001_000).toISOString(),
+      permissionsCount: 3,
+      permissionsItemTypes: ['string'],
       permissionsType: 'array',
       scopes: requiredInstagramPermissions('instagram-professional'),
     })
@@ -380,6 +384,7 @@ describe('Instagram OAuth', () => {
         grantedScopes: [],
         missingScopes: requiredInstagramPermissions('instagram-professional'),
         permissionsType: 'missing',
+        providerScopes: [],
         providerResponseKeys: ['access_token', 'user_id'],
         providerStatus: 200,
         stage: 'short_token_exchange',
@@ -409,7 +414,10 @@ describe('Instagram OAuth', () => {
           'instagram_business_manage_comments',
           'instagram_business_manage_messages',
         ],
+        permissionsCount: 3,
+        permissionsItemTypes: ['number', 'string'],
         permissionsType: 'array',
+        providerScopes: [],
         providerResponseKeys: ['access_token', 'permissions', 'user_id'],
         providerStatus: 200,
         stage: 'short_token_exchange',
