@@ -9,9 +9,11 @@ const lightClassification = {
   database: false,
   docs_only: true,
   full_fallback: false,
+  inquiry_e2e: false,
   operations: false,
   production_image: false,
   website_e2e: false,
+  website_visual_e2e: false,
 }
 
 const fullClassification = {
@@ -22,9 +24,11 @@ const fullClassification = {
   database: true,
   docs_only: false,
   full_fallback: true,
+  inquiry_e2e: true,
   operations: true,
   production_image: true,
   website_e2e: true,
+  website_visual_e2e: true,
 }
 
 const invalidPathLists: string[][] = [
@@ -41,6 +45,15 @@ describe('CI change classifier', () => {
     expect(
       classifyChangedFiles(['docs/guide.md', 'AGENTS.md', '.github/pull_request_template.md']),
     ).toEqual(lightClassification)
+  })
+
+  it('treats CODEOWNERS as a CI control-plane change', () => {
+    expect(classifyChangedFiles(['.github/CODEOWNERS'])).toEqual({
+      ...lightClassification,
+      code: true,
+      docs_only: false,
+      operations: true,
+    })
   })
 
   it('classifies runtime source as code that needs a build and production images', () => {
@@ -67,15 +80,68 @@ describe('CI change classifier', () => {
   it.each([
     'src/app/(frontend)/[locale]/products/page.tsx',
     'src/components/website/SiteHeader.tsx',
-    'src/components/inquiry/InquiryForm.tsx',
-    'tests/e2e/website.spec.ts',
-  ])('selects only Website E2E for %s', (path) => {
+  ])('selects Website and visual E2E for visual website source %s', (path) => {
     expect(classifyChangedFiles([path])).toMatchObject({
       admin_e2e: false,
       chat_e2e: false,
       code: true,
       docs_only: false,
       website_e2e: true,
+      website_visual_e2e: true,
+    })
+  })
+
+  it('selects only Website E2E for the functional Website test', () => {
+    expect(classifyChangedFiles(['tests/e2e/website.spec.ts'])).toMatchObject({
+      admin_e2e: false,
+      chat_e2e: false,
+      code: true,
+      docs_only: false,
+      website_e2e: true,
+      website_visual_e2e: false,
+    })
+  })
+
+  it.each([
+    'src/app/(frontend-root)/page.tsx',
+    'src/app/(frontend)/[locale]/privacy/page.tsx',
+    'src/components/website/SiteFooter.tsx',
+  ])('selects visual E2E for public website route/component %s', (path) => {
+    expect(classifyChangedFiles([path])).toMatchObject({
+      admin_e2e: false,
+      chat_e2e: false,
+      code: true,
+      docs_only: false,
+      website_e2e: true,
+      website_visual_e2e: true,
+    })
+  })
+
+  it.each([
+    'src/components/inquiry/InquiryForm.tsx',
+    'src/app/api/inquiries/route.ts',
+    'tests/e2e/inquiry.spec.ts',
+  ])('selects only Inquiry E2E for %s', (path) => {
+    expect(classifyChangedFiles([path])).toMatchObject({
+      admin_e2e: false,
+      chat_e2e: false,
+      code: true,
+      docs_only: false,
+      inquiry_e2e: true,
+      website_e2e: false,
+      website_visual_e2e: false,
+    })
+  })
+
+  it.each([
+    'tests/e2e/website-visual.spec.ts',
+    'tests/e2e/website-visual.spec.ts-snapshots/linux/en-desktop-home-chromium.png',
+  ])('selects only Website visual E2E for %s', (path) => {
+    expect(classifyChangedFiles([path])).toEqual({
+      ...lightClassification,
+      code: true,
+      docs_only: false,
+      website_visual_e2e: true,
     })
   })
 
@@ -107,18 +173,19 @@ describe('CI change classifier', () => {
     })
   })
 
-  it.each([
-    'src/app/(frontend)/[locale]/layout.tsx',
-    'src/app/(frontend)/website.css',
-  ])('selects Website and Chat E2E for shared frontend path %s', (path) => {
-    expect(classifyChangedFiles([path])).toMatchObject({
-      admin_e2e: false,
-      chat_e2e: true,
-      code: true,
-      docs_only: false,
-      website_e2e: true,
-    })
-  })
+  it.each(['src/app/(frontend)/[locale]/layout.tsx', 'src/app/(frontend)/website.css'])(
+    'selects Website and Chat E2E for shared frontend path %s',
+    (path) => {
+      expect(classifyChangedFiles([path])).toMatchObject({
+        admin_e2e: false,
+        chat_e2e: true,
+        code: true,
+        docs_only: false,
+        website_e2e: true,
+        website_visual_e2e: true,
+      })
+    },
+  )
 
   it('combines Website and Admin E2E for a mixed change', () => {
     expect(
@@ -132,6 +199,7 @@ describe('CI change classifier', () => {
       code: true,
       docs_only: false,
       website_e2e: true,
+      website_visual_e2e: true,
     })
   })
 
@@ -143,7 +211,9 @@ describe('CI change classifier', () => {
         chat_e2e: true,
         code: true,
         docs_only: false,
+        inquiry_e2e: true,
         website_e2e: true,
+        website_visual_e2e: true,
       })
     },
   )
@@ -205,6 +275,8 @@ describe('CI change classifier', () => {
     ['unexpected-root.file'],
     ['src/components/unowned/NewWidget.tsx'],
     ['src/app/(unowned)/page.tsx'],
+    ['src/app/api/unowned/route.ts'],
+    ['src/new-ui/NewWidget.tsx'],
     ['tests/e2e/new-suite.spec.ts'],
   ])('fails closed for an unknown path %j', (paths) => {
     expect(classifyChangedFiles(paths)).toEqual(fullClassification)

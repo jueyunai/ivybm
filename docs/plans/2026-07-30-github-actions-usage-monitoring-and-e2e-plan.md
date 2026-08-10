@@ -63,6 +63,12 @@ GitHub `Usage metrics` 是最终账单依据；workflow 列表的 Total duration
 
 未达到阈值则保留当前 job 架构。以现有发布频率，单 job 每次预计仅节省 4-6 分钟，而重构及独立 Review 本身预计消耗 25-40 分钟 CI，需要约 6-10 次生产发布才能回本。
 
+## 8. 阈值触发后的 CI v2 批次授权（2026-08-07）
+
+7 日监测窗口已达到多项单 job 触发阈值：Ready/full PR 平均 15.29 个理论计费分钟，main production-image 平均 16.17 个理论计费分钟，production publish 频率折算约 26 次/月。docs-only 样本不足，不能据此宣称该项阈值已验证。基于这些实测数据，任务级授权启动 CI v2 实施批次。
+
+CI v2 仅合并 validation runner 内的分类、Fast CI、按需数据库 / E2E / operations 门禁和最终 policy ledger；production image publish 保持独立 job，仍仅由成功的 main current head 触发并拥有 `packages: write`。保留 PR/main CI、fail-closed、不可变 SHA/digest、数据库和 E2E 相关门禁、敏感路径边界及另一名开发者对 workflow、`scripts/ci/**`、CI policy 和 production image 边界的独立 Review。该批次不修改业务 runtime、Collection、migration、Compose 或部署脚本。
+
 ## 6. 后续单 job 的边界
 
 如触发阈值，后续方案才允许研究：单 runner 完成分类、Fast 与重门禁；依赖只安装一次；数据库按需启动并 `always()` 清理；最终 policy 保持稳定；publish job 继续独立且仅 main 获得 `packages: write`。

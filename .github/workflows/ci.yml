@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches:
       - main
@@ -11,42 +13,124 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
-  changes:
-    name: Classify and validate changes
+  validation:
+    name: CI validation
+    if: ${{ github.event_name != 'pull_request_target' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 45
     outputs:
-      code: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.code || steps.fallback.outputs.code }}
-      database: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.database || steps.fallback.outputs.database }}
-      admin_e2e: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.admin_e2e || steps.fallback.outputs.admin_e2e }}
-      chat_e2e: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.chat_e2e || steps.fallback.outputs.chat_e2e }}
-      diff_range: ${{ steps.diff.outputs.diff_range }}
-      docs_only: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.docs_only || steps.fallback.outputs.docs_only }}
-      full_fallback: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.full_fallback || steps.fallback.outputs.full_fallback }}
-      head_sha: ${{ steps.diff.outputs.head_sha }}
-      operations: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.operations || steps.fallback.outputs.operations }}
-      production_image: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.production_image || steps.fallback.outputs.production_image }}
-      website_e2e: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.website_e2e || steps.fallback.outputs.website_e2e }}
+      admin_e2e: ${{ steps.classification.outputs.admin_e2e }}
+      build_result: ${{ steps.results.outputs.build }}
+      chat_e2e: ${{ steps.classification.outputs.chat_e2e }}
+      checked_out_sha: ${{ steps.revision.outputs.checked_out_sha }}
+      cleanup_result: ${{ steps.results.outputs.cleanup }}
+      code: ${{ steps.classification.outputs.code }}
+      control_source: ${{ steps.control.outputs.control_source }}
+      database: ${{ steps.classification.outputs.database }}
+      database_result: ${{ steps.results.outputs.database }}
+      docs_only: ${{ steps.classification.outputs.docs_only }}
+      e2e_result: ${{ steps.results.outputs.e2e }}
+      event_name: ${{ steps.revision.outputs.event_name }}
+      expected_head_sha: ${{ steps.revision.outputs.expected_head_sha }}
+      fast_result: ${{ steps.results.outputs.fast }}
+      force_full: ${{ steps.control.outputs.force_full }}
+      full_fallback: ${{ steps.classification.outputs.full_fallback }}
+      inquiry_e2e: ${{ steps.classification.outputs.inquiry_e2e }}
+      is_draft: ${{ steps.revision.outputs.is_draft }}
+      operations: ${{ steps.classification.outputs.operations }}
+      operations_result: ${{ steps.results.outputs.operations }}
+      policy_contract: ${{ steps.control.outputs.policy_contract }}
+      policy_ref: ${{ steps.control.outputs.policy_ref }}
+      production_image: ${{ steps.classification.outputs.production_image }}
+      resolved_head_sha: ${{ steps.diff.outputs.head_sha }}
+      website_e2e: ${{ steps.classification.outputs.website_e2e }}
+      website_visual_e2e: ${{ steps.classification.outputs.website_visual_e2e }}
+    env:
+      ADMIN_PORTAL_CONTENT_STUDIO_ENABLED: true
+      ADMIN_PORTAL_CONVERSATIONS_ENABLED: true
+      ADMIN_PORTAL_ENABLED: true
+      ADMIN_PORTAL_KNOWLEDGE_ENABLED: true
+      ADMIN_PORTAL_LEADS_ENABLED: true
+      ADMIN_PORTAL_MEDIA_ENABLED: true
+      ADMIN_PORTAL_OPERATIONS_ENABLED: true
+      ADMIN_PORTAL_OVERVIEW_ENABLED: true
+      ADMIN_PORTAL_PLATFORMS_ENABLED: true
+      ADMIN_PORTAL_PUBLISHING_ENABLED: false
+      ADMIN_PORTAL_SETTINGS_ENABLED: true
+      ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED: true
+      APP_VERSION: ci
+      CI_DB_CONTAINER: ivybm-ci-db-${{ github.run_id }}-${{ github.run_attempt }}
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ivybm_ci
+      E2E_ADMIN_EMAIL: admin@example.invalid
+      E2E_ADMIN_PASSWORD: ci-demo-admin-password
+      NEXT_PUBLIC_SERVER_URL: http://localhost:3000
+      PAYLOAD_SECRET: ci-build-only-secret-at-least-32-characters
+      SEED_ADMIN_EMAIL: admin@example.invalid
+      SEED_ADMIN_PASSWORD: ci-demo-admin-password
     steps:
-      - name: Checkout repository history
+      - name: Checkout immutable event revision
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify immutable event revision
+        id: revision
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == 'pull_request' || "$EVENT_NAME" == 'pull_request_target' ]]; then
+            expected_head_sha="$PR_HEAD_SHA"
+            is_draft="$PR_DRAFT"
+          elif [[ "$EVENT_NAME" == 'push' ]]; then
+            expected_head_sha="$PUSH_HEAD_SHA"
+            is_draft=false
+          else
+            echo "Unsupported event: $EVENT_NAME" >&2
+            exit 1
+          fi
+
+          if [[ ! "$expected_head_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'Expected head SHA is missing or invalid.' >&2
+            exit 1
+          fi
+          if [[ "$is_draft" != 'true' && "$is_draft" != 'false' ]]; then
+            echo 'Draft state is missing or invalid.' >&2
+            exit 1
+          fi
+
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [[ "$checked_out_sha" != "$expected_head_sha" ]]; then
+            echo "Checked out $checked_out_sha instead of $expected_head_sha." >&2
+            exit 1
+          fi
+
+          {
+            echo "event_name=$EVENT_NAME"
+            echo "expected_head_sha=$expected_head_sha"
+            echo "checked_out_sha=$checked_out_sha"
+            echo "is_draft=$is_draft"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Resolve comparison and changed paths
         id: diff
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
+          EVENT_NAME: ${{ steps.revision.outputs.event_name }}
+          EXPECTED_HEAD_SHA: ${{ steps.revision.outputs.expected_head_sha }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
-          PUSH_HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
@@ -54,22 +138,16 @@ jobs:
           : > "$changed_files"
 
           fail_closed() {
-            fallback_head="$PUSH_HEAD_SHA"
-            if [[ "$EVENT_NAME" == 'pull_request' && "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-              fallback_head="$PR_HEAD_SHA"
-            fi
             printf '__ci_diff_unavailable__\0' > "$changed_files"
             echo 'diff_range=' >> "$GITHUB_OUTPUT"
-            echo "head_sha=$fallback_head" >> "$GITHUB_OUTPUT"
+            echo "head_sha=$EXPECTED_HEAD_SHA" >> "$GITHUB_OUTPUT"
           }
 
-          if [[ "$EVENT_NAME" == 'pull_request' ]]; then
+          if [[ "$EVENT_NAME" == 'pull_request' || "$EVENT_NAME" == 'pull_request_target' ]]; then
             base_sha="$PR_BASE_SHA"
-            head_sha="$PR_HEAD_SHA"
             separator='...'
           elif [[ "$EVENT_NAME" == 'push' ]]; then
             base_sha="$PUSH_BEFORE_SHA"
-            head_sha="$PUSH_HEAD_SHA"
             separator='..'
           else
             fail_closed
@@ -77,15 +155,14 @@ jobs:
           fi
 
           if [[ ! "$base_sha" =~ ^[0-9a-f]{40}$ ]] ||
-             [[ ! "$head_sha" =~ ^[0-9a-f]{40}$ ]] ||
              [[ "$base_sha" == '0000000000000000000000000000000000000000' ]] ||
              ! git cat-file -e "${base_sha}^{commit}" ||
-             ! git cat-file -e "${head_sha}^{commit}"; then
+             ! git cat-file -e "${EXPECTED_HEAD_SHA}^{commit}"; then
             fail_closed
             exit 0
           fi
 
-          diff_range="${base_sha}${separator}${head_sha}"
+          diff_range="${base_sha}${separator}${EXPECTED_HEAD_SHA}"
           if ! git diff --name-only -z "$diff_range" > "$changed_files" ||
              [[ ! -s "$changed_files" ]]; then
             fail_closed
@@ -93,16 +170,90 @@ jobs:
           fi
 
           echo "diff_range=$diff_range" >> "$GITHUB_OUTPUT"
-          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$EXPECTED_HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare CI control plane
+        id: control
+        shell: bash
+        env:
+          EVENT_NAME: ${{ steps.revision.outputs.event_name }}
+          EXPECTED_HEAD_SHA: ${{ steps.revision.outputs.expected_head_sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          classifier_ref="$EXPECTED_HEAD_SHA"
+          planner_ref="$EXPECTED_HEAD_SHA"
+          policy_ref="$EXPECTED_HEAD_SHA"
+          policy_contract=v2
+          control_source=trusted-main
+          force_full=false
+          ci_control_change=false
+          while IFS= read -r -d '' path; do
+            if [[ "$path" == '.github/CODEOWNERS' ||
+                  "$path" == '.github/workflows/'* ||
+                  "$path" == 'scripts/ci/'* ]]; then
+              ci_control_change=true
+              break
+            fi
+          done < "$RUNNER_TEMP/changed-files.zlist"
+
+          if [[ "$EVENT_NAME" == 'pull_request' || "$EVENT_NAME" == 'pull_request_target' ]]; then
+            if [[ ! "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] ||
+               ! git cat-file -e "${PR_BASE_SHA}^{commit}" ||
+               ! git cat-file -e "${PR_BASE_SHA}:scripts/ci/classify-changes.mjs" ||
+               ! git cat-file -e "${PR_BASE_SHA}:scripts/ci/evaluate-policy.mjs"; then
+              echo 'Trusted PR base control plane is unavailable.' >&2
+              exit 1
+            fi
+
+            classifier_ref="$PR_BASE_SHA"
+            policy_ref="$PR_BASE_SHA"
+            control_source=trusted-base
+            if git cat-file -e "${PR_BASE_SHA}:scripts/ci/plan-validation.mjs"; then
+              planner_ref="$PR_BASE_SHA"
+            else
+              policy_contract=legacy
+              control_source=bootstrap-trusted-base-policy
+            fi
+
+            if [[ "$ci_control_change" == 'true' ]]; then
+              force_full=true
+              if [[ "$policy_contract" == 'legacy' ]]; then
+                control_source=bootstrap-candidate-control-change
+              else
+                control_source=candidate-control-change
+              fi
+            fi
+          fi
+
+          classifier_dir="$RUNNER_TEMP/ci-classifier"
+          planner_dir="$RUNNER_TEMP/ci-planner"
+          mkdir -p "$classifier_dir" "$planner_dir"
+          git show "${classifier_ref}:scripts/ci/classify-changes.mjs" \
+            > "$classifier_dir/classify-changes.mjs"
+          git show "${planner_ref}:scripts/ci/classify-changes.mjs" \
+            > "$planner_dir/classify-changes.mjs"
+          git show "${planner_ref}:scripts/ci/plan-validation.mjs" \
+            > "$planner_dir/plan-validation.mjs"
+
+          {
+            echo "classifier_path=$classifier_dir/classify-changes.mjs"
+            echo "control_source=$control_source"
+            echo "force_full=$force_full"
+            echo "planner_path=$planner_dir/plan-validation.mjs"
+            echo "policy_contract=$policy_contract"
+            echo "policy_ref=$policy_ref"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Classify changed paths
         id: classify
         continue-on-error: true
-        run: node scripts/ci/classify-changes.mjs < "$RUNNER_TEMP/changed-files.zlist"
+        run: node "${{ steps.control.outputs.classifier_path }}" < "$RUNNER_TEMP/changed-files.zlist"
 
       - name: Preserve fail-closed outputs after classifier error
         id: fallback
-        if: steps.classify.outcome != 'success'
+        if: steps.control.outputs.force_full == 'true' || steps.classify.outcome != 'success'
         shell: bash
         run: |
           {
@@ -110,6 +261,8 @@ jobs:
             echo 'code=true'
             echo 'database=true'
             echo 'website_e2e=true'
+            echo 'website_visual_e2e=true'
+            echo 'inquiry_e2e=true'
             echo 'admin_e2e=true'
             echo 'chat_e2e=true'
             echo 'operations=true'
@@ -117,11 +270,51 @@ jobs:
             echo 'full_fallback=true'
           } >> "$GITHUB_OUTPUT"
 
+      - name: Normalize classification contract
+        id: classification
+        shell: bash
+        env:
+          ADMIN_E2E: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.admin_e2e || steps.fallback.outputs.admin_e2e }}
+          CHAT_E2E: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.chat_e2e || steps.fallback.outputs.chat_e2e }}
+          CODE: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.code || steps.fallback.outputs.code }}
+          DATABASE: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.database || steps.fallback.outputs.database }}
+          DOCS_ONLY: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.docs_only || steps.fallback.outputs.docs_only }}
+          FULL_FALLBACK: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.full_fallback || steps.fallback.outputs.full_fallback }}
+          INQUIRY_E2E: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.inquiry_e2e || steps.fallback.outputs.inquiry_e2e }}
+          OPERATIONS: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.operations || steps.fallback.outputs.operations }}
+          PRODUCTION_IMAGE: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.production_image || steps.fallback.outputs.production_image }}
+          WEBSITE_E2E: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.website_e2e || steps.fallback.outputs.website_e2e }}
+          WEBSITE_VISUAL_E2E: ${{ steps.control.outputs.force_full != 'true' && steps.classify.outcome == 'success' && steps.classify.outputs.website_visual_e2e || steps.fallback.outputs.website_visual_e2e }}
+        run: |
+          set -euo pipefail
+
+          pairs=(
+            "docs_only=$DOCS_ONLY"
+            "code=$CODE"
+            "database=$DATABASE"
+            "website_e2e=$WEBSITE_E2E"
+            "website_visual_e2e=$WEBSITE_VISUAL_E2E"
+            "inquiry_e2e=$INQUIRY_E2E"
+            "admin_e2e=$ADMIN_E2E"
+            "chat_e2e=$CHAT_E2E"
+            "operations=$OPERATIONS"
+            "production_image=$PRODUCTION_IMAGE"
+            "full_fallback=$FULL_FALLBACK"
+          )
+          for pair in "${pairs[@]}"; do
+            value="${pair#*=}"
+            if [[ "$value" != 'true' && "$value" != 'false' ]]; then
+              echo "Invalid classification output: $pair" >&2
+              exit 1
+            fi
+            echo "$pair" >> "$GITHUB_OUTPUT"
+          done
+
       - name: Validate repository diff and sensitive path boundary
         shell: bash
         env:
           DIFF_RANGE: ${{ steps.diff.outputs.diff_range }}
-          FULL_FALLBACK: ${{ steps.classify.outcome == 'success' && steps.classify.outputs.full_fallback || steps.fallback.outputs.full_fallback }}
+          FULL_FALLBACK: ${{ steps.classification.outputs.full_fallback }}
         run: |
           set -euo pipefail
 
@@ -151,183 +344,118 @@ jobs:
             exit 1
           fi
 
-  fast:
-    name: Fast CI
-    needs: changes
-    if: needs.changes.result == 'success' && needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout verified revision
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          ref: ${{ needs.changes.outputs.head_sha }}
-          persist-credentials: false
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 10.15.1
-          run_install: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Unit tests
-        run: pnpm test:unit
-
-      - name: Contract tests
-        run: pnpm test:contract
-
-  full_gate:
-    name: Path-specific full gate
-    needs: [changes, fast]
-    if: >-
-      needs.changes.result == 'success' &&
-      needs.fast.result == 'success' &&
-      (github.event_name == 'push' || github.event.pull_request.draft == false) &&
-      (needs.changes.outputs.database == 'true' ||
-       needs.changes.outputs.website_e2e == 'true' ||
-       needs.changes.outputs.admin_e2e == 'true' ||
-       needs.changes.outputs.chat_e2e == 'true' ||
-       needs.changes.outputs.operations == 'true' ||
-       needs.changes.outputs.production_image == 'true' ||
-       needs.changes.outputs.full_fallback == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    services:
-      db:
-        image: pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
+      - name: Plan validation stages
+        id: plan
         env:
-          POSTGRES_DB: ivybm_ci
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d ivybm_ci"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      ADMIN_PORTAL_CONTENT_STUDIO_ENABLED: true
-      ADMIN_PORTAL_CONVERSATIONS_ENABLED: true
-      ADMIN_PORTAL_ENABLED: true
-      ADMIN_PORTAL_KNOWLEDGE_ENABLED: true
-      ADMIN_PORTAL_LEADS_ENABLED: true
-      ADMIN_PORTAL_MEDIA_ENABLED: true
-      ADMIN_PORTAL_OPERATIONS_ENABLED: true
-      ADMIN_PORTAL_OVERVIEW_ENABLED: true
-      ADMIN_PORTAL_PLATFORMS_ENABLED: true
-      ADMIN_PORTAL_PUBLISHING_ENABLED: false
-      ADMIN_PORTAL_SETTINGS_ENABLED: true
-      ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED: true
-      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ivybm_ci
-      PAYLOAD_SECRET: ci-build-only-secret-at-least-32-characters
-      NEXT_PUBLIC_SERVER_URL: http://localhost:3000
-      APP_VERSION: ci
-      E2E_ADMIN_EMAIL: admin@example.invalid
-      E2E_ADMIN_PASSWORD: ci-demo-admin-password
-      SEED_ADMIN_EMAIL: admin@example.invalid
-      SEED_ADMIN_PASSWORD: ci-demo-admin-password
-    steps:
-      - name: Checkout verified revision
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          ref: ${{ needs.changes.outputs.head_sha }}
-          persist-credentials: false
+          ADMIN_E2E: ${{ steps.classification.outputs.admin_e2e }}
+          CHAT_E2E: ${{ steps.classification.outputs.chat_e2e }}
+          CODE: ${{ steps.classification.outputs.code }}
+          DATABASE: ${{ steps.classification.outputs.database }}
+          DOCS_ONLY: ${{ steps.classification.outputs.docs_only }}
+          EVENT_NAME: ${{ steps.revision.outputs.event_name }}
+          FORCE_FULL: ${{ steps.control.outputs.force_full }}
+          FULL_FALLBACK: ${{ steps.classification.outputs.full_fallback }}
+          INQUIRY_E2E: ${{ steps.classification.outputs.inquiry_e2e }}
+          IS_DRAFT: ${{ steps.revision.outputs.is_draft }}
+          OPERATIONS: ${{ steps.classification.outputs.operations }}
+          PRODUCTION_IMAGE: ${{ steps.classification.outputs.production_image }}
+          WEBSITE_E2E: ${{ steps.classification.outputs.website_e2e }}
+          WEBSITE_VISUAL_E2E: ${{ steps.classification.outputs.website_visual_e2e }}
+        run: node "${{ steps.control.outputs.planner_path }}"
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v6
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.fast_required == 'true'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 10.15.1
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.fast_required == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install dependencies
+      - name: Install dependencies once
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.fast_required == 'true'
         run: pnpm install --frozen-lockfile
 
-      - name: Apply database migrations
-        if: >-
-          needs.changes.outputs.database == 'true' ||
-          needs.changes.outputs.website_e2e == 'true' ||
-          needs.changes.outputs.admin_e2e == 'true' ||
-          needs.changes.outputs.chat_e2e == 'true'
-        run: pnpm db:migrate
-
-      - name: Reset test database
-        if: >-
-          needs.changes.outputs.database == 'true' ||
-          needs.changes.outputs.website_e2e == 'true' ||
-          needs.changes.outputs.admin_e2e == 'true' ||
-          needs.changes.outputs.chat_e2e == 'true'
-        run: pnpm db:reset:test
-
-      - name: Seed demo data twice
-        if: >-
-          needs.changes.outputs.database == 'true' ||
-          needs.changes.outputs.website_e2e == 'true' ||
-          needs.changes.outputs.admin_e2e == 'true' ||
-          needs.changes.outputs.chat_e2e == 'true'
+      - name: Fast CI
+        id: fast
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.fast_required == 'true'
         run: |
-          pnpm db:seed
-          pnpm db:seed
+          pnpm lint
+          pnpm typecheck
+          pnpm test:unit
+          pnpm test:contract
 
-      - name: Integration tests
-        if: needs.changes.outputs.database == 'true'
-        run: pnpm test:integration
-
-      - name: Verify Compose database persistence
-        if: needs.changes.outputs.database == 'true'
-        run: pnpm db:test:persistence
-
-      - name: Production build
-        if: >-
-          needs.changes.outputs.production_image == 'true' ||
-          needs.changes.outputs.website_e2e == 'true' ||
-          needs.changes.outputs.admin_e2e == 'true' ||
-          needs.changes.outputs.chat_e2e == 'true'
-        run: pnpm build
-
-      - name: Install Chromium for browser E2E
-        if: >-
-          needs.changes.outputs.website_e2e == 'true' ||
-          needs.changes.outputs.admin_e2e == 'true' ||
-          needs.changes.outputs.chat_e2e == 'true'
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Browser E2E
-        if: >-
-          needs.changes.outputs.website_e2e == 'true' ||
-          needs.changes.outputs.admin_e2e == 'true' ||
-          needs.changes.outputs.chat_e2e == 'true'
-        env:
-          ADMIN_E2E: ${{ needs.changes.outputs.admin_e2e }}
-          CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}
-          FULL_FALLBACK: ${{ needs.changes.outputs.full_fallback }}
-          WEBSITE_E2E: ${{ needs.changes.outputs.website_e2e }}
+      - name: Start database when required
+        id: database_start
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.database_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
+
+          docker run --detach --rm \
+            --name "$CI_DB_CONTAINER" \
+            --env POSTGRES_DB=ivybm_ci \
+            --env POSTGRES_PASSWORD=postgres \
+            --env POSTGRES_USER=postgres \
+            --publish 5432:5432 \
+            pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
+
+          for attempt in {1..30}; do
+            if docker exec "$CI_DB_CONTAINER" pg_isready -U postgres -d ivybm_ci >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs "$CI_DB_CONTAINER" >&2
+          echo 'PostgreSQL did not become ready.' >&2
+          exit 1
+
+      - name: Database gate
+        id: database
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.database_required == 'true'
+        env:
+          DATABASE_CHANGE: ${{ steps.classification.outputs.database }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pnpm db:migrate
+          pnpm db:reset:test
+          pnpm db:seed
+          pnpm db:seed
+
+          if [[ "$DATABASE_CHANGE" == 'true' ]]; then
+            pnpm test:integration
+            pnpm db:test:persistence
+          fi
+
+      - name: Production build
+        id: build
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.build_required == 'true'
+        run: pnpm build
+
+      - name: Browser E2E
+        id: e2e
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.e2e_required == 'true'
+        env:
+          ADMIN_E2E: ${{ steps.classification.outputs.admin_e2e }}
+          CHAT_E2E: ${{ steps.classification.outputs.chat_e2e }}
+          FULL_FALLBACK: ${{ steps.classification.outputs.full_fallback }}
+          INQUIRY_E2E: ${{ steps.classification.outputs.inquiry_e2e }}
+          WEBSITE_E2E: ${{ steps.classification.outputs.website_e2e }}
+          WEBSITE_VISUAL_E2E: ${{ steps.classification.outputs.website_visual_e2e }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pnpm exec playwright install --with-deps chromium
 
           if [[ "$FULL_FALLBACK" == 'true' ]]; then
             pnpm test:e2e
@@ -337,6 +465,12 @@ jobs:
           specs=()
           if [[ "$WEBSITE_E2E" == 'true' ]]; then
             specs+=(tests/e2e/website.spec.ts)
+          fi
+          if [[ "$WEBSITE_VISUAL_E2E" == 'true' ]]; then
+            specs+=(tests/e2e/website-visual.spec.ts)
+          fi
+          if [[ "$INQUIRY_E2E" == 'true' ]]; then
+            specs+=(tests/e2e/inquiry.spec.ts)
           fi
           if [[ "$ADMIN_E2E" == 'true' ]]; then
             specs+=(tests/e2e/admin-visual.spec.ts)
@@ -353,77 +487,187 @@ jobs:
 
           pnpm test:e2e -- "${specs[@]}"
 
-      - name: Build runtime image for PR validation
-        if: github.event_name == 'pull_request' && needs.changes.outputs.operations == 'true'
-        run: >-
-          docker build
-          --target runtime
-          --build-arg NEXT_PUBLIC_SERVER_URL=http://localhost:3000
-          --tag ivybm:ci .
+      - name: Upload failed website visual evidence
+        if: ${{ always() && steps.e2e.outcome == 'failure' && steps.classification.outputs.website_visual_e2e == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-visual-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test-results/website-visual-*/**/*-actual.png
+            test-results/website-visual-*/**/*-diff.png
+          if-no-files-found: warn
+          retention-days: 3
+          compression-level: 0
+          include-hidden-files: false
 
-      - name: Build job worker image for PR validation
-        if: github.event_name == 'pull_request' && needs.changes.outputs.operations == 'true'
-        run: docker build --target worker --tag ivybm-worker:ci .
-
-      - name: Validate local runtime Compose configuration
-        if: needs.changes.outputs.operations == 'true'
+      - name: Operations gate
+        id: operations
+        if: steps.control.outputs.force_full == 'true' || steps.plan.outputs.operations_required == 'true'
         env:
           AI_CONFIG_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-          APP_VERSION: ci
-          DATABASE_URL: postgres://postgres:postgres@db:5432/ivybm_ci
-          NEXT_PUBLIC_SERVER_URL: http://localhost:3000
+          EVENT_NAME: ${{ steps.revision.outputs.event_name }}
           POSTGRES_DB: ivybm_ci
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
-          SEED_ADMIN_EMAIL: admin@example.invalid
-          SEED_ADMIN_PASSWORD: ci-demo-admin-password
-        run: docker compose -f compose.yaml -f compose.staging.yaml config >/dev/null
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Validate production operations configuration
-        if: needs.changes.outputs.operations == 'true'
-        run: pnpm test:operations
+          if [[ "$EVENT_NAME" == 'pull_request' || "$EVENT_NAME" == 'pull_request_target' ]]; then
+            docker build \
+              --target runtime \
+              --build-arg NEXT_PUBLIC_SERVER_URL=http://localhost:3000 \
+              --tag ivybm:ci .
+            docker build --target worker --tag ivybm-worker:ci .
+          fi
+
+          DATABASE_URL=postgres://postgres:postgres@db:5432/ivybm_ci \
+            docker compose -f compose.yaml -f compose.staging.yaml config >/dev/null
+          pnpm test:operations
+
+      - name: Clean up database
+        id: cleanup
+        if: ${{ always() && (steps.control.outputs.force_full == 'true' || steps.plan.outputs.database_required == 'true') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker inspect "$CI_DB_CONTAINER" >/dev/null 2>&1; then
+            docker rm --force "$CI_DB_CONTAINER"
+          fi
+
+      - name: Record validation stage outcomes
+        id: results
+        if: ${{ always() }}
+        shell: bash
+        env:
+          BUILD_RESULT: ${{ steps.build.outcome }}
+          CLEANUP_RESULT: ${{ steps.cleanup.outcome }}
+          DATABASE_RESULT: ${{ steps.database.outcome }}
+          E2E_RESULT: ${{ steps.e2e.outcome }}
+          FAST_RESULT: ${{ steps.fast.outcome }}
+          OPERATIONS_RESULT: ${{ steps.operations.outcome }}
+        run: |
+          set -euo pipefail
+
+          record_result() {
+            local name="$1"
+            local value="$2"
+            case "$value" in
+              success|failure|cancelled|skipped)
+                echo "$name=$value" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "$name=missing" >> "$GITHUB_OUTPUT"
+                ;;
+            esac
+          }
+
+          record_result fast "$FAST_RESULT"
+          record_result database "$DATABASE_RESULT"
+          record_result build "$BUILD_RESULT"
+          record_result e2e "$E2E_RESULT"
+          record_result operations "$OPERATIONS_RESULT"
+          record_result cleanup "$CLEANUP_RESULT"
 
   ci_policy:
-    name: CI policy
-    needs: [changes, fast, full_gate]
-    if: ${{ always() }}
+    name: CI policy (main)
+    needs: [validation]
+    # A pull_request run is candidate-owned and cannot authorize a merge. The
+    # stable policy check is emitted only by the base-owned pull_request_target
+    # execution (or by the trusted main push path).
+    if: ${{ always() && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      CHANGES_RESULT: ${{ needs.changes.result }}
-      CODE: ${{ needs.changes.outputs.code }}
-      DATABASE: ${{ needs.changes.outputs.database }}
-      ADMIN_E2E: ${{ needs.changes.outputs.admin_e2e }}
-      CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}
-      DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
-      EVENT_NAME: ${{ github.event_name }}
-      FAST_RESULT: ${{ needs.fast.result }}
-      FULL_FALLBACK: ${{ needs.changes.outputs.full_fallback }}
-      FULL_GATE_RESULT: ${{ needs.full_gate.result }}
-      HEAD_SHA: ${{ needs.changes.outputs.head_sha }}
-      IS_DRAFT: ${{ github.event.pull_request.draft || false }}
-      OPERATIONS: ${{ needs.changes.outputs.operations }}
-      PRODUCTION_IMAGE: ${{ needs.changes.outputs.production_image }}
-      WEBSITE_E2E: ${{ needs.changes.outputs.website_e2e }}
+      ADMIN_E2E: ${{ needs.validation.outputs.admin_e2e }}
+      BUILD_RESULT: ${{ needs.validation.outputs.build_result }}
+      CHAT_E2E: ${{ needs.validation.outputs.chat_e2e }}
+      CHECKED_OUT_SHA: ${{ needs.validation.outputs.checked_out_sha }}
+      CLEANUP_RESULT: ${{ needs.validation.outputs.cleanup_result }}
+      CODE: ${{ needs.validation.outputs.code }}
+      CONTROL_SOURCE: ${{ needs.validation.outputs.control_source }}
+      DATABASE: ${{ needs.validation.outputs.database }}
+      DATABASE_RESULT: ${{ needs.validation.outputs.database_result }}
+      DOCS_ONLY: ${{ needs.validation.outputs.docs_only }}
+      E2E_RESULT: ${{ needs.validation.outputs.e2e_result }}
+      EVENT_NAME: ${{ needs.validation.outputs.event_name }}
+      EXPECTED_HEAD_SHA: ${{ needs.validation.outputs.expected_head_sha }}
+      FAST_RESULT: ${{ needs.validation.outputs.fast_result }}
+      FORCE_FULL: ${{ needs.validation.outputs.force_full }}
+      FULL_FALLBACK: ${{ needs.validation.outputs.full_fallback }}
+      INQUIRY_E2E: ${{ needs.validation.outputs.inquiry_e2e }}
+      IS_DRAFT: ${{ needs.validation.outputs.is_draft }}
+      OPERATIONS: ${{ needs.validation.outputs.operations }}
+      OPERATIONS_RESULT: ${{ needs.validation.outputs.operations_result }}
+      PRODUCTION_IMAGE: ${{ needs.validation.outputs.production_image }}
+      RESOLVED_HEAD_SHA: ${{ needs.validation.outputs.resolved_head_sha }}
+      VALIDATION_RESULT: ${{ needs.validation.result }}
+      WEBSITE_E2E: ${{ needs.validation.outputs.website_e2e }}
+      WEBSITE_VISUAL_E2E: ${{ needs.validation.outputs.website_visual_e2e }}
     steps:
       - name: Checkout policy implementation
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          ref: ${{ needs.changes.outputs.head_sha || github.sha }}
+          ref: ${{ needs.validation.outputs.policy_ref || github.sha }}
           persist-credentials: false
 
-      - name: Enforce expected job results for this revision
+      - name: Enforce trusted v2 policy
+        if: needs.validation.outputs.policy_contract == 'v2'
         run: node scripts/ci/evaluate-policy.mjs
+
+      - name: Enforce trusted legacy bootstrap policy
+        if: needs.validation.outputs.policy_contract == 'legacy'
+        env:
+          CHANGES_RESULT: ${{ needs.validation.result }}
+          FULL_GATE_RESULT: ${{ needs.validation.result }}
+          HEAD_SHA: ${{ needs.validation.outputs.expected_head_sha }}
+          IS_DRAFT: false
+        run: node scripts/ci/evaluate-policy.mjs
+
+      - name: Reject an unknown policy contract
+        if: >-
+          needs.validation.outputs.policy_contract != 'v2' &&
+          needs.validation.outputs.policy_contract != 'legacy'
+        run: |
+          echo 'Trusted policy contract is missing or invalid.' >&2
+          exit 1
+
+  ci_policy_target:
+    name: CI policy
+    if: ${{ github.event_name == 'pull_request_target' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      IS_DRAFT: ${{ github.event.pull_request.draft }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Checkout trusted policy implementation
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Enforce base-owned policy against candidate check results
+        run: node scripts/ci/verify-trusted-policy.mjs
 
   publish_production_images:
     name: Publish immutable runtime and worker images
-    needs: [changes, ci_policy]
+    needs: [validation, ci_policy]
     if: >-
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
-      needs.changes.result == 'success' &&
+      needs.validation.result == 'success' &&
       needs.ci_policy.result == 'success' &&
-      needs.changes.outputs.production_image == 'true'
+      needs.validation.outputs.production_image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -433,7 +677,7 @@ jobs:
       - name: Checkout verified commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          ref: ${{ needs.changes.outputs.head_sha }}
+          ref: ${{ needs.validation.outputs.expected_head_sha }}
           persist-credentials: false
 
       - name: Set up Docker Buildx
@@ -458,14 +702,14 @@ jobs:
           context: .
           target: runtime
           push: true
-          tags: ${{ steps.image.outputs.namespace }}/ivybm-runtime:${{ needs.changes.outputs.head_sha }}
+          tags: ${{ steps.image.outputs.namespace }}/ivybm-runtime:${{ needs.validation.outputs.expected_head_sha }}
           labels: |
-            org.opencontainers.image.revision=${{ needs.changes.outputs.head_sha }}
+            org.opencontainers.image.revision=${{ needs.validation.outputs.expected_head_sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           build-args: |
             NEXT_PUBLIC_SERVER_URL=https://ivybm.com
-          cache-from: type=gha,scope=ivybm-production
-          cache-to: type=gha,mode=max,scope=ivybm-production
+          cache-from: type=gha,scope=ivybm-production-runtime
+          cache-to: type=gha,mode=max,scope=ivybm-production-runtime,ignore-error=true
 
       - name: Build and push worker image
         id: worker
@@ -474,19 +718,30 @@ jobs:
           context: .
           target: worker
           push: true
-          tags: ${{ steps.image.outputs.namespace }}/ivybm-worker:${{ needs.changes.outputs.head_sha }}
+          tags: ${{ steps.image.outputs.namespace }}/ivybm-worker:${{ needs.validation.outputs.expected_head_sha }}
           labels: |
-            org.opencontainers.image.revision=${{ needs.changes.outputs.head_sha }}
+            org.opencontainers.image.revision=${{ needs.validation.outputs.expected_head_sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          cache-from: type=gha,scope=ivybm-production
-          cache-to: type=gha,mode=max,scope=ivybm-production
+          cache-from: type=gha,scope=ivybm-production-worker
+          cache-to: type=gha,mode=max,scope=ivybm-production-worker,ignore-error=true
 
       - name: Record published digests
+        env:
+          RUNTIME_DIGEST: ${{ steps.runtime.outputs.digest }}
+          WORKER_DIGEST: ${{ steps.worker.outputs.digest }}
         run: |
+          set -euo pipefail
+          if [[ ! "$RUNTIME_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] ||
+             [[ ! "$WORKER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo 'Published image digest is missing or invalid.' >&2
+            exit 1
+          fi
+
           {
             echo '## Published production images'
             echo ''
-            echo "- Revision tag: \`${{ needs.changes.outputs.head_sha }}\`"
-            echo "- Runtime: \`${{ steps.image.outputs.namespace }}/ivybm-runtime:${{ needs.changes.outputs.head_sha }}@${{ steps.runtime.outputs.digest }}\`"
-            echo "- Worker: \`${{ steps.image.outputs.namespace }}/ivybm-worker:${{ needs.changes.outputs.head_sha }}@${{ steps.worker.outputs.digest }}\`"
+            echo '- Release receipt: complete'
+            echo "- Revision tag: \`${{ needs.validation.outputs.expected_head_sha }}\`"
+            echo "- Runtime: \`${{ steps.image.outputs.namespace }}/ivybm-runtime:${{ needs.validation.outputs.expected_head_sha }}@${{ steps.runtime.outputs.digest }}\`"
+            echo "- Worker: \`${{ steps.image.outputs.namespace }}/ivybm-worker:${{ needs.validation.outputs.expected_head_sha }}@${{ steps.worker.outputs.digest }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
