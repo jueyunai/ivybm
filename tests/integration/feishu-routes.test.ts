@@ -1689,6 +1689,134 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     await payload.delete({ collection: 'jobs', context, id: job.id, overrideAccess: true })
   })
 
+  it('clears QR app member mappings on reconnect while preserving store OAuth mappings', async () => {
+    const mappings = await payload.find({
+      collection: 'feishu-mappings',
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      where: { connection: { equals: callbackConnectionID } },
+    })
+    const mapping = mappings.docs[0]
+    if (!mapping) throw new Error('Expected disconnected callback mapping')
+    const encryptionKey = readFeishuCredentialEncryptionKey()
+    const qrRevision = new Date(Date.now() + 20_000).toISOString()
+    const qrInstallerOpenId = `open-qr-reconnect-${suffix}`
+    await payload.update({
+      collection: 'feishu-mappings',
+      context,
+      data: {
+        memberMappings: [{ enabled: true, openId: `open-old-app-${suffix}`, user: adminID }],
+      },
+      id: mapping.id,
+      overrideAccess: true,
+    })
+    const qrConnection = await payload.update({
+      collection: 'feishu-connections',
+      context,
+      data: {
+        accessTokenEncrypted: encryptFeishuCredential('qr-reconnect-access', encryptionKey),
+        accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
+        appId: `cli_qr_reconnect_${suffix}`,
+        appSecretEncrypted: encryptFeishuCredential('qr-reconnect-secret', encryptionKey),
+        authMode: 'qr_registered',
+        installerOpenId: qrInstallerOpenId,
+        lastConnectedAt: qrRevision,
+        refreshTokenEncrypted: encryptFeishuCredential('qr-reconnect-refresh', encryptionKey),
+        refreshTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString(),
+        status: 'provisioning',
+      },
+      id: callbackConnectionID,
+      overrideAccess: true,
+    })
+    const qrJob = await enqueueFeishuConnectionProvisionJob({
+      connection: qrConnection as unknown as Record<string, unknown>,
+      payload,
+    })
+    jobIDs.add(qrJob.job.id)
+    const handler = createFeishuConnectionProvisionJobHandler({
+      accessToken: async () => 'qr-reconnect-user-token',
+      createBase: vi.fn(async () => ({ appToken: 'unused', baseURL: 'https://unused.invalid' })),
+      createTable: vi.fn(async () => ({ tableId: 'unused' })),
+      payload,
+    })
+    await handler(claimed(qrJob.job), execution())
+    await payload.update({
+      collection: 'jobs',
+      context,
+      data: { attempts: 1, completedAt: new Date().toISOString(), status: 'succeeded' },
+      id: qrJob.job.id,
+      overrideAccess: true,
+    })
+    const qrMapping = await payload.findByID({
+      collection: 'feishu-mappings',
+      depth: 0,
+      id: mapping.id,
+      overrideAccess: true,
+    })
+    expect(qrMapping).toMatchObject({
+      memberMappings: [],
+      notificationRecipients: [
+        expect.objectContaining({ enabled: true, receiveId: qrInstallerOpenId }),
+      ],
+      status: 'active',
+    })
+
+    const storeMemberOpenId = `open-store-member-${suffix}`
+    await payload.update({
+      collection: 'feishu-mappings',
+      context,
+      data: {
+        memberMappings: [{ enabled: true, openId: storeMemberOpenId, user: adminID }],
+      },
+      id: mapping.id,
+      overrideAccess: true,
+    })
+    const storeRevision = new Date(Date.now() + 40_000).toISOString()
+    const storeConnection = await payload.update({
+      collection: 'feishu-connections',
+      context,
+      data: {
+        accessTokenEncrypted: encryptFeishuCredential('store-reconnect-access', encryptionKey),
+        accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
+        appId: null,
+        appSecretEncrypted: null,
+        authMode: 'store_oauth',
+        installerOpenId: `open-store-installer-${suffix}`,
+        lastConnectedAt: storeRevision,
+        refreshTokenEncrypted: encryptFeishuCredential('store-reconnect-refresh', encryptionKey),
+        refreshTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString(),
+        status: 'provisioning',
+      },
+      id: callbackConnectionID,
+      overrideAccess: true,
+    })
+    const storeJob = await enqueueFeishuConnectionProvisionJob({
+      connection: storeConnection as unknown as Record<string, unknown>,
+      payload,
+    })
+    jobIDs.add(storeJob.job.id)
+    await handler(claimed(storeJob.job), execution())
+    await payload.update({
+      collection: 'jobs',
+      context,
+      data: { attempts: 1, completedAt: new Date().toISOString(), status: 'succeeded' },
+      id: storeJob.job.id,
+      overrideAccess: true,
+    })
+    await expect(
+      payload.findByID({
+        collection: 'feishu-mappings',
+        depth: 0,
+        id: mapping.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      memberMappings: [expect.objectContaining({ enabled: true, openId: storeMemberOpenId })],
+      status: 'active',
+    })
+  })
+
   it.each([20024, 20026])(
     'marks refresh token error %s as reconnect_required in a committed transaction',
     async (code) => {

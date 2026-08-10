@@ -103,6 +103,7 @@ const leadRecipients = (lead: LeadForFeishu, mapping: FeishuMappingConfig) => {
 
 const notifyLead = async ({
   client,
+  eventRevision,
   idempotencyPrefix,
   lead,
   mapping,
@@ -110,6 +111,7 @@ const notifyLead = async ({
   text,
 }: {
   client: FeishuClientPort
+  eventRevision?: string
   idempotencyPrefix: string
   lead: LeadForFeishu
   mapping: FeishuMappingConfig
@@ -123,7 +125,7 @@ const notifyLead = async ({
   return Promise.all(
     recipients.map((recipient) =>
       client.sendText({
-        idempotencyKey: `${idempotencyPrefix}-${lead.id}-${recipient.receiveIdType}-${recipient.receiveId}`,
+        idempotencyKey: `${idempotencyPrefix}${eventRevision ? `-${eventRevision}` : ''}-${lead.id}-${recipient.receiveIdType}-${recipient.receiveId}`,
         receiveId: recipient.receiveId,
         receiveIdType: recipient.receiveIdType,
         signal,
@@ -135,17 +137,20 @@ const notifyLead = async ({
 
 export const notifyNewLead = async ({
   client,
+  eventRevision,
   lead,
   mapping,
   signal,
 }: {
   client: FeishuClientPort
+  eventRevision?: string
   lead: LeadForFeishu
   mapping: FeishuMappingConfig
   signal?: AbortSignal
 }): Promise<Array<{ messageId: string }>> =>
   notifyLead({
     client,
+    eventRevision,
     idempotencyPrefix: 'lead-new',
     lead,
     mapping,
@@ -155,17 +160,20 @@ export const notifyNewLead = async ({
 
 export const notifyHighIntentLead = async ({
   client,
+  eventRevision,
   lead,
   mapping,
   signal,
 }: {
   client: FeishuClientPort
+  eventRevision?: string
   lead: LeadForFeishu
   mapping: FeishuMappingConfig
   signal?: AbortSignal
 }): Promise<Array<{ messageId: string }>> => {
   return notifyLead({
     client,
+    eventRevision,
     idempotencyPrefix: 'lead-high-intent',
     lead,
     mapping,

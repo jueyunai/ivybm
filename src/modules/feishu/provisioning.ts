@@ -195,6 +195,7 @@ const finalizeProvisioning = async ({
         appToken,
         connection: input.connectionId,
         fieldMappings: DEFAULT_FEISHU_FIELD_MAPPINGS.map((field) => ({ ...field })),
+        ...(connection.authMode === 'qr_registered' ? { memberMappings: [] } : {}),
         name: '飞书 CRM 主客户表',
         notificationRecipients: [
           {
