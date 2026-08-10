@@ -132,6 +132,7 @@ describe('Instagram OAuth', () => {
     ).resolves.toEqual({
       accessToken: instagramOAuthFixture.responses.longToken.access_token,
       expiresAt: new Date(5_184_001_000).toISOString(),
+      permissionsType: 'string',
       scopes: requiredInstagramPermissions('instagram-professional'),
     })
 
@@ -170,6 +171,38 @@ describe('Instagram OAuth', () => {
     ).resolves.toEqual({
       accessToken: instagramOAuthFixture.responses.longToken.access_token,
       expiresAt: new Date(5_184_001_000).toISOString(),
+      permissionsType: 'string',
+      scopes: requiredInstagramPermissions('instagram-professional'),
+    })
+  })
+
+  it('accepts an array permissions response and preserves its safe format metadata', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ...instagramOAuthFixture.responses.shortToken,
+            permissions: requiredInstagramPermissions('instagram-professional'),
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(instagramOAuthFixture.responses.longToken), { status: 200 }),
+      )
+
+    await expect(
+      exchangeInstagramAuthorizationCode({
+        code: 'authorization-code',
+        config: readInstagramOAuthConfiguration(environment),
+        fetcher,
+        nowMilliseconds: 1_000,
+      }),
+    ).resolves.toEqual({
+      accessToken: instagramOAuthFixture.responses.longToken.access_token,
+      expiresAt: new Date(5_184_001_000).toISOString(),
+      permissionsType: 'array',
       scopes: requiredInstagramPermissions('instagram-professional'),
     })
   })
@@ -344,12 +377,46 @@ describe('Instagram OAuth', () => {
     expect(shortTokenMissingPermissions).toMatchObject({
       code: 'required_permission_missing',
       diagnostic: {
+        grantedScopes: [],
+        missingScopes: requiredInstagramPermissions('instagram-professional'),
+        permissionsType: 'missing',
         providerResponseKeys: ['access_token', 'user_id'],
         providerStatus: 200,
         stage: 'short_token_exchange',
       },
     })
     expect(JSON.stringify(shortTokenMissingPermissions)).not.toContain('unexpected-flat-token')
+
+    const malformedPermissions = await exchangeInstagramAuthorizationCode({
+      code: 'authorization-code',
+      config: readInstagramOAuthConfiguration(environment),
+      fetcher: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ...instagramOAuthFixture.responses.shortToken,
+            permissions: ['instagram_business_basic', 7, 'secret_provider_scope'],
+          }),
+          { status: 200 },
+        ),
+      ),
+    }).catch((error: unknown) => error)
+
+    expect(malformedPermissions).toMatchObject({
+      code: 'token_response_invalid',
+      diagnostic: {
+        grantedScopes: ['instagram_business_basic'],
+        missingScopes: [
+          'instagram_business_manage_comments',
+          'instagram_business_manage_messages',
+        ],
+        permissionsType: 'array',
+        providerResponseKeys: ['access_token', 'permissions', 'user_id'],
+        providerStatus: 200,
+        stage: 'short_token_exchange',
+      },
+    })
+    expect(JSON.stringify(malformedPermissions)).not.toContain('secret_provider_scope')
+    expect(JSON.stringify(malformedPermissions)).not.toContain('synthetic-short-lived-instagram-token')
 
     const identityFailure = await resolveInstagramAuthorizedAccount({
       externalAccountId: '987654321098765',

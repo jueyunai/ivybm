@@ -1,6 +1,6 @@
 # 一期平台接入 PoC 记录
 
-更新日期：2026-08-07
+更新日期：2026-08-10
 
 > 范围冻结（2026-07-20）：一期会话接入为 Facebook Messenger、Instagram DM、TikTok 私信；一期图文发布为 Facebook、Instagram、LinkedIn。WhatsApp 移出一期，二期再评估网页插件等替代接入；LinkedIn 私信不属于一期自动会话范围。
 >
@@ -50,6 +50,13 @@ fixture / mock 通过只表示接口契约完成。只有在 production 受控�
 - provider 请求已经越过发送边界、但响应丢失或最终成功标识缺失 / 畸形时，发布 contract 使用一等 `delivery_unknown`，`retryable: false`；同 key 重提只返回既有围栏，不会产生第二次 provider attempt。status 可按账号 + 幂等键查询，并用可选 `externalPublicationId` 交叉检查；fake 支持把未知结果恢复为确定状态。Meta / LinkedIn 纯 parser 只提供稳定、脱敏的 unknown-result 信号，真实 provider 查询、恢复和人工补偿仍待后续 adapter 与 Task 12 / Task 10 状态结构。
 - `message-status` 的内部类型 / dispatch port 仅为后续 adapter 预留；当前没有真实平台送达状态 connector、回调 route 或入队路径。
 - TikTok 官方私信事件 schema 仍缺失，不创建猜测字段、raw webhook parser 或伪造 fixture；在不触达外部平台的前提下，已为已认证、已规范化的未来事件完成 `tiktok` 会话 / Job 存储路径和幂等回归。默认 worker 会拒绝 TikTok 事件；未来 connector 必须在代码中显式启用该路径并通过新的官方 fixture / 契约 review。WhatsApp 一期 connector、fixture 与测试已删除。
+
+## Instagram production OAuth 联调记录（2026-08-10）
+
+- production 受控联调确认 Instagram short-token endpoint 返回 HTTP 200，响应包含 `access_token`、`permissions`、`user_id` 顶层字段；原实现只接受 `data[0]`，已改为兼容 provider 的顶层 grant。
+- Meta Access Token Debugger 已确认测试账号 token 有效，并同时包含 `instagram_business_basic`、`instagram_business_manage_messages`、`instagram_business_manage_comments`；Instagram 授权页也显示基础、消息和评论权限均已开启，但 callback 仍返回 `required_permission_missing`。因此账号角色、App ID 和所需权限配置不再是当前首要阻塞，剩余问题指向 short-token `permissions` 值的运行时格式兼容与可观测性。
+- 本轮修复的验收条件：兼容逗号分隔字符串和字符串数组两种 `permissions` 格式；缺字段、类型错误、空值、超量、非法 scope 继续 fail closed；失败日志记录 `permissionsType`、白名单内 `grantedScopes` 和 `missingScopes`，不得记录 token、authorization code、user ID、App Secret、原始响应或未知 scope。
+- 回归矩阵覆盖 flat / wrapped grant、字符串 / 数组 permissions、缺少必需权限、畸形数组、未知 scope 脱敏和 callback 结构化日志。修复与自动化测试通过仍不把能力标记为 `available`；只有 production 重新授权、身份绑定和 token 加密入库成功后才能提升状态。
 
 ## 数据库集成阻塞
 
