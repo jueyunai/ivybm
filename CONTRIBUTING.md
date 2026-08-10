@@ -1,6 +1,6 @@
 # 协作与分支规范
 
-本文档约定两名开发者在同一个仓库上的协作方式。当前冲刺范围、顺序和完成定义以 [`MVP 范围冻结与交付冲刺`](docs/plans/2026-08-10-MVP范围冻结与交付冲刺.md) 为最高执行基线；板块级分工见 [`docs/requirements/一期需求说明文档.md`](docs/requirements/一期需求说明文档.md#L495) 第10节。历史总体计划、Portal 专项计划和 ADR 与当前冲刺计划冲突时，以当前冲刺计划为准。
+本文档约定两名开发者在同一个仓库上的协作方式。当前冲刺范围、顺序和完成定义以 [`MVP 范围冻结与交付冲刺`](docs/plans/2026-08-10-MVP范围冻结与交付冲刺.md) 为最高执行基线；板块级分工见 [`一期需求说明文档》第 10 节](docs/requirements/一期需求说明文档.md#10-合作开发者交接说明)。历史总体计划、Portal 专项计划和 ADR 与当前冲刺计划冲突时，以当前冲刺计划为准。
 
 ## 2026-08-10 MVP 冲刺协作规则
 
@@ -175,7 +175,7 @@ Payload / PostgreSQL 的 migration 按时间线性生成，两人各自本地生
 
 ## 发布
 
-CI/CD 与发布回滚流程见架构文档 [16.8 节](docs/architecture/一期技术选型与部署架构规划.md#L543)：CI 构建并推送 SHA tag + digest 镜像 → 负责人通过 1Panel 手动 pull / redeploy production → 健康检查与 smoke test。协作分工不改变这部分设计，production 发布审批人固定为 jueyunai；一期上线验收仍需两人共同确认，不适用负责人自检合并规则。
+CI/CD 与发布回滚流程见架构文档 [16.8 节](docs/architecture/一期技术选型与部署架构规划.md#168-cicd-与发布回滚)：CI 构建并推送 SHA tag + digest 镜像 → 负责人通过 1Panel 手动 pull / redeploy production → 健康检查与 smoke test。协作分工不改变这部分设计，production 发布审批人固定为 jueyunai；一期上线验收仍需两人共同确认，不适用负责人自检合并规则。
 
 ## 分工速查
 
