@@ -1,5 +1,92 @@
 # 经典 Bug 案例库
 
+## P-PROXY-ORIGIN-BOUNDARY 反向代理内部 URL 被误作公网安全边界
+
+- Category: deployment-config, test-gap, product-acceptance
+- Applies to: CSRF / 同源校验、OAuth 启动路由、反向代理后的服务端 URL
+- Example cases: FEISHU-003
+
+### Invariant
+
+公网同源校验必须与经过部署预检的唯一公开 Origin 比较；容器或反向代理内部 URL 只能用于路由，不能
+替代公网安全边界。缺失或不匹配的请求来源必须继续 fail closed。
+
+### Failure Mechanism
+
+浏览器从 HTTPS 公网域名发出合法同站 POST，但框架在反向代理后把 `request.url` 构造成 HTTP 内部地址。
+若后端直接比较两者，合法请求会被误判为跨域；本地测试因请求 URL 与 Origin 都是 localhost 而无法发现。
+
+### Early Signals
+
+- 浏览器 Origin 是公网 HTTPS，服务端运行在内部 HTTP host / port。
+- 安全校验直接读取 `request.url`，没有使用部署期验证的 canonical origin。
+- integration 只使用相同 localhost URL，没有模拟反向代理边界。
+
+### Prevention Gate
+
+状态变更路由以受控环境配置中的公开 Origin 做精确匹配；测试必须覆盖公网 Origin + 内部 URL、恶意
+Origin、缺失 Origin 和非法配置。代理仍需覆盖标准 forwarded headers，但客户端 header 不扩大允许列表。
+
+### Verification
+
+构造 `request.url=http://app:3000/...`、`Origin=https://ivybm.com`、
+`NEXT_PUBLIC_SERVER_URL=https://ivybm.com`：请求通过同源门禁；外域或缺失 Origin 返回 403。
+
+### Reuse Prompt
+
+“这个安全判断使用的是已验证公网 Origin，还是可能随代理拓扑变化的内部 request URL？”
+
+## FEISHU-003 合法公网扫码注册被同源门禁拒绝
+
+- Category: deployment-config, test-gap, product-acceptance
+- Pattern: P-PROXY-ORIGIN-BOUNDARY
+- Date: 2026-08-11
+- Area: Task 11 Portal 飞书扫码注册
+- Environment: production Cloudflare + OpenResty + Next.js standalone
+- Severity: P0
+
+### Symptom
+
+管理员在 `/dashboard/leads` 点击“扫码连接飞书”后，POST 返回 403，页面显示
+`Same-origin request required`，二维码未生成。
+
+### Context
+
+前端使用相对 URL 和 `credentials: same-origin`；扫码开关、公开 URL、加密密钥和回调预检均已配置。
+
+### Root Cause
+
+Technical cause: registration route 将浏览器 Origin 与反向代理后的 `request.url` origin 比较，公网 HTTPS
+与内部 HTTP 地址不同，合法请求被误拒绝。
+
+Process cause: 既有测试只覆盖 localhost 同源和缺失 Origin，未模拟公网 Origin + 内部代理 URL。
+
+### Why Existing Checks Missed It
+
+production preflight 验证配置值、health 验证服务存活，但两者都不执行管理员扫码 POST；本地同源 URL
+也无法暴露代理拓扑差异。
+
+### Fix
+
+扫码注册路由改用 `NEXT_PUBLIC_SERVER_URL` 的 origin 作为唯一可信比较基准；非法配置、恶意来源和缺失
+来源继续 403。运行手册保留 OpenResty 标准代理头要求。
+
+### Prevention Checklist
+
+- [ ] 同源 / callback 校验使用经过部署预检的 canonical public origin。
+- [ ] integration 覆盖公网 Origin + 内部代理 URL。
+- [ ] production smoke 实际点击状态变更入口，不以 health 代替。
+- [ ] 不通过信任任意 forwarded header 或关闭 Origin 校验修复误拒绝。
+
+### Regression Test
+
+`tests/integration/feishu-routes.test.ts`：
+`uses the configured public origin behind a reverse proxy and rejects untrusted origins`。
+
+### Related Workflow Gates
+
+- product-development-workflow Gate 3、Gate 4、Gate 6、Gate 7、Gate 8
+
 ## P-PROVIDER-ENUMERATION-GAP 提供方列表接口遗漏已授权资源
 
 - Category: observability, test-gap, product-acceptance

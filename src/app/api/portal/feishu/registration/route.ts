@@ -20,11 +20,24 @@ const noStore = { 'cache-control': 'no-store' }
 const errorResponse = (status: number, code: string, message: string): Response =>
   Response.json({ error: { code, message } }, { headers: noStore, status })
 
+const configuredPublicOrigin = (): string | undefined => {
+  const value = process.env.NEXT_PUBLIC_SERVER_URL?.trim()
+  if (!value) return undefined
+  try {
+    const url = new URL(value)
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return undefined
+    return url.origin
+  } catch {
+    return undefined
+  }
+}
+
 const isSameOriginRequest = (request: Request): boolean => {
   const source = request.headers.get('origin') ?? request.headers.get('referer')
-  if (!source) return false
+  const expectedOrigin = configuredPublicOrigin()
+  if (!source || !expectedOrigin) return false
   try {
-    return new URL(source).origin === new URL(request.url).origin
+    return new URL(source).origin === expectedOrigin
   } catch {
     return false
   }
