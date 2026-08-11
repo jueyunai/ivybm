@@ -210,6 +210,69 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     delete process.env.NEXT_PUBLIC_SERVER_URL
   })
 
+  it('uses the configured public origin behind a reverse proxy and rejects untrusted origins', async () => {
+    const originalEncryptionKey = process.env.FEISHU_CREDENTIAL_ENCRYPTION_KEY
+    const originalPublicURL = process.env.NEXT_PUBLIC_SERVER_URL
+    const originalRegistrationFlag = process.env.FEISHU_QR_REGISTRATION_ENABLED
+    try {
+      process.env.FEISHU_QR_REGISTRATION_ENABLED = 'true'
+      process.env.NEXT_PUBLIC_SERVER_URL = 'https://ivybm.com'
+
+      const missingOrigin = await feishuRegistrationStart(
+        new NextRequest('http://app:3000/api/portal/feishu/registration', {
+          headers: { authorization },
+          method: 'POST',
+        }),
+      )
+      expect(missingOrigin.status).toBe(403)
+      await expect(missingOrigin.json()).resolves.toMatchObject({
+        error: { code: 'invalid-origin' },
+      })
+
+      const foreignOrigin = await feishuRegistrationStart(
+        new NextRequest('http://app:3000/api/portal/feishu/registration', {
+          headers: { authorization, origin: 'https://attacker.example' },
+          method: 'POST',
+        }),
+      )
+      expect(foreignOrigin.status).toBe(403)
+      await expect(foreignOrigin.json()).resolves.toMatchObject({
+        error: { code: 'invalid-origin' },
+      })
+
+      process.env.FEISHU_CREDENTIAL_ENCRYPTION_KEY = 'invalid'
+      const proxiedSameOrigin = await feishuRegistrationStart(
+        new NextRequest('http://app:3000/api/portal/feishu/registration', {
+          headers: { authorization, origin: 'https://ivybm.com' },
+          method: 'POST',
+        }),
+      )
+      expect(proxiedSameOrigin.status).toBe(503)
+      await expect(proxiedSameOrigin.json()).resolves.toMatchObject({
+        error: { code: 'feishu-registration-not-configured' },
+      })
+
+      process.env.NEXT_PUBLIC_SERVER_URL = 'not-an-absolute-url'
+      const invalidPublicOrigin = await feishuRegistrationStart(
+        new NextRequest('http://app:3000/api/portal/feishu/registration', {
+          headers: { authorization, origin: 'https://ivybm.com' },
+          method: 'POST',
+        }),
+      )
+      expect(invalidPublicOrigin.status).toBe(403)
+      await expect(invalidPublicOrigin.json()).resolves.toMatchObject({
+        error: { code: 'invalid-origin' },
+      })
+    } finally {
+      if (originalEncryptionKey === undefined) delete process.env.FEISHU_CREDENTIAL_ENCRYPTION_KEY
+      else process.env.FEISHU_CREDENTIAL_ENCRYPTION_KEY = originalEncryptionKey
+      if (originalRegistrationFlag === undefined) delete process.env.FEISHU_QR_REGISTRATION_ENABLED
+      else process.env.FEISHU_QR_REGISTRATION_ENABLED = originalRegistrationFlag
+      if (originalPublicURL === undefined) delete process.env.NEXT_PUBLIC_SERVER_URL
+      else process.env.NEXT_PUBLIC_SERVER_URL = originalPublicURL
+    }
+  })
+
   it('registers a tenant app by QR, stores only encrypted credentials, and completes OAuth once', async () => {
     process.env.FEISHU_QR_REGISTRATION_ENABLED = 'false'
     const disabled = await feishuRegistrationStart(
