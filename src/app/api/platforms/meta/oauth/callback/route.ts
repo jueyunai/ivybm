@@ -87,9 +87,6 @@ const callbackErrorLog = (error: unknown): Record<string, unknown> => {
           ...(diagnostic.providerStatus === undefined
             ? {}
             : { providerStatus: diagnostic.providerStatus }),
-          ...(diagnostic.providerErrorType === undefined
-            ? {}
-            : { providerErrorType: diagnostic.providerErrorType }),
           ...(diagnostic.providerErrorCode === undefined
             ? {}
             : { providerErrorCode: diagnostic.providerErrorCode }),

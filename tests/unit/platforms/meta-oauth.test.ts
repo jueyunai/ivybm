@@ -272,7 +272,7 @@ describe('Meta OAuth', () => {
               code: 200,
               error_subcode: 2018065,
               message: providerMessage,
-              type: 'OAuthException',
+              type: 'long-user-token',
             },
           }),
           { status: 403 },
@@ -292,7 +292,6 @@ describe('Meta OAuth', () => {
       diagnostic: {
         providerErrorCode: 200,
         providerErrorSubcode: 2018065,
-        providerErrorType: 'OAuthException',
         providerResponseKeys: ['error'],
         providerStatus: 403,
         returnedPageIds: [],
@@ -300,6 +299,7 @@ describe('Meta OAuth', () => {
         targetPageId: '123456789012345',
       },
     })
+    expect(error).not.toHaveProperty('diagnostic.providerErrorType')
     const serialized = JSON.stringify(error)
     expect(serialized).not.toContain(providerMessage)
     expect(serialized).not.toContain('long-user-token')

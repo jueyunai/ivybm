@@ -29,7 +29,6 @@ const OAUTH_TRANSACTION_VERSION = 2
 const PROVIDER_TIMEOUT_MILLISECONDS = 15_000
 const STATE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/
 const META_ID_PATTERN = /^[1-9][0-9]{0,31}$/
-const PROVIDER_ERROR_TYPE_PATTERN = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/
 const SAFE_PROVIDER_RESPONSE_KEYS = new Set([
   'access_token',
   'data',
@@ -59,7 +58,6 @@ export type MetaOAuthDiagnostic = {
   missingScopes?: string[]
   providerErrorCode?: number
   providerErrorSubcode?: number
-  providerErrorType?: string
   providerResponseKeys?: string[]
   providerStatus?: number
   returnedPageIds?: string[]
@@ -351,9 +349,6 @@ const boundedProviderKeys = (payload: Record<string, unknown>): string[] =>
     .filter((key) => SAFE_PROVIDER_RESPONSE_KEYS.has(key))
     .sort()
 
-const providerErrorType = (value: unknown): string | undefined =>
-  typeof value === 'string' && PROVIDER_ERROR_TYPE_PATTERN.test(value) ? value : undefined
-
 const numericProviderField = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isSafeInteger(value) ? value : undefined
 
@@ -372,12 +367,10 @@ const providerDiagnostic = ({
       : undefined
   const providerErrorCode = numericProviderField(error?.code)
   const providerErrorSubcode = numericProviderField(error?.error_subcode)
-  const safeProviderErrorType = providerErrorType(error?.type)
   return {
     stage,
     providerStatus: status,
     providerResponseKeys: boundedProviderKeys(payload),
-    ...(safeProviderErrorType === undefined ? {} : { providerErrorType: safeProviderErrorType }),
     ...(providerErrorCode === undefined ? {} : { providerErrorCode }),
     ...(providerErrorSubcode === undefined ? {} : { providerErrorSubcode }),
   }
