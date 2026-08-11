@@ -396,11 +396,53 @@ describe.sequential('knowledge source ingestion job', () => {
 
     await expect(retryKnowledgeSource({ actor: { id: operator.id, role: 'operator' }, id: Number(uploaded.result.source.id), payload, req: uploaded.req })).rejects.toMatchObject({ status: 403 })
     const adminReq = await createLocalReq({ user: admin }, payload)
-    await expect(retryKnowledgeSource({ actor: { id: admin.id, role: 'admin' }, id: Number(uploaded.result.source.id), payload, req: adminReq })).resolves.toMatchObject({ source: { processingStatus: 'queued' } })
+    let markQueued: () => void = () => undefined
+    let releaseQueuedUpdate: () => void = () => undefined
+    const queuedUpdateReached = new Promise<void>((resolve) => {
+      markQueued = resolve
+    })
+    const queuedUpdateReleased = new Promise<void>((resolve) => {
+      releaseQueuedUpdate = resolve
+    })
+    const retryPayload = new Proxy(payload, {
+      get(target, property) {
+        if (property !== 'update') {
+          const value = Reflect.get(target, property, target) as unknown
+          return typeof value === 'function' ? value.bind(target) : value
+        }
+        return async (...args: unknown[]) => {
+          const options = args[0]
+          const update = options && typeof options === 'object' ? options as Record<string, unknown> : {}
+          const data = update.data && typeof update.data === 'object' ? update.data as Record<string, unknown> : {}
+          if (
+            update.collection === 'knowledge-source-documents' &&
+            update.id === uploaded.result.source.id &&
+            data.processingStatus === 'queued'
+          ) {
+            markQueued()
+            await queuedUpdateReleased
+          }
+          return Reflect.apply(target.update, target, args)
+        }
+      },
+    })
+    const retry = retryKnowledgeSource({ actor: { id: admin.id, role: 'admin' }, id: Number(uploaded.result.source.id), payload: retryPayload, req: adminReq })
     const succeedingWorker = new JobWorker({
       handlers: { [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload, resolveGateway: async () => gateway() }) },
       queue: new PayloadJobQueue({ payload }),
     })
+    try {
+      await Promise.race([
+        queuedUpdateReached,
+        retry.then(() => {
+          throw new Error('Knowledge source retry committed before the queued source update')
+        }),
+      ])
+      await expect(succeedingWorker.runOnce()).resolves.toBe('idle')
+    } finally {
+      releaseQueuedUpdate()
+    }
+    await expect(retry).resolves.toMatchObject({ source: { processingStatus: 'queued' } })
     await expect(succeedingWorker.runOnce()).resolves.toBe('succeeded')
     await expect(payload.findByID({ collection: 'knowledge-source-documents', id: uploaded.result.source.id, overrideAccess: true })).resolves.toMatchObject({ processingStatus: 'needs_review' })
   })

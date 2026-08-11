@@ -424,18 +424,18 @@ export class PayloadJobQueue {
     return result.rows[0] ? mapDatabaseJob(result.rows[0]) : null
   }
 
-  async retryManually(id: number, actor: JobRetryActor): Promise<JobRecord> {
+  async retryManually(id: number, actor: JobRetryActor, req?: PayloadRequest): Promise<JobRecord> {
     if (actor.role !== 'admin') {
       throw new JobQueueError('forbidden', 'Only administrators may retry failed jobs')
     }
 
-    return this.transaction(actor as User, async (req) => {
+    const retry = async (transactionReq: PayloadRequest): Promise<JobRecord> => {
       const found = await this.payload.find({
         collection: 'jobs',
         depth: 0,
         limit: 1,
         overrideAccess: true,
-        req,
+        req: transactionReq,
         where: { id: { equals: id } },
       })
       const job = found.docs[0]
@@ -451,7 +451,7 @@ export class PayloadJobQueue {
           nextRunAt: next.nextRunAt?.toISOString() ?? null,
         },
         overrideAccess: true,
-        req,
+        req: transactionReq,
         where: {
           and: [
             { id: { equals: job.id } },
@@ -465,6 +465,14 @@ export class PayloadJobQueue {
       }
 
       return mapPayloadJob(updated.docs[0])
-    })
+    }
+
+    if (req) {
+      if (!(await req.transactionID)) {
+        throw new JobQueueError('conflict', 'Manual job retry requires an active transaction')
+      }
+      return retry(req)
+    }
+    return this.transaction(actor as User, retry)
   }
 }
