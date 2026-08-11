@@ -433,20 +433,25 @@ const readProviderJSON = async (
 
 const tokenResponseDiagnostic = (
   payload: Record<string, unknown>,
+  providerStatus: number,
   stage: Extract<MetaOAuthDiagnosticStage, 'token_exchange_long' | 'token_exchange_short'>,
 ): MetaOAuthDiagnostic => ({
   providerResponseKeys: boundedProviderKeys(payload),
-  providerStatus: 200,
+  providerStatus,
   stage,
 })
 
 const readAccessToken = (
   payload: Record<string, unknown>,
+  providerStatus: number,
   stage: Extract<MetaOAuthDiagnosticStage, 'token_exchange_long' | 'token_exchange_short'>,
 ): string => {
   const accessToken = typeof payload.access_token === 'string' ? payload.access_token.trim() : ''
   if (!accessToken || accessToken.length > MAX_CREDENTIAL_LENGTH) {
-    throw new MetaOAuthError('token_response_invalid', tokenResponseDiagnostic(payload, stage))
+    throw new MetaOAuthError(
+      'token_response_invalid',
+      tokenResponseDiagnostic(payload, providerStatus, stage),
+    )
   }
   return accessToken
 }
@@ -462,12 +467,16 @@ const readExpiresInSeconds = (value: unknown): number | undefined => {
 const readLongLivedTokenPayload = (
   payload: Record<string, unknown>,
   nowMilliseconds: number,
+  providerStatus: number,
 ): MetaUserToken => {
   const stage = 'token_exchange_long'
-  const accessToken = readAccessToken(payload, stage)
+  const accessToken = readAccessToken(payload, providerStatus, stage)
   const expiresIn = readExpiresInSeconds(payload.expires_in)
   if (expiresIn === undefined || expiresIn > MAX_TOKEN_TTL_SECONDS) {
-    throw new MetaOAuthError('token_response_invalid', tokenResponseDiagnostic(payload, stage))
+    throw new MetaOAuthError(
+      'token_response_invalid',
+      tokenResponseDiagnostic(payload, providerStatus, stage),
+    )
   }
   return {
     accessToken,
@@ -483,7 +492,7 @@ const exchangeTokenRequest = async ({
   body: URLSearchParams
   fetcher: typeof fetch
   stage: Extract<MetaOAuthDiagnosticStage, 'token_exchange_long' | 'token_exchange_short'>
-}): Promise<Record<string, unknown>> => {
+}): Promise<{ payload: Record<string, unknown>; providerStatus: number }> => {
   let response: Response
   try {
     response = await fetcher(`${META_GRAPH_ORIGIN}/${META_GRAPH_API_VERSION}/oauth/access_token`, {
@@ -499,7 +508,10 @@ const exchangeTokenRequest = async ({
   } catch {
     throw new MetaOAuthError('token_exchange_failed', { stage })
   }
-  return readProviderJSON(response, 'token_exchange_failed', stage)
+  return {
+    payload: await readProviderJSON(response, 'token_exchange_failed', stage),
+    providerStatus: response.status,
+  }
 }
 
 export const exchangeMetaAuthorizationCode = async ({
@@ -518,7 +530,7 @@ export const exchangeMetaAuthorizationCode = async ({
     throw new MetaOAuthError('token_exchange_failed')
   }
 
-  const shortPayload = await exchangeTokenRequest({
+  const shortResponse = await exchangeTokenRequest({
     body: new URLSearchParams({
       client_id: config.appId,
       client_secret: config.appSecret,
@@ -528,8 +540,12 @@ export const exchangeMetaAuthorizationCode = async ({
     fetcher,
     stage: 'token_exchange_short',
   })
-  const shortAccessToken = readAccessToken(shortPayload, 'token_exchange_short')
-  const longPayload = await exchangeTokenRequest({
+  const shortAccessToken = readAccessToken(
+    shortResponse.payload,
+    shortResponse.providerStatus,
+    'token_exchange_short',
+  )
+  const longResponse = await exchangeTokenRequest({
     body: new URLSearchParams({
       client_id: config.appId,
       client_secret: config.appSecret,
@@ -539,7 +555,11 @@ export const exchangeMetaAuthorizationCode = async ({
     fetcher,
     stage: 'token_exchange_long',
   })
-  return readLongLivedTokenPayload(longPayload, nowMilliseconds)
+  return readLongLivedTokenPayload(
+    longResponse.payload,
+    nowMilliseconds,
+    longResponse.providerStatus,
+  )
 }
 
 const graphRequest = async ({

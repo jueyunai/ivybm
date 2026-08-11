@@ -157,7 +157,7 @@ describe('Meta OAuth', () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({ access_token: 'long-user-token', expires_in: 'not-a-number' }),
-          { status: 200 },
+          { status: 202 },
         ),
       )
 
@@ -172,8 +172,29 @@ describe('Meta OAuth', () => {
       code: 'token_response_invalid',
       diagnostic: {
         providerResponseKeys: ['access_token', 'expires_in'],
-        providerStatus: 200,
+        providerStatus: 202,
         stage: 'token_exchange_long',
+      },
+    })
+  })
+
+  it('reports the actual successful provider status when the short token is missing', async () => {
+    await expect(
+      exchangeMetaAuthorizationCode({
+        code: 'authorization-code',
+        config: readMetaOAuthConfiguration(environment),
+        fetcher: vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(
+            new Response(JSON.stringify({ token_type: 'bearer' }), { status: 202 }),
+          ),
+      }),
+    ).rejects.toMatchObject({
+      code: 'token_response_invalid',
+      diagnostic: {
+        providerResponseKeys: ['token_type'],
+        providerStatus: 202,
+        stage: 'token_exchange_short',
       },
     })
   })
