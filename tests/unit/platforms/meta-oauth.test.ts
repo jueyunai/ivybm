@@ -55,6 +55,7 @@ describe('Meta OAuth', () => {
       'pages_show_list',
       'pages_manage_metadata',
       'pages_messaging',
+      'pages_read_engagement',
     ])
   })
 
@@ -115,12 +116,12 @@ describe('Meta OAuth', () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ access_token: 'short-user-token', expires_in: 3_600 }), {
+        new Response(JSON.stringify({ access_token: 'short-user-token', token_type: 'bearer' }), {
           status: 200,
         }),
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: 5_184_000 }), {
+        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: '5184000' }), {
           status: 200,
         }),
       )
@@ -145,6 +146,152 @@ describe('Meta OAuth', () => {
         'test-meta-app-secret',
       )
     }
+  })
+
+  it('rejects a long-lived token response without a bounded expiry and reports only safe shape', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'short-user-token' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ access_token: 'long-user-token', expires_in: 'not-a-number' }),
+          { status: 202 },
+        ),
+      )
+
+    const result = exchangeMetaAuthorizationCode({
+      code: 'authorization-code',
+      config: readMetaOAuthConfiguration(environment),
+      fetcher,
+      nowMilliseconds: 1_000,
+    })
+
+    await expect(result).rejects.toMatchObject({
+      code: 'token_response_invalid',
+      diagnostic: {
+        providerResponseKeys: ['access_token', 'expires_in'],
+        providerStatus: 202,
+        stage: 'token_exchange_long',
+      },
+    })
+  })
+
+  it('reports the actual successful provider status when the short token is missing', async () => {
+    const unexpectedProviderValue = 'provider-secret-like-token'
+    const result = exchangeMetaAuthorizationCode({
+      code: 'authorization-code',
+      config: readMetaOAuthConfiguration(environment),
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ token_type: 'bearer', unexpected: unexpectedProviderValue }),
+            { status: 202 },
+          ),
+        ),
+    })
+
+    const error = await result.catch((caught: unknown) => caught)
+    expect(error).toMatchObject({
+      code: 'token_response_invalid',
+      diagnostic: {
+        providerResponseKeys: ['token_type'],
+        providerStatus: 202,
+        stage: 'token_exchange_short',
+      },
+    })
+    expect(JSON.stringify(error)).not.toContain(unexpectedProviderValue)
+  })
+
+  it('rejects a negative numeric long-lived token expiry', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'short-user-token' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: -1 }), {
+          status: 200,
+        }),
+      )
+
+    await expect(
+      exchangeMetaAuthorizationCode({
+        code: 'authorization-code',
+        config: readMetaOAuthConfiguration(environment),
+        fetcher,
+        nowMilliseconds: 1_000,
+      }),
+    ).rejects.toMatchObject({
+      code: 'token_response_invalid',
+      diagnostic: {
+        providerResponseKeys: ['access_token', 'expires_in'],
+        providerStatus: 200,
+        stage: 'token_exchange_long',
+      },
+    })
+  })
+
+  it('keeps the exchange stage when a token response is not an object', async () => {
+    const shortFailure = exchangeMetaAuthorizationCode({
+      code: 'authorization-code',
+      config: readMetaOAuthConfiguration(environment),
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(JSON.stringify([]), { status: 200 })),
+    })
+
+    await expect(shortFailure).rejects.toMatchObject({
+      code: 'token_response_invalid',
+      diagnostic: { providerStatus: 200, stage: 'token_exchange_short' },
+    })
+
+    const longFailure = exchangeMetaAuthorizationCode({
+      code: 'authorization-code',
+      config: readMetaOAuthConfiguration(environment),
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: 'short-user-token' }), { status: 200 }),
+        )
+        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 })),
+    })
+
+    await expect(longFailure).rejects.toMatchObject({
+      code: 'token_response_invalid',
+      diagnostic: { providerStatus: 200, stage: 'token_exchange_long' },
+    })
+  })
+
+  it('reports whether a provider network failure happened during short or long token exchange', async () => {
+    const shortFailure = exchangeMetaAuthorizationCode({
+      code: 'authorization-code',
+      config: readMetaOAuthConfiguration(environment),
+      fetcher: vi.fn<typeof fetch>().mockRejectedValue(new Error('short exchange timed out')),
+    })
+
+    await expect(shortFailure).rejects.toMatchObject({
+      code: 'token_exchange_failed',
+      diagnostic: { stage: 'token_exchange_short' },
+    })
+
+    const longFailure = exchangeMetaAuthorizationCode({
+      code: 'authorization-code',
+      config: readMetaOAuthConfiguration(environment),
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: 'short-user-token' }), { status: 200 }),
+        )
+        .mockRejectedValueOnce(new Error('long exchange timed out')),
+    })
+
+    await expect(longFailure).rejects.toMatchObject({
+      code: 'token_exchange_failed',
+      diagnostic: { stage: 'token_exchange_long' },
+    })
   })
 
   it('binds the Page token to the configured Facebook Page and granted permissions', async () => {
@@ -331,7 +478,7 @@ describe('Meta OAuth', () => {
       code: 'required_permission_missing',
       diagnostic: {
         grantedScopes: ['pages_show_list'],
-        missingScopes: ['pages_manage_metadata', 'pages_messaging'],
+        missingScopes: ['pages_manage_metadata', 'pages_messaging', 'pages_read_engagement'],
         providerStatus: 200,
         stage: 'permissions',
       },

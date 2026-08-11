@@ -176,7 +176,7 @@ flowchart LR
 | Facebook 图文 | Page；授权管理员有创建内容、管理和审核 Page task | Page token、发布/回调、失败补偿 | 相关 Pages 权限和真实发布授权 |
 | Instagram 图文 | 专业/商业账号；图片有公网可访问 URL；若提示 PPA 先完成 | 内容发布 API、素材校验、状态回写 | 相关 Instagram 内容发布权限和真实发布授权 |
 
-**不要把权限名称当作客户自行勾选清单。** Facebook Messenger 使用 Facebook Login for Business，当前配置包含 `pages_show_list`、`pages_manage_metadata`、`pages_messaging`。Instagram 使用独立的 Instagram Login for Business，当前配置包含 `instagram_business_basic`、`instagram_business_manage_comments`、`instagram_business_manage_messages`。Facebook/Instagram 图文发布又涉及不同的 Pages/Instagram scopes。权限名称和登录路径会随 Graph API 和 App 产品更新，IVYBM 会按审核时的官方 App Dashboard 提交最小范围。
+**不要把权限名称当作客户自行勾选清单。** Facebook Messenger 使用 Facebook Login for Business，当前配置包含 `pages_show_list`、`pages_manage_metadata`、`pages_messaging`、`pages_read_engagement`。Instagram 使用独立的 Instagram Login for Business，当前配置包含 `instagram_business_basic`、`instagram_business_manage_comments`、`instagram_business_manage_messages`。Facebook/Instagram 图文发布又涉及不同的 Pages/Instagram scopes。权限名称和登录路径会随 Graph API 和 App 产品更新，IVYBM 会按审核时的官方 App Dashboard 提交最小范围。
 
 ### Meta 业务规则提醒
 

@@ -195,12 +195,12 @@ describe('Meta OAuth routes', () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ access_token: 'short-user-token', expires_in: 3_600 }), {
+        new Response(JSON.stringify({ access_token: 'short-user-token', token_type: 'bearer' }), {
           status: 200,
         }),
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: 5_184_000 }), {
+        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: '5184000' }), {
           status: 200,
         }),
       )

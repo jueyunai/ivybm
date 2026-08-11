@@ -179,6 +179,90 @@ Token 合法时绑定。回调增加有界结构化诊断，不记录任何凭�
 
 - MVP Scope Freeze 5.2、5.3；Task 13 外部平台联调阶段
 
+## P-PROVIDER-RESPONSE-SHAPE 提供方多阶段响应被错误共用同一 schema
+
+- Category: observability, test-gap, product-acceptance
+- Applies to: OAuth 授权码交换、短期 / 长期 Token 转换、第三方多阶段 API
+- Example cases: META-002
+
+### Invariant
+
+第三方多阶段流程必须分别按每个阶段的官方契约校验响应；后续阶段需要的字段不能反向变成前一阶段的
+必填字段。任何响应拒绝都要记录阶段、HTTP 状态和有界字段名，不能记录 Token 或原始正文。
+
+### Failure Mechanism
+
+实现为了复用解析器，把短 Token 与长 Token 响应都套用同一严格 schema。提供方在授权码交换阶段只返回
+`access_token`，而在长效转换阶段才返回 `expires_in` 时，合法短 Token 会在第二次请求前被本地拒绝。
+
+### Early Signals
+
+- 同一解析函数被授权码交换和长效 Token 交换共同调用。
+- production 只有 `token_response_invalid`，无法判断失败发生在哪个阶段。
+- fixture 为每个阶段复制了完全相同的字段，即使官方示例并不保证相同 schema。
+
+### Prevention Gate
+
+为每个 provider stage 建立最小独立解析器；短 Token 只验证下一阶段实际需要的凭据，长 Token 再严格验证
+有效期。测试必须覆盖字段缺省、数字字符串、非法期限和安全诊断。
+
+### Verification
+
+短 Token 响应只有 `access_token` / `token_type`，长 Token 的 `expires_in` 为十进制字符串：交换成功；长
+Token 缺少或包含非法期限时 fail closed，日志仅含 `token_exchange_long` 和安全字段名。
+
+### Reuse Prompt
+
+“这个多阶段第三方流程是否错误复用了同一响应 schema？每个阶段真正需要哪些字段？”
+
+## META-002 Facebook 授权资产已选中但 Token 交换被本地拒绝
+
+- Category: observability, test-gap, product-acceptance
+- Pattern: P-PROVIDER-RESPONSE-SHAPE
+- Date: 2026-08-11
+- Area: Task 13 Meta OAuth / Facebook Login for Business
+- Environment: production 受控 Facebook Page
+- Severity: P0
+
+### Symptom
+
+Meta 授权页已显示正确 Business Portfolio 和 Page，Graph API Explorer 也能从 `/me/accounts` 返回目标 Page，
+但 IVYBM 回调仍显示 `metaOAuth=token_exchange_failed`。
+
+### Root Cause
+
+Technical cause: 授权码交换的短 Token 响应未包含 `expires_in`，`readTokenPayload` 却要求短、长两阶段都必须
+返回数值型期限，因而在长效转换请求前抛出 `token_response_invalid`。
+
+Process cause: 所有 Meta fixture 都人为给短 Token 加了数值型 `expires_in`，且失败日志没有 Token 阶段和安全
+响应字段，production 联调前无法发现契约假设。
+
+### Why Existing Checks Missed It
+
+测试验证了理想化的同构响应，而不是两个独立 provider stage；站点 smoke 不执行真实 OAuth 授权码交换。
+
+### Fix
+
+短 Token 仅校验有界 `access_token`；长 Token 独立校验正整数期限并兼容十进制字符串。Token 请求和解析失败
+记录 `token_exchange_short` / `token_exchange_long`、状态码和白名单字段名，不记录凭据或正文；同时把真实
+Page 查询必需的 `pages_read_engagement` 纳入服务端权限门禁。
+
+### Prevention Checklist
+
+- [ ] OAuth 每个交换阶段使用独立最小 schema。
+- [ ] fixture 覆盖短响应无期限、长期限为数字字符串。
+- [ ] 非法长期限 fail closed，诊断不含授权码、Token 或 App Secret。
+- [ ] 真实平台权限必须同时由 Login Configuration 和服务端门禁校验。
+
+### Regression Test
+
+`tests/unit/platforms/meta-oauth.test.ts` 覆盖短响应无期限、长期限数字字符串和非法长期限；
+`tests/unit/platforms/meta-oauth-routes.test.ts` 覆盖真实响应形态完成回调并保存 Page Token。
+
+### Related Workflow Gates
+
+- MVP Scope Freeze 5.2、5.3；Task 13 外部平台联调阶段
+
 ## P-EVENT-REVISION-FENCE 内容状态与事件身份混用
 
 - Category: state-management, concurrency, test-gap
