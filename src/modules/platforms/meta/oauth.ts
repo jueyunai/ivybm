@@ -420,8 +420,7 @@ const readProviderJSON = async (
   let payload: Record<string, unknown>
   try {
     payload = parseProviderRecord(JSON.parse(body) as unknown)
-  } catch (error) {
-    if (error instanceof MetaOAuthError) throw error
+  } catch {
     throw new MetaOAuthError(
       errorCode === 'token_exchange_failed'
         ? 'token_response_invalid'
@@ -455,7 +454,9 @@ const readAccessToken = (
 const readExpiresInSeconds = (value: unknown): number | undefined => {
   const normalized =
     typeof value === 'string' && /^(?:0|[1-9][0-9]*)$/.test(value) ? Number(value) : value
-  return typeof normalized === 'number' && Number.isSafeInteger(normalized) ? normalized : undefined
+  return typeof normalized === 'number' && Number.isSafeInteger(normalized) && normalized > 0
+    ? normalized
+    : undefined
 }
 
 const readLongLivedTokenPayload = (
@@ -465,7 +466,7 @@ const readLongLivedTokenPayload = (
   const stage = 'token_exchange_long'
   const accessToken = readAccessToken(payload, stage)
   const expiresIn = readExpiresInSeconds(payload.expires_in)
-  if (!expiresIn || expiresIn > MAX_TOKEN_TTL_SECONDS) {
+  if (expiresIn === undefined || expiresIn > MAX_TOKEN_TTL_SECONDS) {
     throw new MetaOAuthError('token_response_invalid', tokenResponseDiagnostic(payload, stage))
   }
   return {

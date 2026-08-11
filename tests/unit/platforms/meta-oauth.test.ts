@@ -178,6 +178,66 @@ describe('Meta OAuth', () => {
     })
   })
 
+  it('rejects a negative numeric long-lived token expiry', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'short-user-token' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: -1 }), {
+          status: 200,
+        }),
+      )
+
+    await expect(
+      exchangeMetaAuthorizationCode({
+        code: 'authorization-code',
+        config: readMetaOAuthConfiguration(environment),
+        fetcher,
+        nowMilliseconds: 1_000,
+      }),
+    ).rejects.toMatchObject({
+      code: 'token_response_invalid',
+      diagnostic: {
+        providerResponseKeys: ['access_token', 'expires_in'],
+        providerStatus: 200,
+        stage: 'token_exchange_long',
+      },
+    })
+  })
+
+  it('keeps the exchange stage when a token response is not an object', async () => {
+    const shortFailure = exchangeMetaAuthorizationCode({
+      code: 'authorization-code',
+      config: readMetaOAuthConfiguration(environment),
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(JSON.stringify([]), { status: 200 })),
+    })
+
+    await expect(shortFailure).rejects.toMatchObject({
+      code: 'token_response_invalid',
+      diagnostic: { providerStatus: 200, stage: 'token_exchange_short' },
+    })
+
+    const longFailure = exchangeMetaAuthorizationCode({
+      code: 'authorization-code',
+      config: readMetaOAuthConfiguration(environment),
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: 'short-user-token' }), { status: 200 }),
+        )
+        .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 })),
+    })
+
+    await expect(longFailure).rejects.toMatchObject({
+      code: 'token_response_invalid',
+      diagnostic: { providerStatus: 200, stage: 'token_exchange_long' },
+    })
+  })
+
   it('reports whether a provider network failure happened during short or long token exchange', async () => {
     const shortFailure = exchangeMetaAuthorizationCode({
       code: 'authorization-code',
