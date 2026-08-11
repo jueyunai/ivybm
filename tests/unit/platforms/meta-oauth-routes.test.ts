@@ -263,6 +263,85 @@ describe('Meta OAuth routes', () => {
     })
   })
 
+  it('logs safe diagnostics when Meta rejects the exact Page lookup fallback', async () => {
+    const payload = createPayload()
+    mocks.getPayload.mockResolvedValue(payload)
+    const startResponse = await metaOAuthStart(startRequest())
+    const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
+    const providerMessage =
+      'provider failure containing authorization-code, long-user-token and test-meta-app-secret'
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'short-user-token', expires_in: 3_600 }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: 5_184_000 }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: requiredMetaPermissions('facebook-page').map((permission) => ({
+              permission,
+              status: 'granted',
+            })),
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 200,
+              error_subcode: 2018065,
+              message: providerMessage,
+              type: 'OAuthException',
+            },
+          }),
+          { status: 403 },
+        ),
+      )
+    vi.stubGlobal('fetch', fetcher)
+
+    const response = await metaOAuthCallback(
+      new NextRequest(
+        `http://localhost:3000${META_OAUTH_CALLBACK_PATH}?code=authorization-code&state=${state}`,
+        { headers: { cookie: cookieHeader(startResponse) } },
+      ),
+    )
+
+    expect(response.headers.get('location')).toBe(
+      'http://localhost:3000/admin/collections/platform-accounts/42?metaOAuth=identity_verification_failed',
+    )
+    expect(payload.update).not.toHaveBeenCalled()
+    expect(payload.logger.error).toHaveBeenCalledWith({
+      code: 'identity_verification_failed',
+      message: 'Meta OAuth callback failed',
+      oauthCode: 'identity_verification_failed',
+      providerErrorCode: 200,
+      providerErrorSubcode: 2018065,
+      providerErrorType: 'OAuthException',
+      providerResponseKeys: ['error'],
+      providerStatus: 403,
+      returnedPageIds: [],
+      stage: 'page_direct',
+      targetPageId: account.externalAccountId,
+    })
+    const serializedLog = JSON.stringify(payload.logger.error.mock.calls)
+    expect(serializedLog).not.toContain('authorization-code')
+    expect(serializedLog).not.toContain(String(state))
+    expect(serializedLog).not.toContain('short-user-token')
+    expect(serializedLog).not.toContain('long-user-token')
+    expect(serializedLog).not.toContain('test-meta-app-secret')
+    expect(serializedLog).not.toContain(providerMessage)
+  })
+
   it('does not persist a late callback after the account is disconnected', async () => {
     const payload = createPayload()
     mocks.getPayload.mockResolvedValue(payload)

@@ -40,6 +40,21 @@ export type MetaOAuthErrorCode =
   | 'token_exchange_failed'
   | 'token_response_invalid'
 
+export type MetaOAuthDiagnosticStage = 'page_direct' | 'pages_list' | 'permissions'
+
+export type MetaOAuthDiagnostic = {
+  grantedScopes?: string[]
+  missingScopes?: string[]
+  providerErrorCode?: number
+  providerErrorSubcode?: number
+  providerErrorType?: string
+  providerResponseKeys?: string[]
+  providerStatus?: number
+  returnedPageIds?: string[]
+  stage: MetaOAuthDiagnosticStage
+  targetPageId?: string
+}
+
 const errorMessages: Record<MetaOAuthErrorCode, string> = {
   identity_mismatch: 'Meta OAuth identity does not match the configured account',
   identity_verification_failed: 'Meta OAuth identity verification failed',
@@ -52,7 +67,10 @@ const errorMessages: Record<MetaOAuthErrorCode, string> = {
 }
 
 export class MetaOAuthError extends Error {
-  constructor(public readonly code: MetaOAuthErrorCode) {
+  constructor(
+    public readonly code: MetaOAuthErrorCode,
+    public readonly diagnostic?: MetaOAuthDiagnostic,
+  ) {
     super(errorMessages[code])
     this.name = 'MetaOAuthError'
   }
@@ -316,34 +334,89 @@ const parseProviderRecord = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>
 }
 
+const boundedProviderKeys = (payload: Record<string, unknown>): string[] =>
+  Object.keys(payload).sort().slice(0, 24)
+
+const numericProviderField = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isSafeInteger(value) ? value : undefined
+
+const providerDiagnostic = ({
+  payload,
+  stage,
+  status,
+}: {
+  payload: Record<string, unknown>
+  stage: MetaOAuthDiagnosticStage
+  status: number
+}): MetaOAuthDiagnostic => {
+  const error =
+    payload.error && typeof payload.error === 'object' && !Array.isArray(payload.error)
+      ? (payload.error as Record<string, unknown>)
+      : undefined
+  const providerErrorCode = numericProviderField(error?.code)
+  const providerErrorSubcode = numericProviderField(error?.error_subcode)
+  return {
+    stage,
+    providerStatus: status,
+    providerResponseKeys: boundedProviderKeys(payload),
+    ...(typeof error?.type === 'string' ? { providerErrorType: error.type.slice(0, 128) } : {}),
+    ...(providerErrorCode === undefined ? {} : { providerErrorCode }),
+    ...(providerErrorSubcode === undefined ? {} : { providerErrorSubcode }),
+  }
+}
+
 const readProviderJSON = async (
   response: Response,
   errorCode: 'identity_verification_failed' | 'token_exchange_failed',
+  stage?: MetaOAuthDiagnosticStage,
 ): Promise<Record<string, unknown>> => {
   let body: string
   try {
     body = await response.text()
   } catch {
-    throw new MetaOAuthError(errorCode)
+    throw new MetaOAuthError(
+      errorCode,
+      stage ? { providerStatus: response.status, stage } : undefined,
+    )
   }
-  if (!response.ok) throw new MetaOAuthError(errorCode)
   if (!body || body.length > MAX_PROVIDER_RESPONSE_LENGTH) {
     throw new MetaOAuthError(
       errorCode === 'token_exchange_failed'
         ? 'token_response_invalid'
         : 'identity_verification_failed',
+      stage ? { providerStatus: response.status, stage } : undefined,
     )
   }
+  if (!response.ok) {
+    let errorPayload: Record<string, unknown> | undefined
+    try {
+      errorPayload = parseProviderRecord(JSON.parse(body) as unknown)
+    } catch {
+      throw new MetaOAuthError(
+        errorCode,
+        stage ? { providerStatus: response.status, stage } : undefined,
+      )
+    }
+    throw new MetaOAuthError(
+      errorCode,
+      stage
+        ? providerDiagnostic({ payload: errorPayload, stage, status: response.status })
+        : undefined,
+    )
+  }
+  let payload: Record<string, unknown>
   try {
-    return parseProviderRecord(JSON.parse(body) as unknown)
+    payload = parseProviderRecord(JSON.parse(body) as unknown)
   } catch (error) {
     if (error instanceof MetaOAuthError) throw error
     throw new MetaOAuthError(
       errorCode === 'token_exchange_failed'
         ? 'token_response_invalid'
         : 'identity_verification_failed',
+      stage ? { providerStatus: response.status, stage } : undefined,
     )
   }
+  return payload
 }
 
 const readTokenPayload = (
@@ -437,12 +510,14 @@ const graphRequest = async ({
   fetcher,
   path,
   searchParams,
+  stage,
 }: {
   accessToken: string
   appSecretProof: string
   fetcher: typeof fetch
   path: string
   searchParams?: Record<string, string>
+  stage: MetaOAuthDiagnosticStage
 }): Promise<Record<string, unknown>> => {
   const url = new URL(`/${META_GRAPH_API_VERSION}${path}`, META_GRAPH_ORIGIN)
   url.searchParams.set('appsecret_proof', appSecretProof)
@@ -457,9 +532,9 @@ const graphRequest = async ({
       signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MILLISECONDS),
     })
   } catch {
-    throw new MetaOAuthError('identity_verification_failed')
+    throw new MetaOAuthError('identity_verification_failed', { stage })
   }
-  return readProviderJSON(response, 'identity_verification_failed')
+  return readProviderJSON(response, 'identity_verification_failed', stage)
 }
 
 const providerArray = (value: unknown): Record<string, unknown>[] => {
@@ -514,13 +589,22 @@ export const resolveMetaAuthorizedAccount = async ({
     fetcher,
     path: '/me/permissions',
     searchParams: { limit: '100' },
+    stage: 'permissions',
   })
   const grantedPermissions = providerArray(permissionPayload.data)
     .filter((item) => item.status === 'granted' && typeof item.permission === 'string')
     .map((item) => String(item.permission))
   const requiredPermissions = requiredMetaPermissions(accountKind)
-  if (requiredPermissions.some((permission) => !grantedPermissions.includes(permission))) {
-    throw new MetaOAuthError('required_permission_missing')
+  const missingPermissions = requiredPermissions.filter(
+    (permission) => !grantedPermissions.includes(permission),
+  )
+  if (missingPermissions.length > 0) {
+    throw new MetaOAuthError('required_permission_missing', {
+      grantedScopes: [...new Set(grantedPermissions)].sort(),
+      missingScopes: missingPermissions,
+      providerStatus: 200,
+      stage: 'permissions',
+    })
   }
 
   const pagesPayload = await graphRequest({
@@ -532,10 +616,45 @@ export const resolveMetaAuthorizedAccount = async ({
       fields: 'id,name,access_token,tasks',
       limit: '100',
     },
+    stage: 'pages_list',
   })
   const pages = providerArray(pagesPayload.data)
-  const page = pages.find((candidate) => candidate.id === targetId)
-  if (!page) throw new MetaOAuthError('identity_mismatch')
+  let page = pages.find((candidate) => candidate.id === targetId)
+  let pageResolutionStage: MetaOAuthDiagnosticStage = 'pages_list'
+  if (!page) {
+    pageResolutionStage = 'page_direct'
+    const returnedPageIds = pages
+      .map((candidate) => (typeof candidate.id === 'string' ? candidate.id.trim() : ''))
+      .filter((id) => META_ID_PATTERN.test(id))
+      .slice(0, 100)
+    try {
+      page = await graphRequest({
+        accessToken: normalizedToken,
+        appSecretProof,
+        fetcher,
+        path: `/${targetId}`,
+        searchParams: { fields: 'id,name,access_token,tasks' },
+        stage: 'page_direct',
+      })
+    } catch (error) {
+      if (error instanceof MetaOAuthError) {
+        throw new MetaOAuthError(error.code, {
+          ...error.diagnostic,
+          returnedPageIds,
+          stage: 'page_direct',
+          targetPageId: targetId,
+        })
+      }
+      throw error
+    }
+    if (page.id !== targetId) {
+      throw new MetaOAuthError('identity_mismatch', {
+        returnedPageIds,
+        stage: 'page_direct',
+        targetPageId: targetId,
+      })
+    }
+  }
 
   const pageId = typeof page.id === 'string' ? page.id.trim() : ''
   const pageAccessToken = typeof page.access_token === 'string' ? page.access_token.trim() : ''
@@ -544,7 +663,11 @@ export const resolveMetaAuthorizedAccount = async ({
     !pageAccessToken ||
     pageAccessToken.length > MAX_CREDENTIAL_LENGTH
   ) {
-    throw new MetaOAuthError('identity_verification_failed')
+    throw new MetaOAuthError('identity_verification_failed', {
+      returnedPageIds: pageId ? [pageId] : [],
+      stage: pageResolutionStage,
+      targetPageId: targetId,
+    })
   }
 
   const displayName = typeof page.name === 'string' ? page.name.trim() : ''

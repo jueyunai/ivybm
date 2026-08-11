@@ -71,6 +71,51 @@ const callbackErrorCode = (error: unknown): string => {
   }
 }
 
+const callbackErrorLog = (error: unknown): Record<string, unknown> => {
+  const code = callbackErrorCode(error)
+  if (!(error instanceof MetaOAuthError)) {
+    return { code, message: 'Meta OAuth callback failed' }
+  }
+  const diagnostic = error.diagnostic
+  return {
+    code,
+    message: 'Meta OAuth callback failed',
+    oauthCode: error.code,
+    ...(diagnostic
+      ? {
+          stage: diagnostic.stage,
+          ...(diagnostic.providerStatus === undefined
+            ? {}
+            : { providerStatus: diagnostic.providerStatus }),
+          ...(diagnostic.providerErrorType === undefined
+            ? {}
+            : { providerErrorType: diagnostic.providerErrorType }),
+          ...(diagnostic.providerErrorCode === undefined
+            ? {}
+            : { providerErrorCode: diagnostic.providerErrorCode }),
+          ...(diagnostic.providerErrorSubcode === undefined
+            ? {}
+            : { providerErrorSubcode: diagnostic.providerErrorSubcode }),
+          ...(diagnostic.providerResponseKeys === undefined
+            ? {}
+            : { providerResponseKeys: diagnostic.providerResponseKeys }),
+          ...(diagnostic.grantedScopes === undefined
+            ? {}
+            : { grantedScopes: diagnostic.grantedScopes }),
+          ...(diagnostic.missingScopes === undefined
+            ? {}
+            : { missingScopes: diagnostic.missingScopes }),
+          ...(diagnostic.returnedPageIds === undefined
+            ? {}
+            : { returnedPageIds: diagnostic.returnedPageIds }),
+          ...(diagnostic.targetPageId === undefined
+            ? {}
+            : { targetPageId: diagnostic.targetPageId }),
+        }
+      : {}),
+  }
+}
+
 const loadMetaAccount = async (
   payload: Payload,
   transaction: MetaOAuthTransaction,
@@ -203,7 +248,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       secure: secureCookie,
     })
   } catch (error) {
-    if (payload) payload.logger.error('Meta OAuth callback failed')
+    if (payload) payload.logger.error(callbackErrorLog(error))
     return resultRedirect({
       accountId: transaction?.accountId,
       origin: redirectOrigin,

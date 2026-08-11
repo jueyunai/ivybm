@@ -1,5 +1,97 @@
 # 经典 Bug 案例库
 
+## P-PROVIDER-ENUMERATION-GAP 提供方列表接口遗漏已授权资源
+
+- Category: observability, test-gap, product-acceptance
+- Applies to: OAuth 资产绑定、第三方资源发现、已知外部 ID 的身份校验
+- Example cases: META-001
+
+### Invariant
+
+用户明确授权且系统已预登记外部资源 ID 时，身份校验必须能对该精确资源执行提供方权威查询；列表接口
+未返回资源不能单独证明资源未授权，但任何 fallback 都必须继续校验精确 ID 和资源 Token，不能放宽身份边界。
+
+### Failure Mechanism
+
+实现把 `/me/accounts` 等枚举接口当成唯一身份来源。提供方在 Business Portfolio、新资产授权模型或接口版本
+差异下漏返回已勾选资源时，系统把“列表遗漏”误判为身份不匹配；纯 fixture 只覆盖列表成功路径，真实授权
+直到 production 联调才失败。
+
+### Early Signals
+
+- OAuth 授权页明确显示目标资源已勾选，但枚举接口返回空数组。
+- 目标外部 ID 已由提供方资产设置确认，用户也具有完全访问权限。
+- 身份解析只有列表查找，没有精确资源查询或安全的提供方响应阶段日志。
+
+### Prevention Gate
+
+OAuth adapter 必须分别测试枚举成功、枚举遗漏后精确查询成功、精确查询错误、返回 ID 不一致和 Token 缺失；
+fallback 只允许请求预登记 ID，继续携带 `appsecret_proof`，并只记录有界错误码、阶段和非敏感资源 ID。
+
+### Verification
+
+模拟 `/me/accounts` 返回空数组，随后 `/{page-id}?fields=id,name,access_token,tasks` 返回同一 Page：绑定成功；
+若 direct 响应为其他 ID、无 Token 或提供方拒绝，则 fail closed 且日志不含授权码、用户 Token、Page Token
+或 App Secret。
+
+### Reuse Prompt
+
+“这个第三方枚举接口是否可能漏掉已授权资源？系统能否用预登记 ID 做精确、仍然 fail-closed 的权威校验？”
+
+## META-001 已勾选 Facebook Page 仍被判定 identity mismatch
+
+- Category: observability, test-gap, product-acceptance
+- Pattern: P-PROVIDER-ENUMERATION-GAP
+- Date: 2026-08-11
+- Area: Task 13 Meta OAuth / Facebook Page Token 解析
+- Environment: production 受控 Facebook Page 与 Meta Login for Business
+- Severity: P0
+
+### Symptom
+
+Meta 授权页明确勾选 Page `129472283584550`，账号拥有完全访问权限且三个必需 scope 已授予，但回调仍
+返回 `metaOAuth=identity_mismatch`，平台账号保持 `not_started`。
+
+### Context
+
+App ID / Secret、回调域名、Login Configuration、Page ID 和 Webhook allowlist 均已验证；更换同权限的
+User Access Token 配置后结果不变。Graph API Explorer 与真实回调均显示 `/me/accounts` 没有目标 Page。
+
+### Root Cause
+
+Technical cause: `resolveMetaAuthorizedAccount` 只读取 `/me/accounts` 并在目标 Page 缺失时立即失败，没有使用
+Meta 支持的精确 `/{page-id}` Page Access Token 查询作为受限 fallback。
+
+Process cause: 既有测试只模拟 `/me/accounts` 返回目标 Page；没有使用 Business Portfolio 真实资产验证列表
+遗漏，也没有要求失败日志记录安全的解析阶段和提供方错误码。
+
+### Why Existing Checks Missed It
+
+fixture 证明了理想 Graph 响应契约，却没有覆盖 Meta 真实资产发现差异；production smoke 只检查站点健康，
+无法代替受控账号 OAuth 产品验收。
+
+### Fix
+
+保留权限校验和 `/me/accounts` 首选路径；目标缺失时仅针对预登记 Page ID 调用
+`/{page-id}?fields=id,name,access_token,tasks`，携带 HMAC `appsecret_proof`，只在返回 ID 精确一致且 Page
+Token 合法时绑定。回调增加有界结构化诊断，不记录任何凭据或原始提供方正文。
+
+### Prevention Checklist
+
+- [ ] 真实平台联调覆盖“授权页已选中、枚举接口为空”的路径。
+- [ ] 精确 fallback 只能使用预登记资源 ID，并校验返回 ID 与 Token。
+- [ ] 提供方拒绝、错误 ID、缺 Token 全部 fail closed。
+- [ ] OAuth 失败日志只记录阶段、状态码、错误码和非敏感资源 ID。
+
+### Regression Test
+
+`tests/unit/platforms/meta-oauth.test.ts`：`resolves the exact configured Page when Meta omits it from /me/accounts`；
+`tests/unit/platforms/meta-oauth-routes.test.ts`：`logs safe diagnostics when Meta rejects the exact Page lookup fallback`。
+
+### Related Workflow Gates
+
+- MVP Scope Freeze 5.2、5.3；Task 13 外部平台联调阶段
+
 ## P-EVENT-REVISION-FENCE 内容状态与事件身份混用
 
 - Category: state-management, concurrency, test-gap
