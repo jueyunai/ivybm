@@ -37,6 +37,10 @@ import {
   recoverDeadKnowledgeIndexDocuments,
 } from '@/modules/knowledge/jobs'
 import {
+  createKnowledgeIngestJobHandler,
+  KNOWLEDGE_INGEST_JOB_TYPE,
+} from '@/modules/knowledge/ingestion/jobs'
+import {
   createPlatformEventJobHandler,
   PLATFORM_EVENT_JOB_TYPE,
 } from '@/modules/platforms/eventJobs'
@@ -77,6 +81,7 @@ const handlers: Record<string, JobHandler> = {
   [FEISHU_LEAD_SYNC_FAILURE_JOB_TYPE]: createFeishuLeadSyncFailureJobHandler({ payload }),
   [FEISHU_LEAD_SYNC_JOB_TYPE]: createFeishuLeadSyncJobHandler({ payload }),
   [KNOWLEDGE_INDEX_JOB_TYPE]: createKnowledgeIndexJobHandler({ payload }),
+  [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload }),
   [PLATFORM_EVENT_JOB_TYPE]: createPlatformEventJobHandler({
     accountAuthorizer: new PayloadPlatformMessagingAccountAuthorizer({ payload }),
     conversations: new PayloadPlatformConversationPort({ payload }),

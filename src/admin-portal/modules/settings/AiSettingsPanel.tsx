@@ -425,7 +425,7 @@ function RouteForm({ busy, messages, onCancel, onSave, profiles, route }: { busy
   return (
     <form className="portal-ai-settings__form" onSubmit={submit}>
       <header><h4>{route ? messages.edit : messages.newRoute}</h4></header>
-      <label><span>{messages.usageKey}</span><select disabled={busy} onChange={(event) => setUsageKey(event.target.value)} value={usageKey}><option value={AI_USAGE_KEYS.chatReply}>{AI_USAGE_KEYS.chatReply}</option><option value={AI_USAGE_KEYS.knowledgeEmbedding}>{AI_USAGE_KEYS.knowledgeEmbedding}</option></select></label>
+      <label><span>{messages.usageKey}</span><select disabled={busy} onChange={(event) => setUsageKey(event.target.value)} value={usageKey}><option value={AI_USAGE_KEYS.chatReply}>{AI_USAGE_KEYS.chatReply}</option><option value={AI_USAGE_KEYS.knowledgeEmbedding}>{AI_USAGE_KEYS.knowledgeEmbedding}</option><option value={AI_USAGE_KEYS.knowledgeTranslation}>{AI_USAGE_KEYS.knowledgeTranslation}</option></select></label>
       <label><span>{messages.profile}</span><select disabled={busy || !compatible.length} onChange={(event) => setProfileID(Number(event.target.value))} required value={normalizedProfileID}>{compatible.map((profile) => <option key={profile.id} value={profile.id}>{profile.name} · {profile.model}</option>)}</select></label>
       <label className="portal-ai-settings__check"><input checked={enabled} disabled={busy} onChange={(event) => setEnabled(event.target.checked)} type="checkbox" /><span>{messages.enabled}</span></label>
       <FormActions busy={busy || !compatible.length} messages={messages} onCancel={onCancel} />

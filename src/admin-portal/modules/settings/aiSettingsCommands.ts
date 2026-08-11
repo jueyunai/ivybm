@@ -132,12 +132,19 @@ const profileData = (input: JsonInput) => {
 const routeData = (input: JsonInput) => {
   const usageKey = requiredText(input.usageKey, 'usage key', 100)
   const operation = capability(input.operation)
-  if (![AI_USAGE_KEYS.chatReply, AI_USAGE_KEYS.knowledgeEmbedding].includes(usageKey as never)) {
+  if (
+    ![
+      AI_USAGE_KEYS.chatReply,
+      AI_USAGE_KEYS.knowledgeEmbedding,
+      AI_USAGE_KEYS.knowledgeTranslation,
+    ].includes(usageKey as never)
+  ) {
     return fail('supported usage key')
   }
   if (
     (usageKey === AI_USAGE_KEYS.chatReply && operation !== 'text') ||
-    (usageKey === AI_USAGE_KEYS.knowledgeEmbedding && operation !== 'embedding')
+    (usageKey === AI_USAGE_KEYS.knowledgeEmbedding && operation !== 'embedding') ||
+    (usageKey === AI_USAGE_KEYS.knowledgeTranslation && operation !== 'text')
   ) {
     return fail('usage operation')
   }

@@ -13,6 +13,7 @@ const reviewRelevantFields = [
   'content',
   'customerVisible',
   'locale',
+  'riskTopics',
   'sourceFile',
   'sourceTitle',
   'sourceType',
@@ -20,19 +21,53 @@ const reviewRelevantFields = [
   'sourceVersion',
 ] as const
 
+const reviewFieldChanged = (
+  field: (typeof reviewRelevantFields)[number],
+  next: unknown,
+  previous: unknown,
+): boolean => {
+  if (field !== 'riskTopics') return next !== previous
+  const normalize = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string').sort()
+      : []
+  return JSON.stringify(normalize(next)) !== JSON.stringify(normalize(previous))
+}
+
 const systemManagedFields = [
   'embeddingModel',
   'embeddingSpace',
+  'generationModel',
+  'generationPromptVersion',
   'indexJobId',
   'indexOwnerToken',
   'indexedAt',
   'indexStatus',
+  'ingestionSource',
   'reviewedAt',
   'reviewedBy',
+  'sourceAnchor',
+  'sourceHash',
 ] as const
 
 const stampReview: CollectionBeforeChangeHook = ({ data, operation, originalDoc, req }) => {
   if (!data) return data
+
+  // Ingestion is a server-owned command. Regardless of upload payload values,
+  // generated output can never enter review/index/customer retrieval directly.
+  if (req.context?.knowledgeIngestion === true) {
+    data.customerVisible = false
+    data.reviewStatus = 'draft'
+    data.reviewedAt = null
+    data.reviewedBy = null
+    data.indexStatus = 'pending'
+    data.indexedAt = null
+    data.embeddingModel = null
+    data.embeddingSpace = null
+    data.indexJobId = null
+    data.indexOwnerToken = null
+    return data
+  }
 
   if (req.user) {
     for (const field of systemManagedFields) {
@@ -48,7 +83,8 @@ const stampReview: CollectionBeforeChangeHook = ({ data, operation, originalDoc,
     operation === 'update' &&
     reviewRelevantFields.some(
       (field) =>
-        Object.prototype.hasOwnProperty.call(data, field) && data[field] !== originalDoc?.[field],
+        Object.prototype.hasOwnProperty.call(data, field) &&
+        reviewFieldChanged(field, data[field], originalDoc?.[field]),
     )
   const reviewStatusChanged =
     data.reviewStatus !== undefined && data.reviewStatus !== originalDoc?.reviewStatus
@@ -143,6 +179,53 @@ export const KnowledgeDocuments: CollectionConfig = {
       name: 'sourceFile',
       type: 'upload',
       relationTo: 'media',
+    },
+    {
+      name: 'ingestionSource',
+      type: 'relationship',
+      admin: { readOnly: true },
+      relationTo: 'knowledge-source-documents',
+    },
+    {
+      name: 'sourceHash',
+      type: 'text',
+      admin: { readOnly: true },
+    },
+    {
+      name: 'sourceAnchor',
+      type: 'text',
+      admin: { readOnly: true },
+    },
+    {
+      name: 'generationModel',
+      type: 'text',
+      admin: { readOnly: true },
+    },
+    {
+      name: 'generationPromptVersion',
+      type: 'number',
+      admin: { readOnly: true },
+      min: 1,
+    },
+    {
+      name: 'riskTopics',
+      type: 'select',
+      hasMany: true,
+      options: [
+        { label: 'Price', value: 'price' },
+        { label: 'Discount', value: 'discount' },
+        { label: 'Payment', value: 'payment' },
+        { label: 'Lead time', value: 'lead-time' },
+        { label: 'Warranty', value: 'warranty' },
+        { label: 'Lifespan', value: 'lifespan' },
+        { label: 'Certification', value: 'certification' },
+        { label: 'Structural performance', value: 'structural-performance' },
+        { label: 'Fire performance', value: 'fire-performance' },
+        { label: 'Customs', value: 'customs' },
+        { label: 'Freight', value: 'freight' },
+        { label: 'Insurance', value: 'insurance' },
+        { label: 'Liability', value: 'liability' },
+      ],
     },
     {
       name: 'sourceVersion',
@@ -243,4 +326,5 @@ export const KnowledgeDocuments: CollectionConfig = {
     afterDelete: [writeAuditLogAfterDelete],
     beforeChange: [stampReview],
   },
+  indexes: [{ fields: ['ingestionSource', 'locale'], unique: true }],
 }

@@ -27,6 +27,7 @@ type UnknownRecord = Record<string, unknown>
 export const AI_USAGE_KEYS = {
   chatReply: 'chat.reply',
   knowledgeEmbedding: 'knowledge.embedding',
+  knowledgeTranslation: 'knowledge.translation',
 } as const
 
 export type AiUsageRouteRequest = {
@@ -37,6 +38,13 @@ export type AiUsageRouteRequest = {
 type ProviderFactory = (options: OpenAICompatibleProviderOptions) => AiProvider
 
 type ResolveAiGatewayOptions = {
+  /**
+   * Legacy environment routes remain useful for existing customer-chat and
+   * indexing callers.  Ingestion can disable this fallback because a missing
+   * CMS translation route must fail closed instead of silently using a
+   * different deployment credential/model.
+   */
+  allowEnvironmentFallback?: boolean
   createProvider?: ProviderFactory
   environment?: Environment
   payload: Payload
@@ -292,6 +300,7 @@ const persistAiUsage = async (payload: Payload, record: AiUsageRecord): Promise<
  * that operation.
  */
 export const resolveAiGateway = async ({
+  allowEnvironmentFallback = true,
   createProvider = createOpenAICompatibleProvider,
   environment = process.env,
   payload,
@@ -342,9 +351,13 @@ export const resolveAiGateway = async ({
     const cmsRoute = cmsRoutes.get(request.usageKey)
     const configuration = cmsRoute
       ? resolveCmsRoute(cmsRoute, request, createProvider, environment, encryptionKey)
-      : resolveEnvironmentRoute(operation, createProvider, environment)
+      : allowEnvironmentFallback
+        ? resolveEnvironmentRoute(operation, createProvider, environment)
+        : undefined
 
-    if (!configuration) continue
+    if (!configuration) {
+      throw routeConfigurationError(request.usageKey, 'is unavailable')
+    }
     if (operation === 'text') {
       operations.text = configuration as AiGatewayTextOperationConfig
     } else {

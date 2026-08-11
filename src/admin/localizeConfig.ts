@@ -50,6 +50,14 @@ const COLLECTION_LABELS: Record<string, { plural: AdminText; singular: AdminText
     plural: text('知识文档', 'Knowledge Documents'),
     singular: text('知识文档', 'Knowledge Document'),
   },
+  'knowledge-source-documents': {
+    plural: text('知识来源资料', 'Knowledge Source Documents'),
+    singular: text('知识来源资料', 'Knowledge Source Document'),
+  },
+  'knowledge-source-assets': {
+    plural: text('知识来源图片', 'Knowledge Source Assets'),
+    singular: text('知识来源图片', 'Knowledge Source Asset'),
+  },
   'lead-sources': {
     plural: text('线索来源', 'Lead Sources'),
     singular: text('线索来源', 'Lead Source'),

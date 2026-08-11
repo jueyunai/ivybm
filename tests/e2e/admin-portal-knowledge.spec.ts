@@ -78,6 +78,8 @@ test('knowledge workspace shows review/index truth and submits an idempotent ind
   try {
     await page.goto('/dashboard/knowledge')
     await expect(page.getByRole('heading', { level: 2, name: '知识文档' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 3, name: '自动解析与翻译' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '上传并生成草稿' })).toBeEnabled()
     await expect(page.getByLabel('知识库状态指标').locator('article')).toHaveCount(4)
     await expect(page.getByRole('region', { name: '知识文档双状态列表' })).toBeVisible()
 
@@ -128,6 +130,7 @@ test('mobile knowledge workspace keeps filters and dual-state content within the
   try {
     await page.goto('/dashboard/knowledge')
     await expect(page.getByRole('heading', { level: 2, name: '知识文档' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 3, name: '自动解析与翻译' })).toBeVisible()
     await expect(page.getByRole('searchbox', { name: '搜索文档' })).toBeVisible()
     await expect(page.locator('.portal-knowledge__workspace')).toBeVisible()
     await expect(page.locator('tr').filter({ hasText: documents[0].title })).toBeVisible()
