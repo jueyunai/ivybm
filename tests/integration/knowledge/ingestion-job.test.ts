@@ -452,6 +452,7 @@ describe.sequential('knowledge source ingestion job', () => {
     } finally {
       if (sourceResetTimeout) clearTimeout(sourceResetTimeout)
       releaseSourceReset()
+      await retry.catch(() => undefined)
       update.mockRestore()
     }
 
