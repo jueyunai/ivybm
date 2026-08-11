@@ -54,6 +54,9 @@ no-op。“最近跟进记录”仍只保留在飞书侧，回写范围另行确
 1. IVYBM 运维配置精确 HTTPS 回调地址 `FEISHU_OAUTH_REDIRECT_URI`、32 字节随机密钥的十六进制形式
    `FEISHU_CREDENTIAL_ENCRYPTION_KEY`，并确认 `NEXT_PUBLIC_SERVER_URL` 与回调同源。预检通过后再把
    `FEISHU_QR_REGISTRATION_ENABLED=true` 只注入 app 进程；客户不填写任何服务端配置。
+   扫码注册 POST 以该 `NEXT_PUBLIC_SERVER_URL` 的 origin 作为同源安全边界，不使用反向代理内部的
+   `request.url`；OpenResty 仍应覆盖 Host、X-Forwarded-Host 和 X-Forwarded-Proto。若 Portal 显示
+   `Same-origin request required`，先核对浏览器 Origin 与该公开 URL，再检查有效代理配置，不得关闭同源保护。
 2. 客户管理员打开 Portal `/dashboard/leads`，点击“扫码连接飞书”，扫码确认创建应用，然后完成用户授权。
 3. 回调成功后页面先显示“正在自动创建客户表”；worker 以授权用户为 Owner 创建 Base 和客户档案表，
    再原子激活 `primary-leads` 映射并显示“已连接”。管理员刷新页面后即可点击“打开飞书客户表”。
