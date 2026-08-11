@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto'
+
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -191,23 +193,150 @@ describe('Meta OAuth', () => {
     })
   })
 
-  it('fails closed on missing scopes, identity mismatch, and provider errors', async () => {
+  it('resolves the exact configured Page when Meta omits it from /me/accounts', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: requiredMetaPermissions('facebook-page').map((permission) => ({
+              permission,
+              status: 'granted',
+            })),
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: 'direct-page-access-token',
+            id: '123456789012345',
+            name: 'Foshan Ivy Building Material Co., Ltd.',
+            tasks: ['CREATE_CONTENT', 'MESSAGING', 'MODERATE'],
+          }),
+          { status: 200 },
+        ),
+      )
+
     await expect(
       resolveMetaAuthorizedAccount({
         accountKind: 'facebook-page',
         appSecret: 'test-meta-app-secret',
         externalAccountId: '123456789012345',
-        fetcher: vi
-          .fn<typeof fetch>()
-          .mockResolvedValue(
-            new Response(
-              JSON.stringify({ data: [{ permission: 'pages_show_list', status: 'granted' }] }),
-              { status: 200 },
-            ),
-          ),
+        fetcher,
         userAccessToken: 'long-user-token',
       }),
-    ).rejects.toMatchObject({ code: 'required_permission_missing' })
+    ).resolves.toEqual({
+      accessToken: 'direct-page-access-token',
+      displayName: 'Foshan Ivy Building Material Co., Ltd.',
+      pageId: '123456789012345',
+      scopes: requiredMetaPermissions('facebook-page'),
+    })
+
+    const [directURL, directRequest] = fetcher.mock.calls[2]
+    expect(String(directURL)).not.toContain('long-user-token')
+    expect(new URL(String(directURL)).pathname).toBe('/v25.0/123456789012345')
+    expect(new URL(String(directURL)).searchParams.get('fields')).toBe('id,name,access_token,tasks')
+    expect(new URL(String(directURL)).searchParams.get('appsecret_proof')).toBe(
+      createHmac('sha256', 'test-meta-app-secret').update('long-user-token').digest('hex'),
+    )
+    expect(directRequest?.headers).toMatchObject({
+      authorization: 'Bearer long-user-token',
+    })
+  })
+
+  it('keeps only bounded diagnostics when the direct Page lookup is rejected', async () => {
+    const providerMessage = 'provider failure containing long-user-token and test-meta-app-secret'
+    const oversizedProviderKey = `x${'y'.repeat(199_999)}`
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: requiredMetaPermissions('facebook-page').map((permission) => ({
+              permission,
+              status: 'granted',
+            })),
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            [oversizedProviderKey]: 'provider-controlled value',
+            error: {
+              code: 200,
+              error_subcode: 2018065,
+              message: providerMessage,
+              type: 'long-user-token',
+            },
+          }),
+          { status: 403 },
+        ),
+      )
+
+    const error = await resolveMetaAuthorizedAccount({
+      accountKind: 'facebook-page',
+      appSecret: 'test-meta-app-secret',
+      externalAccountId: '123456789012345',
+      fetcher,
+      userAccessToken: 'long-user-token',
+    }).catch((reason: unknown) => reason)
+
+    expect(error).toMatchObject({
+      code: 'identity_verification_failed',
+      diagnostic: {
+        providerErrorCode: 200,
+        providerErrorSubcode: 2018065,
+        providerResponseKeys: ['error'],
+        providerStatus: 403,
+        returnedPageIds: [],
+        stage: 'page_direct',
+        targetPageId: '123456789012345',
+      },
+    })
+    expect(error).not.toHaveProperty('diagnostic.providerErrorType')
+    const serialized = JSON.stringify(error)
+    expect(serialized).not.toContain(providerMessage)
+    expect(serialized).not.toContain('long-user-token')
+    expect(serialized).not.toContain('test-meta-app-secret')
+    expect(serialized).not.toContain(oversizedProviderKey)
+  })
+
+  it('fails closed on missing scopes, identity mismatch, and provider errors', async () => {
+    const oversizedPermission = `pages_${'x'.repeat(199_994)}`
+    const missingPermissionError = await resolveMetaAuthorizedAccount({
+      accountKind: 'facebook-page',
+      appSecret: 'test-meta-app-secret',
+      externalAccountId: '123456789012345',
+      fetcher: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: [
+              { permission: 'pages_show_list', status: 'granted' },
+              { permission: oversizedPermission, status: 'granted' },
+            ],
+          }),
+          { status: 200 },
+        ),
+      ),
+      userAccessToken: 'long-user-token',
+    }).catch((reason: unknown) => reason)
+
+    expect(missingPermissionError).toMatchObject({
+      code: 'required_permission_missing',
+      diagnostic: {
+        grantedScopes: ['pages_show_list'],
+        missingScopes: ['pages_manage_metadata', 'pages_messaging'],
+        providerStatus: 200,
+        stage: 'permissions',
+      },
+    })
+    expect(JSON.stringify(missingPermissionError)).not.toContain(oversizedPermission)
 
     const identityFetcher = vi
       .fn<typeof fetch>()
@@ -223,6 +352,16 @@ describe('Meta OAuth', () => {
         ),
       )
       .mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: 'different-page-token',
+            id: '999999999999999',
+            name: 'Different Page',
+          }),
+          { status: 200 },
+        ),
+      )
     await expect(
       resolveMetaAuthorizedAccount({
         accountKind: 'facebook-page',
@@ -232,6 +371,42 @@ describe('Meta OAuth', () => {
         userAccessToken: 'long-user-token',
       }),
     ).rejects.toMatchObject({ code: 'identity_mismatch' })
+
+    const missingPageTokenFetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: requiredMetaPermissions('facebook-page').map((permission) => ({
+              permission,
+              status: 'granted',
+            })),
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: '123456789012345', name: 'Page without a token' }), {
+          status: 200,
+        }),
+      )
+    await expect(
+      resolveMetaAuthorizedAccount({
+        accountKind: 'facebook-page',
+        appSecret: 'test-meta-app-secret',
+        externalAccountId: '123456789012345',
+        fetcher: missingPageTokenFetcher,
+        userAccessToken: 'long-user-token',
+      }),
+    ).rejects.toMatchObject({
+      code: 'identity_verification_failed',
+      diagnostic: {
+        returnedPageIds: ['123456789012345'],
+        stage: 'page_direct',
+        targetPageId: '123456789012345',
+      },
+    })
 
     const secretBearingBody = 'provider failure with test-meta-app-secret and long-user-token'
     await expect(
