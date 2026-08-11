@@ -157,7 +157,7 @@ describe('Meta OAuth', () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({ access_token: 'long-user-token', expires_in: 'not-a-number' }),
-          { status: 200 },
+          { status: 202 },
         ),
       )
 
@@ -172,10 +172,37 @@ describe('Meta OAuth', () => {
       code: 'token_response_invalid',
       diagnostic: {
         providerResponseKeys: ['access_token', 'expires_in'],
-        providerStatus: 200,
+        providerStatus: 202,
         stage: 'token_exchange_long',
       },
     })
+  })
+
+  it('reports the actual successful provider status when the short token is missing', async () => {
+    const unexpectedProviderValue = 'provider-secret-like-token'
+    const result = exchangeMetaAuthorizationCode({
+      code: 'authorization-code',
+      config: readMetaOAuthConfiguration(environment),
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ token_type: 'bearer', unexpected: unexpectedProviderValue }),
+            { status: 202 },
+          ),
+        ),
+    })
+
+    const error = await result.catch((caught: unknown) => caught)
+    expect(error).toMatchObject({
+      code: 'token_response_invalid',
+      diagnostic: {
+        providerResponseKeys: ['token_type'],
+        providerStatus: 202,
+        stage: 'token_exchange_short',
+      },
+    })
+    expect(JSON.stringify(error)).not.toContain(unexpectedProviderValue)
   })
 
   it('rejects a negative numeric long-lived token expiry', async () => {
@@ -235,55 +262,6 @@ describe('Meta OAuth', () => {
     await expect(longFailure).rejects.toMatchObject({
       code: 'token_response_invalid',
       diagnostic: { providerStatus: 200, stage: 'token_exchange_long' },
-    })
-  })
-
-  it('preserves non-200 success statuses in invalid token response diagnostics', async () => {
-    const unexpectedProviderValue = 'provider-secret-like-token'
-    const shortFailure = exchangeMetaAuthorizationCode({
-      code: 'authorization-code',
-      config: readMetaOAuthConfiguration(environment),
-      fetcher: vi
-        .fn<typeof fetch>()
-        .mockResolvedValue(
-          new Response(
-            JSON.stringify({ token_type: 'bearer', unexpected: unexpectedProviderValue }),
-            { status: 202 },
-          ),
-        ),
-    })
-
-    const shortError = await shortFailure.catch((error: unknown) => error)
-    expect(shortError).toMatchObject({
-      code: 'token_response_invalid',
-      diagnostic: {
-        providerResponseKeys: ['token_type'],
-        providerStatus: 202,
-        stage: 'token_exchange_short',
-      },
-    })
-    expect(JSON.stringify(shortError)).not.toContain(unexpectedProviderValue)
-
-    const longFailure = exchangeMetaAuthorizationCode({
-      code: 'authorization-code',
-      config: readMetaOAuthConfiguration(environment),
-      fetcher: vi
-        .fn<typeof fetch>()
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ access_token: 'short-user-token' }), { status: 200 }),
-        )
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ access_token: 'long-user-token' }), { status: 202 }),
-        ),
-    })
-
-    await expect(longFailure).rejects.toMatchObject({
-      code: 'token_response_invalid',
-      diagnostic: {
-        providerResponseKeys: ['access_token'],
-        providerStatus: 202,
-        stage: 'token_exchange_long',
-      },
     })
   })
 
