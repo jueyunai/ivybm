@@ -29,6 +29,18 @@ const OAUTH_TRANSACTION_VERSION = 2
 const PROVIDER_TIMEOUT_MILLISECONDS = 15_000
 const STATE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/
 const META_ID_PATTERN = /^[1-9][0-9]{0,31}$/
+const PROVIDER_ERROR_TYPE_PATTERN = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/
+const SAFE_PROVIDER_RESPONSE_KEYS = new Set([
+  'access_token',
+  'data',
+  'error',
+  'expires_in',
+  'id',
+  'name',
+  'paging',
+  'tasks',
+  'token_type',
+])
 
 export type MetaOAuthErrorCode =
   | 'identity_mismatch'
@@ -335,7 +347,12 @@ const parseProviderRecord = (value: unknown): Record<string, unknown> => {
 }
 
 const boundedProviderKeys = (payload: Record<string, unknown>): string[] =>
-  Object.keys(payload).sort().slice(0, 24)
+  Object.keys(payload)
+    .filter((key) => SAFE_PROVIDER_RESPONSE_KEYS.has(key))
+    .sort()
+
+const providerErrorType = (value: unknown): string | undefined =>
+  typeof value === 'string' && PROVIDER_ERROR_TYPE_PATTERN.test(value) ? value : undefined
 
 const numericProviderField = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isSafeInteger(value) ? value : undefined
@@ -355,11 +372,12 @@ const providerDiagnostic = ({
       : undefined
   const providerErrorCode = numericProviderField(error?.code)
   const providerErrorSubcode = numericProviderField(error?.error_subcode)
+  const safeProviderErrorType = providerErrorType(error?.type)
   return {
     stage,
     providerStatus: status,
     providerResponseKeys: boundedProviderKeys(payload),
-    ...(typeof error?.type === 'string' ? { providerErrorType: error.type.slice(0, 128) } : {}),
+    ...(safeProviderErrorType === undefined ? {} : { providerErrorType: safeProviderErrorType }),
     ...(providerErrorCode === undefined ? {} : { providerErrorCode }),
     ...(providerErrorSubcode === undefined ? {} : { providerErrorSubcode }),
   }
@@ -591,12 +609,23 @@ export const resolveMetaAuthorizedAccount = async ({
     searchParams: { limit: '100' },
     stage: 'permissions',
   })
-  const grantedPermissions = providerArray(permissionPayload.data)
-    .filter((item) => item.status === 'granted' && typeof item.permission === 'string')
-    .map((item) => String(item.permission))
   const requiredPermissions = requiredMetaPermissions(accountKind)
+  const requiredPermissionSet = new Set(requiredPermissions)
+  const grantedPermissionSet = new Set<string>()
+  for (const item of providerArray(permissionPayload.data)) {
+    if (
+      item.status === 'granted' &&
+      typeof item.permission === 'string' &&
+      requiredPermissionSet.has(item.permission)
+    ) {
+      grantedPermissionSet.add(item.permission)
+    }
+  }
+  const grantedPermissions = requiredPermissions.filter((permission) =>
+    grantedPermissionSet.has(permission),
+  )
   const missingPermissions = requiredPermissions.filter(
-    (permission) => !grantedPermissions.includes(permission),
+    (permission) => !grantedPermissionSet.has(permission),
   )
   if (missingPermissions.length > 0) {
     throw new MetaOAuthError('required_permission_missing', {

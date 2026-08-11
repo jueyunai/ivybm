@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto'
+
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -237,7 +239,9 @@ describe('Meta OAuth', () => {
     expect(String(directURL)).not.toContain('long-user-token')
     expect(new URL(String(directURL)).pathname).toBe('/v25.0/123456789012345')
     expect(new URL(String(directURL)).searchParams.get('fields')).toBe('id,name,access_token,tasks')
-    expect(new URL(String(directURL)).searchParams.get('appsecret_proof')).toMatch(/^[a-f0-9]{64}$/)
+    expect(new URL(String(directURL)).searchParams.get('appsecret_proof')).toBe(
+      createHmac('sha256', 'test-meta-app-secret').update('long-user-token').digest('hex'),
+    )
     expect(directRequest?.headers).toMatchObject({
       authorization: 'Bearer long-user-token',
     })
@@ -245,6 +249,7 @@ describe('Meta OAuth', () => {
 
   it('keeps only bounded diagnostics when the direct Page lookup is rejected', async () => {
     const providerMessage = 'provider failure containing long-user-token and test-meta-app-secret'
+    const oversizedProviderKey = `x${'y'.repeat(199_999)}`
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -262,6 +267,7 @@ describe('Meta OAuth', () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            [oversizedProviderKey]: 'provider-controlled value',
             error: {
               code: 200,
               error_subcode: 2018065,
@@ -298,25 +304,39 @@ describe('Meta OAuth', () => {
     expect(serialized).not.toContain(providerMessage)
     expect(serialized).not.toContain('long-user-token')
     expect(serialized).not.toContain('test-meta-app-secret')
+    expect(serialized).not.toContain(oversizedProviderKey)
   })
 
   it('fails closed on missing scopes, identity mismatch, and provider errors', async () => {
-    await expect(
-      resolveMetaAuthorizedAccount({
-        accountKind: 'facebook-page',
-        appSecret: 'test-meta-app-secret',
-        externalAccountId: '123456789012345',
-        fetcher: vi
-          .fn<typeof fetch>()
-          .mockResolvedValue(
-            new Response(
-              JSON.stringify({ data: [{ permission: 'pages_show_list', status: 'granted' }] }),
-              { status: 200 },
-            ),
-          ),
-        userAccessToken: 'long-user-token',
-      }),
-    ).rejects.toMatchObject({ code: 'required_permission_missing' })
+    const oversizedPermission = `pages_${'x'.repeat(199_994)}`
+    const missingPermissionError = await resolveMetaAuthorizedAccount({
+      accountKind: 'facebook-page',
+      appSecret: 'test-meta-app-secret',
+      externalAccountId: '123456789012345',
+      fetcher: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: [
+              { permission: 'pages_show_list', status: 'granted' },
+              { permission: oversizedPermission, status: 'granted' },
+            ],
+          }),
+          { status: 200 },
+        ),
+      ),
+      userAccessToken: 'long-user-token',
+    }).catch((reason: unknown) => reason)
+
+    expect(missingPermissionError).toMatchObject({
+      code: 'required_permission_missing',
+      diagnostic: {
+        grantedScopes: ['pages_show_list'],
+        missingScopes: ['pages_manage_metadata', 'pages_messaging'],
+        providerStatus: 200,
+        stage: 'permissions',
+      },
+    })
+    expect(JSON.stringify(missingPermissionError)).not.toContain(oversizedPermission)
 
     const identityFetcher = vi
       .fn<typeof fetch>()

@@ -270,6 +270,7 @@ describe('Meta OAuth routes', () => {
     const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
     const providerMessage =
       'provider failure containing authorization-code, long-user-token and test-meta-app-secret'
+    const oversizedProviderKey = `x${'y'.repeat(199_999)}`
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -297,6 +298,7 @@ describe('Meta OAuth routes', () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            [oversizedProviderKey]: 'provider-controlled value',
             error: {
               code: 200,
               error_subcode: 2018065,
@@ -340,6 +342,7 @@ describe('Meta OAuth routes', () => {
     expect(serializedLog).not.toContain('long-user-token')
     expect(serializedLog).not.toContain('test-meta-app-secret')
     expect(serializedLog).not.toContain(providerMessage)
+    expect(serializedLog).not.toContain(oversizedProviderKey)
   })
 
   it('does not persist a late callback after the account is disconnected', async () => {
