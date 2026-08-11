@@ -17,7 +17,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const id = requireKnowledgeSourceID((await params).id)
     const { payload, req } = await authorizeKnowledgeSourceRequest(request, { adminOnly: true })
     const result = await executePortalRouteCommand({
-      atomic: false,
       fingerprintInput: { id },
       operation: (transactionReq) => retryKnowledgeSource({ actor: { id: req.user?.id ?? 0, role: 'admin' }, id, payload, req: transactionReq, }),
       payload,

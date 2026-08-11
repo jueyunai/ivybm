@@ -348,38 +348,58 @@ export const retryKnowledgeSource = async ({
   actor: JobRetryActor
 }): Promise<KnowledgeSourceCommandResult> => {
   if (actor.role !== 'admin') throw new KnowledgeSourceCommandError('admin-required', 'Administrator access required', 403)
-  const source = asRecord(await payload.findByID({ collection: 'knowledge-source-documents', depth: 0, id, overrideAccess: false, req }))
-  if (!source.id || source.processingStatus !== 'failed') {
-    throw new KnowledgeSourceCommandError('source-not-retryable', 'Only failed sources can be retried', 409)
-  }
-  const queue = new PayloadJobQueue({ payload: payload as Payload })
-  const jobID = typeof source.currentJobId === 'number' ? source.currentJobId : null
-  let job: JobRecord
-  let state: 'created' | 'duplicate' = 'created'
-  if (jobID) {
-    const retried = await queue.retryManually(jobID, actor)
-    job = retried
-  } else {
-    const enqueued = await enqueueKnowledgeIngestJob({
-      payload,
-      req,
-      requestedBy: Number(req.user?.id) || null,
-      sourceId: Number(source.id),
-      sourceHash: String(source.sourceHash),
-      sourceRevision: String(source.ingestionRevision),
+  const run = async (commandReq: PayloadRequest): Promise<KnowledgeSourceCommandResult> => {
+    const source = asRecord(await payload.findByID({ collection: 'knowledge-source-documents', depth: 0, id, overrideAccess: false, req: commandReq }))
+    if (!source.id || source.processingStatus !== 'failed') {
+      throw new KnowledgeSourceCommandError('source-not-retryable', 'Only failed sources can be retried', 409)
+    }
+    const queue = new PayloadJobQueue({ payload: payload as Payload })
+    const jobID = typeof source.currentJobId === 'number' ? source.currentJobId : null
+    let job: JobRecord
+    let state: 'created' | 'duplicate' = 'created'
+    if (jobID) {
+      job = await queue.retryManually(jobID, actor, commandReq)
+    } else {
+      const enqueued = await enqueueKnowledgeIngestJob({
+        manualRetryActor: actor,
+        payload,
+        req: commandReq,
+        requestedBy: Number(commandReq.user?.id) || null,
+        sourceId: Number(source.id),
+        sourceHash: String(source.sourceHash),
+        sourceRevision: String(source.ingestionRevision),
+      })
+      job = enqueued.job
+      state = enqueued.state
+    }
+    if (job.status !== 'pending') {
+      throw new KnowledgeSourceCommandError('source-job-not-retryable', 'The source Job cannot be retried', 409)
+    }
+    const updated = await payload.update({
+      collection: 'knowledge-source-documents',
+      context: { knowledgeIngestion: true, skipAudit: true },
+      data: { errorCode: null, errorSummary: null, processingStage: 'queued', processingStatus: 'queued', currentJobId: job.id },
+      overrideAccess: true,
+      req: commandReq,
+      where: { and: [{ id: { equals: id } }, { ingestionRevision: { equals: String(source.ingestionRevision) } }, { processingStatus: { equals: 'failed' } }] },
     })
-    job = enqueued.job
-    state = enqueued.state
+    if (updated.docs.length !== 1) {
+      throw new KnowledgeSourceCommandError('source-changed', 'The source changed before it could be retried', 409)
+    }
+    return resultFrom(asRecord(updated.docs[0]), job, state)
   }
-  await payload.update({
-    collection: 'knowledge-source-documents',
-    context: { knowledgeIngestion: true, skipAudit: true },
-    data: { errorCode: null, errorSummary: null, processingStage: 'queued', processingStatus: 'queued', currentJobId: job.id },
-    id,
-    overrideAccess: true,
-    req,
-  })
-  return resultFrom({ ...source, processingStage: 'queued', processingStatus: 'queued', currentJobId: job.id }, job, state)
+
+  if (await req.transactionID) return run(req)
+  const transactionReq = await createLocalReq({ user: req.user ?? undefined }, payload as Payload)
+  await initTransaction(transactionReq)
+  try {
+    const result = await run(transactionReq)
+    await commitTransaction(transactionReq)
+    return result
+  } catch (error) {
+    await killTransaction(transactionReq).catch(() => undefined)
+    throw error
+  }
 }
 
 export const knowledgeSourceStoragePath = (filename: string, asset = false): string => {

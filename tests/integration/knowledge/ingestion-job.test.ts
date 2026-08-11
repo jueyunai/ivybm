@@ -395,14 +395,69 @@ describe.sequential('knowledge source ingestion job', () => {
     expect(outputs.totalDocs).toBe(0)
 
     await expect(retryKnowledgeSource({ actor: { id: operator.id, role: 'operator' }, id: Number(uploaded.result.source.id), payload, req: uploaded.req })).rejects.toMatchObject({ status: 403 })
+    await payload.update({ collection: 'knowledge-source-documents', data: { currentJobId: null }, id: uploaded.result.source.id, overrideAccess: true })
     const adminReq = await createLocalReq({ user: admin }, payload)
-    await expect(retryKnowledgeSource({ actor: { id: admin.id, role: 'admin' }, id: Number(uploaded.result.source.id), payload, req: adminReq })).resolves.toMatchObject({ source: { processingStatus: 'queued' } })
+    await expect(retryKnowledgeSource({ actor: { id: admin.id, role: 'admin' }, id: Number(uploaded.result.source.id), payload, req: adminReq })).resolves.toMatchObject({ job: { id: uploaded.result.job.id, manualRetryCount: 1, status: 'pending' }, source: { processingStatus: 'queued' } })
     const succeedingWorker = new JobWorker({
       handlers: { [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload, resolveGateway: async () => gateway() }) },
       queue: new PayloadJobQueue({ payload }),
     })
     await expect(succeedingWorker.runOnce()).resolves.toBe('succeeded')
     await expect(payload.findByID({ collection: 'knowledge-source-documents', id: uploaded.result.source.id, overrideAccess: true })).resolves.toMatchObject({ processingStatus: 'needs_review' })
+    await expect(retryKnowledgeSource({ actor: { id: admin.id, role: 'admin' }, id: Number(uploaded.result.source.id), payload, req: adminReq })).rejects.toMatchObject({ code: 'source-not-retryable', status: 409 })
+  })
+
+  it('commits the source reset before a manually retried Job becomes claimable', async () => {
+    const uploaded = await upload(`retry-atomic-${randomUUID()}`)
+    const failingWorker = new JobWorker({
+      handlers: { [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload, resolveGateway: async () => gateway('all') }) },
+      queue: new PayloadJobQueue({ payload }),
+    })
+    await expect(failingWorker.runOnce()).resolves.toBe('failed')
+
+    let releaseSourceReset!: () => void
+    let markSourceResetStarted!: () => void
+    const sourceResetStarted = new Promise<void>((resolve) => { markSourceResetStarted = resolve })
+    const sourceResetRelease = new Promise<void>((resolve) => { releaseSourceReset = resolve })
+    const originalUpdate = payload.update.bind(payload) as unknown as (options: unknown) => Promise<unknown>
+    const interceptedUpdate = async (options: unknown): Promise<unknown> => {
+      const candidate = options as { collection?: unknown; data?: Record<string, unknown> }
+      if (candidate.collection === 'knowledge-source-documents' && candidate.data?.processingStatus === 'queued') {
+        markSourceResetStarted()
+        await sourceResetRelease
+      }
+      return originalUpdate(options)
+    }
+    const update = vi.spyOn(payload, 'update')
+    update.mockImplementation(interceptedUpdate as never)
+    const adminReq = await createLocalReq({ user: admin }, payload)
+    const retry = retryKnowledgeSource({ actor: { id: admin.id, role: 'admin' }, id: Number(uploaded.result.source.id), payload, req: adminReq })
+    let sourceResetTimeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      await new Promise<void>((resolve, reject) => {
+        sourceResetTimeout = setTimeout(() => reject(new Error('Timed out waiting for the retry source reset')), 2_000)
+        void sourceResetStarted.then(resolve, reject)
+      })
+      clearTimeout(sourceResetTimeout)
+      await expect(new PayloadJobQueue({ payload }).getByID(uploaded.result.job.id)).resolves.toMatchObject({ manualRetryCount: 0, status: 'failed' })
+      await expect(payload.findByID({ collection: 'knowledge-source-documents', id: uploaded.result.source.id, overrideAccess: true })).resolves.toMatchObject({ processingStatus: 'failed' })
+      const worker = new JobWorker({
+        handlers: { [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload, resolveGateway: async () => gateway() }) },
+        queue: new PayloadJobQueue({ payload }),
+      })
+      await expect(worker.runOnce()).resolves.toBe('idle')
+      releaseSourceReset()
+      await expect(retry).resolves.toMatchObject({ source: { processingStatus: 'queued' } })
+      await expect(worker.runOnce()).resolves.toBe('succeeded')
+    } finally {
+      if (sourceResetTimeout) clearTimeout(sourceResetTimeout)
+      releaseSourceReset()
+      update.mockRestore()
+    }
+
+    await expect(payload.findByID({ collection: 'knowledge-source-documents', id: uploaded.result.source.id, overrideAccess: true })).resolves.toMatchObject({ processingStage: 'complete', processingStatus: 'needs_review' })
+    await expect(retryKnowledgeSource({ actor: { id: admin.id, role: 'admin' }, id: Number(uploaded.result.source.id), payload, req: adminReq })).rejects.toMatchObject({ code: 'source-not-retryable', status: 409 })
+    await expect(new PayloadJobQueue({ payload }).getByID(uploaded.result.job.id)).resolves.toMatchObject({ manualRetryCount: 1, status: 'succeeded' })
   })
 
   it('cascades private assets when their required source is deleted', async () => {

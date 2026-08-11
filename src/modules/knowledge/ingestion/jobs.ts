@@ -490,7 +490,7 @@ export const enqueueKnowledgeIngestJob = async ({
     enqueued.state === 'duplicate' &&
     (enqueued.job.status === 'dead' || enqueued.job.status === 'failed')
   ) {
-    return { job: await queue.retryManually(enqueued.job.id, manualRetryActor), state: 'created' }
+    return { job: await queue.retryManually(enqueued.job.id, manualRetryActor, req), state: 'created' }
   }
   return enqueued
 }
