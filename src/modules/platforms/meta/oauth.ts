@@ -51,7 +51,8 @@ export type MetaOAuthErrorCode =
   | 'token_exchange_failed'
   | 'token_response_invalid'
 
-export type MetaOAuthDiagnosticStage = 'page_direct' | 'pages_list' | 'permissions'
+export type MetaOAuthDiagnosticStage =
+  'page_direct' | 'pages_list' | 'permissions' | 'token_exchange_long' | 'token_exchange_short'
 
 export type MetaOAuthDiagnostic = {
   grantedScopes?: string[]
@@ -182,6 +183,7 @@ const FACEBOOK_PAGE_PERMISSIONS = [
   'pages_show_list',
   'pages_manage_metadata',
   'pages_messaging',
+  'pages_read_engagement',
 ] as const
 
 export const requiredMetaPermissions = (_accountKind: MetaAccountKind): string[] => [
@@ -430,21 +432,41 @@ const readProviderJSON = async (
   return payload
 }
 
-const readTokenPayload = (
+const tokenResponseDiagnostic = (
+  payload: Record<string, unknown>,
+  stage: Extract<MetaOAuthDiagnosticStage, 'token_exchange_long' | 'token_exchange_short'>,
+): MetaOAuthDiagnostic => ({
+  providerResponseKeys: boundedProviderKeys(payload),
+  providerStatus: 200,
+  stage,
+})
+
+const readAccessToken = (
+  payload: Record<string, unknown>,
+  stage: Extract<MetaOAuthDiagnosticStage, 'token_exchange_long' | 'token_exchange_short'>,
+): string => {
+  const accessToken = typeof payload.access_token === 'string' ? payload.access_token.trim() : ''
+  if (!accessToken || accessToken.length > MAX_CREDENTIAL_LENGTH) {
+    throw new MetaOAuthError('token_response_invalid', tokenResponseDiagnostic(payload, stage))
+  }
+  return accessToken
+}
+
+const readExpiresInSeconds = (value: unknown): number | undefined => {
+  const normalized =
+    typeof value === 'string' && /^(?:0|[1-9][0-9]*)$/.test(value) ? Number(value) : value
+  return typeof normalized === 'number' && Number.isSafeInteger(normalized) ? normalized : undefined
+}
+
+const readLongLivedTokenPayload = (
   payload: Record<string, unknown>,
   nowMilliseconds: number,
 ): MetaUserToken => {
-  const accessToken = typeof payload.access_token === 'string' ? payload.access_token.trim() : ''
-  const expiresIn = payload.expires_in
-  if (
-    !accessToken ||
-    accessToken.length > MAX_CREDENTIAL_LENGTH ||
-    typeof expiresIn !== 'number' ||
-    !Number.isSafeInteger(expiresIn) ||
-    expiresIn <= 0 ||
-    expiresIn > MAX_TOKEN_TTL_SECONDS
-  ) {
-    throw new MetaOAuthError('token_response_invalid')
+  const stage = 'token_exchange_long'
+  const accessToken = readAccessToken(payload, stage)
+  const expiresIn = readExpiresInSeconds(payload.expires_in)
+  if (!expiresIn || expiresIn > MAX_TOKEN_TTL_SECONDS) {
+    throw new MetaOAuthError('token_response_invalid', tokenResponseDiagnostic(payload, stage))
   }
   return {
     accessToken,
@@ -455,9 +477,11 @@ const readTokenPayload = (
 const exchangeTokenRequest = async ({
   body,
   fetcher,
+  stage,
 }: {
   body: URLSearchParams
   fetcher: typeof fetch
+  stage: Extract<MetaOAuthDiagnosticStage, 'token_exchange_long' | 'token_exchange_short'>
 }): Promise<Record<string, unknown>> => {
   let response: Response
   try {
@@ -472,9 +496,9 @@ const exchangeTokenRequest = async ({
       signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MILLISECONDS),
     })
   } catch {
-    throw new MetaOAuthError('token_exchange_failed')
+    throw new MetaOAuthError('token_exchange_failed', { stage })
   }
-  return readProviderJSON(response, 'token_exchange_failed')
+  return readProviderJSON(response, 'token_exchange_failed', stage)
 }
 
 export const exchangeMetaAuthorizationCode = async ({
@@ -501,18 +525,20 @@ export const exchangeMetaAuthorizationCode = async ({
       redirect_uri: config.redirectUri,
     }),
     fetcher,
+    stage: 'token_exchange_short',
   })
-  const shortToken = readTokenPayload(shortPayload, nowMilliseconds)
+  const shortAccessToken = readAccessToken(shortPayload, 'token_exchange_short')
   const longPayload = await exchangeTokenRequest({
     body: new URLSearchParams({
       client_id: config.appId,
       client_secret: config.appSecret,
-      fb_exchange_token: shortToken.accessToken,
+      fb_exchange_token: shortAccessToken,
       grant_type: 'fb_exchange_token',
     }),
     fetcher,
+    stage: 'token_exchange_long',
   })
-  return readTokenPayload(longPayload, nowMilliseconds)
+  return readLongLivedTokenPayload(longPayload, nowMilliseconds)
 }
 
 const graphRequest = async ({
