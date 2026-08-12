@@ -74,7 +74,7 @@ export const extractLeadSignals = (session: ChatSession): LeadScoringInput => {
       ?.trim() ?? text.match(/(?:اسم\s+الشركة|شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80})/)?.[1]?.trim()
   const englishBudget = text
     .match(
-      /(?:budget|price range|spend(?:ing)?|investment)\s*(?:is|of|around|about|[:：])?\s*([^\n,.!?]{2,80}?)(?=\s+(?:and\s+)?(?:our\s+|the\s+)?(?:purchase|purchasing|procurement)\s+(?:plan|schedule|process|strategy)\b|[,.!?\n]|$)/i,
+      /(?:budget|price range|spend(?:ing)?|investment)\s*(?:is|of|around|about|[:：])?\s*([^\n.!?]{2,80}?)(?=\s+(?:and\s+)?(?:our\s+|the\s+)?(?:purchase|purchasing|procurement)\s+(?:plan|schedule|process|strategy)\b|,(?!\d{3}\b)|[.!?\n]|$)/i,
     )?.[1]
     ?.trim()
   const budget =

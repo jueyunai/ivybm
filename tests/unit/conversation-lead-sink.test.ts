@@ -45,6 +45,15 @@ describe('conversation lead signal extraction', () => {
     expect(signals.contact.email).toBe('buyer@example.invalid')
   })
 
+  it('preserves English budget thousands separators and stops before the procurement plan', () => {
+    const signals = extractLeadSignals(
+      sessionWith('en', 'Our budget is USD 450,000, and our procurement plan is within 3 months.'),
+    )
+
+    expect(signals.budget).toBe('USD 450,000')
+    expect(signals.procurementPlan).toBe('within 3 months')
+  })
+
   it('does not mistake a project-stage phrase for a company name', () => {
     const signals = extractLeadSignals(
       sessionWith('en', 'We are at tender stage in the UAE and need 500 sqm.'),
