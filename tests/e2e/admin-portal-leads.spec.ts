@@ -37,6 +37,8 @@ test('lead workspace creates, edits, and deletes an ACL-aware Portal lead', asyn
   try {
     await page.goto('/dashboard/leads')
     await expect(page.getByRole('heading', { level: 2, name: '线索管理' })).toBeVisible()
+    await expect(page.locator('.portal-page__eyebrow')).toHaveCount(0)
+    await expect(page.locator('.portal-header__heading')).toBeVisible()
     await page.getByRole('button', { name: '新增线索' }).click()
     await page.getByLabel('联系人').fill(name)
     await page.getByLabel('邮箱').fill(`portal-lead-${suffix}@example.invalid`)

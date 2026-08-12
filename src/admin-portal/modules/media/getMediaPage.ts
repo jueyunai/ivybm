@@ -81,6 +81,11 @@ interface MediaProjection {
   width?: null | number
 }
 
+export type MediaPreviewProjection = Pick<
+  MediaProjection,
+  'mimeType' | 'sizes' | 'thumbnailURL' | 'url'
+>
+
 interface MediaFindResult {
   docs: MediaProjection[]
   page?: number
@@ -143,6 +148,16 @@ const safeMediaUrl = (value: null | string | undefined): null | string => {
   }
 }
 
+export const getMediaPreviewUrl = (document: MediaPreviewProjection): null | string => {
+  if (!document.mimeType?.startsWith('image/')) return null
+  return (
+    safeMediaUrl(document.sizes?.card?.url) ??
+    safeMediaUrl(document.sizes?.thumbnail?.url) ??
+    safeMediaUrl(document.thumbnailURL) ??
+    safeMediaUrl(document.url)
+  )
+}
+
 const kindFor = (mimeType: null | string | undefined): MediaItemKind => {
   if (mimeType === 'application/pdf') return 'pdf'
   if (mimeType?.startsWith('image/')) return 'image'
@@ -152,11 +167,6 @@ const kindFor = (mimeType: null | string | undefined): MediaItemKind => {
 const mapMediaItem = (document: MediaProjection): MediaSummaryItem => {
   const kind = kindFor(document.mimeType)
   const originalUrl = safeMediaUrl(document.url)
-  const imagePreview =
-    safeMediaUrl(document.sizes?.card?.url) ??
-    safeMediaUrl(document.sizes?.thumbnail?.url) ??
-    safeMediaUrl(document.thumbnailURL) ??
-    originalUrl
 
   return {
     alt: document.alt ?? '',
@@ -168,7 +178,7 @@ const mapMediaItem = (document: MediaProjection): MediaSummaryItem => {
     kind,
     mimeType: document.mimeType ?? null,
     originalUrl,
-    previewUrl: kind === 'image' ? imagePreview : kind === 'pdf' ? originalUrl : null,
+    previewUrl: kind === 'image' ? getMediaPreviewUrl(document) : kind === 'pdf' ? originalUrl : null,
     source: document.source ?? '',
     updatedAt: document.updatedAt,
     width: document.width ?? null,

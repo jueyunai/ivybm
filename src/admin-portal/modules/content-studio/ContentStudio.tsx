@@ -3,13 +3,17 @@
 import { useMemo, useState, useTransition } from 'react'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import {
   IconArrowLeft,
   IconArrowRight,
   IconCalendar,
   IconChecks,
+  IconFile,
   IconFileDownload,
+  IconFileTypePdf,
+  IconPhoto,
   IconPlus,
   IconSend,
   IconSparkles,
@@ -78,7 +82,6 @@ export function ContentStudio({
     <main className="portal-page portal-content-studio">
       <header className="portal-page__intro portal-content-studio__intro">
         <div>
-          <p className="portal-page__eyebrow">CONTENT / AI STUDIO</p>
           <h2>{copy.title}</h2>
           <p>{copy.automaticNotice}</p>
         </div>
@@ -425,7 +428,18 @@ function ContentDetail({
       <section className="portal-content-studio__relations">
         <div>
           <h4>{copy.assets}</h4>
-          <p>{item.assets.map((asset) => asset.label).join(', ') || '—'}</p>
+          {item.assets.length ? (
+            <ul className="portal-content-studio__asset-relations">
+              {item.assets.map((asset) => (
+                <li key={asset.id}>
+                  <AssetThumbnail option={asset} />
+                  <span>{asset.label}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>—</p>
+          )}
         </div>
         <div>
           <h4>{copy.knowledge}</h4>
@@ -683,6 +697,7 @@ function DraftEditor({
         </Field>
         <Field label={copy.assets} wide>
           <MultiOptions
+            assetPreviews
             options={options.assets}
             selected={form.assets}
             toggle={(value) => toggle('assets', value)}
@@ -826,6 +841,7 @@ function GenerateDraftEditor({
         </Field>
         <Field label={copy.assets} wide>
           <MultiOptions
+            assetPreviews
             options={options.assets}
             selected={form.assets}
             toggle={(value) => toggle('assets', value)}
@@ -834,7 +850,7 @@ function GenerateDraftEditor({
       </div>
       <footer>
         <Button
-          disabled={busy || !form.brief.trim() || !form.knowledgeSources.length}
+          disabled={busy || !form.brief.trim()}
           onClick={() => void generate()}
         >
           <IconSparkles aria-hidden="true" size={16} />
@@ -1065,29 +1081,72 @@ function FactEditor({
     </section>
   )
 }
+function AssetThumbnail({ option }: { option: ContentStudioSummary['options']['assets'][number] }) {
+  const [failed, setFailed] = useState(false)
+  const isImage = option.meta?.startsWith('image/') === true
+  const isPDF = option.meta === 'application/pdf'
+
+  return (
+    <span
+      aria-hidden="true"
+      className={`portal-content-studio__asset-thumb ${isPDF ? 'is-pdf' : isImage ? 'is-image' : 'is-file'}`}
+    >
+      {isImage && option.previewUrl && !failed ? (
+        <Image
+          alt=""
+          fill
+          onError={() => setFailed(true)}
+          sizes="96px"
+          src={option.previewUrl}
+          unoptimized
+        />
+      ) : isPDF ? (
+        <IconFileTypePdf size={26} stroke={1.5} />
+      ) : isImage ? (
+        <IconPhoto size={26} stroke={1.5} />
+      ) : (
+        <IconFile size={26} stroke={1.5} />
+      )}
+    </span>
+  )
+}
 function MultiOptions({
+  assetPreviews = false,
   options,
   selected,
   toggle,
 }: {
+  assetPreviews?: boolean
   options: ContentStudioSummary['options']['assets']
   selected: string[]
   toggle: (value: string) => void
 }) {
   return (
-    <div className="portal-content-studio__multi-options">
+    <div
+      className={`portal-content-studio__multi-options${assetPreviews ? ' is-assets' : ''}`}
+    >
       {options.length ? (
-        options.map((option) => (
-          <label key={option.id}>
-            <input
-              checked={selected.includes(String(option.id))}
-              onChange={() => toggle(String(option.id))}
-              type="checkbox"
-            />
-            <span>{option.label}</span>
-            {option.meta ? <small>{option.meta}</small> : null}
-          </label>
-        ))
+        options.map((option) => {
+          const checked = selected.includes(String(option.id))
+          return (
+            <label
+              className={`${assetPreviews ? 'portal-content-studio__asset-option' : ''}${checked ? ' is-selected' : ''}`}
+              key={option.id}
+            >
+              <input
+                aria-label={option.label}
+                checked={checked}
+                onChange={() => toggle(String(option.id))}
+                type="checkbox"
+              />
+              {assetPreviews ? <AssetThumbnail option={option} /> : null}
+              <span className={assetPreviews ? 'portal-content-studio__asset-copy' : undefined}>
+                <span title={option.label}>{option.label}</span>
+                {option.meta ? <small>{option.meta}</small> : null}
+              </span>
+            </label>
+          )
+        })
       ) : (
         <span>—</span>
       )}

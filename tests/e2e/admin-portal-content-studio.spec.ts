@@ -83,6 +83,25 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
   let updatedAt: string | null = null
 
   try {
+    await page.getByRole('button', { name: '生成草稿' }).click()
+    const generator = page.locator('.portal-content-studio__form').first()
+    const mediaTile = generator.locator('.portal-content-studio__asset-option:has(img)').first()
+    const mediaOption = mediaTile.getByRole('checkbox')
+    const mediaPreview = mediaTile.locator('img')
+    await expect(mediaPreview).toBeVisible()
+    await expect
+      .poll(() => mediaPreview.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0)
+    await mediaOption.check()
+    await expect(mediaTile).toHaveClass(/is-selected/)
+    await generator.getByLabel('生成需求').fill('Write a general introduction without knowledge.')
+    await expect(generator.getByRole('button', { name: '生成草稿' })).toBeEnabled()
+    await page.screenshot({
+      fullPage: true,
+      path: testInfo.outputPath('portal-content-studio-assets.png'),
+    })
+    await generator.getByRole('button', { name: '取消' }).click()
+
     await page.getByRole('button', { name: '新建草稿' }).click()
     const editor = page.locator('.portal-content-studio__form').first()
     await expect(editor.getByRole('heading', { name: '新建草稿' })).toBeVisible()

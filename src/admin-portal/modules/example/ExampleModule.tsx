@@ -33,7 +33,6 @@ export function ExampleModule({ state }: { state: ExampleModuleState }) {
     <main className="portal-page">
       <header className="portal-page__intro">
         <div>
-          <p className="portal-page__eyebrow">MODULE EXAMPLE</p>
           <h2>Example module</h2>
           <p>Portal Core public primitives provide the visual and state contract.</p>
         </div>

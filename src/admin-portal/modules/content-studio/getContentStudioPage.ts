@@ -1,6 +1,10 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
 import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
+import {
+  getMediaPreviewUrl,
+  type MediaPreviewProjection,
+} from '@/admin-portal/modules/media/getMediaPage'
 
 import type {
   ContentStudioPlatform,
@@ -23,7 +27,13 @@ export type ContentStudioQuery = {
   status: ContentStudioStatusFilter
 }
 
-export type ContentStudioOption = { id: number; label: string; meta?: string; reference?: string }
+export type ContentStudioOption = {
+  id: number
+  label: string
+  meta?: string
+  previewUrl?: string
+  reference?: string
+}
 export type ContentStudioSourceReference = { claim: string; source: string }
 export type ContentStudioReview = {
   comments: string | null
@@ -84,11 +94,13 @@ const relationOptions = (value: unknown): ContentStudioOption[] => {
     const sourceTitle = stringValue(record.sourceTitle)
     const sourceVersion = stringValue(record.sourceVersion)
     const sourceURL = stringValue(record.sourceURL)
+    const previewUrl = getMediaPreviewUrl(record as MediaPreviewProjection)
     return [
       {
         id,
         label: sourceTitle ?? stringValue(record.title) ?? stringValue(record.filename) ?? `#${id}`,
         meta: stringValue(record.mimeType) ?? undefined,
+        ...(previewUrl ? { previewUrl } : {}),
         ...(sourceTitle && sourceVersion
           ? { reference: sourceURL ?? `${sourceTitle} v${sourceVersion}` }
           : {}),
@@ -182,7 +194,17 @@ export const loadContentStudioPageData = async ({
         overrideAccess: false,
         pagination: false,
         req,
-        select: { alt: true, filename: true, mimeType: true },
+        select: {
+          alt: true,
+          filename: true,
+          mimeType: true,
+          sizes: {
+            card: { url: true },
+            thumbnail: { url: true },
+          },
+          thumbnailURL: true,
+          url: true,
+        },
         sort: '-updatedAt',
       }),
       payload.find({
@@ -301,11 +323,15 @@ export const loadContentStudioPageData = async ({
           updatedAt: String(content.updatedAt),
         })),
         options: {
-          assets: assets.docs.map((asset) => ({
-            id: asset.id,
-            label: stringValue(asset.alt) ?? stringValue(asset.filename) ?? `#${asset.id}`,
-            meta: stringValue(asset.mimeType) ?? undefined,
-          })),
+          assets: assets.docs.map((asset) => {
+            const previewUrl = getMediaPreviewUrl(asset)
+            return {
+              id: asset.id,
+              label: stringValue(asset.alt) ?? stringValue(asset.filename) ?? `#${asset.id}`,
+              meta: stringValue(asset.mimeType) ?? undefined,
+              ...(previewUrl ? { previewUrl } : {}),
+            }
+          }),
           knowledgeSources: knowledgeSources.docs.map((source) => ({
             id: source.id,
             label: String(source.sourceTitle),

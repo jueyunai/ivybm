@@ -113,7 +113,6 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
     <main className="portal-page portal-media">
       <header className="portal-page__intro portal-media__intro">
         <div>
-          <p className="portal-page__eyebrow">{messages.eyebrow}</p>
           <h2>{messages.title}</h2>
           <p>{messages.description}</p>
         </div>

@@ -85,7 +85,7 @@ export function LeadsHub({ feishuRegistrationEnabled = false, pageState, role, s
   }
 
   return <main className="portal-page portal-leads">
-    <header className="portal-page__intro portal-leads__intro"><div><p className="portal-page__eyebrow">WORKSPACE / LEADS</p><h2>{text.title}</h2><p>{text.description}</p></div>{role === 'admin' ? <Button onClick={() => { setEditor('create'); setFeedback(null) }}><IconPlus aria-hidden="true" size={16} />{text.add}</Button> : null}</header>
+    <header className="portal-page__intro portal-leads__intro"><div><h2>{text.title}</h2><p>{text.description}</p></div>{role === 'admin' ? <Button onClick={() => { setEditor('create'); setFeedback(null) }}><IconPlus aria-hidden="true" size={16} />{text.add}</Button> : null}</header>
     {role === 'admin' ? <FeishuRegistrationPanel enabled={feishuRegistrationEnabled} /> : null}
     {feedback ? <p className="portal-leads__feedback" role="status">{feedback}</p> : null}
     {editor ? <Surface as="section" className="portal-leads__editor"><LeadEditor key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`} mode={editor} onClose={() => setEditor(null)} onDone={(message, mutation) => { setEditor(null); setFeedback(message); if (mutation.deleted) { setItems((current) => current.filter((item) => String(item.id) !== String(mutation.id))); setSelectedID(null) } else if (mutation.values) { setItems((current) => current.map((item) => String(item.id) === String(mutation.id) ? { ...item, ...mutation.values, updatedAt: mutation.updatedAt ?? item.updatedAt } : item)) } else { setSelectedID(mutation.id) }; router.refresh() }} options={summary.options} role={role} selected={editor === 'edit' ? selected : null} text={text} /></Surface> : null}

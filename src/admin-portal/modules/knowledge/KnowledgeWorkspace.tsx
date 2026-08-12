@@ -244,7 +244,6 @@ export function KnowledgeWorkspace({ pageState, summary }: KnowledgeWorkspacePro
     <main className="portal-page portal-knowledge">
       <header className="portal-page__intro portal-knowledge__intro">
         <div>
-          <p className="portal-page__eyebrow">{messages.eyebrow}</p>
           <h2>{messages.title}</h2>
           <p>{messages.description}</p>
         </div>
