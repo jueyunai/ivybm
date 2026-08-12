@@ -7,6 +7,7 @@ import {
   createContentStudioDraft,
   deleteContentStudioDraft,
   generateContentStudioDraft,
+  generateContentStudioImage,
   scheduleContentStudioPublication,
   submitContentStudioReview,
   updateContentStudioDraft,
@@ -193,6 +194,102 @@ describe('Portal Content Studio draft commands', () => {
 
     expect(create).toHaveBeenCalledTimes(1)
     expect(generateText).toHaveBeenCalledTimes(1)
+  })
+
+  it('generates an image through the image route and saves it as private Portal Media', async () => {
+    const create = vi.fn(async ({ collection, data, file }) => {
+      if (collection === 'media') {
+        expect(data).toMatchObject({ isPublic: false })
+        expect(file).toMatchObject({ mimetype: 'image/png', size: 68 })
+        return {
+          ...data,
+          filename: file.name,
+          id: 81,
+          mimeType: file.mimetype,
+          updatedAt: '2026-08-12T10:00:00.000Z',
+        }
+      }
+      return { id: 901 }
+    })
+    const generateImage = vi.fn().mockResolvedValue({
+      image: {
+        data: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Wl9sAAAAASUVORK5CYII=',
+          'base64',
+        ),
+        mimeType: 'image/png',
+      },
+      model: 'image-model',
+      provider: 'configured-provider',
+      revisedPrompt: 'Refined facade image',
+    })
+    const resolveGateway = vi.fn().mockResolvedValue({ generateImage })
+    const onProviderDispatch = vi.fn()
+
+    await expect(
+      generateContentStudioImage({
+        input: {
+          prompt: 'Create a premium aluminium facade product image',
+          referenceMediaId: null,
+          size: '1024x1024',
+        },
+        onProviderDispatch,
+        payload: { create, findByID: vi.fn() } as any,
+        req,
+        resolveGateway: resolveGateway as any,
+      }),
+    ).resolves.toMatchObject({
+      media: { id: 81, isPublic: false, mimeType: 'image/png' },
+      model: 'image-model',
+      provider: 'configured-provider',
+      revisedPrompt: 'Refined facade image',
+    })
+
+    expect(resolveGateway).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowEnvironmentFallback: false,
+        routes: [{ operation: 'image', usageKey: 'content.image-generation' }],
+      }),
+    )
+    expect(generateImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onDispatch: onProviderDispatch,
+        prompt: 'Create a premium aluminium facade product image',
+        size: '1024x1024',
+      }),
+    )
+    expect(create).toHaveBeenCalledTimes(2)
+  })
+
+  it('loads only an authorized image Media reference and rejects an unsafe file path', async () => {
+    const resolveGateway = vi.fn()
+    const payload = {
+      create: vi.fn(),
+      findByID: vi.fn().mockResolvedValue({
+        filename: '../outside.png',
+        id: 44,
+        mimeType: 'image/png',
+      }),
+    } as any
+
+    await expect(
+      generateContentStudioImage({
+        input: {
+          prompt: 'Polish the product reference image',
+          referenceMediaId: 44,
+          size: '1024x1024',
+        },
+        payload,
+        req,
+        resolveGateway: resolveGateway as any,
+      }),
+    ).rejects.toMatchObject({ code: 'content-studio-reference-unavailable', status: 409 })
+
+    expect(payload.findByID).toHaveBeenCalledWith(
+      expect.objectContaining({ collection: 'media', id: 44, overrideAccess: false, req }),
+    )
+    expect(resolveGateway).not.toHaveBeenCalled()
+    expect(payload.create).not.toHaveBeenCalled()
   })
 
   it('rejects past internal schedules before creating a publish job', async () => {

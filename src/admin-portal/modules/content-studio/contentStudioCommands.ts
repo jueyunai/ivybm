@@ -1,8 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 
 import type { Payload, PayloadRequest } from 'payload'
 
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
+import { createPortalMedia } from '@/admin-portal/modules/media/mediaCommands'
+import { AI_IMAGE_SIZES, type AiImageMimeType, type AiImageSize } from '@/modules/ai/gateway'
 import { AI_USAGE_KEYS, resolveAiGateway } from '@/modules/ai/registry'
 
 import {
@@ -282,6 +286,144 @@ const findExistingCreate = async ({
 }
 
 type ResolveContentStudioGateway = typeof resolveAiGateway
+
+const CONTENT_STUDIO_REFERENCE_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+] as const satisfies readonly AiImageMimeType[]
+
+type ContentStudioImageInput = {
+  prompt: string
+  referenceMediaId: null | number
+  size: AiImageSize
+}
+
+const parseImageGenerationInput = (input: unknown): ContentStudioImageInput => {
+  const record = asRecord(input)
+  return {
+    prompt: stringValue(record, 'prompt', { max: 2_000, required: true }),
+    referenceMediaId: optionalPositiveID(record.referenceMediaId, 'referenceMediaId'),
+    size: selected(record.size ?? '1024x1024', AI_IMAGE_SIZES, 'size'),
+  }
+}
+
+const mediaReference = async ({
+  id,
+  payload,
+  req,
+}: {
+  id: number
+  payload: ContentStudioPayload
+  req: PayloadRequest
+}): Promise<{ data: Uint8Array; mimeType: AiImageMimeType }> => {
+  let media: LooseRecord
+  try {
+    media = await payload.findByID({
+      collection: 'media',
+      depth: 0,
+      id,
+      overrideAccess: false,
+      req,
+    })
+  } catch {
+    throw new ContentStudioCommandError(
+      'content-studio-reference-unavailable',
+      'The reference image is unavailable',
+      409,
+    )
+  }
+  const filename = typeof media.filename === 'string' ? media.filename : ''
+  const mimeType = typeof media.mimeType === 'string' ? media.mimeType : ''
+  if (
+    !filename ||
+    path.basename(filename) !== filename ||
+    !CONTENT_STUDIO_REFERENCE_MIME_TYPES.includes(mimeType as AiImageMimeType)
+  ) {
+    throw new ContentStudioCommandError(
+      'content-studio-reference-unavailable',
+      'The reference image is unavailable',
+      409,
+    )
+  }
+  try {
+    const data = await readFile(path.resolve(process.cwd(), 'media', filename))
+    return { data: new Uint8Array(data), mimeType: mimeType as AiImageMimeType }
+  } catch {
+    throw new ContentStudioCommandError(
+      'content-studio-reference-unavailable',
+      'The reference image is unavailable',
+      409,
+    )
+  }
+}
+
+const imageExtension = (mimeType: AiImageMimeType): string => {
+  if (mimeType === 'image/jpeg') return 'jpg'
+  if (mimeType === 'image/webp') return 'webp'
+  return 'png'
+}
+
+export async function generateContentStudioImage({
+  input: rawInput,
+  onProviderDispatch,
+  payload,
+  req,
+  resolveGateway = resolveAiGateway,
+}: {
+  input: unknown
+  onProviderDispatch?: () => void
+  payload: ContentStudioPayload
+  req: PayloadRequest
+  resolveGateway?: ResolveContentStudioGateway
+}) {
+  const input = parseImageGenerationInput(rawInput)
+  const referenceImage = input.referenceMediaId
+    ? await mediaReference({ id: input.referenceMediaId, payload, req })
+    : undefined
+  try {
+    const gateway = await resolveGateway({
+      allowEnvironmentFallback: false,
+      payload: payload as unknown as Payload,
+      routes: [{ operation: 'image', usageKey: AI_USAGE_KEYS.contentImageGeneration }],
+    })
+    const result = await gateway.generateImage({
+      onDispatch: onProviderDispatch,
+      prompt: input.prompt,
+      referenceImage,
+      size: input.size,
+    })
+    const media = await createPortalMedia({
+      file: {
+        data: Buffer.from(result.image.data),
+        mimetype: result.image.mimeType,
+        name: `ai-generated-${randomUUID()}.${imageExtension(result.image.mimeType)}`,
+        size: result.image.data.length,
+      },
+      input: {
+        alt: input.prompt.slice(0, 500),
+        isPublic: false,
+        source: `AI generated via ${result.provider} / ${result.model}`,
+      },
+      payload: payload as Payload,
+      req,
+    })
+    return {
+      media,
+      model: result.model,
+      provider: result.provider,
+      requestId: result.requestId,
+      revisedPrompt: result.revisedPrompt,
+    }
+  } catch (error) {
+    if (error instanceof ContentStudioCommandError) throw error
+    throw new ContentStudioCommandError(
+      'content-studio-image-unavailable',
+      'Image generation is unavailable. Check the configured image model and retry.',
+      503,
+    )
+  }
+}
 
 type ContentStudioGenerationInput = {
   assets: number[]

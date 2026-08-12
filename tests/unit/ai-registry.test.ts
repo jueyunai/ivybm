@@ -50,6 +50,16 @@ const createFakeProvider = (calls: Array<Record<string, unknown>>) =>
         usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
       }
     },
+    generateImage: async (input: { model: string; prompt: string }) => {
+      calls.push({ ...options, operation: 'image', ...input })
+      return {
+        image: {
+          data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+          mimeType: 'image/png' as const,
+        },
+        model: input.model,
+      }
+    },
     name: options.name ?? 'fake-provider',
   }))
 
@@ -152,6 +162,41 @@ describe('AI control-plane registry', () => {
         expect.objectContaining({ model: 'environment-text-model', operation: 'text' }),
         expect.objectContaining({ model: 'environment-embedding-model', operation: 'embedding' }),
       ]),
+    )
+  })
+
+  it('resolves the stable content image route from the CMS snapshot', async () => {
+    const calls: Array<Record<string, unknown>> = []
+    const payload = createPayload([
+      {
+        enabled: true,
+        operation: 'image',
+        profile: {
+          capability: 'image',
+          enabled: true,
+          model: 'cms-image-model',
+          parameters: { reasoningEnabled: false, timeoutMs: 60_000 },
+          provider: createProviderDocument({ name: 'CMS image provider' }),
+        },
+        usageKey: AI_USAGE_KEYS.contentImageGeneration,
+      },
+    ])
+
+    const gateway = await resolveAiGateway({
+      allowEnvironmentFallback: false,
+      createProvider: createFakeProvider(calls),
+      environment: { AI_CONFIG_ENCRYPTION_KEY: encryptionKey },
+      payload,
+      routes: [{ operation: 'image', usageKey: AI_USAGE_KEYS.contentImageGeneration }],
+    })
+
+    await gateway.generateImage({ prompt: 'Facade campaign image' })
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        model: 'cms-image-model',
+        operation: 'image',
+        prompt: 'Facade campaign image',
+      }),
     )
   })
 

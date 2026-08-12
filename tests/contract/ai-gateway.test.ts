@@ -1,4 +1,5 @@
 import embeddingsFixture from '../fixtures/ai/embeddings.success.json'
+import imagesFixture from '../fixtures/ai/images.success.json'
 import responsesFixture from '../fixtures/ai/responses.success.json'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -21,6 +22,13 @@ const fakeProvider: AiProvider = {
     text: 'Reviewed answer',
     usage: { inputTokens: 100, outputTokens: 25, totalTokens: 125 },
   }),
+  generateImage: async ({ model }) => ({
+    image: {
+      data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      mimeType: 'image/png',
+    },
+    model,
+  }),
   name: 'fake',
 }
 
@@ -41,7 +49,10 @@ describe('AI gateway contract', () => {
 
     const invalidDispatch = vi.fn()
     await expect(
-      createAiGateway({}).generateText({ input: 'missing configuration', onDispatch: invalidDispatch }),
+      createAiGateway({}).generateText({
+        input: 'missing configuration',
+        onDispatch: invalidDispatch,
+      }),
     ).rejects.toMatchObject({ code: 'provider_unavailable' })
     expect(invalidDispatch).not.toHaveBeenCalled()
   })
@@ -120,6 +131,42 @@ describe('AI gateway contract', () => {
 
     expect(generated.provider).toBe('text-provider')
     expect(embedded.provider).toBe('embedding-provider')
+  })
+
+  it('normalizes image generation, zero-token telemetry and dispatch timing', async () => {
+    const onDispatch = vi.fn()
+    const onUsage = vi.fn()
+    const generateImage = vi.fn(fakeProvider.generateImage)
+    const gateway = createAiGateway({
+      onUsage,
+      operations: {
+        image: { model: 'fixture-image-model', provider: { ...fakeProvider, generateImage } },
+      },
+    })
+
+    const result = await gateway.generateImage({
+      onDispatch,
+      prompt: 'Architectural aluminium facade product photography',
+      size: '1024x1024',
+    })
+
+    expect(result).toMatchObject({
+      cost: { currency: 'USD', estimated: null },
+      image: { mimeType: 'image/png' },
+      model: 'fixture-image-model',
+      provider: 'fake',
+    })
+    expect(result.image.data).toBeInstanceOf(Uint8Array)
+    expect(onDispatch).toHaveBeenCalledTimes(1)
+    expect(onDispatch.mock.invocationCallOrder[0]).toBeLessThan(
+      generateImage.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    )
+    expect(onUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'generateImage',
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      }),
+    )
   })
 
   it('fingerprints the provider endpoint even when model and dimensions are identical', async () => {
@@ -429,6 +476,122 @@ describe('AI gateway contract', () => {
       'https://ai.example.invalid/v1/embeddings',
       expect.objectContaining({ method: 'POST' }),
     )
+  })
+
+  it('adapts OpenAI-compatible image generations and edits without real network access', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(imagesFixture), {
+          headers: { 'content-type': 'application/json', 'x-request-id': 'req_image_generate' },
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(imagesFixture), {
+          headers: { 'content-type': 'application/json', 'x-request-id': 'req_image_edit' },
+          status: 200,
+        }),
+      )
+    const provider = createOpenAICompatibleProvider({
+      apiKey: 'fixture-key-never-sent-to-network',
+      baseURL: 'https://ai.example.invalid/v1',
+      fetch: fetchMock,
+    })
+
+    const generated = await provider.generateImage!({
+      model: 'fixture-image-model',
+      prompt: 'Generate a facade product image',
+      size: '1024x1024',
+    })
+    const edited = await provider.generateImage!({
+      model: 'fixture-image-model',
+      prompt: 'Polish the reference product photo',
+      referenceImage: {
+        data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        mimeType: 'image/png',
+      },
+      size: '1536x1024',
+    })
+
+    expect(generated).toMatchObject({
+      image: { mimeType: 'image/png' },
+      model: imagesFixture.model,
+      requestId: 'req_image_generate',
+      revisedPrompt: imagesFixture.data[0].revised_prompt,
+    })
+    expect(edited.requestId).toBe('req_image_edit')
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://ai.example.invalid/v1/images/generations',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    const generationBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    expect(generationBody).toEqual({
+      model: 'fixture-image-model',
+      n: 1,
+      prompt: 'Generate a facade product image',
+      response_format: 'b64_json',
+      size: '1024x1024',
+    })
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://ai.example.invalid/v1/images/edits',
+      expect.objectContaining({ body: expect.any(FormData), method: 'POST' }),
+    )
+    const editBody = fetchMock.mock.calls[1]?.[1]?.body as FormData
+    expect(editBody.get('model')).toBe('fixture-image-model')
+    expect(editBody.get('prompt')).toBe('Polish the reference product photo')
+    expect(editBody.get('response_format')).toBe('b64_json')
+    expect(editBody.get('image')).toBeInstanceOf(Blob)
+  })
+
+  it('fails closed for URL-only and malformed provider image responses', async () => {
+    const responses = [
+      { data: [{ url: 'https://untrusted.example.invalid/image.png' }] },
+      { data: [{ b64_json: 'not-valid-base64!' }] },
+    ]
+
+    for (const body of responses) {
+      const provider = createOpenAICompatibleProvider({
+        apiKey: 'fixture-secret-key',
+        baseURL: 'https://ai.example.invalid/v1',
+        fetch: vi.fn<typeof fetch>().mockResolvedValue(
+          new Response(JSON.stringify(body), {
+            headers: { 'content-type': 'application/json' },
+            status: 200,
+          }),
+        ),
+      })
+
+      await expect(
+        provider.generateImage!({ model: 'fixture-image-model', prompt: 'safe prompt' }),
+      ).rejects.toMatchObject({ code: 'invalid_response' })
+    }
+  })
+
+  it('fails closed when a provider returns an oversized inline image', async () => {
+    const gateway = createAiGateway({
+      operations: {
+        image: {
+          model: 'fixture-image-model',
+          provider: {
+            ...fakeProvider,
+            generateImage: async ({ model }) => ({
+              image: {
+                data: new Uint8Array(8 * 1024 * 1024 + 1),
+                mimeType: 'image/png' as const,
+              },
+              model,
+            }),
+          },
+        },
+      },
+    })
+
+    await expect(gateway.generateImage({ prompt: 'safe prompt' })).rejects.toMatchObject({
+      code: 'invalid_response',
+    })
   })
 
   it('sends the standard Responses reasoning object only when configured', async () => {
