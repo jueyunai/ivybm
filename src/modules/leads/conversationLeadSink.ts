@@ -32,45 +32,61 @@ const arabicCountries: Array<[string, string]> = [
   ['البحرين', 'Bahrain'],
 ]
 
-const companyCandidate = /([A-Z][A-Za-z0-9&'-]*(?:\s+[A-Z][A-Za-z0-9&'-]*\.?){1,5}?)(?=\s+(?:and|for|from|in|with|we|our|the|need|needs|requiring)\b|[,.!?\n]|$)/
+const companyCandidate =
+  /([A-Za-z0-9&'-]+(?:\s+[A-Za-z0-9&'-]+){0,5}?)(?=\s+(?:and|for|from|in|with|we|our|the|need|needs|requiring)\b|[,.!?\n]|$)/
 const invalidCompanyCandidate = /\b(?:bid|concept|design|procurement|project|stage|tender)\b/i
+const genericWorkplaceCandidate =
+  /^(?:(?:a|an|the)\s+)?(?:business|company|factory|office|team|workplace)$/i
 const arabicCompanyCandidate =
   /(?:اسم\s+الشركة|(?:نحن\s+)?شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80}?)(?=\s+(?:في\s+(?:الإمارات(?:\s+العربية\s+المتحدة)?|السعودية|المملكة\s+العربية\s+السعودية|قطر|الكويت|عمان|البحرين)|و?(?:المشروع|مرحلة|نحتاج|نريد|لدينا|الكمية|المساحة|التصميم|المناقصة))|[\n،,.!?؟]|$)/
+const invalidArabicCompanyCandidate = /^(?:في(?:\s|$)|المشروع$|مشروع$|مرحلة$|المناقصة$|مناقصة$)/
+
+const cleanCompanyCandidate = (candidate: string | undefined): string | undefined =>
+  candidate?.trim().replace(/[,.!?]+$/, '') || undefined
+
+const validEnglishCompanyCandidate = (candidate: string | undefined): candidate is string =>
+  Boolean(
+    candidate &&
+    !invalidCompanyCandidate.test(candidate) &&
+    !genericWorkplaceCandidate.test(candidate),
+  )
+
+const extractArabicCompany = (text: string): string | undefined => {
+  const candidate = cleanCompanyCandidate(text.match(arabicCompanyCandidate)?.[1])
+  if (!candidate || invalidArabicCompanyCandidate.test(candidate)) return undefined
+  return candidate
+}
 
 const extractEnglishCompany = (text: string): string | undefined => {
-  const explicit = text
-    .match(
+  const explicit = cleanCompanyCandidate(
+    text.match(
       new RegExp(
         String.raw`(?:[Mm]y|[Oo]ur|[Tt]he)?\s*[Cc]ompany(?:\s+[Nn]ame)?\s*(?:[Ii]s|[:：])\s*${companyCandidate.source}`,
       ),
-    )?.[1]
-    ?.trim()
-    .replace(/[,.!?]+$/, '')
-  if (explicit) return explicit
+    )?.[1],
+  )
+  if (validEnglishCompanyCandidate(explicit)) return explicit
 
-  const workplace = text
-    .match(
+  const workplace = cleanCompanyCandidate(
+    text.match(
       new RegExp(
         String.raw`\b(?:[Ii]\s+(?:work|am\s+working)|[Ii]'m\s+working|[Ww]e\s+(?:work|are\s+working)|[Ww]e're\s+working)\s+(?:at|for)\s+${companyCandidate.source}`,
         '',
       ),
-    )?.[1]
-    ?.trim()
-    .replace(/[,.!?]+$/, '')
-  if (workplace && !invalidCompanyCandidate.test(workplace)) return workplace
+    )?.[1],
+  )
+  if (validEnglishCompanyCandidate(workplace)) return workplace
 
-  const origin = text
-    .match(
+  const origin = cleanCompanyCandidate(
+    text.match(
       new RegExp(
         String.raw`\b(?:[Ii]\s+am|[Ii]'m|[Ww]e\s+are|[Ww]e're)\s+from\s+${companyCandidate.source}`,
         '',
       ),
-    )?.[1]
-    ?.trim()
-    .replace(/[,.!?]+$/, '')
+    )?.[1],
+  )
   if (
-    origin &&
-    !invalidCompanyCandidate.test(origin) &&
+    validEnglishCompanyCandidate(origin) &&
     !countries.some((candidate) => candidate.toLowerCase() === origin.toLowerCase())
   ) {
     return origin
@@ -112,7 +128,7 @@ export const extractLeadSignals = (session: ChatSession): LeadScoringInput => {
             /خلال\s+(?:7|8|9|10|11|12)\s*أشهر?/.test(text)
           ? 'within_12_months'
           : undefined
-  const company = extractEnglishCompany(text) ?? text.match(arabicCompanyCandidate)?.[1]?.trim()
+  const company = extractEnglishCompany(text) ?? extractArabicCompany(text)
   const englishBudget = text
     .match(
       /(?:budget|price range|spend(?:ing)?|investment)\s*(?:is|of|around|about|[:：])?\s*([^\n.!?]{2,80}?)(?=\s+(?:and\s+)?(?:our\s+|the\s+)?(?:purchase|purchasing|procurement)\s+(?:plan|schedule|process|strategy)\b|,(?!\d{3}\b)|[.!?\n]|$)/i,
