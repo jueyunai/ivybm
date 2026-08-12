@@ -1,5 +1,6 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
+import { getMediaPreviewUrl, safeMediaUrl } from '@/admin-portal/core/media'
 import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
 import { MEDIA_IMAGE_MAX_BYTES, MEDIA_MIME_TYPES, MEDIA_PDF_MAX_BYTES } from '@/collections/Media'
 
@@ -81,11 +82,6 @@ interface MediaProjection {
   width?: null | number
 }
 
-export type MediaPreviewProjection = Pick<
-  MediaProjection,
-  'mimeType' | 'sizes' | 'thumbnailURL' | 'url'
->
-
 interface MediaFindResult {
   docs: MediaProjection[]
   page?: number
@@ -136,28 +132,6 @@ const buildWhere = (query: MediaQuery): Where => {
   return { and: clauses }
 }
 
-const safeMediaUrl = (value: null | string | undefined): null | string => {
-  if (!value || value.includes('\\')) return null
-  if (value.startsWith('/') && !value.startsWith('//')) return value
-
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null
-  } catch {
-    return null
-  }
-}
-
-export const getMediaPreviewUrl = (document: MediaPreviewProjection): null | string => {
-  if (!document.mimeType?.startsWith('image/')) return null
-  return (
-    safeMediaUrl(document.sizes?.card?.url) ??
-    safeMediaUrl(document.sizes?.thumbnail?.url) ??
-    safeMediaUrl(document.thumbnailURL) ??
-    safeMediaUrl(document.url)
-  )
-}
-
 const kindFor = (mimeType: null | string | undefined): MediaItemKind => {
   if (mimeType === 'application/pdf') return 'pdf'
   if (mimeType?.startsWith('image/')) return 'image'
@@ -178,7 +152,8 @@ const mapMediaItem = (document: MediaProjection): MediaSummaryItem => {
     kind,
     mimeType: document.mimeType ?? null,
     originalUrl,
-    previewUrl: kind === 'image' ? getMediaPreviewUrl(document) : kind === 'pdf' ? originalUrl : null,
+    previewUrl:
+      kind === 'image' ? getMediaPreviewUrl(document) : kind === 'pdf' ? originalUrl : null,
     source: document.source ?? '',
     updatedAt: document.updatedAt,
     width: document.width ?? null,

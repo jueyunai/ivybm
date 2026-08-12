@@ -1,10 +1,7 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
+import { getMediaPreviewUrl, type MediaPreviewProjection } from '@/admin-portal/core/media'
 import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
-import {
-  getMediaPreviewUrl,
-  type MediaPreviewProjection,
-} from '@/admin-portal/modules/media/getMediaPage'
 
 import type {
   ContentStudioPlatform,
