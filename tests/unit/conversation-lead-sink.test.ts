@@ -77,7 +77,9 @@ describe('conversation lead signal extraction', () => {
   })
 
   it('does not mistake a generic workplace phrase for a company', () => {
-    expect(extractLeadSignals(sessionWith('en', 'I work at a factory for our team.')).company).toBeUndefined()
+    expect(
+      extractLeadSignals(sessionWith('en', 'I work at a factory for our team.')).company,
+    ).toBeUndefined()
   })
 
   it('does not mistake a qualification question for a supplied budget', () => {
@@ -109,12 +111,12 @@ describe('conversation lead signal extraction', () => {
     expect(signals.contact.email).toBe('sales@example.invalid')
   })
 
-  it('bounds an Arabic company before country and project-stage answers', () => {
-    expect(
-      extractLeadSignals(
-        sessionWith('ar', 'نحن شركة النور في السعودية والمشروع مناقصة.'),
-      ),
-    ).toMatchObject({
+  it('stops an Arabic company before country and project qualification phrases', () => {
+    const signals = extractLeadSignals(
+      sessionWith('ar', 'نحن شركة النور في السعودية والمشروع مناقصة.'),
+    )
+
+    expect(signals).toMatchObject({
       company: 'النور',
       country: 'Saudi Arabia',
       projectStage: 'tender',

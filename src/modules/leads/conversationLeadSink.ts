@@ -34,13 +34,14 @@ const arabicCountries: Array<[string, string]> = [
 
 const companyCandidate = /([A-Z][A-Za-z0-9&'-]*(?:\s+[A-Z][A-Za-z0-9&'-]*\.?){1,5}?)(?=\s+(?:and|for|from|in|with|we|our|the|need|needs|requiring)\b|[,.!?\n]|$)/
 const invalidCompanyCandidate = /\b(?:bid|concept|design|procurement|project|stage|tender)\b/i
+const arabicCompanyCandidate =
+  /(?:اسم\s+الشركة|(?:نحن\s+)?شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80}?)(?=\s+(?:في\s+(?:الإمارات(?:\s+العربية\s+المتحدة)?|السعودية|المملكة\s+العربية\s+السعودية|قطر|الكويت|عمان|البحرين)|و?(?:المشروع|مرحلة|نحتاج|نريد|لدينا|الكمية|المساحة|التصميم|المناقصة))|[\n،,.!?؟]|$)/
 
 const extractEnglishCompany = (text: string): string | undefined => {
   const explicit = text
     .match(
       new RegExp(
-        String.raw`(?:my|our|the)?\s*company(?:\s+name)?\s*(?:is|[:：])\s*${companyCandidate.source}`,
-        'i',
+        String.raw`(?:[Mm]y|[Oo]ur|[Tt]he)?\s*[Cc]ompany(?:\s+[Nn]ame)?\s*(?:[Ii]s|[:：])\s*${companyCandidate.source}`,
       ),
     )?.[1]
     ?.trim()
@@ -111,13 +112,7 @@ export const extractLeadSignals = (session: ChatSession): LeadScoringInput => {
             /خلال\s+(?:7|8|9|10|11|12)\s*أشهر?/.test(text)
           ? 'within_12_months'
           : undefined
-  const company =
-    extractEnglishCompany(text) ??
-    text
-      .match(
-        /(?:اسم\s+الشركة|شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80}?)(?=\s+(?:في|من|و?المشروع|و?مرحلة|و?نحتاج|بمساحة|لمشروع)(?:\s|[:：])|[\n،,.!?؟]|$)/,
-      )?.[1]
-      ?.trim()
+  const company = extractEnglishCompany(text) ?? text.match(arabicCompanyCandidate)?.[1]?.trim()
   const englishBudget = text
     .match(
       /(?:budget|price range|spend(?:ing)?|investment)\s*(?:is|of|around|about|[:：])?\s*([^\n.!?]{2,80}?)(?=\s+(?:and\s+)?(?:our\s+|the\s+)?(?:purchase|purchasing|procurement)\s+(?:plan|schedule|process|strategy)\b|,(?!\d{3}\b)|[.!?\n]|$)/i,
