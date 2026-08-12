@@ -38,6 +38,8 @@ const nonCompanyWords = new Set([
   'a',
   'an',
   'and',
+  'at',
+  'based',
   'the',
   'bid',
   'business',
@@ -67,6 +69,20 @@ const invalidPromptedCompanyAnswer =
 const arabicCompanyCandidate =
   /(?:اسم\s+الشركة|(?:نحن\s+)?شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80}?)(?=\s+(?:في\s+(?:الإمارات(?:\s+العربية\s+المتحدة)?|السعودية|المملكة\s+العربية\s+السعودية|قطر|الكويت|عمان|البحرين)|و?(?:المشروع|مرحلة|نحتاج|نريد|لدينا|الكمية|المساحة|التصميم|المناقصة))|[\n،,.!?؟]|$)/
 const invalidArabicCompanyCandidate = /^(?:في|المشروع|مشروع|مرحلة|المناقصة|مناقصة)(?:\s|$)/
+const invalidPromptedArabicCompanyAnswer =
+  /^(?:أنا|انا|نحن|هو|هي|لا|ليس|ليست|لست|لسنا|غير\s+معروف|ربما)(?:\s|$)/
+const nonArabicCompanyWords = new Set([
+  'اسم',
+  'الشركة',
+  'شركة',
+  'فريق',
+  'المبيعات',
+  'مصنع',
+  'مكتب',
+  'مشروع',
+  'المشروع',
+  'مناقصة',
+])
 
 const cleanCompanyCandidate = (candidate: string | undefined): string | undefined =>
   candidate?.trim().replace(/[,.!?]+$/, '') || undefined
@@ -83,6 +99,12 @@ const isCountryCandidate = (candidate: string): boolean =>
     (country) => country.toLowerCase() === candidate.replace(/^the\s+/i, '').toLowerCase(),
   )
 
+const isArabicCountryCandidate = (candidate: string): boolean =>
+  arabicCountries.some(([country]) => country === candidate.replace(/^في\s+/, ''))
+
+const isNonArabicCompanyCandidate = (candidate: string): boolean =>
+  candidate.split(/\s+/).every((word) => nonArabicCompanyWords.has(word))
+
 const validEnglishCompanyCandidate = (candidate: string | undefined): candidate is string =>
   Boolean(candidate && !isNonCompanyCandidate(candidate) && !isCountryCandidate(candidate))
 
@@ -95,11 +117,28 @@ const extractAskedEnglishCompany = (session: ChatSession): string | undefined =>
   const message = session.messages
     .slice()
     .reverse()
-    .find(({ author }) => author === 'visitor')?.content
+    .find(({ author }) => author === 'visitor')
+    ?.content.trim()
+  if (!message) return undefined
+
+  const framedCandidate = cleanCompanyCandidate(
+    message.match(
+      new RegExp(
+        String.raw`^\s*(?:we\s+are|we're|it\s+is|this\s+is)\s+${companyCandidate.source}(?=\s+(?:from|in)\s+(?:${countryCandidateSource})\b|[,.!?\n]|$)`,
+        'i',
+      ),
+    )?.[1],
+  )
   if (
-    !message ||
+    validEnglishCompanyCandidate(framedCandidate) &&
+    !invalidPromptedCompanyAnswer.test(framedCandidate)
+  ) {
+    return framedCandidate
+  }
+
+  if (
     /^(?:i(?:'m|\s+(?:am|do|don't|have|work))\b|my\s+company\b|not\s+sure\b|we(?:'re|\s+(?:are|do|don't|have|work))\b)/i.test(
-      message.trim(),
+      message,
     )
   ) {
     return undefined
@@ -113,6 +152,34 @@ const extractAskedEnglishCompany = (session: ChatSession): string | undefined =>
     )?.[1],
   )
   if (!validEnglishCompanyCandidate(candidate) || invalidPromptedCompanyAnswer.test(candidate)) {
+    return undefined
+  }
+  return candidate
+}
+
+const extractAskedArabicCompany = (session: ChatSession): string | undefined => {
+  if (session.locale !== 'ar' || !session.qualificationState?.askedFields.includes('company')) {
+    return undefined
+  }
+  const message = session.messages
+    .slice()
+    .reverse()
+    .find(({ author }) => author === 'visitor')
+    ?.content.trim()
+  if (!message) return undefined
+
+  const candidate = cleanCompanyCandidate(
+    message.match(
+      /^\s*([^\n،,.!?؟]{2,80}?)(?=\s+في\s+(?:الإمارات(?:\s+العربية\s+المتحدة)?|السعودية|المملكة\s+العربية\s+السعودية|قطر|الكويت|عمان|البحرين)(?=\s|[،,.!?؟]|$)|\s+و?(?:المشروع|مرحلة|نحتاج|نريد|لدينا|الكمية|المساحة|التصميم|المناقصة)(?=\s|[،,.!?؟]|$)|[\n،,.!?؟]|$)/,
+    )?.[1],
+  )
+  if (
+    !candidate ||
+    invalidArabicCompanyCandidate.test(candidate) ||
+    invalidPromptedArabicCompanyAnswer.test(candidate) ||
+    isNonArabicCompanyCandidate(candidate) ||
+    isArabicCountryCandidate(candidate)
+  ) {
     return undefined
   }
   return candidate
@@ -193,7 +260,10 @@ export const extractLeadSignals = (session: ChatSession): LeadScoringInput => {
           ? 'within_12_months'
           : undefined
   const company =
-    extractEnglishCompany(text) ?? extractArabicCompany(text) ?? extractAskedEnglishCompany(session)
+    extractEnglishCompany(text) ??
+    extractArabicCompany(text) ??
+    extractAskedEnglishCompany(session) ??
+    extractAskedArabicCompany(session)
   const englishBudget = text
     .match(
       /(?:budget|price range|spend(?:ing)?|investment)\s*(?:is|of|around|about|[:：])?\s*([^\n.!?]{2,80}?)(?=\s+(?:and\s+)?(?:our\s+|the\s+)?(?:purchase|purchasing|procurement)\s+(?:plan|schedule|process|strategy)\b|,(?!\d{3}\b)|[.!?\n]|$)/i,

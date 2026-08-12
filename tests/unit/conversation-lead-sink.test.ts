@@ -86,6 +86,13 @@ describe('conversation lead signal extraction', () => {
     expect(extractLeadSignals(session).company).toBe('Acme Facades LLC')
   })
 
+  it('extracts a framed company reply after the company field was asked', () => {
+    const session = sessionWith('en', 'We are Acme Facades LLC.')
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    expect(extractLeadSignals(session).company).toBe('Acme Facades LLC')
+  })
+
   it('does not infer an unframed first message as a company answer', () => {
     expect(extractLeadSignals(sessionWith('en', 'Need facade panels.')).company).toBeUndefined()
   })
@@ -116,6 +123,27 @@ describe('conversation lead signal extraction', () => {
     expect(evaluation.signals.company).toBeUndefined()
     expect(evaluation.score.missingFields).toContain('company')
     expect(evaluation.score.reasons).not.toContain('company_identified')
+  })
+
+  it('uses a framed prompted company reply in the authoritative evaluation', async () => {
+    const session = sessionWith(
+      'en',
+      'We need 1000 sqm of aluminum panels in UAE at tender stage within 3 months. Drawings are ready. Budget is USD 400000. Email buyer@example.invalid.',
+    )
+    session.messages.push({
+      author: 'visitor',
+      content: 'We are Acme Facades LLC.',
+      createdAt: '2026-08-12T00:01:00.000Z',
+      id: 'message-en-2',
+      status: 'sent',
+    })
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    const evaluation = await new PayloadConversationLeadSink().evaluate(session)
+
+    expect(evaluation.signals.company).toBe('Acme Facades LLC')
+    expect(evaluation.score.missingFields).not.toContain('company')
+    expect(evaluation.score.reasons).toContain('company_identified')
   })
 
   it.each([
@@ -212,6 +240,44 @@ describe('conversation lead signal extraction', () => {
       projectStage: 'tender',
     })
   })
+
+  it('extracts a bare Arabic company reply after the company field was asked', () => {
+    const session = sessionWith('ar', 'النور.')
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    expect(extractLeadSignals(session).company).toBe('النور')
+  })
+
+  it('uses a bare Arabic prompted company reply in the authoritative evaluation', async () => {
+    const session = sessionWith(
+      'ar',
+      'نحتاج 1200 متر مربع من الألواح في السعودية ومرحلة المشروع مناقصة خلال 3 أشهر. الرسومات جاهزة. الميزانية 300000 ريال. البريد sales@example.invalid.',
+    )
+    session.messages.push({
+      author: 'visitor',
+      content: 'النور.',
+      createdAt: '2026-08-12T00:01:00.000Z',
+      id: 'message-ar-2',
+      status: 'sent',
+    })
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    const evaluation = await new PayloadConversationLeadSink().evaluate(session)
+
+    expect(evaluation.signals.company).toBe('النور')
+    expect(evaluation.score.missingFields).not.toContain('company')
+    expect(evaluation.score.reasons).toContain('company_identified')
+  })
+
+  it.each(['السعودية.', 'لا أعرف.', 'ليس لدينا اسم.', 'في السعودية.', 'المشروع مناقصة.'])(
+    'does not infer a generic Arabic prompted company reply in %s',
+    (content) => {
+      const session = sessionWith('ar', content)
+      session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+      expect(extractLeadSignals(session).company).toBeUndefined()
+    },
+  )
 
   it.each([
     'نحن شركة في السعودية والمشروع مناقصة.',
