@@ -19,6 +19,7 @@ export type InstagramPublishingStage = (typeof INSTAGRAM_PUBLISHING_STAGES)[numb
 
 export type InstagramPublishingCheckpoint = {
   accountExternalId: string
+  authorizationRevision: number
   caption?: string
   containerId?: string
   imageUrl: string
@@ -139,6 +140,8 @@ const normalizeCheckpoint = (input: unknown): InstagramPublishingCheckpoint | un
     checkpoint.mediaId === undefined ? undefined : normalizedProviderId(checkpoint.mediaId)
   if (
     !accountExternalId ||
+    !Number.isSafeInteger(checkpoint.authorizationRevision) ||
+    (checkpoint.authorizationRevision as number) < 0 ||
     !imageUrl ||
     (checkpoint.caption !== undefined && !caption) ||
     (checkpoint.containerId !== undefined && !containerId) ||
@@ -149,6 +152,7 @@ const normalizeCheckpoint = (input: unknown): InstagramPublishingCheckpoint | un
   }
   return {
     accountExternalId,
+    authorizationRevision: checkpoint.authorizationRevision as number,
     ...(caption ? { caption } : {}),
     ...(containerId ? { containerId } : {}),
     imageUrl,
@@ -209,6 +213,7 @@ const sameCheckpoint = (
   right: InstagramPublishingCheckpoint,
 ): boolean =>
   left.accountExternalId === right.accountExternalId &&
+  left.authorizationRevision === right.authorizationRevision &&
   left.caption === right.caption &&
   left.containerId === right.containerId &&
   left.imageUrl === right.imageUrl &&
@@ -285,13 +290,16 @@ const blocked = (
 
 const runClaimedStage = async (
   checkpoint: InstagramPublishingCheckpoint,
+  platformAccountId: number | string,
   transport: MetaPublishingTransport,
 ): Promise<InstagramPublishingTransition> => {
   if (checkpoint.stage === 'scheduled') {
     const result = await transport.createInstagramMedia({
       accountExternalId: checkpoint.accountExternalId,
+      authorizationRevision: checkpoint.authorizationRevision,
       caption: checkpoint.caption,
       imageUrl: checkpoint.imageUrl,
+      platformAccountId,
     })
     const containerId = normalizedProviderId(result.creationId)
     if (!containerId) {
@@ -312,7 +320,9 @@ const runClaimedStage = async (
     }
     const result = await transport.getInstagramContainerStatus({
       accountExternalId: checkpoint.accountExternalId,
+      authorizationRevision: checkpoint.authorizationRevision,
       containerId,
+      platformAccountId,
     })
     if (result.state === 'ready') {
       return {
@@ -353,7 +363,9 @@ const runClaimedStage = async (
     }
     const result = await transport.publishInstagramMedia({
       accountExternalId: checkpoint.accountExternalId,
+      authorizationRevision: checkpoint.authorizationRevision,
       creationId: containerId,
+      platformAccountId,
     })
     const mediaId = normalizedProviderId(result.igMediaId)
     if (!mediaId) {
@@ -450,7 +462,11 @@ export const executeInstagramPublishingStage = async ({
   let transition: InstagramPublishingTransition
   let preIOTransportError: ProviderPublicationTransportError | undefined
   try {
-    transition = await runClaimedStage(claim.intent.checkpoint, transport)
+    transition = await runClaimedStage(
+      claim.intent.checkpoint,
+      claim.intent.platformAccountId,
+      transport,
+    )
   } catch (error) {
     if (error instanceof ProviderPublicationConfirmedError) {
       transition = failed(claim.intent.checkpoint, error)

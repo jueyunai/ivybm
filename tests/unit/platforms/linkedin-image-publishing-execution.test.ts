@@ -31,6 +31,7 @@ const checkpoint = (
 ): LinkedInImagePublishingCheckpoint => ({
   altText: 'Facade',
   author: { kind: 'organization', organizationId: '971937765923229' },
+  authorizationRevision: 4,
   commentary: 'Facade project update',
   stage: 'scheduled',
   ...overrides,
@@ -126,6 +127,7 @@ describe('LinkedIn staged image publication', () => {
       }),
     ).resolves.toMatchObject({ checkpoint: { stage: 'image_uploaded' } })
     expect(uploadImage).toHaveBeenCalledWith({
+      authorization: { authorizationRevision: 4, platformAccountId: 19 },
       author: input.checkpoint.author,
       bytes,
       contentType: 'image/png',
@@ -142,6 +144,7 @@ describe('LinkedIn staged image publication', () => {
         commentary: 'Facade project update',
         imageUrn: ticket.imageUrn,
         author: { organizationId: '971937765923229', kind: 'organization' },
+        authorizationRevision: 4,
         altText: 'Facade',
       },
     })
@@ -367,4 +370,24 @@ describe('LinkedIn staged image publication', () => {
       expect(adapter.publishImagePost).not.toHaveBeenCalled()
     },
   )
+
+  it('rejects an authorization revision replacement without crossing provider I/O', async () => {
+    const state = setup()
+    const stale = intent({
+      checkpoint: checkpoint({ authorizationRevision: 5 }),
+      expectedRevision: state.input.expectedRevision,
+    })
+    const adapter = transport()
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: stale,
+        leaseFence: state.fence,
+        transport: adapter,
+      }),
+    ).resolves.toMatchObject({ errorCode: 'intent_mismatch', event: 'blocked' })
+    expect(adapter.initializeImageUpload).not.toHaveBeenCalled()
+    expect(adapter.uploadImage).not.toHaveBeenCalled()
+    expect(adapter.publishImagePost).not.toHaveBeenCalled()
+  })
 })

@@ -19,6 +19,7 @@ import {
   type LinkedInPostStatusResponse,
   type LinkedInPublishingHttpRequest,
 } from './publishingRequests'
+import { normalizePlatformAccountId, type PlatformAccountId } from '../../publishing/contracts'
 
 const LINKEDIN_API_ORIGIN = 'https://api.linkedin.com'
 const DEFAULT_TIMEOUT_MS = 15_000
@@ -29,7 +30,14 @@ export type LinkedInPublishingAccountKind = 'linkedin-member' | 'linkedin-organi
 export type LinkedInPublishingAccessTokenProvider = (input: {
   accountExternalId: string
   accountKind: LinkedInPublishingAccountKind
+  authorizationRevision: number
+  platformAccountId: PlatformAccountId
 }) => Promise<string | undefined>
+
+export type LinkedInPublishingAuthorization = {
+  authorizationRevision: number
+  platformAccountId: PlatformAccountId
+}
 
 export type LinkedInPublishingFetch = (
   input: string | URL,
@@ -37,15 +45,18 @@ export type LinkedInPublishingFetch = (
 ) => Promise<Pick<Response, 'headers' | 'json' | 'ok' | 'status'>>
 
 export type LinkedInTextPublishInput = {
+  authorization: LinkedInPublishingAuthorization
   author: LinkedInAuthorUrnInput
   commentary: string
 }
 
 export type LinkedInImageInitializeInput = {
+  authorization: LinkedInPublishingAuthorization
   author: LinkedInAuthorUrnInput
 }
 
 export type LinkedInImageUploadInput = {
+  authorization: LinkedInPublishingAuthorization
   author: LinkedInAuthorUrnInput
   bytes: Uint8Array
   contentType: string
@@ -61,12 +72,14 @@ export type LinkedInImageUploadTicket = Readonly<{
 
 export type LinkedInImagePublishInput = {
   altText?: string
+  authorization: LinkedInPublishingAuthorization
   author: LinkedInAuthorUrnInput
   commentary: string
   imageUrn: string
 }
 
 export type LinkedInPostStatusInput = {
+  authorization: LinkedInPublishingAuthorization
   author: LinkedInAuthorUrnInput
   postUrn: string
 }
@@ -89,6 +102,22 @@ const normalizedToken = (value: unknown): string | undefined => {
 
 const invalidRequest = (): ProviderPublicationConfirmedError =>
   new ProviderPublicationConfirmedError('invalid_request', false)
+
+const publishingAuthorization = (
+  value: LinkedInPublishingAuthorization,
+): LinkedInPublishingAuthorization => {
+  if (!Number.isSafeInteger(value.authorizationRevision) || value.authorizationRevision < 0) {
+    throw invalidRequest()
+  }
+  try {
+    return {
+      authorizationRevision: value.authorizationRevision,
+      platformAccountId: normalizePlatformAccountId(value.platformAccountId),
+    }
+  } catch {
+    throw invalidRequest()
+  }
+}
 
 const authorAccount = (
   author: LinkedInAuthorUrnInput,
@@ -209,7 +238,9 @@ export const createLinkedInPublishingTransport = ({
   type UploadTicketPayload = {
     accountExternalId: string
     accountKind: LinkedInPublishingAccountKind
+    authorizationRevision: number
     imageUrn: string
+    platformAccountId: PlatformAccountId
     uploadUrl: string
     uploadUrlExpiresAt: number
   }
@@ -270,6 +301,10 @@ export const createLinkedInPublishingTransport = ({
       typeof value.accountExternalId !== 'string' ||
       (value.accountKind !== 'linkedin-member' && value.accountKind !== 'linkedin-organization') ||
       typeof value.imageUrn !== 'string' ||
+      !Number.isSafeInteger(value.authorizationRevision) ||
+      (value.authorizationRevision as number) < 0 ||
+      (typeof value.platformAccountId !== 'number' &&
+        typeof value.platformAccountId !== 'string') ||
       typeof value.uploadUrl !== 'string' ||
       typeof value.uploadUrlExpiresAt !== 'number' ||
       ticket.imageUrn !== value.imageUrn ||
@@ -280,11 +315,15 @@ export const createLinkedInPublishingTransport = ({
     return value as UploadTicketPayload
   }
 
-  const tokenFor = async (author: LinkedInAuthorUrnInput): Promise<string> => {
+  const tokenFor = async (
+    author: LinkedInAuthorUrnInput,
+    authorizationInput: LinkedInPublishingAuthorization,
+  ): Promise<string> => {
     const account = authorAccount(author)
+    const authorization = publishingAuthorization(authorizationInput)
     let token: string | undefined
     try {
-      token = normalizedToken(await tokenProvider(account))
+      token = normalizedToken(await tokenProvider({ ...account, ...authorization }))
     } catch {
       throw new ProviderPublicationTransportError()
     }
@@ -295,17 +334,19 @@ export const createLinkedInPublishingTransport = ({
   }
 
   const dispatchJson = async <Result>({
+    authorization,
     author,
     mutation,
     parse,
     request,
   }: {
+    authorization: LinkedInPublishingAuthorization
     author: LinkedInAuthorUrnInput
     mutation: boolean
     parse: (response: Pick<Response, 'headers' | 'json'>) => Promise<Result>
     request: LinkedInPublishingHttpRequest
   }): Promise<Result> => {
-    const token = await tokenFor(author)
+    const token = await tokenFor(author, authorization)
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), timeoutMs)
     let response: Awaited<ReturnType<LinkedInPublishingFetch>>
@@ -356,6 +397,7 @@ export const createLinkedInPublishingTransport = ({
       linkedInVersion,
     })
     return dispatchJson({
+      authorization: input.authorization,
       author: input.author,
       mutation: true,
       parse: async (response) =>
@@ -367,11 +409,13 @@ export const createLinkedInPublishingTransport = ({
   const initializeImageUpload = async (
     input: LinkedInImageInitializeInput,
   ): Promise<LinkedInImageUploadTicket> => {
+    const authorization = publishingAuthorization(input.authorization)
     const request = buildLinkedInImageInitializeUploadRequest({
       author: input.author,
       linkedInVersion,
     })
     const initialized = await dispatchJson({
+      authorization,
       author: input.author,
       mutation: true,
       parse: async (response) => parseLinkedInImageInitializeUploadResponse(await response.json()),
@@ -382,6 +426,7 @@ export const createLinkedInPublishingTransport = ({
     const account = authorAccount(input.author)
     const sealedUpload = sealUploadTicket({
       ...account,
+      ...authorization,
       imageUrn: initialized.imageUrn,
       uploadUrl: initialized.uploadUrl,
       uploadUrlExpiresAt: initialized.uploadUrlExpiresAt,
@@ -395,12 +440,15 @@ export const createLinkedInPublishingTransport = ({
   }
 
   const uploadImage = async (input: LinkedInImageUploadInput): Promise<void> => {
+    const authorization = publishingAuthorization(input.authorization)
     const storedTicket = openUploadTicket(input.ticket)
     const account = authorAccount(input.author)
     if (
       !storedTicket ||
       storedTicket.accountExternalId !== account.accountExternalId ||
-      storedTicket.accountKind !== account.accountKind
+      storedTicket.accountKind !== account.accountKind ||
+      storedTicket.authorizationRevision !== authorization.authorizationRevision ||
+      String(storedTicket.platformAccountId) !== String(authorization.platformAccountId)
     ) {
       throw invalidRequest()
     }
@@ -418,7 +466,7 @@ export const createLinkedInPublishingTransport = ({
     }
     const uploadUrl = new URL(payload.uploadUrl)
     if (!uploadOrigins.has(uploadUrl.origin)) throw invalidRequest()
-    const token = await tokenFor(input.author)
+    const token = await tokenFor(input.author, authorization)
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), timeoutMs)
     let response: Awaited<ReturnType<LinkedInPublishingFetch>>
@@ -454,6 +502,7 @@ export const createLinkedInPublishingTransport = ({
       linkedInVersion,
     })
     return dispatchJson({
+      authorization: input.authorization,
       author: input.author,
       mutation: true,
       parse: async (response) =>
@@ -470,6 +519,7 @@ export const createLinkedInPublishingTransport = ({
       postUrn: input.postUrn,
     })
     return dispatchJson({
+      authorization: input.authorization,
       author: input.author,
       mutation: false,
       parse: async (response) => parseLinkedInPostStatusResponse(await response.json()),

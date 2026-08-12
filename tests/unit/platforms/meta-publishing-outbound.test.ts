@@ -7,6 +7,8 @@ import {
   ProviderPublicationTransportError,
 } from '@/modules/platforms/publishingResult'
 
+const authorization = { authorizationRevision: 4, platformAccountId: 7 } as const
+
 const response = ({
   body = { id: '24680', post_id: '129472283584550_24680' },
   headers = {},
@@ -50,6 +52,7 @@ describe('Meta publication HTTP transport', () => {
 
     await expect(
       transport.publishFacebookPagePhoto({
+        ...authorization,
         accountExternalId: '129472283584550',
         caption: 'Facade project update',
         url: 'https://cdn.example.invalid/facade.jpg?revision=1',
@@ -58,7 +61,9 @@ describe('Meta publication HTTP transport', () => {
 
     expect(tokenProvider).toHaveBeenCalledWith({
       accountExternalId: '129472283584550',
+      authorizationRevision: 4,
       platform: 'facebook',
+      platformAccountId: 7,
     })
     const [url, init] = fetch.mock.calls[0]!
     expect(String(url)).toBe('https://graph.facebook.com/v25.0/129472283584550/photos')
@@ -86,6 +91,7 @@ describe('Meta publication HTTP transport', () => {
 
     await expect(
       transport.createInstagramMedia({
+        ...authorization,
         accountExternalId: '1221206873460693',
         caption: 'New project',
         imageUrl: 'https://cdn.example.invalid/project.jpg',
@@ -93,12 +99,14 @@ describe('Meta publication HTTP transport', () => {
     ).resolves.toEqual({ creationId: '112233' })
     await expect(
       transport.getInstagramContainerStatus({
+        ...authorization,
         accountExternalId: '1221206873460693',
         containerId: '112233',
       }),
     ).resolves.toEqual({ state: 'ready' })
     await expect(
       transport.publishInstagramMedia({
+        ...authorization,
         accountExternalId: '1221206873460693',
         creationId: '112233',
       }),
@@ -112,7 +120,9 @@ describe('Meta publication HTTP transport', () => {
     expect(tokenProvider).toHaveBeenCalledTimes(3)
     expect(tokenProvider).toHaveBeenNthCalledWith(1, {
       accountExternalId: '1221206873460693',
+      authorizationRevision: 4,
       platform: 'instagram',
+      platformAccountId: 7,
     })
   })
 
@@ -137,6 +147,7 @@ describe('Meta publication HTTP transport', () => {
 
       await expect(
         transport.publishFacebookPagePhoto({
+          ...authorization,
           accountExternalId: '129472283584550',
           url: 'https://cdn.example.invalid/facade.jpg',
         }),
@@ -157,6 +168,7 @@ describe('Meta publication HTTP transport', () => {
 
     await expect(
       transport.publishFacebookPagePhoto({
+        ...authorization,
         accountExternalId: '129472283584550',
         url: 'https://cdn.example.invalid/facade.jpg',
       }),
@@ -172,18 +184,21 @@ describe('Meta publication HTTP transport', () => {
     })
     await expect(
       validToken.publishFacebookPagePhoto({
+        ...authorization,
         accountExternalId: '129472283584550/../../me',
         url: 'https://cdn.example.invalid/facade.jpg',
       }),
     ).rejects.toMatchObject({ code: 'invalid_request', retryable: false })
     await expect(
       validToken.publishFacebookPagePhoto({
+        ...authorization,
         accountExternalId: '129472283584550',
         url: 'https://127.0.0.1/internal.jpg',
       }),
     ).rejects.toMatchObject({ code: 'invalid_request', retryable: false })
     await expect(
       validToken.publishFacebookPagePhoto({
+        ...authorization,
         accountExternalId: '129472283584550',
         url: 'https://user:password@cdn.example.invalid/facade.jpg',
       }),
@@ -196,10 +211,39 @@ describe('Meta publication HTTP transport', () => {
     })
     await expect(
       invalidToken.publishFacebookPagePhoto({
+        ...authorization,
         accountExternalId: '129472283584550',
         url: 'https://cdn.example.invalid/facade.jpg',
       }),
     ).rejects.toBeInstanceOf(ProviderPublicationConfirmedError)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('rejects malformed authorization identity before token lookup', async () => {
+    const fetch = vi.fn()
+    const tokenProvider = vi.fn().mockResolvedValue('fixture-page-token')
+    const transport = createMetaPublishingTransport({
+      allowedMediaOrigins: ['https://cdn.example.invalid'],
+      fetch,
+      tokenProvider,
+    })
+    await expect(
+      transport.publishFacebookPagePhoto({
+        accountExternalId: '129472283584550',
+        authorizationRevision: -1,
+        platformAccountId: 7,
+        url: 'https://cdn.example.invalid/facade.jpg',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request', retryable: false })
+    await expect(
+      transport.publishFacebookPagePhoto({
+        accountExternalId: '129472283584550',
+        authorizationRevision: 4,
+        platformAccountId: ' invalid ',
+        url: 'https://cdn.example.invalid/facade.jpg',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request', retryable: false })
+    expect(tokenProvider).not.toHaveBeenCalled()
     expect(fetch).not.toHaveBeenCalled()
   })
 
@@ -214,6 +258,7 @@ describe('Meta publication HTTP transport', () => {
 
     await expect(
       transport.getInstagramContainerStatus({
+        ...authorization,
         accountExternalId: '1221206873460693/../../me',
         containerId: '112233',
       }),
@@ -234,6 +279,7 @@ describe('Meta publication HTTP transport', () => {
 
     await expect(
       transport.publishFacebookPagePhoto({
+        ...authorization,
         accountExternalId: '129472283584550',
         url: 'https://cdn.example.invalid/facade.jpg',
       }),
@@ -244,10 +290,13 @@ describe('Meta publication HTTP transport', () => {
   it('aborts a timed-out mutation and fails closed as delivery_unknown', async () => {
     vi.useFakeTimers()
     try {
-      const fetch = vi.fn((_url: string | URL, init?: RequestInit) =>
-        new Promise<ReturnType<typeof response>>((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
-        }),
+      const fetch = vi.fn(
+        (_url: string | URL, init?: RequestInit) =>
+          new Promise<ReturnType<typeof response>>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+              once: true,
+            })
+          }),
       )
       const transport = createMetaPublishingTransport({
         allowedMediaOrigins: ['https://cdn.example.invalid'],
@@ -257,12 +306,11 @@ describe('Meta publication HTTP transport', () => {
       })
 
       const result = transport.publishFacebookPagePhoto({
+        ...authorization,
         accountExternalId: '129472283584550',
         url: 'https://cdn.example.invalid/facade.jpg',
       })
-      const unknown = expect(result).rejects.toBeInstanceOf(
-        ProviderPublicationResultUnknownError,
-      )
+      const unknown = expect(result).rejects.toBeInstanceOf(ProviderPublicationResultUnknownError)
       await vi.advanceTimersByTimeAsync(50)
       await unknown
       expect(fetch.mock.calls[0]![1]?.signal?.aborted).toBe(true)

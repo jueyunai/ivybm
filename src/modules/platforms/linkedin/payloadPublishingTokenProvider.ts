@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { platformRuntimeCredentialReadContext } from '@/access/platformCredentials'
 
 import { decryptPlatformCredential, readPlatformCredentialEncryptionKey } from '../credentials'
+import { normalizePlatformAccountId } from '../../publishing/contracts'
 import type {
   LinkedInPublishingAccessTokenProvider,
   LinkedInPublishingAccountKind,
@@ -42,9 +43,23 @@ export class PayloadLinkedInPublishingTokenProvider {
   readonly getToken: LinkedInPublishingAccessTokenProvider = async ({
     accountExternalId,
     accountKind,
+    authorizationRevision,
+    platformAccountId,
   }) => {
     const normalizedAccountId = boundedExternalId(accountExternalId, accountKind)
-    if (!normalizedAccountId) return undefined
+    let normalizedInternalId: ReturnType<typeof normalizePlatformAccountId>
+    try {
+      normalizedInternalId = normalizePlatformAccountId(platformAccountId)
+    } catch {
+      return undefined
+    }
+    if (
+      !normalizedAccountId ||
+      !Number.isSafeInteger(authorizationRevision) ||
+      authorizationRevision < 0
+    ) {
+      return undefined
+    }
 
     const accounts = await this.payload.find({
       collection: 'platform-accounts',
@@ -60,12 +75,15 @@ export class PayloadLinkedInPublishingTokenProvider {
           expiresAt: true,
           state: true,
         },
+        authorizationRevision: true,
         capabilities: { publishing: true },
       },
       where: {
         and: [
+          { id: { equals: normalizedInternalId } },
           { accountKind: { equals: accountKind } },
           { externalAccountId: { equals: normalizedAccountId } },
+          { authorizationRevision: { equals: authorizationRevision } },
         ],
       },
     })
@@ -75,6 +93,7 @@ export class PayloadLinkedInPublishingTokenProvider {
     const authorization = account?.authorization
     if (
       account?.capabilities?.publishing !== 'approved' ||
+      account?.authorizationRevision !== authorizationRevision ||
       authorization?.state !== 'connected' ||
       authorization.accessTokenConfigured !== true
     ) {

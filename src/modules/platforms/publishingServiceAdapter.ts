@@ -220,6 +220,10 @@ export const createPlatformPublishingService = ({
     }
     try {
       const result = await linkedInTransport.getPostStatus({
+        authorization: {
+          authorizationRevision: resolution.account.authorizationRevision,
+          platformAccountId: resolution.account.platformAccountId,
+        },
         author: linkedInAuthor(resolution.account),
         postUrn: lookup.externalPublicationId,
       })
@@ -275,7 +279,9 @@ export const createPlatformPublishingService = ({
       try {
         const result = await metaTransport.publishFacebookPagePhoto({
           accountExternalId: resolution.account.externalAccountId,
+          authorizationRevision: resolution.account.authorizationRevision,
           caption: request.text,
+          platformAccountId: resolution.account.platformAccountId,
           url: asset.sourceUrl,
         })
         const externalPublicationId = result.postId ?? result.photoId
@@ -300,6 +306,10 @@ export const createPlatformPublishingService = ({
     if (request.assets.length !== 0) return blocked(request, 'invalid_request')
     try {
       const result = await linkedInTransport.publishTextPost({
+        authorization: {
+          authorizationRevision: resolution.account.authorizationRevision,
+          platformAccountId: resolution.account.platformAccountId,
+        },
         author: linkedInAuthor(resolution.account),
         commentary: request.text,
       })

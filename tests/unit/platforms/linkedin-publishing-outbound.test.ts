@@ -12,6 +12,7 @@ import {
 
 const person = { kind: 'person' as const, personId: 'AbC_123' }
 const organization = { kind: 'organization' as const, organizationId: '971937765923229' }
+const authorization = { authorizationRevision: 4, platformAccountId: 7 } as const
 const headers = (values: Record<string, string> = {}) => new Headers(values)
 const response = ({
   body = {},
@@ -54,11 +55,13 @@ describe('LinkedIn publishing transport', () => {
     const transport = createTransport(fetch, tokenProvider)
 
     await expect(
-      transport.publishTextPost({ author: person, commentary: 'Project update' }),
+      transport.publishTextPost({ authorization, author: person, commentary: 'Project update' }),
     ).resolves.toEqual({ postUrn: 'urn:li:share:123456789' })
     expect(tokenProvider).toHaveBeenCalledWith({
       accountExternalId: 'AbC_123',
       accountKind: 'linkedin-member',
+      authorizationRevision: 4,
+      platformAccountId: 7,
     })
     const [url, init] = fetch.mock.calls[0] as [URL, RequestInit]
     expect(url.href).toBe('https://api.linkedin.com/rest/posts')
@@ -87,7 +90,9 @@ describe('LinkedIn publishing transport', () => {
     const tokenProvider = vi.fn().mockResolvedValue('fixture-linkedin-token')
     const transport = createTransport(fetch, tokenProvider)
 
-    await expect(transport.initializeImageUpload({ author: organization })).resolves.toEqual({
+    await expect(
+      transport.initializeImageUpload({ authorization, author: organization }),
+    ).resolves.toEqual({
       imageUrn: 'urn:li:image:abc_123',
       sealedUpload: expect.stringMatching(/^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/),
       uploadUrlExpiresAt: 1_900_000_000_000,
@@ -95,6 +100,8 @@ describe('LinkedIn publishing transport', () => {
     expect(tokenProvider).toHaveBeenCalledWith({
       accountExternalId: '971937765923229',
       accountKind: 'linkedin-organization',
+      authorizationRevision: 4,
+      platformAccountId: 7,
     })
     const [url, init] = fetch.mock.calls[0] as [URL, RequestInit]
     expect(url.href).toBe('https://api.linkedin.com/rest/images?action=initializeUpload')
@@ -117,9 +124,10 @@ describe('LinkedIn publishing transport', () => {
       )
       .mockResolvedValueOnce(response({ status: 201 }))
     const transport = createTransport(fetch)
-    const ticket = await transport.initializeImageUpload({ author: organization })
+    const ticket = await transport.initializeImageUpload({ authorization, author: organization })
     await expect(
       transport.uploadImage({
+        authorization,
         author: organization,
         bytes: new Uint8Array([1, 2, 3]),
         contentType: 'image/jpeg',
@@ -154,7 +162,7 @@ describe('LinkedIn publishing transport', () => {
       )
       const transport = createTransport(fetch)
       await expect(
-        transport.initializeImageUpload({ author: organization }),
+        transport.initializeImageUpload({ authorization, author: organization }),
       ).rejects.toBeInstanceOf(errorType)
       expect(fetch).toHaveBeenCalledTimes(1)
     },
@@ -180,6 +188,7 @@ describe('LinkedIn publishing transport', () => {
     })
     await expect(
       transport.uploadImage({
+        authorization,
         author: organization,
         bytes: new Uint8Array([1]),
         contentType: 'image/png',
@@ -188,9 +197,10 @@ describe('LinkedIn publishing transport', () => {
     ).rejects.toBeInstanceOf(ProviderPublicationConfirmedError)
     expect(fetch).not.toHaveBeenCalled()
 
-    const ticket = await transport.initializeImageUpload({ author: organization })
+    const ticket = await transport.initializeImageUpload({ authorization, author: organization })
     await expect(
       transport.uploadImage({
+        authorization,
         author: person,
         bytes: new Uint8Array([1]),
         contentType: 'image/png',
@@ -203,6 +213,7 @@ describe('LinkedIn publishing transport', () => {
     }
     await expect(
       transport.uploadImage({
+        authorization,
         author: organization,
         bytes: new Uint8Array([1]),
         contentType: 'image/png',
@@ -226,12 +237,13 @@ describe('LinkedIn publishing transport', () => {
     )
     const first = createTransport(initializeFetch)
     const persisted = JSON.parse(
-      JSON.stringify(await first.initializeImageUpload({ author: organization })),
+      JSON.stringify(await first.initializeImageUpload({ authorization, author: organization })),
     )
     const uploadFetch = vi.fn().mockResolvedValue(response({ status: 201 }))
     const restarted = createTransport(uploadFetch)
     await expect(
       restarted.uploadImage({
+        authorization,
         author: organization,
         bytes: new Uint8Array([1]),
         contentType: 'image/png',
@@ -254,7 +266,7 @@ describe('LinkedIn publishing transport', () => {
       }),
     )
     const first = createTransport(initializeFetch)
-    const ticket = await first.initializeImageUpload({ author: organization })
+    const ticket = await first.initializeImageUpload({ authorization, author: organization })
     const uploadFetch = vi.fn()
     const tokenProvider = vi.fn().mockResolvedValue('fixture-linkedin-token')
     const restarted = createLinkedInPublishingTransport({
@@ -267,6 +279,7 @@ describe('LinkedIn publishing transport', () => {
     })
     await expect(
       restarted.uploadImage({
+        authorization,
         author: organization,
         bytes: new Uint8Array([1]),
         contentType: 'image/png',
@@ -287,6 +300,7 @@ describe('LinkedIn publishing transport', () => {
     await expect(
       transport.publishImagePost({
         altText: 'Facade',
+        authorization,
         author: organization,
         commentary: 'New facade project',
         imageUrn: 'urn:li:image:abc_123',
@@ -299,7 +313,11 @@ describe('LinkedIn publishing transport', () => {
     const fetch = vi.fn().mockResolvedValue(response({ body: { lifecycleState: 'PROCESSING' } }))
     const transport = createTransport(fetch)
     await expect(
-      transport.getPostStatus({ author: organization, postUrn: 'urn:li:share:123456789' }),
+      transport.getPostStatus({
+        authorization,
+        author: organization,
+        postUrn: 'urn:li:share:123456789',
+      }),
     ).resolves.toEqual({ lifecycleState: 'PROCESSING' })
     const [url, init] = fetch.mock.calls[0] as [URL, RequestInit]
     expect(url.href).toBe(
@@ -315,7 +333,7 @@ describe('LinkedIn publishing transport', () => {
     const fetch = vi.fn().mockImplementation(fetchResult)
     const transport = createTransport(fetch)
     await expect(
-      transport.publishTextPost({ author: person, commentary: 'Project update' }),
+      transport.publishTextPost({ authorization, author: person, commentary: 'Project update' }),
     ).rejects.toBeInstanceOf(ProviderPublicationResultUnknownError)
     expect(fetch).toHaveBeenCalledTimes(1)
   })
@@ -324,7 +342,7 @@ describe('LinkedIn publishing transport', () => {
     const fetch = vi.fn().mockResolvedValue(response({ status: 201 }))
     const transport = createTransport(fetch)
     await expect(
-      transport.publishTextPost({ author: person, commentary: 'Project update' }),
+      transport.publishTextPost({ authorization, author: person, commentary: 'Project update' }),
     ).rejects.toBeInstanceOf(ProviderPublicationResultUnknownError)
   })
 
@@ -333,7 +351,7 @@ describe('LinkedIn publishing transport', () => {
       vi.fn().mockResolvedValue(response({ ok: false, status: 403 })),
     )
     await expect(
-      forbidden.publishTextPost({ author: person, commentary: 'Project update' }),
+      forbidden.publishTextPost({ authorization, author: person, commentary: 'Project update' }),
     ).rejects.toMatchObject({ code: 'permission_required', retryable: false })
 
     const rateLimited = createTransport(
@@ -344,7 +362,7 @@ describe('LinkedIn publishing transport', () => {
         ),
     )
     await expect(
-      rateLimited.publishTextPost({ author: person, commentary: 'Project update' }),
+      rateLimited.publishTextPost({ authorization, author: person, commentary: 'Project update' }),
     ).rejects.toMatchObject({ code: 'rate_limited', retryAfterSeconds: 60, retryable: true })
   })
 
@@ -352,15 +370,41 @@ describe('LinkedIn publishing transport', () => {
     const fetch = vi.fn()
     const transport = createTransport(fetch, vi.fn().mockResolvedValue(undefined))
     await expect(
-      transport.publishTextPost({ author: person, commentary: 'Project update' }),
+      transport.publishTextPost({ authorization, author: person, commentary: 'Project update' }),
     ).rejects.toMatchObject({ code: 'authorization_required', retryable: false })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('rejects malformed authorization identity before token or provider I/O', async () => {
+    const fetch = vi.fn()
+    const tokenProvider = vi.fn().mockResolvedValue('fixture-linkedin-token')
+    const transport = createTransport(fetch, tokenProvider)
+    await expect(
+      transport.publishTextPost({
+        authorization: { authorizationRevision: -1, platformAccountId: 7 },
+        author: person,
+        commentary: 'Project update',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request', retryable: false })
+    await expect(
+      transport.publishTextPost({
+        authorization: { authorizationRevision: 4, platformAccountId: ' invalid ' },
+        author: person,
+        commentary: 'Project update',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request', retryable: false })
+    expect(tokenProvider).not.toHaveBeenCalled()
     expect(fetch).not.toHaveBeenCalled()
   })
 
   it('keeps read-only status transport failures retryable without claiming publication', async () => {
     const transport = createTransport(vi.fn().mockRejectedValue(new Error('offline')))
     await expect(
-      transport.getPostStatus({ author: person, postUrn: 'urn:li:share:123456789' }),
+      transport.getPostStatus({
+        authorization,
+        author: person,
+        postUrn: 'urn:li:share:123456789',
+      }),
     ).rejects.toBeInstanceOf(ProviderPublicationTransportError)
   })
 })

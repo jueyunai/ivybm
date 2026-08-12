@@ -18,6 +18,7 @@ const checkpoint = (
   overrides: Partial<InstagramPublishingCheckpoint> = {},
 ): InstagramPublishingCheckpoint => ({
   accountExternalId: '1789000012345678',
+  authorizationRevision: 4,
   caption: 'Facade project update',
   imageUrl: 'https://cdn.example.invalid/project.jpg',
   stage: 'scheduled',
@@ -360,6 +361,26 @@ describe('Instagram lease-fenced publishing execution', () => {
         transport: adapter,
       }),
     ).resolves.toMatchObject({ checkpoint: { stage: 'delivery_unknown' } })
+    expect(adapter.publishInstagramMedia).not.toHaveBeenCalled()
+  })
+
+  it('rejects an authorization revision replacement even when the Job revision is unchanged', async () => {
+    const state = setup()
+    const stale = intent({
+      checkpoint: checkpoint({ authorizationRevision: 5 }),
+      expectedRevision: state.input.expectedRevision,
+    })
+    const adapter = transport()
+    await expect(
+      executeInstagramPublishingStage({
+        authority: state.authority,
+        intent: stale,
+        leaseFence: state.fence,
+        transport: adapter,
+      }),
+    ).resolves.toMatchObject({ errorCode: 'intent_mismatch', event: 'blocked' })
+    expect(adapter.createInstagramMedia).not.toHaveBeenCalled()
+    expect(adapter.getInstagramContainerStatus).not.toHaveBeenCalled()
     expect(adapter.publishInstagramMedia).not.toHaveBeenCalled()
   })
 })

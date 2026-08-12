@@ -169,7 +169,9 @@ describe('platform publishing service adapter', () => {
     })
     expect(meta.publishFacebookPagePhoto).toHaveBeenCalledWith({
       accountExternalId: '129472283584550',
+      authorizationRevision: 4,
       caption: 'Project update',
+      platformAccountId: 7,
       url: 'https://media.example.test/facade.jpg?sig=opaque',
     })
   })
@@ -264,6 +266,7 @@ describe('platform publishing service adapter', () => {
       status: 'accepted',
     })
     expect(linkedIn.publishTextPost).toHaveBeenCalledWith({
+      authorization: { authorizationRevision: 4, platformAccountId: 7 },
       author: { kind: 'person', personId: 'Anna_123' },
       commentary: 'Project update',
     })
@@ -291,7 +294,8 @@ describe('platform publishing service adapter', () => {
     ['PROCESSING', 'publishing'],
     ['DRAFT', 'pending'],
   ] as const)('maps LinkedIn %s status to %s', async (lifecycleState, status) => {
-    const linkedIn = linkedInTransport({ getPostStatus: vi.fn(async () => ({ lifecycleState })) })
+    const getPostStatus = vi.fn(async () => ({ lifecycleState }))
+    const linkedIn = linkedInTransport({ getPostStatus })
     const service = serviceWith({ linkedIn })
     await expect(
       service.getStatus({
@@ -301,6 +305,11 @@ describe('platform publishing service adapter', () => {
         platformAccountId: 7,
       }),
     ).resolves.toMatchObject({ externalPublicationId: 'urn:li:share:123456789', status })
+    expect(getPostStatus).toHaveBeenCalledWith({
+      authorization: { authorizationRevision: 4, platformAccountId: 7 },
+      author: { kind: 'person', personId: 'Anna_123' },
+      postUrn: 'urn:li:share:123456789',
+    })
   })
 
   it('lets the worker retry a proven pre-I/O LinkedIn status transport failure', async () => {

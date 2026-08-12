@@ -25,6 +25,7 @@ describe('Payload LinkedIn publishing token provider', () => {
         expiresAt: '2026-08-13T00:00:00.000Z',
         state: 'connected',
       },
+      authorizationRevision: 4,
       capabilities: { publishing: 'approved' },
     })
     const provider = new PayloadLinkedInPublishingTokenProvider({
@@ -32,9 +33,14 @@ describe('Payload LinkedIn publishing token provider', () => {
       now: () => Date.parse('2026-08-12T00:00:00.000Z'),
       payload: payload as never,
     })
-    await expect(provider.getToken({ accountExternalId: id, accountKind })).resolves.toBe(
-      'fixture-linkedin-token',
-    )
+    await expect(
+      provider.getToken({
+        accountExternalId: id,
+        accountKind,
+        authorizationRevision: 4,
+        platformAccountId: 7,
+      }),
+    ).resolves.toBe('fixture-linkedin-token')
     expect(payload.find).toHaveBeenCalledWith({
       collection: 'platform-accounts',
       context: platformRuntimeCredentialReadContext,
@@ -49,10 +55,16 @@ describe('Payload LinkedIn publishing token provider', () => {
           expiresAt: true,
           state: true,
         },
+        authorizationRevision: true,
         capabilities: { publishing: true },
       },
       where: {
-        and: [{ accountKind: { equals: accountKind } }, { externalAccountId: { equals: id } }],
+        and: [
+          { id: { equals: 7 } },
+          { accountKind: { equals: accountKind } },
+          { externalAccountId: { equals: id } },
+          { authorizationRevision: { equals: 4 } },
+        ],
       },
     })
     expect(JSON.stringify(payload.find.mock.calls)).not.toContain('fixture-linkedin-token')
@@ -68,6 +80,8 @@ describe('Payload LinkedIn publishing token provider', () => {
       malformed.getToken({
         accountExternalId: '../organization',
         accountKind: 'linkedin-organization',
+        authorizationRevision: 4,
+        platformAccountId: 7,
       }),
     ).resolves.toBeUndefined()
     expect(malformedPayload.find).not.toHaveBeenCalled()
@@ -101,6 +115,8 @@ describe('Payload LinkedIn publishing token provider', () => {
         provider.getToken({
           accountExternalId: '971937765923229',
           accountKind: 'linkedin-organization',
+          authorizationRevision: 4,
+          platformAccountId: 7,
         }),
       ).resolves.toBeUndefined()
     }
@@ -123,6 +139,31 @@ describe('Payload LinkedIn publishing token provider', () => {
       ambiguous.getToken({
         accountExternalId: '971937765923229',
         accountKind: 'linkedin-organization',
+        authorizationRevision: 4,
+        platformAccountId: 7,
+      }),
+    ).resolves.toBeUndefined()
+  })
+
+  it('rejects a token from a different authorization revision', async () => {
+    const provider = new PayloadLinkedInPublishingTokenProvider({
+      encryptionKey,
+      payload: payloadWith({
+        authorization: {
+          accessToken: encryptedToken,
+          accessTokenConfigured: true,
+          state: 'connected',
+        },
+        authorizationRevision: 5,
+        capabilities: { publishing: 'approved' },
+      }) as never,
+    })
+    await expect(
+      provider.getToken({
+        accountExternalId: '971937765923229',
+        accountKind: 'linkedin-organization',
+        authorizationRevision: 4,
+        platformAccountId: 7,
       }),
     ).resolves.toBeUndefined()
   })

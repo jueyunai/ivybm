@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { platformRuntimeCredentialReadContext } from '@/access/platformCredentials'
 
 import { decryptPlatformCredential, readPlatformCredentialEncryptionKey } from '../credentials'
+import { normalizePlatformAccountId } from '../../publishing/contracts'
 import type {
   MetaPublishingAccessTokenProvider,
   MetaPublishingPlatform,
@@ -42,10 +43,24 @@ export class PayloadMetaPublishingTokenProvider {
 
   readonly getToken: MetaPublishingAccessTokenProvider = async ({
     accountExternalId,
+    authorizationRevision,
     platform,
+    platformAccountId,
   }) => {
     const normalizedAccountId = boundedExternalId(accountExternalId)
-    if (!normalizedAccountId) return undefined
+    let normalizedInternalId: ReturnType<typeof normalizePlatformAccountId>
+    try {
+      normalizedInternalId = normalizePlatformAccountId(platformAccountId)
+    } catch {
+      return undefined
+    }
+    if (
+      !normalizedAccountId ||
+      !Number.isSafeInteger(authorizationRevision) ||
+      authorizationRevision < 0
+    ) {
+      return undefined
+    }
 
     const accounts = await this.payload.find({
       collection: 'platform-accounts',
@@ -61,17 +76,28 @@ export class PayloadMetaPublishingTokenProvider {
           expiresAt: true,
           state: true,
         },
+        authorizationRevision: true,
+        capabilities: { publishing: true },
       },
       where: {
         and: [
+          { id: { equals: normalizedInternalId } },
           { accountKind: { equals: accountKindForPlatform(platform) } },
           { externalAccountId: { equals: normalizedAccountId } },
+          { authorizationRevision: { equals: authorizationRevision } },
         ],
       },
     })
     if (accounts.docs.length !== 1) return undefined
 
-    const authorization = accounts.docs[0]?.authorization
+    const account = accounts.docs[0]
+    if (
+      account?.authorizationRevision !== authorizationRevision ||
+      account?.capabilities?.publishing !== 'approved'
+    ) {
+      return undefined
+    }
+    const authorization = account?.authorization
     if (authorization?.state !== 'connected' || authorization.accessTokenConfigured !== true) {
       return undefined
     }

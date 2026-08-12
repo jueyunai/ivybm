@@ -29,6 +29,7 @@ export type LinkedInImageAssetIdentity = {
 export type LinkedInImagePublishingCheckpoint = {
   altText?: string
   author: LinkedInAuthorUrnInput
+  authorizationRevision: number
   commentary: string
   imageUrn?: string
   postUrn?: string
@@ -203,6 +204,8 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
     checkpoint.uploadTicket === undefined ? undefined : normalizeTicket(checkpoint.uploadTicket)
   if (
     !author ||
+    !Number.isSafeInteger(checkpoint.authorizationRevision) ||
+    (checkpoint.authorizationRevision as number) < 0 ||
     !commentary ||
     (checkpoint.altText !== undefined && !altText) ||
     (checkpoint.imageUrn !== undefined &&
@@ -242,6 +245,7 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
   return {
     ...(altText ? { altText } : {}),
     author,
+    authorizationRevision: checkpoint.authorizationRevision as number,
     commentary,
     ...(imageUrn ? { imageUrn } : {}),
     ...(postUrn ? { postUrn } : {}),
@@ -339,6 +343,7 @@ const sameCheckpoint = (
 ): boolean =>
   left.altText === right.altText &&
   sameAuthor(left.author, right.author) &&
+  left.authorizationRevision === right.authorizationRevision &&
   left.commentary === right.commentary &&
   left.imageUrn === right.imageUrn &&
   left.postUrn === right.postUrn &&
@@ -425,16 +430,24 @@ const runStage = async ({
   asset,
   assetBytes,
   checkpoint,
+  platformAccountId,
   transport,
 }: {
   asset: LinkedInImageAssetIdentity
   assetBytes?: Uint8Array
   checkpoint: LinkedInImagePublishingCheckpoint
+  platformAccountId: number | string
   transport: LinkedInPublishingTransport
 }): Promise<LinkedInImagePublishingTransition> => {
   if (checkpoint.stage === 'scheduled') {
     const uploadTicket = normalizeTicket(
-      await transport.initializeImageUpload({ author: checkpoint.author }),
+      await transport.initializeImageUpload({
+        authorization: {
+          authorizationRevision: checkpoint.authorizationRevision,
+          platformAccountId,
+        },
+        author: checkpoint.author,
+      }),
     )
     if (!uploadTicket) {
       throw new ProviderPublicationResultUnknownError(
@@ -459,6 +472,10 @@ const runStage = async ({
     }
     // The caller has already bound bytes to the intent's asset identity.
     await transport.uploadImage({
+      authorization: {
+        authorizationRevision: checkpoint.authorizationRevision,
+        platformAccountId,
+      },
       author: checkpoint.author,
       bytes: assetBytes,
       contentType: asset.contentType,
@@ -475,6 +492,10 @@ const runStage = async ({
     if (!checkpoint.imageUrn) throw new ProviderPublicationConfirmedError('invalid_request', false)
     const result = await transport.publishImagePost({
       altText: checkpoint.altText,
+      authorization: {
+        authorizationRevision: checkpoint.authorizationRevision,
+        platformAccountId,
+      },
       author: checkpoint.author,
       commentary: checkpoint.commentary,
       imageUrn: checkpoint.imageUrn,
@@ -578,6 +599,7 @@ export const executeLinkedInImagePublishingStage = async ({
       asset: claim.intent.asset,
       assetBytes,
       checkpoint: claim.intent.checkpoint,
+      platformAccountId: claim.intent.platformAccountId,
       transport,
     })
   } catch (error) {

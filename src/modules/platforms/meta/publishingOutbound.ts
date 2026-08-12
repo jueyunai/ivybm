@@ -18,6 +18,8 @@ import {
   type MetaPublishingHttpRequest,
 } from './publishingRequests'
 import { META_GRAPH_API_VERSION } from './oauth'
+import type { PlatformAccountId } from '../../publishing/contracts'
+import { normalizePlatformAccountId } from '../../publishing/contracts'
 
 const META_GRAPH_ORIGIN = 'https://graph.facebook.com'
 const MAX_TOKEN_LENGTH = 8_192
@@ -27,7 +29,9 @@ export type MetaPublishingPlatform = 'facebook' | 'instagram'
 
 export type MetaPublishingAccessTokenProvider = (input: {
   accountExternalId: string
+  authorizationRevision: number
   platform: MetaPublishingPlatform
+  platformAccountId: PlatformAccountId
 }) => Promise<string | undefined>
 
 export type MetaPublishingFetch = (
@@ -37,30 +41,35 @@ export type MetaPublishingFetch = (
 
 export type FacebookPagePhotoPublishInput = {
   accountExternalId: string
+  authorizationRevision: number
   caption?: string
+  platformAccountId: PlatformAccountId
   url: string
 }
 
 export type InstagramMediaCreateInput = {
   accountExternalId: string
+  authorizationRevision: number
   caption?: string
   imageUrl: string
+  platformAccountId: PlatformAccountId
 }
 
 export type InstagramContainerStatusInput = {
   accountExternalId: string
+  authorizationRevision: number
   containerId: string
+  platformAccountId: PlatformAccountId
 }
 
 export type InstagramContainerPublicationState =
-  | { state: 'failed' }
-  | { state: 'pending' }
-  | { state: 'published' }
-  | { state: 'ready' }
+  { state: 'failed' } | { state: 'pending' } | { state: 'published' } | { state: 'ready' }
 
 export type InstagramMediaPublishInput = {
   accountExternalId: string
+  authorizationRevision: number
   creationId: string
+  platformAccountId: PlatformAccountId
 }
 
 export interface MetaPublishingTransport {
@@ -68,12 +77,8 @@ export interface MetaPublishingTransport {
   getInstagramContainerStatus(
     input: InstagramContainerStatusInput,
   ): Promise<InstagramContainerPublicationState>
-  publishFacebookPagePhoto(
-    input: FacebookPagePhotoPublishInput,
-  ): Promise<FacebookPagePhotoResponse>
-  publishInstagramMedia(
-    input: InstagramMediaPublishInput,
-  ): Promise<InstagramMediaPublishResponse>
+  publishFacebookPagePhoto(input: FacebookPagePhotoPublishInput): Promise<FacebookPagePhotoResponse>
+  publishInstagramMedia(input: InstagramMediaPublishInput): Promise<InstagramMediaPublishResponse>
 }
 
 const normalizedToken = (value: unknown): string | undefined => {
@@ -119,6 +124,26 @@ const confirmedHttpFailure = (
 
 const invalidRequest = (): ProviderPublicationConfirmedError =>
   new ProviderPublicationConfirmedError('invalid_request', false)
+
+const publishingAuthorization = ({
+  authorizationRevision,
+  platformAccountId,
+}: {
+  authorizationRevision: number
+  platformAccountId: PlatformAccountId
+}): { authorizationRevision: number; platformAccountId: PlatformAccountId } => {
+  if (!Number.isSafeInteger(authorizationRevision) || authorizationRevision < 0) {
+    throw invalidRequest()
+  }
+  try {
+    return {
+      authorizationRevision,
+      platformAccountId: normalizePlatformAccountId(platformAccountId),
+    }
+  } catch {
+    throw invalidRequest()
+  }
+}
 
 const trustedMediaOrigins = (value: readonly string[]): Set<string> => {
   if (!value.length) throw new Error('Meta publishing requires a trusted media origin')
@@ -177,18 +202,30 @@ export const createMetaPublishingTransport = ({
 
   const dispatch = async <Result>({
     accountExternalId,
+    authorizationRevision,
     parse,
     platform,
+    platformAccountId,
     providerRequest,
   }: {
     accountExternalId: string
+    authorizationRevision: number
     parse: (value: unknown) => Result
     platform: MetaPublishingPlatform
+    platformAccountId: PlatformAccountId
     providerRequest: MetaPublishingHttpRequest
   }): Promise<Result> => {
+    const authorization = publishingAuthorization({ authorizationRevision, platformAccountId })
     let token: string | undefined
     try {
-      token = normalizedToken(await tokenProvider({ accountExternalId, platform }))
+      token = normalizedToken(
+        await tokenProvider({
+          accountExternalId,
+          authorizationRevision: authorization.authorizationRevision,
+          platform,
+          platformAccountId: authorization.platformAccountId,
+        }),
+      )
     } catch {
       throw new ProviderPublicationTransportError()
     }
@@ -248,8 +285,10 @@ export const createMetaPublishingTransport = ({
     }
     return dispatch({
       accountExternalId: input.accountExternalId,
+      authorizationRevision: input.authorizationRevision,
       parse: parseFacebookPagePhotoResponse,
       platform: 'facebook',
+      platformAccountId: input.platformAccountId,
       providerRequest,
     })
   }
@@ -270,8 +309,10 @@ export const createMetaPublishingTransport = ({
     }
     return dispatch({
       accountExternalId: input.accountExternalId,
+      authorizationRevision: input.authorizationRevision,
       parse: parseInstagramMediaResponse,
       platform: 'instagram',
+      platformAccountId: input.platformAccountId,
       providerRequest,
     })
   }
@@ -291,8 +332,10 @@ export const createMetaPublishingTransport = ({
     }
     const result = await dispatch({
       accountExternalId: input.accountExternalId,
+      authorizationRevision: input.authorizationRevision,
       parse: parseInstagramContainerStatusResponse,
       platform: 'instagram',
+      platformAccountId: input.platformAccountId,
       providerRequest,
     })
     if (result.statusCode === 'FINISHED') return { state: 'ready' }
@@ -315,8 +358,10 @@ export const createMetaPublishingTransport = ({
     }
     return dispatch({
       accountExternalId: input.accountExternalId,
+      authorizationRevision: input.authorizationRevision,
       parse: parseInstagramMediaPublishResponse,
       platform: 'instagram',
+      platformAccountId: input.platformAccountId,
       providerRequest,
     })
   }
