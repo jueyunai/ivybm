@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ChatSession } from '@/modules/conversations/contracts'
-import { extractLeadSignals } from '@/modules/leads/conversationLeadSink'
+import {
+  extractLeadSignals,
+  PayloadConversationLeadSink,
+} from '@/modules/leads/conversationLeadSink'
 
 const sessionWith = (locale: ChatSession['locale'], content: string): ChatSession => ({
   allowedActions: ['send_message', 'request_handoff'],
@@ -94,6 +97,40 @@ describe('conversation lead signal extraction', () => {
     expect(extractLeadSignals(session).company).toBeUndefined()
   })
 
+  it.each([
+    'I am from UAE.',
+    'I am from UAE. It is a tender for 1000 sqm. Email buyer@example.invalid.',
+    'Not sure.',
+    'We do not have one.',
+    'My company is a company in UAE.',
+  ])('does not infer an uncertain or sentence reply as a company in %s', (content) => {
+    const session = sessionWith('en', content)
+    session.qualificationState = { askedFields: ['country', 'company'], roundCount: 1 }
+
+    expect(extractLeadSignals(session).company).toBeUndefined()
+  })
+
+  it('keeps company missing in the authoritative evaluation after an uncertain prompted reply', async () => {
+    const session = sessionWith(
+      'en',
+      'We need 1000 sqm of aluminum panels in UAE at tender stage within 3 months. Drawings are ready. Budget is USD 400000. Email buyer@example.invalid.',
+    )
+    session.messages.push({
+      author: 'visitor',
+      content: 'Not sure.',
+      createdAt: '2026-08-12T00:01:00.000Z',
+      id: 'message-en-2',
+      status: 'sent',
+    })
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    const evaluation = await new PayloadConversationLeadSink().evaluate(session)
+
+    expect(evaluation.signals.company).toBeUndefined()
+    expect(evaluation.score.missingFields).toContain('company')
+    expect(evaluation.score.reasons).not.toContain('company_identified')
+  })
+
   it.each(['I am from UAE.', 'I work at UAE.', 'I work at Saudi Arabia.'])(
     'does not mistake a country for a company in %s',
     (content) => {
@@ -107,10 +144,31 @@ describe('conversation lead signal extraction', () => {
       'I work at the business team.',
       'My company is a company.',
       'My company is a factory office.',
+      'I work at my company in UAE.',
+      'I am from sales team.',
+      'My company is a company in UAE.',
+      'My company is my company in UAE.',
+      'My company is and we need aluminum panels.',
+      'I work at in UAE.',
       'I am from a workplace.',
     ]) {
       expect(extractLeadSignals(sessionWith('en', content)).company).toBeUndefined()
     }
+  })
+
+  it.each([
+    'I work at my company.',
+    'I work at my company in UAE.',
+    'We work at our company.',
+    'I work at company.',
+    'I work at the business.',
+    'I work at our team.',
+    'I work at my office in UAE.',
+  ])('does not reinterpret a generic sentence after asking the company field in %s', (content) => {
+    const session = sessionWith('en', content)
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    expect(extractLeadSignals(session).company).toBeUndefined()
   })
 
   it('does not mistake a qualification question for a supplied budget', () => {

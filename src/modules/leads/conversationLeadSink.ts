@@ -37,6 +37,7 @@ const companyCandidate =
 const nonCompanyWords = new Set([
   'a',
   'an',
+  'and',
   'the',
   'bid',
   'business',
@@ -44,14 +45,24 @@ const nonCompanyWords = new Set([
   'concept',
   'design',
   'factory',
+  'for',
+  'from',
+  'in',
+  'my',
   'office',
+  'our',
   'procurement',
   'project',
+  'sales',
   'stage',
+  'is',
   'team',
   'tender',
+  'with',
   'workplace',
 ])
+const invalidPromptedCompanyAnswer =
+  /^(?:(?:i|we|it|there)\b|(?:no|none|not\s+sure|unknown|unsure|maybe)\b)|\b(?:do\s+not|don't|does\s+not|doesn't)\b/i
 // prettier-ignore
 const arabicCompanyCandidate =
   /(?:اسم\s+الشركة|(?:نحن\s+)?شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80}?)(?=\s+(?:في\s+(?:الإمارات(?:\s+العربية\s+المتحدة)?|السعودية|المملكة\s+العربية\s+السعودية|قطر|الكويت|عمان|البحرين)|و?(?:المشروع|مرحلة|نحتاج|نريد|لدينا|الكمية|المساحة|التصميم|المناقصة))|[\n،,.!?؟]|$)/
@@ -61,13 +72,16 @@ const cleanCompanyCandidate = (candidate: string | undefined): string | undefine
   candidate?.trim().replace(/[,.!?]+$/, '') || undefined
 
 const isNonCompanyCandidate = (candidate: string): boolean =>
+  /^(?:and|for|from|in|with)(?:\s|$)/i.test(candidate) ||
   candidate
     .toLowerCase()
     .split(/\s+/)
     .every((word) => nonCompanyWords.has(word))
 
 const isCountryCandidate = (candidate: string): boolean =>
-  countries.some((country) => country.toLowerCase() === candidate.toLowerCase())
+  countries.some(
+    (country) => country.toLowerCase() === candidate.replace(/^the\s+/i, '').toLowerCase(),
+  )
 
 const validEnglishCompanyCandidate = (candidate: string | undefined): candidate is string =>
   Boolean(candidate && !isNonCompanyCandidate(candidate) && !isCountryCandidate(candidate))
@@ -90,7 +104,9 @@ const extractAskedEnglishCompany = (session: ChatSession): string | undefined =>
       ),
     )?.[1],
   )
-  if (!validEnglishCompanyCandidate(candidate)) return undefined
+  if (!validEnglishCompanyCandidate(candidate) || invalidPromptedCompanyAnswer.test(candidate)) {
+    return undefined
+  }
   return candidate
 }
 
