@@ -1,3 +1,5 @@
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
+
 import {
   ProviderPublicationConfirmedError,
   ProviderPublicationResultUnknownError,
@@ -50,9 +52,10 @@ export type LinkedInImageUploadInput = {
   ticket: LinkedInImageUploadTicket
 }
 
-/** Opaque, single-use capability returned only by this transport's initialize call. */
+/** Opaque encrypted capability; the stage authority must enforce single consumption. */
 export type LinkedInImageUploadTicket = Readonly<{
   imageUrn: string
+  sealedUpload: string
   uploadUrlExpiresAt: number
 }>
 
@@ -174,6 +177,7 @@ export const createLinkedInPublishingTransport = ({
   now = Date.now,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   tokenProvider,
+  uploadTicketKey,
 }: {
   allowedUploadOrigins: readonly string[]
   fetch?: LinkedInPublishingFetch
@@ -181,6 +185,8 @@ export const createLinkedInPublishingTransport = ({
   now?: () => number
   timeoutMs?: number
   tokenProvider: LinkedInPublishingAccessTokenProvider
+  /** Stable server-only AES-256 key used to persist provider upload capabilities safely. */
+  uploadTicketKey: Buffer
 }): LinkedInPublishingTransport => {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 120_000) {
     throw new Error('LinkedIn publishing timeout must be between 1 and 120000 milliseconds')
@@ -188,21 +194,91 @@ export const createLinkedInPublishingTransport = ({
   if (typeof tokenProvider !== 'function') {
     throw new Error('LinkedIn publishing token provider is required')
   }
+  if (!(uploadTicketKey instanceof Buffer) || uploadTicketKey.byteLength !== 32) {
+    throw new Error('LinkedIn upload ticket key must contain exactly 32 bytes')
+  }
+  const ticketKey = Buffer.from(uploadTicketKey)
   const uploadOrigins = trustedOrigins(allowedUploadOrigins, 'upload')
-  const uploadTickets = new WeakMap<
-    LinkedInImageUploadTicket,
-    {
-      accountExternalId: string
-      accountKind: LinkedInPublishingAccountKind
-      uploadUrl: string
-    }
-  >()
   // Trigger the pure builder's strict YYYYMM validation during construction.
   buildLinkedInTextPostRequest({
     author: { kind: 'person', personId: 'validation' },
     commentary: 'validation',
     linkedInVersion,
   })
+
+  type UploadTicketPayload = {
+    accountExternalId: string
+    accountKind: LinkedInPublishingAccountKind
+    imageUrn: string
+    uploadUrl: string
+    uploadUrlExpiresAt: number
+  }
+
+  const sealUploadTicket = (payload: UploadTicketPayload): string => {
+    const iv = randomBytes(12)
+    const cipher = createCipheriv('aes-256-gcm', ticketKey, iv)
+    const ciphertext = Buffer.concat([
+      cipher.update(JSON.stringify(payload), 'utf8'),
+      cipher.final(),
+    ])
+    return [
+      'v1',
+      iv.toString('base64url'),
+      cipher.getAuthTag().toString('base64url'),
+      ciphertext.toString('base64url'),
+    ].join('.')
+  }
+
+  const openUploadTicket = (ticket: LinkedInImageUploadTicket): UploadTicketPayload => {
+    if (
+      !ticket ||
+      typeof ticket !== 'object' ||
+      typeof ticket.imageUrn !== 'string' ||
+      typeof ticket.sealedUpload !== 'string' ||
+      typeof ticket.uploadUrlExpiresAt !== 'number'
+    ) {
+      throw invalidRequest()
+    }
+    const [version, encodedIV, encodedTag, encodedCiphertext, ...remaining] =
+      ticket.sealedUpload.split('.')
+    if (version !== 'v1' || !encodedIV || !encodedTag || !encodedCiphertext || remaining.length) {
+      throw invalidRequest()
+    }
+    let plaintext: string
+    try {
+      const iv = Buffer.from(encodedIV, 'base64url')
+      const tag = Buffer.from(encodedTag, 'base64url')
+      const ciphertext = Buffer.from(encodedCiphertext, 'base64url')
+      if (iv.byteLength !== 12 || tag.byteLength !== 16 || !ciphertext.byteLength) {
+        throw invalidRequest()
+      }
+      const decipher = createDecipheriv('aes-256-gcm', ticketKey, iv)
+      decipher.setAuthTag(tag)
+      plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8')
+    } catch {
+      throw invalidRequest()
+    }
+    let payload: unknown
+    try {
+      payload = JSON.parse(plaintext)
+    } catch {
+      throw invalidRequest()
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw invalidRequest()
+    const value = payload as Partial<UploadTicketPayload>
+    if (
+      typeof value.accountExternalId !== 'string' ||
+      (value.accountKind !== 'linkedin-member' && value.accountKind !== 'linkedin-organization') ||
+      typeof value.imageUrn !== 'string' ||
+      typeof value.uploadUrl !== 'string' ||
+      typeof value.uploadUrlExpiresAt !== 'number' ||
+      ticket.imageUrn !== value.imageUrn ||
+      ticket.uploadUrlExpiresAt !== value.uploadUrlExpiresAt
+    ) {
+      throw invalidRequest()
+    }
+    return value as UploadTicketPayload
+  }
 
   const tokenFor = async (author: LinkedInAuthorUrnInput): Promise<string> => {
     const account = authorAccount(author)
@@ -303,16 +379,23 @@ export const createLinkedInPublishingTransport = ({
     })
     const uploadUrl = new URL(initialized.uploadUrl)
     if (!uploadOrigins.has(uploadUrl.origin)) throw invalidRequest()
-    const ticket = Object.freeze({
+    const account = authorAccount(input.author)
+    const sealedUpload = sealUploadTicket({
+      ...account,
       imageUrn: initialized.imageUrn,
+      uploadUrl: initialized.uploadUrl,
       uploadUrlExpiresAt: initialized.uploadUrlExpiresAt,
     })
-    uploadTickets.set(ticket, { ...authorAccount(input.author), uploadUrl: initialized.uploadUrl })
+    const ticket = Object.freeze({
+      imageUrn: initialized.imageUrn,
+      sealedUpload,
+      uploadUrlExpiresAt: initialized.uploadUrlExpiresAt,
+    })
     return ticket
   }
 
   const uploadImage = async (input: LinkedInImageUploadInput): Promise<void> => {
-    const storedTicket = uploadTickets.get(input.ticket)
+    const storedTicket = openUploadTicket(input.ticket)
     const account = authorAccount(input.author)
     if (
       !storedTicket ||
@@ -321,8 +404,6 @@ export const createLinkedInPublishingTransport = ({
     ) {
       throw invalidRequest()
     }
-    // Consume before network I/O. Any uncertain result must not replay this capability.
-    uploadTickets.delete(input.ticket)
     let payload: ReturnType<typeof buildLinkedInImageBinaryUploadPayload>
     try {
       payload = buildLinkedInImageBinaryUploadPayload({
@@ -336,6 +417,7 @@ export const createLinkedInPublishingTransport = ({
       throw invalidRequest()
     }
     const uploadUrl = new URL(payload.uploadUrl)
+    if (!uploadOrigins.has(uploadUrl.origin)) throw invalidRequest()
     const token = await tokenFor(input.author)
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), timeoutMs)

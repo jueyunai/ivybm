@@ -40,6 +40,7 @@ const createTransport = (
     linkedInVersion: '202607',
     now: () => 1_800_000_000_000,
     tokenProvider,
+    uploadTicketKey: Buffer.alloc(32, 11),
   })
 
 describe('LinkedIn publishing transport', () => {
@@ -88,6 +89,7 @@ describe('LinkedIn publishing transport', () => {
 
     await expect(transport.initializeImageUpload({ author: organization })).resolves.toEqual({
       imageUrn: 'urn:li:image:abc_123',
+      sealedUpload: expect.stringMatching(/^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/),
       uploadUrlExpiresAt: 1_900_000_000_000,
     })
     expect(tokenProvider).toHaveBeenCalledWith({
@@ -158,7 +160,7 @@ describe('LinkedIn publishing transport', () => {
     },
   )
 
-  it('rejects a fabricated or replayed upload ticket before network I/O', async () => {
+  it('rejects fabricated, tampered or author-rebound upload tickets before network I/O', async () => {
     const fetch = vi.fn().mockResolvedValue(
       response({
         body: {
@@ -173,6 +175,7 @@ describe('LinkedIn publishing transport', () => {
     const transport = createTransport(fetch)
     const fabricated = Object.freeze({
       imageUrn: 'urn:li:image:abc_123',
+      sealedUpload: 'v1.fabricated.signature',
       uploadUrlExpiresAt: 1_900_000_000_000,
     })
     await expect(
@@ -186,22 +189,92 @@ describe('LinkedIn publishing transport', () => {
     expect(fetch).not.toHaveBeenCalled()
 
     const ticket = await transport.initializeImageUpload({ author: organization })
-    fetch.mockResolvedValueOnce(response({ status: 201 }))
-    await transport.uploadImage({
-      author: organization,
-      bytes: new Uint8Array([1]),
-      contentType: 'image/png',
-      ticket,
-    })
     await expect(
       transport.uploadImage({
+        author: person,
+        bytes: new Uint8Array([1]),
+        contentType: 'image/png',
+        ticket,
+      }),
+    ).rejects.toBeInstanceOf(ProviderPublicationConfirmedError)
+    const tampered = {
+      ...ticket,
+      sealedUpload: `${ticket.sealedUpload.slice(0, -1)}x`,
+    }
+    await expect(
+      transport.uploadImage({
+        author: organization,
+        bytes: new Uint8Array([1]),
+        contentType: 'image/png',
+        ticket: tampered,
+      }),
+    ).rejects.toBeInstanceOf(ProviderPublicationConfirmedError)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts a serialized ticket after transport restart with the same server key', async () => {
+    const initializeFetch = vi.fn().mockResolvedValue(
+      response({
+        body: {
+          value: {
+            image: 'urn:li:image:abc_123',
+            uploadUrl: 'https://www.linkedin.com/dms-uploads/image/abc',
+            uploadUrlExpiresAt: 1_900_000_000_000,
+          },
+        },
+      }),
+    )
+    const first = createTransport(initializeFetch)
+    const persisted = JSON.parse(
+      JSON.stringify(await first.initializeImageUpload({ author: organization })),
+    )
+    const uploadFetch = vi.fn().mockResolvedValue(response({ status: 201 }))
+    const restarted = createTransport(uploadFetch)
+    await expect(
+      restarted.uploadImage({
+        author: organization,
+        bytes: new Uint8Array([1]),
+        contentType: 'image/png',
+        ticket: persisted,
+      }),
+    ).resolves.toBeUndefined()
+    expect(uploadFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-checks the current upload allowlist after restart before token or network I/O', async () => {
+    const initializeFetch = vi.fn().mockResolvedValue(
+      response({
+        body: {
+          value: {
+            image: 'urn:li:image:abc_123',
+            uploadUrl: 'https://media.licdn.com/dms/image/upload?sig=opaque',
+            uploadUrlExpiresAt: 1_900_000_000_000,
+          },
+        },
+      }),
+    )
+    const first = createTransport(initializeFetch)
+    const ticket = await first.initializeImageUpload({ author: organization })
+    const uploadFetch = vi.fn()
+    const tokenProvider = vi.fn().mockResolvedValue('fixture-linkedin-token')
+    const restarted = createLinkedInPublishingTransport({
+      allowedUploadOrigins: ['https://www.linkedin.com'],
+      fetch: uploadFetch,
+      linkedInVersion: '202607',
+      now: () => 1_800_000_000_000,
+      tokenProvider,
+      uploadTicketKey: Buffer.alloc(32, 11),
+    })
+    await expect(
+      restarted.uploadImage({
         author: organization,
         bytes: new Uint8Array([1]),
         contentType: 'image/png',
         ticket,
       }),
     ).rejects.toBeInstanceOf(ProviderPublicationConfirmedError)
-    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(tokenProvider).not.toHaveBeenCalled()
+    expect(uploadFetch).not.toHaveBeenCalled()
   })
 
   it('publishes an initialized image URN and preserves its provider post ID', async () => {
