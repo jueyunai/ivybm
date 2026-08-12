@@ -126,6 +126,7 @@ describe('verified social contact identity', () => {
     const authorized = await authorize(inbound())
 
     expect(Object.isFrozen(authorized)).toBe(true)
+    expect(Object.isFrozen(authorized.content)).toBe(true)
     expect(() => {
       ;(authorized as unknown as { accountExternalId: string }).accountExternalId = 'other-page'
     }).toThrow()

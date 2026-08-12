@@ -75,7 +75,17 @@ export const reauthorizeInboundMessage = async ({
     platform: message.platform,
   })
 
-  const authorized = Object.freeze({ ...message }) as AuthorizedInboundMessage
+  const content = Object.freeze({
+    ...message.content,
+    ...(message.content.attachments
+      ? {
+          attachments: Object.freeze(
+            message.content.attachments.map((attachment) => Object.freeze({ ...attachment })),
+          ),
+        }
+      : {}),
+  })
+  const authorized = Object.freeze({ ...message, content }) as AuthorizedInboundMessage
   authorizedInboundMessages.add(authorized)
   installationNamespaces.set(authorized, namespace)
   return authorized
@@ -105,11 +115,11 @@ export const verifiedSocialContactSource = (
     )
     .digest('hex')
 
-  return {
+  return Object.freeze({
     accountExternalId,
     identityKey: `social-contact:v2:${message.platform}:${identityKey}`,
     kind: 'verified-social-session',
     platform: message.platform,
     senderExternalId,
-  }
+  })
 }
