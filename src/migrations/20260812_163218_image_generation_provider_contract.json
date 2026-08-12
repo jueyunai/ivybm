@@ -662,7 +662,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -9210,7 +9210,7 @@
           "name": "country",
           "type": "varchar",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "email": {
           "name": "email",
@@ -9227,6 +9227,42 @@
         "interest": {
           "name": "interest",
           "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "budget": {
+          "name": "budget",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "procurement_plan": {
+          "name": "procurement_plan",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "project_stage": {
+          "name": "project_stage",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quantity_square_meters": {
+          "name": "quantity_square_meters",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timeline": {
+          "name": "timeline",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_drawings": {
+          "name": "has_drawings",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": false
         },
@@ -10930,6 +10966,89 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.conversations_qualification_asked_fields": {
+      "name": "conversations_qualification_asked_fields",
+      "schema": "",
+      "columns": {
+        "order": {
+          "name": "order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "enum_conversations_qualification_asked_fields",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "conversations_qualification_asked_fields_order_idx": {
+          "name": "conversations_qualification_asked_fields_order_idx",
+          "columns": [
+            {
+              "expression": "order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "conversations_qualification_asked_fields_parent_idx": {
+          "name": "conversations_qualification_asked_fields_parent_idx",
+          "columns": [
+            {
+              "expression": "parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "conversations_qualification_asked_fields_parent_fk": {
+          "name": "conversations_qualification_asked_fields_parent_fk",
+          "tableFrom": "conversations_qualification_asked_fields",
+          "tableTo": "conversations",
+          "columnsFrom": [
+            "parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.conversations": {
       "name": "conversations",
       "schema": "",
@@ -11018,6 +11137,49 @@
           "type": "numeric",
           "primaryKey": false,
           "notNull": false
+        },
+        "qualification_signals_budget": {
+          "name": "qualification_signals_budget",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qualification_signals_procurement_plan": {
+          "name": "qualification_signals_procurement_plan",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qualification_signals_project_stage": {
+          "name": "qualification_signals_project_stage",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qualification_signals_quantity_square_meters": {
+          "name": "qualification_signals_quantity_square_meters",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qualification_signals_timeline": {
+          "name": "qualification_signals_timeline",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qualification_signals_has_drawings": {
+          "name": "qualification_signals_has_drawings",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qualification_round_count": {
+          "name": "qualification_round_count",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 0
         },
         "summary": {
           "name": "summary",
@@ -15235,6 +15397,20 @@
         "ar"
       ]
     },
+    "public.enum_conversations_qualification_asked_fields": {
+      "name": "enum_conversations_qualification_asked_fields",
+      "schema": "public",
+      "values": [
+        "country",
+        "company",
+        "projectStage",
+        "quantity",
+        "drawings",
+        "budget",
+        "timeline",
+        "contact"
+      ]
+    },
     "public.enum_conversations_channel": {
       "name": "enum_conversations_channel",
       "schema": "public",
@@ -15354,6 +15530,6 @@
     "tables": {},
     "columns": {}
   },
-  "id": "da09ec62-2314-4e79-88fc-45a0116f9c0d",
+  "id": "a5e71129-e105-41f5-b0dc-b0fbf1650d69",
   "prevId": "00000000-0000-0000-0000-000000000000"
 }

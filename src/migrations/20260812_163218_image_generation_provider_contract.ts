@@ -2,9 +2,11 @@ import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 
 export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
-   ALTER TYPE "public"."enum_ai_model_profiles_capability" ADD VALUE 'image';
+   CREATE TYPE "public"."enum_ai_providers_text_generation_contract" AS ENUM('responses', 'chat-completions');
+  ALTER TYPE "public"."enum_ai_model_profiles_capability" ADD VALUE 'image';
   ALTER TYPE "public"."enum_ai_usage_routes_operation" ADD VALUE 'image';
-  ALTER TYPE "public"."enum_ai_usage_logs_operation" ADD VALUE 'generateImage' BEFORE 'generateText';`)
+  ALTER TYPE "public"."enum_ai_usage_logs_operation" ADD VALUE 'generateImage' BEFORE 'generateText';
+  ALTER TABLE "ai_providers" ADD COLUMN "text_generation_contract" "enum_ai_providers_text_generation_contract" DEFAULT 'responses' NOT NULL;`)
 }
 
 export async function down({ db, payload, req }: MigrateDownArgs): Promise<void> {
@@ -20,5 +22,7 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   ALTER TABLE "ai_usage_logs" ALTER COLUMN "operation" SET DATA TYPE text;
   DROP TYPE "public"."enum_ai_usage_logs_operation";
   CREATE TYPE "public"."enum_ai_usage_logs_operation" AS ENUM('embed', 'generateText');
-  ALTER TABLE "ai_usage_logs" ALTER COLUMN "operation" SET DATA TYPE "public"."enum_ai_usage_logs_operation" USING "operation"::"public"."enum_ai_usage_logs_operation";`)
+  ALTER TABLE "ai_usage_logs" ALTER COLUMN "operation" SET DATA TYPE "public"."enum_ai_usage_logs_operation" USING "operation"::"public"."enum_ai_usage_logs_operation";
+  ALTER TABLE "ai_providers" DROP COLUMN "text_generation_contract";
+  DROP TYPE "public"."enum_ai_providers_text_generation_contract";`)
 }

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const migrationName = '20260812_140951'
+const migrationName = '20260812_163218_image_generation_provider_contract'
 
 describe('AI provider text contract migration', () => {
   it('adds only the explicit text contract field and preserves unrelated foreign keys', () => {
