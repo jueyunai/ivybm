@@ -23,7 +23,7 @@ const DEFAULT_TIMEOUT_MS = 15_000
 export type MetaConversationAccessTokenProvider = (input: {
   accountExternalId: string
   platform: MetaConversationReplyPlatform
-}) => Promise<string>
+}) => Promise<string | undefined>
 
 export type MetaConversationFetch = (
   input: string | URL,
@@ -80,7 +80,7 @@ const confirmedHttpFailure = (
   return undefined
 }
 
-const normalizedToken = (value: string): string | undefined => {
+const normalizedToken = (value: unknown): string | undefined => {
   if (typeof value !== 'string') return undefined
   const token = value.trim()
   if (!token || token !== value || token.length > MAX_TOKEN_LENGTH || /\s/.test(token)) {
@@ -129,9 +129,7 @@ export const createMetaConversationOutboundPort = ({
       token = normalizedToken(
         await tokenProvider({
           accountExternalId: request.accountExternalId,
-          platform: providerRequest.body.messaging_type
-            ? (request.platform as MetaConversationReplyPlatform)
-            : 'facebook-messenger',
+          platform: request.platform as MetaConversationReplyPlatform,
         }),
       )
     } catch {
