@@ -4,6 +4,7 @@ import {
   type PlatformPublishExecutionSnapshot,
   type PlatformPublishExecutionTransition,
 } from './publishingExecution'
+import { ProviderPublicationTransportError } from './publishingResult'
 
 export const PLATFORM_PUBLICATION_BLOCK_REASONS = [
   'busy',
@@ -284,6 +285,7 @@ export const executeLeaseFencedPublication = async ({
   }
 
   let transition: PlatformPublishExecutionTransition
+  let preIOTransportError: ProviderPublicationTransportError | undefined
   try {
     transition = await executePlatformPublication({ service, snapshot: claim.intent.snapshot })
   } catch (error) {
@@ -291,9 +293,20 @@ export const executeLeaseFencedPublication = async ({
       await bestEffortRelease(authority, claim)
       throw error
     }
-    transition = unknownTransition(
-      'The publication provider call failed after crossing the send fence; resend is disabled.',
-    )
+    if (error instanceof ProviderPublicationTransportError) {
+      preIOTransportError = error
+      transition = {
+        changed: false,
+        lastErrorCode: 'provider_unavailable',
+        retryable: true,
+        status: claim.intent.snapshot.status,
+        summary: 'Publication provider I/O did not begin; a fresh claimed attempt is allowed.',
+      }
+    } else {
+      transition = unknownTransition(
+        'The publication provider call failed after crossing the send fence; resend is disabled.',
+      )
+    }
   }
 
   let committed = false
@@ -310,5 +323,6 @@ export const executeLeaseFencedPublication = async ({
       'The provider mutation crossed the fence but its checkpoint could not be committed; resend is disabled.',
     )
   }
+  if (preIOTransportError && committed) throw preIOTransportError
   return { status: 'transitioned', transition }
 }

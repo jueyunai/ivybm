@@ -8,6 +8,7 @@ import {
   type PlatformPublicationLeaseFence,
 } from '@/modules/platforms/publishingAuthority'
 import type { PlatformPublishExecutionSnapshot } from '@/modules/platforms/publishingExecution'
+import { ProviderPublicationTransportError } from '@/modules/platforms/publishingResult'
 
 const snapshot = (
   overrides: Partial<PlatformPublishExecutionSnapshot> = {},
@@ -169,6 +170,39 @@ describe('lease-fenced single-call publication', () => {
       platformAccountId: 7,
       status: 'accepted',
     })
+    await expect(
+      executeLeaseFencedPublication({
+        authority: state.authority,
+        intent: state.input,
+        leaseFence: state.fence,
+        service: service({ publish }),
+      }),
+    ).resolves.toMatchObject({ transition: { status: 'delivery_unknown' } })
+    expect(publish).toHaveBeenCalledTimes(1)
+  })
+
+  it('commits an unchanged snapshot and propagates a proven pre-I/O outage for Job retry', async () => {
+    const state = setup()
+    const publish = vi.fn().mockRejectedValue(new ProviderPublicationTransportError())
+    await expect(
+      executeLeaseFencedPublication({
+        authority: state.authority,
+        intent: state.input,
+        leaseFence: state.fence,
+        service: service({ publish }),
+      }),
+    ).rejects.toBeInstanceOf(ProviderPublicationTransportError)
+    expect(state.authority.getIntent(42)).toMatchObject({
+      expectedRevision: 4,
+      snapshot: { status: 'scheduled' },
+    })
+    expect(publish).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry a pre-I/O outage when the unchanged checkpoint cannot commit', async () => {
+    const state = setup()
+    state.authority.failNextCommit()
+    const publish = vi.fn().mockRejectedValue(new ProviderPublicationTransportError())
     await expect(
       executeLeaseFencedPublication({
         authority: state.authority,
