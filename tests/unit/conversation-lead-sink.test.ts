@@ -168,10 +168,45 @@ describe('conversation lead signal extraction', () => {
   })
 
   it.each([
+    ['en' as const, 'Not applicable.'],
+    ['en' as const, 'Better not to say.'],
+    ['ar' as const, 'أفضل عدم القول.'],
+  ])('keeps %s refusal %s out of authoritative company scoring', async (locale, refusal) => {
+    const qualifiedText =
+      locale === 'ar'
+        ? 'نحتاج 1200 متر مربع في السعودية ومرحلة المشروع مناقصة خلال 3 أشهر. الرسومات جاهزة. الميزانية 300000 ريال. البريد sales@example.invalid.'
+        : 'We need 1000 sqm in UAE at tender stage within 3 months. Drawings are ready. Budget is USD 400000. Email buyer@example.invalid.'
+    const session = sessionWith(locale, qualifiedText)
+    session.messages.push({
+      author: 'visitor',
+      content: refusal,
+      createdAt: '2026-08-12T00:01:00.000Z',
+      id: `message-${locale}-refusal`,
+      status: 'sent',
+    })
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    const evaluation = await new PayloadConversationLeadSink().evaluate(session)
+
+    expect(evaluation.signals.company).toBeUndefined()
+    expect(evaluation.score.missingFields).toContain('company')
+    expect(evaluation.score.reasons).not.toContain('company_identified')
+  })
+
+  it.each([
     'I am from UAE.',
     'I am from UAE. It is a tender for 1000 sqm. Email buyer@example.invalid.',
     'I am from UAE and need 1000 sqm at tender stage. Email buyer@example.invalid.',
     'Not sure.',
+    'Not applicable.',
+    'Better not to say.',
+    'Refuse.',
+    'Decline.',
+    'Skip.',
+    'Nope.',
+    'REFUSE.',
+    'DECLINE.',
+    'SKIP.',
     'No company.',
     'None.',
     'No idea.',
@@ -208,6 +243,28 @@ describe('conversation lead signal extraction', () => {
     session.qualificationState = { askedFields: ['company'], roundCount: 1 }
 
     expect(extractLeadSignals(session).company).toBe('Acme')
+  })
+
+  it('keeps an unsuffixed multi-word bare answer ambiguous without explicit company framing', () => {
+    const session = sessionWith('en', 'Blue Horizon.')
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    expect(extractLeadSignals(session).company).toBeUndefined()
+    expect(extractLeadSignals(sessionWith('en', 'My company is Blue Horizon.')).company).toBe(
+      'Blue Horizon',
+    )
+  })
+
+  it('requires explicit framing for all bare English single-word brands', () => {
+    const acronym = sessionWith('en', 'IVYBM.')
+    acronym.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    const titleCase = sessionWith('en', 'Alcoa.')
+    titleCase.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    expect(extractLeadSignals(acronym).company).toBeUndefined()
+    expect(extractLeadSignals(titleCase).company).toBeUndefined()
+    expect(extractLeadSignals(sessionWith('en', 'My company is Alcoa.')).company).toBe('Alcoa')
+    expect(extractLeadSignals(sessionWith('en', 'I work at IVYBM.')).company).toBe('IVYBM')
   })
 
   it('extracts a grouped prompted company and country answer before later qualification details', () => {
@@ -329,15 +386,21 @@ describe('conversation lead signal extraction', () => {
     expect(evaluation.score.reasons).toContain('company_identified')
   })
 
-  it.each(['السعودية.', 'لا أعرف.', 'ليس لدينا اسم.', 'في السعودية.', 'المشروع مناقصة.'])(
-    'does not infer a generic Arabic prompted company reply in %s',
-    (content) => {
-      const session = sessionWith('ar', content)
-      session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+  it.each([
+    'السعودية.',
+    'لا أعرف.',
+    'ليس لدينا اسم.',
+    'أفضل عدم القول.',
+    'أرفض.',
+    'تخطي.',
+    'في السعودية.',
+    'المشروع مناقصة.',
+  ])('does not infer a generic Arabic prompted company reply in %s', (content) => {
+    const session = sessionWith('ar', content)
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
 
-      expect(extractLeadSignals(session).company).toBeUndefined()
-    },
-  )
+    expect(extractLeadSignals(session).company).toBeUndefined()
+  })
 
   it.each([
     'نحن شركة في السعودية والمشروع مناقصة.',

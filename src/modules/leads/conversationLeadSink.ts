@@ -129,6 +129,36 @@ const validEnglishCompanyCandidate = (candidate: string | undefined): candidate 
     !isCountryCandidate(candidate),
   )
 
+const englishOrganizationSuffix =
+  /\b(?:co|company|corp|corporation|inc|incorporated|llc|limited|ltd|plc|group|holdings?)\.?$/i
+
+/**
+ * A prompted bare answer is intentionally narrower than an explicit
+ * "my company is" expression. Accept only an organization-shaped entity or a
+ * grouped company + qualification answer; reject arbitrary prose and isolated
+ * words without trying to distinguish every brand from every refusal verb.
+ */
+const isPromptedEnglishCompanyShape = (candidate: string, message: string): boolean => {
+  if (englishOrganizationSuffix.test(candidate)) return true
+  const escaped = candidate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  if (
+    new RegExp(
+      String.raw`^\s*${escaped}\s+(?:from|in)\s+(?:${countryCandidateSource})\b`,
+      'i',
+    ).test(message) ||
+    new RegExp(String.raw`^\s*${escaped}\s+(?:and\s+)?(?:we\s+)?(?:need|require|want)\b`, 'i').test(
+      message,
+    )
+  ) {
+    return true
+  }
+  return false
+}
+
+const isPromptedArabicCompanyShape = (candidate: string): boolean =>
+  candidate.split(/\s+/).filter(Boolean).length === 1 &&
+  /^ال[\p{Script=Arabic}]{2,}$/u.test(candidate)
+
 const countryCandidateSource = [...countries]
   .sort((left, right) => right.length - left.length)
   .join('|')
@@ -172,7 +202,7 @@ const extractAskedEnglishCompany = (session: ChatSession): string | undefined =>
   if (!validEnglishCompanyCandidate(candidate) || invalidPromptedCompanyAnswer.test(candidate)) {
     return undefined
   }
-  return candidate
+  return isPromptedEnglishCompanyShape(candidate, message) ? candidate : undefined
 }
 
 const extractAskedArabicCompany = (session: ChatSession): string | undefined => {
@@ -196,7 +226,8 @@ const extractAskedArabicCompany = (session: ChatSession): string | undefined => 
     invalidArabicCompanyCandidate.test(candidate) ||
     invalidPromptedArabicCompanyAnswer.test(candidate) ||
     isNonArabicCompanyCandidate(candidate) ||
-    isArabicCountryCandidate(candidate)
+    isArabicCountryCandidate(candidate) ||
+    !isPromptedArabicCompanyShape(candidate)
   ) {
     return undefined
   }
