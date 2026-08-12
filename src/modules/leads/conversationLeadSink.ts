@@ -78,7 +78,7 @@ const nonCompanyWords = new Set([
   'yes',
 ])
 const invalidPromptedCompanyAnswer =
-  /^(?:(?:i|we|there)\b|(?:no|nope|none|not(?:\s+(?:applicable|sure))?|unknown|unsure|maybe|confidential|private|pass|refuse|refusal|decline|skip|undisclosed)\b|(?:better|prefer|rather)\s+not\s+(?:to\s+)?say\b|(?:cannot|can't|won't)\s+(?:disclose|say)\b|\b(?:do\s+not|don't|does\s+not|doesn't)\b)/i
+  /^(?:(?:i|we|there)\b|(?:no|nope|none|not(?:\s+(?:applicable|sure))?|unknown|unsure|maybe|confidential|private|pass|refuse|refusal|decline|skip|undisclosed)\b|(?:better|prefer|rather)\s+not\s+(?:to\s+)?(?:say|disclose)\b|(?:cannot|can't|won't)\s+(?:disclose|say)\b|\b(?:do\s+not|don't|does\s+not|doesn't)\b)/i
 const invalidPromptedCompanyMessage =
   /^(?:it\s+is\s+(?:confidential|private|unknown)\b|not\s+applicable\b|(?:better|prefer|rather)\s+not\s+(?:to\s+)?say\b|(?:cannot|can't|won't)\s+(?:disclose|say)\b)/i
 // prettier-ignore
@@ -86,7 +86,7 @@ const arabicCompanyCandidate =
   /(?:اسم\s+الشركة|(?:نحن\s+)?شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80}?)(?=\s+(?:في\s+(?:الإمارات(?:\s+العربية\s+المتحدة)?|السعودية|المملكة\s+العربية\s+السعودية|قطر|الكويت|عمان|البحرين)|و?(?:المشروع|مرحلة|نحتاج|نريد|لدينا|الكمية|المساحة|التصميم|المناقصة))|[\n،,.!?؟]|$)/
 const invalidArabicCompanyCandidate = /^(?:في|المشروع|مشروع|مرحلة|المناقصة|مناقصة)(?:\s|$)/
 const invalidPromptedArabicCompanyAnswer =
-  /^(?:أنا|انا|نحن|هو|هي|لا|ليس|ليست|لست|لسنا|غير\s+معروف|ربما|أفضل\s+عدم\s+القول|أرفض|ارفض|رفض|الرفض|تخطي|التخطي|امتنع|الامتناع|سري|سرية|السرية|خاص|الخاص|مجهول|المجهول)(?:\s|$)/
+  /^(?:أنا|انا|نحن|هو|هي|لا|ليس|ليست|لست|لسنا|غير\s+معروف|ربما|أفضل\s+عدم\s+(?:القول|الإفصاح|الافصاح)|أرفض|ارفض|رفض|الرفض|تخطي|التخطي|امتنع|الامتناع|سري|سرية|السرية|خاص|الخاص|مجهول|المجهول)(?:\s|$)/
 const nonArabicCompanyWords = new Set([
   'اسم',
   'الشركة',

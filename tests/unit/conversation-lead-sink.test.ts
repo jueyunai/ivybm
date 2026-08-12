@@ -172,8 +172,11 @@ describe('conversation lead signal extraction', () => {
     ['en' as const, 'Better not to say.'],
     ['en' as const, 'Not applicable Inc.'],
     ['en' as const, 'Better not to say LLC.'],
+    ['en' as const, 'Rather Not Disclose LLC.'],
+    ['en' as const, 'Rather not to disclose LLC.'],
     ['en' as const, 'Nope LLC.'],
     ['ar' as const, 'أفضل عدم القول.'],
+    ['ar' as const, 'أفضل عدم الافصاح.'],
     ['ar' as const, 'الرفض.'],
     ['ar' as const, 'السرية.'],
   ])('keeps %s refusal %s out of authoritative company scoring', async (locale, refusal) => {
