@@ -43,25 +43,39 @@ const nonCompanyWords = new Set([
   'the',
   'bid',
   'business',
+  'cannot',
   'company',
+  'confidential',
   'concept',
   'design',
+  'email',
   'factory',
   'for',
   'from',
   'in',
+  'idea',
+  'it',
+  'maybe',
   'my',
+  'no',
+  'none',
+  'not',
   'office',
   'our',
   'procurement',
   'project',
+  'private',
   'sales',
+  'say',
   'stage',
   'is',
   'team',
   'tender',
+  'there',
+  'unknown',
   'with',
   'workplace',
+  'yes',
 ])
 const invalidPromptedCompanyAnswer =
   /^(?:(?:i|we|there)\b|(?:no|none|not\s+sure|unknown|unsure|maybe|confidential|private|prefer\s+not\s+to\s+say|rather\s+not\s+say)\b)|\b(?:do\s+not|don't|does\s+not|doesn't)\b/i
@@ -108,7 +122,12 @@ const isNonArabicCompanyCandidate = (candidate: string): boolean =>
   candidate.split(/\s+/).every((word) => nonArabicCompanyWords.has(word))
 
 const validEnglishCompanyCandidate = (candidate: string | undefined): candidate is string =>
-  Boolean(candidate && !isNonCompanyCandidate(candidate) && !isCountryCandidate(candidate))
+  Boolean(
+    candidate &&
+    candidate.length <= 160 &&
+    !isNonCompanyCandidate(candidate) &&
+    !isCountryCandidate(candidate),
+  )
 
 const countryCandidateSource = [...countries]
   .sort((left, right) => right.length - left.length)
@@ -140,19 +159,15 @@ const extractAskedEnglishCompany = (session: ChatSession): string | undefined =>
   }
 
   if (
-    /^(?:i(?:'m|\s+(?:am|do|don't|have|work))\b|my\s+company\b|not\s+sure\b|we(?:'re|\s+(?:are|do|don't|have|work))\b)/i.test(
+    /^(?:budget\b|cannot\b|confidential\b|country\b|drawings?\b|email\b|i(?:'m|\s+(?:am|cannot|do|don't|have|prefer|work))\b|it\b|maybe\b|my\s+company\b|no\b|none\b|not\s+sure\b|phone\b|prefer\b|private\b|that\b|there\b|timeline\b|unknown\b|we(?:'re|\s+(?:are|cannot|do|don't|have|prefer|work))\b|within\b|yes\b)/i.test(
       message,
-    )
+    ) ||
+    /^\s*\d/i.test(message)
   ) {
     return undefined
   }
   const candidate = cleanCompanyCandidate(
-    message?.match(
-      new RegExp(
-        String.raw`^\s*${companyCandidate.source}(?=\s+(?:from|in)\s+(?:${countryCandidateSource})\b|[,.!?\n]|$)`,
-        'i',
-      ),
-    )?.[1],
+    message.match(new RegExp(String.raw`^\s*${companyCandidate.source}`, 'i'))?.[1],
   )
   if (!validEnglishCompanyCandidate(candidate) || invalidPromptedCompanyAnswer.test(candidate)) {
     return undefined

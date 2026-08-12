@@ -146,6 +146,27 @@ describe('conversation lead signal extraction', () => {
     expect(evaluation.score.reasons).toContain('company_identified')
   })
 
+  it('does not let a one-word refusal complete company scoring after qualification', async () => {
+    const session = sessionWith(
+      'en',
+      'We need 1000 sqm of aluminum panels in UAE at tender stage within 3 months. Drawings are ready. Budget is USD 400000. Email buyer@example.invalid.',
+    )
+    session.messages.push({
+      author: 'visitor',
+      content: 'Unknown.',
+      createdAt: '2026-08-12T00:01:00.000Z',
+      id: 'message-en-unknown',
+      status: 'sent',
+    })
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    const evaluation = await new PayloadConversationLeadSink().evaluate(session)
+
+    expect(evaluation.signals.company).toBeUndefined()
+    expect(evaluation.score.missingFields).toContain('company')
+    expect(evaluation.score.reasons).not.toContain('company_identified')
+  })
+
   it.each([
     'I am from UAE.',
     'I am from UAE. It is a tender for 1000 sqm. Email buyer@example.invalid.',
@@ -157,13 +178,46 @@ describe('conversation lead signal extraction', () => {
     'It is confidential.',
     'Prefer not to say.',
     'There is no company.',
+    'Unknown.',
+    'Confidential.',
+    'Yes.',
+    'Budget 500000.',
+    'Maybe.',
+    'Cannot disclose.',
+    'Private.',
+    'Phone.',
+    'Email.',
+    'Country.',
+    'Within 3 months.',
+    'I cannot disclose.',
+    'I prefer not to say.',
+    'That is confidential.',
     'We do not have one.',
     'My company is a company in UAE.',
+    '500 sqm.',
+    `${'A'.repeat(161)}.`,
   ])('does not infer a sentence fragment as a prompted company reply in %s', (content) => {
     const session = sessionWith('en', content)
     session.qualificationState = { askedFields: ['company'], roundCount: 1 }
 
     expect(extractLeadSignals(session).company).toBeUndefined()
+  })
+
+  it('bounds a prompted company answer before another qualification phrase', () => {
+    const session = sessionWith('en', 'Acme and we need panels.')
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    expect(extractLeadSignals(session).company).toBe('Acme')
+  })
+
+  it('extracts a grouped prompted company and country answer before later qualification details', () => {
+    const session = sessionWith(
+      'en',
+      'Acme Facades from UAE. It is a tender for 1,200 sqm within 3 months.',
+    )
+    session.qualificationState = { askedFields: ['country', 'company'], roundCount: 1 }
+
+    expect(extractLeadSignals(session).company).toBe('Acme Facades')
   })
 
   it.each(['I am from UAE.', 'I work at UAE.', 'I work at Saudi Arabia.'])(
