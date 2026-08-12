@@ -1,0 +1,370 @@
+import { createHash } from 'node:crypto'
+
+import { describe, expect, it, vi } from 'vitest'
+
+import { createFakeLinkedInImagePublishingAuthority } from '@/modules/platforms/linkedin/fakeImagePublishingAuthority'
+import {
+  executeLinkedInImagePublishingStage,
+  type LinkedInImagePublishingCheckpoint,
+  type LinkedInImagePublishingIntent,
+  type LinkedInImagePublishingLeaseFence,
+} from '@/modules/platforms/linkedin/imagePublishingExecution'
+import type {
+  LinkedInImageUploadTicket,
+  LinkedInPublishingTransport,
+} from '@/modules/platforms/linkedin/publishingOutbound'
+import {
+  ProviderPublicationResultUnknownError,
+  ProviderPublicationTransportError,
+} from '@/modules/platforms/publishingResult'
+
+const bytes = new Uint8Array([1, 2, 3, 4])
+const digest = createHash('sha256').update(bytes).digest('hex')
+const ticket: LinkedInImageUploadTicket = {
+  imageUrn: 'urn:li:image:abc_123',
+  sealedUpload: `v1.${'a'.repeat(16)}.${'b'.repeat(22)}.${'c'.repeat(24)}`,
+  uploadUrlExpiresAt: 1_900_000_000_000,
+}
+
+const checkpoint = (
+  overrides: Partial<LinkedInImagePublishingCheckpoint> = {},
+): LinkedInImagePublishingCheckpoint => ({
+  altText: 'Facade',
+  author: { kind: 'organization', organizationId: '971937765923229' },
+  commentary: 'Facade project update',
+  stage: 'scheduled',
+  ...overrides,
+})
+
+const intent = (
+  overrides: Partial<LinkedInImagePublishingIntent> = {},
+): LinkedInImagePublishingIntent => ({
+  asset: { byteLength: bytes.byteLength, contentType: 'image/png', id: 'asset-1', sha256: digest },
+  checkpoint: checkpoint(),
+  expectedRevision: 2,
+  idempotencyKey: 'publish-job-42-linkedin-image',
+  jobId: 42,
+  platform: 'linkedin',
+  platformAccountId: 19,
+  ...overrides,
+})
+
+const lease = (
+  overrides: Partial<LinkedInImagePublishingLeaseFence> = {},
+): LinkedInImagePublishingLeaseFence => ({
+  jobId: 42,
+  leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+  ownerToken: 'worker-a',
+  ...overrides,
+})
+
+const transport = (
+  overrides: Partial<LinkedInPublishingTransport> = {},
+): LinkedInPublishingTransport => ({
+  getPostStatus: vi.fn(),
+  initializeImageUpload: vi.fn(),
+  publishImagePost: vi.fn(),
+  publishTextPost: vi.fn(),
+  uploadImage: vi.fn(),
+  ...overrides,
+})
+
+const setup = (input = intent(), fence = lease()) => ({
+  authority: createFakeLinkedInImagePublishingAuthority({
+    initialIntents: [input],
+    initialJobLeases: [fence],
+  }),
+  fence,
+  input,
+})
+
+describe('LinkedIn staged image publication', () => {
+  it('initializes and checkpoints an encrypted upload ticket without asset bytes', async () => {
+    const state = setup()
+    const initializeImageUpload = vi.fn().mockResolvedValue(ticket)
+    const adapter = transport({ initializeImageUpload })
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: state.input,
+        leaseFence: state.fence,
+        transport: adapter,
+      }),
+    ).resolves.toMatchObject({
+      checkpoint: {
+        imageUrn: 'urn:li:image:abc_123',
+        stage: 'image_initialized',
+        uploadTicket: ticket,
+      },
+    })
+    expect(initializeImageUpload).toHaveBeenCalledTimes(1)
+    expect(state.authority.getIntent(42)).toMatchObject({
+      expectedRevision: 3,
+      checkpoint: { stage: 'image_initialized' },
+    })
+    expect(JSON.stringify(state.authority.getIntent(42))).not.toContain('[1,2,3,4]')
+  })
+
+  it('binds ephemeral bytes to the persisted asset digest before upload', async () => {
+    const input = intent({
+      checkpoint: checkpoint({
+        imageUrn: ticket.imageUrn,
+        stage: 'image_initialized',
+        uploadTicket: ticket,
+      }),
+    })
+    const state = setup(input)
+    const uploadImage = vi.fn().mockResolvedValue(undefined)
+    const adapter = transport({ uploadImage })
+    await expect(
+      executeLinkedInImagePublishingStage({
+        assetBytes: bytes,
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: adapter,
+      }),
+    ).resolves.toMatchObject({ checkpoint: { stage: 'image_uploaded' } })
+    expect(uploadImage).toHaveBeenCalledWith({
+      author: input.checkpoint.author,
+      bytes,
+      contentType: 'image/png',
+      ticket,
+    })
+    expect(state.authority.getIntent(42)?.checkpoint.uploadTicket).toBeUndefined()
+  })
+
+  it('compares checkpoint identity structurally instead of by object key order', async () => {
+    const input = intent({
+      checkpoint: {
+        uploadTicket: { ...ticket },
+        stage: 'image_initialized',
+        commentary: 'Facade project update',
+        imageUrn: ticket.imageUrn,
+        author: { organizationId: '971937765923229', kind: 'organization' },
+        altText: 'Facade',
+      },
+    })
+    const state = setup(input)
+    const uploadImage = vi.fn().mockResolvedValue(undefined)
+    await expect(
+      executeLinkedInImagePublishingStage({
+        assetBytes: bytes,
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: transport({ uploadImage }),
+      }),
+    ).resolves.toMatchObject({ checkpoint: { stage: 'image_uploaded' } })
+    expect(uploadImage).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    [new Uint8Array([1, 2, 3]), 'wrong length'],
+    [new Uint8Array([4, 3, 2, 1]), 'wrong digest'],
+  ])('blocks %s bytes before claim and network', async (assetBytes) => {
+    const input = intent({
+      checkpoint: checkpoint({
+        imageUrn: ticket.imageUrn,
+        stage: 'image_initialized',
+        uploadTicket: ticket,
+      }),
+    })
+    const state = setup(input)
+    const claim = vi.spyOn(state.authority, 'claimStage')
+    const uploadImage = vi.fn()
+    await expect(
+      executeLinkedInImagePublishingStage({
+        assetBytes,
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: transport({ uploadImage }),
+      }),
+    ).resolves.toMatchObject({ event: 'blocked' })
+    expect(claim).not.toHaveBeenCalled()
+    expect(uploadImage).not.toHaveBeenCalled()
+  })
+
+  it('publishes only from the persisted uploaded checkpoint', async () => {
+    const input = intent({
+      checkpoint: checkpoint({ imageUrn: ticket.imageUrn, stage: 'image_uploaded' }),
+    })
+    const state = setup(input)
+    const publishImagePost = vi.fn().mockResolvedValue({ postUrn: 'urn:li:share:123456789' })
+    const adapter = transport({ publishImagePost })
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: adapter,
+      }),
+    ).resolves.toMatchObject({
+      checkpoint: { postUrn: 'urn:li:share:123456789', stage: 'published' },
+    })
+    expect(publishImagePost).toHaveBeenCalledTimes(1)
+    expect(adapter.initializeImageUpload).not.toHaveBeenCalled()
+    expect(adapter.uploadImage).not.toHaveBeenCalled()
+  })
+
+  it('allows only one concurrent worker per stage', async () => {
+    let resolveInitialize: ((value: LinkedInImageUploadTicket) => void) | undefined
+    const initializeImageUpload = vi.fn().mockImplementation(
+      () =>
+        new Promise<LinkedInImageUploadTicket>((resolve) => {
+          resolveInitialize = resolve
+        }),
+    )
+    const state = setup()
+    const adapter = transport({ initializeImageUpload })
+    const first = executeLinkedInImagePublishingStage({
+      authority: state.authority,
+      intent: state.input,
+      leaseFence: state.fence,
+      transport: adapter,
+    })
+    await vi.waitFor(() => expect(initializeImageUpload).toHaveBeenCalledTimes(1))
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: state.input,
+        leaseFence: state.fence,
+        transport: adapter,
+      }),
+    ).resolves.toMatchObject({ errorCode: 'busy', event: 'blocked' })
+    expect(initializeImageUpload).toHaveBeenCalledTimes(1)
+    resolveInitialize?.(ticket)
+    await first
+  })
+
+  it('recovers a crashed post-I/O stage as unknown without replay', async () => {
+    const state = setup()
+    const claimed = await state.authority.claimStage(state.input, state.fence)
+    if (claimed.status !== 'claimed') throw new Error('expected claim')
+    await state.authority.markProviderIOStarted(claimed.claim)
+    state.authority.expireClaim(42)
+    const nextLease = lease({ ownerToken: 'worker-b' })
+    state.authority.setJobLease(nextLease)
+    const adapter = transport()
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: state.input,
+        leaseFence: nextLease,
+        transport: adapter,
+      }),
+    ).resolves.toMatchObject({ checkpoint: { stage: 'delivery_unknown' }, retryable: false })
+    expect(adapter.initializeImageUpload).not.toHaveBeenCalled()
+    expect(adapter.uploadImage).not.toHaveBeenCalled()
+    expect(adapter.publishImagePost).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when provider success cannot commit', async () => {
+    const state = setup()
+    state.authority.failNextCommit()
+    const initializeImageUpload = vi.fn().mockResolvedValue(ticket)
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: state.input,
+        leaseFence: state.fence,
+        transport: transport({ initializeImageUpload }),
+      }),
+    ).resolves.toMatchObject({ checkpoint: { stage: 'delivery_unknown' } })
+    expect(initializeImageUpload).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    [new ProviderPublicationResultUnknownError('unknown'), 'delivery_unknown'],
+    [new ProviderPublicationTransportError(), 'scheduled'],
+  ] as const)('maps provider error to %s', async (error, expectedStage) => {
+    const state = setup()
+    const initializeImageUpload = vi.fn().mockRejectedValue(error)
+    const promise = executeLinkedInImagePublishingStage({
+      authority: state.authority,
+      intent: state.input,
+      leaseFence: state.fence,
+      transport: transport({ initializeImageUpload }),
+    })
+    if (error instanceof ProviderPublicationTransportError) {
+      await expect(promise).rejects.toBeInstanceOf(ProviderPublicationTransportError)
+      expect(state.authority.getIntent(42)).toMatchObject({
+        checkpoint: { stage: expectedStage },
+        expectedRevision: 2,
+      })
+    } else {
+      await expect(promise).resolves.toMatchObject({ checkpoint: { stage: expectedStage } })
+    }
+  })
+
+  it('fails closed when a proven pre-I/O failure cannot atomically clear its fence', async () => {
+    const state = setup()
+    state.authority.failNextPreIORelease()
+    const initializeImageUpload = vi.fn().mockRejectedValue(new ProviderPublicationTransportError())
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: state.input,
+        leaseFence: state.fence,
+        transport: transport({ initializeImageUpload }),
+      }),
+    ).resolves.toMatchObject({ checkpoint: { stage: 'delivery_unknown' } })
+    expect(initializeImageUpload).toHaveBeenCalledTimes(1)
+  })
+
+  it.each<[string, Partial<LinkedInPublishingTransport>]>([
+    [
+      'malformed initialize ticket',
+      { initializeImageUpload: vi.fn().mockResolvedValue({} as never) },
+    ],
+    [
+      'malformed post URN',
+      {
+        publishImagePost: vi.fn().mockResolvedValue({ postUrn: 'not-a-linkedin-urn' } as never),
+      },
+    ],
+  ])('fails closed on %s from a typed transport', async (_label, overrides) => {
+    const input = overrides.publishImagePost
+      ? intent({ checkpoint: checkpoint({ imageUrn: ticket.imageUrn, stage: 'image_uploaded' }) })
+      : intent()
+    const state = setup(input)
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: transport(overrides),
+      }),
+    ).resolves.toMatchObject({ checkpoint: { stage: 'delivery_unknown' } })
+  })
+
+  it.each(['published', 'failed', 'delivery_unknown'] as const)(
+    'never claims or calls provider after terminal %s',
+    async (stage) => {
+      const input = intent({
+        checkpoint: checkpoint({
+          ...(stage === 'published'
+            ? { imageUrn: ticket.imageUrn, postUrn: 'urn:li:share:123456789' }
+            : {}),
+          stage,
+        }),
+      })
+      const state = setup(input)
+      const claim = vi.spyOn(state.authority, 'claimStage')
+      const adapter = transport()
+      await expect(
+        executeLinkedInImagePublishingStage({
+          authority: state.authority,
+          intent: input,
+          leaseFence: state.fence,
+          transport: adapter,
+        }),
+      ).resolves.toMatchObject({ changed: false })
+      expect(claim).not.toHaveBeenCalled()
+      expect(adapter.initializeImageUpload).not.toHaveBeenCalled()
+      expect(adapter.uploadImage).not.toHaveBeenCalled()
+      expect(adapter.publishImagePost).not.toHaveBeenCalled()
+    },
+  )
+})
