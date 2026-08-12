@@ -24,11 +24,14 @@ describe('publication queue jobs', () => {
     await expect(
       enqueuePublicationExecution({ publishJobId: 42, queue: { enqueue }, revision: 7 }),
     ).resolves.toMatchObject({ state: 'created' })
-    expect(enqueue).toHaveBeenCalledWith({
-      idempotencyKey: 'publication-execute:42:7',
-      maxAttempts: 2,
-      payload: { expectedExecutionRevision: 7, publishJobId: 42 },
-      type: PLATFORM_PUBLICATION_JOB_TYPE,
-    })
+    expect(enqueue).toHaveBeenCalledWith(
+      {
+        idempotencyKey: 'publication-execute:42:7',
+        maxAttempts: 2,
+        payload: { expectedExecutionRevision: 7, publishJobId: 42 },
+        type: PLATFORM_PUBLICATION_JOB_TYPE,
+      },
+      undefined,
+    )
   })
 })

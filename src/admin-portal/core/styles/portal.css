@@ -4499,6 +4499,17 @@
     grid-column: 1 / -1;
   }
 
+  .portal-content-studio__choice-field {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .portal-content-studio__choice-field legend {
+    margin-bottom: 6px;
+  }
+
   .portal-content-studio__multi-options {
     display: grid;
     max-height: 150px;

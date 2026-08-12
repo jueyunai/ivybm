@@ -35,8 +35,8 @@ export type MultiPlatformPublicationPlan = {
 export type PlannedPlatformPublication = {
   /** Persist and compare atomically when an existing derived key is loaded. */
   requestFingerprint: string
-  /** Persist as PublishJob.scheduledFor; execution remains immediate and user-triggered. */
-  scheduledFor: string
+  /** Server-recorded click time; persisted in the legacy required PublishJob.scheduledFor field. */
+  requestedAt: string
   snapshot: PlatformPublishExecutionSnapshot
 }
 
@@ -164,7 +164,7 @@ export const planMultiPlatformPublication = (
     })
     return {
       requestFingerprint: requestFingerprint(request),
-      scheduledFor: requestedAt,
+      requestedAt,
       snapshot: { ...request, status: 'scheduled' as const },
     }
   })

@@ -8,6 +8,7 @@ import {
   submitContentStudioReview,
   updateContentStudioDraft,
 } from '@/admin-portal/modules/content-studio/contentStudioCommands'
+import { publishContentStudioNow } from '@/admin-portal/modules/content-studio/publishContentStudio'
 import {
   authorizeContentStudioRequest,
   contentStudioErrorResponse,
@@ -100,6 +101,15 @@ export async function POST(request: NextRequest, { params }: Context): Promise<R
           ),
         },
         { status: 201 },
+      )
+    if (input.action === 'publish-now')
+      return contentStudioJSON(
+        {
+          publication: await command((transactionReq) =>
+            publishContentStudioNow({ id, input, payload, req: transactionReq }),
+          ),
+        },
+        { status: 202 },
       )
     return contentStudioJSON(
       { error: { code: 'content-studio-invalid-action', message: 'Unsupported content action' } },

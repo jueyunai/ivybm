@@ -1,4 +1,4 @@
-import type { Payload } from 'payload'
+import type { Payload, PayloadRequest } from 'payload'
 
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import type { ClaimedJob, JobExecution, JobHandler } from '@/modules/jobs/contracts'
@@ -141,21 +141,26 @@ export const enqueuePublicationExecution = async ({
   nextRunAt,
   publishJobId,
   queue,
+  req,
   revision,
 }: {
   nextRunAt?: Date
   publishJobId: number
   queue: PublicationJobQueue
+  req?: PayloadRequest
   revision: number
 }) =>
-  queue.enqueue({
-    idempotencyKey: `publication-execute:${publishJobId}:${revision}`,
-    // One retry is allowed only when the platform executor proves provider I/O never began.
-    maxAttempts: 2,
-    ...(nextRunAt ? { nextRunAt } : {}),
-    payload: { expectedExecutionRevision: revision, publishJobId },
-    type: PLATFORM_PUBLICATION_JOB_TYPE,
-  })
+  queue.enqueue(
+    {
+      idempotencyKey: `publication-execute:${publishJobId}:${revision}`,
+      // One retry is allowed only when the platform executor proves provider I/O never began.
+      maxAttempts: 2,
+      ...(nextRunAt ? { nextRunAt } : {}),
+      payload: { expectedExecutionRevision: revision, publishJobId },
+      type: PLATFORM_PUBLICATION_JOB_TYPE,
+    },
+    req,
+  )
 
 const scheduleContinuation = async (
   job: PublishJob,

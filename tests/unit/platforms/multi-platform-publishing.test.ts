@@ -56,7 +56,7 @@ describe('multi-platform publication orchestration', () => {
       expect.stringMatching(/^[a-f0-9]{64}$/),
       expect.stringMatching(/^[a-f0-9]{64}$/),
     ])
-    expect(first.commands.map(({ scheduledFor }) => scheduledFor)).toEqual([
+    expect(first.commands.map(({ requestedAt }) => requestedAt)).toEqual([
       '2026-08-12T15:00:00.000Z',
       '2026-08-12T15:00:00.000Z',
       '2026-08-12T15:00:00.000Z',
