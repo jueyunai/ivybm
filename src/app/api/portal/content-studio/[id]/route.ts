@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 
 import { executePortalRouteCommand } from '@/admin-portal/core/commands/portalCommandReceipts'
 import {
+  adoptContentStudioImage,
   deleteContentStudioDraft,
   reviewContentStudioDraft,
   scheduleContentStudioPublication,
@@ -84,6 +85,12 @@ export async function POST(request: NextRequest, { params }: Context): Promise<R
       return contentStudioJSON({
         content: await command((transactionReq) =>
           submitContentStudioReview({ id, input, payload, req: transactionReq }),
+        ),
+      })
+    if (input.action === 'adopt-image')
+      return contentStudioJSON({
+        content: await command((transactionReq) =>
+          adoptContentStudioImage({ id, input, payload, req: transactionReq }),
         ),
       })
     if (input.action === 'review')

@@ -234,6 +234,91 @@ test('Content Studio deletes an unreviewed draft through the Portal command', as
   }
 })
 
+test('Content Studio generates, previews, and adopts an image through protected commands', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ height: 960, width: 1440 })
+  if (!(await login(page))) return
+
+  const title = `Portal image draft ${Date.now()}-${testInfo.workerIndex}`
+  let contentID: number | string | null = null
+  let updatedAt: string | null = null
+  try {
+    await page.getByRole('button', { name: '新建草稿' }).click()
+    const editor = page.locator('.portal-content-studio__form').first()
+    await editor.getByLabel('工作标题').fill(title)
+    await editor.getByLabel('文案内容').fill('Draft for the controlled image adoption flow.')
+    const [createResponse] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/api/portal/content-studio')),
+      editor.getByRole('button', { name: '创建草稿' }).click(),
+    ])
+    const createBody = (await createResponse.json()) as { content?: { id?: number | string; updatedAt?: string } }
+    contentID = createBody.content?.id ?? null
+    updatedAt = createBody.content?.updatedAt ?? null
+    expect(contentID).not.toBeNull()
+
+    await page.route('**/api/portal/media', async (route) => {
+      expect(route.request().method()).toBe('POST')
+      expect(route.request().headers()['idempotency-key']).toMatch(/^portal-content-studio:image-upload:/)
+      await route.fulfill({
+        contentType: 'application/json',
+        json: { result: { id: 9191, mimeType: 'image/png', previewUrl: '/api/media/file/fixture-reference.png' } },
+        status: 201,
+      })
+    })
+    await page.route('**/api/portal/content-studio/generate-image', async (route) => {
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      expect(body).toMatchObject({ prompt: 'Create an anodized facade hero image', referenceMediaId: 9191, size: '1536x1024' })
+      await route.fulfill({
+        contentType: 'application/json',
+        json: {
+          media: { id: 9181, mimeType: 'image/png', previewUrl: '/api/media/file/fixture-generated.png' },
+          revisedPrompt: 'Controlled fixture prompt',
+        },
+        status: 201,
+      })
+    })
+    await page.route(`**/api/portal/content-studio/${String(contentID)}`, async (route) => {
+      if (route.request().method() !== 'POST') return route.continue()
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      expect(body).toEqual({ action: 'adopt-image', mediaId: 9181, updatedAt })
+      await route.fulfill({
+        contentType: 'application/json',
+        json: { content: { id: contentID, status: 'draft', title, updatedAt } },
+        status: 200,
+      })
+    })
+    await page.route(/\/api\/media\/file\/fixture-(generated|reference)\.png$/, (route) => route.fulfill({
+      body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Wl9sAAAAASUVORK5CYII=', 'base64'),
+      contentType: 'image/png',
+      status: 200,
+    }))
+
+    await page.getByRole('button', { name: '生成草稿' }).click()
+    await page.getByRole('button', { name: '图片生成' }).click()
+    await page.getByLabel('图片提示词').fill('Create an anodized facade hero image')
+    await page.getByLabel('图片尺寸').selectOption('1536x1024')
+    await page.getByLabel('上传参考图').setInputFiles({
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Wl9sAAAAASUVORK5CYII=', 'base64'),
+      mimeType: 'image/png',
+      name: 'fixture-reference.png',
+    })
+    await page.getByRole('button', { exact: true, name: '上传参考图' }).click()
+    await expect(page.getByRole('img', { name: '参考图预览' })).toBeVisible()
+    await page.getByRole('button', { name: '生成图片' }).click()
+    await expect(page.getByRole('img', { name: '生成图片预览' })).toBeVisible()
+    await expect(page.getByText('Controlled fixture prompt')).toBeVisible()
+    await page.getByLabel('目标草稿').selectOption(String(contentID))
+    await page.getByRole('button', { name: '采用为草稿资产' }).click()
+    await expect(page.getByText('图片已采用为草稿资产。')).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440)
+  } finally {
+    if (contentID !== null && updatedAt) {
+      await page.request.delete(`/api/portal/content-studio/${contentID}`, { data: { updatedAt } }).catch(() => undefined)
+    }
+  }
+})
+
 test('mobile Content Studio keeps the workspace within 390px', async ({ page }, testInfo) => {
   await page.setViewportSize({ height: 844, width: 390 })
   if (!(await login(page))) return

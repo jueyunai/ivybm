@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PayloadRequest } from 'payload'
 
 import {
+  adoptContentStudioImage,
   ContentStudioCommandError,
   createContentStudioDraft,
   deleteContentStudioDraft,
@@ -206,7 +207,9 @@ describe('Portal Content Studio draft commands', () => {
           filename: file.name,
           id: 81,
           mimeType: file.mimetype,
+          sizes: { card: { url: '/media/generated-card.png' } },
           updatedAt: '2026-08-12T10:00:00.000Z',
+          url: '/media/generated.png',
         }
       }
       return { id: 901 }
@@ -239,7 +242,12 @@ describe('Portal Content Studio draft commands', () => {
         resolveGateway: resolveGateway as any,
       }),
     ).resolves.toMatchObject({
-      media: { id: 81, isPublic: false, mimeType: 'image/png' },
+      media: {
+        id: 81,
+        isPublic: false,
+        mimeType: 'image/png',
+        previewUrl: '/media/generated-card.png',
+      },
       model: 'image-model',
       provider: 'configured-provider',
       revisedPrompt: 'Refined facade image',
@@ -290,6 +298,85 @@ describe('Portal Content Studio draft commands', () => {
     )
     expect(resolveGateway).not.toHaveBeenCalled()
     expect(payload.create).not.toHaveBeenCalled()
+  })
+
+  it('adopts one readable image into a current draft without duplicating the relation', async () => {
+    const draft = {
+      assets: [4, { id: 5 }],
+      id: 71,
+      status: 'draft',
+      title: input.title,
+      updatedAt: '2026-08-12T10:00:00.000Z',
+    }
+    const update = vi.fn().mockResolvedValue({
+      ...draft,
+      assets: [4, 5, 81],
+      updatedAt: '2026-08-12T10:01:00.000Z',
+    })
+    const findByID = vi.fn(async ({ collection }: { collection: string }) =>
+      collection === 'generated-contents'
+        ? draft
+        : { id: 81, filename: 'generated.png', mimeType: 'image/png' },
+    )
+
+    await expect(adoptContentStudioImage({
+      id: 71,
+      input: { mediaId: 81, updatedAt: draft.updatedAt },
+      payload: { findByID, update } as any,
+      req,
+    })).resolves.toMatchObject({ id: 71, status: 'draft', updatedAt: '2026-08-12T10:01:00.000Z' })
+
+    expect(findByID).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      collection: 'media',
+      id: 81,
+      overrideAccess: false,
+      req,
+    }))
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      collection: 'generated-contents',
+      data: { assets: [4, 5, 81] },
+      id: 71,
+      overrideAccess: false,
+      req,
+    }))
+
+    findByID.mockClear()
+    update.mockClear()
+    await expect(adoptContentStudioImage({
+      id: 71,
+      input: { mediaId: 5, updatedAt: draft.updatedAt },
+      payload: { findByID, update } as any,
+      req,
+    })).resolves.toMatchObject({ id: 71, updatedAt: draft.updatedAt })
+    expect(findByID).toHaveBeenCalledTimes(2)
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('rejects stale, non-draft, unreadable, and non-image adoption targets', async () => {
+    const draft = { assets: [], id: 71, status: 'draft', updatedAt: 'current' }
+    const run = (content: Record<string, unknown>, media: unknown, updatedAt = 'current') =>
+      adoptContentStudioImage({
+        id: 71,
+        input: { mediaId: 81, updatedAt },
+        payload: {
+          findByID: vi.fn(async ({ collection }: { collection: string }) => {
+            if (collection === 'generated-contents') return content
+            if (media instanceof Error) throw media
+            return media
+          }),
+          update: vi.fn(),
+        } as any,
+        req,
+      })
+
+    await expect(run(draft, { filename: 'image.png', mimeType: 'image/png' }, 'stale'))
+      .rejects.toMatchObject({ code: 'content-studio-stale', status: 409 })
+    await expect(run({ ...draft, status: 'review' }, { filename: 'image.png', mimeType: 'image/png' }))
+      .rejects.toMatchObject({ code: 'content-studio-invalid-transition', status: 409 })
+    await expect(run(draft, new Error('not readable')))
+      .rejects.toMatchObject({ code: 'content-studio-image-unavailable', status: 409 })
+    await expect(run(draft, { filename: 'document.pdf', mimeType: 'application/pdf' }))
+      .rejects.toMatchObject({ code: 'content-studio-image-unavailable', status: 409 })
   })
 
   it('rejects past internal schedules before creating a publish job', async () => {

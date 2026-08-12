@@ -425,6 +425,75 @@ export async function generateContentStudioImage({
   }
 }
 
+export async function adoptContentStudioImage({
+  id,
+  input: rawInput,
+  payload,
+  req,
+}: {
+  id: number
+  input: unknown
+  payload: ContentStudioPayload
+  req: PayloadRequest
+}) {
+  const input = asRecord(rawInput)
+  const mediaId = positiveID(input.mediaId, 'mediaId')
+  const updatedAt = revision(input.updatedAt)
+  const content = await findContent({ id, payload, req })
+  assertRevision(content, updatedAt)
+  if (content.status !== 'draft') {
+    throw new ContentStudioCommandError(
+      'content-studio-invalid-transition',
+      'Only drafts can adopt generated images',
+      409,
+    )
+  }
+
+  let media: LooseRecord
+  try {
+    media = await payload.findByID({
+      collection: 'media',
+      depth: 0,
+      id: mediaId,
+      overrideAccess: false,
+      req,
+    })
+  } catch {
+    throw new ContentStudioCommandError(
+      'content-studio-image-unavailable',
+      'The generated image is unavailable',
+      409,
+    )
+  }
+  const filename = typeof media.filename === 'string' ? media.filename : ''
+  const mimeType = typeof media.mimeType === 'string' ? media.mimeType : ''
+  if (
+    !filename ||
+    path.basename(filename) !== filename ||
+    !CONTENT_STUDIO_REFERENCE_MIME_TYPES.includes(mimeType as AiImageMimeType)
+  ) {
+    throw new ContentStudioCommandError(
+      'content-studio-image-unavailable',
+      'The generated image is unavailable',
+      409,
+    )
+  }
+
+  const assets = [...new Set((Array.isArray(content.assets) ? content.assets : [])
+    .map(asRelationID)
+    .filter((assetId): assetId is number => assetId !== null))]
+  if (assets.includes(mediaId)) return asContentResult(content)
+  const updated = await payload.update({
+    collection: 'generated-contents',
+    context: internalContext,
+    data: { assets: [...assets, mediaId] },
+    id,
+    overrideAccess: false,
+    req,
+  })
+  return asContentResult(updated)
+}
+
 type ContentStudioGenerationInput = {
   assets: number[]
   brief: string

@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -11,9 +12,11 @@ import {
   IconChecks,
   IconFileDownload,
   IconPlus,
+  IconPhoto,
   IconSend,
   IconSparkles,
   IconTrash,
+  IconUpload,
 } from '@tabler/icons-react'
 
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
@@ -144,9 +147,11 @@ export function ContentStudio({
         <Surface as="section" className="portal-content-studio__editor">
           <GenerateDraftEditor
             copy={copy}
+            drafts={summary.items.filter((item) => item.status === 'draft')}
             options={summary.options}
             onClose={() => setGenerator(false)}
             onDone={onDone}
+            selectedDraftId={selected?.status === 'draft' ? selected.id : null}
           />
         </Surface>
       ) : null}
@@ -254,6 +259,7 @@ const request = async (
   method: 'DELETE' | 'PATCH' | 'POST',
   body: Record<string, unknown>,
   onResponse?: () => void,
+  idempotencyKey?: string,
 ) => {
   const response = await fetch(url, {
     body: JSON.stringify(body),
@@ -261,9 +267,9 @@ const request = async (
     headers: {
       'content-type': 'application/json',
       'Idempotency-Key':
-        typeof body.idempotencyKey === 'string'
+        idempotencyKey ?? (typeof body.idempotencyKey === 'string'
           ? body.idempotencyKey
-          : `portal-content-studio:${crypto.randomUUID()}`,
+          : `portal-content-studio:${crypto.randomUUID()}`),
     },
     method,
   })
@@ -713,15 +719,20 @@ function DraftEditor({
 
 function GenerateDraftEditor({
   copy,
+  drafts,
   onClose,
   onDone,
   options,
+  selectedDraftId,
 }: {
   copy: Copy
+  drafts: ContentStudioItem[]
   onClose: () => void
   onDone: (message: string) => void
   options: ContentStudioSummary['options']
+  selectedDraftId: null | number
 }) {
+  const [mode, setMode] = useState<'copy' | 'image'>('copy')
   const command = usePortalCommandKey('portal-content-studio:generate')
   const [form, setForm] = useState({
     assets: [] as string[],
@@ -770,6 +781,25 @@ function GenerateDraftEditor({
         </Button>
       </header>
       {error ? <p role="alert">{error}</p> : null}
+      <div aria-label={copy.generationMode} className="portal-content-studio__generation-modes">
+        <Button aria-pressed={mode === 'copy'} onClick={() => setMode('copy')} size="compact" variant={mode === 'copy' ? 'primary' : 'ghost'}>
+          {copy.copyGeneration}
+        </Button>
+        <Button aria-pressed={mode === 'image'} onClick={() => setMode('image')} size="compact" variant={mode === 'image' ? 'primary' : 'ghost'}>
+          <IconPhoto aria-hidden="true" size={15} />
+          {copy.imageGeneration}
+        </Button>
+      </div>
+      {mode === 'image' ? (
+        <ImageGenerationEditor
+          copy={copy}
+          drafts={drafts}
+          onDone={onDone}
+          options={options}
+          selectedDraftId={selectedDraftId}
+        />
+      ) : (
+        <>
       <p className="portal-content-studio__generation-note">{copy.generationDescription}</p>
       <div className="portal-content-studio__form-grid">
         <Field label={copy.brief} wide>
@@ -841,7 +871,218 @@ function GenerateDraftEditor({
           {copy.generate}
         </Button>
       </footer>
+        </>
+      )}
     </div>
+  )
+}
+
+type GeneratedImage = {
+  id: number
+  previewUrl: string
+  revisedPrompt: null | string
+}
+
+function ImageGenerationEditor({
+  copy,
+  drafts,
+  onDone,
+  options,
+  selectedDraftId,
+}: {
+  copy: Copy
+  drafts: ContentStudioItem[]
+  onDone: (message: string) => void
+  options: ContentStudioSummary['options']
+  selectedDraftId: null | number
+}) {
+  const imageOptions = options.assets.filter((asset) => asset.meta?.startsWith('image/'))
+  const generateCommand = usePortalCommandKey('portal-content-studio:image-generate')
+  const uploadCommand = usePortalCommandKey('portal-content-studio:image-upload')
+  const adoptCommand = usePortalCommandKey('portal-content-studio:image-adopt')
+  const [prompt, setPrompt] = useState('')
+  const [size, setSize] = useState<'1024x1024' | '1024x1536' | '1536x1024'>('1024x1024')
+  const [referenceMediaId, setReferenceMediaId] = useState<number | null>(null)
+  const [uploadedReference, setUploadedReference] = useState<ContentStudioSummary['options']['assets'][number] | null>(null)
+  const [referenceFile, setReferenceFile] = useState<File | null>(null)
+  const [targetDraftId, setTargetDraftId] = useState<number | null>(selectedDraftId ?? drafts[0]?.id ?? null)
+  const [generated, setGenerated] = useState<GeneratedImage | null>(null)
+  const [busy, setBusy] = useState<'adopt' | 'generate' | 'upload' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const references = uploadedReference
+    ? [uploadedReference, ...imageOptions.filter((asset) => asset.id !== uploadedReference.id)]
+    : imageOptions
+  const reference = references.find((asset) => asset.id === referenceMediaId) ?? null
+  const targetDraft = drafts.find((draft) => draft.id === targetDraftId) ?? null
+
+  const upload = async () => {
+    if (!referenceFile) return
+    setBusy('upload')
+    setError(null)
+    const fingerprint = JSON.stringify({
+      alt: prompt.trim() || referenceFile.name,
+      lastModified: referenceFile.lastModified,
+      name: referenceFile.name,
+      size: referenceFile.size,
+      type: referenceFile.type,
+    })
+    const key = uploadCommand.key(fingerprint)
+    try {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(referenceFile.type) || referenceFile.size > 8 * 1024 * 1024) {
+        throw new Error(copy.referenceInvalid)
+      }
+      const form = new FormData()
+      form.set('alt', prompt.trim() || referenceFile.name)
+      form.set('source', 'Content Studio protected reference upload')
+      form.set('isPublic', 'false')
+      form.set('file', referenceFile)
+      const response = await fetch('/api/portal/media', {
+        body: form,
+        headers: { 'Idempotency-Key': key },
+        method: 'POST',
+      })
+      const body = (await response.json()) as {
+        error?: { message?: string }
+        result?: { id?: number; mimeType?: null | string; previewUrl?: null | string }
+      }
+      if (!response.ok || typeof body.result?.id !== 'number') {
+        uploadCommand.receivedResponse(key)
+        throw new Error(body.error?.message || copy.unknown)
+      }
+      uploadCommand.receivedResponse(key)
+      const uploaded = {
+        id: body.result.id,
+        label: referenceFile.name,
+        meta: body.result.mimeType ?? referenceFile.type,
+        previewUrl: body.result.previewUrl ?? null,
+      }
+      setUploadedReference(uploaded)
+      setReferenceMediaId(uploaded.id)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : copy.unknown)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const generate = async () => {
+    const input = { prompt: prompt.trim(), referenceMediaId, size }
+    const key = generateCommand.key(JSON.stringify(input))
+    setBusy('generate')
+    setError(null)
+    try {
+      const response = await fetch('/api/portal/content-studio/generate-image', {
+        body: JSON.stringify(input),
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json', 'Idempotency-Key': key },
+        method: 'POST',
+      })
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string }
+        media?: { id?: number; previewUrl?: null | string }
+        revisedPrompt?: null | string
+      }
+      if (!response.ok) {
+        if (body.error?.code !== 'portal-command-result-unknown') {
+          generateCommand.receivedResponse(key)
+        }
+        throw new Error(body.error?.message || copy.unknown)
+      }
+      if (typeof body.media?.id !== 'number' || !body.media.previewUrl) {
+        throw new Error(copy.imagePreviewUnavailable)
+      }
+      generateCommand.receivedResponse(key)
+      setGenerated({ id: body.media.id, previewUrl: body.media.previewUrl, revisedPrompt: body.revisedPrompt ?? null })
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : copy.unknown)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const adopt = async () => {
+    if (!generated || !targetDraft) return
+    const input = { action: 'adopt-image', mediaId: generated.id, updatedAt: targetDraft.updatedAt }
+    const key = adoptCommand.key(JSON.stringify({ id: targetDraft.id, ...input }))
+    setBusy('adopt')
+    setError(null)
+    try {
+      await request(
+        `/api/portal/content-studio/${targetDraft.id}`,
+        'POST',
+        input,
+        () => adoptCommand.receivedResponse(key),
+        key,
+      )
+      onDone(copy.imageAdopted)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : copy.unknown)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <section className="portal-content-studio__image-editor">
+      {error ? <p role="alert">{error}</p> : null}
+      <p className="portal-content-studio__generation-note">{copy.imageGenerationDescription}</p>
+      <div className="portal-content-studio__form-grid">
+        <Field label={copy.imagePrompt} wide>
+          <textarea maxLength={2000} onChange={(event) => { setPrompt(event.target.value); setGenerated(null) }} rows={5} value={prompt} />
+        </Field>
+        <Field label={copy.imageSize}>
+          <select onChange={(event) => { setSize(event.target.value as typeof size); setGenerated(null) }} value={size}>
+            <option value="1024x1024">1024 × 1024</option>
+            <option value="1536x1024">1536 × 1024</option>
+            <option value="1024x1536">1024 × 1536</option>
+          </select>
+        </Field>
+        <Field label={copy.referenceAsset}>
+          <select onChange={(event) => { setReferenceMediaId(event.target.value ? Number(event.target.value) : null); setGenerated(null) }} value={referenceMediaId ?? ''}>
+            <option value="">{copy.noReference}</option>
+            {references.map((asset) => <option key={asset.id} value={asset.id}>{asset.label}</option>)}
+          </select>
+        </Field>
+        <div className="portal-content-studio__upload-field is-wide">
+          <label htmlFor="content-studio-reference-upload">{copy.uploadReference}</label>
+          <div className="portal-content-studio__image-upload">
+            <input accept="image/jpeg,image/png,image/webp" disabled={busy !== null} id="content-studio-reference-upload" onChange={(event) => setReferenceFile(event.target.files?.[0] ?? null)} type="file" />
+            <Button disabled={busy !== null || !referenceFile} onClick={() => void upload()} size="compact" variant="secondary">
+              <IconUpload aria-hidden="true" size={15} />
+              {copy.uploadReference}
+            </Button>
+          </div>
+        </div>
+      </div>
+      {reference?.previewUrl ? (
+        <div className="portal-content-studio__image-preview is-reference">
+          <Image alt={copy.referencePreview} height={240} src={reference.previewUrl} unoptimized width={320} />
+        </div>
+      ) : null}
+      <footer>
+        <Button disabled={busy !== null || !prompt.trim()} onClick={() => void generate()}>
+          <IconSparkles aria-hidden="true" size={16} />
+          {copy.generateImage}
+        </Button>
+      </footer>
+      {generated ? (
+        <section className="portal-content-studio__generated-image">
+          <div className="portal-content-studio__image-preview">
+            <Image alt={copy.generatedPreview} height={512} src={generated.previewUrl} unoptimized width={512} />
+          </div>
+          {generated.revisedPrompt ? <p>{generated.revisedPrompt}</p> : null}
+          <Field label={copy.targetDraft}>
+            <select onChange={(event) => setTargetDraftId(event.target.value ? Number(event.target.value) : null)} value={targetDraftId ?? ''}>
+              <option value="">{copy.selectDraft}</option>
+              {drafts.map((draft) => <option key={draft.id} value={draft.id}>{draft.title}</option>)}
+            </select>
+          </Field>
+          <Button disabled={busy !== null || !targetDraft} onClick={() => void adopt()}>
+            {copy.adoptImage}
+          </Button>
+        </section>
+      ) : null}
+    </section>
   )
 }
 

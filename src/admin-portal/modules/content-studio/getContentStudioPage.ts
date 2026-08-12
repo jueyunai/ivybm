@@ -1,6 +1,7 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
 import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
+import { mediaPreviewUrl } from '@/admin-portal/modules/media/mediaUrls'
 
 import type {
   ContentStudioPlatform,
@@ -23,7 +24,13 @@ export type ContentStudioQuery = {
   status: ContentStudioStatusFilter
 }
 
-export type ContentStudioOption = { id: number; label: string; meta?: string; reference?: string }
+export type ContentStudioOption = {
+  id: number
+  label: string
+  meta?: string
+  previewUrl?: null | string
+  reference?: string
+}
 export type ContentStudioSourceReference = { claim: string; source: string }
 export type ContentStudioReview = {
   comments: string | null
@@ -84,11 +91,13 @@ const relationOptions = (value: unknown): ContentStudioOption[] => {
     const sourceTitle = stringValue(record.sourceTitle)
     const sourceVersion = stringValue(record.sourceVersion)
     const sourceURL = stringValue(record.sourceURL)
+    const mimeType = stringValue(record.mimeType)
     return [
       {
         id,
         label: sourceTitle ?? stringValue(record.title) ?? stringValue(record.filename) ?? `#${id}`,
-        meta: stringValue(record.mimeType) ?? undefined,
+        meta: mimeType ?? undefined,
+        ...(mimeType?.startsWith('image/') ? { previewUrl: mediaPreviewUrl(record) } : {}),
         ...(sourceTitle && sourceVersion
           ? { reference: sourceURL ?? `${sourceTitle} v${sourceVersion}` }
           : {}),
@@ -182,8 +191,16 @@ export const loadContentStudioPageData = async ({
         overrideAccess: false,
         pagination: false,
         req,
-        select: { alt: true, filename: true, mimeType: true },
+        select: {
+          alt: true,
+          filename: true,
+          mimeType: true,
+          sizes: { card: true, thumbnail: true },
+          thumbnailURL: true,
+          url: true,
+        },
         sort: '-updatedAt',
+        where: { mimeType: { in: ['image/jpeg', 'image/png', 'image/webp'] } },
       }),
       payload.find({
         collection: 'knowledge-documents',
@@ -305,6 +322,7 @@ export const loadContentStudioPageData = async ({
             id: asset.id,
             label: stringValue(asset.alt) ?? stringValue(asset.filename) ?? `#${asset.id}`,
             meta: stringValue(asset.mimeType) ?? undefined,
+            previewUrl: mediaPreviewUrl(asset),
           })),
           knowledgeSources: knowledgeSources.docs.map((source) => ({
             id: source.id,

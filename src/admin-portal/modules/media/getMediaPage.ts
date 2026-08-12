@@ -4,6 +4,7 @@ import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/
 import { MEDIA_IMAGE_MAX_BYTES, MEDIA_MIME_TYPES, MEDIA_PDF_MAX_BYTES } from '@/collections/Media'
 
 import { MEDIA_MODULE } from './manifest'
+import { mediaPreviewUrl, safeMediaUrl } from './mediaUrls'
 
 export const MEDIA_KIND_FILTERS = ['all', 'image', 'pdf'] as const
 export const MEDIA_VISIBILITY_FILTERS = ['all', 'public', 'private'] as const
@@ -131,18 +132,6 @@ const buildWhere = (query: MediaQuery): Where => {
   return { and: clauses }
 }
 
-const safeMediaUrl = (value: null | string | undefined): null | string => {
-  if (!value || value.includes('\\')) return null
-  if (value.startsWith('/') && !value.startsWith('//')) return value
-
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null
-  } catch {
-    return null
-  }
-}
-
 const kindFor = (mimeType: null | string | undefined): MediaItemKind => {
   if (mimeType === 'application/pdf') return 'pdf'
   if (mimeType?.startsWith('image/')) return 'image'
@@ -152,11 +141,7 @@ const kindFor = (mimeType: null | string | undefined): MediaItemKind => {
 const mapMediaItem = (document: MediaProjection): MediaSummaryItem => {
   const kind = kindFor(document.mimeType)
   const originalUrl = safeMediaUrl(document.url)
-  const imagePreview =
-    safeMediaUrl(document.sizes?.card?.url) ??
-    safeMediaUrl(document.sizes?.thumbnail?.url) ??
-    safeMediaUrl(document.thumbnailURL) ??
-    originalUrl
+  const imagePreview = mediaPreviewUrl(document)
 
   return {
     alt: document.alt ?? '',

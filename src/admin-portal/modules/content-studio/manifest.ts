@@ -12,6 +12,7 @@ export const CONTENT_STUDIO_MODULE = definePortalModule({
   commands: [
     'content-studio:create',
     'content-studio:update',
+    'content-studio:adopt-image',
     'content-studio:submit-review',
     'content-studio:review',
     'content-studio:schedule',
