@@ -57,6 +57,14 @@ export type ChatMessage = {
 }
 
 export type ChatQualificationState = {
+  /** Company value captured while the company field was actually awaiting an answer. */
+  answeredCompany?: string
+  /**
+   * Fields asked in the latest AI reply and still awaiting the next visitor answer.
+   * Persisted sessions written before this state was introduced are hydrated as an empty array.
+   */
+  awaitingFields: import('@/modules/leads/score').LeadQualificationField[]
+  /** Cumulative fields already asked, used to avoid repeating qualification questions. */
   askedFields: import('@/modules/leads/score').LeadQualificationField[]
   roundCount: number
 }

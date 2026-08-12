@@ -123,6 +123,15 @@ export const Conversations: CollectionConfig = {
       access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
     },
     {
+      name: 'qualificationAnsweredCompany', type: 'text', maxLength: 160,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
+    {
+      name: 'qualificationAwaitingFields', type: 'select', hasMany: true,
+      options: ['country', 'company', 'projectStage', 'quantity', 'drawings', 'budget', 'timeline', 'contact'],
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
+    {
       name: 'summary', type: 'textarea', maxLength: 10_000,
       access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
     },

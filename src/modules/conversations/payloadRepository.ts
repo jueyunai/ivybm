@@ -61,18 +61,28 @@ const qualificationFields = new Set<ChatQualificationState['askedFields'][number
   'timeline',
 ])
 
-const qualificationState = (conversation: Conversation): ChatQualificationState => ({
-  askedFields: Array.isArray(conversation.qualificationAskedFields)
-    ? conversation.qualificationAskedFields.filter(
-        (field): field is ChatQualificationState['askedFields'][number] =>
-          qualificationFields.has(field as ChatQualificationState['askedFields'][number]),
-      )
-    : [],
-  roundCount:
-    typeof conversation.qualificationRoundCount === 'number'
-      ? Math.max(0, Math.min(3, conversation.qualificationRoundCount))
-      : 0,
-})
+const qualificationState = (conversation: Conversation): ChatQualificationState => {
+  const answeredCompany = conversation.qualificationAnsweredCompany?.trim()
+  return {
+    ...(answeredCompany ? { answeredCompany } : {}),
+    awaitingFields: Array.isArray(conversation.qualificationAwaitingFields)
+      ? conversation.qualificationAwaitingFields.filter(
+          (field): field is ChatQualificationState['askedFields'][number] =>
+            qualificationFields.has(field as ChatQualificationState['askedFields'][number]),
+        )
+      : [],
+    askedFields: Array.isArray(conversation.qualificationAskedFields)
+      ? conversation.qualificationAskedFields.filter(
+          (field): field is ChatQualificationState['askedFields'][number] =>
+            qualificationFields.has(field as ChatQualificationState['askedFields'][number]),
+        )
+      : [],
+    roundCount:
+      typeof conversation.qualificationRoundCount === 'number'
+        ? Math.max(0, Math.min(3, conversation.qualificationRoundCount))
+        : 0,
+  }
+}
 
 const isChatSession = (value: unknown): value is ChatSession => {
   if (!value || typeof value !== 'object') return false
@@ -548,7 +558,9 @@ export class PayloadConversationRepository implements ConversationRepository {
           intentLevel: 'unscored',
           locale: session.locale,
           publicId: String(session.id),
+          qualificationAnsweredCompany: null,
           qualificationAskedFields: [],
+          qualificationAwaitingFields: [],
           qualificationRoundCount: 0,
           revision: session.revision,
           requestId: session.requestId,
@@ -727,7 +739,10 @@ export class PayloadConversationRepository implements ConversationRepository {
               : {}),
             ...(mutation.qualificationState
               ? {
+                  qualificationAnsweredCompany:
+                    mutation.qualificationState.answeredCompany ?? null,
                   qualificationAskedFields: mutation.qualificationState.askedFields,
+                  qualificationAwaitingFields: mutation.qualificationState.awaitingFields,
                   qualificationRoundCount: mutation.qualificationState.roundCount,
                 }
               : {}),

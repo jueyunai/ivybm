@@ -128,6 +128,53 @@ type ConversationServiceOptions = {
 const defaultCreateId = (kind: 'event' | 'message' | 'request' | 'session'): string =>
   `${kind}-${crypto.randomUUID()}`
 
+const emptyQualificationState = (): ChatQualificationState => ({
+  askedFields: [],
+  awaitingFields: [],
+  roundCount: 0,
+})
+
+/**
+ * Old persisted sessions and third-party responders may omit the newly added
+ * awaiting list at runtime. Normalize at the service boundary so an undefined
+ * Payload update can never leave stale answer context in the database.
+ */
+const normalizeQualificationState = (
+  state: ChatQualificationState | undefined,
+): ChatQualificationState => {
+  const answeredCompany = state?.answeredCompany?.trim()
+  return {
+    ...(answeredCompany ? { answeredCompany } : {}),
+    askedFields: [...(state?.askedFields ?? [])],
+    awaitingFields: [...(state?.awaitingFields ?? [])],
+    roundCount: state?.roundCount ?? 0,
+  }
+}
+
+const consumeQualificationAnswerContext = (
+  state: ChatQualificationState | undefined,
+  evaluation: ConversationLeadEvaluation | undefined,
+): ChatQualificationState => {
+  const normalized = normalizeQualificationState(state)
+  const answeredCompany = evaluation?.signals.company?.trim() || normalized.answeredCompany
+  return {
+    ...(answeredCompany ? { answeredCompany } : {}),
+    askedFields: normalized.askedFields,
+    awaitingFields: [],
+    roundCount: normalized.roundCount,
+  }
+}
+
+const mergeQualificationState = (
+  consumed: ChatQualificationState,
+  next: ChatQualificationState | undefined,
+): ChatQualificationState =>
+  normalizeQualificationState({
+    ...consumed,
+    ...next,
+    answeredCompany: next?.answeredCompany ?? consumed.answeredCompany,
+  })
+
 type IdempotentSessionResult = {
   session: ChatSession
   state: 'claimed' | 'completed'
@@ -263,7 +310,7 @@ export const createConversationService = ({
         id: createId('session'),
         locale: input.locale,
         messages: [],
-        qualificationState: { askedFields: [], roundCount: 0 },
+        qualificationState: emptyQualificationState(),
         revision: 1,
         requestId: createId('request'),
       }
@@ -311,9 +358,14 @@ export const createConversationService = ({
       // the existing state-machine guard above, while later Meta messages remain
       // visible to the operator without inventing an outbound AI reply or transition.
       if (input.externalInbound && session.handoffStatus !== 'ai_active') {
+        const qualificationState = consumeQualificationAnswerContext(
+          session.qualificationState,
+          undefined,
+        )
+        session.qualificationState = qualificationState
         return repository.saveSession(
           session,
-          { base, ...(messageMetadata ? { messageMetadata } : {}) },
+          { base, qualificationState, ...(messageMetadata ? { messageMetadata } : {}) },
           claim,
         )
       }
@@ -321,11 +373,16 @@ export const createConversationService = ({
       let leadEvaluation = highRiskTopic
         ? await leadSink?.evaluate(session).catch(() => undefined)
         : await leadSink?.evaluate(session)
+      const consumedQualificationState = consumeQualificationAnswerContext(
+        session.qualificationState,
+        leadEvaluation,
+      )
+      session.qualificationState = consumedQualificationState
       if (highRiskTopic && leadEvaluation) {
         leadEvaluation = { ...leadEvaluation, handoffReason: 'high_risk_topic' }
       }
       let handoff: HandoffCreatedEvent | undefined
-      let qualificationState: ChatQualificationState | undefined
+      let qualificationState: ChatQualificationState = consumedQualificationState
       const handoffReason = highRiskTopic ? 'high_risk_topic' : leadEvaluation?.handoffReason
       if (handoffReason && session.handoffStatus === 'ai_active') {
         session.handoffStatus = await transition(session, 'request')
@@ -342,7 +399,7 @@ export const createConversationService = ({
           text,
           session,
           leadEvaluation?.score.missingFields,
-          session.qualificationState ?? { askedFields: [], roundCount: 0 },
+          consumedQualificationState,
         )
         if ('handoff' in reply) {
           if (leadEvaluation && !leadEvaluation.handoffReason) {
@@ -353,8 +410,11 @@ export const createConversationService = ({
           handoff = createHandoff(session, { ...reply.handoff, idempotencyKey: input.idempotencyKey })
         } else {
           appendAiReply(session, reply)
-          qualificationState = reply.qualificationState
-          if (qualificationState) session.qualificationState = qualificationState
+          qualificationState = mergeQualificationState(
+            consumedQualificationState,
+            reply.qualificationState,
+          )
+          session.qualificationState = qualificationState
         }
       }
       return repository.saveSession(
@@ -363,7 +423,7 @@ export const createConversationService = ({
           base,
           handoff,
           leadEvaluation,
-          ...(qualificationState ? { qualificationState } : {}),
+          qualificationState,
           ...(messageMetadata ? { messageMetadata } : {}),
         },
         claim,
@@ -469,6 +529,11 @@ export const createConversationService = ({
         let leadEvaluation = highRiskTopic
           ? await leadSink?.evaluate(session).catch(() => undefined)
           : await leadSink?.evaluate(session)
+        const consumedQualificationState = consumeQualificationAnswerContext(
+          session.qualificationState,
+          leadEvaluation,
+        )
+        session.qualificationState = consumedQualificationState
         if (highRiskTopic && leadEvaluation) {
           leadEvaluation = { ...leadEvaluation, handoffReason: 'high_risk_topic' }
         }
@@ -478,10 +543,10 @@ export const createConversationService = ({
               message.content,
               session,
               leadEvaluation?.score.missingFields,
-              session.qualificationState ?? { askedFields: [], roundCount: 0 },
+              consumedQualificationState,
             )
         let handoff: HandoffCreatedEvent | undefined
-        let qualificationState: ChatQualificationState | undefined
+        let qualificationState: ChatQualificationState = consumedQualificationState
         if ('handoff' in reply) {
           if (leadEvaluation && !leadEvaluation.handoffReason) {
             leadEvaluation = { ...leadEvaluation, handoffReason: reply.handoff.reason }
@@ -491,12 +556,15 @@ export const createConversationService = ({
           handoff = createHandoff(session, { ...reply.handoff, idempotencyKey: input.idempotencyKey })
         } else {
           appendAiReply(session, reply)
-          qualificationState = reply.qualificationState
-          if (qualificationState) session.qualificationState = qualificationState
+          qualificationState = mergeQualificationState(
+            consumedQualificationState,
+            reply.qualificationState,
+          )
+          session.qualificationState = qualificationState
         }
         return repository.saveSession(
           session,
-          { base, handoff, leadEvaluation, ...(qualificationState ? { qualificationState } : {}) },
+          { base, handoff, leadEvaluation, qualificationState },
           claim,
         )
       })
