@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto'
 
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { getPayload, type Payload } from 'payload'
 
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
+import { JobWorker } from '@/modules/jobs/worker'
 import { PayloadPlatformPublicationAuthority } from '@/modules/platforms/payloadPublishingAuthority'
+import {
+  createPlatformPublicationJobHandler,
+  PLATFORM_PUBLICATION_JOB_TYPE,
+} from '@/modules/platforms/publicationJobs'
 import type {
   PlatformPublicationIntent,
   PlatformPublicationLeaseFence,
@@ -82,9 +87,9 @@ const createIntentAndLease = async () => {
   const queue = new PayloadJobQueue({ payload })
   const queued = await queue.enqueue({
     idempotencyKey: `publication-execute:${publishJob.id}:0`,
-    maxAttempts: 1,
-    payload: { publishJobId: publishJob.id },
-    type: 'platform.publication.execute',
+    maxAttempts: 2,
+    payload: { expectedExecutionRevision: 0, publishJobId: publishJob.id },
+    type: PLATFORM_PUBLICATION_JOB_TYPE,
   })
   jobIDs.push(queued.job.id)
   const claimed = await queue.claimNext()
@@ -220,5 +225,115 @@ describe.sequential('Task 13 Payload publication authority', () => {
       overrideAccess: true,
     })
     expect(stored).toMatchObject({ claimId: null, executionRevision: 0, status: 'scheduled' })
+  })
+
+  it('runs a claimed Jobs record through the worker, dispatcher, and Payload CAS exactly once', async () => {
+    const suffix = randomUUID()
+    const content = await payload.create({
+      collection: 'generated-contents',
+      context: contentStudioInternalWriteContext,
+      data: {
+        body: 'Worker publication update',
+        contentLocale: 'en',
+        contentType: 'post',
+        createdBy: admin.id,
+        creationFingerprint: 'c'.repeat(64),
+        idempotencyKey: `publishing-worker-content:${suffix}`,
+        platform: 'facebook',
+        status: 'approved',
+        title: 'Worker publication fixture',
+      },
+      overrideAccess: true,
+    })
+    contentIDs.push(content.id)
+    const requestSnapshot = {
+      assets: [
+        {
+          fileName: 'facade.jpg',
+          id: 'asset-1',
+          mimeType: 'image/jpeg',
+          sourceUrl: 'https://media.example.invalid/facade.jpg',
+        },
+      ],
+      idempotencyKey: `publish:v1:${suffix.replaceAll('-', '')}:facebook`,
+      platform: 'facebook',
+      platformAccountId: account.id,
+      status: 'scheduled',
+      text: 'Worker publication update',
+    }
+    const publishJob = await payload.create({
+      collection: 'publish-jobs',
+      context: contentStudioInternalWriteContext,
+      data: {
+        authorizationRevision: account.authorizationRevision,
+        content: content.id,
+        createdBy: admin.id,
+        executionRevision: 0,
+        executionRoute: 'facebook-photo-single',
+        fencingGeneration: 0,
+        idempotencyKey: requestSnapshot.idempotencyKey,
+        mode: 'automatic',
+        platform: 'facebook',
+        platformAccount: account.id,
+        requestFingerprint: 'd'.repeat(64),
+        requestSnapshot,
+        scheduledFor: new Date().toISOString(),
+        status: 'scheduled',
+      },
+      overrideAccess: true,
+    })
+    publishJobIDs.push(publishJob.id)
+    const queue = new PayloadJobQueue({ payload })
+    const queued = await queue.enqueue({
+      idempotencyKey: `publication-execute:${publishJob.id}:0`,
+      maxAttempts: 2,
+      payload: { expectedExecutionRevision: 0, publishJobId: publishJob.id },
+      type: PLATFORM_PUBLICATION_JOB_TYPE,
+    })
+    jobIDs.push(queued.job.id)
+    const publish = vi.fn().mockResolvedValue({
+      externalPublicationId: '129472283584550_987654321',
+      idempotencyKey: requestSnapshot.idempotencyKey,
+      platform: 'facebook',
+      platformAccountId: account.id,
+      status: 'accepted',
+    })
+    const worker = new JobWorker({
+      handlers: {
+        [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+          payload,
+          queue,
+          resolveRuntime: () => ({
+            directService: {
+              getCapability: vi.fn(),
+              getStatus: vi.fn(),
+              prepareAssistedPublication: vi.fn(),
+              publish,
+            },
+            linkedInTransport: {} as never,
+            metaTransport: {} as never,
+            readLinkedInAssetBytes: vi.fn(),
+          }),
+        }),
+      },
+      queue,
+    })
+
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+    expect(publish).toHaveBeenCalledTimes(1)
+    await expect(worker.runOnce()).resolves.toBe('idle')
+    expect(publish).toHaveBeenCalledTimes(1)
+    await expect(
+      payload.findByID({
+        collection: 'publish-jobs',
+        depth: 0,
+        id: publishJob.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      executionRevision: 1,
+      externalPublicationId: '129472283584550_987654321',
+      status: 'accepted',
+    })
   })
 })

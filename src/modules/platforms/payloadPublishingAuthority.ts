@@ -296,6 +296,15 @@ export class PayloadPlatformPublicationAuthority implements PlatformPublicationA
     claim: PlatformPublicationClaim,
     transition: PlatformPublishExecutionTransition,
   ): Promise<PlatformPublicationCommitResult> {
+    if (transition.changed === false && transition.retryable === true) {
+      return this.cas
+        .release(claim, true)
+        .then((released) =>
+          released
+            ? { nextRevision: claim.intent.expectedRevision, status: 'committed' as const }
+            : { reason: 'claim_conflict' as const, status: 'blocked' as const },
+        )
+    }
     return this.cas.commit(claim, {
       errorCode: transition.lastErrorCode,
       event: eventForDirect(transition),
@@ -324,6 +333,15 @@ export class PayloadInstagramPublishingAuthority implements InstagramPublishingA
     claim: InstagramPublishingClaim,
     transition: InstagramPublishingTransition,
   ): Promise<InstagramPublishingCommitResult> {
+    if (transition.changed === false && transition.retryable === true) {
+      return this.cas
+        .release(claim, true)
+        .then((released) =>
+          released
+            ? { nextRevision: claim.intent.expectedRevision, status: 'committed' as const }
+            : { reason: 'claim_conflict' as const, status: 'blocked' as const },
+        )
+    }
     return this.cas.commit(claim, {
       checkpoint: transition.checkpoint,
       errorCode: transition.errorCode,
