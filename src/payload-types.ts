@@ -314,7 +314,7 @@ export interface AiModelProfile {
   name: string;
   enabled: boolean;
   provider: number | AiProvider;
-  capability: 'text' | 'embedding';
+  capability: 'text' | 'embedding' | 'image';
   /**
    * Exact model identifier accepted by the selected provider.
    */
@@ -351,7 +351,7 @@ export interface AiUsageRoute {
    */
   usageKey: string;
   enabled: boolean;
-  operation: 'text' | 'embedding';
+  operation: 'text' | 'embedding' | 'image';
   profile: number | AiModelProfile;
   updatedAt: string;
   createdAt: string;
@@ -362,7 +362,7 @@ export interface AiUsageRoute {
  */
 export interface AiUsageLog {
   id: number;
-  operation: 'embed' | 'generateText';
+  operation: 'embed' | 'generateImage' | 'generateText';
   provider: string;
   model: string;
   requestId?: string | null;

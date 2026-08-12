@@ -28,6 +28,7 @@ export const AiUsageLogs: CollectionConfig = {
       type: 'select',
       options: [
         { label: 'Embedding', value: 'embed' },
+        { label: 'Image generation', value: 'generateImage' },
         { label: 'Text generation', value: 'generateText' },
       ],
       required: true,

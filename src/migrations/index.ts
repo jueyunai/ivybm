@@ -21,6 +21,7 @@ import * as migration_20260804_142542_publication_lifecycle from './20260804_142
 import * as migration_20260805_051559 from './20260805_051559';
 import * as migration_20260806_170400_task13_oauth_authorization_revision from './20260806_170400_task13_oauth_authorization_revision';
 import * as migration_20260809_103656_task8_knowledge_ingestion from './20260809_103656_task8_knowledge_ingestion';
+import * as migration_20260812_092537_image_generation from './20260812_092537_image_generation';
 
 export const migrations = [
   {
@@ -136,6 +137,11 @@ export const migrations = [
   {
     up: migration_20260809_103656_task8_knowledge_ingestion.up,
     down: migration_20260809_103656_task8_knowledge_ingestion.down,
-    name: '20260809_103656_task8_knowledge_ingestion'
+    name: '20260809_103656_task8_knowledge_ingestion',
+  },
+  {
+    up: migration_20260812_092537_image_generation.up,
+    down: migration_20260812_092537_image_generation.down,
+    name: '20260812_092537_image_generation'
   },
 ];

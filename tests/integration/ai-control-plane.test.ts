@@ -22,6 +22,8 @@ let profileID: number
 let routeID: number
 let embeddingProfileID: number
 let embeddingRouteID: number
+let imageProfileID: number
+let imageRouteID: number
 let textUsageKey: string
 let originalEncryptionKey: string | undefined
 
@@ -88,8 +90,10 @@ describe.sequential('AI control plane', () => {
       for (const [collection, id] of [
         ['ai-usage-routes', routeID],
         ['ai-usage-routes', embeddingRouteID],
+        ['ai-usage-routes', imageRouteID],
         ['ai-model-profiles', profileID],
         ['ai-model-profiles', embeddingProfileID],
+        ['ai-model-profiles', imageProfileID],
         ['ai-providers', providerID],
       ] as const) {
         if (id) {
@@ -308,6 +312,75 @@ describe.sequential('AI control plane', () => {
 
     expect(updated).not.toHaveProperty('apiKey')
     expect(after.apiKey).toBe(before.apiKey)
+  })
+
+  it('persists an image profile, matching usage route and zero-token image telemetry', async () => {
+    const suffix = randomUUID()
+    const imageProfile = await payload.create({
+      collection: 'ai-model-profiles',
+      data: {
+        capability: 'image',
+        enabled: true,
+        model: 'image-model',
+        name: `Image model ${suffix}`,
+        parameters: {
+          reasoningEffort: 'medium',
+          reasoningEnabled: false,
+          timeoutMs: 60_000,
+        },
+        provider: providerID,
+      },
+      overrideAccess: false,
+      user: admin,
+    })
+    imageProfileID = imageProfile.id
+
+    await expect(
+      payload.create({
+        collection: 'ai-usage-routes',
+        data: {
+          enabled: true,
+          operation: 'text',
+          profile: imageProfileID,
+          usageKey: `content.image.invalid.${suffix.replaceAll('-', '')}`,
+        },
+        overrideAccess: false,
+        user: admin,
+      }),
+    ).rejects.toBeDefined()
+
+    const imageRoute = await payload.create({
+      collection: 'ai-usage-routes',
+      data: {
+        enabled: true,
+        operation: 'image',
+        profile: imageProfileID,
+        usageKey: 'content.image-generation',
+      },
+      overrideAccess: false,
+      user: admin,
+    })
+    imageRouteID = imageRoute.id
+
+    const usage = await payload.create({
+      collection: 'ai-usage-logs',
+      data: {
+        durationMs: 250,
+        inputTokens: 0,
+        model: 'image-model',
+        operation: 'generateImage',
+        outputTokens: 0,
+        provider: 'configured-provider',
+        requestId: `${suffix}-image`,
+        totalTokens: 0,
+      },
+      overrideAccess: true,
+    })
+    createdUsageLogIDs.push(usage.id)
+
+    expect(imageProfile.capability).toBe('image')
+    expect(imageRoute.operation).toBe('image')
+    expect(usage).toMatchObject({ operation: 'generateImage', totalTokens: 0 })
   })
 
   it('resolves the persisted route snapshot and fails closed for a disabled route', async () => {

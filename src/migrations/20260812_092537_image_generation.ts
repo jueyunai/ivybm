@@ -1,0 +1,24 @@
+import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
+
+export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
+  await db.execute(sql`
+   ALTER TYPE "public"."enum_ai_model_profiles_capability" ADD VALUE 'image';
+  ALTER TYPE "public"."enum_ai_usage_routes_operation" ADD VALUE 'image';
+  ALTER TYPE "public"."enum_ai_usage_logs_operation" ADD VALUE 'generateImage' BEFORE 'generateText';`)
+}
+
+export async function down({ db, payload, req }: MigrateDownArgs): Promise<void> {
+  await db.execute(sql`
+   ALTER TABLE "ai_model_profiles" ALTER COLUMN "capability" SET DATA TYPE text;
+  DROP TYPE "public"."enum_ai_model_profiles_capability";
+  CREATE TYPE "public"."enum_ai_model_profiles_capability" AS ENUM('text', 'embedding');
+  ALTER TABLE "ai_model_profiles" ALTER COLUMN "capability" SET DATA TYPE "public"."enum_ai_model_profiles_capability" USING "capability"::"public"."enum_ai_model_profiles_capability";
+  ALTER TABLE "ai_usage_routes" ALTER COLUMN "operation" SET DATA TYPE text;
+  DROP TYPE "public"."enum_ai_usage_routes_operation";
+  CREATE TYPE "public"."enum_ai_usage_routes_operation" AS ENUM('text', 'embedding');
+  ALTER TABLE "ai_usage_routes" ALTER COLUMN "operation" SET DATA TYPE "public"."enum_ai_usage_routes_operation" USING "operation"::"public"."enum_ai_usage_routes_operation";
+  ALTER TABLE "ai_usage_logs" ALTER COLUMN "operation" SET DATA TYPE text;
+  DROP TYPE "public"."enum_ai_usage_logs_operation";
+  CREATE TYPE "public"."enum_ai_usage_logs_operation" AS ENUM('embed', 'generateText');
+  ALTER TABLE "ai_usage_logs" ALTER COLUMN "operation" SET DATA TYPE "public"."enum_ai_usage_logs_operation" USING "operation"::"public"."enum_ai_usage_logs_operation";`)
+}
