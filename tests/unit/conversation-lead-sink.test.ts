@@ -66,6 +66,8 @@ describe('conversation lead signal extraction', () => {
     ['I work at Acme Facades.', 'Acme Facades'],
     ["I'm from Acme Corp.", 'Acme Corp'],
     ['I work at Acme Facades for our procurement team.', 'Acme Facades'],
+    ['I work for Acme Facades from UAE.', 'Acme Facades'],
+    ['My company is Acme Facades and we need 500 sqm.', 'Acme Facades'],
   ])('extracts a bounded workplace company from %s', (content, company) => {
     expect(extractLeadSignals(sessionWith('en', content)).company).toBe(company)
   })
@@ -75,7 +77,9 @@ describe('conversation lead signal extraction', () => {
   })
 
   it('does not mistake a generic workplace phrase for a company', () => {
-    expect(extractLeadSignals(sessionWith('en', 'I work at a factory for our team.')).company).toBeUndefined()
+    expect(
+      extractLeadSignals(sessionWith('en', 'I work at a factory for our team.')).company,
+    ).toBeUndefined()
   })
 
   it('does not mistake a qualification question for a supplied budget', () => {
@@ -105,5 +109,17 @@ describe('conversation lead signal extraction', () => {
       timeline: 'within_3_months',
     })
     expect(signals.contact.email).toBe('sales@example.invalid')
+  })
+
+  it('stops an Arabic company before country and project qualification phrases', () => {
+    const signals = extractLeadSignals(
+      sessionWith('ar', 'نحن شركة النور في السعودية والمشروع مناقصة.'),
+    )
+
+    expect(signals).toMatchObject({
+      company: 'النور',
+      country: 'Saudi Arabia',
+      projectStage: 'tender',
+    })
   })
 })
