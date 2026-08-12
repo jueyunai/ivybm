@@ -72,17 +72,25 @@ const isCountryCandidate = (candidate: string): boolean =>
 const validEnglishCompanyCandidate = (candidate: string | undefined): candidate is string =>
   Boolean(candidate && !isNonCompanyCandidate(candidate) && !isCountryCandidate(candidate))
 
+const countryCandidateSource = [...countries]
+  .sort((left, right) => right.length - left.length)
+  .join('|')
+
 const extractAskedEnglishCompany = (session: ChatSession): string | undefined => {
   if (!session.qualificationState?.askedFields.includes('company')) return undefined
   const message = session.messages
     .slice()
     .reverse()
     .find(({ author }) => author === 'visitor')?.content
-  const candidate = cleanCompanyCandidate(message?.match(companyCandidate)?.[1])
+  const candidate = cleanCompanyCandidate(
+    message?.match(
+      new RegExp(
+        String.raw`^\s*${companyCandidate.source}(?=\s+(?:from|in)\s+(?:${countryCandidateSource})\b|[,.!?\n]|$)`,
+        'i',
+      ),
+    )?.[1],
+  )
   if (!validEnglishCompanyCandidate(candidate)) return undefined
-  if (countries.some((country) => message?.toLowerCase().includes(country.toLowerCase()))) {
-    return undefined
-  }
   return candidate
 }
 
