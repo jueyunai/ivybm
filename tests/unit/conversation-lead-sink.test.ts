@@ -76,6 +76,24 @@ describe('conversation lead signal extraction', () => {
     expect(extractLeadSignals(sessionWith('en', content)).company).toBe(company)
   })
 
+  it('extracts a bare company reply after the company field was asked', () => {
+    const session = sessionWith('en', 'Acme Facades LLC.')
+    session.qualificationState = { askedFields: ['country', 'company'], roundCount: 1 }
+
+    expect(extractLeadSignals(session).company).toBe('Acme Facades LLC')
+  })
+
+  it('does not infer an unframed first message as a company answer', () => {
+    expect(extractLeadSignals(sessionWith('en', 'Need facade panels.')).company).toBeUndefined()
+  })
+
+  it('does not infer a country-only reply as a company after asking the company field', () => {
+    const session = sessionWith('en', 'UAE.')
+    session.qualificationState = { askedFields: ['country', 'company'], roundCount: 1 }
+
+    expect(extractLeadSignals(session).company).toBeUndefined()
+  })
+
   it.each(['I am from UAE.', 'I work at UAE.', 'I work at Saudi Arabia.'])(
     'does not mistake a country for a company in %s',
     (content) => {

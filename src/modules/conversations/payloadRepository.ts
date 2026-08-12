@@ -283,7 +283,7 @@ export class PayloadConversationRepository implements ConversationRepository {
 
   private shouldCreateLead(evaluation?: ConversationLeadEvaluation): boolean {
     return Boolean(
-      evaluation?.handoffReason &&
+      evaluation?.score.level === 'a' &&
       evaluation.signals.contact.email?.trim() &&
       evaluation.signals.country?.trim(),
     )

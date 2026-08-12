@@ -72,6 +72,20 @@ const isCountryCandidate = (candidate: string): boolean =>
 const validEnglishCompanyCandidate = (candidate: string | undefined): candidate is string =>
   Boolean(candidate && !isNonCompanyCandidate(candidate) && !isCountryCandidate(candidate))
 
+const extractAskedEnglishCompany = (session: ChatSession): string | undefined => {
+  if (!session.qualificationState?.askedFields.includes('company')) return undefined
+  const message = session.messages
+    .slice()
+    .reverse()
+    .find(({ author }) => author === 'visitor')?.content
+  const candidate = cleanCompanyCandidate(message?.match(companyCandidate)?.[1])
+  if (!validEnglishCompanyCandidate(candidate)) return undefined
+  if (countries.some((country) => message?.toLowerCase().includes(country.toLowerCase()))) {
+    return undefined
+  }
+  return candidate
+}
+
 const extractArabicCompany = (text: string): string | undefined => {
   const candidate = cleanCompanyCandidate(text.match(arabicCompanyCandidate)?.[1])
   if (!candidate || invalidArabicCompanyCandidate.test(candidate)) return undefined
@@ -146,7 +160,8 @@ export const extractLeadSignals = (session: ChatSession): LeadScoringInput => {
             /خلال\s+(?:7|8|9|10|11|12)\s*أشهر?/.test(text)
           ? 'within_12_months'
           : undefined
-  const company = extractEnglishCompany(text) ?? extractArabicCompany(text)
+  const company =
+    extractEnglishCompany(text) ?? extractArabicCompany(text) ?? extractAskedEnglishCompany(session)
   const englishBudget = text
     .match(
       /(?:budget|price range|spend(?:ing)?|investment)\s*(?:is|of|around|about|[:：])?\s*([^\n.!?]{2,80}?)(?=\s+(?:and\s+)?(?:our\s+|the\s+)?(?:purchase|purchasing|procurement)\s+(?:plan|schedule|process|strategy)\b|,(?!\d{3}\b)|[.!?\n]|$)/i,

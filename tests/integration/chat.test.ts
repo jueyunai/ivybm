@@ -379,10 +379,12 @@ describe.sequential('Task 9 conversation persistence', () => {
     )
     expect((await service.sendMessage(firstInput)).revision).toBe(first.revision)
 
+    // The previous AI turn asked for country and company, so a grouped reply need not repeat
+    // a framing phrase such as "my company is".
     const handedOff = await service.sendMessage({
       idempotencyKey: `real-round-message-2-${suffix}`,
       sessionId: session.id,
-      text: `I work for Acme Facades from UAE. It is a tender for 1,200 sqm within 3 months. Drawings are ready, with a confirmed procurement plan. Contact real-round-${suffix}@example.invalid.`,
+      text: `Acme Facades from UAE. It is a tender for 1,200 sqm within 3 months. Drawings are ready, with a confirmed procurement plan. Contact real-round-${suffix}@example.invalid.`,
     })
     expect(handedOff.handoffStatus).toBe('handoff_requested')
     expect(handedOff.messages.filter(({ author }) => author === 'ai')).toHaveLength(1)
