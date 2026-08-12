@@ -6,7 +6,7 @@ import {
 } from '@/admin-portal/modules/leads/leadCommands'
 import { getLeadMutationPayload, type LeadForm } from '@/admin-portal/modules/leads/LeadsHub'
 import { LEADS_MODULE } from '@/admin-portal/modules/leads/manifest'
-import { parseLeadQuery } from '@/admin-portal/modules/leads/getLeadsPage'
+import { loadLeadsPageData, parseLeadQuery } from '@/admin-portal/modules/leads/getLeadsPage'
 
 const req = { user: { id: 1, role: 'admin' } } as never
 
@@ -67,6 +67,53 @@ describe('Portal lead commands', () => {
       overrideAccess: false,
       req,
     }))
+  })
+
+  it('allows a high-intent Lead to retain an unconfirmed country', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 49, updatedAt: '2026-07-30T08:00:00.000Z' })
+    const payload = {
+      create,
+      find: vi.fn().mockResolvedValue({ docs: [] }),
+      findByID: vi.fn().mockResolvedValue({ id: 4, isActive: true }),
+    } as any
+
+    await createPortalLead({ input: { ...valid, country: '' }, payload, req, role: 'admin' })
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ country: null }) }),
+    )
+  })
+
+  it('persists a cleared Lead country as null', async () => {
+    const payload = {
+      findByID: vi.fn().mockResolvedValue({ country: 'UAE', id: 48, updatedAt: '2026-07-30T09:00:00.000Z' }),
+      update: vi.fn().mockResolvedValue({ id: 48, updatedAt: '2026-07-30T09:01:00.000Z' }),
+    } as any
+
+    await updatePortalLead({
+      id: 48,
+      input: { country: '', updatedAt: '2026-07-30T09:00:00.000Z' },
+      payload,
+      req,
+      role: 'admin',
+    })
+    expect(payload.update).toHaveBeenCalledWith(expect.objectContaining({ data: { country: null } }))
+  })
+
+  it('maps an unconfirmed Lead country to null in the Portal read model', async () => {
+    const find = vi.fn()
+      .mockResolvedValueOnce({ docs: [{ assignedTo: null, budget: null, company: 'IVYBM', country: null, email: 'buyer@example.invalid', hasDrawings: null, id: 48, intentLevel: 'a', interest: 'Facade panels', locale: 'en', message: 'Please contact me.', name: 'Buyer', phone: null, procurementPlan: null, projectStage: 'tender', quantitySquareMeters: 500, source: 4, status: 'new', timeline: null, updatedAt: '2026-07-30T09:00:00.000Z' }], page: 1, totalDocs: 1, totalPages: 1 })
+      .mockResolvedValueOnce({ docs: [{ id: 4, isActive: true, name: 'Website chat' }] })
+      .mockResolvedValueOnce({ docs: [{ email: 'sales@example.invalid', id: 9 }] })
+      .mockResolvedValueOnce({ docs: [] })
+    const result = await loadLeadsPageData({
+      env: { ADMIN_PORTAL_ENABLED: 'true', ADMIN_PORTAL_LEADS_ENABLED: 'true' } as any,
+      payload: { find } as any,
+      query: parseLeadQuery({}),
+      req,
+      role: 'admin',
+    })
+
+    expect(result.summary?.items[0]?.country).toBeNull()
   })
 
   it('persists an administrator-selected assignee and lets Sales save unchanged system fields', async () => {

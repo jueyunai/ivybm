@@ -14,9 +14,11 @@ export type LeadQuery = { intent: LeadIntentFilter; page: number; q: string; sta
 
 export type LeadSummaryItem = {
   assignedTo: null | number
+  budget: null | string
   company: null | string
-  country: string
+  country: null | string
   email: string
+  hasDrawings: boolean | null
   id: number | string
   interest: null | string
   intentLevel: 'a' | 'b' | 'c' | 'unscored'
@@ -24,9 +26,13 @@ export type LeadSummaryItem = {
   message: string
   name: string
   phone: null | string
+  procurementPlan: null | string
+  projectStage: null | string
+  quantitySquareMeters: null | number
   relatedConversations: Array<{ handoffStatus: string; id: string }>
   source: number
   status: 'contacted' | 'disqualified' | 'new' | 'qualified'
+  timeline: null | string
   updatedAt: string
 }
 
@@ -65,6 +71,8 @@ const asID = (value: unknown): null | number => {
 }
 
 const stringOrNull = (value: unknown): null | string => typeof value === 'string' && value ? value : null
+const numberOrNull = (value: unknown): null | number => typeof value === 'number' && Number.isFinite(value) ? value : null
+const booleanOrNull = (value: unknown): boolean | null => typeof value === 'boolean' ? value : null
 
 const buildWhere = (query: LeadQuery): Where => {
   const clauses: Where[] = []
@@ -95,7 +103,7 @@ export const loadLeadsPageData = async ({ env, payload, query, req, role }: {
   try {
     const leads = await payload.find({
       collection: 'leads', depth: 0, limit: 20, overrideAccess: false, page: query.page, req,
-      select: { assignedTo: true, company: true, country: true, email: true, interest: true, intentLevel: true, locale: true, message: true, name: true, phone: true, source: true, status: true, updatedAt: true },
+      select: { assignedTo: true, budget: true, company: true, country: true, email: true, hasDrawings: true, interest: true, intentLevel: true, locale: true, message: true, name: true, phone: true, procurementPlan: true, projectStage: true, quantitySquareMeters: true, source: true, status: true, timeline: true, updatedAt: true },
       sort: '-updatedAt', where: buildWhere(query),
     })
     const ids = leads.docs.map(({ id }) => id)
@@ -120,10 +128,10 @@ export const loadLeadsPageData = async ({ env, payload, query, req, role }: {
       state: 'available',
       summary: {
         items: leads.docs.map((lead) => ({
-          assignedTo: asID(lead.assignedTo), company: stringOrNull(lead.company), country: String(lead.country), email: String(lead.email), id: lead.id,
+          assignedTo: asID(lead.assignedTo), budget: stringOrNull(lead.budget), company: stringOrNull(lead.company), country: stringOrNull(lead.country), email: String(lead.email), hasDrawings: booleanOrNull(lead.hasDrawings), id: lead.id,
           interest: stringOrNull(lead.interest), intentLevel: lead.intentLevel as LeadSummaryItem['intentLevel'], locale: lead.locale as LeadSummaryItem['locale'],
-          message: String(lead.message), name: String(lead.name), phone: stringOrNull(lead.phone), relatedConversations: byLead.get(String(lead.id)) ?? [],
-          source: asID(lead.source) ?? 0, status: lead.status as LeadSummaryItem['status'], updatedAt: lead.updatedAt,
+          message: String(lead.message), name: String(lead.name), phone: stringOrNull(lead.phone), procurementPlan: stringOrNull(lead.procurementPlan), projectStage: stringOrNull(lead.projectStage), quantitySquareMeters: numberOrNull(lead.quantitySquareMeters), relatedConversations: byLead.get(String(lead.id)) ?? [],
+          source: asID(lead.source) ?? 0, status: lead.status as LeadSummaryItem['status'], timeline: stringOrNull(lead.timeline), updatedAt: lead.updatedAt,
         })),
         options: { sources: sources.docs.map((source) => ({ id: source.id, label: source.name })), users: users.docs.map((user) => ({ id: user.id, label: user.email })) },
         pagination: { page: leads.page ?? query.page, totalDocs: leads.totalDocs, totalPages: leads.totalPages ?? 1 }, query,

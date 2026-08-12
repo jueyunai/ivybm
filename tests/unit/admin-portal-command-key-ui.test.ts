@@ -45,6 +45,79 @@ afterEach(() => {
 })
 
 describe('Portal create command keys', () => {
+  it('allows an administrator to create a Lead before the country is confirmed', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({ result: { id: 28, updatedAt: '2026-08-12T00:00:00.000Z' } }, 201),
+    )
+    vi.stubGlobal('fetch', request)
+    const summary: LeadsSummary = {
+      items: [],
+      options: { sources: [{ id: 4, label: 'Manual' }], users: [] },
+      pagination: { page: 1, totalDocs: 0, totalPages: 0 },
+      query: { intent: 'all', page: 1, q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(LeadsHub, { pageState: 'available', role: 'admin', summary }),
+      ),
+    )
+    fireEvent.click(screen.getByRole('button', { name: '新增线索' }))
+    expect(screen.getByLabelText('国家 / 地区').hasAttribute('required')).toBe(false)
+    fireEvent.change(screen.getByLabelText('联系人'), { target: { value: 'Country pending' } })
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'buyer@example.invalid' } })
+    fireEvent.change(screen.getByLabelText('需求说明'), { target: { value: 'Please contact me.' } })
+    fireEvent.click(screen.getByRole('button', { name: '创建线索' }))
+
+    await screen.findByText('线索已保存。')
+    const body = JSON.parse(String(request.mock.calls[0]?.[1]?.body)) as Record<string, unknown>
+    expect(body.country).toBe('')
+  })
+
+  it('renders a qualification heading distinct from the project-stage field label', () => {
+    const summary: LeadsSummary = {
+      items: [{
+        assignedTo: null,
+        budget: 'USD 450,000',
+        company: 'Facade Engineering LLC',
+        country: 'UAE',
+        email: 'buyer@example.invalid',
+        hasDrawings: true,
+        id: 27,
+        interest: 'aluminum panels',
+        intentLevel: 'a',
+        locale: 'en',
+        message: 'Need facade panels.',
+        name: 'Buyer',
+        phone: null,
+        procurementPlan: 'within 3 months',
+        projectStage: 'tender',
+        quantitySquareMeters: 3200,
+        relatedConversations: [],
+        source: 4,
+        status: 'qualified',
+        timeline: 'within_3_months',
+        updatedAt: '2026-08-12T00:00:00.000Z',
+      }],
+      options: { sources: [{ id: 4, label: 'Website' }], users: [] },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      query: { intent: 'all', page: 1, q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(LeadsHub, { pageState: 'available', role: 'admin', summary }),
+      ),
+    )
+
+    expect(screen.getByRole('heading', { name: '资格详情' })).toBeTruthy()
+    expect(screen.getByText('项目阶段', { selector: 'dt' })).toBeTruthy()
+  })
+
   it('reuses the AI debug key after an interrupted response body and rotates when the prompt changes', async () => {
     const request = vi
       .fn<typeof fetch>()
