@@ -4,7 +4,7 @@ import type { Payload, PayloadRequest } from 'payload'
 
 import { MEDIA_IMAGE_MAX_BYTES, MEDIA_MIME_TYPES, MEDIA_PDF_MAX_BYTES } from '@/collections/Media'
 
-import { mediaPreviewUrl } from './mediaUrls'
+import { mediaPreviewUrl } from './urls'
 
 type LooseRecord = Record<string, unknown>
 

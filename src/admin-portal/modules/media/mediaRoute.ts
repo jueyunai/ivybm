@@ -8,7 +8,7 @@ import config from '@/payload.config'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
 
-import { MediaCommandError, type PortalMediaFile } from './mediaCommands'
+import { MediaCommandError, type PortalMediaFile } from '@/modules/media'
 
 const MAX_MEDIA_UPLOAD_REQUEST_BYTES = MEDIA_PDF_MAX_BYTES + 1_048_576
 

@@ -12,7 +12,7 @@ import {
   MediaPageReadError,
   parseMediaQuery,
 } from '@/admin-portal/modules/media/getMediaPage'
-import { safeMediaUrl } from '@/admin-portal/modules/media/mediaUrls'
+import { safeMediaUrl } from '@/modules/media'
 import { MediaWorkspace } from '@/admin-portal/modules/media/MediaWorkspace'
 
 const req = {

@@ -8,11 +8,7 @@ import { getMediaPage, loadMediaPageData } from '@/admin-portal/modules/media/ge
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import { adoptContentStudioImage, type ContentStudioPayload } from '@/admin-portal/modules/content-studio/contentStudioCommands'
 import { loadContentStudioPageData, parseContentStudioQuery } from '@/admin-portal/modules/content-studio/getContentStudioPage'
-import {
-  createPortalMedia,
-  deletePortalMedia,
-  updatePortalMedia,
-} from '@/admin-portal/modules/media/mediaCommands'
+import { createPortalMedia, deletePortalMedia, updatePortalMedia } from '@/modules/media'
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
 

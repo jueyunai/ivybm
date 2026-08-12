@@ -1,4 +1,4 @@
-type MediaPreviewProjection = {
+export type MediaPreviewProjection = {
   sizes?: {
     card?: { url?: null | string } | null
     thumbnail?: { url?: null | string } | null

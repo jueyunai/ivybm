@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server'
 
 import { executePortalRouteCommand } from '@/admin-portal/core/commands/portalCommandReceipts'
-import { deletePortalMedia, updatePortalMedia } from '@/admin-portal/modules/media/mediaCommands'
 import {
   authorizeMediaRequest,
   mediaErrorResponse,
@@ -9,6 +8,7 @@ import {
   readMediaJSON,
   requireMediaID,
 } from '@/admin-portal/modules/media/mediaRoute'
+import { deletePortalMedia, updatePortalMedia } from '@/modules/media'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'

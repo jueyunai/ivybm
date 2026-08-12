@@ -4,13 +4,13 @@ import {
   executePortalRouteCommand,
   portalCommandFingerprint,
 } from '@/admin-portal/core/commands/portalCommandReceipts'
-import { createPortalMedia } from '@/admin-portal/modules/media/mediaCommands'
 import {
   authorizeMediaRequest,
   mediaErrorResponse,
   mediaJSON,
   readMediaUpload,
 } from '@/admin-portal/modules/media/mediaRoute'
+import { createPortalMedia } from '@/modules/media'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'

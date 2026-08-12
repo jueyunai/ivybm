@@ -9,7 +9,7 @@ import {
   parseMediaMetadata,
   updatePortalMedia,
   validatePortalMediaFile,
-} from '@/admin-portal/modules/media/mediaCommands'
+} from '@/modules/media'
 
 const req = {
   user: { collection: 'users', email: 'operator@example.invalid', id: 2, role: 'operator' },

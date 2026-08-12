@@ -5,9 +5,9 @@ import path from 'node:path'
 import type { Payload, PayloadRequest } from 'payload'
 
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
-import { createPortalMedia } from '@/admin-portal/modules/media/mediaCommands'
 import { AI_IMAGE_SIZES, type AiImageMimeType, type AiImageSize } from '@/modules/ai/gateway'
 import { AI_USAGE_KEYS, resolveAiGateway } from '@/modules/ai/registry'
+import { createPortalMedia } from '@/modules/media'
 
 import {
   GENERATED_CONTENT_PLATFORMS,

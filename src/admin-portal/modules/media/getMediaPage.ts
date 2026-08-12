@@ -2,9 +2,9 @@ import type { Payload, PayloadRequest, Where } from 'payload'
 
 import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
 import { MEDIA_IMAGE_MAX_BYTES, MEDIA_MIME_TYPES, MEDIA_PDF_MAX_BYTES } from '@/collections/Media'
+import { mediaPreviewUrl, safeMediaUrl } from '@/modules/media'
 
 import { MEDIA_MODULE } from './manifest'
-import { mediaPreviewUrl, safeMediaUrl } from './mediaUrls'
 
 export const MEDIA_KIND_FILTERS = ['all', 'image', 'pdf'] as const
 export const MEDIA_VISIBILITY_FILTERS = ['all', 'public', 'private'] as const
