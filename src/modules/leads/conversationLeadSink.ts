@@ -96,6 +96,14 @@ const extractAskedEnglishCompany = (session: ChatSession): string | undefined =>
     .slice()
     .reverse()
     .find(({ author }) => author === 'visitor')?.content
+  if (
+    !message ||
+    /^(?:i(?:'m|\s+(?:am|do|don't|have|work))\b|my\s+company\b|not\s+sure\b|we(?:'re|\s+(?:are|do|don't|have|work))\b)/i.test(
+      message.trim(),
+    )
+  ) {
+    return undefined
+  }
   const candidate = cleanCompanyCandidate(
     message?.match(
       new RegExp(

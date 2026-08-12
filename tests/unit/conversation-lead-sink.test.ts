@@ -97,19 +97,6 @@ describe('conversation lead signal extraction', () => {
     expect(extractLeadSignals(session).company).toBeUndefined()
   })
 
-  it.each([
-    'I am from UAE.',
-    'I am from UAE. It is a tender for 1000 sqm. Email buyer@example.invalid.',
-    'Not sure.',
-    'We do not have one.',
-    'My company is a company in UAE.',
-  ])('does not infer an uncertain or sentence reply as a company in %s', (content) => {
-    const session = sessionWith('en', content)
-    session.qualificationState = { askedFields: ['country', 'company'], roundCount: 1 }
-
-    expect(extractLeadSignals(session).company).toBeUndefined()
-  })
-
   it('keeps company missing in the authoritative evaluation after an uncertain prompted reply', async () => {
     const session = sessionWith(
       'en',
@@ -131,6 +118,20 @@ describe('conversation lead signal extraction', () => {
     expect(evaluation.score.reasons).not.toContain('company_identified')
   })
 
+  it.each([
+    'I am from UAE.',
+    'I am from UAE. It is a tender for 1000 sqm. Email buyer@example.invalid.',
+    'I am from UAE and need 1000 sqm at tender stage. Email buyer@example.invalid.',
+    'Not sure.',
+    'We do not have one.',
+    'My company is a company in UAE.',
+  ])('does not infer a sentence fragment as a prompted company reply in %s', (content) => {
+    const session = sessionWith('en', content)
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    expect(extractLeadSignals(session).company).toBeUndefined()
+  })
+
   it.each(['I am from UAE.', 'I work at UAE.', 'I work at Saudi Arabia.'])(
     'does not mistake a country for a company in %s',
     (content) => {
@@ -142,10 +143,10 @@ describe('conversation lead signal extraction', () => {
     for (const content of [
       'I work at a factory for our team.',
       'I work at the business team.',
-      'My company is a company.',
-      'My company is a factory office.',
       'I work at my company in UAE.',
       'I am from sales team.',
+      'My company is a company.',
+      'My company is a factory office.',
       'My company is a company in UAE.',
       'My company is my company in UAE.',
       'My company is and we need aluminum panels.',
