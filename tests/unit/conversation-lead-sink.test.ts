@@ -28,15 +28,16 @@ describe('conversation lead signal extraction', () => {
     const signals = extractLeadSignals(
       sessionWith(
         'en',
-        'I am from UAE. My company is Facade Engineering LLC. The project is in tender for 3,200 sqm. Drawings are ready. Our budget is USD 420000 and our purchase plan is within 3 months. Email buyer@example.invalid.',
+        'I am from UAE. My company name is Facade Engineering LLC. The project is in tender for 3,200 sqm. Drawings are ready. Our budget is USD 420000 and our purchase plan is within 3 months. Email buyer@example.invalid.',
       ),
     )
 
     expect(signals).toMatchObject({
-      budget: 'USD 420000 and our purchase plan is within 3 months',
+      budget: 'USD 420000',
       company: 'Facade Engineering LLC',
       country: 'UAE',
       hasDrawings: true,
+      procurementPlan: 'within 3 months',
       projectStage: 'tender',
       quantitySquareMeters: 3200,
       timeline: 'within_3_months',
@@ -50,6 +51,15 @@ describe('conversation lead signal extraction', () => {
     )
 
     expect(signals.company).toBeUndefined()
+  })
+
+  it('does not mistake a qualification question for a supplied budget', () => {
+    const signals = extractLeadSignals(
+      sessionWith('en', 'Do you have a budget or purchasing plan for this project?'),
+    )
+
+    expect(signals.budget).toBeUndefined()
+    expect(signals.procurementPlan).toBeUndefined()
   })
 
   it('extracts Arabic qualification signals and records an explicit lack of drawings', () => {

@@ -68,26 +68,32 @@ export const extractLeadSignals = (session: ChatSession): LeadScoringInput => {
           : undefined
   const company =
     text
-      .match(/company(?:\s+(?:name|is))?\s*[:：]?\s+([A-Z][A-Z0-9& '-]{2,80})(?=[,.!?\n]|$)/i)?.[1]
+      .match(
+        /(?:my|our|the)?\s*company(?:\s+name)?\s*(?:is|[:：])\s*([A-Z][A-Z0-9& '-]{2,80})(?=[,.!?\n]|$)/i,
+      )?.[1]
       ?.trim() ?? text.match(/(?:اسم\s+الشركة|شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80})/)?.[1]?.trim()
+  const englishBudget = text
+    .match(
+      /(?:budget|price range|spend(?:ing)?|investment)\s*(?:is|of|around|about|[:：])?\s*([^\n,.!?]{2,80}?)(?=\s+(?:and\s+)?(?:our\s+|the\s+)?(?:purchase|purchasing|procurement)\s+(?:plan|schedule|process|strategy)\b|[,.!?\n]|$)/i,
+    )?.[1]
+    ?.trim()
   const budget =
-    text
-      .match(
-        /(?:budget|price range|spend(?:ing)?|investment)\s*(?:is|of|around|about|:)?\s*([^\n,.!?]{2,80})/i,
-      )?.[1]
-      ?.trim() ??
-    text.match(/(?:الميزانية|ميزانية)\s*(?:هي|حوالي|:|：)?\s*([^\n،,.!?؟]{2,80})/)?.[1]?.trim()
+    englishBudget && !/^(?:and|or)\b/i.test(englishBudget)
+      ? englishBudget
+      : text.match(/(?:الميزانية|ميزانية)\s*(?:هي|حوالي|:|：)?\s*([^\n،,.!?؟]{2,80})/)?.[1]?.trim()
+  const englishProcurementPlan = text
+    .match(
+      /(?:procurement|purchasing|purchase)\s*(?:plan|schedule|process|strategy)?\s*(?:is|will be|:)?\s*([^\n,.!?]{2,120})/i,
+    )?.[1]
+    ?.trim()
   const procurementPlan =
-    text
-      .match(
-        /(?:procurement|purchasing|purchase)\s*(?:plan|schedule|process|strategy)?\s*(?:is|will be|:)?\s*([^\n,.!?]{2,120})/i,
-      )?.[1]
-      ?.trim() ??
-    text
-      .match(
-        /(?:خطة\s+(?:الشراء|التوريد)|موعد\s+(?:الشراء|التوريد))\s*(?:هي|:|：)?\s*([^\n،,.!?؟]{2,120})/,
-      )?.[1]
-      ?.trim()
+    englishProcurementPlan && !/^(?:and|for|or)\b/i.test(englishProcurementPlan)
+      ? englishProcurementPlan
+      : text
+          .match(
+            /(?:خطة\s+(?:الشراء|التوريد)|موعد\s+(?:الشراء|التوريد))\s*(?:هي|:|：)?\s*([^\n،,.!?؟]{2,120})/,
+          )?.[1]
+          ?.trim()
   const hasDrawings =
     /(?:no|without)\s+(?:drawings?|blueprints?|cad)/i.test(text) ||
     /لا\s+(?:توجد|يوجد|نملك|لدينا)\s+(?:رسومات|مخططات)/.test(text)
