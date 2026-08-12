@@ -1,0 +1,74 @@
+import { describe, expect, it } from 'vitest'
+
+import type { ChatSession } from '@/modules/conversations/contracts'
+import { extractLeadSignals } from '@/modules/leads/conversationLeadSink'
+
+const sessionWith = (locale: ChatSession['locale'], content: string): ChatSession => ({
+  allowedActions: ['send_message', 'request_handoff'],
+  channel: 'website',
+  handoffStatus: 'ai_active',
+  id: `signals-${locale}`,
+  locale,
+  messages: [
+    {
+      author: 'visitor',
+      content,
+      createdAt: '2026-08-12T00:00:00.000Z',
+      id: `message-${locale}`,
+      status: 'sent',
+    },
+  ],
+  qualificationState: { askedFields: [], roundCount: 0 },
+  revision: 1,
+  requestId: `request-${locale}`,
+})
+
+describe('conversation lead signal extraction', () => {
+  it('extracts English budget and procurement qualification signals', () => {
+    const signals = extractLeadSignals(
+      sessionWith(
+        'en',
+        'I am from UAE. My company is Facade Engineering LLC. The project is in tender for 3,200 sqm. Drawings are ready. Our budget is USD 420000 and our purchase plan is within 3 months. Email buyer@example.invalid.',
+      ),
+    )
+
+    expect(signals).toMatchObject({
+      budget: 'USD 420000 and our purchase plan is within 3 months',
+      company: 'Facade Engineering LLC',
+      country: 'UAE',
+      hasDrawings: true,
+      projectStage: 'tender',
+      quantitySquareMeters: 3200,
+      timeline: 'within_3_months',
+    })
+    expect(signals.contact.email).toBe('buyer@example.invalid')
+  })
+
+  it('does not mistake a project-stage phrase for a company name', () => {
+    const signals = extractLeadSignals(
+      sessionWith('en', 'We are at tender stage in the UAE and need 500 sqm.'),
+    )
+
+    expect(signals.company).toBeUndefined()
+  })
+
+  it('extracts Arabic qualification signals and records an explicit lack of drawings', () => {
+    const signals = extractLeadSignals(
+      sessionWith(
+        'ar',
+        'اسم الشركة: شركة النور. المشروع في السعودية ومرحلة مناقصة بمساحة 1200 متر مربع. لا توجد رسومات. الميزانية حوالي 300000 ريال. خطة الشراء خلال 3 أشهر. البريد sales@example.invalid.',
+      ),
+    )
+
+    expect(signals).toMatchObject({
+      budget: '300000 ريال',
+      company: 'شركة النور',
+      country: 'Saudi Arabia',
+      hasDrawings: false,
+      projectStage: 'tender',
+      quantitySquareMeters: 1200,
+      timeline: 'within_3_months',
+    })
+    expect(signals.contact.email).toBe('sales@example.invalid')
+  })
+})

@@ -35,6 +35,33 @@ const followUpTimestamp = (value: string | null | undefined): number | string =>
   return timestamp
 }
 
+const originalInquiry = (lead: LeadForFeishu): string => {
+  const qualification = [
+    ['Project stage', lead.projectStage],
+    ['Quantity (sqm)', lead.quantitySquareMeters],
+    [
+      'Drawings available',
+      lead.hasDrawings === null || lead.hasDrawings === undefined
+        ? null
+        : lead.hasDrawings
+          ? 'Yes'
+          : 'No',
+    ],
+    ['Budget', lead.budget],
+    ['Procurement plan', lead.procurementPlan],
+    ['Purchase timeline', lead.timeline],
+  ]
+    .filter(
+      (entry): entry is [string, number | string] =>
+        entry[1] !== null && entry[1] !== undefined && entry[1] !== '',
+    )
+    .map(([label, value]) => `${label}: ${String(value)}`)
+
+  return qualification.length > 0
+    ? `${lead.message.trim()}\n\nQualification:\n${qualification.join('\n')}`
+    : lead.message.trim()
+}
+
 const leadValues = (lead: LeadForFeishu): Record<FeishuLeadField, FeishuFieldValue> => ({
   country: lead.country.trim(),
   customerName: (lead.company || lead.name).trim(),
@@ -43,7 +70,7 @@ const leadValues = (lead: LeadForFeishu): Record<FeishuLeadField, FeishuFieldVal
   localLeadId: String(lead.id),
   nextFollowUpAt: followUpTimestamp(lead.nextFollowUpAt),
   owner: relationshipLabel(lead.assignedTo),
-  originalInquiry: lead.message.trim(),
+  originalInquiry: originalInquiry(lead),
   phone: lead.phone?.trim() ?? '',
   productNeed: lead.interest?.trim() ?? '',
   projectStage: lead.status,

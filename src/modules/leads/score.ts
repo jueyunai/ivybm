@@ -1,18 +1,30 @@
 export type LeadScoringInput = {
+  budget?: string
   company?: string
   contact: { email?: string; phone?: string }
   country?: string
   hasDrawings?: boolean
   productInterest?: string
+  procurementPlan?: string
   projectStage?: 'concept' | 'design' | 'procurement' | 'tender'
   quantitySquareMeters?: number
   timeline?: 'exploring' | 'within_3_months' | 'within_6_months' | 'within_12_months'
 }
 
+export type LeadQualificationField =
+  | 'budget'
+  | 'company'
+  | 'contact'
+  | 'country'
+  | 'drawings'
+  | 'projectStage'
+  | 'quantity'
+  | 'timeline'
+
 export type LeadIntentScore = {
   handoffRecommended: boolean
   level: 'a' | 'b' | 'c'
-  missingFields: Array<'company' | 'contact' | 'country' | 'projectStage' | 'quantity'>
+  missingFields: LeadQualificationField[]
   reasons: string[]
   score: number
 }
@@ -34,10 +46,14 @@ export const scoreLeadIntent = (input: LeadScoringInput): LeadIntentScore => {
   } else {
     missingFields.push('company')
   }
-  if (input.contact.email?.trim() || input.contact.phone?.trim()) {
-    score += input.contact.email?.trim() && input.contact.phone?.trim() ? 15 : 10
+  if (input.contact.email?.trim()) {
+    score += input.contact.phone?.trim() ? 15 : 10
     reasons.push('contact_available')
   } else {
+    if (input.contact.phone?.trim()) {
+      score += 5
+      reasons.push('phone_available_email_required')
+    }
     missingFields.push('contact')
   }
   if (input.productInterest?.trim()) {
@@ -60,16 +76,28 @@ export const scoreLeadIntent = (input: LeadScoringInput): LeadIntentScore => {
   if (input.hasDrawings) {
     score += 10
     reasons.push('drawings_available')
+  } else if (input.hasDrawings === undefined) {
+    missingFields.push('drawings')
+  } else {
+    reasons.push('drawings_unavailable')
+  }
+  if (input.budget?.trim() || input.procurementPlan?.trim()) {
+    score += 5
+    reasons.push('budget_or_procurement_plan')
+  } else {
+    missingFields.push('budget')
   }
   if (input.timeline && input.timeline !== 'exploring') {
     score += input.timeline === 'within_3_months' ? 15 : 8
     reasons.push('purchase_timeline')
+  } else {
+    missingFields.push('timeline')
   }
 
   const normalizedScore = Math.min(score, 100)
   const level = normalizedScore >= 70 ? 'a' : normalizedScore >= 40 ? 'b' : 'c'
   return {
-    handoffRecommended: level === 'a',
+    handoffRecommended: level === 'a' && missingFields.length === 0,
     level,
     missingFields,
     reasons,

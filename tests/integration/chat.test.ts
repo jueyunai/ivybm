@@ -231,7 +231,7 @@ describe.sequential('Task 9 conversation persistence', () => {
     const highIntent = await visitorService.sendMessage({
       idempotencyKey: `message-${suffix}`,
       sessionId: session.id,
-      text: `I am from UAE at Facade Engineering LLC. We have a tender for 3,200 sqm aluminum facade panels within 3 months. Drawings are ready. Contact buyer-${suffix}@example.invalid or +971 50 000 0000.`,
+      text: `I am from UAE. My company is Facade Engineering LLC. We have a tender for 3,200 sqm aluminum facade panels within 3 months. Drawings are ready. Our budget is USD 450000 and the purchase plan is within 3 months. Contact buyer-${suffix}@example.invalid or +971 50 000 0000.`,
     })
     expect(highIntent.handoffStatus).toBe('handoff_requested')
     const leads = await payload.find({
@@ -241,7 +241,14 @@ describe.sequential('Task 9 conversation persistence', () => {
       where: { idempotencyKey: { equals: `chat-lead:${String(session.id)}` } },
     })
     expect(leads.totalDocs).toBe(1)
-    expect(leads.docs[0].intentLevel).toBe('a')
+    expect(leads.docs[0]).toMatchObject({
+      budget: expect.stringContaining('USD 450000'),
+      hasDrawings: true,
+      intentLevel: 'a',
+      projectStage: 'tender',
+      quantitySquareMeters: 3200,
+      timeline: 'within_3_months',
+    })
     await expect(visitorService.requestHandoff({
       idempotencyKey: `illegal-handoff-${suffix}`,
       reason: 'duplicate_request',
@@ -323,6 +330,34 @@ describe.sequential('Task 9 conversation persistence', () => {
       where: { idempotencyKey: { contains: suffix } },
     })
     if (leads.docs[0]) await payload.delete({ collection: 'leads', id: leads.docs[0].id, overrideAccess: true })
+  })
+
+  it('creates a linked Lead when the qualification round limit hands off an incomplete enquiry', async () => {
+    const suffix = randomUUID()
+    const service = createConversationService({
+      leadSink: {
+        evaluate: async () => ({
+          score: { handoffRecommended: false, level: 'c', missingFields: ['company'], reasons: [], score: 20 },
+          signals: { contact: { email: `round-limit-${suffix}@example.invalid` }, country: 'United Arab Emirates' },
+        }),
+      },
+      repository: new PayloadConversationRepository({
+        payload,
+        sessionTokenHash: hashVisitorToken(`round-limit-token-${suffix}`),
+      }),
+      responder: { generateReply: async () => ({ handoff: { reason: 'qualification_incomplete', source: 'ai_policy' } }) },
+    })
+    const session = await service.startSession({ channel: 'website', idempotencyKey: `round-limit-start-${suffix}`, locale: 'en' })
+    const handedOff = await service.sendMessage({ idempotencyKey: `round-limit-message-${suffix}`, sessionId: session.id, text: `Contact round-limit-${suffix}@example.invalid in the UAE.` })
+    expect(handedOff.handoffStatus).toBe('handoff_requested')
+
+    const leads = await payload.find({ collection: 'leads', limit: 1, overrideAccess: true, where: { idempotencyKey: { equals: `chat-lead:${String(session.id)}` } } })
+    expect(leads.docs[0]).toMatchObject({ intentLevel: 'c' })
+    const conversation = (await payload.find({ collection: 'conversations', limit: 1, overrideAccess: true, where: { publicId: { equals: String(session.id) } } })).docs[0]
+    if (conversation) await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
+    if (leads.docs[0]) await payload.delete({ collection: 'leads', id: leads.docs[0].id, overrideAccess: true })
+    await payload.delete({ collection: 'visitor-sessions', overrideAccess: true, where: { idempotencyKey: { equals: `round-limit-start-${suffix}` } } })
+    await payload.delete({ collection: 'conversation-commands', overrideAccess: true, where: { idempotencyKey: { contains: suffix } } })
   })
 
   it('uses the persisted revision to serialize concurrent messages and lets the loser retry safely', async () => {

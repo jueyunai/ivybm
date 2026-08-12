@@ -84,19 +84,25 @@ export const feishuLeadSyncRevision = (value: unknown): string => {
     .update(
       JSON.stringify({
         assignedTo,
+        budget: lead.budget ?? null,
         company: lead.company ?? null,
         country: lead.country,
         email: lead.email,
         id: lead.id,
+        hasDrawings: lead.hasDrawings ?? null,
         intentLevel: lead.intentLevel,
         interest: lead.interest ?? null,
         message: lead.message,
         name: lead.name,
         nextFollowUpAt: lead.nextFollowUpAt ?? null,
         phone: lead.phone ?? null,
+        procurementPlan: lead.procurementPlan ?? null,
+        projectStage: lead.projectStage ?? null,
+        quantitySquareMeters: lead.quantitySquareMeters ?? null,
         source,
         status: lead.status,
         sourceURL: lead.sourceURL ?? null,
+        timeline: lead.timeline ?? null,
       }),
     )
     .digest('hex')
@@ -216,20 +222,29 @@ const leadForFeishu = (value: unknown): LeadForFeishu => {
     assignedTo: lead.assignedTo
       ? (relationshipLabel(lead.assignedTo) as LeadForFeishu['assignedTo'])
       : null,
+    budget: typeof lead.budget === 'string' ? lead.budget : null,
     company: typeof lead.company === 'string' ? lead.company : null,
     country: requiredString(lead.country, 'lead country'),
     email: requiredString(lead.email, 'lead email'),
     id: id(lead.id, 'lead id'),
+    hasDrawings: typeof lead.hasDrawings === 'boolean' ? lead.hasDrawings : null,
     intentLevel: intentLevel as LeadForFeishu['intentLevel'],
     interest: typeof lead.interest === 'string' ? lead.interest : null,
     message: requiredString(lead.message, 'lead message'),
     name: requiredString(lead.name, 'lead name'),
     nextFollowUpAt: typeof lead.nextFollowUpAt === 'string' ? lead.nextFollowUpAt : null,
     phone: typeof lead.phone === 'string' ? lead.phone : null,
+    procurementPlan: typeof lead.procurementPlan === 'string' ? lead.procurementPlan : null,
+    projectStage: typeof lead.projectStage === 'string' ? lead.projectStage : null,
+    quantitySquareMeters:
+      typeof lead.quantitySquareMeters === 'number' && Number.isFinite(lead.quantitySquareMeters)
+        ? lead.quantitySquareMeters
+        : null,
     requestId: requiredString(lead.requestId, 'lead requestId'),
     source: relationshipLabel(lead.source) as LeadForFeishu['source'],
     status: status as LeadForFeishu['status'],
     sourceURL: typeof lead.sourceURL === 'string' ? lead.sourceURL : null,
+    timeline: typeof lead.timeline === 'string' ? lead.timeline : null,
   }
 }
 

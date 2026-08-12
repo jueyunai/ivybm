@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { ChatServiceError } from '@/modules/conversations/contracts'
+import { createKnowledgeConversationResponder } from '@/modules/conversations/responder'
 import { createConversationService } from '@/modules/conversations/service'
 
 import { InMemoryConversationRepository } from '../../fakes/conversationRepository'
@@ -26,6 +27,43 @@ const createService = ({ allowTikTokNormalizedDelivery = false } = {}) => {
 }
 
 describe('ConversationService', () => {
+  it('persists two qualification rounds before handing a completed lead to a human', async () => {
+    let sequence = 0
+    const repository = new InMemoryConversationRepository()
+    const service = createConversationService({
+      createId: (kind) => `${kind}-${++sequence}`,
+      leadSink: {
+        evaluate: async (session) => {
+          const visitorRounds = session.messages.filter(({ author }) => author === 'visitor').length
+          const complete = visitorRounds >= 3
+          return {
+            ...(complete ? { handoffReason: 'qualification_complete' } : {}),
+            score: {
+              handoffRecommended: complete, level: complete ? 'a' as const : 'c' as const,
+              missingFields: visitorRounds === 1 ? ['quantity', 'drawings', 'budget', 'timeline', 'contact'] as const : visitorRounds === 2 ? ['contact'] as const : [],
+              reasons: [], score: complete ? 80 : 20,
+            },
+            signals: { company: 'Facade LLC', contact: complete ? { email: 'buyer@example.invalid' } : {}, country: 'United Arab Emirates' },
+          }
+        },
+      },
+      repository,
+      responder: createKnowledgeConversationResponder({
+        generateText: async () => ({ cost: { estimated: 0 }, model: 'fixture', text: 'Reviewed answer.', usage: { inputTokens: 1, totalTokens: 1 } }),
+        getPrompt: async () => ({ template: 'fixture', version: 1 }),
+        retrieve: async () => [{ citation: { documentId: 1, title: 'Manual', version: '1' }, content: 'Reviewed.' }],
+      }),
+    })
+    const session = await service.startSession({ channel: 'website', idempotencyKey: 'qualification-start', locale: 'en' })
+    const first = await service.sendMessage({ idempotencyKey: 'qualification-message-1', sessionId: session.id, text: 'We are at tender stage in the UAE.' })
+    expect(first.qualificationState).toEqual({ askedFields: ['quantity', 'drawings', 'budget', 'timeline'], roundCount: 1 })
+    const second = await service.sendMessage({ idempotencyKey: 'qualification-message-2', sessionId: session.id, text: 'We need 1,200 sqm, have drawings and plan to buy within 3 months.' })
+    expect(second.qualificationState).toEqual({ askedFields: ['quantity', 'drawings', 'budget', 'timeline', 'contact'], roundCount: 2 })
+    const completed = await service.sendMessage({ idempotencyKey: 'qualification-message-3', sessionId: session.id, text: 'Contact buyer@example.invalid.' })
+    expect(completed).toMatchObject({ handoffStatus: 'handoff_requested', qualificationState: { roundCount: 2 } })
+    expect(completed.messages.filter(({ author }) => author === 'ai')).toHaveLength(2)
+  })
+
   it('fails closed for TikTok until a reviewed normalized connector explicitly opts in', async () => {
     const { repository, service } = createService()
 

@@ -13,7 +13,13 @@ import {
 import type { Conversation, Lead, LeadSource, Message, User } from '@/payload-types'
 
 import { visitorSessionExpiresAt } from './auth'
-import type { ChatErrorCode, ChatMessage, ChatSession, StartChatSessionInput } from './contracts'
+import type {
+  ChatErrorCode,
+  ChatMessage,
+  ChatQualificationState,
+  ChatSession,
+  StartChatSessionInput,
+} from './contracts'
 import { ChatServiceError } from './contracts'
 import { allowedActionsFor, type ChatSessionViewer, type HandoffCommand } from './handoffState'
 import type {
@@ -37,6 +43,30 @@ type PayloadConversationRepositoryOptions = {
 
 const relationshipID = (value: number | { id: number } | null | undefined): number | undefined =>
   typeof value === 'number' ? value : value?.id
+
+const qualificationFields = new Set<ChatQualificationState['askedFields'][number]>([
+  'budget',
+  'company',
+  'contact',
+  'country',
+  'drawings',
+  'projectStage',
+  'quantity',
+  'timeline',
+])
+
+const qualificationState = (conversation: Conversation): ChatQualificationState => ({
+  askedFields: Array.isArray(conversation.qualificationAskedFields)
+    ? conversation.qualificationAskedFields.filter(
+        (field): field is ChatQualificationState['askedFields'][number] =>
+          qualificationFields.has(field as ChatQualificationState['askedFields'][number]),
+      )
+    : [],
+  roundCount:
+    typeof conversation.qualificationRoundCount === 'number'
+      ? Math.max(0, Math.min(3, conversation.qualificationRoundCount))
+      : 0,
+})
 
 const isChatSession = (value: unknown): value is ChatSession => {
   if (!value || typeof value !== 'object') return false
@@ -197,6 +227,7 @@ export class PayloadConversationRepository implements ConversationRepository {
       messages: messages
         .filter(({ author }) => includeInternalMetadata || author !== 'system')
         .map((message) => mapMessage(message, includeInternalMetadata)),
+      qualificationState: qualificationState(conversation),
       revision: conversation.revision,
       requestId: conversation.requestId,
     }
@@ -252,7 +283,7 @@ export class PayloadConversationRepository implements ConversationRepository {
 
   private shouldCreateLead(evaluation?: ConversationLeadEvaluation): boolean {
     return Boolean(
-      evaluation?.score.level === 'a' &&
+      evaluation?.handoffReason &&
       evaluation.signals.contact.email?.trim() &&
       evaluation.signals.country?.trim(),
     )
@@ -289,7 +320,13 @@ export class PayloadConversationRepository implements ConversationRepository {
       country,
       email,
       idempotencyKey,
-      intentLevel: 'a' as const,
+      intentLevel: evaluation.score.level,
+      budget: evaluation.signals.budget,
+      procurementPlan: evaluation.signals.procurementPlan,
+      projectStage: evaluation.signals.projectStage,
+      quantitySquareMeters: evaluation.signals.quantitySquareMeters,
+      timeline: evaluation.signals.timeline,
+      hasDrawings: evaluation.signals.hasDrawings,
       interest: evaluation.signals.productInterest,
       locale: session.locale,
       message: transcript,
@@ -509,6 +546,8 @@ export class PayloadConversationRepository implements ConversationRepository {
           intentLevel: 'unscored',
           locale: session.locale,
           publicId: String(session.id),
+          qualificationAskedFields: [],
+          qualificationRoundCount: 0,
           revision: session.revision,
           requestId: session.requestId,
           visitorSession: visitor.id,
@@ -654,7 +693,10 @@ export class PayloadConversationRepository implements ConversationRepository {
       }
       const lastMessage = newMessages.at(-1)
       const shouldUpdateConversation =
-        stateChanged || newMessages.length > 0 || Boolean(mutation.leadEvaluation)
+        stateChanged ||
+        newMessages.length > 0 ||
+        Boolean(mutation.leadEvaluation) ||
+        Boolean(mutation.qualificationState)
       let persistedConversation = conversation
       if (shouldUpdateConversation) {
         const updated = await this.payload.update({
@@ -671,6 +713,20 @@ export class PayloadConversationRepository implements ConversationRepository {
               ? {
                   intentLevel: mutation.leadEvaluation.score.level,
                   intentScore: mutation.leadEvaluation.score.score,
+                  qualificationSignals: {
+                    budget: mutation.leadEvaluation.signals.budget,
+                    hasDrawings: mutation.leadEvaluation.signals.hasDrawings,
+                    procurementPlan: mutation.leadEvaluation.signals.procurementPlan,
+                    projectStage: mutation.leadEvaluation.signals.projectStage,
+                    quantitySquareMeters: mutation.leadEvaluation.signals.quantitySquareMeters,
+                    timeline: mutation.leadEvaluation.signals.timeline,
+                  },
+                }
+              : {}),
+            ...(mutation.qualificationState
+              ? {
+                  qualificationAskedFields: mutation.qualificationState.askedFields,
+                  qualificationRoundCount: mutation.qualificationState.roundCount,
                 }
               : {}),
           },

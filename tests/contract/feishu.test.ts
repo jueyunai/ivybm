@@ -84,6 +84,25 @@ describe('Feishu CRM contract', () => {
     })
   })
 
+  it('includes structured qualification details in the synced inquiry', () => {
+    const qualifiedLead: LeadForFeishu = {
+      ...lead,
+      budget: 'USD 450000',
+      hasDrawings: true,
+      procurementPlan: 'Purchase within 3 months',
+      projectStage: 'tender',
+      quantitySquareMeters: 3200,
+      timeline: 'within_3_months',
+    }
+
+    expect(mapLead({ lead: qualifiedLead, mapping }).fields['Original Inquiry']).toContain(
+      'Project stage: tender',
+    )
+    expect(mapLead({ lead: qualifiedLead, mapping }).fields['Original Inquiry']).toContain(
+      'Budget: USD 450000',
+    )
+  })
+
   it('fails closed when a required field mapping is missing or duplicated', () => {
     expect(() =>
       mapLead({
