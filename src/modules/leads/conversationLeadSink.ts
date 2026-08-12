@@ -34,22 +34,43 @@ const arabicCountries: Array<[string, string]> = [
 
 const companyCandidate =
   /([A-Za-z0-9&'-]+(?:\s+[A-Za-z0-9&'-]+){0,5}?)(?=\s+(?:and|for|from|in|with|we|our|the|need|needs|requiring)\b|[,.!?\n]|$)/
-const invalidCompanyCandidate = /\b(?:bid|concept|design|procurement|project|stage|tender)\b/i
-const genericWorkplaceCandidate =
-  /^(?:(?:a|an|the)\s+)?(?:business|company|factory|office|team|workplace)$/i
+const nonCompanyWords = new Set([
+  'a',
+  'an',
+  'the',
+  'bid',
+  'business',
+  'company',
+  'concept',
+  'design',
+  'factory',
+  'office',
+  'procurement',
+  'project',
+  'stage',
+  'team',
+  'tender',
+  'workplace',
+])
 const arabicCompanyCandidate =
   /(?:اسم\s+الشركة|(?:نحن\s+)?شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80}?)(?=\s+(?:في\s+(?:الإمارات(?:\s+العربية\s+المتحدة)?|السعودية|المملكة\s+العربية\s+السعودية|قطر|الكويت|عمان|البحرين)|و?(?:المشروع|مرحلة|نحتاج|نريد|لدينا|الكمية|المساحة|التصميم|المناقصة))|[\n،,.!?؟]|$)/
-const invalidArabicCompanyCandidate = /^(?:في(?:\s|$)|المشروع$|مشروع$|مرحلة$|المناقصة$|مناقصة$)/
+const invalidArabicCompanyCandidate =
+  /^(?:في|المشروع|مشروع|مرحلة|المناقصة|مناقصة)(?:\s|$)/
 
 const cleanCompanyCandidate = (candidate: string | undefined): string | undefined =>
   candidate?.trim().replace(/[,.!?]+$/, '') || undefined
 
+const isNonCompanyCandidate = (candidate: string): boolean =>
+  candidate
+    .toLowerCase()
+    .split(/\s+/)
+    .every((word) => nonCompanyWords.has(word))
+
+const isCountryCandidate = (candidate: string): boolean =>
+  countries.some((country) => country.toLowerCase() === candidate.toLowerCase())
+
 const validEnglishCompanyCandidate = (candidate: string | undefined): candidate is string =>
-  Boolean(
-    candidate &&
-    !invalidCompanyCandidate.test(candidate) &&
-    !genericWorkplaceCandidate.test(candidate),
-  )
+  Boolean(candidate && !isNonCompanyCandidate(candidate) && !isCountryCandidate(candidate))
 
 const extractArabicCompany = (text: string): string | undefined => {
   const candidate = cleanCompanyCandidate(text.match(arabicCompanyCandidate)?.[1])
@@ -85,10 +106,7 @@ const extractEnglishCompany = (text: string): string | undefined => {
       ),
     )?.[1],
   )
-  if (
-    validEnglishCompanyCandidate(origin) &&
-    !countries.some((candidate) => candidate.toLowerCase() === origin.toLowerCase())
-  ) {
+  if (validEnglishCompanyCandidate(origin)) {
     return origin
   }
   return undefined

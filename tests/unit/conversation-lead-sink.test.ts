@@ -71,18 +71,24 @@ describe('conversation lead signal extraction', () => {
     ['My company is Alcoa.', 'Alcoa'],
     ['I work at IVYBM.', 'IVYBM'],
     ['My company is acme facades.', 'acme facades'],
+    ['My company is Acme Design LLC.', 'Acme Design LLC'],
   ])('extracts a bounded workplace company from %s', (content, company) => {
     expect(extractLeadSignals(sessionWith('en', content)).company).toBe(company)
   })
 
-  it('does not mistake a country-only origin for a company', () => {
-    expect(extractLeadSignals(sessionWith('en', 'I am from UAE.')).company).toBeUndefined()
-  })
+  it.each(['I am from UAE.', 'I work at UAE.', 'I work at Saudi Arabia.'])(
+    'does not mistake a country for a company in %s',
+    (content) => {
+      expect(extractLeadSignals(sessionWith('en', content)).company).toBeUndefined()
+    },
+  )
 
   it('does not mistake a generic workplace phrase for a company', () => {
     for (const content of [
       'I work at a factory for our team.',
+      'I work at the business team.',
       'My company is a company.',
+      'My company is a factory office.',
       'I am from a workplace.',
     ]) {
       expect(extractLeadSignals(sessionWith('en', content)).company).toBeUndefined()
@@ -134,6 +140,8 @@ describe('conversation lead signal extraction', () => {
     'نحن شركة في السعودية والمشروع مناقصة.',
     'اسم الشركة في السعودية والمشروع مناقصة.',
     'شركة المشروع في السعودية.',
+    'نحن شركة مرحلة مناقصة.',
+    'اسم الشركة مناقصة شراء.',
   ])('does not mistake Arabic location or project words for a company in %s', (content) => {
     expect(extractLeadSignals(sessionWith('ar', content)).company).toBeUndefined()
   })
