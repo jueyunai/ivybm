@@ -30,7 +30,7 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
 export async function down({ db, payload, req }: MigrateDownArgs): Promise<void> {
   await db.execute(sql`
    ALTER TABLE "publish_jobs" DROP CONSTRAINT "publish_jobs_claim_job_id_jobs_id_fk";
-  
+
   ALTER TABLE "publish_logs" ALTER COLUMN "event" SET DATA TYPE text;
   DROP TYPE "public"."enum_publish_logs_event";
   CREATE TYPE "public"."enum_publish_logs_event" AS ENUM('created', 'scheduled', 'accepted', 'assisted-package-ready', 'status-updated', 'failed', 'delivery-unknown');
