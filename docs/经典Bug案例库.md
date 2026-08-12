@@ -204,12 +204,14 @@ Token 合法时绑定。回调增加有界结构化诊断，不记录任何凭�
 ### Prevention Gate
 
 为每个 provider stage 建立最小独立解析器；短 Token 只验证下一阶段实际需要的凭据，长 Token 再严格验证
-有效期。测试必须覆盖字段缺省、数字字符串、非法期限和安全诊断。
+有效期；如果 provider 成功响应完全省略有效期，则保存为未知而不是伪造期限。测试必须覆盖字段缺省、数字
+字符串、非法期限和安全诊断。
 
 ### Verification
 
 短 Token 响应只有 `access_token` / `token_type`，长 Token 的 `expires_in` 为十进制字符串：交换成功；长
-Token 缺少或包含非法期限时 fail closed，日志仅含 `token_exchange_long` 和安全字段名。
+Token 省略期限时交换成功且 `expiresAt=null`；显式包含非法期限时 fail closed，日志仅含
+`token_exchange_long` 和安全字段名。
 
 ### Reuse Prompt
 
@@ -251,13 +253,55 @@ Page 查询必需的 `pages_read_engagement` 纳入服务端权限门禁。
 
 - [ ] OAuth 每个交换阶段使用独立最小 schema。
 - [ ] fixture 覆盖短响应无期限、长期限为数字字符串。
-- [ ] 非法长期限 fail closed，诊断不含授权码、Token 或 App Secret。
+- [ ] 长 Token 成功但省略期限时保存未知期限；显式非法期限继续 fail closed。
+- [ ] 诊断不含授权码、Token 或 App Secret。
 - [ ] 真实平台权限必须同时由 Login Configuration 和服务端门禁校验。
 
 ### Regression Test
 
 `tests/unit/platforms/meta-oauth.test.ts` 覆盖短响应无期限、长期限数字字符串和非法长期限；
 `tests/unit/platforms/meta-oauth-routes.test.ts` 覆盖真实响应形态完成回调并保存 Page Token。
+
+## META-003 Meta 长 Token 成功响应省略有效期
+
+- Category: observability, test-gap, product-acceptance
+- Pattern: P-PROVIDER-RESPONSE-SHAPE
+- Date: 2026-08-12
+- Area: Task 13 Meta OAuth / Facebook Login for Business
+- Environment: production 受控 Facebook Page
+- Severity: P0
+
+### Symptom
+
+短 Token 兼容修复已经部署，Meta OAuth 回调仍显示 `token_exchange_failed`。
+
+### Root Cause
+
+Meta 长 Token endpoint 返回 HTTP 200，响应只有 `access_token` 和 `token_type`，没有 `expires_in`。实现仍把
+长 Token 有效期当作成功响应必填字段，因而把真实 Token 误判为 `token_response_invalid`。
+
+### Why Existing Checks Missed It
+
+回归 fixture 只覆盖短 Token 省略有效期，仍假定长 Token 必然返回 `expires_in`；真实 provider 响应形状未进入
+测试矩阵。
+
+### Fix
+
+长 Token 有 `expires_in` 时继续严格校验正整数和期限上限；成功响应完全省略该字段时保存
+`expiresAt=null`，不伪造期限。后续权限、Page ID 和 Page access token 校验保持 fail closed，只有完整身份验证
+通过才保存连接。
+
+### Prevention Checklist
+
+- [ ] 区分字段“缺省”和“显式非法”，不要把可选字段缺省等同 provider 失败。
+- [ ] 未知有效期诚实存为 `null`，不得虚构默认 TTL。
+- [ ] Token 之后的权限与目标资产校验仍是保存连接的强制门禁。
+- [ ] production 安全诊断只记录 stage、HTTP 状态和字段名。
+
+### Regression Test
+
+`tests/unit/platforms/meta-oauth.test.ts` 覆盖长 Token 只有 `access_token` / `token_type`；
+`tests/unit/platforms/meta-oauth-routes.test.ts` 覆盖该真实响应形态完成回调并保存未知有效期。
 
 ### Related Workflow Gates
 

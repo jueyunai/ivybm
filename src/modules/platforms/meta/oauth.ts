@@ -112,7 +112,7 @@ export type MetaAuthorizedAccount = {
 
 export type MetaUserToken = {
   accessToken: string
-  expiresAt: string
+  expiresAt: string | null
 }
 
 const nonEmpty = (value: string | undefined, maximumLength = MAX_CREDENTIAL_LENGTH): string => {
@@ -471,6 +471,9 @@ const readLongLivedTokenPayload = (
 ): MetaUserToken => {
   const stage = 'token_exchange_long'
   const accessToken = readAccessToken(payload, providerStatus, stage)
+  if (payload.expires_in === undefined) {
+    return { accessToken, expiresAt: null }
+  }
   const expiresIn = readExpiresInSeconds(payload.expires_in)
   if (expiresIn === undefined || expiresIn > MAX_TOKEN_TTL_SECONDS) {
     throw new MetaOAuthError(
