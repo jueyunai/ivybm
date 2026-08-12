@@ -62,6 +62,22 @@ describe('conversation lead signal extraction', () => {
     expect(signals.company).toBeUndefined()
   })
 
+  it.each([
+    ['I work at Acme Facades.', 'Acme Facades'],
+    ["I'm from Acme Corp.", 'Acme Corp'],
+    ['I work at Acme Facades for our procurement team.', 'Acme Facades'],
+  ])('extracts a bounded workplace company from %s', (content, company) => {
+    expect(extractLeadSignals(sessionWith('en', content)).company).toBe(company)
+  })
+
+  it('does not mistake a country-only origin for a company', () => {
+    expect(extractLeadSignals(sessionWith('en', 'I am from UAE.')).company).toBeUndefined()
+  })
+
+  it('does not mistake a generic workplace phrase for a company', () => {
+    expect(extractLeadSignals(sessionWith('en', 'I work at a factory for our team.')).company).toBeUndefined()
+  })
+
   it('does not mistake a qualification question for a supplied budget', () => {
     const signals = extractLeadSignals(
       sessionWith('en', 'Do you have a budget or purchasing plan for this project?'),

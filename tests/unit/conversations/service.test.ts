@@ -64,6 +64,51 @@ describe('ConversationService', () => {
     expect(completed.messages.filter(({ author }) => author === 'ai')).toHaveLength(2)
   })
 
+  it('prioritizes a high-risk topic over completed qualification without generating AI text', async () => {
+    const repository = new InMemoryConversationRepository()
+    const generateReply = vi.fn()
+    const service = createConversationService({
+      leadSink: {
+        evaluate: async () => ({
+          handoffReason: 'qualification_complete',
+          score: { handoffRecommended: true, level: 'a', missingFields: [], reasons: [], score: 90 },
+          signals: { company: 'Facade LLC', contact: { email: 'buyer@example.invalid' }, country: 'UAE' },
+        }),
+      },
+      repository,
+      responder: { generateReply },
+    })
+    const session = await service.startSession({ channel: 'website', idempotencyKey: 'risk-start', locale: 'en' })
+
+    const handedOff = await service.sendMessage({
+      idempotencyKey: 'risk-message',
+      sessionId: session.id,
+      text: 'Our qualification is complete. What price, lead time, and certification do you guarantee?',
+    })
+
+    expect(handedOff.handoffStatus).toBe('handoff_requested')
+    expect(handedOff.messages).toHaveLength(1)
+    expect(generateReply).not.toHaveBeenCalled()
+    expect(repository.handoffEvents).toEqual([
+      expect.objectContaining({ reason: 'high_risk_topic', source: 'ai_policy' }),
+    ])
+  })
+
+  it('still hands off a high-risk topic when lead evaluation is unavailable', async () => {
+    const repository = new InMemoryConversationRepository()
+    const generateReply = vi.fn()
+    const service = createConversationService({
+      leadSink: { evaluate: async () => { throw new Error('lead scoring unavailable') } },
+      repository,
+      responder: { generateReply },
+    })
+    const session = await service.startSession({ channel: 'website', idempotencyKey: 'risk-fail-start', locale: 'en' })
+
+    await expect(service.sendMessage({ idempotencyKey: 'risk-fail-message', sessionId: session.id, text: 'What price and certification do you guarantee?' })).resolves.toMatchObject({ handoffStatus: 'handoff_requested' })
+    expect(repository.handoffEvents).toEqual([expect.objectContaining({ reason: 'high_risk_topic' })])
+    expect(generateReply).not.toHaveBeenCalled()
+  })
+
   it('fails closed for TikTok until a reviewed normalized connector explicitly opts in', async () => {
     const { repository, service } = createService()
 
@@ -162,6 +207,55 @@ describe('ConversationService', () => {
       handoffStatus: 'handoff_requested',
       messages: [expect.objectContaining({ author: 'visitor' })],
     })
+  })
+
+  it('persists qualification context once when AI is unavailable and the command is retried', async () => {
+    const repository = new InMemoryConversationRepository()
+    const generateReply = vi.fn(async () => {
+      throw new Error('provider timeout')
+    })
+    const service = createConversationService({
+      leadSink: {
+        evaluate: async () => ({
+          score: { handoffRecommended: false, level: 'c', missingFields: ['contact'], reasons: [], score: 20 },
+          signals: { company: 'Facade LLC', contact: {}, country: 'UAE' },
+        }),
+      },
+      repository,
+      responder: { generateReply },
+    })
+    const session = await service.startSession({ channel: 'website', idempotencyKey: 'unavailable-start', locale: 'en' })
+    const input = { idempotencyKey: 'unavailable-message', sessionId: session.id, text: 'We need facade panels.' }
+
+    const first = await service.sendMessage(input)
+    const replay = await service.sendMessage(input)
+
+    expect(replay).toEqual(first)
+    expect(replay).toMatchObject({ handoffStatus: 'handoff_requested', qualificationState: { askedFields: [], roundCount: 0 } })
+    expect(replay.messages).toHaveLength(1)
+    expect(generateReply).toHaveBeenCalledTimes(1)
+    expect(repository.handoffEvents).toHaveLength(1)
+  })
+
+  it('carries qualification state through retryMessage and persists the next round', async () => {
+    const repository = new InMemoryConversationRepository()
+    const generateReply = vi.fn(async ({ qualificationState }) => ({
+      content: 'Please share a work email.', estimatedCostUSD: 0, model: 'fixture', promptVersion: 1,
+      qualificationState: { askedFields: [...(qualificationState?.askedFields ?? []), 'contact' as const], roundCount: (qualificationState?.roundCount ?? 0) + 1 },
+      tokenUsage: { inputTokens: 1, totalTokens: 1 },
+    }))
+    const service = createConversationService({
+      leadSink: { evaluate: async () => ({ score: { handoffRecommended: false, level: 'c', missingFields: ['contact'], reasons: [], score: 20 }, signals: { company: 'Facade LLC', contact: {}, country: 'UAE' } }) },
+      repository,
+      responder: { generateReply },
+    })
+    const session = await service.startSession({ channel: 'website', idempotencyKey: 'retry-state-start', locale: 'en' })
+    repository.appendFailedVisitorMessage(session.id, 'failed-visitor', 'We need facade panels.')
+
+    const retried = await service.retryMessage({ idempotencyKey: 'retry-state-message', messageId: 'failed-visitor', sessionId: session.id })
+
+    expect(retried.qualificationState).toEqual({ askedFields: ['contact'], roundCount: 1 })
+    expect(generateReply).toHaveBeenCalledWith(expect.objectContaining({ qualificationState: { askedFields: [], roundCount: 0 } }))
   })
 
   it('records an audit intent for illegal handoff transitions', async () => {

@@ -32,6 +32,48 @@ const arabicCountries: Array<[string, string]> = [
   ['البحرين', 'Bahrain'],
 ]
 
+const companyCandidate = /([A-Z][A-Za-z0-9&'-]*(?:\s+[A-Z][A-Za-z0-9&'-]*\.?){1,5}?)(?=\s+(?:and|for|with)\b|[,.!?\n]|$)/
+const invalidCompanyCandidate = /\b(?:bid|concept|design|procurement|project|stage|tender)\b/i
+
+const extractEnglishCompany = (text: string): string | undefined => {
+  const explicit = text
+    .match(
+      /(?:my|our|the)?\s*company(?:\s+name)?\s*(?:is|[:：])\s*([A-Z][A-Z0-9& '-]{2,80})(?=[,.!?\n]|$)/i,
+    )?.[1]
+    ?.trim()
+    .replace(/[,.!?]+$/, '')
+  if (explicit) return explicit
+
+  const workplace = text
+    .match(
+      new RegExp(
+        String.raw`\b(?:[Ii]\s+(?:work|am\s+working)|[Ii]'m\s+working|[Ww]e\s+(?:work|are\s+working)|[Ww]e're\s+working)\s+(?:at|for)\s+${companyCandidate.source}`,
+        '',
+      ),
+    )?.[1]
+    ?.trim()
+    .replace(/[,.!?]+$/, '')
+  if (workplace && !invalidCompanyCandidate.test(workplace)) return workplace
+
+  const origin = text
+    .match(
+      new RegExp(
+        String.raw`\b(?:[Ii]\s+am|[Ii]'m|[Ww]e\s+are|[Ww]e're)\s+from\s+${companyCandidate.source}`,
+        '',
+      ),
+    )?.[1]
+    ?.trim()
+    .replace(/[,.!?]+$/, '')
+  if (
+    origin &&
+    !invalidCompanyCandidate.test(origin) &&
+    !countries.some((candidate) => candidate.toLowerCase() === origin.toLowerCase())
+  ) {
+    return origin
+  }
+  return undefined
+}
+
 export const extractLeadSignals = (session: ChatSession): LeadScoringInput => {
   const text = session.messages
     .filter(({ author }) => author === 'visitor')
@@ -67,11 +109,8 @@ export const extractLeadSignals = (session: ChatSession): LeadScoringInput => {
           ? 'within_12_months'
           : undefined
   const company =
-    text
-      .match(
-        /(?:my|our|the)?\s*company(?:\s+name)?\s*(?:is|[:：])\s*([A-Z][A-Z0-9& '-]{2,80})(?=[,.!?\n]|$)/i,
-      )?.[1]
-      ?.trim() ?? text.match(/(?:اسم\s+الشركة|شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80})/)?.[1]?.trim()
+    extractEnglishCompany(text) ??
+    text.match(/(?:اسم\s+الشركة|شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80})/)?.[1]?.trim()
   const englishBudget = text
     .match(
       /(?:budget|price range|spend(?:ing)?|investment)\s*(?:is|of|around|about|[:：])?\s*([^\n.!?]{2,80}?)(?=\s+(?:and\s+)?(?:our\s+|the\s+)?(?:purchase|purchasing|procurement)\s+(?:plan|schedule|process|strategy)\b|,(?!\d{3}\b)|[.!?\n]|$)/i,

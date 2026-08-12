@@ -28,6 +28,7 @@ import {
   externalMessagePersistenceKey,
   externalSessionCommandKey,
 } from './externalDeliveryIdentity'
+import { requiresHumanReview } from './responder'
 
 export type ConversationCommandClaim = {
   id: number | string
@@ -316,15 +317,22 @@ export const createConversationService = ({
           claim,
         )
       }
-      let leadEvaluation = await leadSink?.evaluate(session)
+      const highRiskTopic = requiresHumanReview(text)
+      let leadEvaluation = highRiskTopic
+        ? await leadSink?.evaluate(session).catch(() => undefined)
+        : await leadSink?.evaluate(session)
+      if (highRiskTopic && leadEvaluation) {
+        leadEvaluation = { ...leadEvaluation, handoffReason: 'high_risk_topic' }
+      }
       let handoff: HandoffCreatedEvent | undefined
       let qualificationState: ChatQualificationState | undefined
-      if (leadEvaluation?.handoffReason && session.handoffStatus === 'ai_active') {
+      const handoffReason = highRiskTopic ? 'high_risk_topic' : leadEvaluation?.handoffReason
+      if (handoffReason && session.handoffStatus === 'ai_active') {
         session.handoffStatus = await transition(session, 'request')
         session.allowedActions = allowedActionsFor(session.handoffStatus)
         handoff = createHandoff(session, {
           idempotencyKey: input.idempotencyKey,
-          reason: leadEvaluation.handoffReason,
+          reason: handoffReason,
           source: 'ai_policy',
         })
       } else if (session.handoffStatus === 'ai_active') {
@@ -457,16 +465,40 @@ export const createConversationService = ({
         }
         assertAiReplyAllowed(session.handoffStatus)
         await repository.renewCommand(claim)
-        const reply = await replyOrHandoff(message.content, session)
+        const highRiskTopic = requiresHumanReview(message.content)
+        let leadEvaluation = highRiskTopic
+          ? await leadSink?.evaluate(session).catch(() => undefined)
+          : await leadSink?.evaluate(session)
+        if (highRiskTopic && leadEvaluation) {
+          leadEvaluation = { ...leadEvaluation, handoffReason: 'high_risk_topic' }
+        }
+        const reply = highRiskTopic
+          ? { handoff: { reason: 'high_risk_topic', source: 'ai_policy' as const } }
+          : await replyOrHandoff(
+              message.content,
+              session,
+              leadEvaluation?.score.missingFields,
+              session.qualificationState ?? { askedFields: [], roundCount: 0 },
+            )
         let handoff: HandoffCreatedEvent | undefined
+        let qualificationState: ChatQualificationState | undefined
         if ('handoff' in reply) {
+          if (leadEvaluation && !leadEvaluation.handoffReason) {
+            leadEvaluation = { ...leadEvaluation, handoffReason: reply.handoff.reason }
+          }
           session.handoffStatus = await transition(session, 'request')
           session.allowedActions = allowedActionsFor(session.handoffStatus)
           handoff = createHandoff(session, { ...reply.handoff, idempotencyKey: input.idempotencyKey })
         } else {
           appendAiReply(session, reply)
+          qualificationState = reply.qualificationState
+          if (qualificationState) session.qualificationState = qualificationState
         }
-        return repository.saveSession(session, { base, handoff }, claim)
+        return repository.saveSession(
+          session,
+          { base, handoff, leadEvaluation, ...(qualificationState ? { qualificationState } : {}) },
+          claim,
+        )
       })
       return result.session
     },
