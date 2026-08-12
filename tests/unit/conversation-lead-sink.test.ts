@@ -170,7 +170,12 @@ describe('conversation lead signal extraction', () => {
   it.each([
     ['en' as const, 'Not applicable.'],
     ['en' as const, 'Better not to say.'],
+    ['en' as const, 'Not applicable Inc.'],
+    ['en' as const, 'Better not to say LLC.'],
+    ['en' as const, 'Nope LLC.'],
     ['ar' as const, 'أفضل عدم القول.'],
+    ['ar' as const, 'الرفض.'],
+    ['ar' as const, 'السرية.'],
   ])('keeps %s refusal %s out of authoritative company scoring', async (locale, refusal) => {
     const qualifiedText =
       locale === 'ar'
@@ -210,6 +215,11 @@ describe('conversation lead signal extraction', () => {
     'Refuse LLC.',
     'Decline Corp.',
     'Skip Group.',
+    'Not applicable Inc.',
+    'Better not to say LLC.',
+    'Nope LLC.',
+    'Pass Group.',
+    'Refusal LLC.',
     'No company.',
     'None.',
     'No idea.',
@@ -248,26 +258,35 @@ describe('conversation lead signal extraction', () => {
     expect(extractLeadSignals(session).company).toBe('Acme')
   })
 
-  it('keeps an unsuffixed multi-word bare answer ambiguous without explicit company framing', () => {
+  it('accepts a title-cased multi-word bare answer after explicitly asking for company', () => {
     const session = sessionWith('en', 'Blue Horizon.')
     session.qualificationState = { askedFields: ['company'], roundCount: 1 }
 
-    expect(extractLeadSignals(session).company).toBeUndefined()
+    expect(extractLeadSignals(session).company).toBe('Blue Horizon')
     expect(extractLeadSignals(sessionWith('en', 'My company is Blue Horizon.')).company).toBe(
       'Blue Horizon',
     )
   })
 
-  it('requires explicit framing for all bare English single-word brands', () => {
+  it('accepts title-cased and acronym bare English brands only after the company prompt', () => {
     const acronym = sessionWith('en', 'IVYBM.')
     acronym.qualificationState = { askedFields: ['company'], roundCount: 1 }
     const titleCase = sessionWith('en', 'Alcoa.')
     titleCase.qualificationState = { askedFields: ['company'], roundCount: 1 }
 
-    expect(extractLeadSignals(acronym).company).toBeUndefined()
-    expect(extractLeadSignals(titleCase).company).toBeUndefined()
+    expect(extractLeadSignals(acronym).company).toBe('IVYBM')
+    expect(extractLeadSignals(titleCase).company).toBe('Alcoa')
+    expect(extractLeadSignals(sessionWith('en', 'IVYBM.')).company).toBeUndefined()
+    expect(extractLeadSignals(sessionWith('en', 'Alcoa.')).company).toBeUndefined()
     expect(extractLeadSignals(sessionWith('en', 'My company is Alcoa.')).company).toBe('Alcoa')
     expect(extractLeadSignals(sessionWith('en', 'I work at IVYBM.')).company).toBe('IVYBM')
+  })
+
+  it('does not reject a legitimate company merely because a later word resembles refusal text', () => {
+    const session = sessionWith('en', 'Waste Refuse LLC.')
+    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+    expect(extractLeadSignals(session).company).toBe('Waste Refuse LLC')
   })
 
   it('extracts a grouped prompted company and country answer before later qualification details', () => {
@@ -368,6 +387,17 @@ describe('conversation lead signal extraction', () => {
     expect(extractLeadSignals(session).company).toBe('النور')
   })
 
+  it.each(['نور.', 'الصحراء للألمنيوم.', 'النور للتجارة.'])(
+    'extracts a bounded Arabic proper-name reply after the company field was asked in %s',
+    (content) => {
+      const session = sessionWith('ar', content)
+      session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+
+      expect(extractLeadSignals(session).company).toBe(content.slice(0, -1))
+      expect(extractLeadSignals(sessionWith('ar', content)).company).toBeUndefined()
+    },
+  )
+
   it('uses a bare Arabic prompted company reply in the authoritative evaluation', async () => {
     const session = sessionWith(
       'ar',
@@ -396,6 +426,12 @@ describe('conversation lead signal extraction', () => {
     'أفضل عدم القول.',
     'أرفض.',
     'تخطي.',
+    'الرفض.',
+    'السرية.',
+    'الخاص.',
+    'المجهول.',
+    'التخطي.',
+    'الامتناع.',
     'في السعودية.',
     'المشروع مناقصة.',
   ])('does not infer a generic Arabic prompted company reply in %s', (content) => {

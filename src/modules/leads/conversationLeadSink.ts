@@ -78,15 +78,15 @@ const nonCompanyWords = new Set([
   'yes',
 ])
 const invalidPromptedCompanyAnswer =
-  /^(?:(?:i|we|there)\b|(?:no|none|not\s+sure|unknown|unsure|maybe|confidential|private|refuse|decline|skip|prefer\s+not\s+to\s+say|rather\s+not\s+say)\b)|\b(?:do\s+not|don't|does\s+not|doesn't)\b/i
+  /^(?:(?:i|we|there)\b|(?:no|nope|none|not(?:\s+(?:applicable|sure))?|unknown|unsure|maybe|confidential|private|pass|refuse|refusal|decline|skip|undisclosed)\b|(?:better|prefer|rather)\s+not\s+(?:to\s+)?say\b|(?:cannot|can't|won't)\s+(?:disclose|say)\b|\b(?:do\s+not|don't|does\s+not|doesn't)\b)/i
 const invalidPromptedCompanyMessage =
-  /^(?:it\s+is\s+(?:confidential|private|unknown)\b|prefer\s+not\s+to\s+say\b|rather\s+not\s+say\b)/i
+  /^(?:it\s+is\s+(?:confidential|private|unknown)\b|not\s+applicable\b|(?:better|prefer|rather)\s+not\s+(?:to\s+)?say\b|(?:cannot|can't|won't)\s+(?:disclose|say)\b)/i
 // prettier-ignore
 const arabicCompanyCandidate =
   /(?:اسم\s+الشركة|(?:نحن\s+)?شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80}?)(?=\s+(?:في\s+(?:الإمارات(?:\s+العربية\s+المتحدة)?|السعودية|المملكة\s+العربية\s+السعودية|قطر|الكويت|عمان|البحرين)|و?(?:المشروع|مرحلة|نحتاج|نريد|لدينا|الكمية|المساحة|التصميم|المناقصة))|[\n،,.!?؟]|$)/
 const invalidArabicCompanyCandidate = /^(?:في|المشروع|مشروع|مرحلة|المناقصة|مناقصة)(?:\s|$)/
 const invalidPromptedArabicCompanyAnswer =
-  /^(?:أنا|انا|نحن|هو|هي|لا|ليس|ليست|لست|لسنا|غير\s+معروف|ربما)(?:\s|$)/
+  /^(?:أنا|انا|نحن|هو|هي|لا|ليس|ليست|لست|لسنا|غير\s+معروف|ربما|أفضل\s+عدم\s+القول|أرفض|ارفض|رفض|الرفض|تخطي|التخطي|امتنع|الامتناع|سري|سرية|السرية|خاص|الخاص|مجهول|المجهول)(?:\s|$)/
 const nonArabicCompanyWords = new Set([
   'اسم',
   'الشركة',
@@ -152,12 +152,25 @@ const isPromptedEnglishCompanyShape = (candidate: string, message: string): bool
   ) {
     return true
   }
-  return false
+  const words = candidate.split(/\s+/).filter(Boolean)
+  return (
+    words.length <= 4 &&
+    words.every(
+      (word) =>
+        /^[A-Z][A-Za-z0-9&'-]*$/.test(word) ||
+        (/^[A-Z0-9&'-]{2,}$/.test(word) && /[A-Z]/.test(word)),
+    )
+  )
 }
 
-const isPromptedArabicCompanyShape = (candidate: string): boolean =>
-  candidate.split(/\s+/).filter(Boolean).length === 1 &&
-  /^ال[\p{Script=Arabic}]{2,}$/u.test(candidate)
+const isPromptedArabicCompanyShape = (candidate: string): boolean => {
+  const words = candidate.split(/\s+/).filter(Boolean)
+  return (
+    words.length <= 4 &&
+    words.every((word) => /^[\p{Script=Arabic}\p{Mark}\p{Number}'’-]+$/u.test(word)) &&
+    !words.some((word) => nonArabicCompanyWords.has(word))
+  )
+}
 
 const countryCandidateSource = [...countries]
   .sort((left, right) => right.length - left.length)
