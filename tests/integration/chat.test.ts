@@ -354,17 +354,7 @@ describe.sequential('Task 9 conversation persistence', () => {
       },
     }
     const service = createConversationService({
-      leadSink: {
-        evaluate: async (current) => {
-          const rounds = current.messages.filter(({ author }) => author === 'visitor').length
-          const complete = rounds >= 3
-          return {
-            ...(complete ? { handoffReason: 'qualification_complete' } : {}),
-            score: { handoffRecommended: complete, level: complete ? 'a' : 'c', missingFields: complete ? [] : rounds === 1 ? ['quantity', 'drawings', 'budget', 'timeline', 'contact'] : ['contact'], reasons: [], score: complete ? 80 : 20 },
-            signals: { company: 'شركة النور', contact: complete ? { email: `round-limit-${suffix}@example.invalid` } : {}, country: 'Saudi Arabia' },
-          }
-        },
-      },
+      leadSink: new PayloadConversationLeadSink(),
       repository: new PayloadConversationRepository({
         payload,
         sessionTokenHash: hashVisitorToken(`round-limit-token-${suffix}`),
@@ -377,19 +367,29 @@ describe.sequential('Task 9 conversation persistence', () => {
     expect(first.qualificationState).toEqual({ askedFields: ['quantity', 'timeline'], roundCount: 1 })
     const hydrated = await service.getSession(session.id)
     expect(hydrated.qualificationState).toEqual(first.qualificationState)
+    await expect(new PayloadConversationLeadSink().evaluate(hydrated)).resolves.toMatchObject({
+      signals: { company: 'النور', country: 'Saudi Arabia', projectStage: 'tender' },
+    })
+    const firstConversation = (await payload.find({ collection: 'conversations', limit: 1, overrideAccess: true, where: { publicId: { equals: String(session.id) } } })).docs[0]
+    expect(firstConversation).toMatchObject({
+      qualificationSignals: { projectStage: 'tender' },
+      qualificationAskedFields: ['quantity', 'timeline'],
+      qualificationRoundCount: 1,
+    })
     expect((await service.sendMessage(firstInput)).revision).toBe(first.revision)
 
-    const second = await service.sendMessage({ idempotencyKey: `round-limit-message-2-${suffix}`, sessionId: session.id, text: 'نحتاج 1200 متر مربع ولدينا رسومات وميزانية 300000 ريال والشراء خلال 3 أشهر.' })
-    expect(second.qualificationState).toEqual({ askedFields: ['quantity', 'timeline', 'contact'], roundCount: 2 })
-    const handedOff = await service.sendMessage({ idempotencyKey: `round-limit-message-3-${suffix}`, sessionId: session.id, text: `البريد round-limit-${suffix}@example.invalid.` })
+    const secondInput = { idempotencyKey: `round-limit-message-2-${suffix}`, sessionId: session.id, text: `نحتاج 1200 متر مربع ولدينا رسومات وميزانية 300000 ريال والشراء خلال 3 أشهر. البريد round-limit-${suffix}@example.invalid.` }
+    const handedOff = await service.sendMessage(secondInput)
     expect(handedOff.handoffStatus).toBe('handoff_requested')
-    expect(handedOff.qualificationState).toEqual(second.qualificationState)
-    expect(handedOff.messages.filter(({ author }) => author === 'ai')).toHaveLength(2)
+    expect(handedOff.qualificationState).toEqual(first.qualificationState)
+    expect(handedOff.messages.filter(({ author }) => author === 'ai')).toHaveLength(1)
+    expect((await service.sendMessage(secondInput)).revision).toBe(handedOff.revision)
 
     const leads = await payload.find({ collection: 'leads', limit: 1, overrideAccess: true, where: { idempotencyKey: { equals: `chat-lead:${String(session.id)}` } } })
     expect(leads.docs[0]).toMatchObject({ intentLevel: 'a' })
+    expect(leads.docs[0]).toMatchObject({ company: 'النور', country: 'Saudi Arabia', projectStage: 'tender' })
     const messages = await payload.find({ collection: 'messages', limit: 20, overrideAccess: true, where: { conversation: { equals: (await payload.find({ collection: 'conversations', limit: 1, overrideAccess: true, where: { publicId: { equals: String(session.id) } } })).docs[0]?.id } } })
-    expect(messages.totalDocs).toBe(5)
+    expect(messages.totalDocs).toBe(3)
     const conversation = (await payload.find({ collection: 'conversations', limit: 1, overrideAccess: true, where: { publicId: { equals: String(session.id) } } })).docs[0]
     if (conversation) await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
     if (leads.docs[0]) await payload.delete({ collection: 'leads', id: leads.docs[0].id, overrideAccess: true })

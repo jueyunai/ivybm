@@ -66,6 +66,8 @@ describe('conversation lead signal extraction', () => {
     ['I work at Acme Facades.', 'Acme Facades'],
     ["I'm from Acme Corp.", 'Acme Corp'],
     ['I work at Acme Facades for our procurement team.', 'Acme Facades'],
+    ['I work for Acme Facades from UAE.', 'Acme Facades'],
+    ['My company is Acme Facades and we need 500 sqm.', 'Acme Facades'],
   ])('extracts a bounded workplace company from %s', (content, company) => {
     expect(extractLeadSignals(sessionWith('en', content)).company).toBe(company)
   })
@@ -105,5 +107,17 @@ describe('conversation lead signal extraction', () => {
       timeline: 'within_3_months',
     })
     expect(signals.contact.email).toBe('sales@example.invalid')
+  })
+
+  it('bounds an Arabic company before country and project-stage answers', () => {
+    expect(
+      extractLeadSignals(
+        sessionWith('ar', 'نحن شركة النور في السعودية والمشروع مناقصة.'),
+      ),
+    ).toMatchObject({
+      company: 'النور',
+      country: 'Saudi Arabia',
+      projectStage: 'tender',
+    })
   })
 })
