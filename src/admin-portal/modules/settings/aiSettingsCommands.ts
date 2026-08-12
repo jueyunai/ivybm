@@ -1,6 +1,10 @@
 import type { Payload, PayloadRequest } from 'payload'
 
 import { AI_REASONING_EFFORTS } from '@/modules/ai/gateway'
+import {
+  OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS,
+  type OpenAICompatibleTextGenerationContract,
+} from '@/modules/ai/providers/openaiCompatible'
 import { AI_USAGE_KEYS } from '@/modules/ai/registry'
 
 import {
@@ -87,6 +91,19 @@ const capability = (value: unknown): PortalAiCapability => {
   return value
 }
 
+const providerTextGenerationContract = (
+  value: unknown,
+): OpenAICompatibleTextGenerationContract => {
+  const candidate = value ?? 'responses'
+  if (
+    typeof candidate !== 'string' ||
+    !OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS.some((contract) => contract === candidate)
+  ) {
+    return fail('text generation contract')
+  }
+  return candidate as OpenAICompatibleTextGenerationContract
+}
+
 const providerData = (input: JsonInput) => {
   const apiKey = optionalText(input.apiKey, 'API key', 4_096)
   return {
@@ -95,6 +112,7 @@ const providerData = (input: JsonInput) => {
     enabled: requiredBoolean(input.enabled, 'enabled state'),
     name: requiredText(input.name, 'provider name', 100),
     protocol: 'openai-compatible' as const,
+    textGenerationContract: providerTextGenerationContract(input.textGenerationContract),
   }
 }
 

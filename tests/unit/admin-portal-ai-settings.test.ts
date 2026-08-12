@@ -24,10 +24,15 @@ describe('Portal AI settings read model', () => {
       id: 1,
       name: 'Primary',
       protocol: 'openai-compatible',
+      textGenerationContract: 'chat-completions',
       updatedAt: '2026-08-05T00:00:00.000Z',
     })
 
-    expect(provider).toMatchObject({ apiKeyConfigured: true, name: 'Primary' })
+    expect(provider).toMatchObject({
+      apiKeyConfigured: true,
+      name: 'Primary',
+      textGenerationContract: 'chat-completions',
+    })
     expect(JSON.stringify(provider)).not.toMatch(/encrypted-secret|apiKey":/)
   })
 
@@ -39,6 +44,7 @@ describe('Portal AI settings read model', () => {
       id: 1,
       name: 'Primary',
       protocol: 'openai-compatible' as const,
+      textGenerationContract: 'responses' as const,
       updatedAt: '',
     }
     const profiles = [
@@ -103,8 +109,8 @@ describe('Portal AI settings read model', () => {
           2: [{ capability: 'text', enabled: true, id: 5, model: 'text-model', name: 'Text', parameters: {}, provider: 4, updatedAt: '' }],
         },
         'ai-providers': {
-          1: [{ apiKey, apiKeyConfigured: true, baseURL: 'https://api.example.invalid/v1', enabled: true, id: 1, name: 'Primary', protocol: 'openai-compatible', updatedAt: '' }],
-          2: [{ apiKey, apiKeyConfigured: true, baseURL: 'https://api.example.invalid/v1', enabled: true, id: 4, name: 'Secondary', protocol: 'openai-compatible', updatedAt: '' }],
+          1: [{ apiKey, apiKeyConfigured: true, baseURL: 'https://api.example.invalid/v1', enabled: true, id: 1, name: 'Primary', protocol: 'openai-compatible', textGenerationContract: 'responses', updatedAt: '' }],
+          2: [{ apiKey, apiKeyConfigured: true, baseURL: 'https://api.example.invalid/v1', enabled: true, id: 4, name: 'Secondary', protocol: 'openai-compatible', textGenerationContract: 'responses', updatedAt: '' }],
         },
         'ai-usage-routes': {
           1: [],

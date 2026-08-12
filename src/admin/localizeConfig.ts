@@ -256,6 +256,7 @@ const FIELD_LABELS: Record<string, AdminText> = {
   state: text('授权状态', 'Authorization State'),
   summary: text('摘要', 'Summary'),
   temperature: text('温度', 'Temperature'),
+  textGenerationContract: text('文本接口契约', 'Text API Contract'),
   template: text('模板', 'Template'),
   term: text('关键词', 'Term'),
   thumbnail: text('缩略图', 'Thumbnail'),
@@ -362,6 +363,10 @@ const OPTION_LABELS: Record<string, Record<string, AdminText>> = {
   },
   protocol: {
     'openai-compatible': text('兼容 OpenAI 协议', 'OpenAI-compatible'),
+  },
+  textGenerationContract: {
+    'chat-completions': text('Chat Completions', 'Chat Completions'),
+    responses: text('Responses', 'Responses'),
   },
   publishing: {
     approved: text('已批准', 'Approved'),
@@ -470,6 +475,10 @@ const DESCRIPTION_BY_PATH: Record<string, AdminText> = {
   'ai-providers.baseURL': text(
     '请输入包含 API 版本前缀的端点，例如 https://api.openai.com/v1。',
     'Include the API version prefix, for example https://api.openai.com/v1.',
+  ),
+  'ai-providers.textGenerationContract': text(
+    '请选择供应商实际支持的文本端点；系统不会自动猜测或降级。',
+    'Select the exact text endpoint exposed by the provider; the system never guesses or falls back.',
   ),
   'ai-usage-routes.usageKey': text(
     '稳定的内部场景键，例如 chat.reply 或 knowledge.embedding。',

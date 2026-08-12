@@ -15,6 +15,7 @@ import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalComma
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import type { OpenAICompatibleTextGenerationContract } from '@/modules/ai/providers/openaiCompatible'
 import { AI_USAGE_KEYS } from '@/modules/ai/registry'
 
 import type {
@@ -323,10 +324,14 @@ function ProviderForm({ busy, messages, onCancel, onSave, provider }: { busy: bo
   const [baseURL, setBaseURL] = useState(provider?.baseURL ?? '')
   const [enabled, setEnabled] = useState(provider?.enabled ?? true)
   const [name, setName] = useState(provider?.name ?? '')
+  const [textGenerationContract, setTextGenerationContract] =
+    useState<OpenAICompatibleTextGenerationContract>(
+      provider?.textGenerationContract ?? 'responses',
+    )
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     await onSave(
-      { apiKey, baseURL, enabled, name, updatedAt: provider?.updatedAt },
+      { apiKey, baseURL, enabled, name, textGenerationContract, updatedAt: provider?.updatedAt },
       provider?.id ?? null,
     ).catch(() => undefined)
   }
@@ -335,6 +340,7 @@ function ProviderForm({ busy, messages, onCancel, onSave, provider }: { busy: bo
       <header><h4>{provider ? messages.edit : messages.newProvider}</h4></header>
       <label><span>{messages.providerName}</span><input disabled={busy} maxLength={100} onChange={(event) => setName(event.target.value)} required value={name} /></label>
       <label><span>{messages.baseURL}</span><input disabled={busy} maxLength={600} onChange={(event) => setBaseURL(event.target.value)} placeholder="https://api.openai.com/v1" required type="url" value={baseURL} /></label>
+      <label><span>{messages.textGenerationContract}</span><select disabled={busy} onChange={(event) => setTextGenerationContract(event.target.value as OpenAICompatibleTextGenerationContract)} value={textGenerationContract}><option value="responses">{messages.textGenerationContracts.responses}</option><option value="chat-completions">{messages.textGenerationContracts['chat-completions']}</option></select><small>{messages.textGenerationContractDescription}</small></label>
       <label><span>{messages.apiKey}</span><input autoComplete="new-password" disabled={busy} maxLength={4096} onChange={(event) => setApiKey(event.target.value)} required={!provider?.apiKeyConfigured} type="password" value={apiKey} /><small>{messages.apiKeyDescription}</small></label>
       <label className="portal-ai-settings__check"><input checked={enabled} disabled={busy} onChange={(event) => setEnabled(event.target.checked)} type="checkbox" /><span>{messages.enabled}</span></label>
       <FormActions busy={busy} messages={messages} onCancel={onCancel} />
@@ -370,7 +376,9 @@ function ProfileForm({ busy, messages, onCancel, onSave, profile, providers }: {
   const [reasoningEffort, setReasoningEffort] = useState(profile?.parameters.reasoningEffort ?? 'medium')
   const [reasoningEnabled, setReasoningEnabled] = useState(profile?.parameters.reasoningEnabled ?? false)
   const [temperature, setTemperature] = useState(String(profile?.parameters.temperature ?? ''))
-  const [timeoutMs, setTimeoutMs] = useState(String(profile?.parameters.timeoutMs ?? 30000))
+  const [timeoutMs, setTimeoutMs] = useState(
+    String(profile?.parameters.timeoutMs ?? (capability === 'image' ? 120000 : 30000)),
+  )
   const [topP, setTopP] = useState(String(profile?.parameters.topP ?? ''))
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -382,7 +390,7 @@ function ProfileForm({ busy, messages, onCancel, onSave, profile, providers }: {
       <div className="portal-ai-settings__form-grid">
         <label><span>{messages.modelName}</span><input disabled={busy} maxLength={100} onChange={(event) => setName(event.target.value)} required value={name} /></label>
         <label><span>{messages.provider}</span><select disabled={busy} onChange={(event) => setProviderID(Number(event.target.value))} required value={providerID}>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></label>
-        <label><span>{messages.capability}</span><select disabled={busy} onChange={(event) => setCapability(event.target.value as PortalAiCapability)} value={capability}><option value="text">{messages.capabilities.text}</option><option value="embedding">{messages.capabilities.embedding}</option><option value="image">{messages.capabilities.image}</option></select></label>
+        <label><span>{messages.capability}</span><select disabled={busy} onChange={(event) => { const nextCapability = event.target.value as PortalAiCapability; setCapability(nextCapability); if (!profile) setTimeoutMs(String(nextCapability === 'image' ? 120000 : 30000)) }} value={capability}><option value="text">{messages.capabilities.text}</option><option value="embedding">{messages.capabilities.embedding}</option><option value="image">{messages.capabilities.image}</option></select></label>
         <label><span>{messages.model}</span><input disabled={busy} maxLength={200} onChange={(event) => setModel(event.target.value)} required value={model} /></label>
         <label><span>{messages.timeout}</span><input disabled={busy} max={120000} min={1000} onChange={(event) => setTimeoutMs(event.target.value)} required type="number" value={timeoutMs} /></label>
         {capability === 'embedding' ? <label><span>{messages.dimensions}</span><input disabled={busy} max={16384} min={1} onChange={(event) => setDimensions(event.target.value)} required type="number" value={dimensions} /></label> : null}

@@ -19,7 +19,9 @@ import {
 } from './gateway'
 import {
   createOpenAICompatibleProvider,
+  OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS,
   type OpenAICompatibleProviderOptions,
+  type OpenAICompatibleTextGenerationContract,
 } from './providers/openaiCompatible'
 
 type Environment = Readonly<Record<string, string | undefined>>
@@ -95,6 +97,16 @@ const optionalNumber = (
 
 const validReasoningEffort = (value: unknown): value is AiReasoningEffort =>
   typeof value === 'string' && AI_REASONING_EFFORTS.some((effort) => effort === value)
+
+const textGenerationContract = (value: unknown): OpenAICompatibleTextGenerationContract => {
+  if (
+    typeof value !== 'string' ||
+    !OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS.some((contract) => contract === value)
+  ) {
+    throw new AiConfigurationError('AI route provider text contract is invalid')
+  }
+  return value as OpenAICompatibleTextGenerationContract
+}
 
 const normalizeRuntimeBaseURL = (value: string, environment: Environment): string => {
   try {
@@ -179,6 +191,7 @@ const resolveCmsRoute = (
     apiKey,
     baseURL,
     name: requiredString(provider.name, 'provider name'),
+    textGenerationContract: textGenerationContract(provider.textGenerationContract),
   })
 
   if (request.operation === 'embedding') {

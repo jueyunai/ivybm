@@ -6,6 +6,7 @@ import {
   readAiConfigurationEncryptionKey,
 } from '@/modules/ai/credentials'
 import { AI_USAGE_KEYS } from '@/modules/ai/registry'
+import type { OpenAICompatibleTextGenerationContract } from '@/modules/ai/providers/openaiCompatible'
 
 export type PortalAiCapability = 'embedding' | 'image' | 'text'
 export type PortalAiSettingsAccess = 'admin' | 'admin-only'
@@ -23,6 +24,7 @@ export interface PortalAiProviderSummary {
   id: number
   name: string
   protocol: 'openai-compatible'
+  textGenerationContract: OpenAICompatibleTextGenerationContract
   updatedAt: string
 }
 
@@ -124,6 +126,10 @@ export const mapPortalAiProvider = (value: unknown): PortalAiProviderSummary => 
     id: portalAiRelationshipID(provider.id),
     name: text(provider.name),
     protocol: 'openai-compatible',
+    textGenerationContract:
+      provider.textGenerationContract === 'chat-completions'
+        ? 'chat-completions'
+        : 'responses',
     updatedAt: text(provider.updatedAt),
   }
 }
@@ -309,6 +315,7 @@ export const getPortalAiSettings = async ({
         id: true,
         name: true,
         protocol: true,
+        textGenerationContract: true,
         updatedAt: true,
       },
       sort: 'name',

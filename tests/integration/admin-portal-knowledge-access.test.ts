@@ -188,6 +188,7 @@ describe.sequential('Portal knowledge access', () => {
         enabled: true,
         name: `Portal AI ${suffix}`,
         protocol: 'openai-compatible',
+        textGenerationContract: 'responses',
       },
       overrideAccess: false,
       user: admin,

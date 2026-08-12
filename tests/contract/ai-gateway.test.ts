@@ -478,6 +478,78 @@ describe('AI gateway contract', () => {
     )
   })
 
+  it('adapts the explicitly configured Chat Completions text contract', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: 'Configured chat completion.' } }],
+          model: 'fixture-chat-model',
+          usage: { completion_tokens: 7, prompt_tokens: 11, total_tokens: 18 },
+        }),
+        {
+          headers: { 'content-type': 'application/json', 'x-request-id': 'req_chat_fixture' },
+          status: 200,
+        },
+      ),
+    )
+    const provider = createOpenAICompatibleProvider({
+      apiKey: 'fixture-key-never-sent-to-network',
+      baseURL: 'https://ai.example.invalid/v1',
+      fetch: fetchMock,
+      textGenerationContract: 'chat-completions',
+    })
+
+    await expect(
+      provider.generateText({
+        input: 'question',
+        instructions: 'Use reviewed knowledge only.',
+        maxOutputTokens: 64,
+        model: 'fixture-chat-model',
+        reasoning: { effort: 'medium' },
+        temperature: 0.2,
+        topP: 0.9,
+      }),
+    ).resolves.toMatchObject({
+      model: 'fixture-chat-model',
+      requestId: 'req_chat_fixture',
+      text: 'Configured chat completion.',
+      usage: { inputTokens: 11, outputTokens: 7, totalTokens: 18 },
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://ai.example.invalid/v1/chat/completions',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      max_tokens: 64,
+      messages: [
+        { content: 'Use reviewed knowledge only.', role: 'system' },
+        { content: 'question', role: 'user' },
+      ],
+      model: 'fixture-chat-model',
+      reasoning_effort: 'medium',
+      temperature: 0.2,
+      top_p: 0.9,
+    })
+  })
+
+  it('fails closed for a malformed Chat Completions response', async () => {
+    const provider = createOpenAICompatibleProvider({
+      apiKey: 'fixture-key-never-sent-to-network',
+      baseURL: 'https://ai.example.invalid/v1',
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ choices: [], usage: {} }), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        }),
+      ),
+      textGenerationContract: 'chat-completions',
+    })
+
+    await expect(
+      provider.generateText({ input: 'question', model: 'fixture-chat-model' }),
+    ).rejects.toMatchObject({ code: 'invalid_response' })
+  })
+
   it('adapts OpenAI-compatible image generations and edits without real network access', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

@@ -470,6 +470,13 @@ export const PORTAL_EN = {
       saved: 'Configuration saved.',
       status: 'Status',
       temperature: 'Temperature',
+      textGenerationContract: 'Text API contract',
+      textGenerationContractDescription:
+        'Select the provider endpoint: Responses uses /responses; Chat Completions uses /chat/completions.',
+      textGenerationContracts: {
+        'chat-completions': 'Chat Completions',
+        responses: 'Responses',
+      },
       textRoute: 'Text generation route',
       timeout: 'Timeout (ms)',
       title: 'AI model configuration',

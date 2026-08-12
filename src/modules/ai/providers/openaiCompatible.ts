@@ -18,6 +18,7 @@ type ProviderOptions = {
   fetch?: typeof globalThis.fetch
   headers?: Record<string, string>
   name?: string
+  textGenerationContract?: OpenAICompatibleTextGenerationContract
 }
 
 type UnknownRecord = Record<string, unknown>
@@ -33,6 +34,15 @@ const responseUsage = (value: unknown): AiTokenUsage => {
   return {
     inputTokens: usageNumber(usage.input_tokens),
     outputTokens: usageNumber(usage.output_tokens),
+    totalTokens: usageNumber(usage.total_tokens),
+  }
+}
+
+const chatCompletionUsage = (value: unknown): AiTokenUsage => {
+  const usage = isRecord(value) ? value : {}
+  return {
+    inputTokens: usageNumber(usage.prompt_tokens),
+    outputTokens: usageNumber(usage.completion_tokens),
     totalTokens: usageNumber(usage.total_tokens),
   }
 }
@@ -53,6 +63,14 @@ const extractResponseText = (body: UnknownRecord): string => {
     .filter((part) => isRecord(part) && part.type === 'output_text')
     .map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : ''))
     .join('')
+}
+
+const extractChatCompletionText = (body: UnknownRecord): string => {
+  const choice = Array.isArray(body.choices) && isRecord(body.choices[0])
+    ? body.choices[0]
+    : undefined
+  const message = choice && isRecord(choice.message) ? choice.message : undefined
+  return message && typeof message.content === 'string' ? message.content : ''
 }
 
 const strictBase64Bytes = (value: unknown): Uint8Array => {
@@ -156,6 +174,12 @@ const requestJSON = async (
   return { body, requestId: response.headers.get('x-request-id') ?? undefined }
 }
 
+export const OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS = [
+  'responses',
+  'chat-completions',
+] as const
+export type OpenAICompatibleTextGenerationContract =
+  (typeof OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS)[number]
 export type OpenAICompatibleProviderOptions = ProviderOptions
 
 export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProvider => {
@@ -172,26 +196,50 @@ export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProv
     ...options.headers,
   }
   const jsonHeaders = { ...headers, 'Content-Type': 'application/json' }
+  const textGenerationContract = options.textGenerationContract ?? 'responses'
 
   return {
     name: options.name ?? 'openai-compatible',
     generateText: async (input: ProviderGenerateTextInput): Promise<ProviderGenerateTextResult> => {
-      const { body, requestId } = await requestJSON(fetchImplementation, `${baseURL}/responses`, {
-        body: JSON.stringify({
-          input: input.input,
-          instructions: input.instructions,
-          max_output_tokens: input.maxOutputTokens,
-          model: input.model,
-          ...(input.reasoning ? { reasoning: input.reasoning } : {}),
-          store: false,
-          temperature: input.temperature,
-          top_p: input.topP,
-        }),
-        headers: jsonHeaders,
-        method: 'POST',
-        signal: input.signal,
-      })
-      const text = extractResponseText(body)
+      const chatCompletions = textGenerationContract === 'chat-completions'
+      const { body, requestId } = await requestJSON(
+        fetchImplementation,
+        `${baseURL}/${chatCompletions ? 'chat/completions' : 'responses'}`,
+        {
+          body: JSON.stringify(
+            chatCompletions
+              ? {
+                  max_tokens: input.maxOutputTokens,
+                  messages: [
+                    ...(input.instructions
+                      ? [{ content: input.instructions, role: 'system' as const }]
+                      : []),
+                    { content: input.input, role: 'user' as const },
+                  ],
+                  model: input.model,
+                  ...(input.reasoning ? { reasoning_effort: input.reasoning.effort } : {}),
+                  temperature: input.temperature,
+                  top_p: input.topP,
+                }
+              : {
+                  input: input.input,
+                  instructions: input.instructions,
+                  max_output_tokens: input.maxOutputTokens,
+                  model: input.model,
+                  ...(input.reasoning ? { reasoning: input.reasoning } : {}),
+                  store: false,
+                  temperature: input.temperature,
+                  top_p: input.topP,
+                },
+          ),
+          headers: jsonHeaders,
+          method: 'POST',
+          signal: input.signal,
+        },
+      )
+      const text = chatCompletions
+        ? extractChatCompletionText(body)
+        : extractResponseText(body)
       if (!text) {
         throw new AiProviderError('invalid_response', 'AI provider returned no output text')
       }
@@ -200,7 +248,7 @@ export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProv
         model: typeof body.model === 'string' ? body.model : input.model,
         requestId,
         text,
-        usage: responseUsage(body.usage),
+        usage: chatCompletions ? chatCompletionUsage(body.usage) : responseUsage(body.usage),
       }
     },
     generateImage: async (

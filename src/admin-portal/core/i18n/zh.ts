@@ -427,6 +427,13 @@ export const PORTAL_ZH = {
       saved: '配置已保存。',
       status: '状态',
       temperature: 'Temperature',
+      textGenerationContract: '文本接口契约',
+      textGenerationContractDescription:
+        '请选择供应商实际支持的端点：Responses 使用 /responses，Chat Completions 使用 /chat/completions。',
+      textGenerationContracts: {
+        'chat-completions': 'Chat Completions',
+        responses: 'Responses',
+      },
       textRoute: '文本生成路由',
       timeout: '超时（毫秒）',
       title: 'AI 模型配置',

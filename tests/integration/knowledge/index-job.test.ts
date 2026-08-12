@@ -88,6 +88,7 @@ describe.sequential('knowledge index job', () => {
         enabled: true,
         name: `Knowledge provider ${suffix}`,
         protocol: 'openai-compatible',
+        textGenerationContract: 'responses',
       },
       overrideAccess: true,
     })

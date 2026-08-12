@@ -58,6 +58,7 @@ const readyAiSettings = {
       id: 1,
       name: 'Primary provider',
       protocol: 'openai-compatible' as const,
+      textGenerationContract: 'responses' as const,
       updatedAt: '2026-08-05T00:00:00.000Z',
     },
   ],
@@ -226,6 +227,45 @@ describe('Portal settings hub', () => {
     expect(screen.getByRole('option', { name: /内容工作台·图片生成/ })).toBeTruthy()
     expect(container.textContent).not.toContain('stored-secret')
     expect(container.innerHTML).not.toContain('/admin')
+  })
+
+  it('requires an explicit text contract and defaults new image profiles to 120 seconds', () => {
+    const modules = resolvePortalAvailability({
+      env: {
+        ADMIN_PORTAL_ENABLED: 'true',
+        ADMIN_PORTAL_SETTINGS_ENABLED: 'true',
+      },
+      role: 'admin',
+    }).modules
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(SettingsHub, {
+          aiSettings: readyAiSettings,
+          modules,
+          summary: { canUpdate: true, siteDescription: null, siteName: 'IVYBM' },
+          user: { email: 'admin@example.com', id: 1, role: 'admin' },
+        }),
+      ),
+    )
+
+    const provider = screen.getByText('Primary provider').closest('article')
+    expect(provider).not.toBeNull()
+    fireEvent.click(provider!.querySelector('button[aria-label="编辑"]')!)
+    expect(
+      (screen.getByRole('combobox', { name: /文本接口契约/ }) as HTMLSelectElement).value,
+    ).toBe('responses')
+    expect(screen.getByRole('option', { name: 'Chat Completions' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '模型' }))
+    fireEvent.click(screen.getByRole('button', { name: /新建模型/ }))
+    fireEvent.change(screen.getByRole('combobox', { name: '能力' }), {
+      target: { value: 'image' },
+    })
+    expect(
+      (screen.getByRole('spinbutton', { name: '超时（毫秒）' }) as HTMLInputElement).value,
+    ).toBe('120000')
   })
 
   it.each(['operator', 'sales'] as const)(

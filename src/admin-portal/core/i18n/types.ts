@@ -81,6 +81,9 @@ export interface PortalSettingsMessages {
     saved: string
     status: string
     temperature: string
+    textGenerationContract: string
+    textGenerationContractDescription: string
+    textGenerationContracts: Record<'chat-completions' | 'responses', string>
     textRoute: string
     timeout: string
     title: string

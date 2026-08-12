@@ -8,6 +8,7 @@ import {
   isEncryptedAiCredential,
   readAiConfigurationEncryptionKey,
 } from '../modules/ai/credentials'
+import { OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS } from '../modules/ai/providers/openaiCompatible'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 
 export const AI_PROVIDER_PROTOCOLS = ['openai-compatible'] as const
@@ -131,6 +132,17 @@ export const AiProviders: CollectionConfig = {
       },
       required: true,
       validate: validateBaseURL,
+    },
+    {
+      name: 'textGenerationContract',
+      type: 'select',
+      admin: {
+        description:
+          'Choose the exact text endpoint contract exposed by this provider. This is never auto-detected.',
+      },
+      defaultValue: 'responses',
+      options: [...OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS],
+      required: true,
     },
     {
       name: 'apiKey',

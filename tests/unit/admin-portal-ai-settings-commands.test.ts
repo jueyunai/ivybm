@@ -49,13 +49,13 @@ describe('Portal AI settings commands', () => {
   it('creates providers through current access-controlled request and never returns the key', async () => {
     const create = vi.fn().mockResolvedValue({ apiKey: 'v1:ciphertext', apiKeyConfigured: true, baseURL: 'https://api.example.invalid/v1', enabled: true, id: 4, name: 'Primary', protocol: 'openai-compatible', updatedAt: '' })
     const result = await createPortalAiResource({
-      input: { apiKey: 'submitted-secret', baseURL: 'https://api.example.invalid/v1', enabled: true, name: 'Primary' },
+      input: { apiKey: 'submitted-secret', baseURL: 'https://api.example.invalid/v1', enabled: true, name: 'Primary', textGenerationContract: 'chat-completions' },
       payload: { create } as unknown as Payload,
       req,
       resource: 'providers',
     })
 
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({ collection: 'ai-providers', data: expect.objectContaining({ apiKey: 'submitted-secret' }), overrideAccess: false, req }))
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ collection: 'ai-providers', data: expect.objectContaining({ apiKey: 'submitted-secret', textGenerationContract: 'chat-completions' }), overrideAccess: false, req }))
     expect(JSON.stringify(result)).not.toMatch(/submitted-secret|ciphertext/)
   })
 

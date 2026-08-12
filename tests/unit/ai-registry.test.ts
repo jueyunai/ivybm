@@ -20,6 +20,7 @@ const createProviderDocument = (overrides: Record<string, unknown> = {}) => ({
   id: 1,
   name: 'CMS provider',
   protocol: 'openai-compatible',
+  textGenerationContract: 'responses',
   ...overrides,
 })
 
@@ -29,7 +30,7 @@ const createPayload = (docs: unknown[]) =>
   }) as unknown as Payload
 
 const createFakeProvider = (calls: Array<Record<string, unknown>>) =>
-  vi.fn((options: { apiKey: string; baseURL: string; name?: string }) => ({
+  vi.fn((options: { apiKey: string; baseURL: string; name?: string; textGenerationContract?: string }) => ({
     embed: async (input: { dimensions?: number; input: string[]; model: string }) => {
       calls.push({ ...options, operation: 'embedding', ...input })
       return {
@@ -197,6 +198,35 @@ describe('AI control-plane registry', () => {
         operation: 'image',
         prompt: 'Facade campaign image',
       }),
+    )
+  })
+
+  it('passes the explicit provider text contract to the transport factory', async () => {
+    const calls: Array<Record<string, unknown>> = []
+    const createProvider = createFakeProvider(calls)
+    const gateway = await resolveAiGateway({
+      createProvider,
+      environment: { AI_CONFIG_ENCRYPTION_KEY: encryptionKey },
+      payload: createPayload([
+        {
+          enabled: true,
+          operation: 'text',
+          profile: {
+            capability: 'text',
+            enabled: true,
+            model: 'cms-text-model',
+            parameters: { reasoningEnabled: false, timeoutMs: 30_000 },
+            provider: createProviderDocument({ textGenerationContract: 'chat-completions' }),
+          },
+          usageKey: AI_USAGE_KEYS.chatReply,
+        },
+      ]),
+      routes: [{ operation: 'text', usageKey: AI_USAGE_KEYS.chatReply }],
+    })
+
+    await gateway.generateText({ input: 'Configured contract' })
+    expect(createProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ textGenerationContract: 'chat-completions' }),
     )
   })
 

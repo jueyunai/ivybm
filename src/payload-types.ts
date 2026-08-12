@@ -295,6 +295,10 @@ export interface AiProvider {
    */
   baseURL: string;
   /**
+   * Select the exact text endpoint exposed by the provider; the system never guesses or falls back.
+   */
+  textGenerationContract: 'responses' | 'chat-completions';
+  /**
    * Write-only. Enter a value to set or replace the key; leave blank to retain it.
    */
   apiKey?: string | null;
@@ -1668,6 +1672,7 @@ export interface AiProvidersSelect<T extends boolean = true> {
   enabled?: T;
   protocol?: T;
   baseURL?: T;
+  textGenerationContract?: T;
   apiKey?: T;
   apiKeyConfigured?: T;
   updatedAt?: T;
