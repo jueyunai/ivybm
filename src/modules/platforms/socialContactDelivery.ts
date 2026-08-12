@@ -1,5 +1,5 @@
 import type { PlatformMessagingAccountAuthorizer } from './payloadMessagingAccountAuthorizer'
-import type { PlatformEventDeliveryResult } from './ports'
+import type { ConversationMessagePort, PlatformEventDeliveryResult } from './ports'
 import {
   reauthorizeInboundMessage,
   verifiedSocialContactSource,
@@ -51,3 +51,27 @@ export const deliverVerifiedSocialInbound = async ({
     Object.freeze({ contactSource, message: authorizedMessage }),
   )
 }
+
+/**
+ * Compatibility adapter for the existing generic platform-event Job handler.
+ * The Job handler performs its normal account check, then this adapter performs
+ * the proof-producing check immediately before the verified Conversation write.
+ */
+export const createVerifiedSocialConversationMessagePort = ({
+  accountAuthorizer,
+  destination,
+  installationNamespace,
+}: {
+  accountAuthorizer: PlatformMessagingAccountAuthorizer
+  destination: VerifiedSocialConversationPort
+  installationNamespace: string
+}): ConversationMessagePort => ({
+  async writeInboundMessage(message) {
+    return await deliverVerifiedSocialInbound({
+      accountAuthorizer,
+      destination,
+      installationNamespace,
+      message,
+    })
+  },
+})
