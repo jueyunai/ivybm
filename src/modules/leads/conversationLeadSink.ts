@@ -78,7 +78,7 @@ const nonCompanyWords = new Set([
   'yes',
 ])
 const invalidPromptedCompanyAnswer =
-  /^(?:(?:i|we|there)\b|(?:no|none|not\s+sure|unknown|unsure|maybe|confidential|private|prefer\s+not\s+to\s+say|rather\s+not\s+say)\b)|\b(?:do\s+not|don't|does\s+not|doesn't)\b/i
+  /^(?:(?:i|we|there)\b|(?:no|none|not\s+sure|unknown|unsure|maybe|confidential|private|refuse|decline|skip|prefer\s+not\s+to\s+say|rather\s+not\s+say)\b)|\b(?:do\s+not|don't|does\s+not|doesn't)\b/i
 const invalidPromptedCompanyMessage =
   /^(?:it\s+is\s+(?:confidential|private|unknown)\b|prefer\s+not\s+to\s+say\b|rather\s+not\s+say\b)/i
 // prettier-ignore
