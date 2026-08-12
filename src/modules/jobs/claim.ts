@@ -188,7 +188,10 @@ export class PayloadJobQueue {
     return database
   }
 
-  private async transaction<T>(actor: User, operation: (req: PayloadRequest) => Promise<T>): Promise<T> {
+  private async transaction<T>(
+    actor: User,
+    operation: (req: PayloadRequest) => Promise<T>,
+  ): Promise<T> {
     const req = await createLocalReq({ user: actor }, this.payload)
     await initTransaction(req)
     try {
@@ -288,7 +291,10 @@ export class PayloadJobQueue {
     return { job: mapDatabaseJob(existing.rows[0]), state: 'duplicate' }
   }
 
-  async claimNext(): Promise<ClaimedJob | null> {
+  async claimNext(allowedTypes?: readonly string[]): Promise<ClaimedJob | null> {
+    const normalizedTypes = allowedTypes
+      ? [...new Set(allowedTypes.map((type) => type.trim()).filter(Boolean))]
+      : null
     const now = this.clock()
     const nowISO = now.toISOString()
     const leaseExpiresAt = new Date(now.getTime() + this.leaseMs).toISOString()
@@ -311,6 +317,7 @@ export class PayloadJobQueue {
         SELECT id
         FROM jobs
         WHERE attempts < max_attempts
+          AND ($4::text[] IS NULL OR type = ANY($4::text[]))
           AND (
             (status IN ('pending', 'failed') AND next_run_at <= $1)
             OR (status = 'processing' AND lease_expires_at <= $1)
@@ -329,7 +336,7 @@ export class PayloadJobQueue {
       FROM candidate
       WHERE job.id = candidate.id
       RETURNING ${selectedJobColumnsFrom('job')}`,
-      [nowISO, leaseExpiresAt, token],
+      [nowISO, leaseExpiresAt, token, normalizedTypes],
     )
 
     return result.rows[0] ? requireClaimedJob(mapDatabaseJob(result.rows[0])) : null
@@ -345,7 +352,12 @@ export class PayloadJobQueue {
          AND owner_token = $4
          AND lease_expires_at > $2
        RETURNING ${selectedJobColumns}`,
-      [new Date(now.getTime() + this.leaseMs).toISOString(), now.toISOString(), job.id, job.ownerToken],
+      [
+        new Date(now.getTime() + this.leaseMs).toISOString(),
+        now.toISOString(),
+        job.id,
+        job.ownerToken,
+      ],
     )
 
     if (!result.rows[0]) {
@@ -410,7 +422,10 @@ export class PayloadJobQueue {
     )
 
     if (!result.rows[0]) {
-      throw new JobQueueError('conflict', `Job ${job.id} lease was reclaimed before failure handling`)
+      throw new JobQueueError(
+        'conflict',
+        `Job ${job.id} lease was reclaimed before failure handling`,
+      )
     }
 
     return mapDatabaseJob(result.rows[0])

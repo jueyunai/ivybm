@@ -102,6 +102,9 @@ const commaSeparatedOrigins = (name: string): string[] =>
 
 let publicationRuntime: PublicationJobRuntime | undefined
 const resolvePublicationRuntime = async (): Promise<PublicationJobRuntime> => {
+  if (process.env.ADMIN_PORTAL_PUBLISHING_ENABLED !== 'true') {
+    throw new Error('Platform publishing is disabled')
+  }
   if (publicationRuntime) return publicationRuntime
   const publicOrigin = new URL(requiredEnvironment('NEXT_PUBLIC_SERVER_URL')).origin
   const ticketKey = Buffer.from(requiredEnvironment('LINKEDIN_UPLOAD_TICKET_KEY'), 'hex')
@@ -167,10 +170,12 @@ const handlers: Record<string, JobHandler> = {
     accountAuthorizer: new PayloadPlatformMessagingAccountAuthorizer({ payload }),
     conversations: new PayloadPlatformConversationPort({ payload }),
   }),
-  [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+}
+if (process.env.ADMIN_PORTAL_PUBLISHING_ENABLED === 'true') {
+  handlers[PLATFORM_PUBLICATION_JOB_TYPE] = createPlatformPublicationJobHandler({
     payload,
     resolveRuntime: resolvePublicationRuntime,
-  }),
+  })
 }
 const worker = new JobWorker({
   handlers,

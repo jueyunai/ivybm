@@ -60,6 +60,9 @@ const requiredEnvironment = {
   INSTAGRAM_APP_ID: '3333333333333333',
   INSTAGRAM_APP_SECRET: 'operation-test-instagram-app-secret',
   INSTAGRAM_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/instagram/oauth/callback',
+  LINKEDIN_API_VERSION: '202608',
+  LINKEDIN_UPLOAD_ALLOWED_ORIGINS: 'https://www.linkedin.com,https://media.licdn.com',
+  LINKEDIN_UPLOAD_TICKET_KEY: 'f'.repeat(64),
   PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'e'.repeat(64),
   PAYLOAD_SECRET: 'operation-test-secret-at-least-32-characters',
   POSTGRES_DB: 'ivybm',
@@ -144,6 +147,21 @@ const getStagingComposeConfig = (): ComposeConfig => {
 }
 
 describe('production Compose configuration', () => {
+  it('declares the publishing kill switch exactly once per app and worker service', () => {
+    for (const file of ['compose.prod.yaml', 'compose.staging.yaml']) {
+      const source = readFileSync(resolve(projectRoot, file), 'utf8')
+      expect(source.match(/^\s+ADMIN_PORTAL_PUBLISHING_ENABLED:/gm)).toHaveLength(2)
+
+      for (const variable of [
+        'LINKEDIN_API_VERSION',
+        'LINKEDIN_UPLOAD_ALLOWED_ORIGINS',
+        'LINKEDIN_UPLOAD_TICKET_KEY',
+      ]) {
+        expect(source.match(new RegExp(`^\\s+${variable}:`, 'gm'))).toHaveLength(2)
+      }
+    }
+  })
+
   it('waits through the PostgreSQL init-server restart before probing persistence', () => {
     const persistenceScript = readFileSync(
       resolve(projectRoot, 'scripts/db/verify-compose-persistence.sh'),
@@ -151,7 +169,9 @@ describe('production Compose configuration', () => {
     )
 
     expect(persistenceScript).toContain('local consecutive_ready=0')
-    expect(persistenceScript).toContain("psql -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" -Atc 'SELECT 1'")
+    expect(persistenceScript).toContain(
+      'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \'SELECT 1\'',
+    )
     expect(persistenceScript).toContain('if ((consecutive_ready >= 3)); then')
     expect(persistenceScript).toContain('consecutive_ready=0')
   })
@@ -253,7 +273,11 @@ describe('production Compose configuration', () => {
       INSTAGRAM_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/instagram/oauth/callback',
     })
     expect(config.services.worker.environment).toMatchObject({
+      ADMIN_PORTAL_PUBLISHING_ENABLED: 'false',
       AI_CONFIG_ENCRYPTION_KEY: 'c'.repeat(64),
+      LINKEDIN_API_VERSION: '202608',
+      LINKEDIN_UPLOAD_ALLOWED_ORIGINS: 'https://www.linkedin.com,https://media.licdn.com',
+      LINKEDIN_UPLOAD_TICKET_KEY: 'f'.repeat(64),
     })
     expect(config.services.migrate.environment).not.toHaveProperty('AI_CONFIG_ENCRYPTION_KEY')
     expect(config.services.app.healthcheck?.test?.join(' ')).toContain('/api/health/ready')
@@ -351,6 +375,7 @@ describe('local Compose worker configuration', () => {
       FEISHU_OAUTH_REDIRECT_URI: 'http://localhost:3000/api/integrations/feishu/callback',
       FEISHU_RELAY_INTERVAL_MS: '60000',
       PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'f'.repeat(64),
+      ADMIN_PORTAL_PUBLISHING_ENABLED: 'false',
     })
   })
 })

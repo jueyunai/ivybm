@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
@@ -46,6 +46,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   router.refresh.mockReset()
   router.replace.mockReset()
+  vi.useRealTimers()
 })
 
 describe('Portal create command keys', () => {
@@ -400,6 +401,7 @@ describe('Portal create command keys', () => {
       ],
       options: { assets: [], knowledgeSources: [], platformAccounts: [] },
       pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: true,
       query: { page: 1, platform: 'all' as const, q: '', status: 'all' as const },
     }
     render(
@@ -417,6 +419,101 @@ describe('Portal create command keys', () => {
     ).toBeTruthy()
     expect(screen.getByText('Facebook · 自动发布')).toBeTruthy()
     expect(screen.getByText('Instagram · 自动发布')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '刷新发布结果' })).toBeTruthy()
+  })
+
+  it('keeps immediate publication unavailable while the kill switch is disabled', () => {
+    const summary = {
+      items: [
+        {
+          assets: [],
+          body: 'Approved body',
+          contentLocale: 'en' as const,
+          contentType: 'post' as const,
+          id: 20,
+          knowledgeSources: [],
+          platform: 'facebook' as const,
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'approved' as const,
+          title: 'Disabled publication',
+          updatedAt: '2026-08-13T00:00:00.000Z',
+        },
+      ],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [{ id: 11, label: 'Facebook page', platform: 'facebook' as const }],
+      },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all' as const, q: '', status: 'all' as const },
+    }
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    expect(screen.getByRole('button', { name: '立即发布' }).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('polls active publication results without sending another publish command', async () => {
+    vi.useFakeTimers()
+    const request = vi.fn<typeof fetch>()
+    vi.stubGlobal('fetch', request)
+    const summary = {
+      items: [
+        {
+          assets: [],
+          body: 'Approved body',
+          contentLocale: 'en' as const,
+          contentType: 'post' as const,
+          id: 21,
+          knowledgeSources: [],
+          platform: 'facebook' as const,
+          publishJobs: [
+            {
+              externalPublicationId: null,
+              externalPublicationUrl: null,
+              id: 203,
+              lastErrorSummary: null,
+              mode: 'automatic' as const,
+              platform: 'facebook' as const,
+              scheduledFor: '2026-08-13T01:30:00.000Z',
+              status: 'publishing' as const,
+              updatedAt: '2026-08-13T01:31:00.000Z',
+            },
+          ],
+          reviews: [],
+          sourceReferences: [],
+          status: 'approved' as const,
+          title: 'Active publication',
+          updatedAt: '2026-08-13T00:00:00.000Z',
+        },
+      ],
+      options: { assets: [], knowledgeSources: [], platformAccounts: [] },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all' as const, q: '', status: 'all' as const },
+    }
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    await act(() => vi.advanceTimersByTimeAsync(2_000))
+    expect(router.refresh).toHaveBeenCalledTimes(1)
+    expect(request).not.toHaveBeenCalled()
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+    expect(router.refresh).toHaveBeenCalledTimes(15)
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('reuses the lead create key after an interrupted response body', async () => {

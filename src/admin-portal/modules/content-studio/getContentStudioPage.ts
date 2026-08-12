@@ -66,6 +66,7 @@ export type ContentStudioSummary = {
     platformAccounts: Array<ContentStudioOption & { platform: ContentStudioPlatform }>
   }
   pagination: { page: number; totalDocs: number; totalPages: number }
+  publishingEnabled: boolean
   query: ContentStudioQuery
 }
 export type ContentStudioPageData = {
@@ -158,6 +159,7 @@ export const loadContentStudioPageData = async ({
     return { state: 'module-disabled', summary: null }
   if (!(CONTENT_STUDIO_MODULE.allowedRoles as readonly PortalRole[]).includes(role))
     return { state: 'forbidden', summary: null }
+  const publishingEnabled = env.ADMIN_PORTAL_PUBLISHING_ENABLED === 'true'
   try {
     const contents = await payload.find({
       collection: 'generated-contents',
@@ -193,27 +195,29 @@ export const loadContentStudioPageData = async ({
         select: { alt: true, filename: true, mimeType: true },
         sort: '-updatedAt',
       }),
-      payload.find({
-        collection: 'platform-accounts',
-        depth: 0,
-        limit: 100,
-        overrideAccess: false,
-        pagination: false,
-        req,
-        select: {
-          accountKind: true,
-          authorization: { state: true },
-          capabilities: { publishing: true },
-          name: true,
-        },
-        sort: 'name',
-        where: {
-          and: [
-            { 'authorization.state': { equals: 'connected' } },
-            { 'capabilities.publishing': { equals: 'approved' } },
-          ],
-        },
-      }),
+      publishingEnabled
+        ? payload.find({
+            collection: 'platform-accounts',
+            depth: 0,
+            limit: 100,
+            overrideAccess: false,
+            pagination: false,
+            req,
+            select: {
+              accountKind: true,
+              authorization: { state: true },
+              capabilities: { publishing: true },
+              name: true,
+            },
+            sort: 'name',
+            where: {
+              and: [
+                { 'authorization.state': { equals: 'connected' } },
+                { 'capabilities.publishing': { equals: 'approved' } },
+              ],
+            },
+          })
+        : Promise.resolve({ docs: [] }),
       payload.find({
         collection: 'knowledge-documents',
         depth: 0,
@@ -370,6 +374,7 @@ export const loadContentStudioPageData = async ({
           totalDocs: contents.totalDocs,
           totalPages: contents.totalPages ?? 1,
         },
+        publishingEnabled,
         query,
       },
     }

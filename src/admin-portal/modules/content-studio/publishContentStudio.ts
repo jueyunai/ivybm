@@ -258,18 +258,27 @@ const safeJob = (job: PublishJob) => ({
 })
 
 export const publishContentStudioNow = async ({
+  environment = process.env,
   id,
   input,
   now = () => new Date(),
   payload,
   req,
 }: {
+  environment?: Readonly<Record<string, string | undefined>>
   id: number
   input: Record<string, unknown>
   now?: () => Date
   payload: Payload
   req: PayloadRequest
 }) => {
+  if (environment.ADMIN_PORTAL_PUBLISHING_ENABLED !== 'true') {
+    throw new ContentStudioCommandError(
+      'content-studio-publishing-disabled',
+      'Immediate platform publishing is disabled in this environment',
+      503,
+    )
+  }
   const content = await payload.findByID({
     collection: 'generated-contents',
     depth: 0,

@@ -105,6 +105,7 @@ const invoke = async ({
     idempotencyKey,
     operation: async (transactionReq) => {
       const result = await publishContentStudioNow({
+        environment: { ADMIN_PORTAL_PUBLISHING_ENABLED: 'true' },
         id: content.id,
         input,
         now: () => now,
@@ -286,6 +287,19 @@ describe.sequential('Content Studio immediate platform publication', () => {
           jobPayload.expectedExecutionRevision === 0,
       ),
     ).toBe(true)
+  })
+
+  it('fails closed before reading content when the publication kill switch is disabled', async () => {
+    const req = await createLocalReq({ user: admin }, payload)
+    await expect(
+      publishContentStudioNow({
+        environment: { ADMIN_PORTAL_PUBLISHING_ENABLED: 'false' },
+        id: 999_999,
+        input: {},
+        payload,
+        req,
+      }),
+    ).rejects.toMatchObject({ code: 'content-studio-publishing-disabled', status: 503 })
   })
 
   it('rejects reuse of the click key for another approved content item', async () => {

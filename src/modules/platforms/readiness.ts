@@ -71,6 +71,8 @@ export type PlatformReadinessRequirement =
   | 'meta_verify_token'
   | 'official_tiktok_dm_schema'
   | 'publishing_job_adapter'
+  | 'publishing_disabled'
+  | 'publishing_runtime_configuration'
   | 'refresh_token'
   | 'refresh_token_decryption'
   | 'tiktok_dm_api_eligibility'
@@ -78,14 +80,10 @@ export type PlatformReadinessRequirement =
 export type PlatformConnectionReadinessStatus = 'action-required' | 'ready-for-controlled-test'
 
 export type PlatformCapabilityReadinessStatus =
-  | 'action-required'
-  | 'available'
-  | 'blocked'
-  | 'ready-for-controlled-test'
+  'action-required' | 'available' | 'blocked' | 'ready-for-controlled-test'
 
 export type PlatformReadinessStatus =
-  | PlatformCapabilityReadinessStatus
-  | PlatformConnectionReadinessStatus
+  PlatformCapabilityReadinessStatus | PlatformConnectionReadinessStatus
 
 export type PlatformControlledTestEvidence = {
   completedAt: string
@@ -94,13 +92,11 @@ export type PlatformControlledTestEvidence = {
 }
 
 export type PlatformReadinessActionOwner =
-  | 'account-owner'
-  | 'administrator'
-  | 'engineering'
-  | 'platform'
+  'account-owner' | 'administrator' | 'engineering' | 'platform'
 
 export type PlatformReadinessActionCode =
   | 'configure-meta-webhook'
+  | 'configure-publishing-runtime'
   | 'configure-credentials'
   | 'complete-authorization'
   | 'complete-tiktok-eligibility'
@@ -201,6 +197,12 @@ export const getPlatformReadinessAction = ({
     return { code: 'implement-publishing-adapter', owner: 'engineering' }
   }
   if (
+    missing.includes('publishing_disabled') ||
+    missing.includes('publishing_runtime_configuration')
+  ) {
+    return { code: 'configure-publishing-runtime', owner: 'engineering' }
+  }
+  if (
     missing.includes('meta_app_secret') ||
     missing.includes('meta_verify_token') ||
     missing.includes('meta_account_allowlist')
@@ -268,6 +270,41 @@ const configuredMetaAllowlist = (
       .filter(Boolean),
   )
 
+const publishingEnvironmentMissing = (
+  environment: Readonly<Record<string, string | undefined>>,
+): PlatformReadinessRequirement[] => {
+  if (environment.ADMIN_PORTAL_PUBLISHING_ENABLED !== 'true') return ['publishing_disabled']
+  const uploadOrigins = (environment.LINKEDIN_UPLOAD_ALLOWED_ORIGINS ?? '').split(',')
+  const validUploadOrigins =
+    uploadOrigins.length > 0 &&
+    uploadOrigins.every((origin) => {
+      if (!origin || origin !== origin.trim()) return false
+      try {
+        const parsed = new URL(origin)
+        return (
+          parsed.protocol === 'https:' &&
+          !parsed.username &&
+          !parsed.password &&
+          parsed.pathname === '/' &&
+          !parsed.search &&
+          !parsed.hash &&
+          parsed.origin === origin
+        )
+      } catch {
+        return false
+      }
+    })
+  if (
+    !/^[a-fA-F0-9]{64}$/u.test(environment.PLATFORM_CREDENTIAL_ENCRYPTION_KEY ?? '') ||
+    !/^20\d{2}(0[1-9]|1[0-2])$/u.test(environment.LINKEDIN_API_VERSION ?? '') ||
+    !validUploadOrigins ||
+    !/^[a-fA-F0-9]{64}$/u.test(environment.LINKEDIN_UPLOAD_TICKET_KEY ?? '')
+  ) {
+    return ['publishing_runtime_configuration']
+  }
+  return []
+}
+
 const connectionMissing = (
   {
     accessTokenConfigured,
@@ -310,6 +347,7 @@ export const assessPlatformAccountReadiness = ({
   const externalAccountId = nonEmpty(account.externalAccountId)
   const metaAllowlist = configuredMetaAllowlist(environment)
   const metaEnvironmentMissing: PlatformReadinessRequirement[] = []
+  const publishingEnvironment = publishingEnvironmentMissing(environment)
   if (!nonEmpty(environment.META_WEBHOOK_APP_SECRET)) metaEnvironmentMissing.push('meta_app_secret')
   if (!nonEmpty(environment.META_WEBHOOK_VERIFY_TOKEN))
     metaEnvironmentMissing.push('meta_verify_token')
@@ -342,14 +380,35 @@ export const assessPlatformAccountReadiness = ({
     }
 
     if (capability === 'publishing') {
+      if (approval === 'blocked') {
+        return {
+          capability,
+          implementation: 'implemented' as const,
+          missing: unique([...connection, 'approval' as const]),
+          productionRequirements: ['approval'] as PlatformReadinessRequirement[],
+          reasonCode: 'platform_capability_blocked' as const,
+          status: 'blocked' as const,
+        }
+      }
+      const missing = unique([...connection, ...publishingEnvironment])
+      const hasVerifiedCapability =
+        missing.length === 0 &&
+        approval === 'approved' &&
+        hasPassedControlledTest({
+          evidence: account.controlledTestEvidence?.publishing,
+          nowMilliseconds,
+        })
       return {
         capability,
-        implementation: 'blocked' as const,
-        missing: unique([...connection, 'publishing_job_adapter' as const]),
+        implementation: 'implemented' as const,
+        missing,
         productionRequirements:
           approval === 'approved' ? [] : (['approval'] as PlatformReadinessRequirement[]),
-        reasonCode: 'publishing_job_adapter_pending' as const,
-        status: 'blocked' as const,
+        status: hasVerifiedCapability
+          ? ('available' as const)
+          : missing.length === 0
+            ? ('ready-for-controlled-test' as const)
+            : ('action-required' as const),
       }
     }
 
@@ -372,12 +431,11 @@ export const assessPlatformAccountReadiness = ({
         evidence: account.controlledTestEvidence?.[capability],
         nowMilliseconds,
       })
-    const status: PlatformCapabilityReadinessStatus =
-      hasVerifiedCapability
-        ? 'available'
-        : missing.length === 0
-          ? 'ready-for-controlled-test'
-          : 'action-required'
+    const status: PlatformCapabilityReadinessStatus = hasVerifiedCapability
+      ? 'available'
+      : missing.length === 0
+        ? 'ready-for-controlled-test'
+        : 'action-required'
     return {
       capability,
       implementation: 'implemented' as const,

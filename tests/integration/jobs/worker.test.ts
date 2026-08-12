@@ -105,6 +105,37 @@ describe.sequential('Task 10 durable job worker', () => {
     })
   })
 
+  it('leaves disabled job types pending while claiming an enabled type', async () => {
+    const now = new Date('2026-07-20T00:00:00.000Z')
+    const queue = new PayloadJobQueue({ clock: () => now, payload })
+    const disabled = trackJob(
+      (
+        await queue.enqueue({
+          idempotencyKey: `task10-disabled-type-${randomUUID()}`,
+          payload: { reference: 'disabled' },
+          type: 'platform.publication.execute',
+        })
+      ).job,
+    )
+    const enabled = trackJob(
+      (
+        await queue.enqueue({
+          idempotencyKey: `task10-enabled-type-${randomUUID()}`,
+          payload: { reference: 'enabled' },
+          type: 'handoff.notify',
+        })
+      ).job,
+    )
+
+    const claim = await queue.claimNext(['handoff.notify'])
+    expect(claim).toMatchObject({ id: enabled.id, type: 'handoff.notify' })
+    await expect(queue.getByID(disabled.id)).resolves.toMatchObject({
+      attempts: 0,
+      status: 'pending',
+    })
+    if (claim) await queue.complete(claim)
+  })
+
   it('reclaims an expired lease and fences the prior owner from completing the job', async () => {
     let now = new Date('2026-07-20T00:00:00.000Z')
     const queueA = new PayloadJobQueue({ clock: () => now, leaseMs: 1_000, payload })

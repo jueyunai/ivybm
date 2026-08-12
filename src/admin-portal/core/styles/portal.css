@@ -4495,6 +4495,17 @@
     color: var(--portal-muted);
   }
 
+  .portal-content-studio__section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .portal-content-studio__section-heading h4 {
+    margin: 0;
+  }
+
   .portal-content-studio__form-grid > label.is-wide {
     grid-column: 1 / -1;
   }
