@@ -45,7 +45,7 @@ afterEach(() => {
 })
 
 describe('Portal create command keys', () => {
-  it('uses a dedicated heading for lead qualification details', () => {
+  it('renders a qualification heading distinct from the project-stage field label', () => {
     const summary: LeadsSummary = {
       items: [{
         assignedTo: null,
@@ -84,7 +84,7 @@ describe('Portal create command keys', () => {
     )
 
     expect(screen.getByRole('heading', { name: '资格详情' })).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: '项目阶段' })).toBeNull()
+    expect(screen.getByText('项目阶段', { selector: 'dt' })).toBeTruthy()
   })
 
   it('reuses the AI debug key after an interrupted response body and rotates when the prompt changes', async () => {
