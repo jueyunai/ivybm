@@ -37,6 +37,7 @@ const companyCandidate =
 const nonCompanyWords = new Set([
   'a',
   'an',
+  'and',
   'the',
   'bid',
   'business',
@@ -44,12 +45,19 @@ const nonCompanyWords = new Set([
   'concept',
   'design',
   'factory',
+  'for',
+  'from',
+  'in',
+  'my',
   'office',
+  'our',
   'procurement',
   'project',
+  'sales',
   'stage',
   'team',
   'tender',
+  'with',
   'workplace',
 ])
 // prettier-ignore
@@ -61,13 +69,16 @@ const cleanCompanyCandidate = (candidate: string | undefined): string | undefine
   candidate?.trim().replace(/[,.!?]+$/, '') || undefined
 
 const isNonCompanyCandidate = (candidate: string): boolean =>
+  /^(?:and|for|from|in|with)(?:\s|$)/i.test(candidate) ||
   candidate
     .toLowerCase()
     .split(/\s+/)
     .every((word) => nonCompanyWords.has(word))
 
 const isCountryCandidate = (candidate: string): boolean =>
-  countries.some((country) => country.toLowerCase() === candidate.toLowerCase())
+  countries.some(
+    (country) => country.toLowerCase() === candidate.replace(/^the\s+/i, '').toLowerCase(),
+  )
 
 const validEnglishCompanyCandidate = (candidate: string | undefined): candidate is string =>
   Boolean(candidate && !isNonCompanyCandidate(candidate) && !isCountryCandidate(candidate))
@@ -82,6 +93,14 @@ const extractAskedEnglishCompany = (session: ChatSession): string | undefined =>
     .slice()
     .reverse()
     .find(({ author }) => author === 'visitor')?.content
+  if (
+    !message ||
+    /^(?:i(?:'m|\s+(?:am|do|don't|have|work))\b|my\s+company\b|not\s+sure\b|we(?:'re|\s+(?:are|do|don't|have|work))\b)/i.test(
+      message.trim(),
+    )
+  ) {
+    return undefined
+  }
   const candidate = cleanCompanyCandidate(
     message?.match(
       new RegExp(
