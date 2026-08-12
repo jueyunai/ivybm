@@ -42,15 +42,15 @@ export type LinkedInImagePublishingIntent = {
   checkpoint: LinkedInImagePublishingCheckpoint
   expectedRevision: number
   idempotencyKey: string
-  jobId: number
+  publishJobId: number
   platform: 'linkedin'
   platformAccountId: number | string
 }
 
 export type LinkedInImagePublishingLeaseFence = {
-  jobId: number
   leaseExpiresAt: string
   ownerToken: string
+  queueJobId: number
 }
 
 export const LINKEDIN_IMAGE_PUBLISHING_BLOCK_REASONS = [
@@ -267,8 +267,8 @@ const normalizeIntent = (input: unknown): LinkedInImagePublishingIntent | undefi
     intent.platform !== 'linkedin' ||
     !Number.isSafeInteger(intent.expectedRevision) ||
     (intent.expectedRevision as number) < 0 ||
-    !Number.isSafeInteger(intent.jobId) ||
-    (intent.jobId as number) < 1 ||
+    !Number.isSafeInteger(intent.publishJobId) ||
+    (intent.publishJobId as number) < 1 ||
     !(
       (typeof intent.platformAccountId === 'number' &&
         Number.isSafeInteger(intent.platformAccountId) &&
@@ -283,7 +283,7 @@ const normalizeIntent = (input: unknown): LinkedInImagePublishingIntent | undefi
     checkpoint,
     expectedRevision: intent.expectedRevision as number,
     idempotencyKey,
-    jobId: intent.jobId as number,
+    publishJobId: intent.publishJobId as number,
     platform: 'linkedin',
     platformAccountId: intent.platformAccountId!,
   }
@@ -295,17 +295,17 @@ const normalizeLease = (input: unknown): LinkedInImagePublishingLeaseFence | und
   const ownerToken = boundedString(lease.ownerToken, 240)
   if (
     !ownerToken ||
-    !Number.isSafeInteger(lease.jobId) ||
-    (lease.jobId as number) < 1 ||
+    !Number.isSafeInteger(lease.queueJobId) ||
+    (lease.queueJobId as number) < 1 ||
     typeof lease.leaseExpiresAt !== 'string' ||
     !Number.isFinite(Date.parse(lease.leaseExpiresAt))
   ) {
     return undefined
   }
   return {
-    jobId: lease.jobId as number,
     leaseExpiresAt: lease.leaseExpiresAt,
     ownerToken,
+    queueJobId: lease.queueJobId as number,
   }
 }
 
@@ -356,7 +356,7 @@ export const sameLinkedInImagePublishingIntent = (
 ): boolean =>
   left.expectedRevision === right.expectedRevision &&
   left.idempotencyKey === right.idempotencyKey &&
-  left.jobId === right.jobId &&
+  left.publishJobId === right.publishJobId &&
   left.platform === right.platform &&
   left.platformAccountId === right.platformAccountId &&
   sameAsset(left.asset, right.asset) &&
@@ -365,7 +365,7 @@ export const sameLinkedInImagePublishingIntent = (
 const sameLeaseOwner = (
   left: LinkedInImagePublishingLeaseFence,
   right: LinkedInImagePublishingLeaseFence,
-): boolean => left.jobId === right.jobId && left.ownerToken === right.ownerToken
+): boolean => left.queueJobId === right.queueJobId && left.ownerToken === right.ownerToken
 
 const isClaim = (input: unknown): input is LinkedInImagePublishingClaim => {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return false
@@ -378,7 +378,6 @@ const isClaim = (input: unknown): input is LinkedInImagePublishingClaim => {
     (claim.fencingGeneration as number) > 0 &&
     Boolean(intent) &&
     Boolean(lease) &&
-    intent?.jobId === lease?.jobId &&
     (claim.mode === 'recover' || claim.mode === 'send')
   )
 }
@@ -537,7 +536,6 @@ export const executeLinkedInImagePublishingStage = async ({
   if (terminal.has(intent.checkpoint.stage)) {
     return { changed: false, checkpoint: intent.checkpoint }
   }
-  if (intent.jobId !== leaseFence.jobId) return blocked(intent.checkpoint, 'intent_mismatch')
   if (intent.checkpoint.stage === 'image_initialized') {
     if (!assetBytes) return blocked(intent.checkpoint, 'intent_mismatch')
     try {

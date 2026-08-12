@@ -31,7 +31,7 @@ const snapshot = (
 
 const intent = (overrides: Partial<PlatformPublicationIntent> = {}): PlatformPublicationIntent => ({
   expectedRevision: 3,
-  jobId: 42,
+  publishJobId: 42,
   snapshot: snapshot(),
   ...overrides,
 })
@@ -39,9 +39,9 @@ const intent = (overrides: Partial<PlatformPublicationIntent> = {}): PlatformPub
 const lease = (
   overrides: Partial<PlatformPublicationLeaseFence> = {},
 ): PlatformPublicationLeaseFence => ({
-  jobId: 42,
   leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
   ownerToken: 'worker-a',
+  queueJobId: 142,
   ...overrides,
 })
 
@@ -215,7 +215,7 @@ describe('lease-fenced single-call publication', () => {
   })
 
   it.each([
-    ['job', intent({ jobId: 43 })],
+    ['job', intent({ publishJobId: 43 })],
     ['revision', intent({ expectedRevision: 4 })],
     ['platform account', intent({ snapshot: snapshot({ platformAccountId: 8 }) })],
     ['command key', intent({ snapshot: snapshot({ idempotencyKey: 'other-key' }) })],

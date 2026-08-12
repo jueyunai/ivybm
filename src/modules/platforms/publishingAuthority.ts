@@ -19,14 +19,14 @@ export type PlatformPublicationBlockReason = (typeof PLATFORM_PUBLICATION_BLOCK_
 
 export type PlatformPublicationIntent = {
   expectedRevision: number
-  jobId: number
+  publishJobId: number
   snapshot: PlatformPublishExecutionSnapshot
 }
 
 export type PlatformPublicationLeaseFence = {
-  jobId: number
   leaseExpiresAt: string
   ownerToken: string
+  queueJobId: number
 }
 
 export type PlatformPublicationClaim = {
@@ -118,8 +118,8 @@ const normalizeIntent = (input: unknown): PlatformPublicationIntent | undefined 
   const snapshot = normalizeSnapshot(intent.snapshot)
   if (
     !snapshot ||
-    !Number.isSafeInteger(intent.jobId) ||
-    (intent.jobId as number) < 1 ||
+    !Number.isSafeInteger(intent.publishJobId) ||
+    (intent.publishJobId as number) < 1 ||
     !Number.isSafeInteger(intent.expectedRevision) ||
     (intent.expectedRevision as number) < 0
   ) {
@@ -127,7 +127,7 @@ const normalizeIntent = (input: unknown): PlatformPublicationIntent | undefined 
   }
   return {
     expectedRevision: intent.expectedRevision as number,
-    jobId: intent.jobId as number,
+    publishJobId: intent.publishJobId as number,
     snapshot,
   }
 }
@@ -138,17 +138,17 @@ const normalizeLease = (input: unknown): PlatformPublicationLeaseFence | undefin
   const ownerToken = boundedString(lease.ownerToken, 240)
   if (
     !ownerToken ||
-    !Number.isSafeInteger(lease.jobId) ||
-    (lease.jobId as number) < 1 ||
+    !Number.isSafeInteger(lease.queueJobId) ||
+    (lease.queueJobId as number) < 1 ||
     typeof lease.leaseExpiresAt !== 'string' ||
     !Number.isFinite(Date.parse(lease.leaseExpiresAt))
   ) {
     return undefined
   }
   return {
-    jobId: lease.jobId as number,
     leaseExpiresAt: lease.leaseExpiresAt,
     ownerToken,
+    queueJobId: lease.queueJobId as number,
   }
 }
 
@@ -170,13 +170,13 @@ export const samePlatformPublicationIntent = (
   right: PlatformPublicationIntent,
 ): boolean =>
   left.expectedRevision === right.expectedRevision &&
-  left.jobId === right.jobId &&
+  left.publishJobId === right.publishJobId &&
   sameSnapshot(left.snapshot, right.snapshot)
 
 const sameLeaseOwner = (
   left: PlatformPublicationLeaseFence,
   right: PlatformPublicationLeaseFence,
-): boolean => left.jobId === right.jobId && left.ownerToken === right.ownerToken
+): boolean => left.queueJobId === right.queueJobId && left.ownerToken === right.ownerToken
 
 const isClaim = (input: unknown): input is PlatformPublicationClaim => {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return false
@@ -189,7 +189,6 @@ const isClaim = (input: unknown): input is PlatformPublicationClaim => {
     (claim.fencingGeneration as number) > 0 &&
     Boolean(intent) &&
     Boolean(lease) &&
-    intent?.jobId === lease?.jobId &&
     (claim.mode === 'recover' || claim.mode === 'send')
   )
 }
@@ -242,10 +241,6 @@ export const executeLeaseFencedPublication = async ({
       transition: { changed: false, status: intent.snapshot.status },
     }
   }
-  if (intent.jobId !== leaseFence.jobId) {
-    return { reason: 'intent_mismatch', status: 'blocked' }
-  }
-
   const claimResult = await authority.claimPublication(intent, leaseFence)
   if (claimResult.status === 'blocked') return claimResult
   const claim = claimResult.claim

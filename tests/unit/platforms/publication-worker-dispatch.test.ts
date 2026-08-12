@@ -13,7 +13,7 @@ import {
 } from '@/modules/platforms/publicationWorkerDispatch'
 import type { PlatformPublicationIntent } from '@/modules/platforms/publishingAuthority'
 
-const lease = { jobId: 42, leaseExpiresAt: '2026-08-12T16:00:00.000Z', ownerToken: 'worker-a' }
+const lease = { queueJobId: 42, leaseExpiresAt: '2026-08-12T16:00:00.000Z', ownerToken: 'worker-a' }
 
 const directIntent = (
   platform: 'facebook' | 'linkedin',
@@ -29,7 +29,7 @@ const directIntent = (
     : [],
 ): PlatformPublicationIntent => ({
   expectedRevision: 2,
-  jobId: 42,
+  publishJobId: 42,
   snapshot: {
     assets,
     idempotencyKey: `publish-${platform}-42`,
@@ -50,7 +50,7 @@ const instagramIntent = (): InstagramPublishingIntent => ({
   },
   expectedRevision: 2,
   idempotencyKey: 'publish-instagram-42',
-  jobId: 42,
+  publishJobId: 42,
   platform: 'instagram',
   platformAccountId: 8,
 })
@@ -81,7 +81,7 @@ const linkedInImageIntent = (stage: LinkedInImagePublishingIntent['checkpoint'][
     },
     expectedRevision: 2,
     idempotencyKey: 'publish-linkedin-image-42',
-    jobId: 42,
+    publishJobId: 42,
     platform: 'linkedin' as const,
     platformAccountId: 9,
   }) satisfies LinkedInImagePublishingIntent
@@ -198,7 +198,7 @@ describe('publication worker dispatch', () => {
     expect(operations.executeSingle).not.toHaveBeenCalled()
   })
 
-  it('rejects delayed scheduling and a mismatched Job lease before authority I/O', async () => {
+  it('rejects delayed scheduling while keeping queue and publication IDs distinct', async () => {
     const operations = executors()
     await expect(
       dispatchPublicationWorkItem(
@@ -223,14 +223,20 @@ describe('publication worker dispatch', () => {
         {
           authority,
           intent: directIntent('facebook'),
-          leaseFence: { ...lease, jobId: 99 },
+          leaseFence: { ...lease, queueJobId: 99 },
           route: 'facebook-photo-single',
           service,
         },
         operations,
       ),
-    ).rejects.toBeInstanceOf(PublishingContractValidationError)
-    expect(operations.executeSingle).not.toHaveBeenCalled()
+    ).resolves.toMatchObject({ route: 'facebook-photo-single' })
+    expect(operations.executeSingle).toHaveBeenCalledTimes(1)
+    expect(operations.executeSingle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        intent: expect.objectContaining({ publishJobId: 42 }),
+        leaseFence: expect.objectContaining({ queueJobId: 99 }),
+      }),
+    )
   })
 
   it.each([

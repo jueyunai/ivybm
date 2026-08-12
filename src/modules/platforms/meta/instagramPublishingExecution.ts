@@ -31,15 +31,15 @@ export type InstagramPublishingIntent = {
   checkpoint: InstagramPublishingCheckpoint
   expectedRevision: number
   idempotencyKey: string
-  jobId: number
+  publishJobId: number
   platform: 'instagram'
   platformAccountId: number | string
 }
 
 export type InstagramPublishingLeaseFence = {
-  jobId: number
   leaseExpiresAt: string
   ownerToken: string
+  queueJobId: number
 }
 
 export const INSTAGRAM_PUBLISHING_BLOCK_REASONS = [
@@ -171,8 +171,8 @@ const normalizeIntent = (input: unknown): InstagramPublishingIntent | undefined 
     !idempotencyKey ||
     intent.platform !== 'instagram' ||
     !isStableIdentity(intent.platformAccountId) ||
-    !Number.isSafeInteger(intent.jobId) ||
-    (intent.jobId as number) < 1 ||
+    !Number.isSafeInteger(intent.publishJobId) ||
+    (intent.publishJobId as number) < 1 ||
     !Number.isSafeInteger(intent.expectedRevision) ||
     (intent.expectedRevision as number) < 0
   ) {
@@ -182,7 +182,7 @@ const normalizeIntent = (input: unknown): InstagramPublishingIntent | undefined 
     checkpoint,
     expectedRevision: intent.expectedRevision as number,
     idempotencyKey,
-    jobId: intent.jobId as number,
+    publishJobId: intent.publishJobId as number,
     platform: 'instagram',
     platformAccountId: intent.platformAccountId,
   }
@@ -194,17 +194,17 @@ const normalizeLeaseFence = (input: unknown): InstagramPublishingLeaseFence | un
   const ownerToken = boundedString(fence.ownerToken, 240)
   if (
     !ownerToken ||
-    !Number.isSafeInteger(fence.jobId) ||
-    (fence.jobId as number) < 1 ||
+    !Number.isSafeInteger(fence.queueJobId) ||
+    (fence.queueJobId as number) < 1 ||
     typeof fence.leaseExpiresAt !== 'string' ||
     !Number.isFinite(Date.parse(fence.leaseExpiresAt))
   ) {
     return undefined
   }
   return {
-    jobId: fence.jobId as number,
     leaseExpiresAt: fence.leaseExpiresAt,
     ownerToken,
+    queueJobId: fence.queueJobId as number,
   }
 }
 
@@ -226,7 +226,7 @@ export const sameInstagramPublishingIntent = (
 ): boolean =>
   left.expectedRevision === right.expectedRevision &&
   left.idempotencyKey === right.idempotencyKey &&
-  left.jobId === right.jobId &&
+  left.publishJobId === right.publishJobId &&
   left.platform === right.platform &&
   left.platformAccountId === right.platformAccountId &&
   sameCheckpoint(left.checkpoint, right.checkpoint)
@@ -234,7 +234,7 @@ export const sameInstagramPublishingIntent = (
 const sameLeaseOwner = (
   left: InstagramPublishingLeaseFence,
   right: InstagramPublishingLeaseFence,
-): boolean => left.jobId === right.jobId && left.ownerToken === right.ownerToken
+): boolean => left.queueJobId === right.queueJobId && left.ownerToken === right.ownerToken
 
 const isClaim = (input: unknown): input is InstagramPublishingClaim => {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return false
@@ -247,7 +247,6 @@ const isClaim = (input: unknown): input is InstagramPublishingClaim => {
     (claim.fencingGeneration as number) > 0 &&
     Boolean(intent) &&
     Boolean(leaseFence) &&
-    intent?.jobId === leaseFence?.jobId &&
     (claim.mode === 'recover' || claim.mode === 'send')
   )
 }
@@ -409,10 +408,6 @@ export const executeInstagramPublishingStage = async ({
   if (terminal.has(intent.checkpoint.stage)) {
     return { changed: false, checkpoint: intent.checkpoint }
   }
-  if (intent.jobId !== leaseFence.jobId) {
-    return blocked(intent.checkpoint, 'intent_mismatch')
-  }
-
   const claimResult = await authority.claimStage(intent, leaseFence)
   if (claimResult.status === 'blocked') {
     return blocked(intent.checkpoint, claimResult.reason)

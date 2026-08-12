@@ -12,9 +12,9 @@ import type {
 import { sameInstagramPublishingIntent } from './instagramPublishingExecution'
 
 export type FakeInstagramPublishingAuthority = InstagramPublishingAuthorityPort & {
-  expireStageClaim(jobId: number): boolean
+  expireStageClaim(publishJobId: number): boolean
   failNextCommit(): void
-  getIntent(jobId: number): InstagramPublishingIntent | undefined
+  getIntent(publishJobId: number): InstagramPublishingIntent | undefined
   registerIntent(intent: InstagramPublishingIntent): void
   setJobLease(leaseFence: InstagramPublishingLeaseFence): void
 }
@@ -22,7 +22,7 @@ export type FakeInstagramPublishingAuthority = InstagramPublishingAuthorityPort 
 const sameLeaseOwner = (
   left: InstagramPublishingLeaseFence,
   right: InstagramPublishingLeaseFence,
-): boolean => left.jobId === right.jobId && left.ownerToken === right.ownerToken
+): boolean => left.queueJobId === right.queueJobId && left.ownerToken === right.ownerToken
 
 const isUnexpiredLease = (leaseFence: InstagramPublishingLeaseFence): boolean => {
   const expiresAt = Date.parse(leaseFence.leaseExpiresAt)
@@ -51,21 +51,21 @@ export const createFakeInstagramPublishingAuthority = ({
   let rejectNextCommit = false
 
   const registerIntent = (intent: InstagramPublishingIntent): void => {
-    const existing = intents.get(intent.jobId)
+    const existing = intents.get(intent.publishJobId)
     if (existing && !sameInstagramPublishingIntent(existing, intent)) {
       throw new Error('Fake Instagram PublishJob is already bound to another intent')
     }
-    intents.set(intent.jobId, clone(intent))
+    intents.set(intent.publishJobId, clone(intent))
   }
 
   const setJobLease = (leaseFence: InstagramPublishingLeaseFence): void => {
-    jobLeases.set(leaseFence.jobId, clone(leaseFence))
+    jobLeases.set(leaseFence.queueJobId, clone(leaseFence))
   }
 
   const reclaimStaleClaim = (jobId: number): void => {
     const active = activeClaims.get(jobId)
     if (!active) return
-    const currentLease = jobLeases.get(jobId)
+    const currentLease = jobLeases.get(active.claim.leaseFence.queueJobId)
     if (
       currentLease &&
       sameLeaseOwner(currentLease, active.claim.leaseFence) &&
@@ -84,10 +84,10 @@ export const createFakeInstagramPublishingAuthority = ({
     input: InstagramPublishingIntent,
     leaseFence: InstagramPublishingLeaseFence,
   ): Promise<InstagramPublishingClaimResult> => {
-    reclaimStaleClaim(input.jobId)
-    const stored = intents.get(input.jobId)
-    const currentLease = jobLeases.get(input.jobId)
-    if (activeClaims.has(input.jobId)) return { reason: 'busy', status: 'blocked' }
+    reclaimStaleClaim(input.publishJobId)
+    const stored = intents.get(input.publishJobId)
+    const currentLease = jobLeases.get(leaseFence.queueJobId)
+    if (activeClaims.has(input.publishJobId)) return { reason: 'busy', status: 'blocked' }
     if (
       !currentLease ||
       !sameLeaseOwner(currentLease, leaseFence) ||
@@ -103,20 +103,16 @@ export const createFakeInstagramPublishingAuthority = ({
         status: 'blocked',
       }
     }
-    if (stored.jobId !== leaseFence.jobId) {
-      return { reason: 'intent_mismatch', status: 'blocked' }
-    }
-
-    const fencingGeneration = (fencingGenerations.get(input.jobId) ?? 0) + 1
-    fencingGenerations.set(input.jobId, fencingGeneration)
+    const fencingGeneration = (fencingGenerations.get(input.publishJobId) ?? 0) + 1
+    fencingGenerations.set(input.publishJobId, fencingGeneration)
     const claim: InstagramPublishingClaim = {
       claimId: `fake-instagram-claim-${nextClaimId++}`,
       fencingGeneration,
       intent: clone(stored),
       leaseFence: clone(leaseFence),
-      mode: recoveryRequired.has(input.jobId) ? 'recover' : 'send',
+      mode: recoveryRequired.has(input.publishJobId) ? 'recover' : 'send',
     }
-    activeClaims.set(input.jobId, { claim, providerIOStarted: false })
+    activeClaims.set(input.publishJobId, { claim, providerIOStarted: false })
     return { claim: clone(claim), status: 'claimed' }
   }
 
@@ -125,7 +121,7 @@ export const createFakeInstagramPublishingAuthority = ({
   ):
     | { active: { claim: InstagramPublishingClaim; providerIOStarted: boolean } }
     | { reason: InstagramPublishingBlockReason } => {
-    const active = activeClaims.get(claim.intent.jobId)
+    const active = activeClaims.get(claim.intent.publishJobId)
     if (
       !active ||
       active.claim.claimId !== claim.claimId ||
@@ -135,7 +131,7 @@ export const createFakeInstagramPublishingAuthority = ({
     ) {
       return { reason: 'claim_conflict' }
     }
-    const currentLease = jobLeases.get(claim.intent.jobId)
+    const currentLease = jobLeases.get(claim.leaseFence.queueJobId)
     if (
       !currentLease ||
       !sameLeaseOwner(currentLease, claim.leaseFence) ||
@@ -143,7 +139,7 @@ export const createFakeInstagramPublishingAuthority = ({
     ) {
       return { reason: 'lease_conflict' }
     }
-    const stored = intents.get(claim.intent.jobId)
+    const stored = intents.get(claim.intent.publishJobId)
     if (!stored) return { reason: 'missing_intent' }
     if (!sameInstagramPublishingIntent(stored, claim.intent)) {
       return {
@@ -183,13 +179,13 @@ export const createFakeInstagramPublishingAuthority = ({
       return { reason: 'intent_mismatch', status: 'blocked' }
     }
     const nextRevision = claim.intent.expectedRevision + 1
-    intents.set(claim.intent.jobId, {
+    intents.set(claim.intent.publishJobId, {
       ...clone(claim.intent),
       checkpoint: clone(transition.checkpoint),
       expectedRevision: nextRevision,
     })
-    activeClaims.delete(claim.intent.jobId)
-    recoveryRequired.delete(claim.intent.jobId)
+    activeClaims.delete(claim.intent.publishJobId)
+    recoveryRequired.delete(claim.intent.publishJobId)
     return { nextRevision, status: 'committed' }
   }
 
@@ -201,24 +197,24 @@ export const createFakeInstagramPublishingAuthority = ({
     if (validated.active.providerIOStarted) {
       throw new Error('Fake Instagram publishing claim crossed provider I/O and cannot be released')
     }
-    activeClaims.delete(claim.intent.jobId)
+    activeClaims.delete(claim.intent.publishJobId)
   }
 
   return {
     claimStage,
     commitStage,
-    expireStageClaim(jobId) {
-      const active = activeClaims.get(jobId)
+    expireStageClaim(publishJobId) {
+      const active = activeClaims.get(publishJobId)
       if (!active) return false
-      if (active.providerIOStarted) recoveryRequired.add(jobId)
-      activeClaims.delete(jobId)
+      if (active.providerIOStarted) recoveryRequired.add(publishJobId)
+      activeClaims.delete(publishJobId)
       return true
     },
     failNextCommit() {
       rejectNextCommit = true
     },
-    getIntent(jobId) {
-      const intent = intents.get(jobId)
+    getIntent(publishJobId) {
+      const intent = intents.get(publishJobId)
       return intent ? clone(intent) : undefined
     },
     markProviderIOStarted,

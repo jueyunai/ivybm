@@ -12,9 +12,9 @@ import { samePlatformPublicationIntent } from './publishingAuthority'
 import type { PlatformPublishExecutionTransition } from './publishingExecution'
 
 export type FakePlatformPublicationAuthority = PlatformPublicationAuthorityPort & {
-  expireClaim(jobId: number): boolean
+  expireClaim(publishJobId: number): boolean
   failNextCommit(): void
-  getIntent(jobId: number): PlatformPublicationIntent | undefined
+  getIntent(publishJobId: number): PlatformPublicationIntent | undefined
   registerIntent(intent: PlatformPublicationIntent): void
   setJobLease(lease: PlatformPublicationLeaseFence): void
 }
@@ -23,7 +23,7 @@ const clone = <Value>(value: Value): Value => structuredClone(value)
 const sameLeaseOwner = (
   left: PlatformPublicationLeaseFence,
   right: PlatformPublicationLeaseFence,
-): boolean => left.jobId === right.jobId && left.ownerToken === right.ownerToken
+): boolean => left.queueJobId === right.queueJobId && left.ownerToken === right.ownerToken
 const isUnexpired = (lease: PlatformPublicationLeaseFence): boolean =>
   Date.parse(lease.leaseExpiresAt) > Date.now()
 
@@ -43,19 +43,19 @@ export const createFakePlatformPublicationAuthority = ({
   let rejectNextCommit = false
 
   const registerIntent = (intent: PlatformPublicationIntent): void => {
-    const current = intents.get(intent.jobId)
+    const current = intents.get(intent.publishJobId)
     if (current && !samePlatformPublicationIntent(current, intent)) {
       throw new Error('Fake PublishJob is already bound to another publication intent')
     }
-    intents.set(intent.jobId, clone(intent))
+    intents.set(intent.publishJobId, clone(intent))
   }
   const setJobLease = (lease: PlatformPublicationLeaseFence): void => {
-    leases.set(lease.jobId, clone(lease))
+    leases.set(lease.queueJobId, clone(lease))
   }
   const reclaim = (jobId: number): void => {
     const current = active.get(jobId)
     if (!current) return
-    const lease = leases.get(jobId)
+    const lease = leases.get(current.claim.leaseFence.queueJobId)
     if (lease && sameLeaseOwner(lease, current.claim.leaseFence) && isUnexpired(lease)) return
     if (current.providerIOStarted) recoveryRequired.add(jobId)
     active.delete(jobId)
@@ -67,10 +67,10 @@ export const createFakePlatformPublicationAuthority = ({
     input: PlatformPublicationIntent,
     lease: PlatformPublicationLeaseFence,
   ): Promise<PlatformPublicationClaimResult> => {
-    reclaim(input.jobId)
-    const stored = intents.get(input.jobId)
-    const currentLease = leases.get(input.jobId)
-    if (active.has(input.jobId)) return { reason: 'busy', status: 'blocked' }
+    reclaim(input.publishJobId)
+    const stored = intents.get(input.publishJobId)
+    const currentLease = leases.get(lease.queueJobId)
+    if (active.has(input.publishJobId)) return { reason: 'busy', status: 'blocked' }
     if (!currentLease || !sameLeaseOwner(currentLease, lease) || !isUnexpired(currentLease)) {
       return { reason: 'lease_conflict', status: 'blocked' }
     }
@@ -82,16 +82,16 @@ export const createFakePlatformPublicationAuthority = ({
         status: 'blocked',
       }
     }
-    const generation = (generations.get(input.jobId) ?? 0) + 1
-    generations.set(input.jobId, generation)
+    const generation = (generations.get(input.publishJobId) ?? 0) + 1
+    generations.set(input.publishJobId, generation)
     const claim: PlatformPublicationClaim = {
       claimId: `fake-publication-claim-${nextClaim++}`,
       fencingGeneration: generation,
       intent: clone(stored),
       leaseFence: clone(lease),
-      mode: recoveryRequired.has(input.jobId) ? 'recover' : 'send',
+      mode: recoveryRequired.has(input.publishJobId) ? 'recover' : 'send',
     }
-    active.set(input.jobId, { claim, providerIOStarted: false })
+    active.set(input.publishJobId, { claim, providerIOStarted: false })
     return { claim: clone(claim), status: 'claimed' }
   }
 
@@ -100,7 +100,7 @@ export const createFakePlatformPublicationAuthority = ({
   ):
     | { current: { claim: PlatformPublicationClaim; providerIOStarted: boolean } }
     | { reason: PlatformPublicationBlockReason } => {
-    const current = active.get(claim.intent.jobId)
+    const current = active.get(claim.intent.publishJobId)
     if (
       !current ||
       current.claim.claimId !== claim.claimId ||
@@ -110,11 +110,11 @@ export const createFakePlatformPublicationAuthority = ({
     ) {
       return { reason: 'claim_conflict' }
     }
-    const lease = leases.get(claim.intent.jobId)
+    const lease = leases.get(claim.leaseFence.queueJobId)
     if (!lease || !sameLeaseOwner(lease, claim.leaseFence) || !isUnexpired(lease)) {
       return { reason: 'lease_conflict' }
     }
-    const stored = intents.get(claim.intent.jobId)
+    const stored = intents.get(claim.intent.publishJobId)
     if (!stored) return { reason: 'missing_intent' }
     if (!samePlatformPublicationIntent(stored, claim.intent)) {
       return {
@@ -147,9 +147,9 @@ export const createFakePlatformPublicationAuthority = ({
       return { reason: 'claim_conflict', status: 'blocked' }
     }
     const nextRevision = claim.intent.expectedRevision + 1
-    intents.set(claim.intent.jobId, {
+    intents.set(claim.intent.publishJobId, {
       expectedRevision: nextRevision,
-      jobId: claim.intent.jobId,
+      publishJobId: claim.intent.publishJobId,
       snapshot: {
         ...clone(claim.intent.snapshot),
         ...(transition.externalPublicationId
@@ -158,8 +158,8 @@ export const createFakePlatformPublicationAuthority = ({
         status: transition.status,
       },
     })
-    active.delete(claim.intent.jobId)
-    recoveryRequired.delete(claim.intent.jobId)
+    active.delete(claim.intent.publishJobId)
+    recoveryRequired.delete(claim.intent.publishJobId)
     return { nextRevision, status: 'committed' }
   }
 
@@ -168,24 +168,24 @@ export const createFakePlatformPublicationAuthority = ({
     if ('reason' in checked || checked.current.providerIOStarted) {
       throw new Error('Fake publication claim cannot be released')
     }
-    active.delete(claim.intent.jobId)
+    active.delete(claim.intent.publishJobId)
   }
 
   return {
     claimPublication,
     commitPublication,
-    expireClaim(jobId) {
-      const current = active.get(jobId)
+    expireClaim(publishJobId) {
+      const current = active.get(publishJobId)
       if (!current) return false
-      if (current.providerIOStarted) recoveryRequired.add(jobId)
-      active.delete(jobId)
+      if (current.providerIOStarted) recoveryRequired.add(publishJobId)
+      active.delete(publishJobId)
       return true
     },
     failNextCommit() {
       rejectNextCommit = true
     },
-    getIntent(jobId) {
-      const value = intents.get(jobId)
+    getIntent(publishJobId) {
+      const value = intents.get(publishJobId)
       return value ? clone(value) : undefined
     },
     markProviderIOStarted,

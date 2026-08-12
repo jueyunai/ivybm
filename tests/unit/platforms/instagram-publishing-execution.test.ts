@@ -29,7 +29,7 @@ const intent = (overrides: Partial<InstagramPublishingIntent> = {}): InstagramPu
   checkpoint: checkpoint(),
   expectedRevision: 7,
   idempotencyKey: 'publish-job-42-instagram',
-  jobId: 42,
+  publishJobId: 42,
   platform: 'instagram',
   platformAccountId: 17,
   ...overrides,
@@ -38,9 +38,9 @@ const intent = (overrides: Partial<InstagramPublishingIntent> = {}): InstagramPu
 const lease = (
   overrides: Partial<InstagramPublishingLeaseFence> = {},
 ): InstagramPublishingLeaseFence => ({
-  jobId: 42,
   leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
   ownerToken: 'worker-a',
+  queueJobId: 142,
   ...overrides,
 })
 
@@ -241,7 +241,7 @@ describe('Instagram lease-fenced publishing execution', () => {
   })
 
   it.each([
-    ['job', intent({ jobId: 43 })],
+    ['job', intent({ publishJobId: 43 })],
     ['account', intent({ platformAccountId: 18 })],
     ['idempotency key', intent({ idempotencyKey: 'other-key' })],
     ['revision', intent({ expectedRevision: 8 })],

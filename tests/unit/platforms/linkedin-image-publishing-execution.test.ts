@@ -44,7 +44,7 @@ const intent = (
   checkpoint: checkpoint(),
   expectedRevision: 2,
   idempotencyKey: 'publish-job-42-linkedin-image',
-  jobId: 42,
+  publishJobId: 42,
   platform: 'linkedin',
   platformAccountId: 19,
   ...overrides,
@@ -53,9 +53,9 @@ const intent = (
 const lease = (
   overrides: Partial<LinkedInImagePublishingLeaseFence> = {},
 ): LinkedInImagePublishingLeaseFence => ({
-  jobId: 42,
   leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
   ownerToken: 'worker-a',
+  queueJobId: 142,
   ...overrides,
 })
 

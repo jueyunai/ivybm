@@ -523,9 +523,46 @@ export interface PublishJob {
   mode: 'assisted' | 'automatic';
   status: 'scheduled' | 'accepted' | 'publishing' | 'published' | 'failed' | 'delivery_unknown';
   scheduledFor: string;
+  executionRoute?:
+    ('facebook-photo-single' | 'instagram-image-staged' | 'linkedin-text-single' | 'linkedin-image-staged') | null;
+  executionRevision: number;
+  requestFingerprint?: string | null;
+  /**
+   * Server-normalized publication request; never contains credentials.
+   */
+  requestSnapshot?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Platform stage checkpoint; never contains access tokens.
+   */
+  providerCheckpoint?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  authorizationRevision?: number | null;
+  claimJob?: (number | null) | Job;
+  claimId?: string | null;
+  claimOwnerToken?: string | null;
+  claimLeaseExpiresAt?: string | null;
+  fencingGeneration: number;
+  providerIOStartedAt?: string | null;
+  deliveryUnknownAt?: string | null;
   acceptedAt?: string | null;
   publishedAt?: string | null;
   externalPublicationId?: string | null;
+  externalPublicationUrl?: string | null;
   lastErrorCode?: string | null;
   lastErrorSummary?: string | null;
   idempotencyKey: string;
@@ -591,13 +628,52 @@ export interface PlatformAccount {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "jobs".
+ */
+export interface Job {
+  id: number;
+  type: string;
+  idempotencyKey?: string | null;
+  payload:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'dead';
+  attempts: number;
+  maxAttempts: number;
+  nextRunAt?: string | null;
+  leaseExpiresAt?: string | null;
+  ownerToken?: string | null;
+  lastError?: string | null;
+  completedAt?: string | null;
+  deadAt?: string | null;
+  manualRetryCount: number;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "publish-logs".
  */
 export interface PublishLog {
   id: number;
   publishJob: number | PublishJob;
   event:
-    'created' | 'scheduled' | 'accepted' | 'assisted-package-ready' | 'status-updated' | 'failed' | 'delivery-unknown';
+    | 'created'
+    | 'claimed'
+    | 'scheduled'
+    | 'accepted'
+    | 'assisted-package-ready'
+    | 'provider-io-started'
+    | 'checkpoint-committed'
+    | 'status-updated'
+    | 'failed'
+    | 'delivery-unknown';
   summary: string;
   actor?: (number | null) | User;
   updatedAt: string;
@@ -1349,36 +1425,6 @@ export interface ConversationCommand {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "jobs".
- */
-export interface Job {
-  id: number;
-  type: string;
-  idempotencyKey?: string | null;
-  payload:
-    | {
-        [k: string]: unknown;
-      }
-    | unknown[]
-    | string
-    | number
-    | boolean
-    | null;
-  status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'dead';
-  attempts: number;
-  maxAttempts: number;
-  nextRunAt?: string | null;
-  leaseExpiresAt?: string | null;
-  ownerToken?: string | null;
-  lastError?: string | null;
-  completedAt?: string | null;
-  deadAt?: string | null;
-  manualRetryCount: number;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -1803,9 +1849,23 @@ export interface PublishJobsSelect<T extends boolean = true> {
   mode?: T;
   status?: T;
   scheduledFor?: T;
+  executionRoute?: T;
+  executionRevision?: T;
+  requestFingerprint?: T;
+  requestSnapshot?: T;
+  providerCheckpoint?: T;
+  authorizationRevision?: T;
+  claimJob?: T;
+  claimId?: T;
+  claimOwnerToken?: T;
+  claimLeaseExpiresAt?: T;
+  fencingGeneration?: T;
+  providerIOStartedAt?: T;
+  deliveryUnknownAt?: T;
   acceptedAt?: T;
   publishedAt?: T;
   externalPublicationId?: T;
+  externalPublicationUrl?: T;
   lastErrorCode?: T;
   lastErrorSummary?: T;
   idempotencyKey?: T;

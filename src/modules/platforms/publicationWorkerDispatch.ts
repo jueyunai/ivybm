@@ -106,8 +106,7 @@ const directRequest = (
     !item.intent ||
     typeof item.intent !== 'object' ||
     !item.leaseFence ||
-    typeof item.leaseFence !== 'object' ||
-    item.intent.jobId !== item.leaseFence.jobId
+    typeof item.leaseFence !== 'object'
   ) {
     return invalid('Publication worker direct intent is invalid')
   }
@@ -144,7 +143,7 @@ const assertInstagramRoute = (item: InstagramImagePublicationWorkItem): void => 
   if (
     !item.intent ||
     item.intent.platform !== 'instagram' ||
-    item.intent.jobId !== item.leaseFence?.jobId ||
+    !item.leaseFence ||
     !item.intent.checkpoint ||
     typeof item.intent.checkpoint.imageUrl !== 'string' ||
     !item.intent.checkpoint.imageUrl
@@ -157,7 +156,7 @@ const assertLinkedInImageRoute = (item: LinkedInImagePublicationWorkItem): void 
   if (
     !item.intent ||
     item.intent.platform !== 'linkedin' ||
-    item.intent.jobId !== item.leaseFence?.jobId ||
+    !item.leaseFence ||
     !item.intent.checkpoint ||
     !item.intent.asset
   ) {
