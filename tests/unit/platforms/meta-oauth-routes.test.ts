@@ -200,7 +200,7 @@ describe('Meta OAuth routes', () => {
         }),
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ access_token: 'long-user-token', expires_in: '5184000' }), {
+        new Response(JSON.stringify({ access_token: 'long-user-token', token_type: 'bearer' }), {
           status: 200,
         }),
       )
@@ -251,7 +251,7 @@ describe('Meta OAuth routes', () => {
           appId: '1111111111111111',
           clearAccessToken: false,
           clearRefreshToken: true,
-          expiresAt: expect.any(String),
+          expiresAt: null,
           scopes: requiredMetaPermissions('facebook-page').map((scope) => ({ scope })),
           state: 'connected',
         },
