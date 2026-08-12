@@ -148,7 +148,29 @@ describe('Meta OAuth', () => {
     }
   })
 
-  it('rejects a long-lived token response without a bounded expiry and reports only safe shape', async () => {
+  it('accepts a provider-validated long-lived token when Meta omits its expiry', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'short-user-token' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'long-user-token', token_type: 'bearer' }), {
+          status: 200,
+        }),
+      )
+
+    await expect(
+      exchangeMetaAuthorizationCode({
+        code: 'authorization-code',
+        config: readMetaOAuthConfiguration(environment),
+        fetcher,
+        nowMilliseconds: 1_000,
+      }),
+    ).resolves.toEqual({ accessToken: 'long-user-token', expiresAt: null })
+  })
+
+  it('rejects a long-lived token response with an invalid expiry and reports only safe shape', async () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
