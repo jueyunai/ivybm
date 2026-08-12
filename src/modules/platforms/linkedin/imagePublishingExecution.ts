@@ -6,7 +6,7 @@ import {
   ProviderPublicationTransportError,
 } from '../publishingResult'
 import type { LinkedInImageUploadTicket, LinkedInPublishingTransport } from './publishingOutbound'
-import type { LinkedInAuthorUrnInput } from './publishingRequests'
+import { linkedInPostPermalink, type LinkedInAuthorUrnInput } from './publishingRequests'
 
 export const LINKEDIN_IMAGE_PUBLISHING_STAGES = [
   'scheduled',
@@ -33,6 +33,7 @@ export type LinkedInImagePublishingCheckpoint = {
   commentary: string
   imageUrn?: string
   postUrn?: string
+  postUrl?: string
   stage: LinkedInImagePublishingStage
   uploadTicket?: LinkedInImageUploadTicket
 }
@@ -200,6 +201,8 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
     checkpoint.imageUrn === undefined ? undefined : boundedString(checkpoint.imageUrn, 256)
   const postUrn =
     checkpoint.postUrn === undefined ? undefined : boundedString(checkpoint.postUrn, 256)
+  const postUrl =
+    checkpoint.postUrl === undefined ? undefined : boundedString(checkpoint.postUrl, 2_000)
   const uploadTicket =
     checkpoint.uploadTicket === undefined ? undefined : normalizeTicket(checkpoint.uploadTicket)
   if (
@@ -212,6 +215,8 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
       (!imageUrn || !/^urn:li:image:[A-Za-z0-9_-]+$/u.test(imageUrn))) ||
     (checkpoint.postUrn !== undefined &&
       (!postUrn || !/^urn:li:(?:share|ugcPost):\d+$/u.test(postUrn))) ||
+    (checkpoint.postUrl !== undefined &&
+      (!postUrn || !postUrl || postUrl !== linkedInPostPermalink(postUrn))) ||
     (checkpoint.uploadTicket !== undefined && !uploadTicket) ||
     !LINKEDIN_IMAGE_PUBLISHING_STAGES.includes(checkpoint.stage as LinkedInImagePublishingStage)
   ) {
@@ -219,19 +224,26 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
   }
   if (
     checkpoint.stage === 'scheduled' &&
-    (imageUrn !== undefined || uploadTicket !== undefined || postUrn !== undefined)
+    (imageUrn !== undefined ||
+      uploadTicket !== undefined ||
+      postUrn !== undefined ||
+      postUrl !== undefined)
   ) {
     return undefined
   }
   if (
     checkpoint.stage === 'image_initialized' &&
-    (!imageUrn || !uploadTicket || uploadTicket.imageUrn !== imageUrn || postUrn !== undefined)
+    (!imageUrn ||
+      !uploadTicket ||
+      uploadTicket.imageUrn !== imageUrn ||
+      postUrn !== undefined ||
+      postUrl !== undefined)
   ) {
     return undefined
   }
   if (
     checkpoint.stage === 'image_uploaded' &&
-    (!imageUrn || uploadTicket !== undefined || postUrn !== undefined)
+    (!imageUrn || uploadTicket !== undefined || postUrn !== undefined || postUrl !== undefined)
   ) {
     return undefined
   }
@@ -249,6 +261,7 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
     commentary,
     ...(imageUrn ? { imageUrn } : {}),
     ...(postUrn ? { postUrn } : {}),
+    ...(postUrl ? { postUrl } : {}),
     stage: checkpoint.stage as LinkedInImagePublishingStage,
     ...(uploadTicket ? { uploadTicket } : {}),
   }
@@ -347,6 +360,7 @@ const sameCheckpoint = (
   left.commentary === right.commentary &&
   left.imageUrn === right.imageUrn &&
   left.postUrn === right.postUrn &&
+  left.postUrl === right.postUrl &&
   left.stage === right.stage &&
   sameTicket(left.uploadTicket, right.uploadTicket)
 
@@ -507,9 +521,28 @@ const runStage = async ({
     ) {
       throw new ProviderPublicationResultUnknownError('LinkedIn post result is unknown')
     }
+    let postUrl: string | undefined
+    try {
+      const status = await transport.getPostStatus({
+        authorization: {
+          authorizationRevision: checkpoint.authorizationRevision,
+          platformAccountId,
+        },
+        author: checkpoint.author,
+        postUrn: result.postUrn,
+      })
+      if (status.lifecycleState === 'PUBLISHED') postUrl = status.externalPublicationUrl
+    } catch {
+      // The publish mutation is confirmed. Preserve the post URN without inventing a URL.
+    }
     return {
       changed: true,
-      checkpoint: { ...checkpoint, postUrn: result.postUrn, stage: 'published' },
+      checkpoint: {
+        ...checkpoint,
+        postUrn: result.postUrn,
+        ...(postUrl ? { postUrl } : {}),
+        stage: 'published',
+      },
       event: 'published',
       summary: 'LinkedIn confirmed the image post.',
     }

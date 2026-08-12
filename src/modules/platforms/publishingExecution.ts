@@ -14,8 +14,7 @@ export const PLATFORM_PUBLISH_EXECUTION_STATUSES = [
   'delivery_unknown',
 ] as const
 
-export type PlatformPublishExecutionStatus =
-  (typeof PLATFORM_PUBLISH_EXECUTION_STATUSES)[number]
+export type PlatformPublishExecutionStatus = (typeof PLATFORM_PUBLISH_EXECUTION_STATUSES)[number]
 
 export type PlatformPublishExecutionSnapshot = PlatformPublishRequest & {
   externalPublicationId?: string
@@ -23,19 +22,52 @@ export type PlatformPublishExecutionSnapshot = PlatformPublishRequest & {
 }
 
 export type PlatformPublishExecutionEvent =
-  | 'accepted'
-  | 'delivery-unknown'
-  | 'failed'
-  | 'status-updated'
+  'accepted' | 'delivery-unknown' | 'failed' | 'status-updated'
 
 export type PlatformPublishExecutionTransition = {
   changed: boolean
   event?: PlatformPublishExecutionEvent
   externalPublicationId?: string
+  externalPublicationUrl?: string
   lastErrorCode?: string
   retryable?: boolean
   status: PlatformPublishExecutionStatus
   summary?: string
+}
+
+const PLATFORM_PUBLICATION_HOSTS: Record<
+  PlatformPublishExecutionSnapshot['platform'],
+  ReadonlySet<string>
+> = {
+  facebook: new Set(['facebook.com', 'www.facebook.com']),
+  instagram: new Set(['instagram.com', 'www.instagram.com']),
+  linkedin: new Set(['linkedin.com', 'www.linkedin.com']),
+}
+
+const externalUrl = (
+  value: PlatformPublishAcceptance | PlatformPublicationStatus,
+): string | undefined => {
+  if (
+    !('externalPublicationUrl' in value) ||
+    typeof value.externalPublicationUrl !== 'string' ||
+    !value.externalPublicationUrl ||
+    value.externalPublicationUrl !== value.externalPublicationUrl.trim() ||
+    value.externalPublicationUrl.length > 2_000
+  ) {
+    return undefined
+  }
+  try {
+    const url = new URL(value.externalPublicationUrl)
+    return url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      !url.hash &&
+      PLATFORM_PUBLICATION_HOSTS[value.platform].has(url.hostname.toLowerCase())
+      ? value.externalPublicationUrl
+      : undefined
+  } catch {
+    return undefined
+  }
 }
 
 const terminalStatuses = new Set<PlatformPublishExecutionStatus>([
@@ -74,12 +106,17 @@ const fromPublishAcceptance = (
   result: PlatformPublishAcceptance,
 ): PlatformPublishExecutionTransition => {
   if (result.status === 'accepted') {
+    const id = externalId(result)!
+    const url = externalUrl(result)
     return {
       changed: true,
-      event: 'accepted',
-      externalPublicationId: externalId(result)!,
-      status: 'accepted',
-      summary: 'Provider accepted the publication command.',
+      event: url ? 'status-updated' : 'accepted',
+      externalPublicationId: id,
+      ...(url ? { externalPublicationUrl: url } : {}),
+      status: url ? 'published' : 'accepted',
+      summary: url
+        ? 'Provider confirmed publication.'
+        : 'Provider accepted the publication command.',
     }
   }
   if (result.status === 'delivery_unknown') {
@@ -111,10 +148,13 @@ const fromStatusLookup = (
   result: PlatformPublicationStatus,
 ): PlatformPublishExecutionTransition => {
   if (result.status === 'published') {
+    const id = externalId(result)!
+    const url = externalUrl(result)
     return {
       changed: true,
       event: 'status-updated',
-      externalPublicationId: externalId(result)!,
+      externalPublicationId: id,
+      ...(url ? { externalPublicationUrl: url } : {}),
       status: 'published',
       summary: 'Provider confirmed publication.',
     }
@@ -171,19 +211,21 @@ export const executePlatformPublication = async ({
 
   if (snapshot.status === 'scheduled') {
     const result = await service.publish({
-        assets: snapshot.assets,
-        idempotencyKey: snapshot.idempotencyKey,
-        platform: snapshot.platform,
-        platformAccountId: snapshot.platformAccountId,
-        scheduledFor: snapshot.scheduledFor,
-        text: snapshot.text,
-      })
+      assets: snapshot.assets,
+      idempotencyKey: snapshot.idempotencyKey,
+      platform: snapshot.platform,
+      platformAccountId: snapshot.platformAccountId,
+      scheduledFor: snapshot.scheduledFor,
+      text: snapshot.text,
+    })
     if (!correlationMatches(snapshot, result)) return unknownTransition()
     if (
       result.status === 'accepted' &&
       (typeof result.externalPublicationId !== 'string' || !result.externalPublicationId.trim())
     ) {
-      return unknownTransition('Provider acceptance identifier is unknown; automatic resend is disabled.')
+      return unknownTransition(
+        'Provider acceptance identifier is unknown; automatic resend is disabled.',
+      )
     }
     return fromPublishAcceptance(result)
   }
@@ -198,13 +240,11 @@ export const executePlatformPublication = async ({
     )
   }
   const result = await service.getStatus({
-      ...(snapshotExternalId
-        ? { externalPublicationId: snapshotExternalId }
-        : {}),
-      idempotencyKey: snapshot.idempotencyKey,
-      platform: snapshot.platform,
-      platformAccountId: snapshot.platformAccountId,
-    })
+    ...(snapshotExternalId ? { externalPublicationId: snapshotExternalId } : {}),
+    idempotencyKey: snapshot.idempotencyKey,
+    platform: snapshot.platform,
+    platformAccountId: snapshot.platformAccountId,
+  })
   if (!correlationMatches(snapshot, result)) return unknownTransition()
   if (
     (result.status === 'pending' ||
@@ -214,11 +254,7 @@ export const executePlatformPublication = async ({
   ) {
     return unknownTransition('Provider status identifier is unknown; automatic resend is disabled.')
   }
-  if (
-    snapshotExternalId &&
-    externalId(result) &&
-    externalId(result) !== snapshotExternalId
-  ) {
+  if (snapshotExternalId && externalId(result) && externalId(result) !== snapshotExternalId) {
     return unknownTransition('Provider status identifier changed; automatic resend is disabled.')
   }
   return fromStatusLookup(result)

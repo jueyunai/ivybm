@@ -181,6 +181,7 @@ describe.sequential('Task 13 Payload publication authority', () => {
         changed: true,
         event: 'accepted',
         externalPublicationId: '129472283584550_123456789',
+        externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/123456789',
         status: 'accepted',
         summary: 'Provider accepted the publication command.',
       }),
@@ -197,6 +198,7 @@ describe.sequential('Task 13 Payload publication authority', () => {
       claimId: null,
       executionRevision: 1,
       externalPublicationId: '129472283584550_123456789',
+      externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/123456789',
       status: 'accepted',
     })
     const logs = await payload.find({
@@ -298,6 +300,14 @@ describe.sequential('Task 13 Payload publication authority', () => {
       platformAccountId: account.id,
       status: 'accepted',
     })
+    const getStatus = vi.fn().mockResolvedValue({
+      externalPublicationId: '129472283584550_987654321',
+      externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/987654321',
+      idempotencyKey: requestSnapshot.idempotencyKey,
+      platform: 'facebook',
+      platformAccountId: account.id,
+      status: 'published',
+    })
     const worker = new JobWorker({
       handlers: {
         [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
@@ -306,7 +316,7 @@ describe.sequential('Task 13 Payload publication authority', () => {
           resolveRuntime: () => ({
             directService: {
               getCapability: vi.fn(),
-              getStatus: vi.fn(),
+              getStatus,
               prepareAssistedPublication: vi.fn(),
               publish,
             },
@@ -321,7 +331,24 @@ describe.sequential('Task 13 Payload publication authority', () => {
 
     await expect(worker.runOnce()).resolves.toBe('succeeded')
     expect(publish).toHaveBeenCalledTimes(1)
-    await expect(worker.runOnce()).resolves.toBe('idle')
+    const queuedContinuation = await pool().query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM jobs WHERE idempotency_key = $1',
+      [`publication-execute:${publishJob.id}:1`],
+    )
+    expect(queuedContinuation.rows[0]?.count).toBe('1')
+    const continuationJob = await pool().query<{ id: number }>(
+      'SELECT id FROM jobs WHERE idempotency_key = $1 LIMIT 1',
+      [`publication-execute:${publishJob.id}:1`],
+    )
+    const continuationJobId = continuationJob.rows[0]?.id
+    if (!continuationJobId) throw new Error('Expected direct status continuation')
+    jobIDs.push(continuationJobId)
+    await pool().query('UPDATE jobs SET next_run_at = $1 WHERE id = $2', [
+      new Date(Date.now() - 1_000).toISOString(),
+      continuationJobId,
+    ])
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+    expect(getStatus).toHaveBeenCalledTimes(1)
     expect(publish).toHaveBeenCalledTimes(1)
     await expect(
       payload.findByID({
@@ -331,9 +358,10 @@ describe.sequential('Task 13 Payload publication authority', () => {
         overrideAccess: true,
       }),
     ).resolves.toMatchObject({
-      executionRevision: 1,
+      executionRevision: 2,
       externalPublicationId: '129472283584550_987654321',
-      status: 'accepted',
+      externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/987654321',
+      status: 'published',
     })
   })
 })

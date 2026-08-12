@@ -14,6 +14,8 @@ import { ProviderPublicationResultUnknownError } from '../publishingResult'
  * - POST /{IG_ID}/media with image_url and optional caption
  * - POST /{IG_ID}/media_publish with creation_id
  * - GET  /{CONTAINER_ID}?fields=status_code
+ * - GET  /{PAGE_POST_ID}?fields=permalink_url
+ * - GET  /{IG_MEDIA_ID}?fields=permalink
  *
  * No idempotency support or provider lookup by IVYBM idempotencyKey is proven
  * for any of these endpoints. These helpers therefore MUST NOT be used to
@@ -50,6 +52,14 @@ export type InstagramContainerStatusRequestInput = {
   containerId: string
 }
 
+export type FacebookPagePostRequestInput = {
+  postId: string
+}
+
+export type InstagramPublishedMediaRequestInput = {
+  mediaId: string
+}
+
 export type FacebookPagePhotoResponse =
   { photoId: string; postId?: string } | { photoId?: never; postId: string }
 
@@ -68,6 +78,14 @@ export type InstagramContainerStatusResponse = {
   statusCode: InstagramMediaStatusCode
 }
 
+export type FacebookPagePostResponse = {
+  permalinkUrl: string
+}
+
+export type InstagramPublishedMediaResponse = {
+  permalink: string
+}
+
 const MAX_META_IDENTIFIER_LENGTH = 32
 const MAX_FACEBOOK_POST_IDENTIFIER_LENGTH = MAX_META_IDENTIFIER_LENGTH * 2 + 1
 const MAX_FACEBOOK_CAPTION_LENGTH = 5_000
@@ -75,6 +93,8 @@ const MAX_INSTAGRAM_CAPTION_LENGTH = 2_200
 const DECIMAL_IDENTIFIER_PATTERN = /^[0-9]+$/
 const FACEBOOK_POST_IDENTIFIER_PATTERN = /^([0-9]+)_([0-9]+)$/
 const FORBIDDEN_RAW_URL_CHARACTER_PATTERN = /[\u0000-\u0020\u007F]/
+const FACEBOOK_PERMALINK_HOSTS = new Set(['facebook.com', 'www.facebook.com'])
+const INSTAGRAM_PERMALINK_HOSTS = new Set(['instagram.com', 'www.instagram.com'])
 
 const INSTAGRAM_MEDIA_STATUS_CODES: readonly InstagramMediaStatusCode[] = [
   'EXPIRED',
@@ -223,6 +243,22 @@ export const buildInstagramContainerStatusRequest = (
   }
 }
 
+export const buildFacebookPagePostRequest = (
+  input: FacebookPagePostRequestInput,
+): MetaPublishingHttpRequest => ({
+  method: 'GET',
+  path: `/${requireFacebookPostIdentifier(input?.postId)}`,
+  query: { fields: 'permalink_url' },
+})
+
+export const buildInstagramPublishedMediaRequest = (
+  input: InstagramPublishedMediaRequestInput,
+): MetaPublishingHttpRequest => ({
+  method: 'GET',
+  path: `/${requireMetaIdentifier(input?.mediaId, 'Instagram media identifier')}`,
+  query: { fields: 'permalink' },
+})
+
 const requireRecord = (value: unknown): Record<string, unknown> | undefined => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined
@@ -235,6 +271,31 @@ const readExactString = (record: Record<string, unknown>, key: string): string |
   if (typeof candidate !== 'string') return undefined
   const trimmed = candidate.trim()
   return trimmed.length ? trimmed : undefined
+}
+
+const requireProviderPermalink = (
+  value: unknown,
+  hosts: ReadonlySet<string>,
+  message: string,
+): string => {
+  if (typeof value !== 'string' || !value || value !== value.trim() || value.length > 2_000) {
+    throw new ProviderPublicationResultUnknownError(message)
+  }
+  try {
+    const url = new URL(value)
+    if (
+      url.protocol !== 'https:' ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      !hosts.has(url.hostname.toLowerCase())
+    ) {
+      throw new Error('invalid permalink')
+    }
+    return value
+  } catch {
+    throw new ProviderPublicationResultUnknownError(message)
+  }
 }
 
 /**
@@ -275,11 +336,15 @@ export const parseFacebookPagePhotoResponse = (value: unknown): FacebookPagePhot
 export const parseInstagramMediaResponse = (value: unknown): InstagramMediaResponse => {
   const record = requireRecord(value)
   if (!record) {
-    throw new ProviderPublicationResultUnknownError('Meta Instagram media creation result is unknown')
+    throw new ProviderPublicationResultUnknownError(
+      'Meta Instagram media creation result is unknown',
+    )
   }
   const creationIdCandidate = readExactString(record, 'id')
   if (!creationIdCandidate) {
-    throw new ProviderPublicationResultUnknownError('Meta Instagram media creation result is unknown')
+    throw new ProviderPublicationResultUnknownError(
+      'Meta Instagram media creation result is unknown',
+    )
   }
   try {
     const creationId = requireMetaIdentifier(
@@ -288,7 +353,9 @@ export const parseInstagramMediaResponse = (value: unknown): InstagramMediaRespo
     )
     return { creationId }
   } catch {
-    throw new ProviderPublicationResultUnknownError('Meta Instagram media creation result is unknown')
+    throw new ProviderPublicationResultUnknownError(
+      'Meta Instagram media creation result is unknown',
+    )
   }
 }
 
@@ -336,4 +403,26 @@ export const parseInstagramContainerStatusResponse = (
     throw new Error('Meta Instagram container status code is not allowed')
   }
   return { statusCode: statusCode as InstagramMediaStatusCode }
+}
+
+export const parseFacebookPagePostResponse = (value: unknown): FacebookPagePostResponse => {
+  const record = requireRecord(value)
+  const permalinkUrl = requireProviderPermalink(
+    record?.permalink_url,
+    FACEBOOK_PERMALINK_HOSTS,
+    'Meta Facebook page post permalink is unknown',
+  )
+  return { permalinkUrl }
+}
+
+export const parseInstagramPublishedMediaResponse = (
+  value: unknown,
+): InstagramPublishedMediaResponse => {
+  const record = requireRecord(value)
+  const permalink = requireProviderPermalink(
+    record?.permalink,
+    INSTAGRAM_PERMALINK_HOSTS,
+    'Meta Instagram media permalink is unknown',
+  )
+  return { permalink }
 }

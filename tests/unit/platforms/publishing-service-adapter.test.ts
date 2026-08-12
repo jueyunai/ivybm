@@ -37,7 +37,11 @@ const metaTransport = (
   overrides: Partial<MetaPublishingTransport> = {},
 ): MetaPublishingTransport => ({
   createInstagramMedia: vi.fn(),
+  getFacebookPagePostPermalink: vi.fn(async () => ({
+    permalinkUrl: 'https://www.facebook.com/129472283584550/posts/7654321',
+  })),
   getInstagramContainerStatus: vi.fn(),
+  getInstagramMediaPermalink: vi.fn(),
   publishFacebookPagePhoto: vi.fn(async () => ({
     photoId: '7654321',
     postId: '129472283584550_7654321',
@@ -49,7 +53,10 @@ const metaTransport = (
 const linkedInTransport = (
   overrides: Partial<LinkedInPublishingTransport> = {},
 ): LinkedInPublishingTransport => ({
-  getPostStatus: vi.fn(async () => ({ lifecycleState: 'PUBLISHED' as const })),
+  getPostStatus: vi.fn(async () => ({
+    externalPublicationUrl: 'https://www.linkedin.com/feed/update/urn:li:share:123456789/',
+    lifecycleState: 'PUBLISHED' as const,
+  })),
   initializeImageUpload: vi.fn(),
   publishImagePost: vi.fn(),
   publishTextPost: vi.fn(async () => ({ postUrn: 'urn:li:share:123456789' })),
@@ -162,6 +169,7 @@ describe('platform publishing service adapter', () => {
 
     await expect(service.publish(facebookRequest())).resolves.toEqual({
       externalPublicationId: '129472283584550_7654321',
+      externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/7654321',
       idempotencyKey: 'publish-facebook-1',
       platform: 'facebook',
       platformAccountId: 7,
@@ -173,6 +181,12 @@ describe('platform publishing service adapter', () => {
       caption: 'Project update',
       platformAccountId: 7,
       url: 'https://media.example.test/facade.jpg?sig=opaque',
+    })
+    expect(meta.getFacebookPagePostPermalink).toHaveBeenCalledWith({
+      accountExternalId: '129472283584550',
+      authorizationRevision: 4,
+      platformAccountId: 7,
+      postId: '129472283584550_7654321',
     })
   })
 
@@ -263,6 +277,7 @@ describe('platform publishing service adapter', () => {
 
     await expect(service.publish(request)).resolves.toMatchObject({
       externalPublicationId: 'urn:li:share:123456789',
+      externalPublicationUrl: 'https://www.linkedin.com/feed/update/urn:li:share:123456789/',
       status: 'accepted',
     })
     expect(linkedIn.publishTextPost).toHaveBeenCalledWith({
@@ -328,7 +343,7 @@ describe('platform publishing service adapter', () => {
     ).rejects.toBeInstanceOf(ProviderPublicationTransportError)
   })
 
-  it('does not claim Facebook publication from an unproven status endpoint', async () => {
+  it('confirms Facebook publication only through the provider permalink field', async () => {
     const service = serviceWith()
     await expect(
       service.getStatus({
@@ -338,10 +353,9 @@ describe('platform publishing service adapter', () => {
         platformAccountId: 7,
       }),
     ).resolves.toMatchObject({
-      errorCode: 'delivery_unknown',
       externalPublicationId: '129472283584550_7654321',
-      retryable: false,
-      status: 'delivery_unknown',
+      externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/7654321',
+      status: 'published',
     })
   })
 

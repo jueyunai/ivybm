@@ -62,7 +62,10 @@ const lease = (
 const transport = (
   overrides: Partial<LinkedInPublishingTransport> = {},
 ): LinkedInPublishingTransport => ({
-  getPostStatus: vi.fn(),
+  getPostStatus: vi.fn(async ({ postUrn }) => ({
+    externalPublicationUrl: `https://www.linkedin.com/feed/update/${postUrn}/`,
+    lifecycleState: 'PUBLISHED' as const,
+  })),
   initializeImageUpload: vi.fn(),
   publishImagePost: vi.fn(),
   publishTextPost: vi.fn(),
@@ -204,9 +207,18 @@ describe('LinkedIn staged image publication', () => {
         transport: adapter,
       }),
     ).resolves.toMatchObject({
-      checkpoint: { postUrn: 'urn:li:share:123456789', stage: 'published' },
+      checkpoint: {
+        postUrn: 'urn:li:share:123456789',
+        postUrl: 'https://www.linkedin.com/feed/update/urn:li:share:123456789/',
+        stage: 'published',
+      },
     })
     expect(publishImagePost).toHaveBeenCalledTimes(1)
+    expect(adapter.getPostStatus).toHaveBeenCalledWith({
+      authorization: { authorizationRevision: 4, platformAccountId: 19 },
+      author: { kind: 'organization', organizationId: '971937765923229' },
+      postUrn: 'urn:li:share:123456789',
+    })
     expect(adapter.initializeImageUpload).not.toHaveBeenCalled()
     expect(adapter.uploadImage).not.toHaveBeenCalled()
   })

@@ -24,6 +24,7 @@ export type InstagramPublishingCheckpoint = {
   containerId?: string
   imageUrl: string
   mediaId?: string
+  permalink?: string
   stage: InstagramPublishingStage
 }
 
@@ -127,6 +128,24 @@ const boundedString = (value: unknown, maxLength: number): string | undefined =>
 const normalizedProviderId = (value: unknown): string | undefined =>
   typeof value === 'string' && /^[0-9]{1,32}$/.test(value) ? value : undefined
 
+const normalizedInstagramPermalink = (value: unknown): string | undefined => {
+  if (typeof value !== 'string' || !value || value !== value.trim() || value.length > 2_000) {
+    return undefined
+  }
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      !url.hash &&
+      (url.hostname === 'instagram.com' || url.hostname === 'www.instagram.com')
+      ? value
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 const normalizeCheckpoint = (input: unknown): InstagramPublishingCheckpoint | undefined => {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
   const checkpoint = input as Partial<InstagramPublishingCheckpoint>
@@ -138,6 +157,10 @@ const normalizeCheckpoint = (input: unknown): InstagramPublishingCheckpoint | un
     checkpoint.containerId === undefined ? undefined : normalizedProviderId(checkpoint.containerId)
   const mediaId =
     checkpoint.mediaId === undefined ? undefined : normalizedProviderId(checkpoint.mediaId)
+  const permalink =
+    checkpoint.permalink === undefined
+      ? undefined
+      : normalizedInstagramPermalink(checkpoint.permalink)
   if (
     !accountExternalId ||
     !Number.isSafeInteger(checkpoint.authorizationRevision) ||
@@ -146,6 +169,7 @@ const normalizeCheckpoint = (input: unknown): InstagramPublishingCheckpoint | un
     (checkpoint.caption !== undefined && !caption) ||
     (checkpoint.containerId !== undefined && !containerId) ||
     (checkpoint.mediaId !== undefined && !mediaId) ||
+    (checkpoint.permalink !== undefined && !permalink) ||
     !INSTAGRAM_PUBLISHING_STAGES.includes(checkpoint.stage as InstagramPublishingStage)
   ) {
     return undefined
@@ -157,6 +181,7 @@ const normalizeCheckpoint = (input: unknown): InstagramPublishingCheckpoint | un
     ...(containerId ? { containerId } : {}),
     imageUrl,
     ...(mediaId ? { mediaId } : {}),
+    ...(permalink ? { permalink } : {}),
     stage: checkpoint.stage as InstagramPublishingStage,
   }
 }
@@ -218,6 +243,7 @@ const sameCheckpoint = (
   left.containerId === right.containerId &&
   left.imageUrl === right.imageUrl &&
   left.mediaId === right.mediaId &&
+  left.permalink === right.permalink &&
   left.stage === right.stage
 
 export const sameInstagramPublishingIntent = (
@@ -370,9 +396,30 @@ const runClaimedStage = async (
     if (!mediaId) {
       return unknown(checkpoint, 'Instagram media identifier is unknown; resend is disabled.')
     }
+    let permalink: string | undefined
+    try {
+      permalink = normalizedInstagramPermalink(
+        (
+          await transport.getInstagramMediaPermalink({
+            accountExternalId: checkpoint.accountExternalId,
+            authorizationRevision: checkpoint.authorizationRevision,
+            mediaId,
+            platformAccountId,
+          })
+        ).permalink,
+      )
+    } catch {
+      // The publish mutation is confirmed. Preserve the media ID without inventing a URL.
+    }
     return {
       changed: true,
-      checkpoint: { ...checkpoint, containerId, mediaId, stage: 'published' },
+      checkpoint: {
+        ...checkpoint,
+        containerId,
+        mediaId,
+        ...(permalink ? { permalink } : {}),
+        stage: 'published',
+      },
       event: 'published',
       summary: 'Instagram confirmed publication.',
     }

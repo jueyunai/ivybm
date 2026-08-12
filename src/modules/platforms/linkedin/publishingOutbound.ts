@@ -14,6 +14,7 @@ import {
   parseLinkedInImageInitializeUploadResponse,
   parseLinkedInPostCreationResponse,
   parseLinkedInPostStatusResponse,
+  linkedInPostPermalink,
   type LinkedInAuthorUrnInput,
   type LinkedInPostCreationResponse,
   type LinkedInPostStatusResponse,
@@ -518,13 +519,16 @@ export const createLinkedInPublishingTransport = ({
       linkedInVersion,
       postUrn: input.postUrn,
     })
-    return dispatchJson({
+    const result = await dispatchJson({
       authorization: input.authorization,
       author: input.author,
       mutation: false,
       parse: async (response) => parseLinkedInPostStatusResponse(await response.json()),
       request,
     })
+    return result.lifecycleState === 'PUBLISHED'
+      ? { ...result, externalPublicationUrl: linkedInPostPermalink(input.postUrn) }
+      : result
   }
 
   return {

@@ -132,10 +132,14 @@ const linkedInImageState = (value: unknown) => {
   }
 }
 
+const isDirectRoute = (job: PublishJob): boolean =>
+  job.executionRoute === 'facebook-photo-single' || job.executionRoute === 'linkedin-text-single'
+
 const continuationNeeded = (job: PublishJob): boolean =>
-  (job.executionRoute === 'instagram-image-staged' ||
+  (isDirectRoute(job) && (job.status === 'accepted' || job.status === 'publishing')) ||
+  ((job.executionRoute === 'instagram-image-staged' ||
     job.executionRoute === 'linkedin-image-staged') &&
-  job.status === 'publishing'
+    job.status === 'publishing')
 
 export const enqueuePublicationExecution = async ({
   nextRunAt,
@@ -168,12 +172,18 @@ const scheduleContinuation = async (
   now: () => Date,
 ): Promise<void> => {
   if (!continuationNeeded(job)) return
-  const checkpoint = record(job.providerCheckpoint, 'providerCheckpoint')
-  const stage =
-    job.executionRoute === 'linkedin-image-staged'
-      ? record(checkpoint.checkpoint, 'providerCheckpoint.checkpoint').stage
-      : checkpoint.stage
-  const nextRunAt = stage === 'container_created' ? new Date(now().getTime() + 2_000) : undefined
+  const stage = isDirectRoute(job)
+    ? 'direct-status'
+    : job.executionRoute === 'linkedin-image-staged'
+      ? record(
+          record(job.providerCheckpoint, 'providerCheckpoint').checkpoint,
+          'providerCheckpoint.checkpoint',
+        ).stage
+      : record(job.providerCheckpoint, 'providerCheckpoint').stage
+  const nextRunAt =
+    stage === 'container_created' || stage === 'direct-status'
+      ? new Date(now().getTime() + 2_000)
+      : undefined
   await enqueuePublicationExecution({
     nextRunAt,
     publishJobId: job.id,

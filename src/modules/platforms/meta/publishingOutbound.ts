@@ -5,16 +5,22 @@ import {
 } from '../publishingResult'
 import {
   buildFacebookPagePhotoRequest,
+  buildFacebookPagePostRequest,
   buildInstagramContainerStatusRequest,
   buildInstagramMediaPublishRequest,
   buildInstagramMediaRequest,
+  buildInstagramPublishedMediaRequest,
   parseFacebookPagePhotoResponse,
+  parseFacebookPagePostResponse,
   parseInstagramContainerStatusResponse,
   parseInstagramMediaPublishResponse,
   parseInstagramMediaResponse,
+  parseInstagramPublishedMediaResponse,
+  type FacebookPagePostResponse,
   type FacebookPagePhotoResponse,
   type InstagramMediaPublishResponse,
   type InstagramMediaResponse,
+  type InstagramPublishedMediaResponse,
   type MetaPublishingHttpRequest,
 } from './publishingRequests'
 import { META_GRAPH_API_VERSION } from './oauth'
@@ -72,11 +78,31 @@ export type InstagramMediaPublishInput = {
   platformAccountId: PlatformAccountId
 }
 
+export type FacebookPagePostPermalinkInput = {
+  accountExternalId: string
+  authorizationRevision: number
+  platformAccountId: PlatformAccountId
+  postId: string
+}
+
+export type InstagramMediaPermalinkInput = {
+  accountExternalId: string
+  authorizationRevision: number
+  mediaId: string
+  platformAccountId: PlatformAccountId
+}
+
 export interface MetaPublishingTransport {
   createInstagramMedia(input: InstagramMediaCreateInput): Promise<InstagramMediaResponse>
+  getFacebookPagePostPermalink(
+    input: FacebookPagePostPermalinkInput,
+  ): Promise<FacebookPagePostResponse>
   getInstagramContainerStatus(
     input: InstagramContainerStatusInput,
   ): Promise<InstagramContainerPublicationState>
+  getInstagramMediaPermalink(
+    input: InstagramMediaPermalinkInput,
+  ): Promise<InstagramPublishedMediaResponse>
   publishFacebookPagePhoto(input: FacebookPagePhotoPublishInput): Promise<FacebookPagePhotoResponse>
   publishInstagramMedia(input: InstagramMediaPublishInput): Promise<InstagramMediaPublishResponse>
 }
@@ -207,6 +233,7 @@ export const createMetaPublishingTransport = ({
     platform,
     platformAccountId,
     providerRequest,
+    readOnly = false,
   }: {
     accountExternalId: string
     authorizationRevision: number
@@ -214,6 +241,7 @@ export const createMetaPublishingTransport = ({
     platform: MetaPublishingPlatform
     platformAccountId: PlatformAccountId
     providerRequest: MetaPublishingHttpRequest
+    readOnly?: boolean
   }): Promise<Result> => {
     const authorization = publishingAuthorization({ authorizationRevision, platformAccountId })
     let token: string | undefined
@@ -252,6 +280,7 @@ export const createMetaPublishingTransport = ({
         signal: controller.signal,
       })
     } catch {
+      if (readOnly) throw new ProviderPublicationTransportError()
       throw new ProviderPublicationResultUnknownError('Meta publication result is unknown')
     } finally {
       clearTimeout(timeout)
@@ -260,11 +289,13 @@ export const createMetaPublishingTransport = ({
     const confirmedFailure = confirmedHttpFailure(response)
     if (confirmedFailure) throw confirmedFailure
     if (!response.ok) {
+      if (readOnly) throw new ProviderPublicationTransportError()
       throw new ProviderPublicationResultUnknownError('Meta publication result is unknown')
     }
     try {
       return parse(await response.json())
     } catch {
+      if (readOnly) throw new ProviderPublicationTransportError()
       throw new ProviderPublicationResultUnknownError('Meta publication result is unknown')
     }
   }
@@ -317,6 +348,26 @@ export const createMetaPublishingTransport = ({
     })
   }
 
+  const getFacebookPagePostPermalink = async (
+    input: FacebookPagePostPermalinkInput,
+  ): Promise<FacebookPagePostResponse> => {
+    let providerRequest: MetaPublishingHttpRequest
+    try {
+      providerRequest = buildFacebookPagePostRequest({ postId: input.postId })
+    } catch {
+      throw invalidRequest()
+    }
+    return dispatch({
+      accountExternalId: input.accountExternalId,
+      authorizationRevision: input.authorizationRevision,
+      parse: parseFacebookPagePostResponse,
+      platform: 'facebook',
+      platformAccountId: input.platformAccountId,
+      providerRequest,
+      readOnly: true,
+    })
+  }
+
   const getInstagramContainerStatus = async (
     input: InstagramContainerStatusInput,
   ): Promise<InstagramContainerPublicationState> => {
@@ -337,6 +388,7 @@ export const createMetaPublishingTransport = ({
       platform: 'instagram',
       platformAccountId: input.platformAccountId,
       providerRequest,
+      readOnly: true,
     })
     if (result.statusCode === 'FINISHED') return { state: 'ready' }
     if (result.statusCode === 'IN_PROGRESS') return { state: 'pending' }
@@ -366,9 +418,31 @@ export const createMetaPublishingTransport = ({
     })
   }
 
+  const getInstagramMediaPermalink = async (
+    input: InstagramMediaPermalinkInput,
+  ): Promise<InstagramPublishedMediaResponse> => {
+    let providerRequest: MetaPublishingHttpRequest
+    try {
+      providerRequest = buildInstagramPublishedMediaRequest({ mediaId: input.mediaId })
+    } catch {
+      throw invalidRequest()
+    }
+    return dispatch({
+      accountExternalId: input.accountExternalId,
+      authorizationRevision: input.authorizationRevision,
+      parse: parseInstagramPublishedMediaResponse,
+      platform: 'instagram',
+      platformAccountId: input.platformAccountId,
+      providerRequest,
+      readOnly: true,
+    })
+  }
+
   return {
     createInstagramMedia,
+    getFacebookPagePostPermalink,
     getInstagramContainerStatus,
+    getInstagramMediaPermalink,
     publishFacebookPagePhoto,
     publishInstagramMedia,
   }

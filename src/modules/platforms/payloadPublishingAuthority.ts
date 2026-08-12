@@ -194,6 +194,7 @@ class PayloadPublicationCAS {
       errorCode?: string
       event: string
       externalPublicationId?: string
+      externalPublicationUrl?: string
       status: string
       summary: string
     },
@@ -209,24 +210,26 @@ class PayloadPublicationCAS {
         `UPDATE publish_jobs AS p
          SET execution_revision = $1, status = $2::enum_publish_jobs_status, provider_checkpoint = COALESCE($3::jsonb, p.provider_checkpoint),
              external_publication_id = COALESCE($4, p.external_publication_id),
-             last_error_code = $5, last_error_summary = $6,
-             accepted_at = CASE WHEN $2::text = 'accepted' THEN COALESCE(p.accepted_at, $7) ELSE p.accepted_at END,
-             published_at = CASE WHEN $2::text = 'published' THEN COALESCE(p.published_at, $7) ELSE p.published_at END,
-             delivery_unknown_at = CASE WHEN $2::text = 'delivery_unknown' THEN COALESCE(p.delivery_unknown_at, $7) ELSE p.delivery_unknown_at END,
+             external_publication_url = COALESCE($5, p.external_publication_url),
+             last_error_code = $6, last_error_summary = $7,
+             accepted_at = CASE WHEN $2::text = 'accepted' THEN COALESCE(p.accepted_at, $8) ELSE p.accepted_at END,
+             published_at = CASE WHEN $2::text = 'published' THEN COALESCE(p.published_at, $8) ELSE p.published_at END,
+             delivery_unknown_at = CASE WHEN $2::text = 'delivery_unknown' THEN COALESCE(p.delivery_unknown_at, $8) ELSE p.delivery_unknown_at END,
              claim_job_id = NULL, claim_id = NULL, claim_owner_token = NULL, claim_lease_expires_at = NULL,
-             provider_i_o_started_at = NULL, updated_at = $7
+             provider_i_o_started_at = NULL, updated_at = $8
          FROM jobs AS j
-         WHERE p.id = $8 AND p.execution_revision = $9 AND p.claim_id = $10
-           AND p.fencing_generation = $11 AND p.claim_job_id = $12
-           AND p.claim_owner_token = $13 AND p.claim_lease_expires_at = $14
+         WHERE p.id = $9 AND p.execution_revision = $10 AND p.claim_id = $11
+           AND p.fencing_generation = $12 AND p.claim_job_id = $13
+           AND p.claim_owner_token = $14 AND p.claim_lease_expires_at = $15
            AND j.id = p.claim_job_id AND j.status = 'processing'
            AND j.owner_token = p.claim_owner_token AND j.lease_expires_at = p.claim_lease_expires_at
-           AND j.lease_expires_at > $7`,
+           AND j.lease_expires_at > $8`,
         [
           nextRevision,
           update.status,
           update.checkpoint === undefined ? null : JSON.stringify(update.checkpoint),
           update.externalPublicationId ?? null,
+          update.externalPublicationUrl ?? null,
           update.errorCode ?? null,
           update.errorCode ? update.summary : null,
           instant,
@@ -309,6 +312,7 @@ export class PayloadPlatformPublicationAuthority implements PlatformPublicationA
       errorCode: transition.lastErrorCode,
       event: eventForDirect(transition),
       externalPublicationId: transition.externalPublicationId,
+      externalPublicationUrl: transition.externalPublicationUrl,
       status: transition.status,
       summary: summary(transition.summary, 'Publication state changed.'),
     })
@@ -352,6 +356,7 @@ export class PayloadInstagramPublishingAuthority implements InstagramPublishingA
             ? 'failed'
             : 'checkpoint-committed',
       externalPublicationId: transition.checkpoint.mediaId,
+      externalPublicationUrl: transition.checkpoint.permalink,
       status: statusForStage(transition.checkpoint.stage),
       summary: summary(transition.summary, 'Instagram checkpoint changed.'),
     })
@@ -388,6 +393,7 @@ export class PayloadLinkedInImagePublishingAuthority implements LinkedInImagePub
             ? 'failed'
             : 'checkpoint-committed',
       externalPublicationId: transition.checkpoint.postUrn,
+      externalPublicationUrl: transition.checkpoint.postUrl,
       status: statusForStage(transition.checkpoint.stage),
       summary: summary(transition.summary, 'LinkedIn image checkpoint changed.'),
     })

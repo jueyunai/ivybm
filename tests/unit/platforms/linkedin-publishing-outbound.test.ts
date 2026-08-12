@@ -326,6 +326,21 @@ describe('LinkedIn publishing transport', () => {
     expect(init.method).toBe('GET')
   })
 
+  it('returns the official feed permalink only after the post is published', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ body: { lifecycleState: 'PUBLISHED' } }))
+    const transport = createTransport(fetch)
+    await expect(
+      transport.getPostStatus({
+        authorization,
+        author: organization,
+        postUrn: 'urn:li:ugcPost:987654321',
+      }),
+    ).resolves.toEqual({
+      externalPublicationUrl: 'https://www.linkedin.com/feed/update/urn:li:ugcPost:987654321/',
+      lifecycleState: 'PUBLISHED',
+    })
+  })
+
   it.each([
     ['network failure', () => Promise.reject(new Error('offline'))],
     ['server failure', () => Promise.resolve(response({ ok: false, status: 503 }))],

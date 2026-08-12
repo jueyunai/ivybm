@@ -162,7 +162,9 @@ const mapStatusError = (
   error: unknown,
 ): ReturnType<typeof failed> | DeliveryUnknownPlatformPublication => {
   if (error instanceof ProviderPublicationConfirmedError) {
-    return failed(lookup, error.code, error.retryable)
+    return lookup.externalPublicationId
+      ? deliveryUnknown(lookup, lookup.externalPublicationId)
+      : failed(lookup, error.code, error.retryable)
   }
   if (error instanceof ProviderPublicationTransportError) {
     throw error
@@ -199,10 +201,14 @@ export const createPlatformPublishingService = ({
     const lookup = normalizePlatformPublicationStatusLookup(input)
     const resolution = await accountResolver.resolve(lookup)
     if (resolution.status === 'blocked') {
-      return failed(lookup, accountResolutionErrorCode(resolution.reason))
+      return lookup.externalPublicationId
+        ? deliveryUnknown(lookup, lookup.externalPublicationId)
+        : failed(lookup, accountResolutionErrorCode(resolution.reason))
     }
     if (!resolvedAccountMatches(lookup, resolution.account)) {
-      return failed(lookup, 'account_not_connected')
+      return lookup.externalPublicationId
+        ? deliveryUnknown(lookup, lookup.externalPublicationId)
+        : failed(lookup, 'account_not_connected')
     }
 
     if (lookup.platform === 'instagram') {
@@ -210,9 +216,25 @@ export const createPlatformPublishingService = ({
     }
 
     if (lookup.platform === 'facebook') {
-      // Graph's page-photo mutation returns an ID but this adapter has no
-      // proven account-scoped status endpoint. Do not guess that it published.
-      return deliveryUnknown(lookup, lookup.externalPublicationId)
+      if (!lookup.externalPublicationId || !/^\d+_\d+$/u.test(lookup.externalPublicationId)) {
+        return deliveryUnknown(lookup, lookup.externalPublicationId)
+      }
+      try {
+        const result = await metaTransport.getFacebookPagePostPermalink({
+          accountExternalId: resolution.account.externalAccountId,
+          authorizationRevision: resolution.account.authorizationRevision,
+          platformAccountId: resolution.account.platformAccountId,
+          postId: lookup.externalPublicationId,
+        })
+        return {
+          ...lookup,
+          externalPublicationId: lookup.externalPublicationId,
+          externalPublicationUrl: result.permalinkUrl,
+          status: 'published',
+        }
+      } catch (error) {
+        return mapStatusError(lookup, error)
+      }
     }
 
     if (!lookup.externalPublicationId) {
@@ -230,6 +252,9 @@ export const createPlatformPublishingService = ({
       return {
         ...lookup,
         externalPublicationId: lookup.externalPublicationId,
+        ...(result.lifecycleState === 'PUBLISHED' && result.externalPublicationUrl
+          ? { externalPublicationUrl: result.externalPublicationUrl }
+          : {}),
         status:
           result.lifecycleState === 'PUBLISHED'
             ? 'published'
@@ -291,8 +316,24 @@ export const createPlatformPublishingService = ({
         ) {
           return deliveryUnknown(request)
         }
+        let externalPublicationUrl: string | undefined
+        if (result.postId) {
+          try {
+            externalPublicationUrl = (
+              await metaTransport.getFacebookPagePostPermalink({
+                accountExternalId: resolution.account.externalAccountId,
+                authorizationRevision: resolution.account.authorizationRevision,
+                platformAccountId: resolution.account.platformAccountId,
+                postId: result.postId,
+              })
+            ).permalinkUrl
+          } catch {
+            // The mutation is already confirmed. Keep the provider ID and leave the URL unavailable.
+          }
+        }
         return {
           externalPublicationId,
+          ...(externalPublicationUrl ? { externalPublicationUrl } : {}),
           idempotencyKey: request.idempotencyKey,
           platform: request.platform,
           platformAccountId: request.platformAccountId,
@@ -316,8 +357,25 @@ export const createPlatformPublishingService = ({
       if (!/^urn:li:(?:share|ugcPost):\d+$/u.test(result.postUrn)) {
         return deliveryUnknown(request)
       }
+      let externalPublicationUrl: string | undefined
+      try {
+        const status = await linkedInTransport.getPostStatus({
+          authorization: {
+            authorizationRevision: resolution.account.authorizationRevision,
+            platformAccountId: resolution.account.platformAccountId,
+          },
+          author: linkedInAuthor(resolution.account),
+          postUrn: result.postUrn,
+        })
+        if (status.lifecycleState === 'PUBLISHED') {
+          externalPublicationUrl = status.externalPublicationUrl
+        }
+      } catch {
+        // The mutation is already confirmed. Keep the URN and leave the URL unavailable.
+      }
       return {
         externalPublicationId: result.postUrn,
+        ...(externalPublicationUrl ? { externalPublicationUrl } : {}),
         idempotencyKey: request.idempotencyKey,
         platform: request.platform,
         platformAccountId: request.platformAccountId,

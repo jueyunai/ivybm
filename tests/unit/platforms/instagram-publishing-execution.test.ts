@@ -46,7 +46,9 @@ const lease = (
 
 const transport = (overrides: Partial<MetaPublishingTransport> = {}): MetaPublishingTransport => ({
   createInstagramMedia: vi.fn(),
+  getFacebookPagePostPermalink: vi.fn(),
   getInstagramContainerStatus: vi.fn(),
+  getInstagramMediaPermalink: vi.fn(),
   publishFacebookPagePhoto: vi.fn(),
   publishInstagramMedia: vi.fn(),
   ...overrides,
@@ -115,7 +117,10 @@ describe('Instagram lease-fenced publishing execution', () => {
     })
     const state = setup(input)
     const publishInstagramMedia = vi.fn().mockResolvedValue({ igMediaId: '998877' })
-    const adapter = transport({ publishInstagramMedia })
+    const getInstagramMediaPermalink = vi.fn().mockResolvedValue({
+      permalink: 'https://www.instagram.com/p/ABC123/',
+    })
+    const adapter = transport({ getInstagramMediaPermalink, publishInstagramMedia })
 
     await expect(
       executeInstagramPublishingStage({
@@ -125,15 +130,30 @@ describe('Instagram lease-fenced publishing execution', () => {
         transport: adapter,
       }),
     ).resolves.toMatchObject({
-      checkpoint: { containerId: '112233', mediaId: '998877', stage: 'published' },
+      checkpoint: {
+        containerId: '112233',
+        mediaId: '998877',
+        permalink: 'https://www.instagram.com/p/ABC123/',
+        stage: 'published',
+      },
       event: 'published',
     })
     expect(publishInstagramMedia).toHaveBeenCalledTimes(1)
     expect(state.authority.getIntent(42)).toMatchObject({
-      checkpoint: { mediaId: '998877', stage: 'published' },
+      checkpoint: {
+        mediaId: '998877',
+        permalink: 'https://www.instagram.com/p/ABC123/',
+        stage: 'published',
+      },
       expectedRevision: 8,
     })
     expect(adapter.createInstagramMedia).not.toHaveBeenCalled()
+    expect(getInstagramMediaPermalink).toHaveBeenCalledWith({
+      accountExternalId: '1789000012345678',
+      authorizationRevision: 4,
+      mediaId: '998877',
+      platformAccountId: 17,
+    })
   })
 
   it('allows only one concurrent worker to cross the provider fence', async () => {

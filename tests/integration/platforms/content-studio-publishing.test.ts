@@ -315,6 +315,107 @@ describe.sequential('Content Studio immediate platform publication', () => {
     } satisfies Partial<ContentStudioCommandError>)
   })
 
+  it('blocks a new click after the same account reaches delivery_unknown', async () => {
+    const content = await createApprovedContent('delivery unknown guard')
+    const targetAccountIds = [accountIDs[0]!]
+    const first = await invoke({
+      content,
+      idempotencyKey: `portal-content-studio:publish-now:${randomUUID()}`,
+      targetAccountIds,
+    })
+    const publishJobId = first.jobs[0]?.job.id
+    if (typeof publishJobId !== 'number') throw new Error('Expected one publication job')
+    await payload.update({
+      collection: 'publish-jobs',
+      context: contentStudioInternalWriteContext,
+      data: {
+        deliveryUnknownAt: new Date().toISOString(),
+        lastErrorCode: 'delivery_unknown',
+        lastErrorSummary: 'Provider result requires manual reconciliation.',
+        status: 'delivery_unknown',
+      },
+      id: publishJobId,
+      overrideAccess: true,
+    })
+    const queueBefore = await pool().query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM jobs
+       WHERE type = $1 AND payload->>'publishJobId' = $2`,
+      [PLATFORM_PUBLICATION_JOB_TYPE, String(publishJobId)],
+    )
+
+    await expect(
+      invoke({
+        content,
+        idempotencyKey: `portal-content-studio:publish-now:${randomUUID()}`,
+        targetAccountIds,
+      }),
+    ).rejects.toMatchObject({
+      code: 'content-studio-publication-already-exists',
+      status: 409,
+    } satisfies Partial<ContentStudioCommandError>)
+
+    const jobs = await payload.find({
+      collection: 'publish-jobs',
+      depth: 0,
+      overrideAccess: true,
+      pagination: false,
+      where: {
+        and: [
+          { content: { equals: content.id } },
+          { platformAccount: { equals: targetAccountIds[0] } },
+        ],
+      },
+    })
+    expect(jobs.docs).toHaveLength(1)
+    const queueAfter = await pool().query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM jobs
+       WHERE type = $1 AND payload->>'publishJobId' = $2`,
+      [PLATFORM_PUBLICATION_JOB_TYPE, String(publishJobId)],
+    )
+    expect(queueAfter.rows[0]?.count).toBe(queueBefore.rows[0]?.count)
+  })
+
+  it('serializes concurrent different click keys for the same content and account', async () => {
+    const content = await createApprovedContent('concurrent different keys')
+    const targetAccountIds = [accountIDs[0]!]
+    const results = await Promise.allSettled([
+      invoke({
+        content,
+        idempotencyKey: `portal-content-studio:publish-now:${randomUUID()}`,
+        targetAccountIds,
+      }),
+      invoke({
+        content,
+        idempotencyKey: `portal-content-studio:publish-now:${randomUUID()}`,
+        targetAccountIds,
+      }),
+    ])
+
+    expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter(({ status }) => status === 'rejected')).toHaveLength(1)
+    expect(results.find(({ status }) => status === 'rejected')).toMatchObject({
+      reason: {
+        code: 'content-studio-publication-already-exists',
+        status: 409,
+      },
+    })
+    const jobs = await payload.find({
+      collection: 'publish-jobs',
+      depth: 0,
+      overrideAccess: true,
+      pagination: false,
+      where: {
+        and: [
+          { content: { equals: content.id } },
+          { platformAccount: { equals: targetAccountIds[0] } },
+        ],
+      },
+    })
+    expect(jobs.docs).toHaveLength(1)
+  })
+
   it('rolls all platform and queue rows back when the command transaction fails', async () => {
     const content = await createApprovedContent('rollback')
     const idempotencyKey = `portal-content-studio:publish-now:${randomUUID()}`

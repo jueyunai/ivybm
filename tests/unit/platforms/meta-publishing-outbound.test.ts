@@ -42,7 +42,14 @@ describe('Meta publication HTTP transport', () => {
 
   it('publishes a Facebook Page photo against the fixed Graph origin without leaking token', async () => {
     const token = 'fixture-page-token'
-    const fetch = vi.fn().mockResolvedValue(response())
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(response())
+      .mockResolvedValueOnce(
+        response({
+          body: { permalink_url: 'https://www.facebook.com/129472283584550/posts/24680' },
+        }),
+      )
     const tokenProvider = vi.fn().mockResolvedValue(token)
     const transport = createMetaPublishingTransport({
       allowedMediaOrigins: ['https://cdn.example.invalid'],
@@ -58,6 +65,15 @@ describe('Meta publication HTTP transport', () => {
         url: 'https://cdn.example.invalid/facade.jpg?revision=1',
       }),
     ).resolves.toEqual({ photoId: '24680', postId: '129472283584550_24680' })
+    await expect(
+      transport.getFacebookPagePostPermalink({
+        ...authorization,
+        accountExternalId: '129472283584550',
+        postId: '129472283584550_24680',
+      }),
+    ).resolves.toEqual({
+      permalinkUrl: 'https://www.facebook.com/129472283584550/posts/24680',
+    })
 
     expect(tokenProvider).toHaveBeenCalledWith({
       accountExternalId: '129472283584550',
@@ -82,6 +98,9 @@ describe('Meta publication HTTP transport', () => {
       .mockResolvedValueOnce(response({ body: { id: '112233' } }))
       .mockResolvedValueOnce(response({ body: { status_code: 'FINISHED' } }))
       .mockResolvedValueOnce(response({ body: { id: '998877' } }))
+      .mockResolvedValueOnce(
+        response({ body: { permalink: 'https://www.instagram.com/p/ABC123/' } }),
+      )
     const tokenProvider = vi.fn().mockResolvedValue('fixture-instagram-token')
     const transport = createMetaPublishingTransport({
       allowedMediaOrigins: ['https://cdn.example.invalid'],
@@ -111,13 +130,21 @@ describe('Meta publication HTTP transport', () => {
         creationId: '112233',
       }),
     ).resolves.toEqual({ igMediaId: '998877' })
+    await expect(
+      transport.getInstagramMediaPermalink({
+        ...authorization,
+        accountExternalId: '1221206873460693',
+        mediaId: '998877',
+      }),
+    ).resolves.toEqual({ permalink: 'https://www.instagram.com/p/ABC123/' })
 
     expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([
       'https://graph.facebook.com/v25.0/1221206873460693/media',
       'https://graph.facebook.com/v25.0/112233?fields=status_code',
       'https://graph.facebook.com/v25.0/1221206873460693/media_publish',
+      'https://graph.facebook.com/v25.0/998877?fields=permalink',
     ])
-    expect(tokenProvider).toHaveBeenCalledTimes(3)
+    expect(tokenProvider).toHaveBeenCalledTimes(4)
     expect(tokenProvider).toHaveBeenNthCalledWith(1, {
       accountExternalId: '1221206873460693',
       authorizationRevision: 4,

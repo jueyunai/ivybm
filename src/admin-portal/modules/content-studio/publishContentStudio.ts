@@ -23,6 +23,13 @@ import { ContentStudioCommandError } from './contentStudioCommands'
 const internalContext = { ...contentStudioInternalWriteContext }
 const IMAGE_TYPES = new Set(['image/gif', 'image/jpeg', 'image/png'])
 const META_IMAGE_TYPES = new Set(['image/jpeg', 'image/png'])
+const PUBLICATION_REQUIRES_RECONCILIATION = [
+  'scheduled',
+  'accepted',
+  'publishing',
+  'published',
+  'delivery_unknown',
+] as const
 
 const positiveID = (value: unknown, field: string): number => {
   const id = typeof value === 'number' ? value : Number(value)
@@ -73,11 +80,7 @@ const requestedAccounts = (value: unknown): number[] => {
   return ids
 }
 
-const lockPublicationCommand = async (
-  payload: Payload,
-  req: PayloadRequest,
-  idempotencyKey: string,
-): Promise<void> => {
+const publicationTransactionDatabase = async (payload: Payload, req: PayloadRequest) => {
   const transactionID = await req.transactionID
   const adapter = payload.db as unknown as PostgresAdapter
   const database = transactionID ? adapter.sessions[transactionID]?.db : undefined
@@ -88,6 +91,15 @@ const lockPublicationCommand = async (
       409,
     )
   }
+  return database
+}
+
+const lockPublicationCommand = async (
+  payload: Payload,
+  req: PayloadRequest,
+  idempotencyKey: string,
+): Promise<void> => {
+  const database = await publicationTransactionDatabase(payload, req)
   // Different content rows may receive the same malformed/replayed UI command key.
   // Fail a concurrent edge closed; a later replay will load or conflict deterministically.
   const locked = await database.execute<{ acquired: boolean }>(sql`
@@ -100,6 +112,19 @@ const lockPublicationCommand = async (
       409,
     )
   }
+}
+
+const lockPublicationContent = async (
+  payload: Payload,
+  req: PayloadRequest,
+  contentID: number,
+): Promise<void> => {
+  const database = await publicationTransactionDatabase(payload, req)
+  // Serialize all immediate publication decisions for one reviewed content row.
+  // This closes the check-then-insert race even when concurrent clicks use different keys.
+  await database.execute(sql`
+    SELECT id FROM generated_contents WHERE id = ${contentID} FOR UPDATE
+  `)
 }
 
 const mediaPath = async (media: Media): Promise<string> => {
@@ -279,6 +304,9 @@ export const publishContentStudioNow = async ({
       503,
     )
   }
+  const baseKey = commandKey(input.idempotencyKey)
+  await lockPublicationCommand(payload, req, baseKey)
+  await lockPublicationContent(payload, req, id)
   const content = await payload.findByID({
     collection: 'generated-contents',
     depth: 0,
@@ -300,8 +328,6 @@ export const publishContentStudioNow = async ({
       409,
     )
   }
-  const baseKey = commandKey(input.idempotencyKey)
-  await lockPublicationCommand(payload, req, baseKey)
   const actorId = positiveID(req.user?.id, 'actor')
   const accountResolver = new PayloadPublishingAccountResolver({ payload })
   const resolutions = await Promise.all(
@@ -391,6 +417,32 @@ export const publishContentStudioNow = async ({
       }
       jobs.push({ duplicate: true, job: safeJob(job) })
       continue
+    }
+    const priorPublication = await payload.find({
+      collection: 'publish-jobs',
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      req,
+      sort: '-createdAt',
+      where: {
+        and: [
+          { content: { equals: id } },
+          {
+            platformAccount: {
+              equals: positiveID(command.snapshot.platformAccountId, 'platformAccountId'),
+            },
+          },
+          { status: { in: [...PUBLICATION_REQUIRES_RECONCILIATION] } },
+        ],
+      },
+    })
+    if (priorPublication.docs[0]) {
+      throw new ContentStudioCommandError(
+        'content-studio-publication-already-exists',
+        'This content already has a publication for the selected account. Review its current result before sending again.',
+        409,
+      )
     }
     const executionRoute = routeFor(target)
     const created = await payload.create({

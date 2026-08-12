@@ -50,7 +50,10 @@ describe('platform publication execution state machine', () => {
     const getStatus = vi.fn()
 
     await expect(
-      executePlatformPublication({ service: service({ getStatus, publish }), snapshot: snapshot() }),
+      executePlatformPublication({
+        service: service({ getStatus, publish }),
+        snapshot: snapshot(),
+      }),
     ).resolves.toEqual({
       changed: true,
       event: 'accepted',
@@ -68,6 +71,65 @@ describe('platform publication execution state machine', () => {
     expect(getStatus).not.toHaveBeenCalled()
   })
 
+  it('persists only provider-confirmed canonical URLs', async () => {
+    const facebookPublish = vi.fn().mockResolvedValue({
+      externalPublicationId: '129472283584550_7654321',
+      externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/7654321',
+      idempotencyKey: 'publish:job:42:facebook',
+      platform: 'facebook',
+      platformAccountId: 7,
+      status: 'accepted',
+    })
+    await expect(
+      executePlatformPublication({
+        service: service({ publish: facebookPublish }),
+        snapshot: snapshot(),
+      }),
+    ).resolves.toMatchObject({
+      externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/7654321',
+      status: 'published',
+    })
+
+    const linkedInPublish = vi.fn().mockResolvedValue({
+      externalPublicationId: 'urn:li:share:123456789',
+      externalPublicationUrl: 'https://www.linkedin.com/feed/update/urn:li:share:123456789/',
+      idempotencyKey: 'publish:job:42:linkedin',
+      platform: 'linkedin',
+      platformAccountId: 9,
+      status: 'accepted',
+    })
+    await expect(
+      executePlatformPublication({
+        service: service({ publish: linkedInPublish }),
+        snapshot: snapshot({
+          assets: [],
+          idempotencyKey: 'publish:job:42:linkedin',
+          platform: 'linkedin',
+          platformAccountId: 9,
+        }),
+      }),
+    ).resolves.toMatchObject({
+      externalPublicationUrl: 'https://www.linkedin.com/feed/update/urn:li:share:123456789/',
+      status: 'published',
+    })
+
+    await expect(
+      executePlatformPublication({
+        service: service({
+          publish: vi.fn().mockResolvedValue({
+            externalPublicationId: '129472283584550_1',
+            externalPublicationUrl: 'https://evil.example.invalid/forged',
+            idempotencyKey: 'publish:job:42:facebook',
+            platform: 'facebook',
+            platformAccountId: 7,
+            status: 'accepted',
+          }),
+        }),
+        snapshot: snapshot(),
+      }),
+    ).resolves.not.toHaveProperty('externalPublicationUrl')
+  })
+
   it.each([
     [
       'blocked',
@@ -79,19 +141,22 @@ describe('platform publication execution state machine', () => {
       { errorCode: 'provider_unavailable', retryable: true, status: 'failed' },
       'provider_unavailable',
     ],
-  ] as const)('makes a confirmed %s result terminal without automatic retry', async (_label, result, code) => {
-    const publish = vi.fn().mockResolvedValue({
-      ...result,
-      idempotencyKey: 'publish:job:42:facebook',
-      platform: 'facebook',
-      platformAccountId: 7,
-    })
+  ] as const)(
+    'makes a confirmed %s result terminal without automatic retry',
+    async (_label, result, code) => {
+      const publish = vi.fn().mockResolvedValue({
+        ...result,
+        idempotencyKey: 'publish:job:42:facebook',
+        platform: 'facebook',
+        platformAccountId: 7,
+      })
 
-    await expect(
-      executePlatformPublication({ service: service({ publish }), snapshot: snapshot() }),
-    ).resolves.toMatchObject({ event: 'failed', lastErrorCode: code, status: 'failed' })
-    expect(publish).toHaveBeenCalledTimes(1)
-  })
+      await expect(
+        executePlatformPublication({ service: service({ publish }), snapshot: snapshot() }),
+      ).resolves.toMatchObject({ event: 'failed', lastErrorCode: code, status: 'failed' })
+      expect(publish).toHaveBeenCalledTimes(1)
+    },
+  )
 
   it('stops at delivery_unknown and never claims a retry', async () => {
     const publish = vi.fn().mockResolvedValue({
@@ -119,24 +184,27 @@ describe('platform publication execution state machine', () => {
     ['platform', { platform: 'instagram' }],
     ['account', { platformAccountId: 8 }],
     ['command key', { idempotencyKey: 'publish:other-job' }],
-  ] as const)('fails closed when provider acceptance mismatches the %s', async (_label, mismatch) => {
-    const publish = vi.fn().mockResolvedValue({
-      externalPublicationId: 'provider-post-42',
-      idempotencyKey: 'publish:job:42:facebook',
-      platform: 'facebook',
-      platformAccountId: 7,
-      status: 'accepted',
-      ...mismatch,
-    })
+  ] as const)(
+    'fails closed when provider acceptance mismatches the %s',
+    async (_label, mismatch) => {
+      const publish = vi.fn().mockResolvedValue({
+        externalPublicationId: 'provider-post-42',
+        idempotencyKey: 'publish:job:42:facebook',
+        platform: 'facebook',
+        platformAccountId: 7,
+        status: 'accepted',
+        ...mismatch,
+      })
 
-    await expect(
-      executePlatformPublication({ service: service({ publish }), snapshot: snapshot() }),
-    ).resolves.toMatchObject({
-      lastErrorCode: 'delivery_unknown',
-      retryable: false,
-      status: 'delivery_unknown',
-    })
-  })
+      await expect(
+        executePlatformPublication({ service: service({ publish }), snapshot: snapshot() }),
+      ).resolves.toMatchObject({
+        lastErrorCode: 'delivery_unknown',
+        retryable: false,
+        status: 'delivery_unknown',
+      })
+    },
+  )
 
   it.each(['', undefined, null, 42])(
     'fails closed on malformed acceptance external ID %s',
