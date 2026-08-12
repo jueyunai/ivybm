@@ -54,8 +54,7 @@ const nonCompanyWords = new Set([
 ])
 const arabicCompanyCandidate =
   /(?:اسم\s+الشركة|(?:نحن\s+)?شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80}?)(?=\s+(?:في\s+(?:الإمارات(?:\s+العربية\s+المتحدة)?|السعودية|المملكة\s+العربية\s+السعودية|قطر|الكويت|عمان|البحرين)|و?(?:المشروع|مرحلة|نحتاج|نريد|لدينا|الكمية|المساحة|التصميم|المناقصة))|[\n،,.!?؟]|$)/
-const invalidArabicCompanyCandidate =
-  /^(?:في|المشروع|مشروع|مرحلة|المناقصة|مناقصة)(?:\s|$)/
+const invalidArabicCompanyCandidate = /^(?:في|المشروع|مشروع|مرحلة|المناقصة|مناقصة)(?:\s|$)/
 
 const cleanCompanyCandidate = (candidate: string | undefined): string | undefined =>
   candidate?.trim().replace(/[,.!?]+$/, '') || undefined
