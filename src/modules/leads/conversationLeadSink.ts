@@ -32,6 +32,32 @@ const arabicCountries: Array<[string, string]> = [
   ['البحرين', 'Bahrain'],
 ]
 
+const countryPattern = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(${countries
+    .slice()
+    .sort((left, right) => right.length - left.length)
+    .map((country) => country.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|')})(?![\p{L}\p{N}])`,
+  'iu',
+)
+const arabicCountryPattern = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(${arabicCountries
+    .map(([country]) => country)
+    .sort((left, right) => right.length - left.length)
+    .map((country) => country.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|')})(?![\p{L}\p{N}])`,
+  'u',
+)
+
+const extractCountry = (text: string): string | undefined => {
+  const englishMatch = text.match(countryPattern)?.[1]
+  if (englishMatch) {
+    return countries.find((country) => country.toLowerCase() === englishMatch.toLowerCase())
+  }
+  const arabicMatch = text.match(arabicCountryPattern)?.[1]
+  return arabicCountries.find(([country]) => country === arabicMatch)?.[1]
+}
+
 const companyCandidate =
   /([A-Za-z0-9&'-]+(?:\s+[A-Za-z0-9&'-]+){0,5}?)(?=\s+(?:and|for|from|in|with|we|our|the|need|needs|requiring)\b|[,.!?\n]|$)/
 const nonCompanyWords = new Set([
@@ -298,9 +324,7 @@ export const extractLeadSignals = (session: ChatSession): LeadScoringInput => {
     /([\d,.]+)\s*(?:m2|m²|sqm|square meters?|م2|م²|متر(?:اً|ا)?\s*مربع(?:اً|ا)?)/i,
   )?.[1]
   const quantitySquareMeters = quantityMatch ? Number(quantityMatch.replaceAll(',', '')) : undefined
-  const country =
-    countries.find((candidate) => text.toLowerCase().includes(candidate.toLowerCase())) ??
-    arabicCountries.find(([candidate]) => text.includes(candidate))?.[1]
+  const country = extractCountry(text)
   const stage =
     /\b(tender|bid)\b/i.test(text) || /مناقصة|عطاء/.test(text)
       ? 'tender'

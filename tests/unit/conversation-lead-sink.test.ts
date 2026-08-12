@@ -66,6 +66,38 @@ describe('conversation lead signal extraction', () => {
   })
 
   it.each([
+    'We are a woman-led buyer.',
+    'Our Canadian buyer needs facade panels.',
+    'A Qatarian supplier contacted us.',
+  ])('does not extract a country from inside another word: %s', (content) => {
+    expect(extractLeadSignals(sessionWith('en', content)).country).toBeUndefined()
+  })
+
+  it.each([
+    ['The project is in Oman.', 'Oman'],
+    ['The project market is UAE.', 'UAE'],
+    ['المشروع في عمان.', 'Oman'],
+  ])('extracts a delimited country mention from %s', (content, country) => {
+    expect(
+      extractLeadSignals(sessionWith(content.includes('عمان') ? 'ar' : 'en', content)).country,
+    ).toBe(country)
+  })
+
+  it('does not let an embedded country substring promote a B-level inquiry to A', async () => {
+    const evaluation = await new PayloadConversationLeadSink().evaluate(
+      sessionWith(
+        'en',
+        'A woman-led buyer needs facade panels, 1000 sqm, tender, email buyer@example.invalid.',
+      ),
+    )
+
+    expect(evaluation.signals.country).toBeUndefined()
+    expect(evaluation.score).toMatchObject({ handoffRecommended: false, level: 'b', score: 60 })
+    expect(evaluation.score.missingFields).toContain('country')
+    expect(evaluation.score.reasons).not.toContain('target_country')
+  })
+
+  it.each([
     ['I work at Acme Facades.', 'Acme Facades'],
     ["I'm from Acme Corp.", 'Acme Corp'],
     ['I work at Acme Facades for our procurement team.', 'Acme Facades'],
