@@ -38,6 +38,17 @@ const readyAiSettings = {
       providerName: 'Primary provider',
       updatedAt: '2026-08-05T00:00:00.000Z',
     },
+    {
+      capability: 'image' as const,
+      enabled: true,
+      id: 3,
+      model: 'image-example',
+      name: 'Primary image',
+      parameters: { dimensions: null, maxOutputTokens: null, reasoningEffort: 'medium', reasoningEnabled: false, temperature: null, timeoutMs: 60000, topP: null },
+      providerID: 1,
+      providerName: 'Primary provider',
+      updatedAt: '2026-08-12T00:00:00.000Z',
+    },
   ],
   providers: [
     {
@@ -52,10 +63,10 @@ const readyAiSettings = {
   ],
   readiness: [
     { key: 'customer-chat' as const, reason: 'route' as const, status: 'action-required' as const },
-    { key: 'content-studio' as const, reason: null, status: 'ready' as const },
+    { key: 'content-studio' as const, reason: null, status: 'configured-pending-verification' as const },
     { key: 'knowledge-index' as const, reason: 'route' as const, status: 'action-required' as const },
   ],
-  routes: [],
+  routes: [{ enabled: true, id: 4, operation: 'image' as const, profileID: 3, profileName: 'Primary image', updatedAt: '2026-08-12T00:00:00.000Z', usageKey: 'content.image-generation' }],
 }
 
 beforeEach(() => window.localStorage.clear())
@@ -206,6 +217,13 @@ describe('Portal settings hub', () => {
     expect(screen.getByRole('heading', { name: 'AI 模型配置' })).toBeTruthy()
     expect(screen.getByText('Primary provider')).toBeTruthy()
     expect(screen.getByText('Key 已配置')).toBeTruthy()
+    expect(screen.getAllByText('已配置，待真实验证').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: '模型' }))
+    expect(screen.getByText('Primary image')).toBeTruthy()
+    expect(screen.getByText(/图片生成/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '用途路由' }))
+    fireEvent.click(screen.getByRole('button', { name: /新建路由/ }))
+    expect(screen.getByRole('option', { name: /内容工作台·图片生成/ })).toBeTruthy()
     expect(container.textContent).not.toContain('stored-secret')
     expect(container.innerHTML).not.toContain('/admin')
   })

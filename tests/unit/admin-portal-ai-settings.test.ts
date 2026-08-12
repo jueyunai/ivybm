@@ -31,7 +31,7 @@ describe('Portal AI settings read model', () => {
     expect(JSON.stringify(provider)).not.toMatch(/encrypted-secret|apiKey":/)
   })
 
-  it('requires both text and embedding routes for customer chat', () => {
+  it('requires image generation for Content Studio and never marks configured images as verified', () => {
     const provider = {
       apiKeyConfigured: true,
       baseURL: 'https://api.example.invalid/v1',
@@ -53,18 +53,32 @@ describe('Portal AI settings read model', () => {
         providerName: 'Primary',
         updatedAt: '',
       },
+      {
+        capability: 'image' as const,
+        enabled: true,
+        id: 4,
+        model: 'image-model',
+        name: 'Image',
+        parameters: { dimensions: null, maxOutputTokens: null, reasoningEffort: 'medium', reasoningEnabled: false, temperature: null, timeoutMs: 60000, topP: null },
+        providerID: 1,
+        providerName: 'Primary',
+        updatedAt: '',
+      },
     ]
     const readiness = buildPortalAiReadiness({
       encryptionKeyConfigured: true,
       profiles,
       providers: [provider],
       readableProviderIDs: new Set([provider.id]),
-      routes: [{ enabled: true, id: 3, operation: 'text', profileID: 2, profileName: 'Text', updatedAt: '', usageKey: 'chat.reply' }],
+      routes: [
+        { enabled: true, id: 3, operation: 'text', profileID: 2, profileName: 'Text', updatedAt: '', usageKey: 'chat.reply' },
+        { enabled: true, id: 5, operation: 'image', profileID: 4, profileName: 'Image', updatedAt: '', usageKey: 'content.image-generation' },
+      ],
     })
 
     expect(readiness).toEqual([
       { key: 'customer-chat', reason: 'route', status: 'action-required' },
-      { key: 'content-studio', reason: null, status: 'ready' },
+      { key: 'content-studio', reason: null, status: 'configured-pending-verification' },
       { key: 'knowledge-index', reason: 'route', status: 'action-required' },
     ])
   })

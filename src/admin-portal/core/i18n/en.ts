@@ -38,9 +38,11 @@ export const PORTAL_EN = {
     leads: 'View, create, edit, and assign leads within the current role scope.',
     'website-content': 'Maintain six bilingual website content types, their status, and previews.',
     media: 'Upload media, maintain metadata, preview files, and delete unused assets safely.',
-    'content-studio': 'Draft, review, and create assisted schedules here; automatic publishing awaits an adapter.',
+    'content-studio':
+      'Draft, review, and create assisted schedules here; automatic publishing awaits an adapter.',
     knowledge: 'Maintain, review, index knowledge documents, and run AI diagnostics here.',
-    platforms: 'Credential-free readiness is available; credential configuration stays in the restricted maintenance area.',
+    platforms:
+      'Credential-free readiness is available; credential configuration stays in the restricted maintenance area.',
     operations: 'Safe job summaries and registered typed retries are available.',
     settings: 'Account preferences, module status, and a safe site-settings summary are available.',
   },
@@ -403,9 +405,11 @@ export const PORTAL_EN = {
         translating: 'Translating',
       },
       title: 'Automatic parsing and translation',
-      uploadDescription: 'DOCX/PDF files stay private while the worker extracts text, tables, and embedded images, then creates English and Arabic drafts. Machine translation still requires human review.',
+      uploadDescription:
+        'DOCX/PDF files stay private while the worker extracts text, tables, and embedded images, then creates English and Arabic drafts. Machine translation still requires human review.',
       uploadError: 'The upload failed. Check the file and configuration, then retry.',
-      uploadSuccess: 'The source entered the queue. English and Arabic drafts will appear after processing.',
+      uploadSuccess:
+        'The source entered the queue. English and Arabic drafts will appear after processing.',
     },
   },
   settings: {
@@ -413,12 +417,14 @@ export const PORTAL_EN = {
       actionRequired: 'Action required',
       apiKey: 'API key',
       apiKeyConfigured: 'Key configured',
-      apiKeyDescription: 'Write-only. Leave blank to retain the current key, or enter a replacement. It is never displayed after save.',
+      apiKeyDescription:
+        'Write-only. Leave blank to retain the current key, or enter a replacement. It is never displayed after save.',
       baseURL: 'Base URL',
       capability: 'Capability',
-      capabilities: { embedding: 'Embedding', text: 'Text generation' },
+      capabilities: { embedding: 'Embedding', image: 'Image generation', text: 'Text generation' },
       cancel: 'Cancel',
       contentStudio: 'Content Studio',
+      configuredPendingVerification: 'Configured, awaiting real verification',
       create: 'Create',
       customerChat: 'AI customer chat',
       delete: 'Delete',
@@ -429,7 +435,8 @@ export const PORTAL_EN = {
       embeddingRoute: 'Knowledge embedding route',
       enabled: 'Enabled',
       encryptionKey: 'Credential encryption',
-      encryptionKeyMissing: 'AI_CONFIG_ENCRYPTION_KEY is not configured on the server, so API keys cannot be saved.',
+      encryptionKeyMissing:
+        'AI_CONFIG_ENCRYPTION_KEY is not configured on the server, so API keys cannot be saved.',
       error: 'The AI configuration command failed. Check the input and try again.',
       knowledgeIndex: 'Knowledge indexing',
       maxOutputTokens: 'Maximum output tokens',
@@ -468,10 +475,17 @@ export const PORTAL_EN = {
       title: 'AI model configuration',
       topP: 'Top P',
       usageKey: 'Usage key',
+      usageLabels: {
+        'chat.reply': 'AI customer chat and content copy',
+        'content.image-generation': 'Content Studio · image generation',
+        'knowledge.embedding': 'Knowledge indexing and retrieval',
+        'knowledge.translation': 'Knowledge document translation',
+      },
     },
     accountDescription: 'This Portal session reuses your Payload identity and role.',
     accountTitle: 'Your account',
-    canUpdateSite: 'Your role can create and edit content in Website content; this site summary stays read-only.',
+    canUpdateSite:
+      'Your role can create and edit content in Website content; this site summary stays read-only.',
     chinese: '中文',
     darkTheme: 'Dark',
     description: 'Manage personal preferences and inspect safe site and module status.',

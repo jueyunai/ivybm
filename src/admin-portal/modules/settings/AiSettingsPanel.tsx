@@ -141,20 +141,16 @@ export function AiSettingsPanel({ initialSummary }: { initialSummary: PortalAiSe
       ) : null}
 
       <div className="portal-ai-settings__readiness">
-        {summary.readiness.map((item) => (
-          <article key={item.key}>
+        {summary.readiness.map((item) => {
+          const pending = item.status === 'configured-pending-verification'
+          return <article key={item.key}>
             <div>
               <strong>{readinessLabels[item.key]}</strong>
-              <small>
-                {item.reason ? messages.readinessReason[item.reason] : messages.enabled}
-              </small>
+              <small>{item.reason ? messages.readinessReason[item.reason] : pending ? messages.configuredPendingVerification : messages.enabled}</small>
             </div>
-            <StatusBadge
-              label={item.status === 'ready' ? messages.enabled : messages.actionRequired}
-              tone={item.status === 'ready' ? 'success' : 'warning'}
-            />
+            <StatusBadge label={item.status === 'ready' ? messages.enabled : pending ? messages.configuredPendingVerification : messages.actionRequired} tone={item.status === 'ready' ? 'success' : 'warning'} />
           </article>
-        ))}
+        })}
       </div>
 
       <div aria-label={messages.title} className="portal-segmented portal-ai-settings__tabs">
@@ -386,7 +382,7 @@ function ProfileForm({ busy, messages, onCancel, onSave, profile, providers }: {
       <div className="portal-ai-settings__form-grid">
         <label><span>{messages.modelName}</span><input disabled={busy} maxLength={100} onChange={(event) => setName(event.target.value)} required value={name} /></label>
         <label><span>{messages.provider}</span><select disabled={busy} onChange={(event) => setProviderID(Number(event.target.value))} required value={providerID}>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></label>
-        <label><span>{messages.capability}</span><select disabled={busy} onChange={(event) => setCapability(event.target.value as PortalAiCapability)} value={capability}><option value="text">{messages.capabilities.text}</option><option value="embedding">{messages.capabilities.embedding}</option></select></label>
+        <label><span>{messages.capability}</span><select disabled={busy} onChange={(event) => setCapability(event.target.value as PortalAiCapability)} value={capability}><option value="text">{messages.capabilities.text}</option><option value="embedding">{messages.capabilities.embedding}</option><option value="image">{messages.capabilities.image}</option></select></label>
         <label><span>{messages.model}</span><input disabled={busy} maxLength={200} onChange={(event) => setModel(event.target.value)} required value={model} /></label>
         <label><span>{messages.timeout}</span><input disabled={busy} max={120000} min={1000} onChange={(event) => setTimeoutMs(event.target.value)} required type="number" value={timeoutMs} /></label>
         {capability === 'embedding' ? <label><span>{messages.dimensions}</span><input disabled={busy} max={16384} min={1} onChange={(event) => setDimensions(event.target.value)} required type="number" value={dimensions} /></label> : null}
@@ -417,7 +413,7 @@ function RouteWorkspace({ busy, editingID, messages, onCancel, onDelete, onEdit,
 function RouteForm({ busy, messages, onCancel, onSave, profiles, route }: { busy: boolean; messages: AiMessages; onCancel: () => void; onSave: SaveHandler; profiles: PortalAiModelProfileSummary[]; route: PortalAiUsageRouteSummary | null }) {
   const [enabled, setEnabled] = useState(route?.enabled ?? true)
   const [usageKey, setUsageKey] = useState(route?.usageKey ?? AI_USAGE_KEYS.chatReply)
-  const operation: PortalAiCapability = usageKey === AI_USAGE_KEYS.knowledgeEmbedding ? 'embedding' : 'text'
+  const operation: PortalAiCapability = usageKey === AI_USAGE_KEYS.knowledgeEmbedding ? 'embedding' : usageKey === AI_USAGE_KEYS.contentImageGeneration ? 'image' : 'text'
   const compatible = useMemo(() => profiles.filter((profile) => profile.capability === operation), [operation, profiles])
   const [profileID, setProfileID] = useState(route?.profileID ?? compatible[0]?.id ?? 0)
   const normalizedProfileID = compatible.some((profile) => profile.id === profileID) ? profileID : compatible[0]?.id ?? 0
@@ -425,7 +421,7 @@ function RouteForm({ busy, messages, onCancel, onSave, profiles, route }: { busy
   return (
     <form className="portal-ai-settings__form" onSubmit={submit}>
       <header><h4>{route ? messages.edit : messages.newRoute}</h4></header>
-      <label><span>{messages.usageKey}</span><select disabled={busy} onChange={(event) => setUsageKey(event.target.value)} value={usageKey}><option value={AI_USAGE_KEYS.chatReply}>{AI_USAGE_KEYS.chatReply}</option><option value={AI_USAGE_KEYS.knowledgeEmbedding}>{AI_USAGE_KEYS.knowledgeEmbedding}</option><option value={AI_USAGE_KEYS.knowledgeTranslation}>{AI_USAGE_KEYS.knowledgeTranslation}</option></select></label>
+      <label><span>{messages.usageKey}</span><select disabled={busy} onChange={(event) => setUsageKey(event.target.value)} value={usageKey}><option value={AI_USAGE_KEYS.chatReply}>{messages.usageLabels[AI_USAGE_KEYS.chatReply]} · {AI_USAGE_KEYS.chatReply}</option><option value={AI_USAGE_KEYS.knowledgeEmbedding}>{messages.usageLabels[AI_USAGE_KEYS.knowledgeEmbedding]} · {AI_USAGE_KEYS.knowledgeEmbedding}</option><option value={AI_USAGE_KEYS.knowledgeTranslation}>{messages.usageLabels[AI_USAGE_KEYS.knowledgeTranslation]} · {AI_USAGE_KEYS.knowledgeTranslation}</option><option value={AI_USAGE_KEYS.contentImageGeneration}>{messages.usageLabels[AI_USAGE_KEYS.contentImageGeneration]} · {AI_USAGE_KEYS.contentImageGeneration}</option></select></label>
       <label><span>{messages.profile}</span><select disabled={busy || !compatible.length} onChange={(event) => setProfileID(Number(event.target.value))} required value={normalizedProfileID}>{compatible.map((profile) => <option key={profile.id} value={profile.id}>{profile.name} · {profile.model}</option>)}</select></label>
       <label className="portal-ai-settings__check"><input checked={enabled} disabled={busy} onChange={(event) => setEnabled(event.target.checked)} type="checkbox" /><span>{messages.enabled}</span></label>
       <FormActions busy={busy || !compatible.length} messages={messages} onCancel={onCancel} />

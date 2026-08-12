@@ -83,7 +83,7 @@ const optionalNumber = (
 }
 
 const capability = (value: unknown): PortalAiCapability => {
-  if (value !== 'text' && value !== 'embedding') return fail('capability')
+  if (value !== 'text' && value !== 'embedding' && value !== 'image') return fail('capability')
   return value
 }
 
@@ -119,12 +119,18 @@ const profileData = (input: JsonInput) => {
           timeoutMs: requiredInteger(parameters.timeoutMs, 'timeout', 1_000, 120_000),
           topP: optionalNumber(parameters.topP, 'top-p', 0, 1),
         }
-      : {
+      : selectedCapability === 'embedding'
+        ? {
           dimensions: requiredInteger(parameters.dimensions, 'embedding dimensions', 1, 16_384),
           reasoningEffort: 'medium' as const,
           reasoningEnabled: false,
           timeoutMs: requiredInteger(parameters.timeoutMs, 'timeout', 1_000, 120_000),
-        },
+        }
+        : {
+            reasoningEffort: 'medium' as const,
+            reasoningEnabled: false,
+            timeoutMs: requiredInteger(parameters.timeoutMs, 'timeout', 1_000, 120_000),
+          },
     provider: requiredID(input.providerID, 'provider'),
   }
 }
@@ -135,6 +141,7 @@ const routeData = (input: JsonInput) => {
   if (
     ![
       AI_USAGE_KEYS.chatReply,
+      AI_USAGE_KEYS.contentImageGeneration,
       AI_USAGE_KEYS.knowledgeEmbedding,
       AI_USAGE_KEYS.knowledgeTranslation,
     ].includes(usageKey as never)
@@ -143,6 +150,7 @@ const routeData = (input: JsonInput) => {
   }
   if (
     (usageKey === AI_USAGE_KEYS.chatReply && operation !== 'text') ||
+    (usageKey === AI_USAGE_KEYS.contentImageGeneration && operation !== 'image') ||
     (usageKey === AI_USAGE_KEYS.knowledgeEmbedding && operation !== 'embedding') ||
     (usageKey === AI_USAGE_KEYS.knowledgeTranslation && operation !== 'text')
   ) {

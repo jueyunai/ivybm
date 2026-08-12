@@ -7,7 +7,7 @@ import {
 } from '@/modules/ai/credentials'
 import { AI_USAGE_KEYS } from '@/modules/ai/registry'
 
-export type PortalAiCapability = 'embedding' | 'text'
+export type PortalAiCapability = 'embedding' | 'image' | 'text'
 export type PortalAiSettingsAccess = 'admin' | 'admin-only'
 export type PortalAiReadinessReason =
   | 'credential'
@@ -63,7 +63,7 @@ export type PortalAiReadinessKey = 'content-studio' | 'customer-chat' | 'knowled
 export interface PortalAiReadinessSummary {
   key: PortalAiReadinessKey
   reason: PortalAiReadinessReason | null
-  status: 'action-required' | 'ready'
+  status: 'action-required' | 'configured-pending-verification' | 'ready'
 }
 
 export interface PortalAiSettingsSummary {
@@ -136,7 +136,11 @@ export const mapPortalAiProfile = (
   const parameters = record(profile.parameters)
   const providerID = portalAiRelationshipID(profile.provider)
   return {
-    capability: profile.capability === 'embedding' ? 'embedding' : 'text',
+    capability: profile.capability === 'embedding'
+      ? 'embedding'
+      : profile.capability === 'image'
+        ? 'image'
+        : 'text',
     enabled: profile.enabled === true,
     id: portalAiRelationshipID(profile.id),
     model: text(profile.model),
@@ -165,7 +169,11 @@ export const mapPortalAiRoute = (
   return {
     enabled: route.enabled === true,
     id: portalAiRelationshipID(route.id),
-    operation: route.operation === 'embedding' ? 'embedding' : 'text',
+    operation: route.operation === 'embedding'
+      ? 'embedding'
+      : route.operation === 'image'
+        ? 'image'
+        : 'text',
     profileID,
     profileName: profiles.find((profile) => profile.id === profileID)?.name ?? null,
     updatedAt: text(route.updatedAt),
@@ -240,17 +248,31 @@ export const buildPortalAiReadiness = ({
     routes,
     usageKey: AI_USAGE_KEYS.knowledgeEmbedding,
   })
+  const imageReason = routeReadiness({
+    capability: 'image',
+    encryptionKeyConfigured,
+    profiles,
+    providers,
+    readableProviderIDs,
+    routes,
+    usageKey: AI_USAGE_KEYS.contentImageGeneration,
+  })
   const item = (
     key: PortalAiReadinessKey,
     reason: PortalAiReadinessReason | null,
+    configuredPendingVerification = false,
   ): PortalAiReadinessSummary => ({
     key,
     reason,
-    status: reason ? 'action-required' : 'ready',
+    status: reason
+      ? 'action-required'
+      : configuredPendingVerification
+        ? 'configured-pending-verification'
+        : 'ready',
   })
   return [
     item('customer-chat', textReason ?? embeddingReason),
-    item('content-studio', textReason),
+    item('content-studio', textReason ?? imageReason, true),
     item('knowledge-index', embeddingReason),
   ]
 }

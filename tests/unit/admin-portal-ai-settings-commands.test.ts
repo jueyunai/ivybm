@@ -24,6 +24,26 @@ describe('Portal AI settings commands', () => {
         resource: 'routes',
       }),
     ).rejects.toMatchObject({ code: 'ai-settings-validation-failed', status: 400 })
+
+    const create = vi.fn().mockResolvedValue({ enabled: true, id: 10, operation: 'image', profile: 8, updatedAt: '', usageKey: 'content.image-generation' })
+    await expect(createPortalAiResource({
+      input: { enabled: true, operation: 'image', profileID: 8, usageKey: 'content.image-generation' },
+      payload: { create, findByID: vi.fn().mockResolvedValue({ id: 8, name: 'Image' }) } as unknown as Payload,
+      req,
+      resource: 'routes',
+    })).resolves.toMatchObject({ item: { operation: 'image' } })
+  })
+
+  it('creates an image model without text or embedding parameters', async () => {
+    const create = vi.fn().mockResolvedValue({ capability: 'image', enabled: true, id: 11, model: 'image-model', name: 'Image', parameters: { reasoningEffort: 'medium', reasoningEnabled: false, timeoutMs: 60_000 }, provider: 4, updatedAt: '' })
+    await createPortalAiResource({
+      input: { capability: 'image', enabled: true, model: 'image-model', name: 'Image', parameters: { timeoutMs: 60_000 }, providerID: 4 },
+      payload: { create, findByID: vi.fn().mockResolvedValue({ id: 4, name: 'Primary' }) } as unknown as Payload,
+      req,
+      resource: 'profiles',
+    })
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ capability: 'image', parameters: { reasoningEffort: 'medium', reasoningEnabled: false, timeoutMs: 60_000 } }) }))
   })
 
   it('creates providers through current access-controlled request and never returns the key', async () => {
