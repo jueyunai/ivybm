@@ -49,12 +49,22 @@ const arabicCountryPattern = new RegExp(
   'u',
 )
 
+const emailAddressPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu
+const webUrlPattern =
+  /\b(?:(?:https?:\/\/|www\.)[^\s<>"']+|(?:[A-Z0-9-]+\.)+[A-Z]{2,}(?::\d{1,5})?(?:[/?#;][^\s<>"']*)?)/giu
+
+// A country contributes directly to lead score, so only prose is evidence;
+// address/domain/path tokens must not silently manufacture a target market.
+const excludeNonProseCountrySignals = (text: string): string =>
+  text.replace(emailAddressPattern, ' ').replace(webUrlPattern, ' ')
+
 const extractCountry = (text: string): string | undefined => {
-  const englishMatch = text.match(countryPattern)?.[1]
+  const prose = excludeNonProseCountrySignals(text)
+  const englishMatch = prose.match(countryPattern)?.[1]
   if (englishMatch) {
     return countries.find((country) => country.toLowerCase() === englishMatch.toLowerCase())
   }
-  const arabicMatch = text.match(arabicCountryPattern)?.[1]
+  const arabicMatch = prose.match(arabicCountryPattern)?.[1]
   return arabicCountries.find(([country]) => country === arabicMatch)?.[1]
 }
 

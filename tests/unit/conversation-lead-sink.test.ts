@@ -77,11 +77,48 @@ describe('conversation lead signal extraction', () => {
     ['The project is in Oman.', 'Oman'],
     ['The project market is UAE.', 'UAE'],
     ['المشروع في عمان.', 'Oman'],
+    ['Email sales@usa.example.invalid. The project is in Oman.', 'Oman'],
   ])('extracts a delimited country mention from %s', (content, country) => {
     expect(
       extractLeadSignals(sessionWith(content.includes('عمان') ? 'ar' : 'en', content)).country,
     ).toBe(country)
   })
+
+  it.each([
+    'Email sales@usa.example.invalid.',
+    'Email buyer@oman.example.invalid.',
+    'Email partner@canada.example.invalid.',
+    'See https://example.com/usa/spec for the drawings.',
+    'See example.com?country=usa for the drawings.',
+    'See example.com#oman for the drawings.',
+    'See example.com;market=canada for the drawings.',
+    'See example.com:443/usa/spec for the drawings.',
+  ])('does not extract a country from an email address or URL: %s', (content) => {
+    expect(extractLeadSignals(sessionWith('en', content)).country).toBeUndefined()
+  })
+
+  it.each([
+    'A buyer needs facade panels, 1000 sqm, tender, email sales@usa.example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender, email buyer@oman.example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender, email partner@canada.example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender. See https://example.com/usa/spec and email buyer@example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender. See example.com?country=usa and email buyer@example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender. See example.com#oman and email buyer@example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender. See example.com;market=canada and email buyer@example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender. See example.com:443/usa/spec and email buyer@example.invalid.',
+  ])(
+    'does not let an email or URL country token promote a B-level inquiry to A: %s',
+    async (content) => {
+      const evaluation = await new PayloadConversationLeadSink().evaluate(
+        sessionWith('en', content),
+      )
+
+      expect(evaluation.signals.country).toBeUndefined()
+      expect(evaluation.score).toMatchObject({ handoffRecommended: false, level: 'b', score: 60 })
+      expect(evaluation.score.missingFields).toContain('country')
+      expect(evaluation.score.reasons).not.toContain('target_country')
+    },
+  )
 
   it('does not let an embedded country substring promote a B-level inquiry to A', async () => {
     const evaluation = await new PayloadConversationLeadSink().evaluate(
