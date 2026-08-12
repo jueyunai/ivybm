@@ -151,6 +151,12 @@ describe('conversation lead signal extraction', () => {
     'I am from UAE. It is a tender for 1000 sqm. Email buyer@example.invalid.',
     'I am from UAE and need 1000 sqm at tender stage. Email buyer@example.invalid.',
     'Not sure.',
+    'No company.',
+    'None.',
+    'No idea.',
+    'It is confidential.',
+    'Prefer not to say.',
+    'There is no company.',
     'We do not have one.',
     'My company is a company in UAE.',
   ])('does not infer a sentence fragment as a prompted company reply in %s', (content) => {

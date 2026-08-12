@@ -64,7 +64,9 @@ const nonCompanyWords = new Set([
   'workplace',
 ])
 const invalidPromptedCompanyAnswer =
-  /^(?:(?:i|we|it|there)\b|(?:no|none|not\s+sure|unknown|unsure|maybe)\b)|\b(?:do\s+not|don't|does\s+not|doesn't)\b/i
+  /^(?:(?:i|we|there)\b|(?:no|none|not\s+sure|unknown|unsure|maybe|confidential|private|prefer\s+not\s+to\s+say|rather\s+not\s+say)\b)|\b(?:do\s+not|don't|does\s+not|doesn't)\b/i
+const invalidPromptedCompanyMessage =
+  /^(?:it\s+is\s+(?:confidential|private|unknown)\b|prefer\s+not\s+to\s+say\b|rather\s+not\s+say\b)/i
 // prettier-ignore
 const arabicCompanyCandidate =
   /(?:اسم\s+الشركة|(?:نحن\s+)?شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80}?)(?=\s+(?:في\s+(?:الإمارات(?:\s+العربية\s+المتحدة)?|السعودية|المملكة\s+العربية\s+السعودية|قطر|الكويت|عمان|البحرين)|و?(?:المشروع|مرحلة|نحتاج|نريد|لدينا|الكمية|المساحة|التصميم|المناقصة))|[\n،,.!?؟]|$)/
@@ -120,6 +122,7 @@ const extractAskedEnglishCompany = (session: ChatSession): string | undefined =>
     .find(({ author }) => author === 'visitor')
     ?.content.trim()
   if (!message) return undefined
+  if (invalidPromptedCompanyMessage.test(message)) return undefined
 
   const framedCandidate = cleanCompanyCandidate(
     message.match(
