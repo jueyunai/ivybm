@@ -303,7 +303,7 @@ test('Content Studio generates, previews, and adopts an image through protected 
       mimeType: 'image/png',
       name: 'fixture-reference.png',
     })
-    await page.getByRole('button', { exact: true, name: '上传参考图' }).click()
+    await page.locator('button').filter({ hasText: /^上传参考图$/ }).click()
     await expect(page.getByRole('img', { name: '参考图预览' })).toBeVisible()
     await page.getByRole('button', { name: '生成图片' }).click()
     await expect(page.getByRole('img', { name: '生成图片预览' })).toBeVisible()
