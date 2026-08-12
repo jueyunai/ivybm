@@ -63,7 +63,7 @@ const originalInquiry = (lead: LeadForFeishu): string => {
 }
 
 const leadValues = (lead: LeadForFeishu): Record<FeishuLeadField, FeishuFieldValue> => ({
-  country: lead.country.trim(),
+  country: lead.country?.trim() ?? '',
   customerName: (lead.company || lead.name).trim(),
   email: lead.email.trim(),
   intentLevel: lead.intentLevel.toUpperCase(),

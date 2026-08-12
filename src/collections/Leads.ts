@@ -144,7 +144,6 @@ export const Leads: CollectionConfig = {
       type: 'text',
       index: true,
       maxLength: 120,
-      required: true,
     },
     {
       name: 'email',

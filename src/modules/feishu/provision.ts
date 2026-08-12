@@ -6,7 +6,7 @@ type JsonRecord = Record<string, unknown>
 export const DEFAULT_FEISHU_FIELD_MAPPINGS = [
   { localField: 'localLeadId', required: true, targetField: '系统 Lead ID' },
   { localField: 'customerName', required: true, targetField: '客户名称' },
-  { localField: 'country', required: true, targetField: '国家或地区' },
+  { localField: 'country', required: false, targetField: '国家或地区' },
   { localField: 'source', required: true, targetField: '来源渠道' },
   { localField: 'sourceURL', targetField: '来源链接' },
   { localField: 'productNeed', targetField: '需求产品' },
