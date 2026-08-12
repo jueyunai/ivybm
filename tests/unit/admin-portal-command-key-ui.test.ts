@@ -45,6 +45,20 @@ afterEach(() => {
 })
 
 describe('Portal create command keys', () => {
+  it('renders a qualification heading distinct from the project-stage field label', () => {
+    const summary: LeadsSummary = {
+      items: [{ assignedTo: null, budget: 'USD 450,000', company: 'Facade LLC', country: 'UAE', email: 'buyer@example.invalid', hasDrawings: true, id: 27, interest: 'aluminum panels', intentLevel: 'a', locale: 'en', message: 'Tender inquiry', name: 'Lead buyer', phone: null, procurementPlan: 'within 3 months', projectStage: 'tender', quantitySquareMeters: 3200, relatedConversations: [], source: 4, status: 'qualified', timeline: 'within_3_months', updatedAt: '2026-08-12T00:00:00.000Z' }],
+      options: { sources: [{ id: 4, label: 'Website' }], users: [] },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      query: { intent: 'all', page: 1, q: '', status: 'all' },
+    }
+
+    render(React.createElement(PortalPreferencesProvider, null, React.createElement(LeadsHub, { pageState: 'available', role: 'admin', summary })))
+
+    expect(screen.getByRole('heading', { name: '资格详情' })).toBeTruthy()
+    expect(screen.getByText('项目阶段', { selector: 'dt' })).toBeTruthy()
+  })
+
   it('reuses the AI debug key after an interrupted response body and rotates when the prompt changes', async () => {
     const request = vi
       .fn<typeof fetch>()
