@@ -35,7 +35,7 @@ const runID = randomUUID()
 const fieldMappings = [
   { localField: 'localLeadId' as const, required: true, targetField: 'Local Lead ID' },
   { localField: 'customerName' as const, required: true, targetField: 'Customer' },
-  { localField: 'country' as const, required: true, targetField: 'Country' },
+  { localField: 'country' as const, required: false, targetField: 'Country' },
   { localField: 'source' as const, required: true, targetField: 'Source' },
   { localField: 'intentLevel' as const, required: true, targetField: 'Intent' },
   { localField: 'email' as const, targetField: 'Email' },
@@ -689,6 +689,62 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
       expect(messages.some((text) => text.includes('收到新客户线索'))).toBe(true)
       expect(messages.some((text) => text.includes('发现高意向客户'))).toBe(item.high)
     }
+  })
+
+  it('syncs and notifies a high-intent Lead whose country is still unconfirmed', async () => {
+    const lead = await payload.create({
+      collection: 'leads',
+      context,
+      data: {
+        country: null,
+        email: `country-pending-${runID}@example.invalid`,
+        idempotencyKey: randomUUID(),
+        intentLevel: 'a',
+        locale: 'en',
+        message: 'Please contact me about a facade project.',
+        name: 'Country Pending Buyer',
+        requestId: randomUUID(),
+        source: sourceID,
+        status: 'new',
+      },
+      overrideAccess: true,
+    })
+    extraLeadIDs.push(lead.id)
+    const jobs = await payload.find({
+      collection: 'jobs',
+      limit: 100,
+      overrideAccess: true,
+      where: { type: { equals: FEISHU_LEAD_SYNC_JOB_TYPE } },
+    })
+    const job = jobs.docs.find(
+      (candidate) =>
+        jobPayload(candidate.payload).entityId === lead.id &&
+        jobPayload(candidate.payload).entityRevision === feishuLeadSyncRevision(lead),
+    )
+    if (!job) throw new Error('Expected country-pending lead sync job')
+    const sendText = vi.fn(async () => ({ messageId: randomUUID() }))
+    const upsertRecord: FeishuClientPort['upsertRecord'] = vi.fn(async () => ({
+      recordId: randomUUID(),
+      state: 'created' as const,
+    }))
+
+    await createFeishuLeadSyncJobHandler({
+      client: () => ({ sendText, upsertRecord }),
+      payload,
+    })(await claimedJob(job.id), {
+      assertLease: vi.fn(),
+      renewLease: vi.fn(),
+      signal: new AbortController().signal,
+    })
+
+    expect(upsertRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ fields: expect.not.objectContaining({ Country: expect.anything() }) }),
+    )
+    expect(
+      (sendText.mock.calls as unknown as Array<[SendTextInput]>)
+        .map(([input]) => input.text)
+        .join('\n'),
+    ).toContain('待确认')
   })
 
   it('delivers a new high-intent event when a lead returns to a prior content revision', async () => {

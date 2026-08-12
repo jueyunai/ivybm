@@ -86,7 +86,7 @@ const createData = async ({ input, payload, req }: { input: RecordValue; payload
   return {
     assignedTo,
     company: string(input, 'company', false, 160) || null,
-    country: string(input, 'country', true, 120),
+    country: string(input, 'country', false, 120) || null,
     email: string(input, 'email', true, 254),
     idempotencyKey,
     interest: string(input, 'interest', false, 160) || null,
@@ -125,7 +125,7 @@ const updateData = async ({
 }) => {
   const data: RecordValue = {}
   for (const [key, max] of [['name', 120], ['company', 160], ['country', 120], ['email', 254], ['phone', 32], ['interest', 160], ['message', 5_000]] as const) {
-    if (key in input) data[key] = string(input, key, key === 'name' || key === 'country' || key === 'email' || key === 'message', max) || null
+    if (key in input) data[key] = string(input, key, key === 'name' || key === 'email' || key === 'message', max) || null
   }
   if ('status' in input) {
     const status = string(input, 'status') as LeadStatus

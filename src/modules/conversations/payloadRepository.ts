@@ -41,6 +41,12 @@ type PayloadConversationRepositoryOptions = {
   sessionTokenHash?: string
 }
 
+export const shouldCreateConversationLead = (evaluation?: ConversationLeadEvaluation): boolean => {
+  const qualifiedForLead =
+    evaluation?.score.level === 'a' || evaluation?.handoffReason === 'qualification_complete'
+  return Boolean(qualifiedForLead && evaluation.signals.contact.email?.trim())
+}
+
 const relationshipID = (value: number | { id: number } | null | undefined): number | undefined =>
   typeof value === 'number' ? value : value?.id
 
@@ -282,11 +288,7 @@ export class PayloadConversationRepository implements ConversationRepository {
   }
 
   private shouldCreateLead(evaluation?: ConversationLeadEvaluation): boolean {
-    return Boolean(
-      evaluation?.score.level === 'a' &&
-      evaluation.signals.contact.email?.trim() &&
-      evaluation.signals.country?.trim(),
-    )
+    return shouldCreateConversationLead(evaluation)
   }
 
   private async persistLead(
@@ -312,12 +314,12 @@ export class PayloadConversationRepository implements ConversationRepository {
     const transcript = truncateLeadTranscript(visitorMessages)
     const email = evaluation.signals.contact.email?.trim()
     const country = evaluation.signals.country?.trim()
-    if (!email || !country) {
+    if (!email) {
       throw new ChatServiceError('internal_error', 'High-intent lead data is incomplete')
     }
     const data = {
       company: evaluation.signals.company,
-      country,
+      country: country || null,
       email,
       idempotencyKey,
       intentLevel: evaluation.score.level,

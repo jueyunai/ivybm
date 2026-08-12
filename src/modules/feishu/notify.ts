@@ -49,7 +49,7 @@ export const formatHighIntentLeadNotification = (lead: LeadForFeishu): string =>
   [
     '发现高意向客户',
     `客户：${lead.company || lead.name}`,
-    `国家/地区：${lead.country}`,
+    `国家/地区：${lead.country || '待确认'}`,
     `需求：${lead.interest || '待确认'}`,
     `联系方式：${lead.email}${lead.phone ? ` / ${lead.phone}` : ''}`,
   ].join('\n')
@@ -58,7 +58,7 @@ export const formatNewLeadNotification = (lead: LeadForFeishu): string =>
   [
     '收到新客户线索',
     `客户：${lead.company || lead.name}`,
-    `国家/地区：${lead.country}`,
+    `国家/地区：${lead.country || '待确认'}`,
     `来源：${typeof lead.source === 'object' ? lead.source.label || lead.source.key || lead.source.id : lead.source}`,
     `联系方式：${lead.email}${lead.phone ? ` / ${lead.phone}` : ''}`,
   ].join('\n')

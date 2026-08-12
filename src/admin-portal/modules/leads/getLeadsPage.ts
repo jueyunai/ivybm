@@ -16,7 +16,7 @@ export type LeadSummaryItem = {
   assignedTo: null | number
   budget: null | string
   company: null | string
-  country: string
+  country: null | string
   email: string
   hasDrawings: boolean | null
   id: number | string
@@ -128,7 +128,7 @@ export const loadLeadsPageData = async ({ env, payload, query, req, role }: {
       state: 'available',
       summary: {
         items: leads.docs.map((lead) => ({
-          assignedTo: asID(lead.assignedTo), budget: stringOrNull(lead.budget), company: stringOrNull(lead.company), country: String(lead.country), email: String(lead.email), hasDrawings: booleanOrNull(lead.hasDrawings), id: lead.id,
+          assignedTo: asID(lead.assignedTo), budget: stringOrNull(lead.budget), company: stringOrNull(lead.company), country: stringOrNull(lead.country), email: String(lead.email), hasDrawings: booleanOrNull(lead.hasDrawings), id: lead.id,
           interest: stringOrNull(lead.interest), intentLevel: lead.intentLevel as LeadSummaryItem['intentLevel'], locale: lead.locale as LeadSummaryItem['locale'],
           message: String(lead.message), name: String(lead.name), phone: stringOrNull(lead.phone), procurementPlan: stringOrNull(lead.procurementPlan), projectStage: stringOrNull(lead.projectStage), quantitySquareMeters: numberOrNull(lead.quantitySquareMeters), relatedConversations: byLead.get(String(lead.id)) ?? [],
           source: asID(lead.source) ?? 0, status: lead.status as LeadSummaryItem['status'], timeline: stringOrNull(lead.timeline), updatedAt: lead.updatedAt,

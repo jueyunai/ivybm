@@ -59,7 +59,7 @@ export type LeadForFeishu = {
   assignedTo?: number | string | { email?: string | null; id: number | string } | null
   budget?: string | null
   company?: string | null
-  country: string
+  country?: string | null
   email: string
   id: number | string
   hasDrawings?: boolean | null

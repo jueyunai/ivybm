@@ -1043,7 +1043,7 @@ export interface Lead {
   nextFollowUpAt?: string | null;
   name: string;
   company?: string | null;
-  country: string;
+  country?: string | null;
   email: string;
   phone?: string | null;
   interest?: string | null;

@@ -335,6 +335,89 @@ describe.sequential('Task 9 conversation persistence', () => {
     if (leads.docs[0]) await payload.delete({ collection: 'leads', id: leads.docs[0].id, overrideAccess: true })
   })
 
+  it('creates an A-intent Lead with a work email when country is still unconfirmed', async () => {
+    const suffix = randomUUID()
+    const repository = new PayloadConversationRepository({
+      payload,
+      sessionTokenHash: hashVisitorToken(`country-pending-token-${suffix}`),
+    })
+    const service = createConversationService({
+      leadSink: {
+        evaluate: async () => ({
+          handoffReason: 'high_intent',
+          score: {
+            handoffRecommended: true,
+            level: 'a' as const,
+            missingFields: ['country' as const],
+            reasons: ['high_intent'],
+            score: 70,
+          },
+          signals: {
+            company: 'Country Pending Facades',
+            contact: { email: `country-pending-${suffix}@example.invalid` },
+            productInterest: 'aluminum panels',
+          },
+        }),
+      },
+      repository,
+      responder: {
+        generateReply: async () => {
+          throw new Error('A-intent handoff must not call the responder')
+        },
+      },
+    })
+    const session = await service.startSession({
+      channel: 'website',
+      idempotencyKey: `country-pending-start-${suffix}`,
+      locale: 'en',
+    })
+
+    await expect(
+      service.sendMessage({
+        idempotencyKey: `country-pending-message-${suffix}`,
+        sessionId: session.id,
+        text: 'Please ask sales to contact me about aluminum facade panels.',
+      }),
+    ).resolves.toMatchObject({ handoffStatus: 'handoff_requested' })
+
+    const leads = await payload.find({
+      collection: 'leads',
+      limit: 1,
+      overrideAccess: true,
+      where: { idempotencyKey: { equals: `chat-lead:${String(session.id)}` } },
+    })
+    expect(leads.docs[0]).toMatchObject({
+      company: 'Country Pending Facades',
+      country: null,
+      intentLevel: 'a',
+    })
+
+    const conversation = (
+      await payload.find({
+        collection: 'conversations',
+        limit: 1,
+        overrideAccess: true,
+        where: { publicId: { equals: String(session.id) } },
+      })
+    ).docs[0]
+    if (conversation) {
+      await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
+    }
+    if (leads.docs[0]) {
+      await payload.delete({ collection: 'leads', id: leads.docs[0].id, overrideAccess: true })
+    }
+    await payload.delete({
+      collection: 'visitor-sessions',
+      overrideAccess: true,
+      where: { idempotencyKey: { equals: `country-pending-start-${suffix}` } },
+    })
+    await payload.delete({
+      collection: 'conversation-commands',
+      overrideAccess: true,
+      where: { idempotencyKey: { contains: suffix } },
+    })
+  })
+
   it('persists a first qualification round before the real lead sink creates a bounded company lead', async () => {
     const suffix = randomUUID()
     const repository = new PayloadConversationRepository({
