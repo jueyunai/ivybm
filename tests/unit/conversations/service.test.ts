@@ -56,12 +56,57 @@ describe('ConversationService', () => {
     })
     const session = await service.startSession({ channel: 'website', idempotencyKey: 'qualification-start', locale: 'en' })
     const first = await service.sendMessage({ idempotencyKey: 'qualification-message-1', sessionId: session.id, text: 'We are at tender stage in the UAE.' })
-    expect(first.qualificationState).toEqual({ askedFields: ['quantity', 'drawings', 'budget', 'timeline'], roundCount: 1 })
+    expect(first.qualificationState).toEqual({ askedFields: ['quantity', 'timeline'], roundCount: 1 })
     const second = await service.sendMessage({ idempotencyKey: 'qualification-message-2', sessionId: session.id, text: 'We need 1,200 sqm, have drawings and plan to buy within 3 months.' })
-    expect(second.qualificationState).toEqual({ askedFields: ['quantity', 'drawings', 'budget', 'timeline', 'contact'], roundCount: 2 })
+    expect(second.qualificationState).toEqual({ askedFields: ['quantity', 'timeline', 'contact'], roundCount: 2 })
     const completed = await service.sendMessage({ idempotencyKey: 'qualification-message-3', sessionId: session.id, text: 'Contact buyer@example.invalid.' })
     expect(completed).toMatchObject({ handoffStatus: 'handoff_requested', qualificationState: { roundCount: 2 } })
     expect(completed.messages.filter(({ author }) => author === 'ai')).toHaveLength(2)
+  })
+
+  it('hands an A-level lead to a human without asking for every missing field', async () => {
+    const repository = new InMemoryConversationRepository()
+    const generateReply = vi.fn()
+    const service = createConversationService({
+      leadSink: {
+        evaluate: async () => ({
+          handoffReason: 'high_intent',
+          score: {
+            handoffRecommended: true,
+            level: 'a',
+            missingFields: ['budget', 'contact'],
+            reasons: ['target_country', 'project_stage', 'project_quantity'],
+            score: 75,
+          },
+          signals: {
+            company: 'Facade LLC',
+            contact: {},
+            country: 'United Arab Emirates',
+            projectStage: 'tender',
+            quantitySquareMeters: 1_200,
+          },
+        }),
+      },
+      repository,
+      responder: { generateReply },
+    })
+    const session = await service.startSession({
+      channel: 'website',
+      idempotencyKey: 'a-level-missing-fields-start',
+      locale: 'en',
+    })
+
+    const handedOff = await service.sendMessage({
+      idempotencyKey: 'a-level-missing-fields-message',
+      sessionId: session.id,
+      text: 'We have a 1,200 sqm facade tender in the UAE.',
+    })
+
+    expect(handedOff.handoffStatus).toBe('handoff_requested')
+    expect(generateReply).not.toHaveBeenCalled()
+    expect(repository.handoffEvents).toEqual([
+      expect.objectContaining({ reason: 'high_intent', source: 'ai_policy' }),
+    ])
   })
 
   it('prioritizes a high-risk topic over completed qualification without generating AI text', async () => {

@@ -341,7 +341,7 @@ describe.sequential('Task 9 conversation persistence', () => {
       generateReply: async ({ qualificationState }: { qualificationState?: ChatQualificationState }) => {
         const state = qualificationState ?? { askedFields: [], roundCount: 0 }
         const next: ChatQualificationState = state.roundCount === 0
-          ? { askedFields: ['quantity', 'drawings', 'budget', 'timeline'], roundCount: 1 }
+          ? { askedFields: ['quantity', 'timeline'], roundCount: 1 }
           : { askedFields: [...state.askedFields, 'contact'], roundCount: 2 }
         return {
           content: state.roundCount === 0 ? 'ما المساحة والميزانية والموعد؟' : 'ما بريد العمل للمتابعة؟',
@@ -374,13 +374,13 @@ describe.sequential('Task 9 conversation persistence', () => {
     const session = await service.startSession({ channel: 'website', idempotencyKey: `round-limit-start-${suffix}`, locale: 'ar' })
     const firstInput = { idempotencyKey: `round-limit-message-1-${suffix}`, sessionId: session.id, text: 'نحن شركة النور في السعودية والمشروع مناقصة.' }
     const first = await service.sendMessage(firstInput)
-    expect(first.qualificationState).toEqual({ askedFields: ['quantity', 'drawings', 'budget', 'timeline'], roundCount: 1 })
+    expect(first.qualificationState).toEqual({ askedFields: ['quantity', 'timeline'], roundCount: 1 })
     const hydrated = await service.getSession(session.id)
     expect(hydrated.qualificationState).toEqual(first.qualificationState)
     expect((await service.sendMessage(firstInput)).revision).toBe(first.revision)
 
     const second = await service.sendMessage({ idempotencyKey: `round-limit-message-2-${suffix}`, sessionId: session.id, text: 'نحتاج 1200 متر مربع ولدينا رسومات وميزانية 300000 ريال والشراء خلال 3 أشهر.' })
-    expect(second.qualificationState).toEqual({ askedFields: ['quantity', 'drawings', 'budget', 'timeline', 'contact'], roundCount: 2 })
+    expect(second.qualificationState).toEqual({ askedFields: ['quantity', 'timeline', 'contact'], roundCount: 2 })
     const handedOff = await service.sendMessage({ idempotencyKey: `round-limit-message-3-${suffix}`, sessionId: session.id, text: `البريد round-limit-${suffix}@example.invalid.` })
     expect(handedOff.handoffStatus).toBe('handoff_requested')
     expect(handedOff.qualificationState).toEqual(second.qualificationState)

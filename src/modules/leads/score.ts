@@ -97,7 +97,7 @@ export const scoreLeadIntent = (input: LeadScoringInput): LeadIntentScore => {
   const normalizedScore = Math.min(score, 100)
   const level = normalizedScore >= 70 ? 'a' : normalizedScore >= 40 ? 'b' : 'c'
   return {
-    handoffRecommended: level === 'a' && missingFields.length === 0,
+    handoffRecommended: level === 'a',
     level,
     missingFields,
     reasons,

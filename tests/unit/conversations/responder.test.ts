@@ -118,6 +118,18 @@ describe('knowledge conversation responder', () => {
     })
   })
 
+  it('asks no more than two qualification questions in one round', async () => {
+    const responder = createKnowledgeConversationResponder({
+      generateText: async () => ({ cost: { estimated: 0 }, model: 'fixture', text: 'We can help.', usage: { inputTokens: 1, totalTokens: 1 } }),
+      getPrompt: async () => ({ template: 'fixture', version: 1 }),
+      retrieve: async () => [{ citation: { documentId: 1, title: 'Manual', version: '1' }, content: 'Reviewed.' }],
+    })
+    await expect(responder.generateReply({ message: 'We need facade panels.', session, missingFields: ['quantity', 'drawings', 'budget', 'timeline'], qualificationState: { roundCount: 0, askedFields: [] } })).resolves.toMatchObject({
+      content: 'We can help.\n\nWhat approximate area or quantity do you need? When do you expect to purchase or start the project?',
+      qualificationState: { roundCount: 1, askedFields: ['quantity', 'timeline'] },
+    })
+  })
+
   it('asks Arabic missing fields without repeating fields already requested', async () => {
     const responder = createKnowledgeConversationResponder({
       generateText: async () => ({ cost: { estimated: 0 }, model: 'fixture', text: 'يمكننا المساعدة.', usage: { inputTokens: 1, totalTokens: 1 } }),

@@ -37,7 +37,7 @@ describe('lead intent scoring', () => {
     )
   })
 
-  it('keeps requesting an email when only a phone number is available', () => {
+  it('hands a high-intent enquiry to sales while preserving its missing website email', () => {
     const result = scoreLeadIntent({
       company: 'Facade LLC',
       contact: { phone: '+971500000000' },
@@ -50,6 +50,7 @@ describe('lead intent scoring', () => {
 
     expect(result.missingFields).toContain('contact')
     expect(result.reasons).toContain('phone_available_email_required')
-    expect(result.handoffRecommended).toBe(false)
+    expect(result.level).toBe('a')
+    expect(result.handoffRecommended).toBe(true)
   })
 })

@@ -53,11 +53,17 @@ const QUALIFICATION_QUESTIONS: Record<LeadQualificationField, { en: string; ar: 
   },
 }
 
-const QUALIFICATION_BATCHES: LeadQualificationField[][] = [
-  ['country', 'company', 'projectStage'],
-  ['quantity', 'drawings', 'budget', 'timeline'],
-  ['contact'],
+const QUALIFICATION_FIELD_ORDER: LeadQualificationField[] = [
+  'country',
+  'company',
+  'projectStage',
+  'quantity',
+  'timeline',
+  'drawings',
+  'budget',
+  'contact',
 ]
+const MAX_QUALIFICATION_QUESTIONS_PER_ROUND = 2
 
 const qualificationPrompt = (fields: LeadQualificationField[], locale: ChatLocale): string =>
   fields.map((field) => QUALIFICATION_QUESTIONS[field][locale]).join(' ')
@@ -67,11 +73,10 @@ const nextQualificationFields = (
   state: ChatQualificationState,
 ): LeadQualificationField[] => {
   const pending = new Set(missingFields.filter((field) => !state.askedFields.includes(field)))
-  for (const batch of QUALIFICATION_BATCHES) {
-    const selected = batch.filter((field) => pending.has(field))
-    if (selected.length > 0) return selected
-  }
-  return []
+  return QUALIFICATION_FIELD_ORDER.filter((field) => pending.has(field)).slice(
+    0,
+    MAX_QUALIFICATION_QUESTIONS_PER_ROUND,
+  )
 }
 
 export const requiresHumanReview = (message: string): boolean =>
