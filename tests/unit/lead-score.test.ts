@@ -5,6 +5,7 @@ import { scoreLeadIntent } from '@/modules/leads/score'
 describe('lead intent scoring', () => {
   it('prioritizes complete project enquiries to reduce high-intent false negatives', () => {
     const result = scoreLeadIntent({
+      budget: 'USD 450000',
       company: 'Facade Engineering LLC',
       contact: { email: 'buyer@example.invalid', phone: '+971500000000' },
       country: 'United Arab Emirates',
@@ -34,5 +35,22 @@ describe('lead intent scoring', () => {
     expect(result.missingFields).toEqual(
       expect.arrayContaining(['country', 'company', 'contact', 'projectStage', 'quantity']),
     )
+  })
+
+  it('hands a high-intent enquiry to sales while preserving its missing website email', () => {
+    const result = scoreLeadIntent({
+      company: 'Facade LLC',
+      contact: { phone: '+971500000000' },
+      country: 'United Arab Emirates',
+      hasDrawings: true,
+      projectStage: 'tender',
+      quantitySquareMeters: 1000,
+      timeline: 'within_3_months',
+    })
+
+    expect(result.missingFields).toContain('contact')
+    expect(result.reasons).toContain('phone_available_email_required')
+    expect(result.level).toBe('a')
+    expect(result.handoffRecommended).toBe(true)
   })
 })

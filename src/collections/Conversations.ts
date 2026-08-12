@@ -101,6 +101,28 @@ export const Conversations: CollectionConfig = {
       access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
     },
     {
+      name: 'qualificationSignals',
+      type: 'group',
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+      fields: [
+        { name: 'budget', type: 'text', maxLength: 240 },
+        { name: 'procurementPlan', type: 'text', maxLength: 240 },
+        { name: 'projectStage', type: 'text', maxLength: 40 },
+        { name: 'quantitySquareMeters', type: 'number', min: 0 },
+        { name: 'timeline', type: 'text', maxLength: 40 },
+        { name: 'hasDrawings', type: 'checkbox' },
+      ],
+    },
+    {
+      name: 'qualificationRoundCount', type: 'number', defaultValue: 0, max: 3, min: 0,
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
+    {
+      name: 'qualificationAskedFields', type: 'select', hasMany: true,
+      options: ['country', 'company', 'projectStage', 'quantity', 'drawings', 'budget', 'timeline', 'contact'],
+      access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
+    },
+    {
       name: 'summary', type: 'textarea', maxLength: 10_000,
       access: { create: conversationInternalFieldWrite, update: conversationInternalFieldWrite },
     },

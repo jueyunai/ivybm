@@ -1047,10 +1047,16 @@ export interface Lead {
   nextFollowUpAt?: string | null;
   name: string;
   company?: string | null;
-  country: string;
+  country?: string | null;
   email: string;
   phone?: string | null;
   interest?: string | null;
+  budget?: string | null;
+  procurementPlan?: string | null;
+  projectStage?: string | null;
+  quantitySquareMeters?: number | null;
+  timeline?: string | null;
+  hasDrawings?: boolean | null;
   message: string;
   sourceURL?: string | null;
   utm?: {
@@ -1249,6 +1255,17 @@ export interface Conversation {
   lead?: (number | null) | Lead;
   intentLevel: 'unscored' | 'a' | 'b' | 'c';
   intentScore?: number | null;
+  qualificationSignals?: {
+    budget?: string | null;
+    procurementPlan?: string | null;
+    projectStage?: string | null;
+    quantitySquareMeters?: number | null;
+    timeline?: string | null;
+    hasDrawings?: boolean | null;
+  };
+  qualificationRoundCount?: number | null;
+  qualificationAskedFields?:
+    ('country' | 'company' | 'projectStage' | 'quantity' | 'drawings' | 'budget' | 'timeline' | 'contact')[] | null;
   summary?: string | null;
   lastMessageAt?: string | null;
   updatedAt: string;
@@ -2199,6 +2216,12 @@ export interface LeadsSelect<T extends boolean = true> {
   email?: T;
   phone?: T;
   interest?: T;
+  budget?: T;
+  procurementPlan?: T;
+  projectStage?: T;
+  quantitySquareMeters?: T;
+  timeline?: T;
+  hasDrawings?: T;
   message?: T;
   sourceURL?: T;
   utm?:
@@ -2350,6 +2373,18 @@ export interface ConversationsSelect<T extends boolean = true> {
   lead?: T;
   intentLevel?: T;
   intentScore?: T;
+  qualificationSignals?:
+    | T
+    | {
+        budget?: T;
+        procurementPlan?: T;
+        projectStage?: T;
+        quantitySquareMeters?: T;
+        timeline?: T;
+        hasDrawings?: T;
+      };
+  qualificationRoundCount?: T;
+  qualificationAskedFields?: T;
   summary?: T;
   lastMessageAt?: T;
   updatedAt?: T;

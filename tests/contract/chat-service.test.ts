@@ -93,7 +93,7 @@ const exerciseChatContract = (createService: () => ChatService & PlatformConvers
       channel: 'website', idempotencyKey: 'start-fixture-003', locale: 'en',
     })
     const messaged = await service.sendMessage({
-      idempotencyKey: 'message-fixture-003', sessionId: session.id, text: 'I need a quotation.',
+      idempotencyKey: 'message-fixture-003', sessionId: session.id, text: 'I need facade panel specifications.',
     })
     const visitorMessage = messaged.messages.find(({ author }) => author === 'visitor')
     await expect(service.retryMessage({

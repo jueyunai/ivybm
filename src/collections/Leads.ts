@@ -144,7 +144,6 @@ export const Leads: CollectionConfig = {
       type: 'text',
       index: true,
       maxLength: 120,
-      required: true,
     },
     {
       name: 'email',
@@ -162,6 +161,12 @@ export const Leads: CollectionConfig = {
       type: 'text',
       maxLength: 160,
     },
+    { name: 'budget', type: 'text', maxLength: 240 },
+    { name: 'procurementPlan', type: 'text', maxLength: 240 },
+    { name: 'projectStage', type: 'text', maxLength: 40 },
+    { name: 'quantitySquareMeters', type: 'number', min: 0 },
+    { name: 'timeline', type: 'text', maxLength: 40 },
+    { name: 'hasDrawings', type: 'checkbox' },
     {
       name: 'message',
       type: 'textarea',

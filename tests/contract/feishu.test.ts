@@ -13,6 +13,7 @@ import {
   type FeishuMappingConfig,
   type LeadForFeishu,
 } from '@/modules/feishu/contracts'
+import { feishuLeadSyncRevision } from '@/modules/feishu/jobs'
 import { mapLead } from '@/modules/feishu/mapLead'
 import { notifyHandoff, notifyNewLead } from '@/modules/feishu/notify'
 import { syncLead } from '@/modules/feishu/syncLead'
@@ -22,7 +23,7 @@ const mapping: FeishuMappingConfig = {
   fieldMappings: [
     { localField: 'localLeadId', required: true, targetField: 'Local Lead ID' },
     { localField: 'customerName', required: true, targetField: 'Customer' },
-    { localField: 'country', required: true, targetField: 'Country' },
+    { localField: 'country', required: false, targetField: 'Country' },
     { localField: 'source', required: true, targetField: 'Source' },
     { localField: 'intentLevel', required: true, targetField: 'Intent' },
     { localField: 'productNeed', targetField: 'Product Need' },
@@ -66,6 +67,14 @@ const response = (body: unknown, status = 200) =>
   })
 
 describe('Feishu CRM contract', () => {
+  it('uses the same sync revision for omitted and explicit null country values', () => {
+    const { country: _country, ...withoutCountry } = lead
+
+    expect(feishuLeadSyncRevision(withoutCountry)).toBe(
+      feishuLeadSyncRevision({ ...withoutCountry, country: null }),
+    )
+  })
+
   it('maps normalized lead fields without coupling business code to Bitable field names', () => {
     expect(mapLead({ lead, mapping })).toEqual({
       fields: {
@@ -82,6 +91,31 @@ describe('Feishu CRM contract', () => {
       },
       localLeadIdField: 'Local Lead ID',
     })
+  })
+
+  it('includes structured qualification details in the synced inquiry', () => {
+    const qualifiedLead: LeadForFeishu = {
+      ...lead,
+      budget: 'USD 450000',
+      hasDrawings: true,
+      procurementPlan: 'Purchase within 3 months',
+      projectStage: 'tender',
+      quantitySquareMeters: 3200,
+      timeline: 'within_3_months',
+    }
+
+    expect(mapLead({ lead: qualifiedLead, mapping }).fields['Original Inquiry']).toContain(
+      'Project stage: tender',
+    )
+    expect(mapLead({ lead: qualifiedLead, mapping }).fields['Original Inquiry']).toContain(
+      'Budget: USD 450000',
+    )
+  })
+
+  it('syncs a Lead with an unconfirmed country without inventing a location', () => {
+    const countryPending = { ...lead, country: null }
+
+    expect(mapLead({ lead: countryPending, mapping }).fields).not.toHaveProperty('Country')
   })
 
   it('fails closed when a required field mapping is missing or duplicated', () => {
