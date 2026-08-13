@@ -131,18 +131,14 @@ const resolvePublicationRuntime = async (): Promise<PublicationJobRuntime> => {
     linkedInTransport,
     metaTransport,
     async readLinkedInAssetBytes(asset) {
-      if (!/^[1-9]\d*$/u.test(asset.id)) throw new Error('LinkedIn asset ID is invalid')
-      const bytes = await readLinkedInPublicationAsset({
+      if (!/^[1-9]\d*$/u.test(asset.id)) return null
+      return readLinkedInPublicationAsset({
         byteLength: asset.byteLength,
         contentType: asset.contentType,
         id: Number(asset.id),
         payload,
         sha256: asset.sha256,
       })
-      if (!bytes) {
-        throw new Error('LinkedIn media bytes no longer match the approved publication asset')
-      }
-      return bytes
     },
   }
   publicationRuntime = runtime

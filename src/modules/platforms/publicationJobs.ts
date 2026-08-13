@@ -49,7 +49,7 @@ export type PublicationJobRuntime = {
   directService: PublishingService
   linkedInTransport: LinkedInPublishingTransport
   metaTransport: MetaPublishingTransport
-  readLinkedInAssetBytes(input: LinkedInImageAssetIdentity): Promise<Uint8Array>
+  readLinkedInAssetBytes(input: LinkedInImageAssetIdentity): Promise<Uint8Array | null>
 }
 
 const record = (value: unknown, field: string): Record<string, unknown> => {
@@ -253,15 +253,13 @@ const dispatchPersistedPublication = async ({
     platformAccountId,
     publishJobId: job.id,
   }
-  const assetBytes =
-    state.checkpoint.stage === 'image_initialized'
-      ? await runtime.readLinkedInAssetBytes(state.asset)
-      : undefined
   return dispatchPublicationWorkItem({
-    ...(assetBytes ? { assetBytes } : {}),
     authority: new PayloadLinkedInImagePublishingAuthority({ payload }),
     intent,
     leaseFence: lease,
+    ...(state.checkpoint.stage === 'image_initialized'
+      ? { readAssetBytes: runtime.readLinkedInAssetBytes }
+      : {}),
     route: selectedRoute,
     transport: runtime.linkedInTransport,
   })
