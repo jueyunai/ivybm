@@ -1,6 +1,6 @@
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { getPayload, type Payload } from 'payload'
 
 import config from '@/payload.config'
@@ -8,6 +8,7 @@ import { authorizeVisitorSession, hashVisitorToken } from '@/modules/conversatio
 import { PayloadConversationLeadSink } from '@/modules/leads/conversationLeadSink'
 import { PayloadConversationRepository } from '@/modules/conversations/payloadRepository'
 import { createConversationService } from '@/modules/conversations/service'
+import type { ChatQualificationState } from '@/modules/conversations/contracts'
 
 let payload: Payload
 const userIDs: number[] = []
@@ -202,15 +203,14 @@ describe.sequential('Task 9 conversation persistence', () => {
     })
     userIDs.push(firstOperator.id, secondOperator.id)
     const token = `visitor-token-${suffix}`
-    const responder = {
-      generateReply: async () => ({
+    const generateReply = vi.fn(async () => ({
         content: 'This should not run for a high-intent enquiry.',
         estimatedCostUSD: 0,
         model: 'fake-model',
         promptVersion: 1,
         tokenUsage: { inputTokens: 1, totalTokens: 1 },
-      }),
-    }
+      }))
+    const responder = { generateReply }
     const visitorService = createConversationService({
       leadSink: new PayloadConversationLeadSink(),
       repository: new PayloadConversationRepository({
@@ -231,9 +231,11 @@ describe.sequential('Task 9 conversation persistence', () => {
     const highIntent = await visitorService.sendMessage({
       idempotencyKey: `message-${suffix}`,
       sessionId: session.id,
-      text: `I am from UAE at Facade Engineering LLC. We have a tender for 3,200 sqm aluminum facade panels within 3 months. Drawings are ready. Contact buyer-${suffix}@example.invalid or +971 50 000 0000.`,
+      text: `I am from UAE. My company is Facade Engineering LLC. We have a tender for 3,200 sqm aluminum facade panels within 3 months. Drawings are ready. Our budget is USD 450000 and the purchase plan is within 3 months. Contact buyer-${suffix}@example.invalid or +971 50 000 0000. What price, lead time, and certification can you guarantee?`,
     })
     expect(highIntent.handoffStatus).toBe('handoff_requested')
+    expect(highIntent.messages.filter(({ author }) => author === 'ai')).toHaveLength(0)
+    expect(generateReply).not.toHaveBeenCalled()
     const leads = await payload.find({
       collection: 'leads',
       limit: 2,
@@ -241,7 +243,14 @@ describe.sequential('Task 9 conversation persistence', () => {
       where: { idempotencyKey: { equals: `chat-lead:${String(session.id)}` } },
     })
     expect(leads.totalDocs).toBe(1)
-    expect(leads.docs[0].intentLevel).toBe('a')
+    expect(leads.docs[0]).toMatchObject({
+      budget: expect.stringContaining('USD 450000'),
+      hasDrawings: true,
+      intentLevel: 'a',
+      projectStage: 'tender',
+      quantitySquareMeters: 3200,
+      timeline: 'within_3_months',
+    })
     await expect(visitorService.requestHandoff({
       idempotencyKey: `illegal-handoff-${suffix}`,
       reason: 'duplicate_request',
@@ -289,6 +298,7 @@ describe.sequential('Task 9 conversation persistence', () => {
       where: { conversation: { equals: persistedActive.id } },
     })
     expect(activeHandoffs.docs).toHaveLength(1)
+    expect(activeHandoffs.docs[0]).toMatchObject({ reason: 'high_risk_topic', source: 'ai_policy' })
     const handoffAssignee = activeHandoffs.docs[0].assignedTo
     expect(typeof handoffAssignee === 'number' ? handoffAssignee : handoffAssignee?.id).toBe(assignedID)
     expect(activeHandoffs.docs[0]).toMatchObject({ status: 'active' })
@@ -323,6 +333,229 @@ describe.sequential('Task 9 conversation persistence', () => {
       where: { idempotencyKey: { contains: suffix } },
     })
     if (leads.docs[0]) await payload.delete({ collection: 'leads', id: leads.docs[0].id, overrideAccess: true })
+  })
+
+  it('creates an A-intent Lead with a work email when country is still unconfirmed', async () => {
+    const suffix = randomUUID()
+    const repository = new PayloadConversationRepository({
+      payload,
+      sessionTokenHash: hashVisitorToken(`country-pending-token-${suffix}`),
+    })
+    const service = createConversationService({
+      leadSink: {
+        evaluate: async () => ({
+          handoffReason: 'high_intent',
+          score: {
+            handoffRecommended: true,
+            level: 'a' as const,
+            missingFields: ['country' as const],
+            reasons: ['high_intent'],
+            score: 70,
+          },
+          signals: {
+            company: 'Country Pending Facades',
+            contact: { email: `country-pending-${suffix}@example.invalid` },
+            productInterest: 'aluminum panels',
+          },
+        }),
+      },
+      repository,
+      responder: {
+        generateReply: async () => {
+          throw new Error('A-intent handoff must not call the responder')
+        },
+      },
+    })
+    const session = await service.startSession({
+      channel: 'website',
+      idempotencyKey: `country-pending-start-${suffix}`,
+      locale: 'en',
+    })
+
+    await expect(
+      service.sendMessage({
+        idempotencyKey: `country-pending-message-${suffix}`,
+        sessionId: session.id,
+        text: 'Please ask sales to contact me about aluminum facade panels.',
+      }),
+    ).resolves.toMatchObject({ handoffStatus: 'handoff_requested' })
+
+    const leads = await payload.find({
+      collection: 'leads',
+      limit: 1,
+      overrideAccess: true,
+      where: { idempotencyKey: { equals: `chat-lead:${String(session.id)}` } },
+    })
+    expect(leads.docs[0]).toMatchObject({
+      company: 'Country Pending Facades',
+      country: null,
+      intentLevel: 'a',
+    })
+
+    const conversation = (
+      await payload.find({
+        collection: 'conversations',
+        limit: 1,
+        overrideAccess: true,
+        where: { publicId: { equals: String(session.id) } },
+      })
+    ).docs[0]
+    if (conversation) {
+      await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
+    }
+    if (leads.docs[0]) {
+      await payload.delete({ collection: 'leads', id: leads.docs[0].id, overrideAccess: true })
+    }
+    await payload.delete({
+      collection: 'visitor-sessions',
+      overrideAccess: true,
+      where: { idempotencyKey: { equals: `country-pending-start-${suffix}` } },
+    })
+    await payload.delete({
+      collection: 'conversation-commands',
+      overrideAccess: true,
+      where: { idempotencyKey: { contains: suffix } },
+    })
+  })
+
+  it('persists a first qualification round before the real lead sink creates a bounded company lead', async () => {
+    const suffix = randomUUID()
+    const repository = new PayloadConversationRepository({
+      payload,
+      sessionTokenHash: hashVisitorToken(`real-round-token-${suffix}`),
+    })
+    const responder = {
+      generateReply: async ({ qualificationState }: { qualificationState?: ChatQualificationState }) => ({
+        content: 'Which country is the project in, and what is your company name?',
+        estimatedCostUSD: 0,
+        model: 'fixture',
+        promptVersion: 1,
+        qualificationState: {
+          askedFields: [...(qualificationState?.askedFields ?? []), 'country', 'company'],
+          roundCount: (qualificationState?.roundCount ?? 0) + 1,
+        } satisfies ChatQualificationState,
+        tokenUsage: { inputTokens: 1, totalTokens: 1 },
+      }),
+    }
+    const service = createConversationService({
+      leadSink: new PayloadConversationLeadSink(),
+      repository,
+      responder,
+    })
+    const session = await service.startSession({
+      channel: 'website',
+      idempotencyKey: `real-round-start-${suffix}`,
+      locale: 'en',
+    })
+    const firstInput = {
+      idempotencyKey: `real-round-message-1-${suffix}`,
+      sessionId: session.id,
+      text: 'We need aluminum facade panels for a project.',
+    }
+    const first = await service.sendMessage(firstInput)
+    expect(first.qualificationState).toEqual({
+      askedFields: ['country', 'company'],
+      roundCount: 1,
+    })
+    expect((await service.getSession(session.id)).qualificationState).toEqual(
+      first.qualificationState,
+    )
+    expect((await service.sendMessage(firstInput)).revision).toBe(first.revision)
+
+    // The previous AI turn asked for country and company, so a grouped reply need not repeat
+    // a framing phrase such as "my company is".
+    const handedOff = await service.sendMessage({
+      idempotencyKey: `real-round-message-2-${suffix}`,
+      sessionId: session.id,
+      text: `Acme Facades from UAE. It is a tender for 1,200 sqm within 3 months. Drawings are ready, with a confirmed procurement plan. Contact real-round-${suffix}@example.invalid.`,
+    })
+    expect(handedOff.handoffStatus).toBe('handoff_requested')
+    expect(handedOff.messages.filter(({ author }) => author === 'ai')).toHaveLength(1)
+
+    const leads = await payload.find({
+      collection: 'leads',
+      limit: 1,
+      overrideAccess: true,
+      where: { idempotencyKey: { equals: `chat-lead:${String(session.id)}` } },
+    })
+    expect(leads.docs[0]).toMatchObject({
+      company: 'Acme Facades',
+      country: 'UAE',
+      intentLevel: 'a',
+      projectStage: 'tender',
+      quantitySquareMeters: 1200,
+    })
+
+    const conversation = (await payload.find({
+      collection: 'conversations', limit: 1, overrideAccess: true,
+      where: { publicId: { equals: String(session.id) } },
+    })).docs[0]
+    if (conversation) await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
+    if (leads.docs[0]) await payload.delete({ collection: 'leads', id: leads.docs[0].id, overrideAccess: true })
+    await payload.delete({ collection: 'visitor-sessions', overrideAccess: true, where: { idempotencyKey: { equals: `real-round-start-${suffix}` } } })
+    await payload.delete({ collection: 'conversation-commands', overrideAccess: true, where: { idempotencyKey: { contains: suffix } } })
+  })
+
+  it('persists and rehydrates Arabic qualification rounds with idempotent replay before handoff', async () => {
+    const suffix = randomUUID()
+    const responder = {
+      generateReply: async ({ qualificationState }: { qualificationState?: ChatQualificationState }) => {
+        const state = qualificationState ?? { askedFields: [], roundCount: 0 }
+        const next: ChatQualificationState = state.roundCount === 0
+          ? { askedFields: ['quantity', 'timeline'], roundCount: 1 }
+          : { askedFields: [...state.askedFields, 'contact'], roundCount: 2 }
+        return {
+          content: state.roundCount === 0 ? 'ما المساحة والميزانية والموعد؟' : 'ما بريد العمل للمتابعة؟',
+          estimatedCostUSD: 0,
+          model: 'fixture',
+          promptVersion: 1,
+          qualificationState: next,
+          tokenUsage: { inputTokens: 1, totalTokens: 1 },
+        }
+      },
+    }
+    const service = createConversationService({
+      leadSink: new PayloadConversationLeadSink(),
+      repository: new PayloadConversationRepository({
+        payload,
+        sessionTokenHash: hashVisitorToken(`round-limit-token-${suffix}`),
+      }),
+      responder,
+    })
+    const session = await service.startSession({ channel: 'website', idempotencyKey: `round-limit-start-${suffix}`, locale: 'ar' })
+    const firstInput = { idempotencyKey: `round-limit-message-1-${suffix}`, sessionId: session.id, text: 'نحن شركة النور في السعودية والمشروع مناقصة.' }
+    const first = await service.sendMessage(firstInput)
+    expect(first.qualificationState).toEqual({ askedFields: ['quantity', 'timeline'], roundCount: 1 })
+    const hydrated = await service.getSession(session.id)
+    expect(hydrated.qualificationState).toEqual(first.qualificationState)
+    await expect(new PayloadConversationLeadSink().evaluate(hydrated)).resolves.toMatchObject({
+      signals: { company: 'النور', country: 'Saudi Arabia', projectStage: 'tender' },
+    })
+    const firstConversation = (await payload.find({ collection: 'conversations', limit: 1, overrideAccess: true, where: { publicId: { equals: String(session.id) } } })).docs[0]
+    expect(firstConversation).toMatchObject({
+      qualificationSignals: { projectStage: 'tender' },
+      qualificationAskedFields: ['quantity', 'timeline'],
+      qualificationRoundCount: 1,
+    })
+    expect((await service.sendMessage(firstInput)).revision).toBe(first.revision)
+
+    const secondInput = { idempotencyKey: `round-limit-message-2-${suffix}`, sessionId: session.id, text: `نحتاج 1200 متر مربع ولدينا رسومات وميزانية 300000 ريال والشراء خلال 3 أشهر. البريد round-limit-${suffix}@example.invalid.` }
+    const handedOff = await service.sendMessage(secondInput)
+    expect(handedOff.handoffStatus).toBe('handoff_requested')
+    expect(handedOff.qualificationState).toEqual(first.qualificationState)
+    expect(handedOff.messages.filter(({ author }) => author === 'ai')).toHaveLength(1)
+    expect((await service.sendMessage(secondInput)).revision).toBe(handedOff.revision)
+
+    const leads = await payload.find({ collection: 'leads', limit: 1, overrideAccess: true, where: { idempotencyKey: { equals: `chat-lead:${String(session.id)}` } } })
+    expect(leads.docs[0]).toMatchObject({ intentLevel: 'a' })
+    expect(leads.docs[0]).toMatchObject({ company: 'النور', country: 'Saudi Arabia', projectStage: 'tender' })
+    const messages = await payload.find({ collection: 'messages', limit: 20, overrideAccess: true, where: { conversation: { equals: (await payload.find({ collection: 'conversations', limit: 1, overrideAccess: true, where: { publicId: { equals: String(session.id) } } })).docs[0]?.id } } })
+    expect(messages.totalDocs).toBe(3)
+    const conversation = (await payload.find({ collection: 'conversations', limit: 1, overrideAccess: true, where: { publicId: { equals: String(session.id) } } })).docs[0]
+    if (conversation) await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
+    if (leads.docs[0]) await payload.delete({ collection: 'leads', id: leads.docs[0].id, overrideAccess: true })
+    await payload.delete({ collection: 'visitor-sessions', overrideAccess: true, where: { idempotencyKey: { equals: `round-limit-start-${suffix}` } } })
+    await payload.delete({ collection: 'conversation-commands', overrideAccess: true, where: { idempotencyKey: { contains: suffix } } })
   })
 
   it('uses the persisted revision to serialize concurrent messages and lets the loser retry safely', async () => {

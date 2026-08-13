@@ -57,20 +57,26 @@ export type FeishuAccessTokenProvider = (
 
 export type LeadForFeishu = {
   assignedTo?: number | string | { email?: string | null; id: number | string } | null
+  budget?: string | null
   company?: string | null
-  country: string
+  country?: string | null
   email: string
   id: number | string
+  hasDrawings?: boolean | null
   intentLevel: 'a' | 'b' | 'c' | 'unscored'
   interest?: string | null
   message: string
   name: string
   nextFollowUpAt?: string | null
   phone?: string | null
+  procurementPlan?: string | null
+  projectStage?: string | null
+  quantitySquareMeters?: number | null
   requestId: string
   source: number | string | { id: number | string; key?: string | null; label?: string | null }
   status: 'contacted' | 'disqualified' | 'new' | 'qualified'
   sourceURL?: string | null
+  timeline?: string | null
 }
 
 export type HandoffForFeishu = {

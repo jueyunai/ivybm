@@ -56,6 +56,11 @@ export type ChatMessage = {
   tokenUsage?: { inputTokens: number; outputTokens?: number; totalTokens: number }
 }
 
+export type ChatQualificationState = {
+  askedFields: import('@/modules/leads/score').LeadQualificationField[]
+  roundCount: number
+}
+
 export type ChatSession = {
   allowedActions: ChatAllowedAction[]
   assignedTo?: { id: number | string; name?: string }
@@ -64,6 +69,7 @@ export type ChatSession = {
   id: number | string
   locale: ChatLocale
   messages: ChatMessage[]
+  qualificationState?: ChatQualificationState
   /** Optimistic-concurrency token maintained by the authoritative service. */
   revision: number
   requestId: string

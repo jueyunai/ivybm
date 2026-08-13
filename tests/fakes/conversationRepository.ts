@@ -28,6 +28,12 @@ export class InMemoryConversationRepository implements ConversationRepository {
     return this.sessions.size
   }
 
+  appendFailedVisitorMessage(sessionId: number | string, id: string, content: string): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) throw new Error('Session not found')
+    session.messages.push({ author: 'visitor', content, createdAt: new Date(0).toISOString(), id, status: 'failed' })
+  }
+
   private commandKey(scope: string, idempotencyKey: string): string {
     return `${scope}:${idempotencyKey}`
   }

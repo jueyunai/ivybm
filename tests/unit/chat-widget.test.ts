@@ -8,6 +8,8 @@ import { ChatServiceError, type ChatService, type ChatSession } from '@/modules/
 
 import { FakeChatService } from '../fakes/chatService'
 
+type InjectedChatService = NonNullable<React.ComponentProps<typeof ChatWidget>['service']>
+
 const browserSession: ChatSession = {
   allowedActions: ['send_message', 'request_handoff'],
   channel: 'website',
@@ -19,7 +21,7 @@ const browserSession: ChatSession = {
   revision: 1,
 }
 
-const renderWidget = (service: ChatService, locale: 'ar' | 'en' = 'en') =>
+const renderWidget = (service: InjectedChatService, locale: 'ar' | 'en' = 'en') =>
   render(React.createElement(ChatWidget, { locale, service }))
 
 const openWidget = async () => {
@@ -27,6 +29,63 @@ const openWidget = async () => {
   const dialog = await screen.findByRole('dialog')
   await waitFor(() => expect(within(dialog).getByRole('textbox')).toHaveProperty('disabled', false))
   return dialog
+}
+
+const createQualificationService = (
+  locale: ChatSession['locale'],
+  qualificationQuestions: [string, string],
+): InjectedChatService => {
+  let session: ChatSession = {
+    ...browserSession,
+    id: `qualification-${locale}`,
+    locale,
+    qualificationState: { askedFields: [], roundCount: 0 },
+    requestId: `qualification-request-${locale}`,
+  }
+  let visitorRound = 0
+  const unexpectedCommand = async (): Promise<never> => {
+    throw new Error('Unexpected ChatWidget command')
+  }
+
+  return {
+    getSession: async () => structuredClone(session),
+    requestHandoff: unexpectedCommand,
+    retryMessage: unexpectedCommand,
+    sendMessage: async ({ text }) => {
+      const next = structuredClone(session)
+      visitorRound += 1
+      next.messages.push({
+        author: 'visitor',
+        content: text,
+        createdAt: '2026-08-12T00:00:00.000Z',
+        id: `${locale}-visitor-${visitorRound}`,
+        status: 'sent',
+      })
+      if (visitorRound <= qualificationQuestions.length) {
+        next.messages.push({
+          author: 'ai',
+          content: qualificationQuestions[visitorRound - 1],
+          createdAt: '2026-08-12T00:00:01.000Z',
+          id: `${locale}-qualification-${visitorRound}`,
+          status: 'sent',
+        })
+        next.qualificationState =
+          visitorRound === 1
+            ? { askedFields: ['quantity', 'timeline'], roundCount: 1 }
+            : { askedFields: ['quantity', 'timeline', 'contact'], roundCount: 2 }
+      } else {
+        next.allowedActions = []
+        next.handoffStatus = 'handoff_requested'
+      }
+      next.revision += 1
+      session = next
+      return structuredClone(session)
+    },
+    startSession: async (input) => {
+      if (input.locale !== locale) throw new Error('Unexpected qualification locale')
+      return structuredClone(session)
+    },
+  }
 }
 
 afterEach(() => {
@@ -66,6 +125,67 @@ describe('ChatWidget', () => {
       'disabled', true,
     )
   })
+
+  it.each([
+    {
+      contactQuestion:
+        'What work email address should our team use to follow up? You may also share a phone number.',
+      firstAnswer: 'We are at tender stage in UAE. I work at Acme Facades.',
+      firstQuestion:
+        'What approximate area or quantity do you need? When do you expect to purchase or start the project?',
+      handoffCopy: 'Your request has been shared with our project team',
+      inputLabel: 'Ask about panels, drawings, finishes, or your project…',
+      locale: 'en' as const,
+      secondAnswer:
+        'We need 1,200 sqm, have drawings, a USD 450000 budget, and plan to buy within 3 months.',
+      sendLabel: 'Send',
+      thirdAnswer: 'Contact buyer@example.invalid.',
+    },
+    {
+      contactQuestion:
+        'ما عنوان البريد الإلكتروني للعمل الذي يستخدمه فريقنا للمتابعة؟ ويمكنكم أيضاً مشاركة رقم هاتف.',
+      firstAnswer: 'اسم الشركة: شركة النور. المشروع في السعودية ومرحلة مناقصة.',
+      firstQuestion:
+        'ما المساحة أو الكمية التقريبية المطلوبة؟ متى تتوقعون الشراء أو بدء المشروع؟',
+      handoffCopy: 'تمت مشاركة طلبك مع فريق المشروع',
+      inputLabel: 'اسأل عن الألواح أو مشروعك…',
+      locale: 'ar' as const,
+      secondAnswer: 'نحتاج 1200 متر مربع ولدينا رسومات وميزانية 300000 ريال والشراء خلال 3 أشهر.',
+      sendLabel: 'إرسال',
+      thirdAnswer: 'البريد buyer@example.invalid.',
+    },
+  ])(
+    'renders $locale qualification follow-ups and automatic handoff',
+    async ({
+      contactQuestion,
+      firstAnswer,
+      firstQuestion,
+      handoffCopy,
+      inputLabel,
+      locale,
+      secondAnswer,
+      sendLabel,
+      thirdAnswer,
+    }) => {
+      renderWidget(createQualificationService(locale, [firstQuestion, contactQuestion]), locale)
+      await openWidget()
+
+      const composer = screen.getByLabelText(inputLabel)
+      fireEvent.change(composer, { target: { value: firstAnswer } })
+      fireEvent.click(screen.getByRole('button', { name: sendLabel }))
+      expect(await screen.findByText(firstQuestion)).not.toBeNull()
+
+      fireEvent.change(composer, { target: { value: secondAnswer } })
+      fireEvent.click(screen.getByRole('button', { name: sendLabel }))
+      expect(await screen.findByText(contactQuestion)).not.toBeNull()
+
+      fireEvent.change(composer, { target: { value: thirdAnswer } })
+      fireEvent.click(screen.getByRole('button', { name: sendLabel }))
+
+      expect((await screen.findByTestId('chat-handoff-pending')).textContent).toContain(handoffCopy)
+      expect(composer).toHaveProperty('disabled', true)
+    },
+  )
 
   it('keeps dialog focus contained, exposes its label, and restores focus on Escape', async () => {
     renderWidget(new FakeChatService())
