@@ -93,8 +93,19 @@ describe('conversation lead signal extraction', () => {
     'See example.com#oman for the drawings.',
     'See example.com;market=canada for the drawings.',
     'See example.com:443/usa/spec for the drawings.',
+    'راسل عمان@example.com للحصول على التفاصيل.',
+    'راجع عمان.example للحصول على التفاصيل.',
   ])('does not extract a country from an email address or URL: %s', (content) => {
-    expect(extractLeadSignals(sessionWith('en', content)).country).toBeUndefined()
+    expect(
+      extractLeadSignals(sessionWith(/[\p{Script=Arabic}]/u.test(content) ? 'ar' : 'en', content))
+        .country,
+    ).toBeUndefined()
+  })
+
+  it('keeps a natural-language Arabic country mention next to a Unicode email', () => {
+    expect(
+      extractLeadSignals(sessionWith('ar', 'راسل عمان@example.com. نحن من عمان.')).country,
+    ).toBe('Oman')
   })
 
   it.each([

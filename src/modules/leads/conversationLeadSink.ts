@@ -49,9 +49,9 @@ const arabicCountryPattern = new RegExp(
   'u',
 )
 
-const emailAddressPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu
+const emailAddressPattern = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.[\p{L}]{2,}/gu
 const webUrlPattern =
-  /\b(?:(?:https?:\/\/|www\.)[^\s<>"']+|(?:[A-Z0-9-]+\.)+[A-Z]{2,}(?::\d{1,5})?(?:[/?#;][^\s<>"']*)?)/giu
+  /(?:(?:https?:\/\/|www\.)[^\s<>"']+|(?<![\p{L}\p{N}_@])(?:[\p{L}\p{N}-]+\.)+[\p{L}]{2,}(?::\d{1,5})?(?:[/?#;][^\s<>"']*)?(?![\p{L}\p{N}_]))/giu
 
 // A country contributes directly to lead score, so only prose is evidence;
 // address/domain/path tokens must not silently manufacture a target market.
