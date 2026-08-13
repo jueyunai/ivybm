@@ -35,6 +35,12 @@ const isInstagramAccount = (
   account.accountKind === 'instagram-professional'
 
 export async function GET(request: NextRequest): Promise<Response> {
+  if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
+    return errorResponse(503, 'portal_disabled')
+  }
+  if (process.env.ADMIN_PORTAL_PLATFORMS_ENABLED !== 'true') {
+    return errorResponse(503, 'platform_module_disabled')
+  }
   const accountId = parseAccountId(request)
   if (!accountId) return errorResponse(400, 'invalid_platform_account_id')
 

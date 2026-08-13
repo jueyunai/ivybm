@@ -158,6 +158,21 @@ describe('Instagram OAuth routes', () => {
     }
   })
 
+  it.each([
+    ['ADMIN_PORTAL_ENABLED', 'portal_disabled'],
+    ['ADMIN_PORTAL_PLATFORMS_ENABLED', 'platform_module_disabled'],
+  ] as const)('stops OAuth start before authentication when %s is disabled', async (key, code) => {
+    process.env[key] = 'false'
+
+    const response = await instagramOAuthStart(startRequest())
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({ error: { code } })
+    expect(mocks.getPayload).not.toHaveBeenCalled()
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect(response.headers.get('location')).toBeNull()
+  })
+
   it('requires an administrator before loading a platform account', async () => {
     const payload = createPayload({ authenticatedUser: null })
     mocks.getPayload.mockResolvedValue(payload)

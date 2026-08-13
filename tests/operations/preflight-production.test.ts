@@ -353,15 +353,29 @@ PLATFORM_CREDENTIAL_ENCRYPTION_KEY=ddddddddddddddddddddddddddddddddddddddddddddd
     const wrongCallback = runPreflight(`${productionEnvironment}LINKEDIN_APP_ID=linkedin-app-id
 LINKEDIN_APP_SECRET=operation-linkedin-secret
 LINKEDIN_OAUTH_REDIRECT_URI=https://evil.example/api/platforms/linkedin/oauth/callback
+LINKEDIN_API_VERSION=202608
 PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 `)
     const missingEncryption = runPreflight(`${productionEnvironment}LINKEDIN_APP_ID=linkedin-app-id
 LINKEDIN_APP_SECRET=operation-linkedin-secret
 LINKEDIN_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/linkedin/oauth/callback
+LINKEDIN_API_VERSION=202608
+`)
+    const missingVersion = runPreflight(`${productionEnvironment}LINKEDIN_APP_ID=linkedin-app-id
+LINKEDIN_APP_SECRET=operation-linkedin-secret
+LINKEDIN_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/linkedin/oauth/callback
+PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+`)
+    const invalidVersion = runPreflight(`${productionEnvironment}LINKEDIN_APP_ID=linkedin-app-id
+LINKEDIN_APP_SECRET=operation-linkedin-secret
+LINKEDIN_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/linkedin/oauth/callback
+LINKEDIN_API_VERSION=202613
+PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 `)
     const complete = runPreflight(`${productionEnvironment}LINKEDIN_APP_ID=linkedin-app-id
 LINKEDIN_APP_SECRET=operation-linkedin-secret
 LINKEDIN_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/linkedin/oauth/callback
+LINKEDIN_API_VERSION=202608
 PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 `)
 
@@ -371,6 +385,10 @@ PLATFORM_CREDENTIAL_ENCRYPTION_KEY=ddddddddddddddddddddddddddddddddddddddddddddd
     expect(wrongCallback.stderr).toContain('LINKEDIN_OAUTH_REDIRECT_URI')
     expect(missingEncryption.status).not.toBe(0)
     expect(missingEncryption.stderr).toContain('PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
+    expect(missingVersion.status).not.toBe(0)
+    expect(missingVersion.stderr).toContain('LINKEDIN_API_VERSION')
+    expect(invalidVersion.status).not.toBe(0)
+    expect(invalidVersion.stderr).toContain('LINKEDIN_API_VERSION')
     expect(complete.status).toBe(0)
     expect(complete.stdout).not.toContain('operation-linkedin-secret')
   })

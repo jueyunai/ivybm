@@ -375,6 +375,7 @@ if [[ -n "$linkedin_app_id" || -n "$linkedin_app_secret" || -n "$linkedin_oauth_
     fi
   done
   require_pattern LINKEDIN_APP_ID "$linkedin_app_id" '^[A-Za-z0-9_-]{1,128}$'
+  require_pattern LINKEDIN_API_VERSION "$linkedin_api_version" '^20[0-9]{2}(0[1-9]|1[0-2])$'
   if [[ "$linkedin_oauth_redirect_uri" != 'https://ivybm.com/api/platforms/linkedin/oauth/callback' ]]; then
     echo 'LINKEDIN_OAUTH_REDIRECT_URI must be https://ivybm.com/api/platforms/linkedin/oauth/callback in production' >&2
     exit 1
