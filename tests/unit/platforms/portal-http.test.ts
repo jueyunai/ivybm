@@ -67,6 +67,60 @@ describe('platform Portal JSON boundary', () => {
     ).rejects.toMatchObject({ code: 'forbidden', status: 403 })
   })
 
+  it('allows only an exact loopback HTTP origin for production-mode browser tests in CI', async () => {
+    const environment = {
+      CI: 'true',
+      IVYBM_E2E_ALLOW_HTTP_LOOPBACK: 'true',
+      NEXT_PUBLIC_SERVER_URL: 'http://localhost:3000',
+      NODE_ENV: 'production' as const,
+    }
+
+    await expect(
+      readPlatformPortalJSON(
+        request({
+          origin: 'http://localhost:3000',
+          url: 'http://localhost:3000/api/platforms/accounts',
+        }),
+        4_096,
+        environment,
+      ),
+    ).resolves.toEqual({})
+    await expect(
+      readPlatformPortalJSON(
+        request({
+          origin: 'http://127.0.0.1:3000',
+          url: 'http://localhost:3000/api/platforms/accounts',
+        }),
+        4_096,
+        environment,
+      ),
+    ).rejects.toMatchObject({ code: 'forbidden', status: 403 })
+  })
+
+  it('rejects HTTP public origins outside the CI loopback test boundary', async () => {
+    await expect(
+      readPlatformPortalJSON(request({ origin: 'http://localhost:3000' }), 4_096, {
+        NEXT_PUBLIC_SERVER_URL: 'http://localhost:3000',
+        NODE_ENV: 'production',
+      }),
+    ).rejects.toMatchObject({ code: 'forbidden', status: 403 })
+    await expect(
+      readPlatformPortalJSON(request({ origin: 'http://ivybm.test' }), 4_096, {
+        CI: 'true',
+        IVYBM_E2E_ALLOW_HTTP_LOOPBACK: 'true',
+        NEXT_PUBLIC_SERVER_URL: 'http://ivybm.test',
+        NODE_ENV: 'production',
+      }),
+    ).rejects.toMatchObject({ code: 'forbidden', status: 403 })
+    await expect(
+      readPlatformPortalJSON(request({ origin: 'http://localhost:3000' }), 4_096, {
+        CI: 'true',
+        NEXT_PUBLIC_SERVER_URL: 'http://localhost:3000',
+        NODE_ENV: 'production',
+      }),
+    ).rejects.toMatchObject({ code: 'forbidden', status: 403 })
+  })
+
   it('fails closed when the production public origin is unavailable', async () => {
     await expect(
       readPlatformPortalJSON(request(), 4_096, { NODE_ENV: 'production' }),

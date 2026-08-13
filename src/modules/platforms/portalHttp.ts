@@ -10,8 +10,17 @@ export class PlatformPortalRequestError extends Error {
 }
 
 type PlatformPortalEnvironment = Partial<
-  Pick<NodeJS.ProcessEnv, 'NEXT_PUBLIC_SERVER_URL' | 'NODE_ENV'>
+  Pick<
+    NodeJS.ProcessEnv,
+    'CI' | 'IVYBM_E2E_ALLOW_HTTP_LOOPBACK' | 'NEXT_PUBLIC_SERVER_URL' | 'NODE_ENV'
+  >
 >
+
+const isCILoopbackOrigin = (url: URL, environment: PlatformPortalEnvironment): boolean =>
+  environment.CI === 'true' &&
+  environment.IVYBM_E2E_ALLOW_HTTP_LOOPBACK === 'true' &&
+  url.protocol === 'http:' &&
+  (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]')
 
 const expectedPlatformPortalOrigin = (
   request: Request,
@@ -24,7 +33,7 @@ const expectedPlatformPortalOrigin = (
     try {
       const url = new URL(configured)
       if (
-        url.protocol !== 'https:' ||
+        (url.protocol !== 'https:' && !isCILoopbackOrigin(url, environment)) ||
         url.username ||
         url.password ||
         url.pathname !== '/' ||
