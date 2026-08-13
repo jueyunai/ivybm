@@ -306,7 +306,8 @@ const request = async (
     headers: {
       'content-type': 'application/json',
       'Idempotency-Key':
-        idempotencyKey ?? (typeof body.idempotencyKey === 'string'
+        idempotencyKey ??
+        (typeof body.idempotencyKey === 'string'
           ? body.idempotencyKey
           : `portal-content-studio:${crypto.randomUUID()}`),
     },
@@ -854,10 +855,20 @@ function GenerateDraftEditor({
       </header>
       {error ? <p role="alert">{error}</p> : null}
       <div aria-label={copy.generationMode} className="portal-content-studio__generation-modes">
-        <Button aria-pressed={mode === 'copy'} onClick={() => setMode('copy')} size="compact" variant={mode === 'copy' ? 'primary' : 'ghost'}>
+        <Button
+          aria-pressed={mode === 'copy'}
+          onClick={() => setMode('copy')}
+          size="compact"
+          variant={mode === 'copy' ? 'primary' : 'ghost'}
+        >
           {copy.copyGeneration}
         </Button>
-        <Button aria-pressed={mode === 'image'} onClick={() => setMode('image')} size="compact" variant={mode === 'image' ? 'primary' : 'ghost'}>
+        <Button
+          aria-pressed={mode === 'image'}
+          onClick={() => setMode('image')}
+          size="compact"
+          variant={mode === 'image' ? 'primary' : 'ghost'}
+        >
           <IconPhoto aria-hidden="true" size={15} />
           {copy.imageGeneration}
         </Button>
@@ -872,77 +883,77 @@ function GenerateDraftEditor({
         />
       ) : (
         <>
-      <p className="portal-content-studio__generation-note">{copy.generationDescription}</p>
-      <div className="portal-content-studio__form-grid">
-        <Field label={copy.brief} wide>
-          <textarea
-            maxLength={2000}
-            onChange={(event) => update('brief', event.target.value)}
-            rows={5}
-            value={form.brief}
-          />
-        </Field>
-        <Field label={copy.platform}>
-          <select
-            onChange={(event) => update('platform', event.target.value as typeof form.platform)}
-            value={form.platform}
-          >
-            {(['facebook', 'instagram', 'linkedin'] as const).map((platform) => (
-              <option key={platform} value={platform}>
-                {copy.platformLabels[platform]}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={copy.locale}>
-          <select
-            onChange={(event) =>
-              update('contentLocale', event.target.value as typeof form.contentLocale)
-            }
-            value={form.contentLocale}
-          >
-            <option value="en">EN</option>
-            <option value="ar">AR</option>
-          </select>
-        </Field>
-        <Field label={copy.type}>
-          <select
-            onChange={(event) =>
-              update('contentType', event.target.value as typeof form.contentType)
-            }
-            value={form.contentType}
-          >
-            {(['post', 'carousel', 'long-form'] as const).map((type) => (
-              <option key={type} value={type}>
-                {copy.typeLabels[type]}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={copy.knowledge} wide>
-          <MultiOptions
-            options={options.knowledgeSources}
-            selected={form.knowledgeSources}
-            toggle={(value) => toggle('knowledgeSources', value)}
-          />
-        </Field>
-        <Field label={copy.assets} wide>
-          <MultiOptions
-            options={options.assets}
-            selected={form.assets}
-            toggle={(value) => toggle('assets', value)}
-          />
-        </Field>
-      </div>
-      <footer>
-        <Button
-          disabled={busy || !form.brief.trim() || !form.knowledgeSources.length}
-          onClick={() => void generate()}
-        >
-          <IconSparkles aria-hidden="true" size={16} />
-          {copy.generate}
-        </Button>
-      </footer>
+          <p className="portal-content-studio__generation-note">{copy.generationDescription}</p>
+          <div className="portal-content-studio__form-grid">
+            <Field label={copy.brief} wide>
+              <textarea
+                maxLength={2000}
+                onChange={(event) => update('brief', event.target.value)}
+                rows={5}
+                value={form.brief}
+              />
+            </Field>
+            <Field label={copy.platform}>
+              <select
+                onChange={(event) => update('platform', event.target.value as typeof form.platform)}
+                value={form.platform}
+              >
+                {(['facebook', 'instagram', 'linkedin'] as const).map((platform) => (
+                  <option key={platform} value={platform}>
+                    {copy.platformLabels[platform]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={copy.locale}>
+              <select
+                onChange={(event) =>
+                  update('contentLocale', event.target.value as typeof form.contentLocale)
+                }
+                value={form.contentLocale}
+              >
+                <option value="en">EN</option>
+                <option value="ar">AR</option>
+              </select>
+            </Field>
+            <Field label={copy.type}>
+              <select
+                onChange={(event) =>
+                  update('contentType', event.target.value as typeof form.contentType)
+                }
+                value={form.contentType}
+              >
+                {(['post', 'carousel', 'long-form'] as const).map((type) => (
+                  <option key={type} value={type}>
+                    {copy.typeLabels[type]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={copy.knowledge} wide>
+              <MultiOptions
+                options={options.knowledgeSources}
+                selected={form.knowledgeSources}
+                toggle={(value) => toggle('knowledgeSources', value)}
+              />
+            </Field>
+            <Field label={copy.assets} wide>
+              <MultiOptions
+                options={options.assets}
+                selected={form.assets}
+                toggle={(value) => toggle('assets', value)}
+              />
+            </Field>
+          </div>
+          <footer>
+            <Button
+              disabled={busy || !form.brief.trim() || !form.knowledgeSources.length}
+              onClick={() => void generate()}
+            >
+              <IconSparkles aria-hidden="true" size={16} />
+              {copy.generate}
+            </Button>
+          </footer>
         </>
       )}
     </div>
@@ -975,9 +986,13 @@ function ImageGenerationEditor({
   const [prompt, setPrompt] = useState('')
   const [size, setSize] = useState<'1024x1024' | '1024x1536' | '1536x1024'>('1024x1024')
   const [referenceMediaId, setReferenceMediaId] = useState<number | null>(null)
-  const [uploadedReference, setUploadedReference] = useState<ContentStudioSummary['options']['assets'][number] | null>(null)
+  const [uploadedReference, setUploadedReference] = useState<
+    ContentStudioSummary['options']['assets'][number] | null
+  >(null)
   const [referenceFile, setReferenceFile] = useState<File | null>(null)
-  const [targetDraftId, setTargetDraftId] = useState<number | null>(selectedDraftId ?? drafts[0]?.id ?? null)
+  const [targetDraftId, setTargetDraftId] = useState<number | null>(
+    selectedDraftId ?? drafts[0]?.id ?? null,
+  )
   const [generated, setGenerated] = useState<GeneratedImage | null>(null)
   const [busy, setBusy] = useState<'adopt' | 'generate' | 'upload' | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -1000,7 +1015,10 @@ function ImageGenerationEditor({
     })
     const key = uploadCommand.key(fingerprint)
     try {
-      if (!['image/jpeg', 'image/png', 'image/webp'].includes(referenceFile.type) || referenceFile.size > 8 * 1024 * 1024) {
+      if (
+        !['image/jpeg', 'image/png', 'image/webp'].includes(referenceFile.type) ||
+        referenceFile.size > 8 * 1024 * 1024
+      ) {
         throw new Error(copy.referenceInvalid)
       }
       const form = new FormData()
@@ -1064,7 +1082,11 @@ function ImageGenerationEditor({
         throw new Error(copy.imagePreviewUnavailable)
       }
       generateCommand.receivedResponse(key)
-      setGenerated({ id: body.media.id, previewUrl: body.media.previewUrl, revisedPrompt: body.revisedPrompt ?? null })
+      setGenerated({
+        id: body.media.id,
+        previewUrl: body.media.previewUrl,
+        revisedPrompt: body.revisedPrompt ?? null,
+      })
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
@@ -1100,26 +1122,61 @@ function ImageGenerationEditor({
       <p className="portal-content-studio__generation-note">{copy.imageGenerationDescription}</p>
       <div className="portal-content-studio__form-grid">
         <Field label={copy.imagePrompt} wide>
-          <textarea maxLength={2000} onChange={(event) => { setPrompt(event.target.value); setGenerated(null) }} rows={5} value={prompt} />
+          <textarea
+            maxLength={2000}
+            onChange={(event) => {
+              setPrompt(event.target.value)
+              setGenerated(null)
+            }}
+            rows={5}
+            value={prompt}
+          />
         </Field>
         <Field label={copy.imageSize}>
-          <select onChange={(event) => { setSize(event.target.value as typeof size); setGenerated(null) }} value={size}>
+          <select
+            onChange={(event) => {
+              setSize(event.target.value as typeof size)
+              setGenerated(null)
+            }}
+            value={size}
+          >
             <option value="1024x1024">1024 × 1024</option>
             <option value="1536x1024">1536 × 1024</option>
             <option value="1024x1536">1024 × 1536</option>
           </select>
         </Field>
         <Field label={copy.referenceAsset}>
-          <select onChange={(event) => { setReferenceMediaId(event.target.value ? Number(event.target.value) : null); setGenerated(null) }} value={referenceMediaId ?? ''}>
+          <select
+            onChange={(event) => {
+              setReferenceMediaId(event.target.value ? Number(event.target.value) : null)
+              setGenerated(null)
+            }}
+            value={referenceMediaId ?? ''}
+          >
             <option value="">{copy.noReference}</option>
-            {references.map((asset) => <option key={asset.id} value={asset.id}>{asset.label}</option>)}
+            {references.map((asset) => (
+              <option key={asset.id} value={asset.id}>
+                {asset.label}
+              </option>
+            ))}
           </select>
         </Field>
         <div className="portal-content-studio__upload-field is-wide">
           <label htmlFor="content-studio-reference-upload">{copy.uploadReference}</label>
           <div className="portal-content-studio__image-upload">
-            <input accept="image/jpeg,image/png,image/webp" disabled={busy !== null} id="content-studio-reference-upload" onChange={(event) => setReferenceFile(event.target.files?.[0] ?? null)} type="file" />
-            <Button disabled={busy !== null || !referenceFile} onClick={() => void upload()} size="compact" variant="secondary">
+            <input
+              accept="image/jpeg,image/png,image/webp"
+              disabled={busy !== null}
+              id="content-studio-reference-upload"
+              onChange={(event) => setReferenceFile(event.target.files?.[0] ?? null)}
+              type="file"
+            />
+            <Button
+              disabled={busy !== null || !referenceFile}
+              onClick={() => void upload()}
+              size="compact"
+              variant="secondary"
+            >
               <IconUpload aria-hidden="true" size={15} />
               {copy.uploadReference}
             </Button>
@@ -1128,7 +1185,13 @@ function ImageGenerationEditor({
       </div>
       {reference?.previewUrl ? (
         <div className="portal-content-studio__image-preview is-reference">
-          <Image alt={copy.referencePreview} height={240} src={reference.previewUrl} unoptimized width={320} />
+          <Image
+            alt={copy.referencePreview}
+            height={240}
+            src={reference.previewUrl}
+            unoptimized
+            width={320}
+          />
         </div>
       ) : null}
       <footer>
@@ -1140,13 +1203,28 @@ function ImageGenerationEditor({
       {generated ? (
         <section className="portal-content-studio__generated-image">
           <div className="portal-content-studio__image-preview">
-            <Image alt={copy.generatedPreview} height={512} src={generated.previewUrl} unoptimized width={512} />
+            <Image
+              alt={copy.generatedPreview}
+              height={512}
+              src={generated.previewUrl}
+              unoptimized
+              width={512}
+            />
           </div>
           {generated.revisedPrompt ? <p>{generated.revisedPrompt}</p> : null}
           <Field label={copy.targetDraft}>
-            <select onChange={(event) => setTargetDraftId(event.target.value ? Number(event.target.value) : null)} value={targetDraftId ?? ''}>
+            <select
+              onChange={(event) =>
+                setTargetDraftId(event.target.value ? Number(event.target.value) : null)
+              }
+              value={targetDraftId ?? ''}
+            >
               <option value="">{copy.selectDraft}</option>
-              {drafts.map((draft) => <option key={draft.id} value={draft.id}>{draft.title}</option>)}
+              {drafts.map((draft) => (
+                <option key={draft.id} value={draft.id}>
+                  {draft.title}
+                </option>
+              ))}
             </select>
           </Field>
           <Button disabled={busy !== null || !targetDraft} onClick={() => void adopt()}>

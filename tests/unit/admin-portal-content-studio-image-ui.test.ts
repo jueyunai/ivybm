@@ -14,13 +14,32 @@ const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' }, status })
 
 const summary: ContentStudioSummary = {
-  items: [{
-    assets: [], body: 'Draft body', contentLocale: 'en', contentType: 'post', id: 71,
-    knowledgeSources: [], platform: 'linkedin', publishJobs: [], reviews: [], sourceReferences: [],
-    status: 'draft', title: 'Target draft', updatedAt: '2026-08-12T10:00:00.000Z',
-  }],
+  items: [
+    {
+      assets: [],
+      body: 'Draft body',
+      contentLocale: 'en',
+      contentType: 'post',
+      id: 71,
+      knowledgeSources: [],
+      platform: 'linkedin',
+      publishJobs: [],
+      reviews: [],
+      sourceReferences: [],
+      status: 'draft',
+      title: 'Target draft',
+      updatedAt: '2026-08-12T10:00:00.000Z',
+    },
+  ],
   options: {
-    assets: [{ id: 21, label: 'Facade reference', meta: 'image/webp', previewUrl: '/media/reference.webp' }],
+    assets: [
+      {
+        id: 21,
+        label: 'Facade reference',
+        meta: 'image/webp',
+        previewUrl: '/media/reference.webp',
+      },
+    ],
     knowledgeSources: [],
     platformAccounts: [],
   },
@@ -40,25 +59,44 @@ describe('Portal Content Studio image workspace', () => {
   it('uploads a private reference, generates a safe preview, and explicitly adopts it into a draft', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ result: { id: 91, previewUrl: '/media/uploaded-reference.png' } }, 201))
-      .mockResolvedValueOnce(response({
-        media: { id: 81, mimeType: 'image/png', previewUrl: '/media/generated.png' },
-        revisedPrompt: 'Refined facade prompt',
-      }, 201))
-      .mockResolvedValueOnce(response({ content: { id: 71, updatedAt: '2026-08-12T10:01:00.000Z' } }))
+      .mockResolvedValueOnce(
+        response({ result: { id: 91, previewUrl: '/media/uploaded-reference.png' } }, 201),
+      )
+      .mockResolvedValueOnce(
+        response(
+          {
+            media: { id: 81, mimeType: 'image/png', previewUrl: '/media/generated.png' },
+            revisedPrompt: 'Refined facade prompt',
+          },
+          201,
+        ),
+      )
+      .mockResolvedValueOnce(
+        response({ content: { id: 71, updatedAt: '2026-08-12T10:01:00.000Z' } }),
+      )
     vi.stubGlobal('fetch', fetchMock)
 
-    render(React.createElement(PortalPreferencesProvider, null, React.createElement(ContentStudio, {
-      pageState: 'available',
-      summary,
-    })))
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, {
+          pageState: 'available',
+          summary,
+        }),
+      ),
+    )
 
     fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
     fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
-    fireEvent.change(screen.getByLabelText('图片提示词'), { target: { value: 'Create a premium facade hero image' } })
+    fireEvent.change(screen.getByLabelText('图片提示词'), {
+      target: { value: 'Create a premium facade hero image' },
+    })
     fireEvent.change(screen.getByLabelText('图片尺寸'), { target: { value: '1536x1024' } })
     fireEvent.change(screen.getByLabelText('参考素材'), { target: { value: '21' } })
-    expect(screen.getByRole('img', { name: '参考图预览' }).getAttribute('src')).toContain('/media/reference.webp')
+    expect(screen.getByRole('img', { name: '参考图预览' }).getAttribute('src')).toContain(
+      '/media/reference.webp',
+    )
 
     fireEvent.change(screen.getByLabelText('上传参考图'), {
       target: { files: [new File(['image'], 'reference.png', { type: 'image/png' })] },
@@ -71,12 +109,17 @@ describe('Portal Content Studio image workspace', () => {
     expect(uploadBody.get('alt')).toBe('Create a premium facade hero image')
     expect(uploadBody.get('isPublic')).toBe('false')
     expect(uploadBody.get('source')).toBe('Content Studio protected reference upload')
-    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('Idempotency-Key')).toMatch(/^portal-content-studio:image-upload:/)
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('Idempotency-Key')).toMatch(
+      /^portal-content-studio:image-upload:/,
+    )
 
     fireEvent.click(screen.getByRole('button', { name: '生成图片' }))
     await screen.findByRole('img', { name: '生成图片预览' })
     expect(screen.getByText('Refined facade prompt')).toBeTruthy()
-    const generationBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as Record<string, unknown>
+    const generationBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as Record<
+      string,
+      unknown
+    >
     expect(generationBody).toEqual({
       prompt: 'Create a premium facade hero image',
       referenceMediaId: 91,
@@ -86,7 +129,10 @@ describe('Portal Content Studio image workspace', () => {
     expect((screen.getByLabelText('目标草稿') as HTMLSelectElement).value).toBe('71')
     fireEvent.click(screen.getByRole('button', { name: '采用为草稿资产' }))
     await screen.findByText('图片已采用为草稿资产。')
-    const adoptionBody = JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body)) as Record<string, unknown>
+    const adoptionBody = JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body)) as Record<
+      string,
+      unknown
+    >
     expect(adoptionBody).toEqual({
       action: 'adopt-image',
       mediaId: 81,
@@ -98,16 +144,29 @@ describe('Portal Content Studio image workspace', () => {
   it('reuses the same image command key when the provider result is unknown', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(response({ error: { code: 'portal-command-result-unknown', message: 'Result unknown' } }, 409))
+      .mockResolvedValue(
+        response(
+          { error: { code: 'portal-command-result-unknown', message: 'Result unknown' } },
+          409,
+        ),
+      )
     vi.stubGlobal('fetch', fetchMock)
-    render(React.createElement(PortalPreferencesProvider, null, React.createElement(ContentStudio, {
-      pageState: 'available',
-      summary,
-    })))
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, {
+          pageState: 'available',
+          summary,
+        }),
+      ),
+    )
 
     fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
     fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
-    fireEvent.change(screen.getByLabelText('图片提示词'), { target: { value: 'Unknown provider result' } })
+    fireEvent.change(screen.getByLabelText('图片提示词'), {
+      target: { value: 'Unknown provider result' },
+    })
     fireEvent.click(screen.getByRole('button', { name: '生成图片' }))
     await screen.findByText('Result unknown')
     fireEvent.click(screen.getByRole('button', { name: '生成图片' }))
@@ -122,16 +181,26 @@ describe('Portal Content Studio image workspace', () => {
   it('keeps the image command key when media was saved without a safe preview', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(response({ media: { id: 81, previewUrl: null }, revisedPrompt: null }, 201))
+      .mockResolvedValue(
+        response({ media: { id: 81, previewUrl: null }, revisedPrompt: null }, 201),
+      )
     vi.stubGlobal('fetch', fetchMock)
-    render(React.createElement(PortalPreferencesProvider, null, React.createElement(ContentStudio, {
-      pageState: 'available',
-      summary,
-    })))
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, {
+          pageState: 'available',
+          summary,
+        }),
+      ),
+    )
 
     fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
     fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
-    fireEvent.change(screen.getByLabelText('图片提示词'), { target: { value: 'Saved without preview' } })
+    fireEvent.change(screen.getByLabelText('图片提示词'), {
+      target: { value: 'Saved without preview' },
+    })
     fireEvent.click(screen.getByRole('button', { name: '生成图片' }))
     await screen.findByText(/没有可用的安全预览地址/)
     fireEvent.click(screen.getByRole('button', { name: '生成图片' }))
