@@ -33,19 +33,19 @@ const arabicCountries: Array<[string, string]> = [
 ]
 
 const countryPattern = new RegExp(
-  String.raw`(?<![\p{L}\p{N}])(${countries
+  String.raw`(?<![\p{L}\p{N}_])(${countries
     .slice()
     .sort((left, right) => right.length - left.length)
     .map((country) => country.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('|')})(?![\p{L}\p{N}])`,
+    .join('|')})(?![\p{L}\p{N}_])`,
   'iu',
 )
 const arabicCountryPattern = new RegExp(
-  String.raw`(?<![\p{L}\p{N}])(${arabicCountries
+  String.raw`(?<![\p{L}\p{N}_])(${arabicCountries
     .map(([country]) => country)
     .sort((left, right) => right.length - left.length)
     .map((country) => country.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('|')})(?![\p{L}\p{N}])`,
+    .join('|')})(?![\p{L}\p{N}_])`,
   'u',
 )
 

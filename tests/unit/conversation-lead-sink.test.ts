@@ -77,7 +77,11 @@ describe('conversation lead signal extraction', () => {
     'We are a woman-led buyer.',
     'Our Canadian buyer needs facade panels.',
     'A Qatarian supplier contacted us.',
-  ])('does not extract a country from inside another word: %s', (content) => {
+    'The tenant key is foo_oman.',
+    'The tenant key is oman_bar.',
+    'The tenant key is foo_عمان.',
+    'The tenant key is عمان_bar.',
+  ])('does not extract a country from inside another word or identifier: %s', (content) => {
     expect(extractLeadSignals(sessionWith('en', content)).country).toBeUndefined()
   })
 
