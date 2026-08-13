@@ -127,10 +127,9 @@ const invalidArabicCompanyCandidate = /^(?:في|المشروع|مشروع|مرح
 const invalidPromptedArabicCompanyAnswer =
   /^(?:أنا|انا|نحن|هو|هي|لا|ليس|ليست|لست|لسنا|غير\s+معروف|ربما|أفضل\s+عدم\s+(?:القول|الإفصاح|الافصاح)|أرفض|ارفض|رفض|الرفض|تخطي|التخطي|امتنع|الامتناع|سري|سرية|السرية|خاص|الخاص|مجهول|المجهول)(?:\s|$)/
 const arabicValueBoundary = String.raw`(?=$|\s|[،,.!?؟])`
-const rejectedArabicCompanyValue =
-  new RegExp(
-    String.raw`^(?:(?:اسمي|أنا|انا|الاسم)${arabicValueBoundary}|(?:لا|ليس|ليست|لست|لسنا|غير\s+(?:معروف|متاح)|مجهول|سري|سرية|خاص|معلومات\s+سرية|الاسم\s+(?:سري|غير\s+متاح))${arabicValueBoundary}|.*(?:عدم\s+(?:القول|المشاركة|الإفصاح|الافصاح)|الحفاظ\s+على\s+السرية|رفض\s+(?:القول|المشاركة|الإفصاح|الافصاح)))`,
-  )
+const rejectedArabicCompanyValue = new RegExp(
+  String.raw`^(?:(?:اسمي|أنا|انا|الاسم)${arabicValueBoundary}|(?:لا|ليس|ليست|لست|لسنا|غير\s+(?:معروف|متاح)|مجهول|سري|سرية|خاص|معلومات\s+سرية|الاسم\s+(?:سري|غير\s+متاح))${arabicValueBoundary}|.*(?:عدم\s+(?:القول|المشاركة|الإفصاح|الافصاح)|الحفاظ\s+على\s+السرية|رفض\s+(?:القول|المشاركة|الإفصاح|الافصاح)))`,
+)
 const promptedArabicCompanyLabel = /^(?:اسم\s+الشركة|الشركة)\s*[:：=-]\s*/
 const nonArabicCompanyWords = new Set([
   'اسم',
@@ -187,14 +186,13 @@ const englishOrganizationDescriptor =
  * This keeps an open-ended natural-language reply from silently becoming CRM data.
  */
 const isPromptedEnglishCompanyShape = (candidate: string): boolean => {
-  if (
-    englishOrganizationSuffix.test(candidate) ||
-    englishOrganizationDescriptor.test(candidate)
-  ) {
+  if (englishOrganizationSuffix.test(candidate) || englishOrganizationDescriptor.test(candidate)) {
     return true
   }
   const words = candidate.split(/\s+/).filter(Boolean)
-  return words.length === 1 && /^[A-Z0-9&'-]{2,}$/.test(words[0] ?? '') && /[A-Z]/.test(words[0] ?? '')
+  return (
+    words.length === 1 && /^[A-Z0-9&'-]{2,}$/.test(words[0] ?? '') && /[A-Z]/.test(words[0] ?? '')
+  )
 }
 
 const countryCandidateSource = [...countries]
@@ -210,10 +208,7 @@ const extractAskedEnglishCompany = (session: ChatSession): string | undefined =>
     .find(({ author }) => author === 'visitor')
     ?.content.trim()
   if (!message) return undefined
-  if (
-    invalidPromptedCompanyMessage.test(message) ||
-    rejectedEnglishCompanyValue.test(message)
-  ) {
+  if (invalidPromptedCompanyMessage.test(message) || rejectedEnglishCompanyValue.test(message)) {
     return undefined
   }
 

@@ -192,20 +192,19 @@ describe('conversation lead signal extraction', () => {
     expect(extractLeadSignals(session).company).toBeUndefined()
   })
 
-  it.each([
-    'Next Quarter.',
-    'My name is Alex Chen from UAE.',
-    'Would Rather Not Disclose.',
-  ])('does not reuse historical company context for a current timeline answer in %s', (content) => {
-    const session = sessionWith('en', content)
-    session.qualificationState = {
-      askedFields: ['company', 'timeline'],
-      awaitingFields: ['timeline'],
-      roundCount: 2,
-    }
+  it.each(['Next Quarter.', 'My name is Alex Chen from UAE.', 'Would Rather Not Disclose.'])(
+    'does not reuse historical company context for a current timeline answer in %s',
+    (content) => {
+      const session = sessionWith('en', content)
+      session.qualificationState = {
+        askedFields: ['company', 'timeline'],
+        awaitingFields: ['timeline'],
+        roundCount: 2,
+      }
 
-    expect(extractLeadSignals(session).company).toBeUndefined()
-  })
+      expect(extractLeadSignals(session).company).toBeUndefined()
+    },
+  )
 
   it('treats a legacy state without awaitingFields as no current company prompt', () => {
     const session = sessionWith('en', 'Next Quarter.')
@@ -217,16 +216,15 @@ describe('conversation lead signal extraction', () => {
     expect(extractLeadSignals(session).company).toBeUndefined()
   })
 
-  it.each([
-    'My name is Alex Chen from UAE.',
-    'Would Rather Not Disclose.',
-    'We are Next Quarter.',
-  ])('does not turn a name, refusal, or timeline into a prompted company in %s', (content) => {
-    const session = sessionWith('en', content)
-    session.qualificationState = awaitingCompany()
+  it.each(['My name is Alex Chen from UAE.', 'Would Rather Not Disclose.', 'We are Next Quarter.'])(
+    'does not turn a name, refusal, or timeline into a prompted company in %s',
+    (content) => {
+      const session = sessionWith('en', content)
+      session.qualificationState = awaitingCompany()
 
-    expect(extractLeadSignals(session).company).toBeUndefined()
-  })
+      expect(extractLeadSignals(session).company).toBeUndefined()
+    },
+  )
 
   it('accepts the structured English company reply requested by the responder', () => {
     const session = sessionWith('en', 'Company: Acme Facades')
@@ -527,16 +525,15 @@ describe('conversation lead signal extraction', () => {
     expect(extractLeadSignals(session).company).toBe('النور')
   })
 
-  it.each([
-    'الشركة: معلومات سرية',
-    'الشركة: غير متاح',
-    'الشركة: الاسم سري',
-  ])('rejects a structured Arabic disclosure refusal in %s', (content) => {
-    const session = sessionWith('ar', content)
-    session.qualificationState = awaitingCompany()
+  it.each(['الشركة: معلومات سرية', 'الشركة: غير متاح', 'الشركة: الاسم سري'])(
+    'rejects a structured Arabic disclosure refusal in %s',
+    (content) => {
+      const session = sessionWith('ar', content)
+      session.qualificationState = awaitingCompany()
 
-    expect(extractLeadSignals(session).company).toBeUndefined()
-  })
+      expect(extractLeadSignals(session).company).toBeUndefined()
+    },
+  )
 
   it.each(['نور.', 'الصحراء للألمنيوم.', 'النور للتجارة.'])(
     'does not guess an unlabelled Arabic proper name after the company field was asked in %s',
