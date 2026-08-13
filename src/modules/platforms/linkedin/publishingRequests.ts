@@ -150,6 +150,7 @@ export type LinkedInImageInitializeUploadResponse = {
 export type LinkedInPostLifecycleState = 'PUBLISHED' | 'DRAFT' | 'PROCESSING'
 
 export type LinkedInPostStatusResponse = {
+  externalPublicationUrl?: string
   lifecycleState: LinkedInPostLifecycleState
 }
 
@@ -179,6 +180,9 @@ const LINKED_IN_POST_LIFECYCLE_STATES: readonly LinkedInPostLifecycleState[] = [
   'PROCESSING',
   'PUBLISHED',
 ]
+
+export const linkedInPostPermalink = (postUrn: string): string =>
+  `https://www.linkedin.com/feed/update/${requirePostUrn(postUrn, 'post')}/`
 
 const requireLinkedInVersion = (value: unknown): string => {
   if (typeof value !== 'string') {

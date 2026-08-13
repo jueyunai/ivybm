@@ -1974,6 +1974,87 @@
           "primaryKey": false,
           "notNull": true
         },
+        "execution_route": {
+          "name": "execution_route",
+          "type": "enum_publish_jobs_execution_route",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "execution_revision": {
+          "name": "execution_revision",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "request_fingerprint": {
+          "name": "request_fingerprint",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "request_snapshot": {
+          "name": "request_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_checkpoint": {
+          "name": "provider_checkpoint",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "authorization_revision": {
+          "name": "authorization_revision",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claim_job_id": {
+          "name": "claim_job_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claim_id": {
+          "name": "claim_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claim_owner_token": {
+          "name": "claim_owner_token",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claim_lease_expires_at": {
+          "name": "claim_lease_expires_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fencing_generation": {
+          "name": "fencing_generation",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "provider_i_o_started_at": {
+          "name": "provider_i_o_started_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "delivery_unknown_at": {
+          "name": "delivery_unknown_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "accepted_at": {
           "name": "accepted_at",
           "type": "timestamp(3) with time zone",
@@ -1988,6 +2069,12 @@
         },
         "external_publication_id": {
           "name": "external_publication_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "external_publication_url": {
+          "name": "external_publication_url",
           "type": "varchar",
           "primaryKey": false,
           "notNull": false
@@ -2107,6 +2194,66 @@
           "method": "btree",
           "with": {}
         },
+        "publish_jobs_execution_route_idx": {
+          "name": "publish_jobs_execution_route_idx",
+          "columns": [
+            {
+              "expression": "execution_route",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "publish_jobs_request_fingerprint_idx": {
+          "name": "publish_jobs_request_fingerprint_idx",
+          "columns": [
+            {
+              "expression": "request_fingerprint",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "publish_jobs_claim_job_idx": {
+          "name": "publish_jobs_claim_job_idx",
+          "columns": [
+            {
+              "expression": "claim_job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "publish_jobs_claim_lease_expires_at_idx": {
+          "name": "publish_jobs_claim_lease_expires_at_idx",
+          "columns": [
+            {
+              "expression": "claim_lease_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "publish_jobs_idempotency_key_idx": {
           "name": "publish_jobs_idempotency_key_idx",
           "columns": [
@@ -2188,6 +2335,19 @@
           "tableTo": "platform_accounts",
           "columnsFrom": [
             "platform_account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "publish_jobs_claim_job_id_jobs_id_fk": {
+          "name": "publish_jobs_claim_job_id_jobs_id_fk",
+          "tableFrom": "publish_jobs",
+          "tableTo": "jobs",
+          "columnsFrom": [
+            "claim_job_id"
           ],
           "columnsTo": [
             "id"
@@ -15003,14 +15163,27 @@
         "delivery_unknown"
       ]
     },
+    "public.enum_publish_jobs_execution_route": {
+      "name": "enum_publish_jobs_execution_route",
+      "schema": "public",
+      "values": [
+        "facebook-photo-single",
+        "instagram-image-staged",
+        "linkedin-text-single",
+        "linkedin-image-staged"
+      ]
+    },
     "public.enum_publish_logs_event": {
       "name": "enum_publish_logs_event",
       "schema": "public",
       "values": [
         "created",
+        "claimed",
         "scheduled",
         "accepted",
         "assisted-package-ready",
+        "provider-io-started",
+        "checkpoint-committed",
         "status-updated",
         "failed",
         "delivery-unknown"
@@ -15633,6 +15806,6 @@
     "tables": {},
     "columns": {}
   },
-  "id": "7cee891b-93b8-4228-97b3-d1287e2ac789",
+  "id": "0407d22c-4a6b-4f37-9202-866b54383c09",
   "prevId": "00000000-0000-0000-0000-000000000000"
 }

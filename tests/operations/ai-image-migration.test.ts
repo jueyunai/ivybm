@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const migrationName = '20260813_022431_image_generation_provider_contract'
+const migrationName = '20260813_055309_image_generation_provider_contract'
 
 describe('AI image capability migration', () => {
   it('extends all three AI enums and has a paired generated snapshot', () => {
@@ -20,6 +20,8 @@ describe('AI image capability migration', () => {
     expect(migration).toContain('enum_ai_model_profiles_capability')
     expect(migration).toContain('enum_ai_usage_routes_operation')
     expect(migration).toContain('enum_ai_usage_logs_operation')
+    expect(migration).not.toContain('publish_jobs')
+    expect(migration).not.toContain('publish_logs')
     expect(snapshot.enums?.['public.enum_ai_model_profiles_capability']?.values).toContain('image')
     expect(snapshot.enums?.['public.enum_ai_usage_routes_operation']?.values).toContain('image')
     expect(snapshot.enums?.['public.enum_ai_usage_logs_operation']?.values).toContain('generateImage')

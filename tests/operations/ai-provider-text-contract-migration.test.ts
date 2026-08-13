@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const migrationName = '20260813_022431_image_generation_provider_contract'
+const migrationName = '20260813_055309_image_generation_provider_contract'
 
 describe('AI provider text contract migration', () => {
   it('adds only the explicit text contract field and preserves unrelated foreign keys', () => {
@@ -35,6 +35,7 @@ describe('AI provider text contract migration', () => {
     expect(snapshot.tables?.['public.ai_providers']?.columns).toHaveProperty(
       'text_generation_contract',
     )
+    expect(snapshot.tables?.['public.publish_jobs']?.columns).toHaveProperty('execution_route')
     expect(
       snapshot.tables?.['public.knowledge_source_assets']?.foreignKeys
         ?.knowledge_source_assets_source_id_knowledge_source_documents_id_fk?.onDelete,

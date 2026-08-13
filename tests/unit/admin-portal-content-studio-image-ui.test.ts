@@ -22,8 +22,10 @@ const summary: ContentStudioSummary = {
   options: {
     assets: [{ id: 21, label: 'Facade reference', meta: 'image/webp', previewUrl: '/media/reference.webp' }],
     knowledgeSources: [],
+    platformAccounts: [],
   },
   pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+  publishingEnabled: false,
   query: { page: 1, platform: 'all', q: '', status: 'all' },
 }
 

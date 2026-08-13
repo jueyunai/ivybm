@@ -76,6 +76,9 @@ const runPreflight = (environment: string, overrides: Record<string, string | un
       'ADMIN_PORTAL_OPERATIONS_ENABLED',
       'ADMIN_PORTAL_PUBLISHING_ENABLED',
       'AI_CONFIG_ENCRYPTION_KEY',
+      'LINKEDIN_API_VERSION',
+      'LINKEDIN_UPLOAD_ALLOWED_ORIGINS',
+      'LINKEDIN_UPLOAD_TICKET_KEY',
       'FEISHU_QR_REGISTRATION_ENABLED',
     ]) {
       delete childEnvironment[key]
@@ -150,18 +153,47 @@ describe('production environment preflight', () => {
     expect(result.status).toBe(0)
   })
 
-  it('requires the Portal switches and keeps external publishing disabled', () => {
+  it('requires the Portal switches and validates the publishing switch', () => {
     const missingPortalSwitch = runPreflight(
       productionEnvironment.replace('ADMIN_PORTAL_ENABLED=true\n', ''),
     )
-    const enabledPublishing = runPreflight(
-      productionEnvironment.replace('ADMIN_PORTAL_PUBLISHING_ENABLED=false', 'ADMIN_PORTAL_PUBLISHING_ENABLED=true'),
+    const invalidPublishing = runPreflight(
+      productionEnvironment.replace(
+        'ADMIN_PORTAL_PUBLISHING_ENABLED=false',
+        'ADMIN_PORTAL_PUBLISHING_ENABLED=maybe',
+      ),
     )
 
     expect(missingPortalSwitch.status).not.toBe(0)
     expect(missingPortalSwitch.stderr).toContain('ADMIN_PORTAL_ENABLED')
-    expect(enabledPublishing.status).not.toBe(0)
-    expect(enabledPublishing.stderr).toContain('ADMIN_PORTAL_PUBLISHING_ENABLED')
+    expect(invalidPublishing.status).not.toBe(0)
+    expect(invalidPublishing.stderr).toContain('ADMIN_PORTAL_PUBLISHING_ENABLED')
+  })
+
+  it('requires the complete worker runtime only when controlled publishing is enabled', () => {
+    const enabled = productionEnvironment.replace(
+      'ADMIN_PORTAL_PUBLISHING_ENABLED=false',
+      'ADMIN_PORTAL_PUBLISHING_ENABLED=true',
+    )
+    const missingRuntime = runPreflight(enabled)
+    const invalidOrigin =
+      runPreflight(`${enabled}PLATFORM_CREDENTIAL_ENCRYPTION_KEY=${'d'.repeat(64)}
+LINKEDIN_API_VERSION=202608
+LINKEDIN_UPLOAD_ALLOWED_ORIGINS=http://unsafe.example.invalid
+LINKEDIN_UPLOAD_TICKET_KEY=${'e'.repeat(64)}
+`)
+    const complete = runPreflight(`${enabled}PLATFORM_CREDENTIAL_ENCRYPTION_KEY=${'d'.repeat(64)}
+LINKEDIN_API_VERSION=202608
+LINKEDIN_UPLOAD_ALLOWED_ORIGINS=https://www.linkedin.com,https://media.licdn.com
+LINKEDIN_UPLOAD_TICKET_KEY=${'e'.repeat(64)}
+`)
+
+    expect(missingRuntime.status).not.toBe(0)
+    expect(missingRuntime.stderr).toContain('PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
+    expect(invalidOrigin.status).not.toBe(0)
+    expect(invalidOrigin.stderr).toContain('LINKEDIN_UPLOAD_ALLOWED_ORIGINS')
+    expect(complete.status).toBe(0)
+    expect(complete.stdout).not.toContain('eeeeeeeeeeeeeeeeeeeeeeee')
   })
 
   it('requires every Portal module switch and rejects shell overrides', () => {
@@ -169,7 +201,10 @@ describe('production environment preflight', () => {
       productionEnvironment.replace('ADMIN_PORTAL_MEDIA_ENABLED=true\n', ''),
     )
     const invalidModule = runPreflight(
-      productionEnvironment.replace('ADMIN_PORTAL_MEDIA_ENABLED=true', 'ADMIN_PORTAL_MEDIA_ENABLED=maybe'),
+      productionEnvironment.replace(
+        'ADMIN_PORTAL_MEDIA_ENABLED=true',
+        'ADMIN_PORTAL_MEDIA_ENABLED=maybe',
+      ),
     )
     const shellOverride = runPreflight(productionEnvironment, {
       ADMIN_PORTAL_PUBLISHING_ENABLED: 'true',
@@ -234,7 +269,8 @@ AI_EMBEDDING_MODEL=operation-embedding-model
     const partial = runPreflight(
       `${productionEnvironment}META_WEBHOOK_APP_SECRET=operation-meta-app-secret\n`,
     )
-    const complete = runPreflight(`${productionEnvironment}META_WEBHOOK_APP_SECRET=operation-meta-app-secret
+    const complete =
+      runPreflight(`${productionEnvironment}META_WEBHOOK_APP_SECRET=operation-meta-app-secret
 META_WEBHOOK_VERIFY_TOKEN=operation-meta-verify-token
 META_WEBHOOK_ALLOWED_ACCOUNT_IDS=1234567890,9876543210
 `)
@@ -252,12 +288,14 @@ META_WEBHOOK_ALLOWED_ACCOUNT_IDS=1234567890,9876543210
 `
     const partial = runPreflight(`${productionEnvironment}${webhook}META_APP_ID=1111111111111111
 `)
-    const wrongCallback = runPreflight(`${productionEnvironment}${webhook}META_APP_ID=1111111111111111
+    const wrongCallback =
+      runPreflight(`${productionEnvironment}${webhook}META_APP_ID=1111111111111111
 META_LOGIN_CONFIG_ID=2222222222222222
 META_OAUTH_REDIRECT_URI=https://evil.example/api/platforms/meta/oauth/callback
 PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 `)
-    const missingEncryption = runPreflight(`${productionEnvironment}${webhook}META_APP_ID=1111111111111111
+    const missingEncryption =
+      runPreflight(`${productionEnvironment}${webhook}META_APP_ID=1111111111111111
 META_LOGIN_CONFIG_ID=2222222222222222
 META_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/meta/oauth/callback
 `)
@@ -285,7 +323,8 @@ INSTAGRAM_APP_SECRET=operation-instagram-secret
 INSTAGRAM_OAUTH_REDIRECT_URI=https://evil.example/api/platforms/instagram/oauth/callback
 PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 `)
-    const missingEncryption = runPreflight(`${productionEnvironment}INSTAGRAM_APP_ID=3333333333333333
+    const missingEncryption =
+      runPreflight(`${productionEnvironment}INSTAGRAM_APP_ID=3333333333333333
 INSTAGRAM_APP_SECRET=operation-instagram-secret
 INSTAGRAM_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/instagram/oauth/callback
 `)
@@ -365,5 +404,4 @@ FEISHU_CREDENTIAL_ENCRYPTION_KEY=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
     expect(invalidSwitch.status).not.toBe(0)
     expect(invalidSwitch.stderr).toContain('FEISHU_QR_REGISTRATION_ENABLED')
   })
-
 })

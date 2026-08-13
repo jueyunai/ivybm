@@ -1131,6 +1131,8 @@ export async function scheduleContentStudioPublication({
     data: {
       content: id,
       createdBy: req.user?.id,
+      executionRevision: 0,
+      fencingGeneration: 0,
       idempotencyKey: key,
       mode,
       platform,

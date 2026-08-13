@@ -16,6 +16,7 @@ export const CONTENT_STUDIO_MODULE = definePortalModule({
     'content-studio:submit-review',
     'content-studio:review',
     'content-studio:schedule',
+    'content-studio:publish-now',
     'content-studio:delete',
   ],
   maintenance: { responsibleOwner: 'jueyunai', nextStepKey: 'content-studio' },
