@@ -11,6 +11,7 @@ import {
   decryptPlatformCredential,
   readPlatformCredentialEncryptionKey,
 } from '@/modules/platforms/credentials'
+import { PlatformAccountIdentityCredentialConflictError } from '@/modules/platforms/accountValidation'
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
 
@@ -729,7 +730,7 @@ describe.sequential('platform accounts', () => {
         overrideAccess: false,
         user: admin,
       }),
-    ).rejects.toBeDefined()
+    ).rejects.toBeInstanceOf(PlatformAccountIdentityCredentialConflictError)
 
     await expect(
       payload.findByID({
@@ -785,7 +786,7 @@ describe.sequential('platform accounts', () => {
         overrideAccess: false,
         user: admin,
       }),
-    ).rejects.toBeDefined()
+    ).rejects.toBeInstanceOf(PlatformAccountIdentityCredentialConflictError)
 
     await expect(
       payload.findByID({
@@ -839,7 +840,7 @@ describe.sequential('platform accounts', () => {
         overrideAccess: false,
         user: admin,
       }),
-    ).rejects.toBeDefined()
+    ).rejects.toBeInstanceOf(PlatformAccountIdentityCredentialConflictError)
 
     const cleared = await payload.update({
       collection: 'platform-accounts',

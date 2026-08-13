@@ -24,6 +24,7 @@ import {
   isPlatformAuthorizationState,
   platformFamilyForAccountKind,
 } from '../modules/platforms/readiness'
+import { PlatformAccountIdentityCredentialConflictError } from '../modules/platforms/accountValidation'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -253,11 +254,10 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
   const retainsAccessToken = accessToken.configured && !replacesAccessToken
   const retainsRefreshToken = refreshToken.configured && !replacesRefreshToken
   if (connectionIdentityChanged && (retainsAccessToken || retainsRefreshToken)) {
-    throw validationError(
+    throw new PlatformAccountIdentityCredentialConflictError({
       req,
-      'Changing a provider account identity requires replacing or clearing every configured credential first',
-      retainsAccessToken ? 'authorization.accessToken' : 'authorization.refreshToken',
-    )
+      path: retainsAccessToken ? 'authorization.accessToken' : 'authorization.refreshToken',
+    })
   }
 
   const authorizationState = authorization.state ?? 'not_started'

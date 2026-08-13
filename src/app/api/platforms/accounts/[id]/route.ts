@@ -12,6 +12,7 @@ import {
   PlatformAccountMutationConflictError,
   withLockedPlatformAccountMutation,
 } from '@/modules/platforms/accountOAuthConcurrency'
+import { PlatformAccountIdentityCredentialConflictError } from '@/modules/platforms/accountValidation'
 import { PlatformPortalRequestError, readPlatformPortalJSON } from '@/modules/platforms/portalHttp'
 import config from '@/payload.config'
 import type { User } from '@/payload-types'
@@ -28,20 +29,6 @@ class PlatformAccountIdentityValidationError extends Error {
     super('Platform account external identity is invalid')
     this.name = 'PlatformAccountIdentityValidationError'
   }
-}
-
-const isIdentityChangeCredentialValidationError = (error: unknown): boolean => {
-  if (!(error instanceof ValidationError) || !Array.isArray(error.data.errors)) return false
-  return error.data.errors.some((fieldError) => {
-    if (!fieldError || typeof fieldError !== 'object') return false
-    const field = fieldError as { message?: unknown; path?: unknown }
-    return (
-      (field.path === 'authorization.accessToken' || field.path === 'authorization.refreshToken') &&
-      typeof field.message === 'string' &&
-      field.message ===
-        'Changing a provider account identity requires replacing or clearing every configured credential first'
-    )
-  })
 }
 
 export const dynamic = 'force-dynamic'
@@ -155,8 +142,11 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     if (message.includes('unique') || message.includes('duplicate')) {
       return json(409, { error: { code: 'duplicate_account' } })
     }
-    if (isIdentityChangeCredentialValidationError(error)) {
+    if (error instanceof PlatformAccountIdentityCredentialConflictError) {
       return json(409, { error: { code: 'identity_change_requires_credential_rotation' } })
+    }
+    if (error instanceof ValidationError) {
+      return json(400, { error: { code: 'platform_account_validation_failed' } })
     }
     return json(503, { error: { code: 'platform_account_update_failed' } })
   }

@@ -25,6 +25,7 @@ vi.mock('@/payload.config', () => ({ default: {} }))
 
 import { DELETE, PATCH } from '@/app/api/platforms/accounts/[id]/route'
 import { GET, POST } from '@/app/api/platforms/accounts/route'
+import { PlatformAccountIdentityCredentialConflictError } from '@/modules/platforms/accountValidation'
 
 const environmentKeys = [
   'ADMIN_PORTAL_ENABLED',
@@ -342,35 +343,30 @@ describe('platform account portal routes', () => {
     expect(payload.update).not.toHaveBeenCalled()
   })
 
-  it('maps credential-bound identity changes from Payload field validation', async () => {
-    const payload = createPayload({
-      updateError: new ValidationError({
-        errors: [
-          {
-            message:
-              'Changing a provider account identity requires replacing or clearing every configured credential first',
-            path: 'authorization.accessToken',
-          },
-        ],
-      }),
-    })
-    mocks.getPayload.mockResolvedValue(payload)
+  it.each(['authorization.accessToken', 'authorization.refreshToken'] as const)(
+    'maps credential-bound identity changes from the stable %s domain error',
+    async (path) => {
+      const payload = createPayload({
+        updateError: new PlatformAccountIdentityCredentialConflictError({ path }),
+      })
+      mocks.getPayload.mockResolvedValue(payload)
 
-    const response = await PATCH(
-      jsonRequest({
-        body: { authorizationRevision: 3, externalAccountId: '987654321' },
-        method: 'PATCH',
-        path: '/api/platforms/accounts/42',
-      }),
-    )
+      const response = await PATCH(
+        jsonRequest({
+          body: { authorizationRevision: 3, externalAccountId: '987654321' },
+          method: 'PATCH',
+          path: '/api/platforms/accounts/42',
+        }),
+      )
 
-    await expect(response.json()).resolves.toEqual({
-      error: { code: 'identity_change_requires_credential_rotation' },
-    })
-    expect(response.status).toBe(409)
-  })
+      await expect(response.json()).resolves.toEqual({
+        error: { code: 'identity_change_requires_credential_rotation' },
+      })
+      expect(response.status).toBe(409)
+    },
+  )
 
-  it('does not misclassify unrelated Payload field validation', async () => {
+  it('maps unrelated Payload field validation without reporting an outage', async () => {
     const payload = createPayload({
       updateError: new ValidationError({
         errors: [{ message: 'Enter a valid display name', path: 'name' }],
@@ -387,9 +383,9 @@ describe('platform account portal routes', () => {
     )
 
     await expect(response.json()).resolves.toEqual({
-      error: { code: 'platform_account_update_failed' },
+      error: { code: 'platform_account_validation_failed' },
     })
-    expect(response.status).toBe(503)
+    expect(response.status).toBe(400)
   })
 
   it('rejects updates when the authorization revision is stale', async () => {
