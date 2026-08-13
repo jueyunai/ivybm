@@ -33,8 +33,12 @@ export type ContentStudioReview = {
   reviewer: string | null
 }
 export type ContentStudioPublishJob = {
+  externalPublicationId: string | null
+  externalPublicationUrl: string | null
   id: number
+  lastErrorSummary: string | null
   mode: PublishJobMode
+  platform: ContentStudioPlatform
   scheduledFor: string
   status: PublishJobStatus
   updatedAt: string
@@ -56,8 +60,13 @@ export type ContentStudioItem = {
 }
 export type ContentStudioSummary = {
   items: ContentStudioItem[]
-  options: { assets: ContentStudioOption[]; knowledgeSources: ContentStudioOption[] }
+  options: {
+    assets: ContentStudioOption[]
+    knowledgeSources: ContentStudioOption[]
+    platformAccounts: Array<ContentStudioOption & { platform: ContentStudioPlatform }>
+  }
   pagination: { page: number; totalDocs: number; totalPages: number }
+  publishingEnabled: boolean
   query: ContentStudioQuery
 }
 export type ContentStudioPageData = {
@@ -150,6 +159,7 @@ export const loadContentStudioPageData = async ({
     return { state: 'module-disabled', summary: null }
   if (!(CONTENT_STUDIO_MODULE.allowedRoles as readonly PortalRole[]).includes(role))
     return { state: 'forbidden', summary: null }
+  const publishingEnabled = env.ADMIN_PORTAL_PUBLISHING_ENABLED === 'true'
   try {
     const contents = await payload.find({
       collection: 'generated-contents',
@@ -174,7 +184,7 @@ export const loadContentStudioPageData = async ({
       where: buildWhere(query),
     })
     const ids = contents.docs.map((content) => content.id)
-    const [assets, knowledgeSources, reviews, jobs] = await Promise.all([
+    const [assets, platformAccounts, knowledgeSources, reviews, jobs] = await Promise.all([
       payload.find({
         collection: 'media',
         depth: 0,
@@ -185,6 +195,29 @@ export const loadContentStudioPageData = async ({
         select: { alt: true, filename: true, mimeType: true },
         sort: '-updatedAt',
       }),
+      publishingEnabled
+        ? payload.find({
+            collection: 'platform-accounts',
+            depth: 0,
+            limit: 100,
+            overrideAccess: false,
+            pagination: false,
+            req,
+            select: {
+              accountKind: true,
+              authorization: { state: true },
+              capabilities: { publishing: true },
+              name: true,
+            },
+            sort: 'name',
+            where: {
+              and: [
+                { 'authorization.state': { equals: 'connected' } },
+                { 'capabilities.publishing': { equals: 'approved' } },
+              ],
+            },
+          })
+        : Promise.resolve({ docs: [] }),
       payload.find({
         collection: 'knowledge-documents',
         depth: 0,
@@ -233,7 +266,11 @@ export const loadContentStudioPageData = async ({
             req,
             select: {
               content: true,
+              externalPublicationId: true,
+              externalPublicationUrl: true,
+              lastErrorSummary: true,
               mode: true,
+              platform: true,
               scheduledFor: true,
               status: true,
               updatedAt: true,
@@ -267,8 +304,12 @@ export const loadContentStudioPageData = async ({
       if (contentId === null) continue
       const existing = jobsByContent.get(contentId) ?? []
       existing.push({
+        externalPublicationId: stringValue(job.externalPublicationId),
+        externalPublicationUrl: stringValue(job.externalPublicationUrl),
         id: job.id,
+        lastErrorSummary: stringValue(job.lastErrorSummary),
         mode: job.mode as PublishJobMode,
+        platform: job.platform as ContentStudioPlatform,
         scheduledFor: String(job.scheduledFor),
         status: job.status as PublishJobStatus,
         updatedAt: String(job.updatedAt),
@@ -315,12 +356,25 @@ export const loadContentStudioPageData = async ({
                 ? source.sourceURL.trim()
                 : `${String(source.sourceTitle)} v${String(source.sourceVersion)}`,
           })),
+          platformAccounts: platformAccounts.docs.flatMap((account) => {
+            const platform =
+              account.accountKind === 'facebook-page'
+                ? 'facebook'
+                : account.accountKind === 'instagram-professional'
+                  ? 'instagram'
+                  : account.accountKind === 'linkedin-member' ||
+                      account.accountKind === 'linkedin-organization'
+                    ? 'linkedin'
+                    : null
+            return platform ? [{ id: account.id, label: String(account.name), platform }] : []
+          }),
         },
         pagination: {
           page: contents.page ?? query.page,
           totalDocs: contents.totalDocs,
           totalPages: contents.totalPages ?? 1,
         },
+        publishingEnabled,
         query,
       },
     }

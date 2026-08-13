@@ -1,10 +1,14 @@
 import React from 'react'
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
-import { ScheduleEditor } from '@/admin-portal/modules/content-studio/ContentStudio'
+import {
+  ContentStudio,
+  PublishNowEditor,
+  ScheduleEditor,
+} from '@/admin-portal/modules/content-studio/ContentStudio'
 import type { ContentStudioItem } from '@/admin-portal/modules/content-studio/getContentStudioPage'
 import { getContentStudioMessages } from '@/admin-portal/modules/content-studio/messages'
 import { KnowledgeEditor } from '@/admin-portal/modules/knowledge/KnowledgeEditor'
@@ -42,13 +46,16 @@ afterEach(() => {
   vi.unstubAllGlobals()
   router.refresh.mockReset()
   router.replace.mockReset()
+  vi.useRealTimers()
 })
 
 describe('Portal create command keys', () => {
   it('allows an administrator to create a Lead before the country is confirmed', async () => {
-    const request = vi.fn<typeof fetch>().mockResolvedValueOnce(
-      jsonResponse({ result: { id: 28, updatedAt: '2026-08-12T00:00:00.000Z' } }, 201),
-    )
+    const request = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ result: { id: 28, updatedAt: '2026-08-12T00:00:00.000Z' } }, 201),
+      )
     vi.stubGlobal('fetch', request)
     const summary: LeadsSummary = {
       items: [],
@@ -78,29 +85,31 @@ describe('Portal create command keys', () => {
 
   it('renders a qualification heading distinct from the project-stage field label', () => {
     const summary: LeadsSummary = {
-      items: [{
-        assignedTo: null,
-        budget: 'USD 450,000',
-        company: 'Facade Engineering LLC',
-        country: 'UAE',
-        email: 'buyer@example.invalid',
-        hasDrawings: true,
-        id: 27,
-        interest: 'aluminum panels',
-        intentLevel: 'a',
-        locale: 'en',
-        message: 'Need facade panels.',
-        name: 'Buyer',
-        phone: null,
-        procurementPlan: 'within 3 months',
-        projectStage: 'tender',
-        quantitySquareMeters: 3200,
-        relatedConversations: [],
-        source: 4,
-        status: 'qualified',
-        timeline: 'within_3_months',
-        updatedAt: '2026-08-12T00:00:00.000Z',
-      }],
+      items: [
+        {
+          assignedTo: null,
+          budget: 'USD 450,000',
+          company: 'Facade Engineering LLC',
+          country: 'UAE',
+          email: 'buyer@example.invalid',
+          hasDrawings: true,
+          id: 27,
+          interest: 'aluminum panels',
+          intentLevel: 'a',
+          locale: 'en',
+          message: 'Need facade panels.',
+          name: 'Buyer',
+          phone: null,
+          procurementPlan: 'within 3 months',
+          projectStage: 'tender',
+          quantitySquareMeters: 3200,
+          relatedConversations: [],
+          source: 4,
+          status: 'qualified',
+          timeline: 'within_3_months',
+          updatedAt: '2026-08-12T00:00:00.000Z',
+        },
+      ],
       options: { sources: [{ id: 4, label: 'Website' }], users: [] },
       pagination: { page: 1, totalDocs: 1, totalPages: 1 },
       query: { intent: 'all', page: 1, q: '', status: 'all' },
@@ -122,15 +131,15 @@ describe('Portal create command keys', () => {
     const request = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(interruptedJsonResponse())
-      .mockResolvedValueOnce(jsonResponse({ result: { text: 'second', usage: { totalTokens: 2 } } }))
-      .mockResolvedValueOnce(jsonResponse({ result: { text: 'changed', usage: { totalTokens: 3 } } }))
+      .mockResolvedValueOnce(
+        jsonResponse({ result: { text: 'second', usage: { totalTokens: 2 } } }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ result: { text: 'changed', usage: { totalTokens: 3 } } }),
+      )
     vi.stubGlobal('fetch', request)
     render(
-      React.createElement(
-        PortalPreferencesProvider,
-        null,
-        React.createElement(KnowledgeAiDebug),
-      ),
+      React.createElement(PortalPreferencesProvider, null, React.createElement(KnowledgeAiDebug)),
     )
 
     const input = screen.getByLabelText('调试输入')
@@ -156,11 +165,7 @@ describe('Portal create command keys', () => {
       .mockResolvedValueOnce(jsonResponse({ result: { text: 'retry', usage: { totalTokens: 2 } } }))
     vi.stubGlobal('fetch', request)
     render(
-      React.createElement(
-        PortalPreferencesProvider,
-        null,
-        React.createElement(KnowledgeAiDebug),
-      ),
+      React.createElement(PortalPreferencesProvider, null, React.createElement(KnowledgeAiDebug)),
     )
 
     fireEvent.change(screen.getByLabelText('调试输入'), { target: { value: 'terminal error' } })
@@ -295,6 +300,220 @@ describe('Portal create command keys', () => {
     }
     expect(firstBody.idempotencyKey).toMatch(/^portal-content-studio:schedule:/)
     expect(secondBody.idempotencyKey).toBe(firstBody.idempotencyKey)
+  })
+
+  it('reuses the immediate publication key after an interrupted response body', async () => {
+    const request = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(interruptedJsonResponse())
+      .mockResolvedValueOnce(jsonResponse({ publication: { jobs: [] } }, 202))
+    vi.stubGlobal('fetch', request)
+    const item: ContentStudioItem = {
+      assets: [],
+      body: 'Approved body',
+      contentLocale: 'en',
+      contentType: 'post',
+      id: 18,
+      knowledgeSources: [],
+      platform: 'facebook',
+      publishJobs: [],
+      reviews: [],
+      sourceReferences: [{ claim: 'Claim', source: 'Source' }],
+      status: 'approved',
+      title: 'Approved publication',
+      updatedAt: '2026-08-13T00:00:00.000Z',
+    }
+    const onDone = vi.fn()
+    render(
+      React.createElement(PublishNowEditor, {
+        copy: getContentStudioMessages('zh'),
+        item,
+        onClose: vi.fn(),
+        onDone,
+        options: [
+          { id: 11, label: 'Facebook page', platform: 'facebook' },
+          { id: 12, label: 'Instagram account', platform: 'instagram' },
+          { id: 13, label: 'LinkedIn page', platform: 'linkedin' },
+        ],
+      }),
+    )
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Facebook page/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Instagram account/ }))
+    fireEvent.click(screen.getByRole('button', { name: '立即发布' }))
+    await screen.findByRole('alert')
+    fireEvent.click(screen.getByRole('button', { name: '立即发布' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1))
+
+    const bodies = request.mock.calls.map(
+      (call) => JSON.parse(String(call[1]?.body)) as Record<string, unknown>,
+    )
+    expect(bodies[0]).toMatchObject({
+      action: 'publish-now',
+      targetAccountIds: [11, 12],
+      updatedAt: item.updatedAt,
+    })
+    expect(bodies[0]?.idempotencyKey).toMatch(/^portal-content-studio:publish-now:/)
+    expect(bodies[1]?.idempotencyKey).toBe(bodies[0]?.idempotencyKey)
+  })
+
+  it('shows independent platform results and an unknown-result warning', () => {
+    const summary = {
+      items: [
+        {
+          assets: [],
+          body: 'Approved body',
+          contentLocale: 'en' as const,
+          contentType: 'post' as const,
+          id: 19,
+          knowledgeSources: [],
+          platform: 'facebook' as const,
+          publishJobs: [
+            {
+              externalPublicationId: 'facebook-post-19',
+              externalPublicationUrl: 'https://facebook.example.invalid/post-19',
+              id: 201,
+              lastErrorSummary: null,
+              mode: 'automatic' as const,
+              platform: 'facebook' as const,
+              scheduledFor: '2026-08-13T01:30:00.000Z',
+              status: 'published' as const,
+              updatedAt: '2026-08-13T01:31:00.000Z',
+            },
+            {
+              externalPublicationId: null,
+              externalPublicationUrl: null,
+              id: 202,
+              lastErrorSummary: 'Provider response could not be confirmed; verify Instagram.',
+              mode: 'automatic' as const,
+              platform: 'instagram' as const,
+              scheduledFor: '2026-08-13T01:30:00.000Z',
+              status: 'delivery_unknown' as const,
+              updatedAt: '2026-08-13T01:32:00.000Z',
+            },
+          ],
+          reviews: [],
+          sourceReferences: [],
+          status: 'approved' as const,
+          title: 'Independent results',
+          updatedAt: '2026-08-13T00:00:00.000Z',
+        },
+      ],
+      options: { assets: [], knowledgeSources: [], platformAccounts: [] },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all' as const, q: '', status: 'all' as const },
+    }
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    expect(screen.getByText('facebook-post-19')).toBeTruthy()
+    expect(screen.getByText('结果未知')).toBeTruthy()
+    expect(
+      screen.getByText('Provider response could not be confirmed; verify Instagram.'),
+    ).toBeTruthy()
+    expect(screen.getByText('Facebook · 自动发布')).toBeTruthy()
+    expect(screen.getByText('Instagram · 自动发布')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '刷新发布结果' })).toBeTruthy()
+  })
+
+  it('keeps immediate publication unavailable while the kill switch is disabled', () => {
+    const summary = {
+      items: [
+        {
+          assets: [],
+          body: 'Approved body',
+          contentLocale: 'en' as const,
+          contentType: 'post' as const,
+          id: 20,
+          knowledgeSources: [],
+          platform: 'facebook' as const,
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'approved' as const,
+          title: 'Disabled publication',
+          updatedAt: '2026-08-13T00:00:00.000Z',
+        },
+      ],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [{ id: 11, label: 'Facebook page', platform: 'facebook' as const }],
+      },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all' as const, q: '', status: 'all' as const },
+    }
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    expect(screen.getByRole('button', { name: '立即发布' }).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('polls active publication results without sending another publish command', async () => {
+    vi.useFakeTimers()
+    const request = vi.fn<typeof fetch>()
+    vi.stubGlobal('fetch', request)
+    const summary = {
+      items: [
+        {
+          assets: [],
+          body: 'Approved body',
+          contentLocale: 'en' as const,
+          contentType: 'post' as const,
+          id: 21,
+          knowledgeSources: [],
+          platform: 'facebook' as const,
+          publishJobs: [
+            {
+              externalPublicationId: null,
+              externalPublicationUrl: null,
+              id: 203,
+              lastErrorSummary: null,
+              mode: 'automatic' as const,
+              platform: 'facebook' as const,
+              scheduledFor: '2026-08-13T01:30:00.000Z',
+              status: 'publishing' as const,
+              updatedAt: '2026-08-13T01:31:00.000Z',
+            },
+          ],
+          reviews: [],
+          sourceReferences: [],
+          status: 'approved' as const,
+          title: 'Active publication',
+          updatedAt: '2026-08-13T00:00:00.000Z',
+        },
+      ],
+      options: { assets: [], knowledgeSources: [], platformAccounts: [] },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all' as const, q: '', status: 'all' as const },
+    }
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    await act(() => vi.advanceTimersByTimeAsync(2_000))
+    expect(router.refresh).toHaveBeenCalledTimes(1)
+    expect(request).not.toHaveBeenCalled()
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+    expect(router.refresh).toHaveBeenCalledTimes(15)
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('reuses the lead create key after an interrupted response body', async () => {

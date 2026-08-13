@@ -55,7 +55,7 @@ export type JobExecution = {
 export type JobHandler = (job: ClaimedJob, execution: JobExecution) => Promise<void>
 
 export interface JobQueue {
-  claimNext: () => Promise<ClaimedJob | null>
+  claimNext: (allowedTypes?: readonly string[]) => Promise<ClaimedJob | null>
   complete: (job: ClaimedJob) => Promise<JobRecord>
   fail: (failure: JobFailure) => Promise<JobRecord>
   renew: (job: ClaimedJob) => Promise<ClaimedJob>

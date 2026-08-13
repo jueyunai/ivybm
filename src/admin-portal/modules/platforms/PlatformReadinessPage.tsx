@@ -30,7 +30,8 @@ const messages = {
     blocked: 'Blocked',
     capability: 'Capability',
     connection: 'Connection',
-    description: 'Credential-free readiness only. Complete the next action in the assigned system, then refresh this view.',
+    description:
+      'Credential-free readiness only. Complete the next action in the assigned system, then refresh this view.',
     empty: 'No platform accounts are configured yet.',
     forbidden: 'Only administrators can view platform readiness.',
     missing: 'Still required',
@@ -51,24 +52,39 @@ const messages = {
       external_account_id: 'An external account ID is required.',
       meta_account_allowlist: 'Add this account to the Meta webhook allowlist.',
       meta_app_secret: 'The Meta app secret must be configured in the restricted maintenance flow.',
-      meta_verify_token: 'The Meta verification token must be configured in the restricted maintenance flow.',
+      meta_verify_token:
+        'The Meta verification token must be configured in the restricted maintenance flow.',
       official_tiktok_dm_schema: 'TikTok DM has no supported official schema yet.',
       publishing_job_adapter: 'The publishing job adapter is not implemented.',
+      publishing_disabled: 'The controlled publishing kill switch is disabled.',
+      publishing_runtime_configuration:
+        'The server publishing runtime configuration is incomplete.',
       refresh_token: 'A refresh token is required after the access token expires.',
-      refresh_token_decryption: 'The configured refresh token cannot be verified by this environment.',
+      refresh_token_decryption:
+        'The configured refresh token cannot be verified by this environment.',
       tiktok_dm_api_eligibility: 'The TikTok account is not eligible for the DM API.',
     },
     steps: {
       'complete-authorization': 'Complete the authorization flow for this account.',
-      'complete-tiktok-eligibility': 'Confirm the account and region are eligible for the TikTok DM API.',
-      'configure-credentials': 'Configure or rotate credentials through the restricted maintenance flow.',
-      'configure-meta-webhook': 'Configure the Meta webhook secret, verification token, and account allowlist.',
-      'implement-publishing-adapter': 'Implement and verify the publishing job adapter before enabling this capability.',
-      'monitor-available-capability': 'Keep monitoring the verified capability and record future failures in Operations.',
-      'provide-external-account': 'Ask the account owner to provide the external account identifier.',
-      'request-platform-approval': 'Submit or follow up on the platform approval required for this capability.',
+      'complete-tiktok-eligibility':
+        'Confirm the account and region are eligible for the TikTok DM API.',
+      'configure-credentials':
+        'Configure or rotate credentials through the restricted maintenance flow.',
+      'configure-meta-webhook':
+        'Configure the Meta webhook secret, verification token, and account allowlist.',
+      'configure-publishing-runtime':
+        'Complete the restricted publishing runtime configuration before the controlled test.',
+      'implement-publishing-adapter':
+        'Implement and verify the publishing job adapter before enabling this capability.',
+      'monitor-available-capability':
+        'Keep monitoring the verified capability and record future failures in Operations.',
+      'provide-external-account':
+        'Ask the account owner to provide the external account identifier.',
+      'request-platform-approval':
+        'Submit or follow up on the platform approval required for this capability.',
       'run-controlled-test': 'Run the controlled test, record its result, then reassess readiness.',
-      'wait-for-official-schema': 'Wait for the official TikTok DM schema before planning integration work.',
+      'wait-for-official-schema':
+        'Wait for the official TikTok DM schema before planning integration work.',
     },
     readyForTest: 'Ready for controlled test',
     refresh: 'Refresh',
@@ -108,6 +124,8 @@ const messages = {
       meta_verify_token: '需要通过受限维护流程配置 Meta 验证令牌。',
       official_tiktok_dm_schema: 'TikTok 私信尚无可支持的官方 schema。',
       publishing_job_adapter: '发布任务 adapter 尚未实现。',
+      publishing_disabled: '受控发布 kill switch 当前未启用。',
+      publishing_runtime_configuration: '服务端发布运行时配置尚未完整。',
       refresh_token: '访问令牌过期后需要刷新令牌。',
       refresh_token_decryption: '当前环境无法验证已配置的刷新令牌。',
       tiktok_dm_api_eligibility: '该 TikTok 账号尚不具备私信 API 资格。',
@@ -117,6 +135,7 @@ const messages = {
       'complete-tiktok-eligibility': '请确认账号和地区具备 TikTok 私信 API 资格。',
       'configure-credentials': '请通过受限维护流程配置或轮换凭据。',
       'configure-meta-webhook': '请配置 Meta Webhook 密钥、验证令牌和账号 allowlist。',
+      'configure-publishing-runtime': '请先通过受限维护流程补齐发布运行时配置，再进行受控测试。',
       'implement-publishing-adapter': '请先完成发布任务 adapter 的实现与验证，再启用此能力。',
       'monitor-available-capability': '请持续监控已验证能力，并在出现问题时通过异常中心处理。',
       'provide-external-account': '请让账号所有者提供外部账号标识。',
@@ -136,12 +155,11 @@ type PlatformCopy = (typeof messages)[keyof typeof messages]
 const labelFor = (status: PlatformReadinessStatus, copy: PlatformCopy) =>
   status === 'available'
     ? copy.available
-    :
-  status === 'blocked'
-    ? copy.blocked
-    : status === 'ready-for-controlled-test'
-      ? copy.readyForTest
-      : copy.actionRequired
+    : status === 'blocked'
+      ? copy.blocked
+      : status === 'ready-for-controlled-test'
+        ? copy.readyForTest
+        : copy.actionRequired
 
 const toneFor = (status: PlatformReadinessStatus) =>
   status === 'blocked'
@@ -154,7 +172,13 @@ const readableRequirement = (value: PlatformReadinessRequirement, copy: Platform
   copy.requirements[value]
 
 const readableCapability = (value: PlatformAccountCapability, copy: PlatformCopy): string =>
-  value === 'messaging-inbound' ? (copy.capability === '能力' ? '入站消息' : 'Inbound messaging') : copy.capability === '能力' ? '内容发布' : 'Publishing'
+  value === 'messaging-inbound'
+    ? copy.capability === '能力'
+      ? '入站消息'
+      : 'Inbound messaging'
+    : copy.capability === '能力'
+      ? '内容发布'
+      : 'Publishing'
 
 function ReadinessAction({
   copy,
@@ -181,7 +205,13 @@ function ReadinessAction({
   )
 }
 
-function AccountReadiness({ account, copy }: { account: PlatformReadinessAccountSummary; copy: PlatformCopy }) {
+function AccountReadiness({
+  account,
+  copy,
+}: {
+  account: PlatformReadinessAccountSummary
+  copy: PlatformCopy
+}) {
   const connection = account.readiness.connection
 
   return (
@@ -190,15 +220,23 @@ function AccountReadiness({ account, copy }: { account: PlatformReadinessAccount
         <div>
           <p>{account.accountKind.replaceAll('-', ' ')}</p>
           <h3>{account.name}</h3>
-          <small>{account.externalAccountId ? `#${account.externalAccountId}` : copy.account}</small>
+          <small>
+            {account.externalAccountId ? `#${account.externalAccountId}` : copy.account}
+          </small>
         </div>
         <StatusBadge label={labelFor(connection.status, copy)} tone={toneFor(connection.status)} />
       </header>
       <section className="portal-platforms__connection">
         <strong>{copy.connection}</strong>
         {connection.missing.length ? (
-          <ul>{connection.missing.map((requirement) => <li key={requirement}>{readableRequirement(requirement, copy)}</li>)}</ul>
-        ) : <p>{copy.readyForTest}</p>}
+          <ul>
+            {connection.missing.map((requirement) => (
+              <li key={requirement}>{readableRequirement(requirement, copy)}</li>
+            ))}
+          </ul>
+        ) : (
+          <p>{copy.readyForTest}</p>
+        )}
         <ReadinessAction copy={copy} missing={connection.missing} status={connection.status} />
       </section>
       <section className="portal-platforms__capabilities">
@@ -207,11 +245,21 @@ function AccountReadiness({ account, copy }: { account: PlatformReadinessAccount
           <div key={capability.capability}>
             <div>
               <strong>{readableCapability(capability.capability, copy)}</strong>
-              <StatusBadge label={labelFor(capability.status, copy)} tone={toneFor(capability.status)} />
+              <StatusBadge
+                label={labelFor(capability.status, copy)}
+                tone={toneFor(capability.status)}
+              />
             </div>
             {capability.missing.length ? (
-              <p><span>{copy.missing}:</span> {capability.missing.map((requirement) => readableRequirement(requirement, copy)).join(' ')}</p>
-            ) : <p>{labelFor(capability.status, copy)}</p>}
+              <p>
+                <span>{copy.missing}:</span>{' '}
+                {capability.missing
+                  .map((requirement) => readableRequirement(requirement, copy))
+                  .join(' ')}
+              </p>
+            ) : (
+              <p>{labelFor(capability.status, copy)}</p>
+            )}
             <ReadinessAction copy={copy} missing={capability.missing} status={capability.status} />
           </div>
         ))}
@@ -232,9 +280,19 @@ export function PlatformReadinessPage({
   const copy = messages[locale]
 
   if (pageState !== 'available' || !summary) {
-    const type = pageState === 'forbidden' ? 'forbidden' : pageState === 'read-failed' ? 'error' : 'blocked'
-    const description = pageState === 'forbidden' ? copy.forbidden : pageState === 'read-failed' ? copy.unavailable : copy.moduleDisabled
-    return <main className="portal-page portal-platforms"><PortalState description={description} title={copy.title} type={type} /></main>
+    const type =
+      pageState === 'forbidden' ? 'forbidden' : pageState === 'read-failed' ? 'error' : 'blocked'
+    const description =
+      pageState === 'forbidden'
+        ? copy.forbidden
+        : pageState === 'read-failed'
+          ? copy.unavailable
+          : copy.moduleDisabled
+    return (
+      <main className="portal-page portal-platforms">
+        <PortalState description={description} title={copy.title} type={type} />
+      </main>
+    )
   }
 
   return (
@@ -252,10 +310,14 @@ export function PlatformReadinessPage({
       </header>
       {summary.accounts.length ? (
         <section className="portal-platforms__grid">
-          {summary.accounts.map((account) => <AccountReadiness account={account} copy={copy} key={account.id} />)}
+          {summary.accounts.map((account) => (
+            <AccountReadiness account={account} copy={copy} key={account.id} />
+          ))}
         </section>
       ) : (
-        <Surface as="section"><PortalState description={copy.empty} title={copy.empty} type="empty" /></Surface>
+        <Surface as="section">
+          <PortalState description={copy.empty} title={copy.empty} type="empty" />
+        </Surface>
       )}
     </main>
   )

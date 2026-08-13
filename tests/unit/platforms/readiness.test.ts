@@ -20,6 +20,11 @@ describe('platform account readiness', () => {
         refreshTokenReadable: false,
       },
       environment: {
+        ADMIN_PORTAL_PUBLISHING_ENABLED: 'true',
+        LINKEDIN_API_VERSION: '202608',
+        LINKEDIN_UPLOAD_ALLOWED_ORIGINS: 'https://www.linkedin.com',
+        LINKEDIN_UPLOAD_TICKET_KEY: 'a'.repeat(64),
+        PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'b'.repeat(64),
         META_WEBHOOK_ALLOWED_ACCOUNT_IDS: 'other-page, page-123 ',
         META_WEBHOOK_APP_SECRET: 'do-not-return-this-secret',
         META_WEBHOOK_VERIFY_TOKEN: 'do-not-return-this-token',
@@ -37,9 +42,8 @@ describe('platform account readiness', () => {
         }),
         expect.objectContaining({
           capability: 'publishing',
-          implementation: 'blocked',
-          reasonCode: 'publishing_job_adapter_pending',
-          status: 'blocked',
+          implementation: 'implemented',
+          status: 'ready-for-controlled-test',
         }),
       ]),
     )
@@ -196,7 +200,10 @@ describe('platform account readiness', () => {
     const withoutEvidence = assessPlatformAccountReadiness({ account, environment })
     expect(withoutEvidence.capabilities).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ capability: 'messaging-inbound', status: 'ready-for-controlled-test' }),
+        expect.objectContaining({
+          capability: 'messaging-inbound',
+          status: 'ready-for-controlled-test',
+        }),
       ]),
     )
 
@@ -234,6 +241,76 @@ describe('platform account readiness', () => {
         status: 'available',
       }),
     ).toEqual({ code: 'monitor-available-capability', owner: 'administrator' })
+  })
+
+  it('keeps publishing action-required until the kill switch and runtime are configured', () => {
+    const result = assessPlatformAccountReadiness({
+      account: {
+        accessTokenConfigured: true,
+        accessTokenReadable: true,
+        accountKind: 'linkedin-organization',
+        authorizationState: 'connected',
+        capabilityApprovals: { publishing: 'approved' },
+        externalAccountId: '123456789',
+        refreshTokenConfigured: false,
+        refreshTokenReadable: false,
+      },
+      environment: {},
+    })
+
+    expect(result.capabilities).toEqual([
+      expect.objectContaining({
+        capability: 'publishing',
+        implementation: 'implemented',
+        missing: ['publishing_disabled'],
+        status: 'action-required',
+      }),
+    ])
+    expect(
+      getPlatformReadinessAction({
+        missing: ['publishing_disabled'],
+        status: 'action-required',
+      }),
+    ).toEqual({ code: 'configure-publishing-runtime', owner: 'engineering' })
+  })
+
+  it('marks publishing available only after successful controlled publication evidence', () => {
+    const account = {
+      accessTokenConfigured: true,
+      accessTokenReadable: true,
+      accountKind: 'linkedin-organization' as const,
+      authorizationState: 'connected' as const,
+      capabilityApprovals: { publishing: 'approved' as const },
+      externalAccountId: '123456789',
+      refreshTokenConfigured: false,
+      refreshTokenReadable: false,
+    }
+    const environment = {
+      ADMIN_PORTAL_PUBLISHING_ENABLED: 'true',
+      LINKEDIN_API_VERSION: '202608',
+      LINKEDIN_UPLOAD_ALLOWED_ORIGINS: 'https://www.linkedin.com',
+      LINKEDIN_UPLOAD_TICKET_KEY: 'a'.repeat(64),
+      PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'b'.repeat(64),
+    }
+    expect(assessPlatformAccountReadiness({ account, environment }).capabilities).toEqual([
+      expect.objectContaining({ status: 'ready-for-controlled-test' }),
+    ])
+    expect(
+      assessPlatformAccountReadiness({
+        account: {
+          ...account,
+          controlledTestEvidence: {
+            publishing: {
+              completedAt: '2026-08-13T00:00:00.000Z',
+              outcome: 'passed',
+              reference: 'publish-job:42',
+            },
+          },
+        },
+        environment,
+        nowMilliseconds: Date.parse('2026-08-13T01:00:00.000Z'),
+      }).capabilities,
+    ).toEqual([expect.objectContaining({ status: 'available' })])
   })
 
   it('reports expired access tokens and unreadable refresh tokens without exposing credentials', () => {

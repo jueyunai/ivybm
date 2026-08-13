@@ -57,6 +57,19 @@ describe('JobWorker lease heartbeat', () => {
     await expect(outcome).resolves.toBe('succeeded')
     expect(queue.renew).toHaveBeenCalledTimes(3)
     expect(queue.complete).toHaveBeenCalledTimes(1)
+    expect(queue.claimNext).toHaveBeenCalledWith(['test.job'])
+  })
+
+  it('asks the queue to claim only registered handler types', async () => {
+    const job = claimedJob()
+    const queue = queueFor(job)
+    const worker = new JobWorker({
+      handlers: { 'test.job': async () => undefined, 'another.job': async () => undefined },
+      queue,
+    })
+
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+    expect(queue.claimNext).toHaveBeenCalledWith(['test.job', 'another.job'])
   })
 
   it('aborts and fences a handler after heartbeat renewal loses the lease', async () => {

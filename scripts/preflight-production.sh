@@ -27,7 +27,9 @@ release_environment_keys=(
   AI_CONFIG_ENCRYPTION_KEY PLATFORM_CREDENTIAL_ENCRYPTION_KEY AI_PROVIDER_BASE_URL AI_PROVIDER_API_KEY
   AI_TEXT_MODEL AI_EMBEDDING_MODEL AI_EMBEDDING_DIMENSIONS AI_TEXT_TIMEOUT_MS AI_EMBEDDING_TIMEOUT_MS
   AI_REASONING_ENABLED AI_REASONING_EFFORT META_WEBHOOK_APP_SECRET META_WEBHOOK_VERIFY_TOKEN
-  META_WEBHOOK_ALLOWED_ACCOUNT_IDS FEISHU_APP_ID FEISHU_APP_SECRET FEISHU_OAUTH_REDIRECT_URI
+  META_WEBHOOK_ALLOWED_ACCOUNT_IDS META_APP_ID META_LOGIN_CONFIG_ID META_OAUTH_REDIRECT_URI
+  INSTAGRAM_APP_ID INSTAGRAM_APP_SECRET INSTAGRAM_OAUTH_REDIRECT_URI LINKEDIN_API_VERSION
+  LINKEDIN_UPLOAD_ALLOWED_ORIGINS LINKEDIN_UPLOAD_TICKET_KEY FEISHU_APP_ID FEISHU_APP_SECRET FEISHU_OAUTH_REDIRECT_URI
   FEISHU_CREDENTIAL_ENCRYPTION_KEY FEISHU_QR_REGISTRATION_ENABLED FEISHU_RELAY_INTERVAL_MS
   FEISHU_OAUTH_RECOVERY_INTERVAL_MS WORKER_HEARTBEAT_INTERVAL_MS WORKER_JOB_HEARTBEAT_INTERVAL_MS
   WORKER_POLL_INTERVAL_MS
@@ -129,6 +131,9 @@ meta_oauth_redirect_uri="$(read_optional_env_value META_OAUTH_REDIRECT_URI)"
 instagram_app_id="$(read_optional_env_value INSTAGRAM_APP_ID)"
 instagram_app_secret="$(read_optional_env_value INSTAGRAM_APP_SECRET)"
 instagram_oauth_redirect_uri="$(read_optional_env_value INSTAGRAM_OAUTH_REDIRECT_URI)"
+linkedin_api_version="$(read_optional_env_value LINKEDIN_API_VERSION)"
+linkedin_upload_allowed_origins="$(read_optional_env_value LINKEDIN_UPLOAD_ALLOWED_ORIGINS)"
+linkedin_upload_ticket_key="$(read_optional_env_value LINKEDIN_UPLOAD_TICKET_KEY)"
 feishu_qr_registration_enabled="$(read_env_value FEISHU_QR_REGISTRATION_ENABLED)"
 feishu_oauth_redirect_uri="$(read_optional_env_value FEISHU_OAUTH_REDIRECT_URI)"
 feishu_credential_encryption_key="$(read_optional_env_value FEISHU_CREDENTIAL_ENCRYPTION_KEY)"
@@ -204,9 +209,26 @@ for key_value in \
     exit 1
   fi
 done
-if [[ "$portal_publishing_enabled" != 'false' ]]; then
-  echo 'ADMIN_PORTAL_PUBLISHING_ENABLED must remain false for this release' >&2
+if [[ "$portal_publishing_enabled" != 'true' && "$portal_publishing_enabled" != 'false' ]]; then
+  echo 'ADMIN_PORTAL_PUBLISHING_ENABLED must be true or false' >&2
   exit 1
+fi
+
+if [[ "$portal_publishing_enabled" == 'true' ]]; then
+  require_pattern PLATFORM_CREDENTIAL_ENCRYPTION_KEY "$platform_credential_encryption_key" '^[a-fA-F0-9]{64}$'
+  require_pattern LINKEDIN_API_VERSION "$linkedin_api_version" '^20[0-9]{2}(0[1-9]|1[0-2])$'
+  require_pattern LINKEDIN_UPLOAD_TICKET_KEY "$linkedin_upload_ticket_key" '^[a-fA-F0-9]{64}$'
+  if [[ -z "$linkedin_upload_allowed_origins" || "$linkedin_upload_allowed_origins" == *'REPLACE_'* || "$linkedin_upload_allowed_origins" == *'replace-with'* ]]; then
+    echo 'LINKEDIN_UPLOAD_ALLOWED_ORIGINS is required when publishing is enabled' >&2
+    exit 1
+  fi
+  IFS=',' read -r -a linkedin_upload_origins <<<"$linkedin_upload_allowed_origins"
+  for origin in "${linkedin_upload_origins[@]}"; do
+    if [[ ! "$origin" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]]; then
+      echo 'LINKEDIN_UPLOAD_ALLOWED_ORIGINS must contain exact comma-separated HTTPS origins' >&2
+      exit 1
+    fi
+  done
 fi
 
 if [[ "$feishu_qr_registration_enabled" != 'true' && "$feishu_qr_registration_enabled" != 'false' ]]; then
@@ -368,6 +390,7 @@ app = services.get('app', {})
 worker = services.get('worker', {})
 migrate = services.get('migrate', {})
 app_environment = app.get('environment', {})
+worker_environment = worker.get('environment', {})
 
 expected_images = {
     'app': f'{runtime_image}:{image_tag}@{runtime_digest}',
@@ -395,8 +418,20 @@ portal_keys = [
 for key in portal_keys:
     if app_environment.get(key) not in {'true', 'false'}:
         raise SystemExit(f'Compose app environment has an invalid {key}')
-if app_environment.get('ADMIN_PORTAL_PUBLISHING_ENABLED') != 'false':
-    raise SystemExit('Compose app environment must keep ADMIN_PORTAL_PUBLISHING_ENABLED=false')
+publishing_enabled = app_environment.get('ADMIN_PORTAL_PUBLISHING_ENABLED')
+if publishing_enabled not in {'true', 'false'}:
+    raise SystemExit('Compose app environment has an invalid ADMIN_PORTAL_PUBLISHING_ENABLED')
+if worker_environment.get('ADMIN_PORTAL_PUBLISHING_ENABLED') != publishing_enabled:
+    raise SystemExit('Compose app and worker publishing switches must match')
+if publishing_enabled == 'true':
+    for key in (
+        'PLATFORM_CREDENTIAL_ENCRYPTION_KEY',
+        'LINKEDIN_API_VERSION',
+        'LINKEDIN_UPLOAD_ALLOWED_ORIGINS',
+        'LINKEDIN_UPLOAD_TICKET_KEY',
+    ):
+        if not worker_environment.get(key):
+            raise SystemExit(f'Compose worker environment is missing {key}')
 if app.get('build') is not None or worker.get('build') is not None or migrate.get('build') is not None:
     raise SystemExit('Production services must use immutable images and must not build on the server')
 ports = app.get('ports', [])
