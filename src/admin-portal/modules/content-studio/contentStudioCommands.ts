@@ -5,7 +5,12 @@ import path from 'node:path'
 import type { Payload, PayloadRequest } from 'payload'
 
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
-import { AI_IMAGE_SIZES, type AiImageMimeType, type AiImageSize } from '@/modules/ai/gateway'
+import {
+  AI_IMAGE_SIZES,
+  isValidAiImage,
+  type AiImageMimeType,
+  type AiImageSize,
+} from '@/modules/ai/gateway'
 import { AI_USAGE_KEYS, resolveAiGateway } from '@/modules/ai/registry'
 import { createPortalMedia } from '@/modules/media'
 
@@ -346,9 +351,9 @@ const mediaReference = async ({
       409,
     )
   }
+  let data: Uint8Array
   try {
-    const data = await readFile(path.resolve(process.cwd(), 'media', filename))
-    return { data: new Uint8Array(data), mimeType: mimeType as AiImageMimeType }
+    data = new Uint8Array(await readFile(path.resolve(process.cwd(), 'media', filename)))
   } catch {
     throw new ContentStudioCommandError(
       'content-studio-reference-unavailable',
@@ -356,6 +361,14 @@ const mediaReference = async ({
       409,
     )
   }
+  if (!isValidAiImage(data, mimeType)) {
+    throw new ContentStudioCommandError(
+      'content-studio-reference-unavailable',
+      'The reference image is unavailable',
+      409,
+    )
+  }
+  return { data, mimeType: mimeType as AiImageMimeType }
 }
 
 const imageExtension = (mimeType: AiImageMimeType): string => {

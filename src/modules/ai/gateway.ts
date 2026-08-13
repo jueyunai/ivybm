@@ -333,14 +333,15 @@ const imageMatchesMimeType = (data: Uint8Array, mimeType: AiImageMimeType): bool
   )
 }
 
+export const isValidAiImage = (data: unknown, mimeType: unknown): data is Uint8Array =>
+  data instanceof Uint8Array &&
+  data.length > 0 &&
+  data.length <= AI_GENERATED_IMAGE_MAX_BYTES &&
+  AI_IMAGE_MIME_TYPES.includes(mimeType as AiImageMimeType) &&
+  imageMatchesMimeType(data, mimeType as AiImageMimeType)
+
 const validateGeneratedImage = (image: ProviderGenerateImageResult['image']): void => {
-  if (
-    !(image.data instanceof Uint8Array) ||
-    image.data.length === 0 ||
-    image.data.length > AI_GENERATED_IMAGE_MAX_BYTES ||
-    !AI_IMAGE_MIME_TYPES.includes(image.mimeType) ||
-    !imageMatchesMimeType(image.data, image.mimeType)
-  ) {
+  if (!isValidAiImage(image.data, image.mimeType)) {
     throw new AiGatewayError('invalid_response', 'AI provider returned an invalid image')
   }
 }
@@ -472,6 +473,12 @@ export const createAiGateway = (options: GatewayOptions) => ({
   generateImage: async (input: AiGatewayGenerateImageInput) => {
     if (!input.prompt.trim()) {
       throw new AiGatewayError('invalid_request', 'Image generation prompt is required')
+    }
+    if (
+      input.referenceImage &&
+      !isValidAiImage(input.referenceImage.data, input.referenceImage.mimeType)
+    ) {
+      throw new AiGatewayError('invalid_request', 'Image generation reference is invalid')
     }
     const operation = options.operations?.image
     const model = requireModel(input.model ?? operation?.model ?? options.models?.image)

@@ -14,6 +14,13 @@ import {
   updateContentStudioDraft,
 } from '@/admin-portal/modules/content-studio/contentStudioCommands'
 
+const readFileMock = vi.hoisted(() => vi.fn())
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, default: { ...actual, readFile: readFileMock }, readFile: readFileMock }
+})
+
 const req = {
   user: { collection: 'users', email: 'operator@example.invalid', id: 2, role: 'operator' },
 } as unknown as PayloadRequest
@@ -34,6 +41,7 @@ const input = {
 
 describe('Portal Content Studio draft commands', () => {
   afterEach(() => {
+    readFileMock.mockReset()
     vi.unstubAllEnvs()
   })
 
@@ -298,6 +306,50 @@ describe('Portal Content Studio draft commands', () => {
     )
     expect(resolveGateway).not.toHaveBeenCalled()
     expect(payload.create).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    {
+      bytes: Buffer.from('not a png image'),
+      label: 'declared PNG content with invalid bytes',
+    },
+    {
+      bytes: Buffer.alloc(8 * 1024 * 1024 + 1),
+      label: 'reference content larger than 8 MiB after reading',
+    },
+  ])('rejects $label before resolving or dispatching the provider', async ({ bytes }) => {
+    readFileMock.mockResolvedValue(bytes)
+    const generateImage = vi.fn()
+    const resolveGateway = vi.fn().mockResolvedValue({ generateImage })
+    const onProviderDispatch = vi.fn()
+    const create = vi.fn()
+    const payload = {
+      create,
+      findByID: vi.fn().mockResolvedValue({
+        filename: 'reference.png',
+        id: 44,
+        mimeType: 'image/png',
+      }),
+    } as any
+
+    await expect(
+      generateContentStudioImage({
+        input: {
+          prompt: 'Polish the product reference image',
+          referenceMediaId: 44,
+          size: '1024x1024',
+        },
+        onProviderDispatch,
+        payload,
+        req,
+        resolveGateway: resolveGateway as any,
+      }),
+    ).rejects.toMatchObject({ code: 'content-studio-reference-unavailable', status: 409 })
+
+    expect(resolveGateway).not.toHaveBeenCalled()
+    expect(generateImage).not.toHaveBeenCalled()
+    expect(onProviderDispatch).not.toHaveBeenCalled()
+    expect(create).not.toHaveBeenCalled()
   })
 
   it('adopts one readable image into a current draft without duplicating the relation', async () => {

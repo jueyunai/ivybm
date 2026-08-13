@@ -169,6 +169,36 @@ describe('AI gateway contract', () => {
     )
   })
 
+  it.each([
+    {
+      data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47]),
+      label: 'a malformed declared PNG',
+    },
+    {
+      data: new Uint8Array(8 * 1024 * 1024 + 1),
+      label: 'an image larger than 8 MiB',
+    },
+  ])('rejects $label before image provider dispatch', async ({ data }) => {
+    const onDispatch = vi.fn()
+    const generateImage = vi.fn(fakeProvider.generateImage)
+    const gateway = createAiGateway({
+      operations: {
+        image: { model: 'fixture-image-model', provider: { ...fakeProvider, generateImage } },
+      },
+    })
+
+    await expect(
+      gateway.generateImage({
+        onDispatch,
+        prompt: 'Polish the reference image',
+        referenceImage: { data, mimeType: 'image/png' },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request' })
+
+    expect(onDispatch).not.toHaveBeenCalled()
+    expect(generateImage).not.toHaveBeenCalled()
+  })
+
   it('fingerprints the provider endpoint even when model and dimensions are identical', async () => {
     const createGateway = (embeddingSpaceIdentity: string) =>
       createAiGateway({
