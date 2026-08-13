@@ -921,10 +921,7 @@ function GenerateDraftEditor({
         </Field>
       </div>
       <footer>
-        <Button
-          disabled={busy || !form.brief.trim()}
-          onClick={() => void generate()}
-        >
+        <Button disabled={busy || !form.brief.trim()} onClick={() => void generate()}>
           <IconSparkles aria-hidden="true" size={16} />
           {copy.generate}
         </Button>
@@ -1288,9 +1285,7 @@ function MultiOptions({
   toggle: (value: string) => void
 }) {
   return (
-    <div
-      className={`portal-content-studio__multi-options${assetPreviews ? ' is-assets' : ''}`}
-    >
+    <div className={`portal-content-studio__multi-options${assetPreviews ? ' is-assets' : ''}`}>
       {options.length ? (
         options.map((option) => {
           const checked = selected.includes(String(option.id))

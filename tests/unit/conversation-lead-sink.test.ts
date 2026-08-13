@@ -74,6 +74,90 @@ describe('conversation lead signal extraction', () => {
   })
 
   it.each([
+    'We are a woman-led buyer.',
+    'Our Canadian buyer needs facade panels.',
+    'A Qatarian supplier contacted us.',
+    'The tenant key is foo_oman.',
+    'The tenant key is oman_bar.',
+    'The tenant key is foo_عمان.',
+    'The tenant key is عمان_bar.',
+  ])('does not extract a country from inside another word or identifier: %s', (content) => {
+    expect(extractLeadSignals(sessionWith('en', content)).country).toBeUndefined()
+  })
+
+  it.each([
+    ['The project is in Oman.', 'Oman'],
+    ['The project market is UAE.', 'UAE'],
+    ['المشروع في عمان.', 'Oman'],
+    ['Email sales@usa.example.invalid. The project is in Oman.', 'Oman'],
+  ])('extracts a delimited country mention from %s', (content, country) => {
+    expect(
+      extractLeadSignals(sessionWith(content.includes('عمان') ? 'ar' : 'en', content)).country,
+    ).toBe(country)
+  })
+
+  it.each([
+    'Email sales@usa.example.invalid.',
+    'Email buyer@oman.example.invalid.',
+    'Email partner@canada.example.invalid.',
+    'See https://example.com/usa/spec for the drawings.',
+    'See example.com?country=usa for the drawings.',
+    'See example.com#oman for the drawings.',
+    'See example.com;market=canada for the drawings.',
+    'See example.com:443/usa/spec for the drawings.',
+    'راسل عمان@example.com للحصول على التفاصيل.',
+    'راجع عمان.example للحصول على التفاصيل.',
+  ])('does not extract a country from an email address or URL: %s', (content) => {
+    expect(
+      extractLeadSignals(sessionWith(/[\p{Script=Arabic}]/u.test(content) ? 'ar' : 'en', content))
+        .country,
+    ).toBeUndefined()
+  })
+
+  it('keeps a natural-language Arabic country mention next to a Unicode email', () => {
+    expect(
+      extractLeadSignals(sessionWith('ar', 'راسل عمان@example.com. نحن من عمان.')).country,
+    ).toBe('Oman')
+  })
+
+  it.each([
+    'A buyer needs facade panels, 1000 sqm, tender, email sales@usa.example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender, email buyer@oman.example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender, email partner@canada.example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender. See https://example.com/usa/spec and email buyer@example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender. See example.com?country=usa and email buyer@example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender. See example.com#oman and email buyer@example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender. See example.com;market=canada and email buyer@example.invalid.',
+    'A buyer needs facade panels, 1000 sqm, tender. See example.com:443/usa/spec and email buyer@example.invalid.',
+  ])(
+    'does not let an email or URL country token promote a B-level inquiry to A: %s',
+    async (content) => {
+      const evaluation = await new PayloadConversationLeadSink().evaluate(
+        sessionWith('en', content),
+      )
+
+      expect(evaluation.signals.country).toBeUndefined()
+      expect(evaluation.score).toMatchObject({ handoffRecommended: false, level: 'b', score: 60 })
+      expect(evaluation.score.missingFields).toContain('country')
+      expect(evaluation.score.reasons).not.toContain('target_country')
+    },
+  )
+
+  it('does not let an embedded country substring promote a B-level inquiry to A', async () => {
+    const evaluation = await new PayloadConversationLeadSink().evaluate(
+      sessionWith(
+        'en',
+        'A woman-led buyer needs facade panels, 1000 sqm, tender, email buyer@example.invalid.',
+      ),
+    )
+
+    expect(evaluation.signals.country).toBeUndefined()
+    expect(evaluation.score).toMatchObject({ handoffRecommended: false, level: 'b', score: 60 })
+    expect(evaluation.score.missingFields).toContain('country')
+    expect(evaluation.score.reasons).not.toContain('target_country')
+  })
+
+  it.each([
     ['I work at Acme Facades.', 'Acme Facades'],
     ["I'm from Acme Corp.", 'Acme Corp'],
     ['I work at Acme Facades for our procurement team.', 'Acme Facades'],
@@ -112,20 +196,19 @@ describe('conversation lead signal extraction', () => {
     expect(extractLeadSignals(session).company).toBeUndefined()
   })
 
-  it.each([
-    'Next Quarter.',
-    'My name is Alex Chen from UAE.',
-    'Would Rather Not Disclose.',
-  ])('does not reuse historical company context for a current timeline answer in %s', (content) => {
-    const session = sessionWith('en', content)
-    session.qualificationState = {
-      askedFields: ['company', 'timeline'],
-      awaitingFields: ['timeline'],
-      roundCount: 2,
-    }
+  it.each(['Next Quarter.', 'My name is Alex Chen from UAE.', 'Would Rather Not Disclose.'])(
+    'does not reuse historical company context for a current timeline answer in %s',
+    (content) => {
+      const session = sessionWith('en', content)
+      session.qualificationState = {
+        askedFields: ['company', 'timeline'],
+        awaitingFields: ['timeline'],
+        roundCount: 2,
+      }
 
-    expect(extractLeadSignals(session).company).toBeUndefined()
-  })
+      expect(extractLeadSignals(session).company).toBeUndefined()
+    },
+  )
 
   it('treats a legacy state without awaitingFields as no current company prompt', () => {
     const session = sessionWith('en', 'Next Quarter.')
@@ -137,16 +220,15 @@ describe('conversation lead signal extraction', () => {
     expect(extractLeadSignals(session).company).toBeUndefined()
   })
 
-  it.each([
-    'My name is Alex Chen from UAE.',
-    'Would Rather Not Disclose.',
-    'We are Next Quarter.',
-  ])('does not turn a name, refusal, or timeline into a prompted company in %s', (content) => {
-    const session = sessionWith('en', content)
-    session.qualificationState = awaitingCompany()
+  it.each(['My name is Alex Chen from UAE.', 'Would Rather Not Disclose.', 'We are Next Quarter.'])(
+    'does not turn a name, refusal, or timeline into a prompted company in %s',
+    (content) => {
+      const session = sessionWith('en', content)
+      session.qualificationState = awaitingCompany()
 
-    expect(extractLeadSignals(session).company).toBeUndefined()
-  })
+      expect(extractLeadSignals(session).company).toBeUndefined()
+    },
+  )
 
   it('accepts the structured English company reply requested by the responder', () => {
     const session = sessionWith('en', 'Company: Acme Facades')
@@ -447,16 +529,15 @@ describe('conversation lead signal extraction', () => {
     expect(extractLeadSignals(session).company).toBe('النور')
   })
 
-  it.each([
-    'الشركة: معلومات سرية',
-    'الشركة: غير متاح',
-    'الشركة: الاسم سري',
-  ])('rejects a structured Arabic disclosure refusal in %s', (content) => {
-    const session = sessionWith('ar', content)
-    session.qualificationState = awaitingCompany()
+  it.each(['الشركة: معلومات سرية', 'الشركة: غير متاح', 'الشركة: الاسم سري'])(
+    'rejects a structured Arabic disclosure refusal in %s',
+    (content) => {
+      const session = sessionWith('ar', content)
+      session.qualificationState = awaitingCompany()
 
-    expect(extractLeadSignals(session).company).toBeUndefined()
-  })
+      expect(extractLeadSignals(session).company).toBeUndefined()
+    },
+  )
 
   it.each(['نور.', 'الصحراء للألمنيوم.', 'النور للتجارة.'])(
     'does not guess an unlabelled Arabic proper name after the company field was asked in %s',
