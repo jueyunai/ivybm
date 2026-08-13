@@ -32,6 +32,42 @@ const arabicCountries: Array<[string, string]> = [
   ['البحرين', 'Bahrain'],
 ]
 
+const countryPattern = new RegExp(
+  String.raw`(?<![\p{L}\p{N}_])(${countries
+    .slice()
+    .sort((left, right) => right.length - left.length)
+    .map((country) => country.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|')})(?![\p{L}\p{N}_])`,
+  'iu',
+)
+const arabicCountryPattern = new RegExp(
+  String.raw`(?<![\p{L}\p{N}_])(${arabicCountries
+    .map(([country]) => country)
+    .sort((left, right) => right.length - left.length)
+    .map((country) => country.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|')})(?![\p{L}\p{N}_])`,
+  'u',
+)
+
+const emailAddressPattern = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.[\p{L}]{2,}/gu
+const webUrlPattern =
+  /(?:(?:https?:\/\/|www\.)[^\s<>"']+|(?<![\p{L}\p{N}_@])(?:[\p{L}\p{N}-]+\.)+[\p{L}]{2,}(?::\d{1,5})?(?:[/?#;][^\s<>"']*)?(?![\p{L}\p{N}_]))/giu
+
+// A country contributes directly to lead score, so only prose is evidence;
+// address/domain/path tokens must not silently manufacture a target market.
+const excludeNonProseCountrySignals = (text: string): string =>
+  text.replace(emailAddressPattern, ' ').replace(webUrlPattern, ' ')
+
+const extractCountry = (text: string): string | undefined => {
+  const prose = excludeNonProseCountrySignals(text)
+  const englishMatch = prose.match(countryPattern)?.[1]
+  if (englishMatch) {
+    return countries.find((country) => country.toLowerCase() === englishMatch.toLowerCase())
+  }
+  const arabicMatch = prose.match(arabicCountryPattern)?.[1]
+  return arabicCountries.find(([country]) => country === arabicMatch)?.[1]
+}
+
 const companyCandidate =
   /([A-Za-z0-9&'-]+(?:\s+[A-Za-z0-9&'-]+){0,5}?)(?=\s+(?:and|for|from|in|with|we|our|the|need|needs|requiring)\b|[,.!?\n]|$)/
 const nonCompanyWords = new Set([
@@ -91,10 +127,9 @@ const invalidArabicCompanyCandidate = /^(?:في|المشروع|مشروع|مرح
 const invalidPromptedArabicCompanyAnswer =
   /^(?:أنا|انا|نحن|هو|هي|لا|ليس|ليست|لست|لسنا|غير\s+معروف|ربما|أفضل\s+عدم\s+(?:القول|الإفصاح|الافصاح)|أرفض|ارفض|رفض|الرفض|تخطي|التخطي|امتنع|الامتناع|سري|سرية|السرية|خاص|الخاص|مجهول|المجهول)(?:\s|$)/
 const arabicValueBoundary = String.raw`(?=$|\s|[،,.!?؟])`
-const rejectedArabicCompanyValue =
-  new RegExp(
-    String.raw`^(?:(?:اسمي|أنا|انا|الاسم)${arabicValueBoundary}|(?:لا|ليس|ليست|لست|لسنا|غير\s+(?:معروف|متاح)|مجهول|سري|سرية|خاص|معلومات\s+سرية|الاسم\s+(?:سري|غير\s+متاح))${arabicValueBoundary}|.*(?:عدم\s+(?:القول|المشاركة|الإفصاح|الافصاح)|الحفاظ\s+على\s+السرية|رفض\s+(?:القول|المشاركة|الإفصاح|الافصاح)))`,
-  )
+const rejectedArabicCompanyValue = new RegExp(
+  String.raw`^(?:(?:اسمي|أنا|انا|الاسم)${arabicValueBoundary}|(?:لا|ليس|ليست|لست|لسنا|غير\s+(?:معروف|متاح)|مجهول|سري|سرية|خاص|معلومات\s+سرية|الاسم\s+(?:سري|غير\s+متاح))${arabicValueBoundary}|.*(?:عدم\s+(?:القول|المشاركة|الإفصاح|الافصاح)|الحفاظ\s+على\s+السرية|رفض\s+(?:القول|المشاركة|الإفصاح|الافصاح)))`,
+)
 const promptedArabicCompanyLabel = /^(?:اسم\s+الشركة|الشركة)\s*[:：=-]\s*/
 const nonArabicCompanyWords = new Set([
   'اسم',
@@ -151,14 +186,13 @@ const englishOrganizationDescriptor =
  * This keeps an open-ended natural-language reply from silently becoming CRM data.
  */
 const isPromptedEnglishCompanyShape = (candidate: string): boolean => {
-  if (
-    englishOrganizationSuffix.test(candidate) ||
-    englishOrganizationDescriptor.test(candidate)
-  ) {
+  if (englishOrganizationSuffix.test(candidate) || englishOrganizationDescriptor.test(candidate)) {
     return true
   }
   const words = candidate.split(/\s+/).filter(Boolean)
-  return words.length === 1 && /^[A-Z0-9&'-]{2,}$/.test(words[0] ?? '') && /[A-Z]/.test(words[0] ?? '')
+  return (
+    words.length === 1 && /^[A-Z0-9&'-]{2,}$/.test(words[0] ?? '') && /[A-Z]/.test(words[0] ?? '')
+  )
 }
 
 const countryCandidateSource = [...countries]
@@ -174,10 +208,7 @@ const extractAskedEnglishCompany = (session: ChatSession): string | undefined =>
     .find(({ author }) => author === 'visitor')
     ?.content.trim()
   if (!message) return undefined
-  if (
-    invalidPromptedCompanyMessage.test(message) ||
-    rejectedEnglishCompanyValue.test(message)
-  ) {
+  if (invalidPromptedCompanyMessage.test(message) || rejectedEnglishCompanyValue.test(message)) {
     return undefined
   }
 
@@ -312,9 +343,7 @@ export const extractLeadSignals = (session: ChatSession): LeadScoringInput => {
     /([\d,.]+)\s*(?:m2|m²|sqm|square meters?|م2|م²|متر(?:اً|ا)?\s*مربع(?:اً|ا)?)/i,
   )?.[1]
   const quantitySquareMeters = quantityMatch ? Number(quantityMatch.replaceAll(',', '')) : undefined
-  const country =
-    countries.find((candidate) => text.toLowerCase().includes(candidate.toLowerCase())) ??
-    arabicCountries.find(([candidate]) => text.includes(candidate))?.[1]
+  const country = extractCountry(text)
   const stage =
     /\b(tender|bid)\b/i.test(text) || /مناقصة|عطاء/.test(text)
       ? 'tender'
