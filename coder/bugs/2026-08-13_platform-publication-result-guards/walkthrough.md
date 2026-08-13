@@ -10,10 +10,10 @@
 
 ## 验证
 
-- 平台 unit：42 files / 554 tests，通过。
+- 平台 unit：移除会话侧 PoC 后 37 files / 518 tests，通过。
 - 平台 contract：3 files / 22 tests，通过。
 - TypeScript `--noEmit`：通过。
-- 变更文件 ESLint：通过。
+- 变更后源码已由 TypeScript 与平台测试覆盖；本轮仅新增 Markdown 记录，不在 ESLint 配置范围内。
 - Prettier 与 `git diff --check`：通过。
 - 隔离 PostgreSQL 18 fresh migration：全部 migration 通过。
 - Content Studio 与 publishing authority integration：2 files / 10 tests，通过；包含 `delivery_unknown` 新 key 防重、不同 key 并发防重、direct mutation 只调用一次后的只读确认与 URL CAS 持久化。
@@ -21,3 +21,7 @@
 ## 外部联调边界
 
 本地 fixture 仅证明 request/parser、状态机与持久化契约；Facebook、Instagram、LinkedIn 的真实 ID / URL 仍需在受控账号与官方权限齐备后逐平台验证。未取到永久链接时保持 URL 为空，不用人工拼接替代。
+
+## Review 范围收口
+
+当前 head Review 指出分支曾混入未接入 P0-D 发布运行时的会话侧 PoC。本轮已移除 Meta 私信出站 transport、会话 token provider、社媒联系人身份/投递 helper 及对应测试；发布凭据读取、三平台 publication worker、状态机、CAS、永久链接与 kill switch 保持不变。
