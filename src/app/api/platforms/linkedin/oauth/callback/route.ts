@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
 import {
-  INSTAGRAM_OAUTH_CALLBACK_PATH,
-  INSTAGRAM_OAUTH_TRANSACTION_COOKIE,
-  InstagramOAuthError,
-  exchangeInstagramAuthorizationCode,
-  readInstagramOAuthConfiguration,
-  resolveInstagramAuthorizedAccount,
-  verifyInstagramOAuthTransaction,
-  type InstagramOAuthTransaction,
-} from '@/modules/platforms/instagram/oauth'
+  LINKEDIN_OAUTH_CALLBACK_PATH,
+  LINKEDIN_OAUTH_TRANSACTION_COOKIE,
+  LinkedInOAuthError,
+  exchangeLinkedInAuthorizationCode,
+  readLinkedInOAuthConfiguration,
+  resolveLinkedInAuthorizedAccount,
+  verifyLinkedInOAuthTransaction,
+  type LinkedInOAuthTransaction,
+} from '@/modules/platforms/linkedin/oauth'
 import {
   PlatformOAuthAccountChangedError,
   withLockedPlatformOAuthAccount,
@@ -33,12 +33,12 @@ const resultRedirect = ({
   secure: boolean
 }): Response => {
   const target = new URL(PORTAL_REDIRECT_PATH, origin)
-  target.searchParams.set('instagramOAuth', result)
+  target.searchParams.set('linkedinOAuth', result)
   const response = NextResponse.redirect(target, 302)
-  response.cookies.set(INSTAGRAM_OAUTH_TRANSACTION_COOKIE, '', {
+  response.cookies.set(LINKEDIN_OAUTH_TRANSACTION_COOKIE, '', {
     httpOnly: true,
     maxAge: 0,
-    path: INSTAGRAM_OAUTH_CALLBACK_PATH,
+    path: LINKEDIN_OAUTH_CALLBACK_PATH,
     sameSite: 'lax',
     secure,
   })
@@ -48,7 +48,7 @@ const resultRedirect = ({
 
 const callbackErrorCode = (error: unknown): string => {
   if (error instanceof PlatformOAuthAccountChangedError) return 'account_changed'
-  if (!(error instanceof InstagramOAuthError)) return 'unavailable'
+  if (!(error instanceof LinkedInOAuthError)) return 'unavailable'
   switch (error.code) {
     case 'state_mismatch':
       return 'state_mismatch'
@@ -70,13 +70,13 @@ const callbackErrorCode = (error: unknown): string => {
 
 const callbackErrorLog = (error: unknown): Record<string, unknown> => {
   const code = callbackErrorCode(error)
-  if (!(error instanceof InstagramOAuthError)) {
-    return { code, message: 'Instagram OAuth callback failed' }
+  if (!(error instanceof LinkedInOAuthError)) {
+    return { code, message: 'LinkedIn OAuth callback failed' }
   }
   const diagnostic = error.diagnostic
   return {
     code,
-    message: 'Instagram OAuth callback failed',
+    message: 'LinkedIn OAuth callback failed',
     oauthCode: error.code,
     ...(diagnostic
       ? {
@@ -84,30 +84,12 @@ const callbackErrorLog = (error: unknown): Record<string, unknown> => {
           ...(diagnostic.providerStatus === undefined
             ? {}
             : { providerStatus: diagnostic.providerStatus }),
-          ...(diagnostic.providerErrorType === undefined
-            ? {}
-            : { providerErrorType: diagnostic.providerErrorType }),
           ...(diagnostic.providerErrorCode === undefined
             ? {}
             : { providerErrorCode: diagnostic.providerErrorCode }),
-          ...(diagnostic.providerErrorSubcode === undefined
-            ? {}
-            : { providerErrorSubcode: diagnostic.providerErrorSubcode }),
           ...(diagnostic.providerResponseKeys === undefined
             ? {}
             : { providerResponseKeys: diagnostic.providerResponseKeys }),
-          ...(diagnostic.permissionsType === undefined
-            ? {}
-            : { permissionsType: diagnostic.permissionsType }),
-          ...(diagnostic.permissionsCount === undefined
-            ? {}
-            : { permissionsCount: diagnostic.permissionsCount }),
-          ...(diagnostic.permissionsItemTypes === undefined
-            ? {}
-            : { permissionsItemTypes: diagnostic.permissionsItemTypes }),
-          ...(diagnostic.providerScopes === undefined
-            ? {}
-            : { providerScopes: diagnostic.providerScopes }),
           ...(diagnostic.grantedScopes === undefined
             ? {}
             : { grantedScopes: diagnostic.grantedScopes }),
@@ -119,10 +101,10 @@ const callbackErrorLog = (error: unknown): Record<string, unknown> => {
   }
 }
 
-const loadInstagramAccount = async (
+const loadLinkedInAccount = async (
   payload: Payload,
   req: PayloadRequest,
-  transaction: InstagramOAuthTransaction,
+  transaction: LinkedInOAuthTransaction,
   user: User,
 ): Promise<PlatformAccount | undefined> => {
   try {
@@ -153,10 +135,10 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
   let oauth
   try {
-    oauth = readInstagramOAuthConfiguration()
+    oauth = readLinkedInOAuthConfiguration()
   } catch {
     return NextResponse.json(
-      { error: { code: 'instagram_oauth_unavailable' } },
+      { error: { code: 'linkedin_oauth_unavailable' } },
       { headers: { 'cache-control': 'private, no-store' }, status: 503 },
     )
   }
@@ -164,10 +146,10 @@ export async function GET(request: NextRequest): Promise<Response> {
   const redirectOrigin = new URL(oauth.redirectUri).origin
   const secureCookie = new URL(oauth.redirectUri).protocol === 'https:'
   let payload: Payload | undefined
-  let transaction: InstagramOAuthTransaction | undefined
+  let transaction: LinkedInOAuthTransaction | undefined
   try {
-    transaction = verifyInstagramOAuthTransaction({
-      cookieValue: request.cookies.get(INSTAGRAM_OAUTH_TRANSACTION_COOKIE)?.value,
+    transaction = verifyLinkedInOAuthTransaction({
+      cookieValue: request.cookies.get(LINKEDIN_OAUTH_TRANSACTION_COOKIE)?.value,
       returnedState: request.nextUrl.searchParams.get('state') ?? undefined,
     })
 
@@ -190,7 +172,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
 
     const req = await createLocalReq({ user: actor }, payload)
-    const account = await loadInstagramAccount(payload, req, transaction, actor)
+    const account = await loadLinkedInAccount(payload, req, transaction, actor)
     if (!account) {
       return resultRedirect({
         origin: redirectOrigin,
@@ -204,7 +186,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       account.authorizationRevision !== transaction.authorizationRevision ||
       account.authorization.state === 'blocked' ||
       account.authorization.state === 'disabled' ||
-      account.platformFamily !== 'meta'
+      account.platformFamily !== 'linkedin'
     ) {
       return resultRedirect({
         origin: redirectOrigin,
@@ -224,28 +206,24 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
     const code = request.nextUrl.searchParams.get('code') ?? ''
 
-    const userToken = await exchangeInstagramAuthorizationCode({ code, config: oauth })
+    const userToken = await exchangeLinkedInAuthorizationCode({ code, config: oauth })
     if (transaction.requestedScopes.some((scope) => !userToken.scopes.includes(scope))) {
-      throw new InstagramOAuthError('required_permission_missing')
+      throw new LinkedInOAuthError('required_permission_missing', {
+        grantedScopes: transaction.requestedScopes.filter((scope) =>
+          userToken.scopes.includes(scope),
+        ),
+        missingScopes: transaction.requestedScopes.filter(
+          (scope) => !userToken.scopes.includes(scope),
+        ),
+        stage: 'token_exchange',
+      })
     }
-    payload.logger.info({
-      grantedScopes: transaction.requestedScopes.filter((scope) =>
-        userToken.scopes.includes(scope),
-      ),
-      message: 'Instagram OAuth permissions resolved',
-      missingScopes: transaction.requestedScopes.filter(
-        (scope) => !userToken.scopes.includes(scope),
-      ),
-      permissionsCount: userToken.permissionsCount,
-      ...(userToken.permissionsItemTypes === undefined
-        ? {}
-        : { permissionsItemTypes: userToken.permissionsItemTypes }),
-      permissionsType: userToken.permissionsType,
-      providerScopes: userToken.scopes,
-      stage: 'short_token_exchange',
-    })
-    const authorizedAccount = await resolveInstagramAuthorizedAccount({
+    const authorizedAccount = await resolveLinkedInAuthorizedAccount({
+      accountKind: transaction.accountKind,
+      config: oauth,
       externalAccountId: transaction.externalAccountId,
+      grantedScopes: userToken.scopes,
+      requiredScopes: transaction.requestedScopes,
       userAccessToken: userToken.accessToken,
     })
     await withLockedPlatformOAuthAccount({
@@ -259,9 +237,7 @@ export async function GET(request: NextRequest): Promise<Response> {
               clearAccessToken: false,
               clearRefreshToken: true,
               expiresAt: userToken.expiresAt,
-              // Instagram Login returns granted permissions during the code
-              // exchange; graph.instagram.com has no supported readback edge.
-              scopes: userToken.scopes.map((scope) => ({ scope })),
+              scopes: authorizedAccount.scopes.map((scope) => ({ scope })),
               state: 'connected',
             },
           },

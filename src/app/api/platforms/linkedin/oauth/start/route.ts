@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createLocalReq, getPayload } from 'payload'
 
 import {
-  META_OAUTH_CALLBACK_PATH,
-  META_OAUTH_TRANSACTION_COOKIE,
-  META_OAUTH_TRANSACTION_TTL_SECONDS,
-  MetaOAuthError,
-  buildMetaAuthorizationURL,
-  createMetaOAuthTransaction,
-  readMetaOAuthConfiguration,
-} from '@/modules/platforms/meta/oauth'
+  LINKEDIN_OAUTH_CALLBACK_PATH,
+  LINKEDIN_OAUTH_TRANSACTION_COOKIE,
+  LINKEDIN_OAUTH_TRANSACTION_TTL_SECONDS,
+  LinkedInOAuthError,
+  buildLinkedInAuthorizationURL,
+  createLinkedInOAuthTransaction,
+  readLinkedInOAuthConfiguration,
+  requiredLinkedInPermissions,
+} from '@/modules/platforms/linkedin/oauth'
 import config from '@/payload.config'
 import type { PlatformAccount, User } from '@/payload-types'
 
@@ -29,13 +30,19 @@ const parseAccountId = (request: NextRequest): number | undefined => {
   return Number.isSafeInteger(accountId) ? accountId : undefined
 }
 
-const isFacebookPageAccount = (
+const isLinkedInAccount = (
   account: PlatformAccount,
 ): account is PlatformAccount & {
-  accountKind: 'facebook-page'
-} => account.accountKind === 'facebook-page'
+  accountKind: 'linkedin-member' | 'linkedin-organization'
+} => account.platformFamily === 'linkedin'
 
 export async function GET(request: NextRequest): Promise<Response> {
+  if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
+    return errorResponse(503, 'portal_disabled')
+  }
+  if (process.env.ADMIN_PORTAL_PLATFORMS_ENABLED !== 'true') {
+    return errorResponse(503, 'platform_module_disabled')
+  }
   const accountId = parseAccountId(request)
   if (!accountId) return errorResponse(400, 'invalid_platform_account_id')
 
@@ -61,39 +68,39 @@ export async function GET(request: NextRequest): Promise<Response> {
     } catch {
       return errorResponse(404, 'platform_account_not_found')
     }
-    if (account.accountKind === 'instagram-professional') {
-      return errorResponse(409, 'instagram_oauth_separate_configuration_required')
-    }
-    if (!isFacebookPageAccount(account)) return errorResponse(409, 'meta_account_required')
+    if (!isLinkedInAccount(account)) return errorResponse(409, 'linkedin_account_required')
     if (!account.externalAccountId?.trim()) {
       return errorResponse(409, 'external_account_id_required')
     }
-    if (!/^[1-9][0-9]{0,31}$/.test(account.externalAccountId.trim())) {
-      return errorResponse(409, 'invalid_external_account_id')
-    }
 
-    const oauth = readMetaOAuthConfiguration()
-    const transaction = createMetaOAuthTransaction({
+    const oauth = readLinkedInOAuthConfiguration()
+    const transaction = createLinkedInOAuthTransaction({
       accountId: account.id,
       accountKind: account.accountKind,
       authorizationRevision: account.authorizationRevision,
       externalAccountId: account.externalAccountId,
     })
     const response = NextResponse.redirect(
-      buildMetaAuthorizationURL({ config: oauth, state: transaction.state }),
+      buildLinkedInAuthorizationURL({
+        config: oauth,
+        scopes: requiredLinkedInPermissions(account.accountKind),
+        state: transaction.state,
+      }),
       302,
     )
-    response.cookies.set(META_OAUTH_TRANSACTION_COOKIE, transaction.cookieValue, {
+    response.cookies.set(LINKEDIN_OAUTH_TRANSACTION_COOKIE, transaction.cookieValue, {
       httpOnly: true,
-      maxAge: META_OAUTH_TRANSACTION_TTL_SECONDS,
-      path: META_OAUTH_CALLBACK_PATH,
+      maxAge: LINKEDIN_OAUTH_TRANSACTION_TTL_SECONDS,
+      path: LINKEDIN_OAUTH_CALLBACK_PATH,
       sameSite: 'lax',
       secure: new URL(oauth.redirectUri).protocol === 'https:',
     })
     response.headers.set('Cache-Control', 'private, no-store')
     return response
   } catch (error) {
-    if (error instanceof MetaOAuthError) return errorResponse(503, 'meta_oauth_unavailable')
-    return errorResponse(503, 'meta_oauth_unavailable')
+    if (error instanceof LinkedInOAuthError) {
+      return errorResponse(503, 'linkedin_oauth_unavailable')
+    }
+    return errorResponse(503, 'linkedin_oauth_unavailable')
   }
 }

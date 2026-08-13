@@ -29,6 +29,8 @@ import { POST as metaOAuthDisconnect } from '@/app/api/platforms/meta/oauth/disc
 import { GET as metaOAuthStart } from '@/app/api/platforms/meta/oauth/start/route'
 
 const environmentKeys = [
+  'ADMIN_PORTAL_ENABLED',
+  'ADMIN_PORTAL_PLATFORMS_ENABLED',
   'META_APP_ID',
   'META_LOGIN_CONFIG_ID',
   'META_OAUTH_REDIRECT_URI',
@@ -118,12 +120,30 @@ describe('Meta OAuth routes', () => {
     mocks.commitTransaction.mockResolvedValue(undefined)
     mocks.initTransaction.mockResolvedValue(undefined)
     mocks.killTransaction.mockResolvedValue(undefined)
+    process.env.ADMIN_PORTAL_ENABLED = 'true'
+    process.env.ADMIN_PORTAL_PLATFORMS_ENABLED = 'true'
     process.env.META_APP_ID = '1111111111111111'
     process.env.META_LOGIN_CONFIG_ID = '2222222222222222'
     process.env.META_OAUTH_REDIRECT_URI = `http://localhost:3000${META_OAUTH_CALLBACK_PATH}`
     process.env.META_WEBHOOK_APP_SECRET = 'test-meta-app-secret'
     process.env.NEXT_PUBLIC_SERVER_URL = 'https://ivybm.com'
     process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY = 'b'.repeat(64)
+  })
+
+  it('stops OAuth callbacks while the platform module is disabled', async () => {
+    process.env.ADMIN_PORTAL_PLATFORMS_ENABLED = 'false'
+
+    const response = await metaOAuthCallback(
+      new NextRequest(
+        `http://localhost:3000${META_OAUTH_CALLBACK_PATH}?code=ignored&state=ignored`,
+      ),
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'platform_module_disabled' },
+    })
+    expect(mocks.getPayload).not.toHaveBeenCalled()
   })
 
   afterEach(() => {
@@ -240,7 +260,7 @@ describe('Meta OAuth routes', () => {
 
     expect(response.status).toBe(302)
     expect(response.headers.get('location')).toBe(
-      'http://localhost:3000/admin/collections/platform-accounts/42?metaOAuth=connected',
+      'http://localhost:3000/dashboard/platforms?metaOAuth=connected',
     )
     expect(response.headers.get('set-cookie')).toContain(`${META_OAUTH_TRANSACTION_COOKIE}=;`)
     expect(payload.update).toHaveBeenCalledWith({
@@ -319,7 +339,7 @@ describe('Meta OAuth routes', () => {
     )
 
     expect(response.headers.get('location')).toBe(
-      'http://localhost:3000/admin/collections/platform-accounts/42?metaOAuth=identity_verification_failed',
+      'http://localhost:3000/dashboard/platforms?metaOAuth=identity_verification_failed',
     )
     expect(payload.update).not.toHaveBeenCalled()
     expect(payload.logger.error).toHaveBeenCalledWith({
@@ -395,7 +415,7 @@ describe('Meta OAuth routes', () => {
 
     const disconnect = await metaOAuthDisconnect(
       new NextRequest('http://localhost:3000/api/platforms/meta/oauth/disconnect', {
-        body: JSON.stringify({ accountId: 42 }),
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
         headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
         method: 'POST',
       }),
@@ -419,7 +439,7 @@ describe('Meta OAuth routes', () => {
     const response = await callbackPromise
 
     expect(response.headers.get('location')).toBe(
-      'http://localhost:3000/admin/collections/platform-accounts/42?metaOAuth=account_changed',
+      'http://localhost:3000/dashboard/platforms?metaOAuth=account_changed',
     )
     expect(payload.update).toHaveBeenCalledTimes(1)
   })
@@ -490,7 +510,7 @@ describe('Meta OAuth routes', () => {
     const response = await callbackPromise
 
     expect(response.headers.get('location')).toBe(
-      'http://localhost:3000/admin/collections/platform-accounts/42?metaOAuth=account_changed',
+      'http://localhost:3000/dashboard/platforms?metaOAuth=account_changed',
     )
     expect(payload.update).not.toHaveBeenCalled()
   })
@@ -567,7 +587,7 @@ describe('Meta OAuth routes', () => {
     const response = await callbackPromise
 
     expect(response.headers.get('location')).toBe(
-      'http://localhost:3000/admin/collections/platform-accounts/42?metaOAuth=account_changed',
+      'http://localhost:3000/dashboard/platforms?metaOAuth=account_changed',
     )
     expect(payload.update).not.toHaveBeenCalled()
   })
@@ -587,7 +607,7 @@ describe('Meta OAuth routes', () => {
     )
 
     expect(response.headers.get('location')).toBe(
-      'http://localhost:3000/admin/collections/platform-accounts?metaOAuth=state_mismatch',
+      'http://localhost:3000/dashboard/platforms?metaOAuth=state_mismatch',
     )
     expect(fetcher).not.toHaveBeenCalled()
     expect(payload.update).not.toHaveBeenCalled()
@@ -599,7 +619,7 @@ describe('Meta OAuth routes', () => {
 
     const forbidden = await metaOAuthDisconnect(
       new NextRequest('http://localhost:3000/api/platforms/meta/oauth/disconnect', {
-        body: JSON.stringify({ accountId: 42 }),
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
         headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
         method: 'POST',
       }),
@@ -609,7 +629,7 @@ describe('Meta OAuth routes', () => {
 
     const response = await metaOAuthDisconnect(
       new NextRequest('http://localhost:3000/api/platforms/meta/oauth/disconnect', {
-        body: JSON.stringify({ accountId: 42 }),
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
         headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
         method: 'POST',
       }),
@@ -629,8 +649,27 @@ describe('Meta OAuth routes', () => {
       },
       id: 42,
       overrideAccess: false,
+      req: expect.any(Object),
       user: admin,
     })
+  })
+
+  it('does not disconnect credentials from a stale page revision', async () => {
+    const payload = createPayload()
+    payload.__oauthRow.authorization_revision = 8
+    mocks.getPayload.mockResolvedValue(payload)
+
+    const response = await metaOAuthDisconnect(
+      new NextRequest('http://localhost:3000/api/platforms/meta/oauth/disconnect', {
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
+        headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toEqual({ error: { code: 'stale_revision' } })
+    expect(payload.update).not.toHaveBeenCalled()
   })
 
   it('does not use the Facebook disconnect endpoint for Instagram accounts', async () => {
@@ -645,7 +684,7 @@ describe('Meta OAuth routes', () => {
 
     const response = await metaOAuthDisconnect(
       new NextRequest('http://localhost:3000/api/platforms/meta/oauth/disconnect', {
-        body: JSON.stringify({ accountId: 42 }),
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
         headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
         method: 'POST',
       }),

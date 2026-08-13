@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createLocalReq, getPayload } from 'payload'
 
 import {
-  INSTAGRAM_OAUTH_CALLBACK_PATH,
-  INSTAGRAM_OAUTH_TRANSACTION_COOKIE,
-} from '@/modules/platforms/instagram/oauth'
+  LINKEDIN_OAUTH_CALLBACK_PATH,
+  LINKEDIN_OAUTH_TRANSACTION_COOKIE,
+} from '@/modules/platforms/linkedin/oauth'
 import { validateDisconnectPlatformAccountInput } from '@/modules/platforms/accountPortalDto'
 import {
   PlatformAccountMutationConflictError,
@@ -23,8 +23,8 @@ const json = (status: number, body: Record<string, unknown>): Response =>
     status,
   })
 
-const isInstagramAccount = (account: PlatformAccount): boolean =>
-  account.accountKind === 'instagram-professional' && account.platformFamily === 'meta'
+const isLinkedInAccount = (account: PlatformAccount): boolean =>
+  account.platformFamily === 'linkedin'
 
 export async function POST(request: NextRequest): Promise<Response> {
   if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
@@ -52,18 +52,10 @@ export async function POST(request: NextRequest): Promise<Response> {
     const payload = await getPayload({ config })
     const authenticated = await payload.auth({ headers: request.headers })
     if (!authenticated.user || authenticated.user.collection !== 'users') {
-      return NextResponse.json(
-        { error: { code: 'authentication_required' } },
-        { headers: { 'cache-control': 'private, no-store' }, status: 401 },
-      )
+      return json(401, { error: { code: 'authentication_required' } })
     }
     const actor = authenticated.user as User
-    if (actor.role !== 'admin') {
-      return NextResponse.json(
-        { error: { code: 'forbidden' } },
-        { headers: { 'cache-control': 'private, no-store' }, status: 403 },
-      )
-    }
+    if (actor.role !== 'admin') return json(403, { error: { code: 'forbidden' } })
     const req = await createLocalReq({ user: actor }, payload)
 
     let account: PlatformAccount
@@ -78,8 +70,8 @@ export async function POST(request: NextRequest): Promise<Response> {
     } catch {
       return json(404, { error: { code: 'platform_account_not_found' } })
     }
-    if (!isInstagramAccount(account)) {
-      return json(409, { error: { code: 'instagram_account_required' } })
+    if (!isLinkedInAccount(account)) {
+      return json(409, { error: { code: 'linkedin_account_required' } })
     }
 
     await withLockedPlatformAccountMutation({
@@ -107,12 +99,15 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     const response = NextResponse.json(
       { data: { accountId, disconnected: true } },
-      { headers: { 'cache-control': 'private, no-store' }, status: 200 },
+      {
+        headers: { 'cache-control': 'private, no-store' },
+        status: 200,
+      },
     )
-    response.cookies.set(INSTAGRAM_OAUTH_TRANSACTION_COOKIE, '', {
+    response.cookies.set(LINKEDIN_OAUTH_TRANSACTION_COOKIE, '', {
       httpOnly: true,
       maxAge: 0,
-      path: INSTAGRAM_OAUTH_CALLBACK_PATH,
+      path: LINKEDIN_OAUTH_CALLBACK_PATH,
       sameSite: 'lax',
       secure: new URL(request.url).protocol === 'https:',
     })
@@ -121,9 +116,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (error instanceof PlatformAccountMutationConflictError) {
       return json(409, { error: { code: 'stale_revision' } })
     }
-    return NextResponse.json(
-      { error: { code: 'unavailable' } },
-      { headers: { 'cache-control': 'private, no-store' }, status: 503 },
-    )
+    return json(503, { error: { code: 'unavailable' } })
   }
 }

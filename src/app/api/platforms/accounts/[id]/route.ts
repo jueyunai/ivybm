@@ -1,0 +1,173 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getPayload } from 'payload'
+
+import {
+  toRedactedPlatformAccountSummary,
+  validateDeletePlatformAccountInput,
+  validateUpdatePlatformAccountInput,
+} from '@/modules/platforms/accountPortalDto'
+import {
+  PlatformAccountMutationConflictError,
+  withLockedPlatformAccountMutation,
+} from '@/modules/platforms/accountOAuthConcurrency'
+import { PlatformPortalRequestError, readPlatformPortalJSON } from '@/modules/platforms/portalHttp'
+import config from '@/payload.config'
+import type { PlatformAccount, User } from '@/payload-types'
+
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
+const json = (status: number, body: Record<string, unknown>): Response =>
+  NextResponse.json(body, {
+    headers: { 'cache-control': 'private, no-store' },
+    status,
+  })
+
+const authenticateAdmin = async (
+  request: NextRequest,
+): Promise<
+  | { error: Response; success: false }
+  | { payload: Awaited<ReturnType<typeof getPayload>>; success: true; user: User }
+> => {
+  if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
+    return { error: json(503, { error: { code: 'portal_disabled' } }), success: false }
+  }
+  if (process.env.ADMIN_PORTAL_PLATFORMS_ENABLED !== 'true') {
+    return { error: json(503, { error: { code: 'platform_module_disabled' } }), success: false }
+  }
+  const payload = await getPayload({ config })
+  const authenticated = await payload.auth({ headers: request.headers })
+  if (!authenticated.user || authenticated.user.collection !== 'users') {
+    return { error: json(401, { error: { code: 'authentication_required' } }), success: false }
+  }
+  const user = authenticated.user as User
+  if (user.role !== 'admin') {
+    return { error: json(403, { error: { code: 'forbidden' } }), success: false }
+  }
+  return { payload, success: true, user }
+}
+
+const parseAccountId = (request: NextRequest): number | undefined => {
+  const value = request.nextUrl.pathname.split('/').pop()
+  if (!value || !/^[1-9][0-9]*$/.test(value)) return undefined
+  const accountId = Number(value)
+  return Number.isSafeInteger(accountId) ? accountId : undefined
+}
+
+const safeDeleteState = (state: PlatformAccount['authorization']['state']): boolean =>
+  state === 'not_started' || state === 'blocked' || state === 'disabled'
+
+export async function PATCH(request: NextRequest): Promise<Response> {
+  const accountId = parseAccountId(request)
+  if (!accountId) return json(400, { error: { code: 'invalid_platform_account_id' } })
+
+  let body: unknown
+  try {
+    body = await readPlatformPortalJSON(request)
+  } catch (error) {
+    if (error instanceof PlatformPortalRequestError) {
+      return json(error.status, { error: { code: error.code } })
+    }
+    return json(400, { error: { code: 'invalid_request' } })
+  }
+
+  const auth = await authenticateAdmin(request)
+  if (!auth.success) return auth.error
+  const { payload, user } = auth
+
+  const input = validateUpdatePlatformAccountInput(body)
+  if (!input.success) return json(400, { error: input.error })
+
+  try {
+    const data: Record<string, unknown> = {}
+    if (input.value.name !== undefined) data.name = input.value.name
+    if (input.value.externalAccountId !== undefined) {
+      data.externalAccountId = input.value.externalAccountId
+    }
+    if (input.value.notes !== undefined) data.notes = input.value.notes
+
+    const updated = await withLockedPlatformAccountMutation({
+      operation: (req) =>
+        payload.update({
+          collection: 'platform-accounts',
+          data,
+          id: accountId,
+          overrideAccess: false,
+          req,
+          user,
+        }),
+      payload,
+      snapshot: {
+        accountId,
+        authorizationRevision: input.value.authorizationRevision,
+      },
+      user,
+    })
+    return json(200, { data: toRedactedPlatformAccountSummary(updated) })
+  } catch (error) {
+    if (error instanceof PlatformAccountMutationConflictError) {
+      return json(409, { error: { code: 'stale_revision' } })
+    }
+    const message =
+      error && typeof error === 'object' && 'message' in error ? String(error.message) : ''
+    if (message.includes('unique') || message.includes('duplicate')) {
+      return json(409, { error: { code: 'duplicate_account' } })
+    }
+    if (message.includes('Changing a provider account identity')) {
+      return json(409, { error: { code: 'identity_change_requires_credential_rotation' } })
+    }
+    return json(503, { error: { code: 'platform_account_update_failed' } })
+  }
+}
+
+export async function DELETE(request: NextRequest): Promise<Response> {
+  const accountId = parseAccountId(request)
+  if (!accountId) return json(400, { error: { code: 'invalid_platform_account_id' } })
+
+  let body: unknown
+  try {
+    body = await readPlatformPortalJSON(request)
+  } catch (error) {
+    if (error instanceof PlatformPortalRequestError) {
+      return json(error.status, { error: { code: error.code } })
+    }
+    return json(400, { error: { code: 'invalid_request' } })
+  }
+
+  const auth = await authenticateAdmin(request)
+  if (!auth.success) return auth.error
+  const { payload, user } = auth
+
+  const input = validateDeletePlatformAccountInput(body)
+  if (!input.success) return json(400, { error: input.error })
+
+  try {
+    await withLockedPlatformAccountMutation({
+      operation: (req) =>
+        payload.delete({
+          collection: 'platform-accounts',
+          id: accountId,
+          overrideAccess: false,
+          req,
+          user,
+        }),
+      payload,
+      snapshot: {
+        accountId,
+        allowedAuthorizationStates: ['not_started', 'blocked', 'disabled'],
+        authorizationRevision: input.value.authorizationRevision,
+      },
+      user,
+    })
+    return json(200, { data: { accountId, deleted: true } })
+  } catch (error) {
+    if (error instanceof PlatformAccountMutationConflictError) {
+      return json(409, {
+        error: {
+          code: error.reason === 'state' ? 'account_not_disconnected' : 'stale_revision',
+        },
+      })
+    }
+    return json(503, { error: { code: 'platform_account_delete_failed' } })
+  }
+}

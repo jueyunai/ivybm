@@ -5328,6 +5328,35 @@
     background: var(--portal-surface);
   }
 
+  .portal-platforms__account-actions,
+  .portal-platforms__actions,
+  .portal-platforms__form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .portal-platforms__dialog-backdrop {
+    position: fixed;
+    z-index: 100;
+    display: grid;
+    padding: 20px;
+    background: rgb(17 24 39 / 48%);
+    inset: 0;
+    place-items: center;
+  }
+
+  .portal-platforms__confirm {
+    display: grid;
+    width: min(100%, 460px);
+    gap: 14px;
+    padding: 20px;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-card);
+    background: var(--portal-surface);
+    box-shadow: var(--portal-shadow-card);
+  }
+
   .portal-platforms__account header > div,
   .portal-operations__job header > div {
     min-width: 0;
@@ -5681,6 +5710,21 @@
     .portal-operations__filters form {
       align-items: stretch;
       flex-direction: column;
+    }
+
+    .portal-platforms__account > header {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .portal-platforms__account-actions,
+    .portal-platforms__actions {
+      width: 100%;
+    }
+
+    .portal-platforms__account-actions > *,
+    .portal-platforms__actions > * {
+      flex: 1 1 auto;
     }
 
     .portal-operations__filters label {

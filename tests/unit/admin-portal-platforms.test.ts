@@ -8,6 +8,7 @@ import { PlatformReadinessPage } from '@/admin-portal/modules/platforms/Platform
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 afterEach(() => {
@@ -22,14 +23,22 @@ describe('Portal platform readiness', () => {
         PortalPreferencesProvider,
         null,
         React.createElement(PlatformReadinessPage, {
+          accounts: [],
           pageState: 'available',
           summary: {
             accounts: [
               {
                 accountKind: 'facebook-page',
+                authorization: {
+                  accessTokenConfigured: true,
+                  refreshTokenConfigured: false,
+                  state: 'connected',
+                },
+                authorizationRevision: 0,
                 externalAccountId: 'page-123',
                 id: 8,
                 name: 'IVYBM Facebook',
+                notes: null,
                 readiness: {
                   capabilities: [
                     {
@@ -57,13 +66,16 @@ describe('Portal platform readiness', () => {
       ),
     )
 
-    expect(screen.getByRole('heading', { name: '平台状态' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '平台账号' })).toBeTruthy()
     const pageText = container.textContent ?? ''
     expect(pageText).toContain('可用')
     expect(pageText).toContain('责任人')
     expect(pageText).toContain('管理员')
     expect(pageText).toContain('开发团队')
-    expect(pageText).toContain('请先通过受限维护流程补齐发布运行时配置，再进行受控测试。')
+    expect(pageText).toContain('受控发布 kill switch 当前未启用。')
+    expect(pageText).toContain('连接')
+    expect(pageText).toContain('编辑')
+    expect(pageText).toContain('删除')
     expect(pageText).not.toMatch(
       /access token|refresh token|app secret|accessToken|refreshToken|authorization\.accessToken/i,
     )

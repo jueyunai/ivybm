@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPayload } from 'payload'
+import { createLocalReq, getPayload } from 'payload'
 
 import {
   INSTAGRAM_OAUTH_CALLBACK_PATH,
@@ -46,13 +46,16 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
     const actor = authenticated.user as User
     if (actor.role !== 'admin') return errorResponse(403, 'forbidden')
+    const req = await createLocalReq({ user: actor }, payload)
 
     let account: PlatformAccount
     try {
       account = await payload.findByID({
         collection: 'platform-accounts',
         id: accountId,
-        overrideAccess: true,
+        overrideAccess: false,
+        req,
+        user: actor,
       })
     } catch {
       return errorResponse(404, 'platform_account_not_found')

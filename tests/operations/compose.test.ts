@@ -60,6 +60,9 @@ const requiredEnvironment = {
   INSTAGRAM_APP_ID: '3333333333333333',
   INSTAGRAM_APP_SECRET: 'operation-test-instagram-app-secret',
   INSTAGRAM_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/instagram/oauth/callback',
+  LINKEDIN_APP_ID: 'linkedin-operation-app',
+  LINKEDIN_APP_SECRET: 'operation-test-linkedin-app-secret',
+  LINKEDIN_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/linkedin/oauth/callback',
   LINKEDIN_API_VERSION: '202608',
   LINKEDIN_UPLOAD_ALLOWED_ORIGINS: 'https://www.linkedin.com,https://media.licdn.com',
   LINKEDIN_UPLOAD_TICKET_KEY: 'f'.repeat(64),
@@ -271,6 +274,9 @@ describe('production Compose configuration', () => {
       INSTAGRAM_APP_ID: '3333333333333333',
       INSTAGRAM_APP_SECRET: 'operation-test-instagram-app-secret',
       INSTAGRAM_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/instagram/oauth/callback',
+      LINKEDIN_APP_ID: 'linkedin-operation-app',
+      LINKEDIN_APP_SECRET: 'operation-test-linkedin-app-secret',
+      LINKEDIN_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/linkedin/oauth/callback',
     })
     expect(config.services.worker.environment).toMatchObject({
       ADMIN_PORTAL_PUBLISHING_ENABLED: 'false',
@@ -293,7 +299,7 @@ describe('production Compose configuration', () => {
     }
   })
 
-  it('passes optional Meta OAuth and webhook configuration only to the app in production and staging', () => {
+  it('passes optional platform OAuth configuration only to the app in production and staging', () => {
     for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
       expect(config.services.app.environment).toMatchObject({
         META_APP_ID: '1111111111111111',
@@ -305,6 +311,9 @@ describe('production Compose configuration', () => {
         INSTAGRAM_APP_ID: '3333333333333333',
         INSTAGRAM_APP_SECRET: 'operation-test-instagram-app-secret',
         INSTAGRAM_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/instagram/oauth/callback',
+        LINKEDIN_APP_ID: 'linkedin-operation-app',
+        LINKEDIN_APP_SECRET: 'operation-test-linkedin-app-secret',
+        LINKEDIN_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/linkedin/oauth/callback',
       })
       expect(config.services.migrate.environment).not.toHaveProperty('META_WEBHOOK_APP_SECRET')
       expect(config.services.worker.environment).not.toHaveProperty('META_WEBHOOK_APP_SECRET')
@@ -312,6 +321,8 @@ describe('production Compose configuration', () => {
       expect(config.services.worker.environment).not.toHaveProperty('META_APP_ID')
       expect(config.services.migrate.environment).not.toHaveProperty('INSTAGRAM_APP_ID')
       expect(config.services.worker.environment).not.toHaveProperty('INSTAGRAM_APP_SECRET')
+      expect(config.services.migrate.environment).not.toHaveProperty('LINKEDIN_APP_ID')
+      expect(config.services.worker.environment).not.toHaveProperty('LINKEDIN_APP_SECRET')
     }
   })
 
