@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { ValidationError } from 'payload'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -9,13 +10,17 @@ const mocks = vi.hoisted(() => ({
   killTransaction: vi.fn(),
 }))
 
-vi.mock('payload', () => ({
-  commitTransaction: mocks.commitTransaction,
-  createLocalReq: mocks.createLocalReq,
-  getPayload: mocks.getPayload,
-  initTransaction: mocks.initTransaction,
-  killTransaction: mocks.killTransaction,
-}))
+vi.mock('payload', async () => {
+  const actual = await vi.importActual<typeof import('payload')>('payload')
+  return {
+    ...actual,
+    commitTransaction: mocks.commitTransaction,
+    createLocalReq: mocks.createLocalReq,
+    getPayload: mocks.getPayload,
+    initTransaction: mocks.initTransaction,
+    killTransaction: mocks.killTransaction,
+  }
+})
 vi.mock('@/payload.config', () => ({ default: {} }))
 
 import { DELETE, PATCH } from '@/app/api/platforms/accounts/[id]/route'
@@ -58,11 +63,13 @@ const createPayload = ({
   countResult = { totalDocs: 0 },
   docs = [account],
   findByIDResult = account,
+  updateError,
 }: {
   authenticatedUser?: null | typeof admin | typeof operator
   countResult?: { totalDocs: number }
   docs?: unknown[]
   findByIDResult?: unknown
+  updateError?: unknown
 } = {}) => {
   const rowAccount = findByIDResult as typeof account
   return {
@@ -87,7 +94,9 @@ const createPayload = ({
     delete: vi.fn().mockResolvedValue({}),
     find: vi.fn().mockResolvedValue({ docs }),
     findByID: vi.fn().mockResolvedValue(findByIDResult),
-    update: vi.fn().mockResolvedValue(findByIDResult),
+    update: updateError
+      ? vi.fn().mockRejectedValue(updateError)
+      : vi.fn().mockResolvedValue(findByIDResult),
   }
 }
 
@@ -331,6 +340,56 @@ describe('platform account portal routes', () => {
     })
     expect(response.status).toBe(400)
     expect(payload.update).not.toHaveBeenCalled()
+  })
+
+  it('maps credential-bound identity changes from Payload field validation', async () => {
+    const payload = createPayload({
+      updateError: new ValidationError({
+        errors: [
+          {
+            message:
+              'Changing a provider account identity requires replacing or clearing every configured credential first',
+            path: 'authorization.accessToken',
+          },
+        ],
+      }),
+    })
+    mocks.getPayload.mockResolvedValue(payload)
+
+    const response = await PATCH(
+      jsonRequest({
+        body: { authorizationRevision: 3, externalAccountId: '987654321' },
+        method: 'PATCH',
+        path: '/api/platforms/accounts/42',
+      }),
+    )
+
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'identity_change_requires_credential_rotation' },
+    })
+    expect(response.status).toBe(409)
+  })
+
+  it('does not misclassify unrelated Payload field validation', async () => {
+    const payload = createPayload({
+      updateError: new ValidationError({
+        errors: [{ message: 'Enter a valid display name', path: 'name' }],
+      }),
+    })
+    mocks.getPayload.mockResolvedValue(payload)
+
+    const response = await PATCH(
+      jsonRequest({
+        body: { authorizationRevision: 3, name: 'Updated Page' },
+        method: 'PATCH',
+        path: '/api/platforms/accounts/42',
+      }),
+    )
+
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'platform_account_update_failed' },
+    })
+    expect(response.status).toBe(503)
   })
 
   it('rejects updates when the authorization revision is stale', async () => {

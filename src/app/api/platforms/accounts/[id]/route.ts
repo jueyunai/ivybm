@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPayload } from 'payload'
+import { getPayload, ValidationError } from 'payload'
 
 import {
   isPortalSupportedAccountKind,
@@ -28,6 +28,20 @@ class PlatformAccountIdentityValidationError extends Error {
     super('Platform account external identity is invalid')
     this.name = 'PlatformAccountIdentityValidationError'
   }
+}
+
+const isIdentityChangeCredentialValidationError = (error: unknown): boolean => {
+  if (!(error instanceof ValidationError) || !Array.isArray(error.data.errors)) return false
+  return error.data.errors.some((fieldError) => {
+    if (!fieldError || typeof fieldError !== 'object') return false
+    const field = fieldError as { message?: unknown; path?: unknown }
+    return (
+      (field.path === 'authorization.accessToken' || field.path === 'authorization.refreshToken') &&
+      typeof field.message === 'string' &&
+      field.message ===
+        'Changing a provider account identity requires replacing or clearing every configured credential first'
+    )
+  })
 }
 
 export const dynamic = 'force-dynamic'
@@ -141,7 +155,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     if (message.includes('unique') || message.includes('duplicate')) {
       return json(409, { error: { code: 'duplicate_account' } })
     }
-    if (message.includes('Changing a provider account identity')) {
+    if (isIdentityChangeCredentialValidationError(error)) {
       return json(409, { error: { code: 'identity_change_requires_credential_rotation' } })
     }
     return json(503, { error: { code: 'platform_account_update_failed' } })
