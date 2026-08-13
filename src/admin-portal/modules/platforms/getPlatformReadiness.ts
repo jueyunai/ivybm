@@ -10,10 +10,7 @@ import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/
 import type { PlatformAccount } from '@/payload-types'
 
 export type PlatformReadinessPageState =
-  | 'available'
-  | 'forbidden'
-  | 'module-disabled'
-  | 'portal-disabled'
+  'available' | 'forbidden' | 'module-disabled' | 'portal-disabled'
 
 export interface PlatformReadinessAccountSummary {
   accountKind: PlatformAccount['accountKind']
@@ -42,9 +39,11 @@ export class PlatformReadinessReadError extends Error {
 
 export const toPlatformReadinessAccountSummary = ({
   account,
+  controlledPublishingTest,
   environment,
 }: {
   account: PlatformAccount
+  controlledPublishingTest?: { completedAt: string; reference: string }
   environment: Readonly<Record<string, string | undefined>>
 }): PlatformReadinessAccountSummary => {
   const authorization = account.authorization
@@ -70,6 +69,16 @@ export const toPlatformReadinessAccountSummary = ({
             : {}),
           ...(capabilities?.publishing ? { publishing: capabilities.publishing } : {}),
         },
+        ...(controlledPublishingTest
+          ? {
+              controlledTestEvidence: {
+                publishing: {
+                  ...controlledPublishingTest,
+                  outcome: 'passed' as const,
+                },
+              },
+            }
+          : {}),
         externalAccountId: account.externalAccountId,
         refreshTokenConfigured: authorization.refreshTokenConfigured === true,
         refreshTokenReadable:
@@ -101,10 +110,55 @@ export const listPlatformReadiness = async ({
     ...(req ? { req } : {}),
     sort: 'name',
   })
+  const accountIDs = accounts.docs.map((account) => account.id)
+  const successfulPublications = accountIDs.length
+    ? await payload.find({
+        collection: 'publish-jobs',
+        depth: 0,
+        limit: 100,
+        overrideAccess: req ? false : true,
+        pagination: false,
+        ...(req ? { req } : {}),
+        select: {
+          externalPublicationId: true,
+          platformAccount: true,
+          publishedAt: true,
+          updatedAt: true,
+        },
+        sort: '-publishedAt',
+        where: {
+          and: [
+            { platformAccount: { in: accountIDs } },
+            { status: { equals: 'published' } },
+            { externalPublicationId: { exists: true } },
+          ],
+        },
+      })
+    : { docs: [] }
+  const publishingEvidence = new Map<number, { completedAt: string; reference: string }>()
+  for (const publication of successfulPublications.docs) {
+    const accountID =
+      typeof publication.platformAccount === 'number'
+        ? publication.platformAccount
+        : publication.platformAccount && typeof publication.platformAccount === 'object'
+          ? publication.platformAccount.id
+          : null
+    if (typeof accountID !== 'number' || publishingEvidence.has(accountID)) continue
+    const externalID = publication.externalPublicationId
+    if (typeof externalID !== 'string' || !externalID.trim()) continue
+    publishingEvidence.set(accountID, {
+      completedAt: publication.publishedAt ?? publication.updatedAt,
+      reference: `publish-job:${publication.id}`,
+    })
+  }
 
   return {
     accounts: accounts.docs.map((account) =>
-      toPlatformReadinessAccountSummary({ account, environment }),
+      toPlatformReadinessAccountSummary({
+        account,
+        controlledPublishingTest: publishingEvidence.get(account.id),
+        environment,
+      }),
     ),
   }
 }

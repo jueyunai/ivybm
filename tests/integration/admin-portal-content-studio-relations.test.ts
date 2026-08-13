@@ -92,6 +92,8 @@ describe.sequential('Portal V1 required relationship deletes', () => {
       data: {
         content: contentID,
         createdBy: admin.id,
+        executionRevision: 0,
+        fencingGeneration: 0,
         idempotencyKey: `portal-relations-job:${suffix}`,
         mode: 'assisted',
         platform: 'linkedin',

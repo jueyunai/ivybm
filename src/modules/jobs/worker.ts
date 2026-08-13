@@ -42,7 +42,7 @@ export class JobWorker {
   }
 
   async runOnce(): Promise<'failed' | 'idle' | 'succeeded'> {
-    const job = await this.queue.claimNext()
+    const job = await this.queue.claimNext(Object.keys(this.handlers))
     if (!job) return 'idle'
 
     const handler = this.handlers[job.type]
