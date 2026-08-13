@@ -147,6 +147,13 @@ describe('account portal DTO', () => {
     expect(
       validateCreatePlatformAccountInput({
         accountKind: 'facebook-page',
+        externalAccountId: 123456789,
+        name: 'Numeric JSON ID',
+      }),
+    ).toEqual({ error: { code: 'invalid_external_account_id' }, success: false })
+    expect(
+      validateCreatePlatformAccountInput({
+        accountKind: 'facebook-page',
         name: 'Test',
         notes: 'x'.repeat(2001),
       }),
@@ -209,6 +216,12 @@ describe('account portal DTO', () => {
       error: { code: 'invalid_authorization_revision' },
       success: false,
     })
+    expect(
+      validateUpdatePlatformAccountInput({
+        authorizationRevision: 3,
+        externalAccountId: { id: '123456789' },
+      }),
+    ).toEqual({ error: { code: 'invalid_external_account_id' }, success: false })
     expect(
       validateUpdatePlatformAccountInput({ authorizationRevision: -1, name: 'Updated' }),
     ).toEqual({

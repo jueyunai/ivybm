@@ -124,6 +124,13 @@ export const validateCreatePlatformAccountInput = (
     return { error: { code: 'unsupported_account_kind' }, success: false }
   }
   const rawExternalAccountId = record.externalAccountId
+  if (
+    rawExternalAccountId !== undefined &&
+    rawExternalAccountId !== null &&
+    typeof rawExternalAccountId !== 'string'
+  ) {
+    return { error: { code: 'invalid_external_account_id' }, success: false }
+  }
   const externalAccountId =
     rawExternalAccountId === undefined || rawExternalAccountId === null
       ? null
@@ -172,6 +179,13 @@ export const validateUpdatePlatformAccountInput = (
     return { error: { code: 'invalid_name' }, success: false }
   }
   const rawExternalAccountId = record.externalAccountId
+  if (
+    rawExternalAccountId !== undefined &&
+    rawExternalAccountId !== null &&
+    typeof rawExternalAccountId !== 'string'
+  ) {
+    return { error: { code: 'invalid_external_account_id' }, success: false }
+  }
   const externalAccountId =
     rawExternalAccountId === undefined
       ? undefined
