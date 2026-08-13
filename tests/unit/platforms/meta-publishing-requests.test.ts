@@ -2,13 +2,17 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   buildFacebookPagePhotoRequest,
+  buildFacebookPagePostRequest,
   buildInstagramContainerStatusRequest,
   buildInstagramMediaPublishRequest,
   buildInstagramMediaRequest,
+  buildInstagramPublishedMediaRequest,
   parseFacebookPagePhotoResponse,
+  parseFacebookPagePostResponse,
   parseInstagramContainerStatusResponse,
   parseInstagramMediaPublishResponse,
   parseInstagramMediaResponse,
+  parseInstagramPublishedMediaResponse,
   type MetaPublishingHttpRequest,
 } from '../../../src/modules/platforms/meta/publishingRequests'
 import { ProviderPublicationResultUnknownError } from '../../../src/modules/platforms/publishingResult'
@@ -216,6 +220,19 @@ describe('Meta publishing request builders', () => {
     for (const token of SENSITIVE_TOKENS) {
       expect(tokenize(request)).not.toContain(token)
     }
+  })
+
+  it('builds provider permalink lookups for Facebook and Instagram', () => {
+    expect(buildFacebookPagePostRequest({ postId: '129472283584550_24680' })).toEqual({
+      method: 'GET',
+      path: '/129472283584550_24680',
+      query: { fields: 'permalink_url' },
+    })
+    expect(buildInstagramPublishedMediaRequest({ mediaId: '998877' })).toEqual({
+      method: 'GET',
+      path: '/998877',
+      query: { fields: 'permalink' },
+    })
   })
 
   it('rejects Meta identifiers that are blank, non-decimal, traversal-shaped or overlong', () => {
@@ -475,6 +492,31 @@ describe('Meta publishing response parsers', () => {
     expect(parseInstagramMediaPublishResponse({ id: '17895695688002200' })).toEqual({
       igMediaId: '17895695688002200',
     })
+  })
+
+  it('parses only canonical provider permalink hosts', () => {
+    expect(
+      parseFacebookPagePostResponse({
+        permalink_url: 'https://www.facebook.com/129472283584550/posts/24680',
+      }),
+    ).toEqual({ permalinkUrl: 'https://www.facebook.com/129472283584550/posts/24680' })
+    expect(
+      parseInstagramPublishedMediaResponse({
+        permalink: 'https://www.instagram.com/p/ABC123/',
+      }),
+    ).toEqual({ permalink: 'https://www.instagram.com/p/ABC123/' })
+    for (const value of [
+      'http://www.facebook.com/1',
+      'https://facebook.com.evil.example.invalid/1',
+      'https://user@www.facebook.com/1',
+    ]) {
+      expect(() => parseFacebookPagePostResponse({ permalink_url: value })).toThrow(
+        ProviderPublicationResultUnknownError,
+      )
+    }
+    expect(() =>
+      parseInstagramPublishedMediaResponse({ permalink: 'https://evil.example.invalid/p/1/' }),
+    ).toThrow(ProviderPublicationResultUnknownError)
   })
 
   it('accepts every documented Instagram status_code and rejects everything else', () => {

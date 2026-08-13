@@ -4519,8 +4519,30 @@
     white-space: nowrap;
   }
 
+  .portal-content-studio__section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .portal-content-studio__section-heading h4 {
+    margin: 0;
+  }
+
   .portal-content-studio__form-grid > label.is-wide {
     grid-column: 1 / -1;
+  }
+
+  .portal-content-studio__choice-field {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .portal-content-studio__choice-field legend {
+    margin-bottom: 6px;
   }
 
   .portal-content-studio__multi-options {

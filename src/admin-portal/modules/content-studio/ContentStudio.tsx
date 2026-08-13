@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 
 import Link from 'next/link'
 import Image from 'next/image'
@@ -15,6 +15,7 @@ import {
   IconFileTypePdf,
   IconPhoto,
   IconPlus,
+  IconRefresh,
   IconSend,
   IconSparkles,
   IconTrash,
@@ -48,9 +49,29 @@ export function ContentStudio({
   const [editor, setEditor] = useState<'create' | 'edit' | null>(null)
   const [generator, setGenerator] = useState(false)
   const [reviewing, setReviewing] = useState(false)
+  const [publishingNow, setPublishingNow] = useState(false)
   const [scheduling, setScheduling] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isRefreshing, startRefresh] = useTransition()
+  const hasActivePublication =
+    summary?.items.some((item) =>
+      item.publishJobs.some(
+        (job) =>
+          job.mode === 'automatic' &&
+          (job.status === 'scheduled' || job.status === 'accepted' || job.status === 'publishing'),
+      ),
+    ) ?? false
+
+  useEffect(() => {
+    if (!hasActivePublication) return
+    let refreshCount = 0
+    const interval = window.setInterval(() => {
+      refreshCount += 1
+      startRefresh(() => router.refresh())
+      if (refreshCount >= 15) window.clearInterval(interval)
+    }, 2_000)
+    return () => window.clearInterval(interval)
+  }, [hasActivePublication, router])
 
   if (pageState !== 'available' || !summary)
     return (
@@ -69,10 +90,12 @@ export function ContentStudio({
       </main>
     )
   const selected = summary.items.find((item) => item.id === selectedId) ?? summary.items[0] ?? null
+  const refreshPublicationResults = () => startRefresh(() => router.refresh())
   const onDone = (message: string) => {
     setEditor(null)
     setGenerator(false)
     setReviewing(false)
+    setPublishingNow(false)
     setScheduling(false)
     setFeedback(message)
     startRefresh(() => router.refresh())
@@ -83,7 +106,7 @@ export function ContentStudio({
       <header className="portal-page__intro portal-content-studio__intro">
         <div>
           <h2>{copy.title}</h2>
-          <p>{copy.automaticNotice}</p>
+          <p>{summary.publishingEnabled ? copy.automaticNotice : copy.publishingUnavailable}</p>
         </div>
         <div className="portal-content-studio__intro-actions">
           <Button
@@ -185,6 +208,17 @@ export function ContentStudio({
           />
         </Surface>
       ) : null}
+      {publishingNow && selected ? (
+        <Surface as="section" className="portal-content-studio__editor">
+          <PublishNowEditor
+            copy={copy}
+            item={selected}
+            onClose={() => setPublishingNow(false)}
+            onDone={onDone}
+            options={summary.options.platformAccounts}
+          />
+        </Surface>
+      ) : null}
       <div className="portal-content-studio__workspace">
         <Surface as="section" className="portal-content-studio__list">
           <header>
@@ -236,6 +270,11 @@ export function ContentStudio({
               onDelete={() => onDone(copy.feedback)}
               onEdit={() => setEditor('edit')}
               onReview={() => setReviewing(true)}
+              onPublish={() => setPublishingNow(true)}
+              onRefresh={refreshPublicationResults}
+              publishingAvailable={
+                summary.publishingEnabled && summary.options.platformAccounts.length > 0
+              }
               onSchedule={() => setScheduling(true)}
               onSubmitToReview={() => onDone(copy.readyForReview)}
             />
@@ -323,6 +362,9 @@ function ContentDetail({
   onDelete,
   onEdit,
   onReview,
+  onPublish,
+  onRefresh,
+  publishingAvailable,
   onSchedule,
   onSubmitToReview,
 }: {
@@ -332,6 +374,9 @@ function ContentDetail({
   onDelete: () => void
   onEdit: () => void
   onReview: () => void
+  onPublish: () => void
+  onRefresh: () => void
+  publishingAvailable: boolean
   onSchedule: () => void
   onSubmitToReview: () => void
 }) {
@@ -465,7 +510,13 @@ function ContentDetail({
         )}
       </section>
       <section>
-        <h4>{copy.schedule}</h4>
+        <div className="portal-content-studio__section-heading">
+          <h4>{copy.schedule}</h4>
+          <Button disabled={disabled} onClick={onRefresh} size="compact" variant="ghost">
+            <IconRefresh aria-hidden="true" size={15} />
+            {copy.refreshPublicationResults}
+          </Button>
+        </div>
         {item.publishJobs.length ? (
           <ul className="portal-content-studio__timeline">
             {item.publishJobs.map((job) => (
@@ -477,11 +528,23 @@ function ContentDetail({
                       ? 'success'
                       : job.status === 'failed'
                         ? 'danger'
-                        : 'info'
+                        : job.status === 'delivery_unknown'
+                          ? 'warning'
+                          : 'info'
                   }
                 />
                 <span>{formatScheduledAt(job.scheduledFor)}</span>
-                <small>{copy.modeLabels[job.mode]}</small>
+                <small>
+                  {copy.platformLabels[job.platform]} · {copy.modeLabels[job.mode]}
+                </small>
+                {job.externalPublicationUrl ? (
+                  <a href={job.externalPublicationUrl} rel="noreferrer" target="_blank">
+                    {job.externalPublicationId ?? job.externalPublicationUrl}
+                  </a>
+                ) : job.externalPublicationId ? (
+                  <code>{job.externalPublicationId}</code>
+                ) : null}
+                {job.lastErrorSummary ? <small>{job.lastErrorSummary}</small> : null}
               </li>
             ))}
           </ul>
@@ -513,6 +576,15 @@ function ContentDetail({
         ) : null}
         {item.status === 'approved' ? (
           <>
+            <Button
+              disabled={busy || disabled || !publishingAvailable}
+              onClick={onPublish}
+              size="compact"
+              title={!publishingAvailable ? copy.publishingUnavailable : undefined}
+            >
+              <IconSend aria-hidden="true" size={15} />
+              {copy.immediatePublish}
+            </Button>
             <Button disabled={busy || disabled} onClick={onSchedule} size="compact">
               <IconCalendar aria-hidden="true" size={15} />
               {copy.schedule}
@@ -1012,6 +1084,100 @@ export function ScheduleEditor({
       <footer>
         <Button disabled={busy || !scheduledFor} onClick={() => void schedule()}>
           {copy.schedule}
+        </Button>
+      </footer>
+    </div>
+  )
+}
+
+export function PublishNowEditor({
+  copy,
+  item,
+  onClose,
+  onDone,
+  options,
+}: {
+  copy: Copy
+  item: ContentStudioItem
+  onClose: () => void
+  onDone: (message: string) => void
+  options: ContentStudioSummary['options']['platformAccounts']
+}) {
+  const command = usePortalCommandKey('portal-content-studio:publish-now')
+  const [selected, setSelected] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const publish = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const body = {
+        action: 'publish-now',
+        targetAccountIds: selected.map(Number),
+        updatedAt: item.updatedAt,
+      }
+      const idempotencyKey = command.key(JSON.stringify(body))
+      await request(
+        `/api/portal/content-studio/${item.id}`,
+        'POST',
+        { ...body, idempotencyKey },
+        () => command.receivedResponse(idempotencyKey),
+      )
+      onDone(copy.publishQueued)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : copy.unknown)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const selectedPlatforms = new Set(
+    options.filter(({ id }) => selected.includes(String(id))).map(({ platform }) => platform),
+  )
+  return (
+    <div className="portal-content-studio__form">
+      <header>
+        <h3>{copy.immediatePublish}</h3>
+        <Button onClick={onClose} size="compact" variant="ghost">
+          {copy.cancel}
+        </Button>
+      </header>
+      {error ? <p role="alert">{error}</p> : null}
+      <p>{copy.immediatePublishNotice}</p>
+      <fieldset className="portal-content-studio__choice-field is-wide">
+        <legend>{copy.publishingAccounts}</legend>
+        {options.length ? (
+          <div className="portal-content-studio__multi-options">
+            {options.map((option) => {
+              const value = String(option.id)
+              const checked = selected.includes(value)
+              const disabled = !checked && selectedPlatforms.has(option.platform)
+              return (
+                <label key={option.id}>
+                  <input
+                    checked={checked}
+                    disabled={disabled}
+                    onChange={() =>
+                      setSelected((current) =>
+                        current.includes(value)
+                          ? current.filter((entry) => entry !== value)
+                          : [...current, value],
+                      )
+                    }
+                    type="checkbox"
+                  />
+                  <span>{option.label}</span>
+                  <small>{copy.platformLabels[option.platform]}</small>
+                </label>
+              )
+            })}
+          </div>
+        ) : (
+          <span>{copy.noPublishingAccounts}</span>
+        )}
+      </fieldset>
+      <footer>
+        <Button disabled={busy || selected.length === 0} onClick={() => void publish()}>
+          {copy.immediatePublish}
         </Button>
       </footer>
     </div>

@@ -137,8 +137,10 @@ describe('Portal Content Studio', () => {
           { id: 23, label: 'Technical catalogue', meta: 'application/pdf' },
         ],
         knowledgeSources: [],
+        platformAccounts: [],
       },
       pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: false,
       query: { page: 1, platform: 'all', q: '', status: 'all' },
     }
     const { container } = render(

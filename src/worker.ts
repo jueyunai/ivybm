@@ -1,4 +1,7 @@
+import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 
 import { getPayload } from 'payload'
 
@@ -46,6 +49,17 @@ import {
 } from '@/modules/platforms/eventJobs'
 import { PayloadPlatformConversationPort } from '@/modules/platforms/payloadConversationPort'
 import { PayloadPlatformMessagingAccountAuthorizer } from '@/modules/platforms/payloadMessagingAccountAuthorizer'
+import { createLinkedInPublishingTransport } from '@/modules/platforms/linkedin/publishingOutbound'
+import { PayloadLinkedInPublishingTokenProvider } from '@/modules/platforms/linkedin/payloadPublishingTokenProvider'
+import { createMetaPublishingTransport } from '@/modules/platforms/meta/publishingOutbound'
+import { PayloadMetaPublishingTokenProvider } from '@/modules/platforms/meta/payloadPublishingTokenProvider'
+import {
+  createPlatformPublicationJobHandler,
+  PLATFORM_PUBLICATION_JOB_TYPE,
+  type PublicationJobRuntime,
+} from '@/modules/platforms/publicationJobs'
+import { PayloadPublishingAccountResolver } from '@/modules/platforms/publishingAccountResolver'
+import { createPlatformPublishingService } from '@/modules/platforms/publishingServiceAdapter'
 import config from '@/payload.config'
 
 const readPositiveInteger = (name: string, fallback: number): number => {
@@ -74,6 +88,76 @@ const feishuOAuthRecoveryIntervalMs = readPositiveInteger(
   FEISHU_OAUTH_CALLBACK_RECOVERY_INTERVAL_MS,
 )
 const payload = await getPayload({ config, disableOnInit: true, key: 'job-worker' })
+
+const requiredEnvironment = (name: string): string => {
+  const value = process.env[name]?.trim()
+  if (!value) throw new Error(`${name} is required for platform publishing`)
+  return value
+}
+
+const commaSeparatedOrigins = (name: string): string[] =>
+  requiredEnvironment(name)
+    .split(',')
+    .map((value) => new URL(value.trim()).origin)
+
+let publicationRuntime: PublicationJobRuntime | undefined
+const resolvePublicationRuntime = async (): Promise<PublicationJobRuntime> => {
+  if (process.env.ADMIN_PORTAL_PUBLISHING_ENABLED !== 'true') {
+    throw new Error('Platform publishing is disabled')
+  }
+  if (publicationRuntime) return publicationRuntime
+  const publicOrigin = new URL(requiredEnvironment('NEXT_PUBLIC_SERVER_URL')).origin
+  const ticketKey = Buffer.from(requiredEnvironment('LINKEDIN_UPLOAD_TICKET_KEY'), 'hex')
+  if (ticketKey.byteLength !== 32) {
+    throw new Error('LINKEDIN_UPLOAD_TICKET_KEY must be a 64-character hexadecimal value')
+  }
+  const linkedInTokenProvider = new PayloadLinkedInPublishingTokenProvider({ payload })
+  const metaTokenProvider = new PayloadMetaPublishingTokenProvider({ payload })
+  const linkedInTransport = createLinkedInPublishingTransport({
+    allowedUploadOrigins: commaSeparatedOrigins('LINKEDIN_UPLOAD_ALLOWED_ORIGINS'),
+    linkedInVersion: requiredEnvironment('LINKEDIN_API_VERSION'),
+    tokenProvider: linkedInTokenProvider.getToken,
+    uploadTicketKey: ticketKey,
+  })
+  const metaTransport = createMetaPublishingTransport({
+    allowedMediaOrigins: [publicOrigin],
+    tokenProvider: metaTokenProvider.getToken,
+  })
+  const accountResolver = new PayloadPublishingAccountResolver({ payload })
+  const runtime: PublicationJobRuntime = {
+    directService: createPlatformPublishingService({
+      accountResolver,
+      linkedInTransport,
+      metaTransport,
+    }),
+    linkedInTransport,
+    metaTransport,
+    async readLinkedInAssetBytes(asset) {
+      if (!/^[1-9]\d*$/u.test(asset.id)) throw new Error('LinkedIn asset ID is invalid')
+      const media = await payload.findByID({
+        collection: 'media',
+        depth: 0,
+        id: Number(asset.id),
+        overrideAccess: true,
+      })
+      const filename = typeof media.filename === 'string' ? media.filename : ''
+      if (!filename || path.basename(filename) !== filename) {
+        throw new Error('LinkedIn media filename is invalid')
+      }
+      const bytes = await readFile(path.resolve(process.cwd(), 'media', filename))
+      if (
+        bytes.byteLength !== asset.byteLength ||
+        createHash('sha256').update(bytes).digest('hex') !== asset.sha256
+      ) {
+        throw new Error('LinkedIn media bytes no longer match the approved publication asset')
+      }
+      return bytes
+    },
+  }
+  publicationRuntime = runtime
+  return runtime
+}
+
 const handlers: Record<string, JobHandler> = {
   [FEISHU_CONNECTION_PROVISION_JOB_TYPE]: createFeishuConnectionProvisionJobHandler({ payload }),
   [FEISHU_FOLLOW_UP_REMINDER_JOB_TYPE]: createFeishuFollowUpReminderJobHandler({ payload }),
@@ -86,6 +170,12 @@ const handlers: Record<string, JobHandler> = {
     accountAuthorizer: new PayloadPlatformMessagingAccountAuthorizer({ payload }),
     conversations: new PayloadPlatformConversationPort({ payload }),
   }),
+}
+if (process.env.ADMIN_PORTAL_PUBLISHING_ENABLED === 'true') {
+  handlers[PLATFORM_PUBLICATION_JOB_TYPE] = createPlatformPublicationJobHandler({
+    payload,
+    resolveRuntime: resolvePublicationRuntime,
+  })
 }
 const worker = new JobWorker({
   handlers,

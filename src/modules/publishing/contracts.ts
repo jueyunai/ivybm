@@ -93,6 +93,8 @@ type PlatformPublicationCommand = PlatformCapabilityQuery & {
 export type AcceptedPlatformPublication = PlatformPublicationCommand & {
   /** Adapter correlation handle; never a Task 12 persistence primary key. */
   externalPublicationId: string
+  /** Provider-confirmed canonical URL. Omitted when the provider cannot prove one. */
+  externalPublicationUrl?: string
   status: 'accepted'
 }
 
@@ -132,6 +134,8 @@ export type PlatformPublicationStatus =
   | FailedPlatformPublication
   | (PlatformPublicationCommand & {
       externalPublicationId: string
+      /** Provider-confirmed canonical URL. Omitted when the provider cannot prove one. */
+      externalPublicationUrl?: string
       status: 'pending' | 'published' | 'publishing'
     })
 
@@ -159,8 +163,7 @@ export type BlockedAssistedPublication = PlatformCapabilityQuery & {
 }
 
 export type AssistedPublicationPreparation =
-  | BlockedAssistedPublication
-  | PreparedAssistedPublication
+  BlockedAssistedPublication | PreparedAssistedPublication
 
 export interface PublishingService {
   getCapability(input: PlatformCapabilityQuery): Promise<PlatformCapability>
@@ -277,7 +280,9 @@ export const normalizePublicationSourceURL = (value: unknown): string => {
   }
   const trimmed = value.trim()
   if (!trimmed || utf8Length(trimmed) > MAX_PUBLICATION_SOURCE_URL_BYTES) {
-    throw new PublishingContractValidationError('Publication asset source URL is invalid or too long')
+    throw new PublishingContractValidationError(
+      'Publication asset source URL is invalid or too long',
+    )
   }
   try {
     const url = new URL(trimmed)
@@ -396,13 +401,13 @@ export const normalizePlatformPublishRequest = (value: unknown): PlatformPublish
   }
 }
 
-export const normalizeAssistedPublicationRequest = (
-  value: unknown,
-): AssistedPublicationRequest => {
+export const normalizeAssistedPublicationRequest = (value: unknown): AssistedPublicationRequest => {
   const candidate = requireRecord(value, 'Assisted publication request')
   const base = normalizePlatformCapabilityQuery(candidate)
   if (base.platform !== 'linkedin') {
-    throw new PublishingContractValidationError('Assisted publishing is only supported for LinkedIn')
+    throw new PublishingContractValidationError(
+      'Assisted publishing is only supported for LinkedIn',
+    )
   }
   if (!Array.isArray(candidate.assets) || candidate.assets.length > MAX_PUBLICATION_ASSETS) {
     throw new PublishingContractValidationError(

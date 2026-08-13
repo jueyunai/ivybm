@@ -1,6 +1,10 @@
 import type { CollectionConfig } from 'payload'
 
-import { contentStudioAdmin, contentStudioCommandWrite, contentStudioRead } from '../access/contentStudio'
+import {
+  contentStudioAdmin,
+  contentStudioCommandWrite,
+  contentStudioRead,
+} from '../access/contentStudio'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 
 export const PUBLISH_JOB_MODES = ['assisted', 'automatic'] as const
@@ -11,6 +15,13 @@ export const PUBLISH_JOB_STATUSES = [
   'published',
   'failed',
   'delivery_unknown',
+] as const
+
+export const PUBLISH_JOB_ROUTES = [
+  'facebook-photo-single',
+  'instagram-image-staged',
+  'linkedin-text-single',
+  'linkedin-image-staged',
 ] as const
 
 export const PublishJobs: CollectionConfig = {
@@ -27,7 +38,13 @@ export const PublishJobs: CollectionConfig = {
     group: 'Content Studio',
   },
   fields: [
-    { name: 'content', type: 'relationship', index: true, relationTo: 'generated-contents', required: true },
+    {
+      name: 'content',
+      type: 'relationship',
+      index: true,
+      relationTo: 'generated-contents',
+      required: true,
+    },
     {
       name: 'platform',
       type: 'select',
@@ -46,9 +63,48 @@ export const PublishJobs: CollectionConfig = {
       required: true,
     },
     { name: 'scheduledFor', type: 'date', index: true, required: true },
+    {
+      name: 'executionRoute',
+      type: 'select',
+      index: true,
+      options: [...PUBLISH_JOB_ROUTES],
+    },
+    {
+      name: 'executionRevision',
+      type: 'number',
+      defaultValue: 0,
+      min: 0,
+      required: true,
+    },
+    { name: 'requestFingerprint', type: 'text', index: true, maxLength: 64 },
+    {
+      name: 'requestSnapshot',
+      type: 'json',
+      admin: { description: 'Server-normalized publication request; never contains credentials.' },
+    },
+    {
+      name: 'providerCheckpoint',
+      type: 'json',
+      admin: { description: 'Platform stage checkpoint; never contains access tokens.' },
+    },
+    { name: 'authorizationRevision', type: 'number', min: 0 },
+    { name: 'claimJob', type: 'relationship', index: true, relationTo: 'jobs' },
+    { name: 'claimId', type: 'text', maxLength: 240 },
+    { name: 'claimOwnerToken', type: 'text', maxLength: 240 },
+    { name: 'claimLeaseExpiresAt', type: 'date', index: true },
+    {
+      name: 'fencingGeneration',
+      type: 'number',
+      defaultValue: 0,
+      min: 0,
+      required: true,
+    },
+    { name: 'providerIOStartedAt', type: 'date' },
+    { name: 'deliveryUnknownAt', type: 'date' },
     { name: 'acceptedAt', type: 'date' },
     { name: 'publishedAt', type: 'date' },
     { name: 'externalPublicationId', type: 'text', maxLength: 500 },
+    { name: 'externalPublicationUrl', type: 'text', maxLength: 2_000 },
     { name: 'lastErrorCode', type: 'text', maxLength: 100 },
     { name: 'lastErrorSummary', type: 'textarea', maxLength: 1_000 },
     { name: 'idempotencyKey', type: 'text', index: true, required: true, unique: true },

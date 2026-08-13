@@ -41,11 +41,10 @@ describe('Portal platform readiness', () => {
                     },
                     {
                       capability: 'publishing',
-                      implementation: 'blocked',
-                      missing: ['publishing_job_adapter'],
+                      implementation: 'implemented',
+                      missing: ['publishing_disabled'],
                       productionRequirements: [],
-                      reasonCode: 'publishing_job_adapter_pending',
-                      status: 'blocked',
+                      status: 'action-required',
                     },
                   ],
                   connection: { missing: [], status: 'ready-for-controlled-test' },
@@ -64,7 +63,7 @@ describe('Portal platform readiness', () => {
     expect(pageText).toContain('责任人')
     expect(pageText).toContain('管理员')
     expect(pageText).toContain('开发团队')
-    expect(pageText).toContain('请先完成发布任务 adapter 的实现与验证，再启用此能力。')
+    expect(pageText).toContain('请先通过受限维护流程补齐发布运行时配置，再进行受控测试。')
     expect(pageText).not.toMatch(
       /access token|refresh token|app secret|accessToken|refreshToken|authorization\.accessToken/i,
     )
