@@ -10,6 +10,7 @@ import {
 } from '../access/content'
 import { revalidateMediaAfterChange, revalidateMediaAfterDelete } from '../hooks/revalidateContent'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
+import { mediaBytesMatchMimeType } from '../modules/media/files'
 
 export const MEDIA_IMAGE_MAX_BYTES = 8 * 1024 * 1024
 export const MEDIA_PDF_MAX_BYTES = 20 * 1024 * 1024
@@ -26,7 +27,7 @@ const validateMediaFile: CollectionBeforeOperationHook = ({ operation, req }) =>
     return
   }
 
-  const { mimetype, size } = req.file
+  const { data, mimetype, size } = req.file
   const isAllowedMimeType = MEDIA_MIME_TYPES.some((allowed) => allowed === mimetype)
 
   if (!isAllowedMimeType) {
@@ -52,6 +53,19 @@ const validateMediaFile: CollectionBeforeOperationHook = ({ operation, req }) =>
       errors: [
         {
           message: `File size must not exceed ${maximumMegabytes} MB.`,
+          path: 'file',
+        },
+      ],
+      req,
+    })
+  }
+
+  if (!mediaBytesMatchMimeType(data, mimetype)) {
+    throw new ValidationError({
+      collection: 'media',
+      errors: [
+        {
+          message: 'The uploaded file bytes do not match the declared media type.',
           path: 'file',
         },
       ],

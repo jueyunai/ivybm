@@ -33,10 +33,10 @@ describe('Portal media commands', () => {
 
     expect(
       validatePortalMediaFile({
-        data: Buffer.from('pdf'),
+        data: Buffer.from('%PDF-1.4\n'),
         mimetype: 'application/pdf',
         name: 'owned-reference.pdf',
-        size: 3,
+        size: 9,
       }),
     ).toMatchObject({ name: 'owned-reference.pdf' })
     expect(() =>
@@ -63,10 +63,10 @@ describe('Portal media commands', () => {
     await expect(
       createPortalMedia({
         file: {
-          data: Buffer.from('pdf'),
+          data: Buffer.from('%PDF-1.4\n'),
           mimetype: 'application/pdf',
           name: 'owned-reference.pdf',
-          size: 3,
+          size: 9,
         },
         input: { alt: 'Owned reference', isPublic: false, source: 'IVYBM' },
         payload: { create },

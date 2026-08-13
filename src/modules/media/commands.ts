@@ -4,6 +4,7 @@ import type { Payload, PayloadRequest } from 'payload'
 
 import { MEDIA_IMAGE_MAX_BYTES, MEDIA_MIME_TYPES, MEDIA_PDF_MAX_BYTES } from '@/collections/Media'
 
+import { mediaBytesMatchMimeType } from './files'
 import { mediaPreviewUrl } from './urls'
 
 type LooseRecord = Record<string, unknown>
@@ -113,6 +114,13 @@ export function validatePortalMediaFile(file: PortalMediaFile): PortalMediaFile 
       'media-file-too-large',
       'The uploaded file exceeds its size limit',
       413,
+    )
+  }
+  if (!mediaBytesMatchMimeType(file.data, file.mimetype)) {
+    throw new MediaCommandError(
+      'media-invalid-file-type',
+      'The uploaded file bytes do not match its media type',
+      415,
     )
   }
   return file

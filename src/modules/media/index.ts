@@ -11,3 +11,5 @@ export {
   type PortalMediaFile,
 } from './commands'
 export { mediaPreviewUrl, safeMediaUrl, type MediaPreviewProjection } from './urls'
+export { mediaBytesMatchMimeType, resolveManagedMediaPath } from './files'
+export { publicationAssetPath, readPublicationAsset } from './publicationAssets'

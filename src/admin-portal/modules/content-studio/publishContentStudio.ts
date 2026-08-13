@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readFile, realpath } from 'node:fs/promises'
-import path from 'node:path'
+import { readFile } from 'node:fs/promises'
 
 import { sql, type PostgresAdapter } from '@payloadcms/db-postgres'
 import type { Payload, PayloadRequest } from 'payload'
@@ -8,6 +7,12 @@ import type { Payload, PayloadRequest } from 'payload'
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import { getSiteOrigin } from '@/lib/seo'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
+import {
+  mediaBytesMatchMimeType,
+  publicationAssetPath,
+  resolveManagedMediaPath,
+  updatePortalMedia,
+} from '@/modules/media'
 import type { PublicationAsset, PublishingPlatform } from '@/modules/publishing/contracts'
 import {
   planMultiPlatformPublication,
@@ -16,7 +21,7 @@ import {
 import { enqueuePublicationExecution } from '@/modules/platforms/publicationJobs'
 import { PayloadPublishingAccountResolver } from '@/modules/platforms/publishingAccountResolver'
 import type { ResolvedPublishingAccount } from '@/modules/platforms/publishingAccountResolver'
-import type { GeneratedContent, Media, PublishJob } from '@/payload-types'
+import type { GeneratedContent, PublishJob } from '@/payload-types'
 
 import { ContentStudioCommandError } from './contentStudioCommands'
 
@@ -127,26 +132,35 @@ const lockPublicationContent = async (
   `)
 }
 
-const mediaPath = async (media: Media): Promise<string> => {
-  const filename = typeof media.filename === 'string' ? media.filename : ''
-  if (!filename || path.basename(filename) !== filename) {
-    throw new ContentStudioCommandError(
-      'content-studio-publication-assets-invalid',
-      'A selected media file is unavailable',
-      409,
-    )
-  }
-  const mediaRoot = await realpath(path.resolve(process.cwd(), 'media'))
-  const resolved = await realpath(path.resolve(mediaRoot, filename))
-  const relative = path.relative(mediaRoot, resolved)
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new ContentStudioCommandError(
-      'content-studio-publication-assets-invalid',
-      'A selected media file is outside managed storage',
-      409,
-    )
-  }
-  return resolved
+const lockPublicationMedia = async (
+  mediaID: number,
+  payload: Payload,
+  req: PayloadRequest,
+): Promise<void> => {
+  const database = await publicationTransactionDatabase(payload, req)
+  await database.execute(sql`SELECT id FROM media WHERE id = ${mediaID} FOR UPDATE`)
+}
+
+const generatedImageSHA256 = async (
+  mediaID: number,
+  payload: Payload,
+  req: PayloadRequest,
+): Promise<string | null> => {
+  const actorID = typeof req.user?.id === 'number' ? req.user.id : Number(req.user?.id)
+  if (!Number.isSafeInteger(actorID) || actorID < 1) return null
+  const database = await publicationTransactionDatabase(payload, req)
+  const result = await database.execute<{ sha256: string }>(sql`
+    SELECT result #>> '{sha256}' AS sha256
+    FROM portal_command_receipts
+    WHERE actor_id = ${actorID}
+      AND scope = 'portal.content-studio:generate-image'
+      AND status = 'completed'
+      AND result #>> '{media,id}' = ${String(mediaID)}
+      AND result #>> '{sha256}' ~ '^[a-f0-9]{64}$'
+    ORDER BY updated_at DESC, id DESC
+    LIMIT 1
+  `)
+  return result.rows[0]?.sha256 ?? null
 }
 
 const loadAssets = async (
@@ -155,37 +169,89 @@ const loadAssets = async (
   req: PayloadRequest,
 ): Promise<Array<PublicationAsset & { byteLength: number }>> => {
   const ids = relationIDs(content.assets)
+  for (const id of [...ids].sort((left, right) => left - right)) {
+    await lockPublicationMedia(id, payload, req)
+  }
   return Promise.all(
     ids.map(async (id) => {
-      const media = await payload.findByID({
+      let media = await payload.findByID({
         collection: 'media',
         depth: 0,
         id,
         overrideAccess: false,
         req,
       })
-      if (media.isPublic !== true || !media.url || !media.mimeType || !media.filename) {
+      const filename = typeof media.filename === 'string' ? media.filename : ''
+      const mimeType = typeof media.mimeType === 'string' ? media.mimeType : ''
+      if (!filename || !mimeType || !media.url) {
         throw new ContentStudioCommandError(
           'content-studio-publication-assets-invalid',
-          'Publishing requires public media with a stable URL and MIME type',
+          'This asset has no stable delivery URL. Re-upload it through Media and reload before publishing.',
           409,
         )
       }
-      const bytes = await readFile(await mediaPath(media))
-      if (media.filesize && bytes.byteLength !== media.filesize) {
+      let bytes: Buffer
+      try {
+        bytes = await readFile(await resolveManagedMediaPath(filename))
+      } catch {
+        throw new ContentStudioCommandError(
+          'content-studio-publication-assets-invalid',
+          'A selected media file is unavailable',
+          409,
+        )
+      }
+      if (
+        (media.filesize && bytes.byteLength !== media.filesize) ||
+        !mediaBytesMatchMimeType(bytes, mimeType)
+      ) {
         throw new ContentStudioCommandError(
           'content-studio-publication-assets-invalid',
           'The selected media file changed after review',
           409,
         )
       }
+      const sha256 = createHash('sha256').update(bytes).digest('hex')
+      if (media.isPublic !== true) {
+        if ((await generatedImageSHA256(id, payload, req)) !== sha256) {
+          throw new ContentStudioCommandError(
+            'content-studio-publication-asset-private',
+            'This private generated asset no longer matches its generation receipt. Generate and review it again before publishing.',
+            409,
+          )
+        }
+        await updatePortalMedia({
+          id,
+          input: {
+            alt: typeof media.alt === 'string' ? media.alt : 'AI generated image',
+            isPublic: true,
+            source: typeof media.source === 'string' ? media.source : 'AI generated image',
+            updatedAt: typeof media.updatedAt === 'string' ? media.updatedAt : '',
+          },
+          payload,
+          req,
+        })
+        media = await payload.findByID({
+          collection: 'media',
+          depth: 0,
+          id,
+          overrideAccess: false,
+          req,
+        })
+      }
+      if (media.isPublic !== true) {
+        throw new ContentStudioCommandError(
+          'content-studio-publication-asset-private',
+          'This asset is still private. Reload the approved content before publishing.',
+          409,
+        )
+      }
       return {
         byteLength: bytes.byteLength,
-        fileName: media.filename,
+        fileName: filename,
         id: String(media.id),
-        mimeType: media.mimeType,
-        sha256: createHash('sha256').update(bytes).digest('hex'),
-        sourceUrl: new URL(media.url, getSiteOrigin()).toString(),
+        mimeType,
+        sha256,
+        sourceUrl: new URL(publicationAssetPath(media.id, sha256), getSiteOrigin()).toString(),
       }
     }),
   )
@@ -203,14 +269,14 @@ const targetForAccount = ({
   if (account.platform === 'facebook' || account.platform === 'instagram') {
     if (assets.length !== 1 || !META_IMAGE_TYPES.has(assets[0]!.mimeType)) {
       throw new ContentStudioCommandError(
-        'content-studio-publication-assets-invalid',
+        'content-studio-publication-format-unsupported',
         `${account.platform} publishing requires exactly one public JPEG or PNG`,
         409,
       )
     }
   } else if (assets.length > 1 || (assets[0] && !IMAGE_TYPES.has(assets[0].mimeType))) {
     throw new ContentStudioCommandError(
-      'content-studio-publication-assets-invalid',
+      'content-studio-publication-format-unsupported',
       'LinkedIn publishing supports text-only or exactly one JPEG, PNG, or GIF',
       409,
     )

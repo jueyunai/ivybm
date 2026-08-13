@@ -3,16 +3,22 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { Payload, PayloadRequest } from 'payload'
+import sharp from 'sharp'
 
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import {
   AI_IMAGE_SIZES,
+  AI_GENERATED_IMAGE_MAX_BYTES,
   isValidAiImage,
   type AiImageMimeType,
   type AiImageSize,
 } from '@/modules/ai/gateway'
 import { AI_USAGE_KEYS, resolveAiGateway } from '@/modules/ai/registry'
-import { createPortalMedia } from '@/modules/media'
+import {
+  createPortalMedia,
+  mediaBytesMatchMimeType,
+  resolveManagedMediaPath,
+} from '@/modules/media'
 
 import {
   GENERATED_CONTENT_PLATFORMS,
@@ -340,11 +346,7 @@ const mediaReference = async ({
   }
   const filename = typeof media.filename === 'string' ? media.filename : ''
   const mimeType = typeof media.mimeType === 'string' ? media.mimeType : ''
-  if (
-    !filename ||
-    path.basename(filename) !== filename ||
-    !CONTENT_STUDIO_REFERENCE_MIME_TYPES.includes(mimeType as AiImageMimeType)
-  ) {
+  if (!filename || !CONTENT_STUDIO_REFERENCE_MIME_TYPES.includes(mimeType as AiImageMimeType)) {
     throw new ContentStudioCommandError(
       'content-studio-reference-unavailable',
       'The reference image is unavailable',
@@ -353,7 +355,7 @@ const mediaReference = async ({
   }
   let data: Uint8Array
   try {
-    data = new Uint8Array(await readFile(path.resolve(process.cwd(), 'media', filename)))
+    data = new Uint8Array(await readFile(await resolveManagedMediaPath(filename)))
   } catch {
     throw new ContentStudioCommandError(
       'content-studio-reference-unavailable',
@@ -377,16 +379,31 @@ const imageExtension = (mimeType: AiImageMimeType): string => {
   return 'png'
 }
 
+const normalizeGeneratedImage = async ({
+  data,
+  mimeType,
+}: {
+  data: Uint8Array
+  mimeType: AiImageMimeType
+}): Promise<{ data: Buffer; mimeType: 'image/jpeg' | 'image/png' }> => {
+  if (mimeType !== 'image/webp') {
+    return { data: Buffer.from(data), mimeType }
+  }
+  return { data: await sharp(data).png().toBuffer(), mimeType: 'image/png' }
+}
+
 export async function generateContentStudioImage({
   input: rawInput,
   onProviderDispatch,
   payload,
+  readStoredMediaBytes = async (filename) => readFile(await resolveManagedMediaPath(filename)),
   req,
   resolveGateway = resolveAiGateway,
 }: {
   input: unknown
   onProviderDispatch?: () => void
   payload: ContentStudioPayload
+  readStoredMediaBytes?: (filename: string) => Promise<Uint8Array>
   req: PayloadRequest
   resolveGateway?: ResolveContentStudioGateway
 }) {
@@ -406,12 +423,13 @@ export async function generateContentStudioImage({
       referenceImage,
       size: input.size,
     })
+    const image = await normalizeGeneratedImage(result.image)
     const media = await createPortalMedia({
       file: {
-        data: Buffer.from(result.image.data),
-        mimetype: result.image.mimeType,
-        name: `ai-generated-${randomUUID()}.${imageExtension(result.image.mimeType)}`,
-        size: result.image.data.length,
+        data: image.data,
+        mimetype: image.mimeType,
+        name: `ai-generated-${randomUUID()}.${imageExtension(image.mimeType)}`,
+        size: image.data.length,
       },
       input: {
         alt: input.prompt.slice(0, 500),
@@ -421,12 +439,24 @@ export async function generateContentStudioImage({
       payload: payload as Payload,
       req,
     })
+    const storedBytes = await readStoredMediaBytes(media.filename)
+    if (
+      storedBytes.byteLength > AI_GENERATED_IMAGE_MAX_BYTES ||
+      !mediaBytesMatchMimeType(storedBytes, media.mimeType)
+    ) {
+      throw new ContentStudioCommandError(
+        'content-studio-image-unavailable',
+        'The generated image could not be verified after storage.',
+        503,
+      )
+    }
     return {
       media,
       model: result.model,
       provider: result.provider,
       requestId: result.requestId,
       revisedPrompt: result.revisedPrompt,
+      sha256: createHash('sha256').update(storedBytes).digest('hex'),
     }
   } catch (error) {
     if (error instanceof ContentStudioCommandError) throw error
@@ -492,9 +522,13 @@ export async function adoptContentStudioImage({
     )
   }
 
-  const assets = [...new Set((Array.isArray(content.assets) ? content.assets : [])
-    .map(asRelationID)
-    .filter((assetId): assetId is number => assetId !== null))]
+  const assets = [
+    ...new Set(
+      (Array.isArray(content.assets) ? content.assets : [])
+        .map(asRelationID)
+        .filter((assetId): assetId is number => assetId !== null),
+    ),
+  ]
   if (assets.includes(mediaId)) return asContentResult(content)
   const updated = await payload.update({
     collection: 'generated-contents',

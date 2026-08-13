@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import sharp from 'sharp'
 
 import type { PayloadRequest } from 'payload'
 
@@ -9,16 +10,23 @@ import {
   deleteContentStudioDraft,
   generateContentStudioDraft,
   generateContentStudioImage,
+  reviewContentStudioDraft,
   scheduleContentStudioPublication,
   submitContentStudioReview,
   updateContentStudioDraft,
 } from '@/admin-portal/modules/content-studio/contentStudioCommands'
 
 const readFileMock = vi.hoisted(() => vi.fn())
+const realpathMock = vi.hoisted(() => vi.fn(async (value: string) => value))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
-  return { ...actual, default: { ...actual, readFile: readFileMock }, readFile: readFileMock }
+  return {
+    ...actual,
+    default: { ...actual, readFile: readFileMock, realpath: realpathMock },
+    readFile: readFileMock,
+    realpath: realpathMock,
+  }
 })
 
 const req = {
@@ -42,6 +50,7 @@ const input = {
 describe('Portal Content Studio draft commands', () => {
   afterEach(() => {
     readFileMock.mockReset()
+    realpathMock.mockReset().mockImplementation(async (value: string) => value)
     vi.unstubAllEnvs()
   })
 
@@ -236,6 +245,10 @@ describe('Portal Content Studio draft commands', () => {
     })
     const resolveGateway = vi.fn().mockResolvedValue({ generateImage })
     const onProviderDispatch = vi.fn()
+    const generatedBytes = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Wl9sAAAAASUVORK5CYII=',
+      'base64',
+    )
 
     await expect(
       generateContentStudioImage({
@@ -246,6 +259,7 @@ describe('Portal Content Studio draft commands', () => {
         },
         onProviderDispatch,
         payload: { create, findByID: vi.fn() } as any,
+        readStoredMediaBytes: vi.fn().mockResolvedValue(generatedBytes),
         req,
         resolveGateway: resolveGateway as any,
       }),
@@ -259,6 +273,7 @@ describe('Portal Content Studio draft commands', () => {
       model: 'image-model',
       provider: 'configured-provider',
       revisedPrompt: 'Refined facade image',
+      sha256: '04ac2e5d946e76a5302df4c165d5d52fb8ce8a7ae1c0f1904fe40ba80c52c296',
     })
 
     expect(resolveGateway).toHaveBeenCalledWith(
@@ -275,6 +290,55 @@ describe('Portal Content Studio draft commands', () => {
       }),
     )
     expect(create).toHaveBeenCalledTimes(2)
+  })
+
+  it('normalizes a valid provider WebP result to a publishable private PNG', async () => {
+    const webp = await sharp({
+      create: { background: '#1c2f46', channels: 3, height: 2, width: 2 },
+    })
+      .webp()
+      .toBuffer()
+    let storedImage = Buffer.alloc(0)
+    const create = vi.fn(async ({ collection, data, file }) => {
+      if (collection === 'media') {
+        storedImage = file.data
+        expect(data).toMatchObject({ isPublic: false })
+        expect(file.mimetype).toBe('image/png')
+        expect(file.data.subarray(0, 8)).toEqual(
+          Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        )
+        return {
+          ...data,
+          filename: file.name,
+          id: 82,
+          mimeType: file.mimetype,
+          updatedAt: '2026-08-12T10:00:00.000Z',
+          url: '/media/generated.png',
+        }
+      }
+      return { id: 902 }
+    })
+    const generateImage = vi.fn().mockResolvedValue({
+      image: { data: webp, mimeType: 'image/webp' },
+      model: 'image-model',
+      provider: 'configured-provider',
+    })
+
+    await expect(
+      generateContentStudioImage({
+        input: {
+          prompt: 'Create a publishable facade image',
+          referenceMediaId: null,
+          size: '1024x1024',
+        },
+        payload: { create, findByID: vi.fn() } as any,
+        readStoredMediaBytes: vi.fn(async () => storedImage),
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateImage }) as any,
+      }),
+    ).resolves.toMatchObject({ media: { id: 82, isPublic: false, mimeType: 'image/png' } })
+
+    expect(generateImage).toHaveBeenCalledOnce()
   })
 
   it('loads only an authorized image Media reference and rejects an unsafe file path', async () => {
@@ -371,35 +435,44 @@ describe('Portal Content Studio draft commands', () => {
         : { id: 81, filename: 'generated.png', mimeType: 'image/png' },
     )
 
-    await expect(adoptContentStudioImage({
-      id: 71,
-      input: { mediaId: 81, updatedAt: draft.updatedAt },
-      payload: { findByID, update } as any,
-      req,
-    })).resolves.toMatchObject({ id: 71, status: 'draft', updatedAt: '2026-08-12T10:01:00.000Z' })
+    await expect(
+      adoptContentStudioImage({
+        id: 71,
+        input: { mediaId: 81, updatedAt: draft.updatedAt },
+        payload: { findByID, update } as any,
+        req,
+      }),
+    ).resolves.toMatchObject({ id: 71, status: 'draft', updatedAt: '2026-08-12T10:01:00.000Z' })
 
-    expect(findByID).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      collection: 'media',
-      id: 81,
-      overrideAccess: false,
-      req,
-    }))
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({
-      collection: 'generated-contents',
-      data: { assets: [4, 5, 81] },
-      id: 71,
-      overrideAccess: false,
-      req,
-    }))
+    expect(findByID).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        collection: 'media',
+        id: 81,
+        overrideAccess: false,
+        req,
+      }),
+    )
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'generated-contents',
+        data: { assets: [4, 5, 81] },
+        id: 71,
+        overrideAccess: false,
+        req,
+      }),
+    )
 
     findByID.mockClear()
     update.mockClear()
-    await expect(adoptContentStudioImage({
-      id: 71,
-      input: { mediaId: 5, updatedAt: draft.updatedAt },
-      payload: { findByID, update } as any,
-      req,
-    })).resolves.toMatchObject({ id: 71, updatedAt: draft.updatedAt })
+    await expect(
+      adoptContentStudioImage({
+        id: 71,
+        input: { mediaId: 5, updatedAt: draft.updatedAt },
+        payload: { findByID, update } as any,
+        req,
+      }),
+    ).resolves.toMatchObject({ id: 71, updatedAt: draft.updatedAt })
     expect(findByID).toHaveBeenCalledTimes(2)
     expect(update).not.toHaveBeenCalled()
   })
@@ -421,14 +494,19 @@ describe('Portal Content Studio draft commands', () => {
         req,
       })
 
-    await expect(run(draft, { filename: 'image.png', mimeType: 'image/png' }, 'stale'))
-      .rejects.toMatchObject({ code: 'content-studio-stale', status: 409 })
-    await expect(run({ ...draft, status: 'review' }, { filename: 'image.png', mimeType: 'image/png' }))
-      .rejects.toMatchObject({ code: 'content-studio-invalid-transition', status: 409 })
-    await expect(run(draft, new Error('not readable')))
-      .rejects.toMatchObject({ code: 'content-studio-image-unavailable', status: 409 })
-    await expect(run(draft, { filename: 'document.pdf', mimeType: 'application/pdf' }))
-      .rejects.toMatchObject({ code: 'content-studio-image-unavailable', status: 409 })
+    await expect(
+      run(draft, { filename: 'image.png', mimeType: 'image/png' }, 'stale'),
+    ).rejects.toMatchObject({ code: 'content-studio-stale', status: 409 })
+    await expect(
+      run({ ...draft, status: 'review' }, { filename: 'image.png', mimeType: 'image/png' }),
+    ).rejects.toMatchObject({ code: 'content-studio-invalid-transition', status: 409 })
+    await expect(run(draft, new Error('not readable'))).rejects.toMatchObject({
+      code: 'content-studio-image-unavailable',
+      status: 409,
+    })
+    await expect(
+      run(draft, { filename: 'document.pdf', mimeType: 'application/pdf' }),
+    ).rejects.toMatchObject({ code: 'content-studio-image-unavailable', status: 409 })
   })
 
   it('rejects past internal schedules before creating a publish job', async () => {
@@ -557,6 +635,109 @@ describe('Portal Content Studio draft commands', () => {
       code: 'content-studio-sources-unavailable',
       status: 409,
     })
+  })
+
+  it('requires a complete checklist and persists each review decision before changing status', async () => {
+    const content = {
+      id: 71,
+      status: 'review',
+      title: input.title,
+      updatedAt: '2026-07-30T12:00:00.000Z',
+    }
+    const create = vi.fn().mockResolvedValue({ id: 91 })
+    const update = vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+      ...content,
+      ...data,
+      updatedAt: '2026-07-30T12:01:00.000Z',
+    }))
+    const payload = { create, findByID: vi.fn().mockResolvedValue(content), update } as any
+    const checklist = {
+      arabicProofread: true,
+      factsTraceable: true,
+      noCommercialCommitment: true,
+      platformFormatChecked: true,
+      technicalClaimsChecked: true,
+    }
+
+    await expect(
+      reviewContentStudioDraft({
+        id: 71,
+        input: {
+          checklist: { ...checklist, platformFormatChecked: false },
+          comments: 'Missing platform validation.',
+          decision: 'approved',
+          updatedAt: content.updatedAt,
+        },
+        payload,
+        req,
+      }),
+    ).rejects.toMatchObject({ code: 'content-studio-incomplete-checklist', status: 409 })
+    expect(create).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+
+    await expect(
+      reviewContentStudioDraft({
+        id: 71,
+        input: {
+          checklist,
+          comments: 'Facts and platform format verified.',
+          decision: 'approved',
+          updatedAt: content.updatedAt,
+        },
+        payload,
+        req,
+      }),
+    ).resolves.toMatchObject({ id: 71, status: 'approved' })
+    expect(create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        collection: 'content-reviews',
+        data: expect.objectContaining({
+          checklist,
+          content: 71,
+          decision: 'approved',
+          reviewedBy: 2,
+        }),
+        overrideAccess: false,
+        req,
+      }),
+    )
+    expect(update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        collection: 'generated-contents',
+        data: expect.objectContaining({ reviewedBy: 2, status: 'approved' }),
+        id: 71,
+        overrideAccess: false,
+        req,
+      }),
+    )
+
+    create.mockClear()
+    update.mockClear()
+    await expect(
+      reviewContentStudioDraft({
+        id: 71,
+        input: {
+          checklist: {},
+          comments: 'Revise the factual source wording.',
+          decision: 'revision-requested',
+          updatedAt: content.updatedAt,
+        },
+        payload,
+        req,
+      }),
+    ).resolves.toMatchObject({ id: 71, status: 'draft' })
+    expect(create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        collection: 'content-reviews',
+        data: expect.objectContaining({ content: 71, decision: 'revision-requested' }),
+      }),
+    )
+    expect(update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        collection: 'generated-contents',
+        data: { reviewedAt: null, reviewedBy: null, status: 'draft' },
+      }),
+    )
   })
 
   it('preserves publication history instead of deleting a draft that has a job', async () => {
