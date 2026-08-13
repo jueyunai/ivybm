@@ -139,6 +139,8 @@ const messages = {
     save: 'Save',
     saving: 'Saving…',
     errors: {
+      account_has_publication_history:
+        'This account has publication history and cannot be deleted.',
       account_not_disconnected: 'Disconnect this account before deleting it.',
       duplicate_account: 'This provider account is already configured.',
       forbidden: 'You are not allowed to perform this action.',
@@ -268,6 +270,7 @@ const messages = {
     save: '保存',
     saving: '保存中…',
     errors: {
+      account_has_publication_history: '该账号已有发布历史，不能删除。',
       account_not_disconnected: '请先断开该账号的授权，再执行删除。',
       duplicate_account: '该平台账号已经配置。',
       forbidden: '当前账号无权执行此操作。',
@@ -376,16 +379,26 @@ const accountKindLabel = (kind: string, locale: keyof typeof messages): string =
   return locale === 'zh' ? option.labelZh : option.labelEn
 }
 
-const oauthStartPath = (accountKind: string): string => {
-  if (accountKind === 'facebook-page') return '/api/platforms/meta/oauth/start'
-  if (accountKind === 'instagram-professional') return '/api/platforms/instagram/oauth/start'
-  return '/api/platforms/linkedin/oauth/start'
-}
-
-const oauthDisconnectPath = (accountKind: string): string => {
-  if (accountKind === 'facebook-page') return '/api/platforms/meta/oauth/disconnect'
-  if (accountKind === 'instagram-professional') return '/api/platforms/instagram/oauth/disconnect'
-  return '/api/platforms/linkedin/oauth/disconnect'
+const oauthPaths = (accountKind: string): { disconnect: string; start: string } | undefined => {
+  if (accountKind === 'facebook-page') {
+    return {
+      disconnect: '/api/platforms/meta/oauth/disconnect',
+      start: '/api/platforms/meta/oauth/start',
+    }
+  }
+  if (accountKind === 'instagram-professional') {
+    return {
+      disconnect: '/api/platforms/instagram/oauth/disconnect',
+      start: '/api/platforms/instagram/oauth/start',
+    }
+  }
+  if (accountKind === 'linkedin-member' || accountKind === 'linkedin-organization') {
+    return {
+      disconnect: '/api/platforms/linkedin/oauth/disconnect',
+      start: '/api/platforms/linkedin/oauth/start',
+    }
+  }
+  return undefined
 }
 
 function AccountReadiness({
@@ -658,11 +671,17 @@ export function PlatformReadinessPage({
   const handleDisconnect = async (accountId: number) => {
     const account = accounts.find((item) => item.id === accountId)
     if (!account) return
+    const paths = oauthPaths(account.accountKind)
+    if (!paths) {
+      setFormError(copy.disconnectFailed)
+      setDisconnectingId(null)
+      return
+    }
     setDisconnectingId(accountId)
     setFormError(null)
     setIsSubmitting(true)
     try {
-      const response = await fetch(oauthDisconnectPath(account.accountKind), {
+      const response = await fetch(paths.disconnect, {
         body: JSON.stringify({
           accountId,
           authorizationRevision: account.authorizationRevision,
@@ -801,128 +820,127 @@ export function PlatformReadinessPage({
 
       {summary.accounts.length ? (
         <section className="portal-platforms__grid">
-          {summary.accounts.map((account) => (
-            <Surface as="article" className="portal-platforms__account" key={account.id}>
-              <header>
-                <div>
-                  <p>{accountKindLabel(account.accountKind, locale)}</p>
-                  <h3>{account.name}</h3>
-                  <small>
-                    {account.externalAccountId ? `#${account.externalAccountId}` : copy.account}
-                  </small>
-                </div>
-                <div className="portal-platforms__account-actions">
-                  {authorizedAccountIds.has(account.id) ? (
-                    <>
-                      <Button asChild size="compact" variant="secondary">
-                        <a href={`${oauthStartPath(account.accountKind)}?accountId=${account.id}`}>
-                          {copy.reauthorize}
-                        </a>
+          {summary.accounts.map((account) => {
+            const paths = oauthPaths(account.accountKind)
+            return (
+              <Surface as="article" className="portal-platforms__account" key={account.id}>
+                <header>
+                  <div>
+                    <p>{accountKindLabel(account.accountKind, locale)}</p>
+                    <h3>{account.name}</h3>
+                    <small>
+                      {account.externalAccountId ? `#${account.externalAccountId}` : copy.account}
+                    </small>
+                  </div>
+                  <div className="portal-platforms__account-actions">
+                    {paths && authorizedAccountIds.has(account.id) ? (
+                      <>
+                        <Button asChild size="compact" variant="secondary">
+                          <a href={`${paths.start}?accountId=${account.id}`}>{copy.reauthorize}</a>
+                        </Button>
+                        <Button
+                          disabled={disconnectingId === account.id}
+                          onClick={() => {
+                            setDeletingId(null)
+                            setDisconnectingId(account.id)
+                          }}
+                          size="compact"
+                          variant="danger"
+                        >
+                          {copy.disconnect}
+                        </Button>
+                      </>
+                    ) : paths ? (
+                      <Button asChild size="compact" variant="primary">
+                        <a href={`${paths.start}?accountId=${account.id}`}>{copy.connect}</a>
                       </Button>
-                      <Button
-                        disabled={disconnectingId === account.id}
-                        onClick={() => {
-                          setDeletingId(null)
-                          setDisconnectingId(account.id)
-                        }}
-                        size="compact"
-                        variant="danger"
-                      >
-                        {copy.disconnect}
-                      </Button>
-                    </>
-                  ) : (
-                    <Button asChild size="compact" variant="primary">
-                      <a href={`${oauthStartPath(account.accountKind)}?accountId=${account.id}`}>
-                        {copy.connect}
-                      </a>
-                    </Button>
-                  )}
-                  <Button
-                    disabled={editingId === account.id}
-                    onClick={() => setEditingId(account.id)}
-                    size="compact"
-                    variant="ghost"
-                  >
-                    {copy.edit}
-                  </Button>
-                  <Button
-                    disabled={deletingId === account.id}
-                    onClick={() => {
-                      setDisconnectingId(null)
-                      setDeletingId(account.id)
-                    }}
-                    size="compact"
-                    variant="ghost"
-                  >
-                    {copy.delete}
-                  </Button>
-                </div>
-              </header>
-
-              {editingId === account.id ? (
-                <form onSubmit={(event) => handleEdit(event, account.id)}>
-                  <label>
-                    {copy.name}
-                    <input defaultValue={account.name} name="name" required type="text" />
-                  </label>
-                  <label>
-                    {copy.externalAccountId}
-                    <input
-                      defaultValue={account.externalAccountId ?? ''}
-                      name="externalAccountId"
-                      type="text"
-                    />
-                    <small>{copy.externalAccountIdHelp}</small>
-                  </label>
-                  <label>
-                    {copy.notes}
-                    <textarea defaultValue={account.notes ?? ''} name="notes" rows={3} />
-                  </label>
-                  <div className="portal-platforms__form-actions">
-                    <Button disabled={isSubmitting} type="submit">
-                      {isSubmitting ? copy.saving : copy.save}
+                    ) : null}
+                    <Button
+                      disabled={editingId === account.id}
+                      onClick={() => setEditingId(account.id)}
+                      size="compact"
+                      variant="ghost"
+                    >
+                      {copy.edit}
                     </Button>
                     <Button
-                      disabled={isSubmitting}
-                      onClick={() => setEditingId(null)}
-                      variant="secondary"
+                      disabled={deletingId === account.id}
+                      onClick={() => {
+                        setDisconnectingId(null)
+                        setDeletingId(account.id)
+                      }}
+                      size="compact"
+                      variant="ghost"
                     >
-                      {copy.cancel}
+                      {copy.delete}
                     </Button>
                   </div>
-                </form>
-              ) : null}
+                </header>
 
-              {disconnectingId === account.id ? (
-                <ConfirmDialog
-                  busy={isSubmitting}
-                  cancelLabel={copy.cancel}
-                  confirmLabel={isSubmitting ? copy.disconnecting : copy.confirmDisconnect}
-                  description={copy.confirmDisconnectDescription}
-                  id={`platform-disconnect-${account.id}`}
-                  onCancel={() => setDisconnectingId(null)}
-                  onConfirm={() => void handleDisconnect(account.id)}
-                  title={copy.confirmDisconnect}
-                />
-              ) : null}
+                {editingId === account.id ? (
+                  <form onSubmit={(event) => handleEdit(event, account.id)}>
+                    <label>
+                      {copy.name}
+                      <input defaultValue={account.name} name="name" required type="text" />
+                    </label>
+                    <label>
+                      {copy.externalAccountId}
+                      <input
+                        defaultValue={account.externalAccountId ?? ''}
+                        name="externalAccountId"
+                        type="text"
+                      />
+                      <small>{copy.externalAccountIdHelp}</small>
+                    </label>
+                    <label>
+                      {copy.notes}
+                      <textarea defaultValue={account.notes ?? ''} name="notes" rows={3} />
+                    </label>
+                    <div className="portal-platforms__form-actions">
+                      <Button disabled={isSubmitting} type="submit">
+                        {isSubmitting ? copy.saving : copy.save}
+                      </Button>
+                      <Button
+                        disabled={isSubmitting}
+                        onClick={() => setEditingId(null)}
+                        variant="secondary"
+                      >
+                        {copy.cancel}
+                      </Button>
+                    </div>
+                  </form>
+                ) : null}
 
-              {deletingId === account.id ? (
-                <ConfirmDialog
-                  busy={isSubmitting}
-                  cancelLabel={copy.cancel}
-                  confirmLabel={isSubmitting ? copy.saving : copy.deleteAccount}
-                  description={copy.confirmDeleteDescription}
-                  id={`platform-delete-${account.id}`}
-                  onCancel={() => setDeletingId(null)}
-                  onConfirm={() => void handleDelete(account.id)}
-                  title={copy.confirmDelete}
-                />
-              ) : null}
+                {disconnectingId === account.id ? (
+                  <ConfirmDialog
+                    busy={isSubmitting}
+                    cancelLabel={copy.cancel}
+                    confirmLabel={isSubmitting ? copy.disconnecting : copy.confirmDisconnect}
+                    description={copy.confirmDisconnectDescription}
+                    id={`platform-disconnect-${account.id}`}
+                    onCancel={() => setDisconnectingId(null)}
+                    onConfirm={() => void handleDisconnect(account.id)}
+                    title={copy.confirmDisconnect}
+                  />
+                ) : null}
 
-              <AccountReadiness account={account} copy={copy} />
-            </Surface>
-          ))}
+                {deletingId === account.id ? (
+                  <ConfirmDialog
+                    busy={isSubmitting}
+                    cancelLabel={copy.cancel}
+                    confirmLabel={isSubmitting ? copy.saving : copy.deleteAccount}
+                    description={copy.confirmDeleteDescription}
+                    id={`platform-delete-${account.id}`}
+                    onCancel={() => setDeletingId(null)}
+                    onConfirm={() => void handleDelete(account.id)}
+                    title={copy.confirmDelete}
+                  />
+                ) : null}
+
+                <AccountReadiness account={account} copy={copy} />
+              </Surface>
+            )
+          })}
         </section>
       ) : (
         <Surface as="section">

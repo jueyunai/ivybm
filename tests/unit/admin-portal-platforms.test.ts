@@ -80,4 +80,45 @@ describe('Portal platform readiness', () => {
       /access token|refresh token|app secret|accessToken|refreshToken|authorization\.accessToken/i,
     )
   })
+
+  it('does not offer OAuth actions for a historical unsupported account kind', () => {
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(PlatformReadinessPage, {
+          accounts: [],
+          pageState: 'available',
+          summary: {
+            accounts: [
+              {
+                accountKind: 'tiktok-business' as never,
+                authorization: {
+                  accessTokenConfigured: true,
+                  refreshTokenConfigured: false,
+                  state: 'connected',
+                },
+                authorizationRevision: 1,
+                externalAccountId: 'historical-account',
+                id: 9,
+                name: 'Historical TikTok',
+                notes: null,
+                readiness: {
+                  capabilities: [],
+                  connection: { missing: ['authorization'], status: 'action-required' },
+                  family: 'tiktok',
+                },
+              },
+            ],
+          },
+        }),
+      ),
+    )
+
+    expect(screen.queryByRole('link', { name: '连接' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '重新授权' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '断开授权' })).toBeNull()
+    expect(screen.getByRole('button', { name: '编辑' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '删除' })).toBeTruthy()
+  })
 })

@@ -14,6 +14,23 @@ export const PORTAL_SUPPORTED_ACCOUNT_KINDS: readonly PortalSupportedAccountKind
 export const isPortalSupportedAccountKind = (value: unknown): value is PortalSupportedAccountKind =>
   typeof value === 'string' && PORTAL_SUPPORTED_ACCOUNT_KINDS.some((kind) => kind === value)
 
+const META_EXTERNAL_ACCOUNT_ID_PATTERN = /^[1-9][0-9]{0,31}$/u
+const LINKEDIN_MEMBER_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/u
+const LINKEDIN_ORGANIZATION_ID_PATTERN = /^[0-9]{1,32}$/u
+
+export const isValidPortalExternalAccountId = (
+  accountKind: PortalSupportedAccountKind,
+  externalAccountId: string,
+): boolean => {
+  if (accountKind === 'linkedin-member') {
+    return LINKEDIN_MEMBER_ID_PATTERN.test(externalAccountId)
+  }
+  if (accountKind === 'linkedin-organization') {
+    return LINKEDIN_ORGANIZATION_ID_PATTERN.test(externalAccountId)
+  }
+  return META_EXTERNAL_ACCOUNT_ID_PATTERN.test(externalAccountId)
+}
+
 export type RedactedPlatformAccountAuthorization = {
   accessTokenConfigured: boolean
   appId: string | null
@@ -111,7 +128,10 @@ export const validateCreatePlatformAccountInput = (
     rawExternalAccountId === undefined || rawExternalAccountId === null
       ? null
       : (nonEmptyString(rawExternalAccountId) ?? null)
-  if (externalAccountId !== null && externalAccountId.length > 240) {
+  if (
+    externalAccountId !== null &&
+    !isValidPortalExternalAccountId(accountKind, externalAccountId)
+  ) {
     return { error: { code: 'invalid_external_account_id' }, success: false }
   }
   const rawNotes = record.notes

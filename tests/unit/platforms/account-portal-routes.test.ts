@@ -55,10 +55,12 @@ const account = {
 
 const createPayload = ({
   authenticatedUser = admin,
+  countResult = { totalDocs: 0 },
   docs = [account],
   findByIDResult = account,
 }: {
   authenticatedUser?: null | typeof admin | typeof operator
+  countResult?: { totalDocs: number }
   docs?: unknown[]
   findByIDResult?: unknown
 } = {}) => {
@@ -66,6 +68,7 @@ const createPayload = ({
   return {
     auth: vi.fn().mockResolvedValue({ user: authenticatedUser }),
     create: vi.fn().mockResolvedValue(findByIDResult),
+    count: vi.fn().mockResolvedValue(countResult),
     db: {
       drizzle: {
         execute: vi.fn().mockResolvedValue({
@@ -294,7 +297,7 @@ describe('platform account portal routes', () => {
 
     const response = await PATCH(
       jsonRequest({
-        body: { authorizationRevision: 3, externalAccountId: 'new-id', name: 'Updated Page' },
+        body: { authorizationRevision: 3, externalAccountId: '987654321', name: 'Updated Page' },
         method: 'PATCH',
         path: '/api/platforms/accounts/42',
       }),
@@ -303,12 +306,31 @@ describe('platform account portal routes', () => {
     expect(response.status).toBe(200)
     expect(payload.update).toHaveBeenCalledWith({
       collection: 'platform-accounts',
-      data: { externalAccountId: 'new-id', name: 'Updated Page' },
+      data: { externalAccountId: '987654321', name: 'Updated Page' },
       id: 42,
       overrideAccess: false,
       req: expect.any(Object),
       user: admin,
     })
+  })
+
+  it('rejects malformed external account IDs using the locked account kind', async () => {
+    const payload = createPayload()
+    mocks.getPayload.mockResolvedValue(payload)
+
+    const response = await PATCH(
+      jsonRequest({
+        body: { authorizationRevision: 3, externalAccountId: 'page-123' },
+        method: 'PATCH',
+        path: '/api/platforms/accounts/42',
+      }),
+    )
+
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'invalid_external_account_id' },
+    })
+    expect(response.status).toBe(400)
+    expect(payload.update).not.toHaveBeenCalled()
   })
 
   it('rejects updates when the authorization revision is stale', async () => {
@@ -347,6 +369,13 @@ describe('platform account portal routes', () => {
     )
 
     expect(response.status).toBe(200)
+    expect(payload.count).toHaveBeenCalledWith({
+      collection: 'publish-jobs',
+      overrideAccess: false,
+      req: expect.any(Object),
+      user: admin,
+      where: { platformAccount: { equals: 42 } },
+    })
     expect(payload.delete).toHaveBeenCalledWith({
       collection: 'platform-accounts',
       id: 42,
@@ -354,6 +383,25 @@ describe('platform account portal routes', () => {
       req: expect.any(Object),
       user: admin,
     })
+  })
+
+  it('preserves accounts referenced by publication history', async () => {
+    const payload = createPayload({ countResult: { totalDocs: 1 } })
+    mocks.getPayload.mockResolvedValue(payload)
+
+    const response = await DELETE(
+      jsonRequest({
+        body: { authorizationRevision: 3 },
+        method: 'DELETE',
+        path: '/api/platforms/accounts/42',
+      }),
+    )
+
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'account_has_publication_history' },
+    })
+    expect(response.status).toBe(409)
+    expect(payload.delete).not.toHaveBeenCalled()
   })
 
   it('refuses to delete a connected account', async () => {

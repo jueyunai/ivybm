@@ -22,7 +22,7 @@ export type PlatformOAuthAccountSnapshot = {
   externalAccountId: string
 }
 
-type LockedPlatformAccount = {
+export type LockedPlatformAccount = {
   account_kind: string
   authorization_revision: number | string
   authorization_state: string
@@ -140,7 +140,7 @@ export const withLockedPlatformAccountMutation = async <T>({
   snapshot,
   user,
 }: {
-  operation: (req: PayloadRequest) => Promise<T>
+  operation: (req: PayloadRequest, account: LockedPlatformAccount) => Promise<T>
   payload: Payload
   snapshot: PlatformAccountMutationSnapshot
   user: User
@@ -173,7 +173,7 @@ export const withLockedPlatformAccountMutation = async <T>({
       throw new PlatformAccountMutationConflictError('state')
     }
 
-    const result = await operation(req)
+    const result = await operation(req, account)
     await commitTransaction(req)
     return result
   } catch (error) {

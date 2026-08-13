@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 
 import {
+  isPortalSupportedAccountKind,
+  isValidPortalExternalAccountId,
   toRedactedPlatformAccountSummary,
   validateDeletePlatformAccountInput,
   validateUpdatePlatformAccountInput,
@@ -13,6 +15,20 @@ import {
 import { PlatformPortalRequestError, readPlatformPortalJSON } from '@/modules/platforms/portalHttp'
 import config from '@/payload.config'
 import type { User } from '@/payload-types'
+
+class PlatformAccountDeleteConflictError extends Error {
+  constructor() {
+    super('Platform account has publication history')
+    this.name = 'PlatformAccountDeleteConflictError'
+  }
+}
+
+class PlatformAccountIdentityValidationError extends Error {
+  constructor() {
+    super('Platform account external identity is invalid')
+    this.name = 'PlatformAccountIdentityValidationError'
+  }
+}
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -84,15 +100,27 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     if (input.value.notes !== undefined) data.notes = input.value.notes
 
     const updated = await withLockedPlatformAccountMutation({
-      operation: (req) =>
-        payload.update({
+      operation: (req, lockedAccount) => {
+        if (
+          input.value.externalAccountId !== undefined &&
+          input.value.externalAccountId !== null &&
+          (!isPortalSupportedAccountKind(lockedAccount.account_kind) ||
+            !isValidPortalExternalAccountId(
+              lockedAccount.account_kind,
+              input.value.externalAccountId,
+            ))
+        ) {
+          throw new PlatformAccountIdentityValidationError()
+        }
+        return payload.update({
           collection: 'platform-accounts',
           data,
           id: accountId,
           overrideAccess: false,
           req,
           user,
-        }),
+        })
+      },
       payload,
       snapshot: {
         accountId,
@@ -102,6 +130,9 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     })
     return json(200, { data: toRedactedPlatformAccountSummary(updated) })
   } catch (error) {
+    if (error instanceof PlatformAccountIdentityValidationError) {
+      return json(400, { error: { code: 'invalid_external_account_id' } })
+    }
     if (error instanceof PlatformAccountMutationConflictError) {
       return json(409, { error: { code: 'stale_revision' } })
     }
@@ -140,14 +171,26 @@ export async function DELETE(request: NextRequest): Promise<Response> {
 
   try {
     await withLockedPlatformAccountMutation({
-      operation: (req) =>
-        payload.delete({
+      operation: async (req) => {
+        // The parent row is already locked FOR UPDATE. PostgreSQL foreign-key
+        // inserts must take a conflicting KEY SHARE lock, so a PublishJob
+        // cannot appear between this count and the delete.
+        const publications = await payload.count({
+          collection: 'publish-jobs',
+          overrideAccess: false,
+          req,
+          user,
+          where: { platformAccount: { equals: accountId } },
+        })
+        if (publications.totalDocs > 0) throw new PlatformAccountDeleteConflictError()
+        return payload.delete({
           collection: 'platform-accounts',
           id: accountId,
           overrideAccess: false,
           req,
           user,
-        }),
+        })
+      },
       payload,
       snapshot: {
         accountId,
@@ -158,6 +201,9 @@ export async function DELETE(request: NextRequest): Promise<Response> {
     })
     return json(200, { data: { accountId, deleted: true } })
   } catch (error) {
+    if (error instanceof PlatformAccountDeleteConflictError) {
+      return json(409, { error: { code: 'account_has_publication_history' } })
+    }
     if (error instanceof PlatformAccountMutationConflictError) {
       return json(409, {
         error: {

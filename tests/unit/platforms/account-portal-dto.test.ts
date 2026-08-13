@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   PORTAL_SUPPORTED_ACCOUNT_KINDS,
   isPortalSupportedAccountKind,
+  isValidPortalExternalAccountId,
   toRedactedPlatformAccountSummary,
   validateCreatePlatformAccountInput,
   validateDeletePlatformAccountInput,
@@ -88,11 +89,17 @@ describe('account portal DTO', () => {
   })
 
   it('validates create input for all supported kinds', () => {
+    const externalAccountIds = {
+      'facebook-page': '123456789',
+      'instagram-professional': '987654321',
+      'linkedin-member': 'opaque_ABC-123',
+      'linkedin-organization': '123456789',
+    } as const
     for (const accountKind of PORTAL_SUPPORTED_ACCOUNT_KINDS) {
       expect(
         validateCreatePlatformAccountInput({
           accountKind,
-          externalAccountId: 'external-id',
+          externalAccountId: externalAccountIds[accountKind],
           name: 'New Account',
           notes: 'notes',
         }),
@@ -100,7 +107,7 @@ describe('account portal DTO', () => {
         success: true,
         value: {
           accountKind,
-          externalAccountId: 'external-id',
+          externalAccountId: externalAccountIds[accountKind],
           name: 'New Account',
           notes: 'notes',
         },
@@ -146,6 +153,37 @@ describe('account portal DTO', () => {
     ).toEqual({
       error: { code: 'invalid_notes' },
       success: false,
+    })
+  })
+
+  it('validates provider-specific external account identifiers', () => {
+    expect(isValidPortalExternalAccountId('facebook-page', '123456789')).toBe(true)
+    expect(isValidPortalExternalAccountId('instagram-professional', '987654321')).toBe(true)
+    expect(isValidPortalExternalAccountId('linkedin-member', 'opaque_ABC-123')).toBe(true)
+    expect(isValidPortalExternalAccountId('linkedin-organization', '123456789')).toBe(true)
+
+    for (const invalid of [
+      'https://provider.example/account/123',
+      '123/456',
+      '123\u0000',
+      '账号123',
+      '123 456',
+    ]) {
+      expect(isValidPortalExternalAccountId('facebook-page', invalid)).toBe(false)
+    }
+    expect(isValidPortalExternalAccountId('facebook-page', 'page-123')).toBe(false)
+    expect(isValidPortalExternalAccountId('linkedin-organization', 'org-123')).toBe(false)
+    expect(isValidPortalExternalAccountId('linkedin-member', 'x'.repeat(129))).toBe(false)
+
+    expect(
+      validateCreatePlatformAccountInput({
+        accountKind: 'facebook-page',
+        externalAccountId: ' 123456789 ',
+        name: 'Trimmed Meta ID',
+      }),
+    ).toMatchObject({
+      success: true,
+      value: { externalAccountId: '123456789' },
     })
   })
 
