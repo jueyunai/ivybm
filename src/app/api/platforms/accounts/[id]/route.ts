@@ -12,7 +12,7 @@ import {
 } from '@/modules/platforms/accountOAuthConcurrency'
 import { PlatformPortalRequestError, readPlatformPortalJSON } from '@/modules/platforms/portalHttp'
 import config from '@/payload.config'
-import type { PlatformAccount, User } from '@/payload-types'
+import type { User } from '@/payload-types'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -53,9 +53,6 @@ const parseAccountId = (request: NextRequest): number | undefined => {
   const accountId = Number(value)
   return Number.isSafeInteger(accountId) ? accountId : undefined
 }
-
-const safeDeleteState = (state: PlatformAccount['authorization']['state']): boolean =>
-  state === 'not_started' || state === 'blocked' || state === 'disabled'
 
 export async function PATCH(request: NextRequest): Promise<Response> {
   const accountId = parseAccountId(request)

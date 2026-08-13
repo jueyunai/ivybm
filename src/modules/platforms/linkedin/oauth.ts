@@ -182,12 +182,13 @@ export const readLinkedInOAuthConfiguration = (
 
 const LINKEDIN_MEMBER_PERMISSIONS = ['openid', 'profile', 'w_member_social'] as const
 const LINKEDIN_ORGANIZATION_PERMISSIONS = [
+  'r_organization_admin',
   'r_organization_social',
   'w_organization_social',
 ] as const
 const LINKEDIN_ORGANIZATION_POST_ROLES = new Set([
   'ADMINISTRATOR',
-  'CONTENT_ADMIN',
+  'CONTENT_ADMINISTRATOR',
   'DIRECT_SPONSORED_CONTENT_POSTER',
 ])
 

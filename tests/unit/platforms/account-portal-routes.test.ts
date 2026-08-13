@@ -21,7 +21,12 @@ vi.mock('@/payload.config', () => ({ default: {} }))
 import { DELETE, PATCH } from '@/app/api/platforms/accounts/[id]/route'
 import { GET, POST } from '@/app/api/platforms/accounts/route'
 
-const environmentKeys = ['ADMIN_PORTAL_ENABLED', 'ADMIN_PORTAL_PLATFORMS_ENABLED'] as const
+const environmentKeys = [
+  'ADMIN_PORTAL_ENABLED',
+  'ADMIN_PORTAL_PLATFORMS_ENABLED',
+  'NEXT_PUBLIC_SERVER_URL',
+  'NODE_ENV',
+] as const
 const originalEnvironment = Object.fromEntries(
   environmentKeys.map((key) => [key, process.env[key]]),
 )
@@ -112,6 +117,7 @@ describe('platform account portal routes', () => {
     mocks.killTransaction.mockResolvedValue(undefined)
     process.env.ADMIN_PORTAL_ENABLED = 'true'
     process.env.ADMIN_PORTAL_PLATFORMS_ENABLED = 'true'
+    process.env.NEXT_PUBLIC_SERVER_URL = 'http://localhost:3000'
   })
 
   afterEach(() => {
@@ -215,6 +221,24 @@ describe('platform account portal routes', () => {
       overrideAccess: false,
       user: admin,
     })
+  })
+
+  it('accepts the public browser origin behind an internal reverse-proxy URL', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    process.env.NEXT_PUBLIC_SERVER_URL = 'https://ivybm.com'
+    const payload = createPayload()
+    mocks.getPayload.mockResolvedValue(payload)
+
+    const response = await POST(
+      new NextRequest('http://app:3000/api/platforms/accounts', {
+        body: JSON.stringify({ accountKind: 'facebook-page', name: 'Production Page' }),
+        headers: { 'content-type': 'application/json', origin: 'https://ivybm.com' },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(201)
+    expect(payload.create).toHaveBeenCalledOnce()
   })
 
   it('rejects unsupported account kinds including TikTok', async () => {

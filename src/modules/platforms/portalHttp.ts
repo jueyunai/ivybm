@@ -9,6 +9,38 @@ export class PlatformPortalRequestError extends Error {
   }
 }
 
+type PlatformPortalEnvironment = Partial<
+  Pick<NodeJS.ProcessEnv, 'NEXT_PUBLIC_SERVER_URL' | 'NODE_ENV'>
+>
+
+const expectedPlatformPortalOrigin = (
+  request: Request,
+  environment: PlatformPortalEnvironment,
+): string | undefined => {
+  if (environment.NODE_ENV !== 'production') return new URL(request.url).origin
+
+  const configured = environment.NEXT_PUBLIC_SERVER_URL?.trim()
+  if (configured) {
+    try {
+      const url = new URL(configured)
+      if (
+        url.protocol !== 'https:' ||
+        url.username ||
+        url.password ||
+        url.pathname !== '/' ||
+        url.search ||
+        url.hash
+      ) {
+        return undefined
+      }
+      return url.origin
+    } catch {
+      return undefined
+    }
+  }
+  return undefined
+}
+
 const readBoundedText = async (request: Request, maximumBytes: number): Promise<string> => {
   const contentLengthHeader = request.headers.get('content-length')
   if (contentLengthHeader && /^\d+$/u.test(contentLengthHeader)) {
@@ -47,9 +79,11 @@ const readBoundedText = async (request: Request, maximumBytes: number): Promise<
 export const readPlatformPortalJSON = async (
   request: Request,
   maximumBytes = 4_096,
+  environment: PlatformPortalEnvironment = process.env,
 ): Promise<unknown> => {
   const origin = request.headers.get('origin')
-  if (!origin || origin !== new URL(request.url).origin) {
+  const expectedOrigin = expectedPlatformPortalOrigin(request, environment)
+  if (!origin || !expectedOrigin || origin !== expectedOrigin) {
     throw new PlatformPortalRequestError('forbidden', 403)
   }
   const mediaType = request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()

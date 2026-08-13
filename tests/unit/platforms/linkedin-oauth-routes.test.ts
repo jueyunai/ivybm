@@ -278,7 +278,7 @@ describe('LinkedIn OAuth routes', () => {
             elements: [
               {
                 organization: `urn:li:organization:${organizationAccount.externalAccountId}`,
-                role: 'ADMINISTRATOR',
+                role: 'CONTENT_ADMINISTRATOR',
                 state: 'APPROVED',
               },
             ],

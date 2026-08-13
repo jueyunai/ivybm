@@ -55,6 +55,7 @@ describe('LinkedIn OAuth', () => {
       'w_member_social',
     ])
     expect(requiredLinkedInPermissions('linkedin-organization')).toEqual([
+      'r_organization_admin',
       'r_organization_social',
       'w_organization_social',
     ])
@@ -213,7 +214,7 @@ describe('LinkedIn OAuth', () => {
           elements: [
             {
               organization: 'urn:li:organization:12345',
-              role: 'CONTENT_ADMIN',
+              role: 'CONTENT_ADMINISTRATOR',
               state: 'APPROVED',
             },
           ],

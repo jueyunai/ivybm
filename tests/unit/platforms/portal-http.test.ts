@@ -6,12 +6,14 @@ const request = ({
   body = '{}',
   contentType = 'application/json',
   origin = 'https://ivybm.test',
+  url = 'https://ivybm.test/api/platforms/accounts',
 }: {
   body?: string
   contentType?: string
   origin?: string
+  url?: string
 } = {}): Request =>
-  new Request('https://ivybm.test/api/platforms/accounts', {
+  new Request(url, {
     body,
     headers: { 'content-type': contentType, origin },
     method: 'POST',
@@ -41,5 +43,33 @@ describe('platform Portal JSON boundary', () => {
       code: 'request_too_large',
       status: 413,
     })
+  })
+
+  it('uses the configured public origin behind a production reverse proxy', async () => {
+    const environment = {
+      NEXT_PUBLIC_SERVER_URL: 'https://ivybm.test',
+      NODE_ENV: 'production' as const,
+    }
+
+    await expect(
+      readPlatformPortalJSON(
+        request({ url: 'http://app:3000/api/platforms/accounts' }),
+        4_096,
+        environment,
+      ),
+    ).resolves.toEqual({})
+    await expect(
+      readPlatformPortalJSON(
+        request({ origin: 'http://app:3000', url: 'http://app:3000/api/platforms/accounts' }),
+        4_096,
+        environment,
+      ),
+    ).rejects.toMatchObject({ code: 'forbidden', status: 403 })
+  })
+
+  it('fails closed when the production public origin is unavailable', async () => {
+    await expect(
+      readPlatformPortalJSON(request(), 4_096, { NODE_ENV: 'production' }),
+    ).rejects.toMatchObject({ code: 'forbidden', status: 403 })
   })
 })
