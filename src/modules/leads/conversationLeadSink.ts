@@ -117,12 +117,21 @@ const invalidPromptedCompanyAnswer =
   /^(?:(?:i|we|there)\b|(?:no|nope|none|not(?:\s+(?:applicable|sure))?|unknown|unsure|maybe|confidential|private|pass|refuse|refusal|decline|skip|undisclosed)\b|(?:better|prefer|rather)\s+not\s+(?:to\s+)?(?:say|disclose)\b|(?:cannot|can't|won't)\s+(?:disclose|say)\b|\b(?:do\s+not|don't|does\s+not|doesn't)\b)/i
 const invalidPromptedCompanyMessage =
   /^(?:it\s+is\s+(?:confidential|private|unknown)\b|not\s+applicable\b|(?:better|prefer|rather)\s+not\s+(?:to\s+)?say\b|(?:cannot|can't|won't)\s+(?:disclose|say)\b)/i
+const rejectedEnglishCompanyValue =
+  /^(?:(?:my\s+name|name\s+is|i\s+am|i'm|this\s+is)\b|(?:no|none|n\/?a|unknown|unsure|anonymous|confidential|hidden|private|secret|unavailable|undisclosed|withheld)\b|(?:information|name)\s+(?:is\s+)?(?:confidential|private|unavailable|withheld)\b|(?:better|choose|keep|prefer|rather|wish|would)\b.*\b(?:confidential|private|say|share|disclos(?:e|ure)|provide|reveal|withhold)\b|.*\bnot\s+(?:to\s+)?(?:say|share|disclose|provide|reveal)\b)/i
+const promptedEnglishCompanyLabel = /^(?:company(?:\s+name)?\s*[:：=-]\s*)/i
 // prettier-ignore
 const arabicCompanyCandidate =
   /(?:اسم\s+الشركة|(?:نحن\s+)?شركة)\s*[:：]?\s*([^\n،,.!?؟]{2,80}?)(?=\s+(?:في\s+(?:الإمارات(?:\s+العربية\s+المتحدة)?|السعودية|المملكة\s+العربية\s+السعودية|قطر|الكويت|عمان|البحرين)|و?(?:المشروع|مرحلة|نحتاج|نريد|لدينا|الكمية|المساحة|التصميم|المناقصة))|[\n،,.!?؟]|$)/
 const invalidArabicCompanyCandidate = /^(?:في|المشروع|مشروع|مرحلة|المناقصة|مناقصة)(?:\s|$)/
 const invalidPromptedArabicCompanyAnswer =
   /^(?:أنا|انا|نحن|هو|هي|لا|ليس|ليست|لست|لسنا|غير\s+معروف|ربما|أفضل\s+عدم\s+(?:القول|الإفصاح|الافصاح)|أرفض|ارفض|رفض|الرفض|تخطي|التخطي|امتنع|الامتناع|سري|سرية|السرية|خاص|الخاص|مجهول|المجهول)(?:\s|$)/
+const arabicValueBoundary = String.raw`(?=$|\s|[،,.!?؟])`
+const rejectedArabicCompanyValue =
+  new RegExp(
+    String.raw`^(?:(?:اسمي|أنا|انا|الاسم)${arabicValueBoundary}|(?:لا|ليس|ليست|لست|لسنا|غير\s+(?:معروف|متاح)|مجهول|سري|سرية|خاص|معلومات\s+سرية|الاسم\s+(?:سري|غير\s+متاح))${arabicValueBoundary}|.*(?:عدم\s+(?:القول|المشاركة|الإفصاح|الافصاح)|الحفاظ\s+على\s+السرية|رفض\s+(?:القول|المشاركة|الإفصاح|الافصاح)))`,
+  )
+const promptedArabicCompanyLabel = /^(?:اسم\s+الشركة|الشركة)\s*[:：=-]\s*/
 const nonArabicCompanyWords = new Set([
   'اسم',
   'الشركة',
@@ -162,50 +171,30 @@ const validEnglishCompanyCandidate = (candidate: string | undefined): candidate 
     candidate &&
     candidate.length <= 160 &&
     !isNonCompanyCandidate(candidate) &&
-    !isCountryCandidate(candidate),
+    !isCountryCandidate(candidate) &&
+    !rejectedEnglishCompanyValue.test(candidate),
   )
 
 const englishOrganizationSuffix =
   /\b(?:co|company|corp|corporation|inc|incorporated|llc|limited|ltd|plc|group|holdings?)\.?$/i
+const englishOrganizationDescriptor =
+  /\b(?:aluminium|aluminum|architects?|builders?|construction|contracting|engineering|facades?|industries|manufacturing|metals?|trading)\b/i
 
 /**
  * A prompted bare answer is intentionally narrower than an explicit
- * "my company is" expression. Accept only an organization-shaped entity or a
- * grouped company + qualification answer; reject arbitrary prose and isolated
- * words without trying to distinguish every brand from every refusal verb.
+ * "my company is" expression. Only high-confidence organization shapes are
+ * accepted without the structured "Company:" label used by the responder.
+ * This keeps an open-ended natural-language reply from silently becoming CRM data.
  */
-const isPromptedEnglishCompanyShape = (candidate: string, message: string): boolean => {
-  if (englishOrganizationSuffix.test(candidate)) return true
-  const escaped = candidate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const isPromptedEnglishCompanyShape = (candidate: string): boolean => {
   if (
-    new RegExp(
-      String.raw`^\s*${escaped}\s+(?:from|in)\s+(?:${countryCandidateSource})\b`,
-      'i',
-    ).test(message) ||
-    new RegExp(String.raw`^\s*${escaped}\s+(?:and\s+)?(?:we\s+)?(?:need|require|want)\b`, 'i').test(
-      message,
-    )
+    englishOrganizationSuffix.test(candidate) ||
+    englishOrganizationDescriptor.test(candidate)
   ) {
     return true
   }
   const words = candidate.split(/\s+/).filter(Boolean)
-  return (
-    words.length <= 4 &&
-    words.every(
-      (word) =>
-        /^[A-Z][A-Za-z0-9&'-]*$/.test(word) ||
-        (/^[A-Z0-9&'-]{2,}$/.test(word) && /[A-Z]/.test(word)),
-    )
-  )
-}
-
-const isPromptedArabicCompanyShape = (candidate: string): boolean => {
-  const words = candidate.split(/\s+/).filter(Boolean)
-  return (
-    words.length <= 4 &&
-    words.every((word) => /^[\p{Script=Arabic}\p{Mark}\p{Number}'’-]+$/u.test(word)) &&
-    !words.some((word) => nonArabicCompanyWords.has(word))
-  )
+  return words.length === 1 && /^[A-Z0-9&'-]{2,}$/.test(words[0] ?? '') && /[A-Z]/.test(words[0] ?? '')
 }
 
 const countryCandidateSource = [...countries]
@@ -213,14 +202,32 @@ const countryCandidateSource = [...countries]
   .join('|')
 
 const extractAskedEnglishCompany = (session: ChatSession): string | undefined => {
-  if (!session.qualificationState?.askedFields.includes('company')) return undefined
+  const awaitingFields = session.qualificationState?.awaitingFields ?? []
+  if (!awaitingFields.includes('company')) return undefined
   const message = session.messages
     .slice()
     .reverse()
     .find(({ author }) => author === 'visitor')
     ?.content.trim()
   if (!message) return undefined
-  if (invalidPromptedCompanyMessage.test(message)) return undefined
+  if (
+    invalidPromptedCompanyMessage.test(message) ||
+    rejectedEnglishCompanyValue.test(message)
+  ) {
+    return undefined
+  }
+
+  const labelledCandidate = cleanCompanyCandidate(
+    message
+      .replace(promptedEnglishCompanyLabel, '')
+      .match(new RegExp(String.raw`^\s*${companyCandidate.source}`, 'i'))?.[1],
+  )
+  if (
+    promptedEnglishCompanyLabel.test(message) &&
+    validEnglishCompanyCandidate(labelledCandidate)
+  ) {
+    return labelledCandidate
+  }
 
   const framedCandidate = cleanCompanyCandidate(
     message.match(
@@ -232,7 +239,8 @@ const extractAskedEnglishCompany = (session: ChatSession): string | undefined =>
   )
   if (
     validEnglishCompanyCandidate(framedCandidate) &&
-    !invalidPromptedCompanyAnswer.test(framedCandidate)
+    !invalidPromptedCompanyAnswer.test(framedCandidate) &&
+    isPromptedEnglishCompanyShape(framedCandidate)
   ) {
     return framedCandidate
   }
@@ -251,11 +259,12 @@ const extractAskedEnglishCompany = (session: ChatSession): string | undefined =>
   if (!validEnglishCompanyCandidate(candidate) || invalidPromptedCompanyAnswer.test(candidate)) {
     return undefined
   }
-  return isPromptedEnglishCompanyShape(candidate, message) ? candidate : undefined
+  return isPromptedEnglishCompanyShape(candidate) ? candidate : undefined
 }
 
 const extractAskedArabicCompany = (session: ChatSession): string | undefined => {
-  if (session.locale !== 'ar' || !session.qualificationState?.askedFields.includes('company')) {
+  const awaitingFields = session.qualificationState?.awaitingFields ?? []
+  if (session.locale !== 'ar' || !awaitingFields.includes('company')) {
     return undefined
   }
   const message = session.messages
@@ -265,27 +274,32 @@ const extractAskedArabicCompany = (session: ChatSession): string | undefined => 
     ?.content.trim()
   if (!message) return undefined
 
-  const candidate = cleanCompanyCandidate(
-    message.match(
-      /^\s*([^\n،,.!?؟]{2,80}?)(?=\s+في\s+(?:الإمارات(?:\s+العربية\s+المتحدة)?|السعودية|المملكة\s+العربية\s+السعودية|قطر|الكويت|عمان|البحرين)(?=\s|[،,.!?؟]|$)|\s+و?(?:المشروع|مرحلة|نحتاج|نريد|لدينا|الكمية|المساحة|التصميم|المناقصة)(?=\s|[،,.!?؟]|$)|[\n،,.!?؟]|$)/,
-    )?.[1],
+  const labelledCandidate = cleanCompanyCandidate(
+    message.replace(promptedArabicCompanyLabel, '').match(/^\s*([^\n،,.!?؟]{2,80})/)?.[1],
   )
   if (
-    !candidate ||
-    invalidArabicCompanyCandidate.test(candidate) ||
-    invalidPromptedArabicCompanyAnswer.test(candidate) ||
-    isNonArabicCompanyCandidate(candidate) ||
-    isArabicCountryCandidate(candidate) ||
-    !isPromptedArabicCompanyShape(candidate)
+    promptedArabicCompanyLabel.test(message) &&
+    labelledCandidate &&
+    !rejectedArabicCompanyValue.test(labelledCandidate) &&
+    !invalidPromptedArabicCompanyAnswer.test(labelledCandidate) &&
+    !isArabicCountryCandidate(labelledCandidate) &&
+    !isNonArabicCompanyCandidate(labelledCandidate)
   ) {
-    return undefined
+    return labelledCandidate
   }
-  return candidate
+
+  return undefined
 }
 
 const extractArabicCompany = (text: string): string | undefined => {
   const candidate = cleanCompanyCandidate(text.match(arabicCompanyCandidate)?.[1])
-  if (!candidate || invalidArabicCompanyCandidate.test(candidate)) return undefined
+  if (
+    !candidate ||
+    invalidArabicCompanyCandidate.test(candidate) ||
+    rejectedArabicCompanyValue.test(candidate)
+  ) {
+    return undefined
+  }
   return candidate
 }
 
@@ -359,7 +373,8 @@ export const extractLeadSignals = (session: ChatSession): LeadScoringInput => {
     extractEnglishCompany(text) ??
     extractArabicCompany(text) ??
     extractAskedEnglishCompany(session) ??
-    extractAskedArabicCompany(session)
+    extractAskedArabicCompany(session) ??
+    session.qualificationState?.answeredCompany
   const englishBudget = text
     .match(
       /(?:budget|price range|spend(?:ing)?|investment)\s*(?:is|of|around|about|[:：])?\s*([^\n.!?]{2,80}?)(?=\s+(?:and\s+)?(?:our\s+|the\s+)?(?:purchase|purchasing|procurement)\s+(?:plan|schedule|process|strategy)\b|,(?!\d{3}\b)|[.!?\n]|$)/i,
