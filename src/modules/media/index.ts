@@ -12,4 +12,9 @@ export {
 } from './commands'
 export { mediaPreviewUrl, safeMediaUrl, type MediaPreviewProjection } from './urls'
 export { mediaBytesMatchMimeType, resolveManagedMediaPath } from './files'
-export { publicationAssetPath, readPublicationAsset } from './publicationAssets'
+export {
+  publicationAssetPath,
+  readCurrentPublicMediaAsset,
+  readLinkedInPublicationAsset,
+  readPublicationAsset,
+} from './publicationAssets'

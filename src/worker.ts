@@ -1,7 +1,4 @@
-import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 
 import { getPayload } from 'payload'
 
@@ -59,6 +56,7 @@ import {
   type PublicationJobRuntime,
 } from '@/modules/platforms/publicationJobs'
 import { PayloadPublishingAccountResolver } from '@/modules/platforms/publishingAccountResolver'
+import { readLinkedInPublicationAsset } from '@/modules/media'
 import { createPlatformPublishingService } from '@/modules/platforms/publishingServiceAdapter'
 import config from '@/payload.config'
 
@@ -134,21 +132,14 @@ const resolvePublicationRuntime = async (): Promise<PublicationJobRuntime> => {
     metaTransport,
     async readLinkedInAssetBytes(asset) {
       if (!/^[1-9]\d*$/u.test(asset.id)) throw new Error('LinkedIn asset ID is invalid')
-      const media = await payload.findByID({
-        collection: 'media',
-        depth: 0,
+      const bytes = await readLinkedInPublicationAsset({
+        byteLength: asset.byteLength,
+        contentType: asset.contentType,
         id: Number(asset.id),
-        overrideAccess: true,
+        payload,
+        sha256: asset.sha256,
       })
-      const filename = typeof media.filename === 'string' ? media.filename : ''
-      if (!filename || path.basename(filename) !== filename) {
-        throw new Error('LinkedIn media filename is invalid')
-      }
-      const bytes = await readFile(path.resolve(process.cwd(), 'media', filename))
-      if (
-        bytes.byteLength !== asset.byteLength ||
-        createHash('sha256').update(bytes).digest('hex') !== asset.sha256
-      ) {
+      if (!bytes) {
         throw new Error('LinkedIn media bytes no longer match the approved publication asset')
       }
       return bytes

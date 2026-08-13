@@ -6,7 +6,10 @@ import path from 'node:path'
 import sharp from 'sharp'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { readPublicationAsset } from '@/modules/media/publicationAssets'
+import {
+  readLinkedInPublicationAsset,
+  readPublicationAsset,
+} from '@/modules/media/publicationAssets'
 import { resolveManagedMediaPath } from '@/modules/media/files'
 
 const temporaryDirectories: string[] = []
@@ -70,5 +73,71 @@ describe('publication media byte boundary', () => {
     await expect(resolveManagedMediaPath('linked.png', root)).rejects.toThrow(
       'Managed media path is outside storage',
     )
+  })
+
+  it('revalidates LinkedIn assets against current public state and staged identity', async () => {
+    const mediaRoot = await mkdtemp(path.join(os.tmpdir(), 'ivybm-linkedin-media-'))
+    temporaryDirectories.push(mediaRoot)
+    const bytes = Buffer.from('GIF89a-safe-image')
+    const filename = 'approved.gif'
+    await writeFile(path.join(mediaRoot, filename), bytes)
+    const sha256 = createHash('sha256').update(bytes).digest('hex')
+    let media = {
+      filename,
+      filesize: bytes.byteLength,
+      isPublic: true,
+      mimeType: 'image/gif',
+    }
+    const payload = {
+      findByID: async () => media,
+    } as any
+
+    await expect(
+      readLinkedInPublicationAsset({
+        byteLength: bytes.byteLength,
+        contentType: 'image/gif',
+        id: 82,
+        mediaRoot,
+        payload,
+        sha256,
+      }),
+    ).resolves.toEqual(bytes)
+
+    media = { ...media, isPublic: false }
+    await expect(
+      readLinkedInPublicationAsset({
+        byteLength: bytes.byteLength,
+        contentType: 'image/gif',
+        id: 82,
+        mediaRoot,
+        payload,
+        sha256,
+      }),
+    ).resolves.toBeNull()
+
+    media = { ...media, isPublic: true, mimeType: 'image/png' }
+    await expect(
+      readLinkedInPublicationAsset({
+        byteLength: bytes.byteLength,
+        contentType: 'image/gif',
+        id: 82,
+        mediaRoot,
+        payload,
+        sha256,
+      }),
+    ).resolves.toBeNull()
+
+    media = { ...media, mimeType: 'image/gif' }
+    await writeFile(path.join(mediaRoot, filename), Buffer.from('GIF89a-replaced'))
+    await expect(
+      readLinkedInPublicationAsset({
+        byteLength: bytes.byteLength,
+        contentType: 'image/gif',
+        id: 82,
+        mediaRoot,
+        payload,
+        sha256,
+      }),
+    ).resolves.toBeNull()
   })
 })
