@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { ChatServiceError } from '@/modules/conversations/contracts'
+import { ChatServiceError, type ChatSession } from '@/modules/conversations/contracts'
 import { createKnowledgeConversationResponder } from '@/modules/conversations/responder'
 import { createConversationService } from '@/modules/conversations/service'
 
@@ -56,12 +56,95 @@ describe('ConversationService', () => {
     })
     const session = await service.startSession({ channel: 'website', idempotencyKey: 'qualification-start', locale: 'en' })
     const first = await service.sendMessage({ idempotencyKey: 'qualification-message-1', sessionId: session.id, text: 'We are at tender stage in the UAE.' })
-    expect(first.qualificationState).toEqual({ askedFields: ['quantity', 'timeline'], roundCount: 1 })
+    expect(first.qualificationState).toEqual({ answeredCompany: 'Facade LLC', askedFields: ['quantity', 'timeline'], awaitingFields: ['quantity', 'timeline'], roundCount: 1 })
     const second = await service.sendMessage({ idempotencyKey: 'qualification-message-2', sessionId: session.id, text: 'We need 1,200 sqm, have drawings and plan to buy within 3 months.' })
-    expect(second.qualificationState).toEqual({ askedFields: ['quantity', 'timeline', 'contact'], roundCount: 2 })
+    expect(second.qualificationState).toEqual({ answeredCompany: 'Facade LLC', askedFields: ['quantity', 'timeline', 'contact'], awaitingFields: ['contact'], roundCount: 2 })
     const completed = await service.sendMessage({ idempotencyKey: 'qualification-message-3', sessionId: session.id, text: 'Contact buyer@example.invalid.' })
-    expect(completed).toMatchObject({ handoffStatus: 'handoff_requested', qualificationState: { roundCount: 2 } })
+    expect(completed).toMatchObject({ handoffStatus: 'handoff_requested', qualificationState: { awaitingFields: [], roundCount: 2 } })
     expect(completed.messages.filter(({ author }) => author === 'ai')).toHaveLength(2)
+  })
+
+  it('consumes each awaiting field set once while preserving an answered company', async () => {
+    const repository = new InMemoryConversationRepository()
+    const evaluatedStates: Array<ChatSession['qualificationState']> = []
+    let replyRound = 0
+    const service = createConversationService({
+      leadSink: {
+        evaluate: async (session) => {
+          evaluatedStates.push(structuredClone(session.qualificationState))
+          const text = session.messages.at(-1)?.content
+          const company = text === 'Company: Acme Facades'
+            ? 'Acme Facades'
+            : session.qualificationState?.answeredCompany
+          return {
+            score: {
+              handoffRecommended: false,
+              level: 'c',
+              missingFields: replyRound === 0 ? ['company'] : ['timeline'],
+              reasons: company ? ['company_identified'] : [],
+              score: company ? 10 : 0,
+            },
+            signals: { company, contact: {} },
+          }
+        },
+      },
+      repository,
+      responder: {
+        generateReply: async ({ qualificationState }) => {
+          const field = replyRound++ === 0 ? 'company' as const : 'timeline' as const
+          return {
+            content: `Please answer ${field}.`,
+            estimatedCostUSD: 0,
+            model: 'fixture',
+            promptVersion: 1,
+            qualificationState: {
+              ...qualificationState!,
+              askedFields: [...qualificationState!.askedFields, field],
+              awaitingFields: [field],
+              roundCount: qualificationState!.roundCount + 1,
+            },
+            tokenUsage: { inputTokens: 1, totalTokens: 1 },
+          }
+        },
+      },
+    })
+    const session = await service.startSession({
+      channel: 'website',
+      idempotencyKey: 'consume-awaiting-start',
+      locale: 'en',
+    })
+
+    const askedCompany = await service.sendMessage({
+      idempotencyKey: 'consume-awaiting-1',
+      sessionId: session.id,
+      text: 'We need facade panels.',
+    })
+    const askedTimeline = await service.sendMessage({
+      idempotencyKey: 'consume-awaiting-2',
+      sessionId: session.id,
+      text: 'Company: Acme Facades',
+    })
+    await service.sendMessage({
+      idempotencyKey: 'consume-awaiting-3',
+      sessionId: session.id,
+      text: 'Next Quarter.',
+    })
+
+    expect(askedCompany.qualificationState?.awaitingFields).toEqual(['company'])
+    expect(askedTimeline.qualificationState).toMatchObject({
+      answeredCompany: 'Acme Facades',
+      awaitingFields: ['timeline'],
+    })
+    expect(evaluatedStates).toEqual([
+      { askedFields: [], awaitingFields: [], roundCount: 0 },
+      { askedFields: ['company'], awaitingFields: ['company'], roundCount: 1 },
+      {
+        answeredCompany: 'Acme Facades',
+        askedFields: ['company', 'timeline'],
+        awaitingFields: ['timeline'],
+        roundCount: 2,
+      },
+    ])
   })
 
   it('hands an A-level lead to a human without asking for every missing field', async () => {
@@ -276,7 +359,7 @@ describe('ConversationService', () => {
     const replay = await service.sendMessage(input)
 
     expect(replay).toEqual(first)
-    expect(replay).toMatchObject({ handoffStatus: 'handoff_requested', qualificationState: { askedFields: [], roundCount: 0 } })
+    expect(replay).toMatchObject({ handoffStatus: 'handoff_requested', qualificationState: { askedFields: [], awaitingFields: [], roundCount: 0 } })
     expect(replay.messages).toHaveLength(1)
     expect(generateReply).toHaveBeenCalledTimes(1)
     expect(repository.handoffEvents).toHaveLength(1)
@@ -286,7 +369,7 @@ describe('ConversationService', () => {
     const repository = new InMemoryConversationRepository()
     const generateReply = vi.fn(async ({ qualificationState }) => ({
       content: 'Please share a work email.', estimatedCostUSD: 0, model: 'fixture', promptVersion: 1,
-      qualificationState: { askedFields: [...(qualificationState?.askedFields ?? []), 'contact' as const], roundCount: (qualificationState?.roundCount ?? 0) + 1 },
+      qualificationState: { askedFields: [...(qualificationState?.askedFields ?? []), 'contact' as const], awaitingFields: ['contact' as const], roundCount: (qualificationState?.roundCount ?? 0) + 1 },
       tokenUsage: { inputTokens: 1, totalTokens: 1 },
     }))
     const service = createConversationService({
@@ -299,8 +382,8 @@ describe('ConversationService', () => {
 
     const retried = await service.retryMessage({ idempotencyKey: 'retry-state-message', messageId: 'failed-visitor', sessionId: session.id })
 
-    expect(retried.qualificationState).toEqual({ askedFields: ['contact'], roundCount: 1 })
-    expect(generateReply).toHaveBeenCalledWith(expect.objectContaining({ qualificationState: { askedFields: [], roundCount: 0 } }))
+    expect(retried.qualificationState).toEqual({ answeredCompany: 'Facade LLC', askedFields: ['contact'], awaitingFields: ['contact'], roundCount: 1 })
+    expect(generateReply).toHaveBeenCalledWith(expect.objectContaining({ qualificationState: { answeredCompany: 'Facade LLC', askedFields: [], awaitingFields: [], roundCount: 0 } }))
   })
 
   it('records an audit intent for illegal handoff transitions', async () => {

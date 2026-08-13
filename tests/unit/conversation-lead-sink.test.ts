@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ChatSession } from '@/modules/conversations/contracts'
+import type { ChatQualificationState, ChatSession } from '@/modules/conversations/contracts'
 import {
   extractLeadSignals,
   PayloadConversationLeadSink,
@@ -21,9 +21,17 @@ const sessionWith = (locale: ChatSession['locale'], content: string): ChatSessio
       status: 'sent',
     },
   ],
-  qualificationState: { askedFields: [], roundCount: 0 },
+  qualificationState: { askedFields: [], awaitingFields: [], roundCount: 0 },
   revision: 1,
   requestId: `request-${locale}`,
+})
+
+const awaitingCompany = (
+  askedFields: ChatQualificationState['askedFields'] = ['company'],
+): ChatQualificationState => ({
+  askedFields,
+  awaitingFields: ['company'],
+  roundCount: 1,
 })
 
 describe('conversation lead signal extraction', () => {
@@ -81,14 +89,14 @@ describe('conversation lead signal extraction', () => {
 
   it('extracts a bare company reply after the company field was asked', () => {
     const session = sessionWith('en', 'Acme Facades LLC.')
-    session.qualificationState = { askedFields: ['country', 'company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany(['country', 'company'])
 
     expect(extractLeadSignals(session).company).toBe('Acme Facades LLC')
   })
 
   it('extracts a framed company reply after the company field was asked', () => {
     const session = sessionWith('en', 'We are Acme Facades LLC.')
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany()
 
     expect(extractLeadSignals(session).company).toBe('Acme Facades LLC')
   })
@@ -99,9 +107,52 @@ describe('conversation lead signal extraction', () => {
 
   it('does not infer a country-only reply as a company after asking the company field', () => {
     const session = sessionWith('en', 'UAE.')
-    session.qualificationState = { askedFields: ['country', 'company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany(['country', 'company'])
 
     expect(extractLeadSignals(session).company).toBeUndefined()
+  })
+
+  it.each([
+    'Next Quarter.',
+    'My name is Alex Chen from UAE.',
+    'Would Rather Not Disclose.',
+  ])('does not reuse historical company context for a current timeline answer in %s', (content) => {
+    const session = sessionWith('en', content)
+    session.qualificationState = {
+      askedFields: ['company', 'timeline'],
+      awaitingFields: ['timeline'],
+      roundCount: 2,
+    }
+
+    expect(extractLeadSignals(session).company).toBeUndefined()
+  })
+
+  it('treats a legacy state without awaitingFields as no current company prompt', () => {
+    const session = sessionWith('en', 'Next Quarter.')
+    session.qualificationState = {
+      askedFields: ['company'],
+      roundCount: 1,
+    } as ChatQualificationState
+
+    expect(extractLeadSignals(session).company).toBeUndefined()
+  })
+
+  it.each([
+    'My name is Alex Chen from UAE.',
+    'Would Rather Not Disclose.',
+    'We are Next Quarter.',
+  ])('does not turn a name, refusal, or timeline into a prompted company in %s', (content) => {
+    const session = sessionWith('en', content)
+    session.qualificationState = awaitingCompany()
+
+    expect(extractLeadSignals(session).company).toBeUndefined()
+  })
+
+  it('accepts the structured English company reply requested by the responder', () => {
+    const session = sessionWith('en', 'Company: Acme Facades')
+    session.qualificationState = awaitingCompany()
+
+    expect(extractLeadSignals(session).company).toBe('Acme Facades')
   })
 
   it('keeps company missing in the authoritative evaluation after an uncertain prompted reply', async () => {
@@ -116,7 +167,7 @@ describe('conversation lead signal extraction', () => {
       id: 'message-en-2',
       status: 'sent',
     })
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany()
 
     const evaluation = await new PayloadConversationLeadSink().evaluate(session)
 
@@ -137,7 +188,7 @@ describe('conversation lead signal extraction', () => {
       id: 'message-en-2',
       status: 'sent',
     })
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany()
 
     const evaluation = await new PayloadConversationLeadSink().evaluate(session)
 
@@ -158,7 +209,7 @@ describe('conversation lead signal extraction', () => {
       id: 'message-en-unknown',
       status: 'sent',
     })
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany()
 
     const evaluation = await new PayloadConversationLeadSink().evaluate(session)
 
@@ -192,7 +243,7 @@ describe('conversation lead signal extraction', () => {
       id: `message-${locale}-refusal`,
       status: 'sent',
     })
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany()
 
     const evaluation = await new PayloadConversationLeadSink().evaluate(session)
 
@@ -249,36 +300,42 @@ describe('conversation lead signal extraction', () => {
     `${'A'.repeat(161)}.`,
   ])('does not infer a sentence fragment as a prompted company reply in %s', (content) => {
     const session = sessionWith('en', content)
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany()
 
     expect(extractLeadSignals(session).company).toBeUndefined()
   })
 
-  it('bounds a prompted company answer before another qualification phrase', () => {
-    const session = sessionWith('en', 'Acme and we need panels.')
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+  it('bounds a high-confidence prompted company answer before another qualification phrase', () => {
+    const session = sessionWith('en', 'ACME and we need panels.')
+    session.qualificationState = awaitingCompany()
 
-    expect(extractLeadSignals(session).company).toBe('Acme')
+    expect(extractLeadSignals(session).company).toBe('ACME')
   })
 
-  it('accepts a title-cased multi-word bare answer after explicitly asking for company', () => {
+  it('requires a structured label for an ambiguous title-cased multi-word brand', () => {
     const session = sessionWith('en', 'Blue Horizon.')
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany()
+    const structured = sessionWith('en', 'Company: Blue Horizon.')
+    structured.qualificationState = awaitingCompany()
 
-    expect(extractLeadSignals(session).company).toBe('Blue Horizon')
+    expect(extractLeadSignals(session).company).toBeUndefined()
+    expect(extractLeadSignals(structured).company).toBe('Blue Horizon')
     expect(extractLeadSignals(sessionWith('en', 'My company is Blue Horizon.')).company).toBe(
       'Blue Horizon',
     )
   })
 
-  it('accepts title-cased and acronym bare English brands only after the company prompt', () => {
+  it('accepts an acronym bare reply but requires framing for a title-cased brand', () => {
     const acronym = sessionWith('en', 'IVYBM.')
-    acronym.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    acronym.qualificationState = awaitingCompany()
     const titleCase = sessionWith('en', 'Alcoa.')
-    titleCase.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    titleCase.qualificationState = awaitingCompany()
+    const structuredTitleCase = sessionWith('en', 'Company: Alcoa.')
+    structuredTitleCase.qualificationState = awaitingCompany()
 
     expect(extractLeadSignals(acronym).company).toBe('IVYBM')
-    expect(extractLeadSignals(titleCase).company).toBe('Alcoa')
+    expect(extractLeadSignals(titleCase).company).toBeUndefined()
+    expect(extractLeadSignals(structuredTitleCase).company).toBe('Alcoa')
     expect(extractLeadSignals(sessionWith('en', 'IVYBM.')).company).toBeUndefined()
     expect(extractLeadSignals(sessionWith('en', 'Alcoa.')).company).toBeUndefined()
     expect(extractLeadSignals(sessionWith('en', 'My company is Alcoa.')).company).toBe('Alcoa')
@@ -287,7 +344,7 @@ describe('conversation lead signal extraction', () => {
 
   it('does not reject a legitimate company merely because a later word resembles refusal text', () => {
     const session = sessionWith('en', 'Waste Refuse LLC.')
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany()
 
     expect(extractLeadSignals(session).company).toBe('Waste Refuse LLC')
   })
@@ -297,7 +354,7 @@ describe('conversation lead signal extraction', () => {
       'en',
       'Acme Facades from UAE. It is a tender for 1,200 sqm within 3 months.',
     )
-    session.qualificationState = { askedFields: ['country', 'company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany(['country', 'company'])
 
     expect(extractLeadSignals(session).company).toBe('Acme Facades')
   })
@@ -337,7 +394,7 @@ describe('conversation lead signal extraction', () => {
     'I work at my office in UAE.',
   ])('does not reinterpret a generic sentence after asking the company field in %s', (content) => {
     const session = sessionWith('en', content)
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany()
 
     expect(extractLeadSignals(session).company).toBeUndefined()
   })
@@ -383,43 +440,66 @@ describe('conversation lead signal extraction', () => {
     })
   })
 
-  it('extracts a bare Arabic company reply after the company field was asked', () => {
-    const session = sessionWith('ar', 'النور.')
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+  it('extracts the structured Arabic company reply requested by the responder', () => {
+    const session = sessionWith('ar', 'الشركة: النور.')
+    session.qualificationState = awaitingCompany()
 
     expect(extractLeadSignals(session).company).toBe('النور')
   })
 
+  it.each([
+    'الشركة: معلومات سرية',
+    'الشركة: غير متاح',
+    'الشركة: الاسم سري',
+  ])('rejects a structured Arabic disclosure refusal in %s', (content) => {
+    const session = sessionWith('ar', content)
+    session.qualificationState = awaitingCompany()
+
+    expect(extractLeadSignals(session).company).toBeUndefined()
+  })
+
   it.each(['نور.', 'الصحراء للألمنيوم.', 'النور للتجارة.'])(
-    'extracts a bounded Arabic proper-name reply after the company field was asked in %s',
+    'does not guess an unlabelled Arabic proper name after the company field was asked in %s',
     (content) => {
       const session = sessionWith('ar', content)
-      session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+      session.qualificationState = awaitingCompany()
 
-      expect(extractLeadSignals(session).company).toBe(content.slice(0, -1))
+      expect(extractLeadSignals(session).company).toBeUndefined()
       expect(extractLeadSignals(sessionWith('ar', content)).company).toBeUndefined()
     },
   )
 
-  it('uses a bare Arabic prompted company reply in the authoritative evaluation', async () => {
+  it('uses a structured Arabic prompted company reply in the authoritative evaluation', async () => {
     const session = sessionWith(
       'ar',
       'نحتاج 1200 متر مربع من الألواح في السعودية ومرحلة المشروع مناقصة خلال 3 أشهر. الرسومات جاهزة. الميزانية 300000 ريال. البريد sales@example.invalid.',
     )
     session.messages.push({
       author: 'visitor',
-      content: 'النور.',
+      content: 'الشركة: النور.',
       createdAt: '2026-08-12T00:01:00.000Z',
       id: 'message-ar-2',
       status: 'sent',
     })
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany()
 
     const evaluation = await new PayloadConversationLeadSink().evaluate(session)
 
     expect(evaluation.signals.company).toBe('النور')
     expect(evaluation.score.missingFields).not.toContain('company')
     expect(evaluation.score.reasons).toContain('company_identified')
+  })
+
+  it('preserves an already confirmed prompted company after awaiting context is consumed', () => {
+    const session = sessionWith('en', 'Next Quarter.')
+    session.qualificationState = {
+      answeredCompany: 'Acme Facades',
+      askedFields: ['company', 'timeline'],
+      awaitingFields: ['timeline'],
+      roundCount: 2,
+    }
+
+    expect(extractLeadSignals(session).company).toBe('Acme Facades')
   })
 
   it.each([
@@ -439,7 +519,7 @@ describe('conversation lead signal extraction', () => {
     'المشروع مناقصة.',
   ])('does not infer a generic Arabic prompted company reply in %s', (content) => {
     const session = sessionWith('ar', content)
-    session.qualificationState = { askedFields: ['company'], roundCount: 1 }
+    session.qualificationState = awaitingCompany()
 
     expect(extractLeadSignals(session).company).toBeUndefined()
   })
