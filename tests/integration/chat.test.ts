@@ -432,6 +432,7 @@ describe.sequential('Task 9 conversation persistence', () => {
         promptVersion: 1,
         qualificationState: {
           askedFields: [...(qualificationState?.askedFields ?? []), 'country', 'company'],
+          awaitingFields: ['country', 'company'],
           roundCount: (qualificationState?.roundCount ?? 0) + 1,
         } satisfies ChatQualificationState,
         tokenUsage: { inputTokens: 1, totalTokens: 1 },
@@ -455,6 +456,7 @@ describe.sequential('Task 9 conversation persistence', () => {
     const first = await service.sendMessage(firstInput)
     expect(first.qualificationState).toEqual({
       askedFields: ['country', 'company'],
+      awaitingFields: ['country', 'company'],
       roundCount: 1,
     })
     expect((await service.getSession(session.id)).qualificationState).toEqual(
@@ -470,6 +472,10 @@ describe.sequential('Task 9 conversation persistence', () => {
       text: `Acme Facades from UAE. It is a tender for 1,200 sqm within 3 months. Drawings are ready, with a confirmed procurement plan. Contact real-round-${suffix}@example.invalid.`,
     })
     expect(handedOff.handoffStatus).toBe('handoff_requested')
+    expect(handedOff.qualificationState).toMatchObject({
+      answeredCompany: 'Acme Facades',
+      awaitingFields: [],
+    })
     expect(handedOff.messages.filter(({ author }) => author === 'ai')).toHaveLength(1)
 
     const leads = await payload.find({
@@ -500,10 +506,10 @@ describe.sequential('Task 9 conversation persistence', () => {
     const suffix = randomUUID()
     const responder = {
       generateReply: async ({ qualificationState }: { qualificationState?: ChatQualificationState }) => {
-        const state = qualificationState ?? { askedFields: [], roundCount: 0 }
+        const state = qualificationState ?? { askedFields: [], awaitingFields: [], roundCount: 0 }
         const next: ChatQualificationState = state.roundCount === 0
-          ? { askedFields: ['quantity', 'timeline'], roundCount: 1 }
-          : { askedFields: [...state.askedFields, 'contact'], roundCount: 2 }
+          ? { ...state, askedFields: ['quantity', 'timeline'], awaitingFields: ['quantity', 'timeline'], roundCount: 1 }
+          : { ...state, askedFields: [...state.askedFields, 'contact'], awaitingFields: ['contact'], roundCount: 2 }
         return {
           content: state.roundCount === 0 ? 'ما المساحة والميزانية والموعد؟' : 'ما بريد العمل للمتابعة؟',
           estimatedCostUSD: 0,
@@ -525,7 +531,7 @@ describe.sequential('Task 9 conversation persistence', () => {
     const session = await service.startSession({ channel: 'website', idempotencyKey: `round-limit-start-${suffix}`, locale: 'ar' })
     const firstInput = { idempotencyKey: `round-limit-message-1-${suffix}`, sessionId: session.id, text: 'نحن شركة النور في السعودية والمشروع مناقصة.' }
     const first = await service.sendMessage(firstInput)
-    expect(first.qualificationState).toEqual({ askedFields: ['quantity', 'timeline'], roundCount: 1 })
+    expect(first.qualificationState).toEqual({ answeredCompany: 'النور', askedFields: ['quantity', 'timeline'], awaitingFields: ['quantity', 'timeline'], roundCount: 1 })
     const hydrated = await service.getSession(session.id)
     expect(hydrated.qualificationState).toEqual(first.qualificationState)
     await expect(new PayloadConversationLeadSink().evaluate(hydrated)).resolves.toMatchObject({
@@ -535,6 +541,7 @@ describe.sequential('Task 9 conversation persistence', () => {
     expect(firstConversation).toMatchObject({
       qualificationSignals: { projectStage: 'tender' },
       qualificationAskedFields: ['quantity', 'timeline'],
+      qualificationAwaitingFields: ['quantity', 'timeline'],
       qualificationRoundCount: 1,
     })
     expect((await service.sendMessage(firstInput)).revision).toBe(first.revision)
@@ -542,7 +549,7 @@ describe.sequential('Task 9 conversation persistence', () => {
     const secondInput = { idempotencyKey: `round-limit-message-2-${suffix}`, sessionId: session.id, text: `نحتاج 1200 متر مربع ولدينا رسومات وميزانية 300000 ريال والشراء خلال 3 أشهر. البريد round-limit-${suffix}@example.invalid.` }
     const handedOff = await service.sendMessage(secondInput)
     expect(handedOff.handoffStatus).toBe('handoff_requested')
-    expect(handedOff.qualificationState).toEqual(first.qualificationState)
+    expect(handedOff.qualificationState).toEqual({ ...first.qualificationState, awaitingFields: [] })
     expect(handedOff.messages.filter(({ author }) => author === 'ai')).toHaveLength(1)
     expect((await service.sendMessage(secondInput)).revision).toBe(handedOff.revision)
 

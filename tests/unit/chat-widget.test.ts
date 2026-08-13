@@ -39,7 +39,7 @@ const createQualificationService = (
     ...browserSession,
     id: `qualification-${locale}`,
     locale,
-    qualificationState: { askedFields: [], roundCount: 0 },
+    qualificationState: { askedFields: [], awaitingFields: [], roundCount: 0 },
     requestId: `qualification-request-${locale}`,
   }
   let visitorRound = 0
@@ -71,8 +71,8 @@ const createQualificationService = (
         })
         next.qualificationState =
           visitorRound === 1
-            ? { askedFields: ['quantity', 'timeline'], roundCount: 1 }
-            : { askedFields: ['quantity', 'timeline', 'contact'], roundCount: 2 }
+            ? { askedFields: ['quantity', 'timeline'], awaitingFields: ['quantity', 'timeline'], roundCount: 1 }
+            : { askedFields: ['quantity', 'timeline', 'contact'], awaitingFields: ['contact'], roundCount: 2 }
       } else {
         next.allowedActions = []
         next.handoffStatus = 'handoff_requested'
