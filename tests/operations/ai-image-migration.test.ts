@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const migrationName = '20260812_163218_image_generation_provider_contract'
+const migrationName = '20260813_022431_image_generation_provider_contract'
 
 describe('AI image capability migration', () => {
   it('extends all three AI enums and has a paired generated snapshot', () => {

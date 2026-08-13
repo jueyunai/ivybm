@@ -1266,6 +1266,9 @@ export interface Conversation {
   qualificationRoundCount?: number | null;
   qualificationAskedFields?:
     ('country' | 'company' | 'projectStage' | 'quantity' | 'drawings' | 'budget' | 'timeline' | 'contact')[] | null;
+  qualificationAnsweredCompany?: string | null;
+  qualificationAwaitingFields?:
+    ('country' | 'company' | 'projectStage' | 'quantity' | 'drawings' | 'budget' | 'timeline' | 'contact')[] | null;
   summary?: string | null;
   lastMessageAt?: string | null;
   updatedAt: string;
@@ -2385,6 +2388,8 @@ export interface ConversationsSelect<T extends boolean = true> {
       };
   qualificationRoundCount?: T;
   qualificationAskedFields?: T;
+  qualificationAnsweredCompany?: T;
+  qualificationAwaitingFields?: T;
   summary?: T;
   lastMessageAt?: T;
   updatedAt?: T;

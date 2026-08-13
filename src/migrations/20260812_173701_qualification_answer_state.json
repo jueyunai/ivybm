@@ -662,7 +662,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -708,14 +708,6 @@
           "type": "varchar",
           "primaryKey": false,
           "notNull": true
-        },
-        "text_generation_contract": {
-          "name": "text_generation_contract",
-          "type": "enum_ai_providers_text_generation_contract",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'responses'"
         },
         "api_key": {
           "name": "api_key",
@@ -11049,6 +11041,89 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.conversations_qualification_awaiting_fields": {
+      "name": "conversations_qualification_awaiting_fields",
+      "schema": "",
+      "columns": {
+        "order": {
+          "name": "order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "enum_conversations_qualification_awaiting_fields",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "conversations_qualification_awaiting_fields_order_idx": {
+          "name": "conversations_qualification_awaiting_fields_order_idx",
+          "columns": [
+            {
+              "expression": "order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "conversations_qualification_awaiting_fields_parent_idx": {
+          "name": "conversations_qualification_awaiting_fields_parent_idx",
+          "columns": [
+            {
+              "expression": "parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "conversations_qualification_awaiting_fields_parent_fk": {
+          "name": "conversations_qualification_awaiting_fields_parent_fk",
+          "tableFrom": "conversations_qualification_awaiting_fields",
+          "tableTo": "conversations",
+          "columnsFrom": [
+            "parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.conversations": {
       "name": "conversations",
       "schema": "",
@@ -11180,6 +11255,12 @@
           "primaryKey": false,
           "notNull": false,
           "default": 0
+        },
+        "qualification_answered_company": {
+          "name": "qualification_answered_company",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
         },
         "summary": {
           "name": "summary",
@@ -14794,21 +14875,12 @@
         "openai-compatible"
       ]
     },
-    "public.enum_ai_providers_text_generation_contract": {
-      "name": "enum_ai_providers_text_generation_contract",
-      "schema": "public",
-      "values": [
-        "responses",
-        "chat-completions"
-      ]
-    },
     "public.enum_ai_model_profiles_capability": {
       "name": "enum_ai_model_profiles_capability",
       "schema": "public",
       "values": [
         "text",
-        "embedding",
-        "image"
+        "embedding"
       ]
     },
     "public.enum_ai_model_profiles_parameters_reasoning_effort": {
@@ -14829,8 +14901,7 @@
       "schema": "public",
       "values": [
         "text",
-        "embedding",
-        "image"
+        "embedding"
       ]
     },
     "public.enum_ai_usage_logs_operation": {
@@ -14838,7 +14909,6 @@
       "schema": "public",
       "values": [
         "embed",
-        "generateImage",
         "generateText"
       ]
     },
@@ -15411,6 +15481,20 @@
         "contact"
       ]
     },
+    "public.enum_conversations_qualification_awaiting_fields": {
+      "name": "enum_conversations_qualification_awaiting_fields",
+      "schema": "public",
+      "values": [
+        "country",
+        "company",
+        "projectStage",
+        "quantity",
+        "drawings",
+        "budget",
+        "timeline",
+        "contact"
+      ]
+    },
     "public.enum_conversations_channel": {
       "name": "enum_conversations_channel",
       "schema": "public",
@@ -15530,6 +15614,6 @@
     "tables": {},
     "columns": {}
   },
-  "id": "a5e71129-e105-41f5-b0dc-b0fbf1650d69",
+  "id": "09f328ab-0e4f-4c08-a45d-0709f6e1cfb4",
   "prevId": "00000000-0000-0000-0000-000000000000"
 }

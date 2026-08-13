@@ -26,7 +26,10 @@ const QUALIFICATION_QUESTIONS: Record<LeadQualificationField, { en: string; ar: 
     en: 'Which country or market is the project for?',
     ar: 'لأي دولة أو سوق يخص المشروع؟',
   },
-  company: { en: 'What is your company name?', ar: 'ما اسم شركتكم؟' },
+  company: {
+    en: 'What is your company name? Please reply “Company: your company name”, or say you prefer not to share.',
+    ar: 'ما اسم شركتكم؟ يرجى الرد بصيغة «الشركة: اسم الشركة»، أو اذكروا أنكم تفضلون عدم المشاركة.',
+  },
   projectStage: {
     en: 'What stage is the project at: concept, design, procurement, or tender?',
     ar: 'ما مرحلة المشروع: فكرة، تصميم، شراء، أم مناقصة؟',
@@ -92,7 +95,7 @@ export const createKnowledgeConversationResponder = ({
       return { handoff: { reason: 'high_risk_topic', source: 'ai_policy' } }
     }
 
-    const state = qualificationState ?? { roundCount: 0, askedFields: [] }
+    const state = qualificationState ?? { awaitingFields: [], roundCount: 0, askedFields: [] }
     if (state.roundCount >= 3 && missingFields.length > 0) {
       return { handoff: { reason: 'qualification_incomplete', source: 'ai_policy' } }
     }
@@ -129,15 +132,15 @@ export const createKnowledgeConversationResponder = ({
       estimatedCostUSD: generated.cost.estimated,
       model: generated.model,
       promptVersion: prompt.version,
-      tokenUsage: generated.usage,
-      ...(question
+      qualificationState: question
         ? {
-            qualificationState: {
-              roundCount: state.roundCount + 1,
-              askedFields: [...state.askedFields, ...fields],
-            },
+            ...state,
+            awaitingFields: fields,
+            roundCount: state.roundCount + 1,
+            askedFields: [...state.askedFields, ...fields],
           }
-        : {}),
+        : { ...state, awaitingFields: [] },
+      tokenUsage: generated.usage,
     }
   },
 })
