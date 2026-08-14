@@ -53,7 +53,11 @@ const readyAiSettings = {
   readiness: [
     { key: 'customer-chat' as const, reason: 'route' as const, status: 'action-required' as const },
     { key: 'content-studio' as const, reason: null, status: 'ready' as const },
-    { key: 'knowledge-index' as const, reason: 'route' as const, status: 'action-required' as const },
+    {
+      key: 'knowledge-index' as const,
+      reason: 'route' as const,
+      status: 'action-required' as const,
+    },
   ],
   routes: [],
 }
@@ -170,16 +174,18 @@ describe('Portal settings hub', () => {
     fireEvent.click(screen.getByRole('button', { name: 'English' }))
     expect(document.documentElement.lang).toBe('en')
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy()
-    expect(screen.getByText('SYSTEM / SETTINGS')).toBeTruthy()
+    expect(screen.queryByText('SYSTEM / SETTINGS')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Dark' }))
     expect(screen.getByRole('button', { name: 'Dark' }).getAttribute('aria-pressed')).toBe('true')
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Reduce motion' }))
-    expect((screen.getByRole('checkbox', { name: 'Reduce motion' }) as HTMLInputElement).checked).toBe(
-      true,
+    expect(
+      (screen.getByRole('checkbox', { name: 'Reduce motion' }) as HTMLInputElement).checked,
+    ).toBe(true)
+    expect(window.localStorage.getItem('ivybm.portal.preferences')).toContain(
+      '"reducedMotion":true',
     )
-    expect(window.localStorage.getItem('ivybm.portal.preferences')).toContain('"reducedMotion":true')
   })
 
   it('exposes the safe AI control plane to admins without exposing a stored key', () => {

@@ -30,7 +30,7 @@ export const contentStudioMessages = {
     generate: 'Generate draft',
     generationComplete: 'AI draft generated. Verify every claim before review.',
     generationDescription:
-      'Generate an editable draft from reviewed, indexed knowledge. No content is sent to a platform.',
+      'Generate an editable general draft, or select reviewed and indexed knowledge for traceable claims. No content is sent to a platform.',
     knowledge: 'Knowledge sources',
     locale: 'Language',
     mode: 'Delivery mode',
@@ -117,7 +117,8 @@ export const contentStudioMessages = {
     filter: '筛选',
     generate: '生成草稿',
     generationComplete: 'AI 草稿已生成。提交审核前请核对每一项事实。',
-    generationDescription: '基于已审核、已索引的知识生成可编辑草稿；不会向任何平台发送内容。',
+    generationDescription:
+      '可直接生成普通草稿；选择已审核、已索引的知识后会保留真实溯源。不会向任何平台发送内容。',
     knowledge: '知识来源',
     locale: '语言',
     mode: '投递模式',

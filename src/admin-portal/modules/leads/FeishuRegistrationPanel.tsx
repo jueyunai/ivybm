@@ -193,7 +193,6 @@ export function FeishuRegistrationPanel({ enabled }: { enabled: boolean }) {
     <Surface as="section" className="portal-feishu-registration">
       <header>
         <div>
-          <p className="portal-page__eyebrow">AUTOMATION / FEISHU</p>
           <h3>{text.title}</h3>
           <p>{text.description}</p>
         </div>

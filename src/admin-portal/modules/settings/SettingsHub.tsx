@@ -59,7 +59,6 @@ export function SettingsHub({ aiReadError = false, aiSettings, modules, pageStat
     <main className="portal-page portal-settings">
       <header className="portal-page__intro">
         <div>
-          <p className="portal-page__eyebrow">{messages.settings.eyebrow}</p>
           <h2>{messages.settings.title}</h2>
           <p>{messages.settings.description}</p>
         </div>
