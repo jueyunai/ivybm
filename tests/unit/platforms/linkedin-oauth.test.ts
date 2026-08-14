@@ -175,11 +175,55 @@ describe('LinkedIn OAuth', () => {
     expect(fetcher).toHaveBeenCalledTimes(1)
     const [tokenCall] = fetcher.mock.calls
     expect(String(tokenCall[0])).toBe('https://www.linkedin.com/oauth/v2/accessToken')
-    expect(tokenCall[1]).toMatchObject({ method: 'POST' })
+    expect(tokenCall[1]).toMatchObject({ method: 'POST', redirect: 'error' })
     expect(new URLSearchParams(String(tokenCall[1]?.body)).get('client_secret')).toBe(
       'test-linkedin-app-secret',
     )
     expect(String(tokenCall[0])).not.toContain('test-linkedin-app-secret')
+  })
+
+  it('cancels provider responses that exceed the byte limit', async () => {
+    let headerRejectedBodyCancelled = false
+    const contentLengthResponse = new Response(
+      new ReadableStream<Uint8Array>({
+        cancel: () => {
+          headerRejectedBodyCancelled = true
+        },
+      }),
+      { headers: { 'content-length': String(256 * 1_024 + 1) }, status: 200 },
+    )
+
+    await expect(
+      exchangeLinkedInAuthorizationCode({
+        code: 'authorization-code',
+        config: readLinkedInOAuthConfiguration(environment),
+        fetcher: vi.fn<typeof fetch>().mockResolvedValue(contentLengthResponse),
+      }),
+    ).rejects.toMatchObject({ code: 'token_response_invalid' })
+    expect(headerRejectedBodyCancelled).toBe(true)
+
+    let streamedBodyCancelled = false
+    const streamedResponse = new Response(
+      new ReadableStream<Uint8Array>({
+        cancel: () => {
+          streamedBodyCancelled = true
+        },
+        start: (controller) => {
+          controller.enqueue(new Uint8Array(256 * 1_024))
+          controller.enqueue(new Uint8Array([1]))
+        },
+      }),
+      { status: 200 },
+    )
+
+    await expect(
+      exchangeLinkedInAuthorizationCode({
+        code: 'authorization-code',
+        config: readLinkedInOAuthConfiguration(environment),
+        fetcher: vi.fn<typeof fetch>().mockResolvedValue(streamedResponse),
+      }),
+    ).rejects.toMatchObject({ code: 'token_response_invalid' })
+    expect(streamedBodyCancelled).toBe(true)
   })
 
   it('rejects malformed or oversized provider scope lists', async () => {
@@ -237,6 +281,13 @@ describe('LinkedIn OAuth', () => {
       externalAccountId: 'abc-123',
       scopes: requiredLinkedInPermissions('linkedin-member'),
     })
+    expect(fetcher).toHaveBeenCalledWith(
+      new URL('https://api.linkedin.com/v2/userinfo'),
+      expect.objectContaining({
+        method: 'GET',
+        redirect: 'error',
+      }),
+    )
   })
 
   it('binds a LinkedIn organization only when the member has an approved publishing role', async () => {

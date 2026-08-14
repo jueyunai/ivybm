@@ -324,6 +324,62 @@ describe('platform account portal routes', () => {
     })
   })
 
+  it('updates historical TikTok metadata without reopening unsupported identity editing', async () => {
+    const historicalTikTokAccount = {
+      ...account,
+      accountKind: 'tiktok-business',
+      externalAccountId: 'historical-account',
+      name: 'Historical TikTok',
+      platformFamily: 'tiktok',
+    }
+    const payload = createPayload({ findByIDResult: historicalTikTokAccount })
+    mocks.getPayload.mockResolvedValue(payload)
+
+    const response = await PATCH(
+      jsonRequest({
+        body: { authorizationRevision: 3, name: 'Renamed TikTok', notes: 'Metadata only' },
+        method: 'PATCH',
+        path: '/api/platforms/accounts/42',
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(payload.update).toHaveBeenCalledWith({
+      collection: 'platform-accounts',
+      data: { name: 'Renamed TikTok', notes: 'Metadata only' },
+      id: 42,
+      overrideAccess: false,
+      req: expect.any(Object),
+      user: admin,
+    })
+  })
+
+  it('rejects identity clearing for a historical unsupported TikTok account', async () => {
+    const historicalTikTokAccount = {
+      ...account,
+      accountKind: 'tiktok-business',
+      externalAccountId: 'historical-account',
+      name: 'Historical TikTok',
+      platformFamily: 'tiktok',
+    }
+    const payload = createPayload({ findByIDResult: historicalTikTokAccount })
+    mocks.getPayload.mockResolvedValue(payload)
+
+    const response = await PATCH(
+      jsonRequest({
+        body: { authorizationRevision: 3, externalAccountId: null },
+        method: 'PATCH',
+        path: '/api/platforms/accounts/42',
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'invalid_external_account_id' },
+    })
+    expect(payload.update).not.toHaveBeenCalled()
+  })
+
   it('rejects malformed external account IDs using the locked account kind', async () => {
     const payload = createPayload()
     mocks.getPayload.mockResolvedValue(payload)

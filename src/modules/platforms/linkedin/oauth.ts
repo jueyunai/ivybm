@@ -50,6 +50,8 @@ const SAFE_PROVIDER_ERROR_CODES = new Set([
   'unsupported_grant_type',
 ])
 
+class ProviderResponseTooLargeError extends Error {}
+
 export type LinkedInOAuthErrorCode =
   | 'identity_mismatch'
   | 'identity_verification_failed'
@@ -442,6 +444,48 @@ const providerDiagnostic = ({
   }
 }
 
+const readBoundedProviderBody = async (response: Response): Promise<string> => {
+  const contentLength = response.headers.get('content-length')
+  if (
+    contentLength &&
+    /^[0-9]+$/u.test(contentLength) &&
+    Number(contentLength) > MAX_PROVIDER_RESPONSE_LENGTH
+  ) {
+    await response.body?.cancel().catch(() => undefined)
+    throw new ProviderResponseTooLargeError('LinkedIn provider response exceeded the byte limit')
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) return ''
+
+  const chunks: Uint8Array[] = []
+  let totalLength = 0
+  try {
+    while (true) {
+      const chunk = await reader.read()
+      if (chunk.done) break
+      totalLength += chunk.value.byteLength
+      if (totalLength > MAX_PROVIDER_RESPONSE_LENGTH) {
+        await reader.cancel().catch(() => undefined)
+        throw new ProviderResponseTooLargeError(
+          'LinkedIn provider response exceeded the byte limit',
+        )
+      }
+      chunks.push(chunk.value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  const body = new Uint8Array(totalLength)
+  let offset = 0
+  for (const chunk of chunks) {
+    body.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder('utf-8', { fatal: true }).decode(body)
+}
+
 const readProviderJSON = async (
   response: Response,
   errorCode: 'identity_verification_failed' | 'token_exchange_failed',
@@ -453,11 +497,16 @@ const readProviderJSON = async (
       : 'identity_verification_failed'
   let body: string
   try {
-    body = await response.text()
-  } catch {
-    throw new LinkedInOAuthError(errorCode, providerDiagnostic({ stage, status: response.status }))
+    body = await readBoundedProviderBody(response)
+  } catch (error) {
+    throw new LinkedInOAuthError(
+      response.ok && error instanceof ProviderResponseTooLargeError
+        ? invalidResponseCode
+        : errorCode,
+      providerDiagnostic({ stage, status: response.status }),
+    )
   }
-  if (!body || body.length > MAX_PROVIDER_RESPONSE_LENGTH) {
+  if (!body) {
     throw new LinkedInOAuthError(
       response.ok ? invalidResponseCode : errorCode,
       providerDiagnostic({ stage, status: response.status }),
@@ -582,6 +631,7 @@ export const exchangeLinkedInAuthorizationCode = async ({
         'content-type': 'application/x-www-form-urlencoded',
       },
       method: 'POST',
+      redirect: 'error',
       signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MILLISECONDS),
     })
   } catch {
@@ -624,6 +674,7 @@ const linkedInApiRequest = async ({
         'x-restli-protocol-version': '2.0.0',
       },
       method: 'GET',
+      redirect: 'error',
       signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MILLISECONDS),
     })
   } catch {

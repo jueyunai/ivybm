@@ -24,10 +24,12 @@ export const runtime = 'nodejs'
 const PORTAL_REDIRECT_PATH = '/dashboard/platforms'
 
 const resultRedirect = ({
+  clearTransactionCookie,
   origin,
   result,
   secure,
 }: {
+  clearTransactionCookie: boolean
   origin: string
   result: string
   secure: boolean
@@ -35,13 +37,15 @@ const resultRedirect = ({
   const target = new URL(PORTAL_REDIRECT_PATH, origin)
   target.searchParams.set('linkedinOAuth', result)
   const response = NextResponse.redirect(target, 302)
-  response.cookies.set(LINKEDIN_OAUTH_TRANSACTION_COOKIE, '', {
-    httpOnly: true,
-    maxAge: 0,
-    path: LINKEDIN_OAUTH_CALLBACK_PATH,
-    sameSite: 'lax',
-    secure,
-  })
+  if (clearTransactionCookie) {
+    response.cookies.set(LINKEDIN_OAUTH_TRANSACTION_COOKIE, '', {
+      httpOnly: true,
+      maxAge: 0,
+      path: LINKEDIN_OAUTH_CALLBACK_PATH,
+      sameSite: 'lax',
+      secure,
+    })
+  }
   response.headers.set('Cache-Control', 'private, no-store')
   return response
 }
@@ -147,16 +151,19 @@ export async function GET(request: NextRequest): Promise<Response> {
   const secureCookie = new URL(oauth.redirectUri).protocol === 'https:'
   let payload: Payload | undefined
   let transaction: LinkedInOAuthTransaction | undefined
+  let transactionVerified = false
   try {
     transaction = verifyLinkedInOAuthTransaction({
       cookieValue: request.cookies.get(LINKEDIN_OAUTH_TRANSACTION_COOKIE)?.value,
       returnedState: request.nextUrl.searchParams.get('state') ?? undefined,
     })
+    transactionVerified = true
 
     payload = await getPayload({ config })
     const authenticated = await payload.auth({ headers: request.headers })
     if (!authenticated.user || authenticated.user.collection !== 'users') {
       return resultRedirect({
+        clearTransactionCookie: true,
         origin: redirectOrigin,
         result: 'authentication_required',
         secure: secureCookie,
@@ -165,6 +172,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     const actor = authenticated.user as User
     if (actor.role !== 'admin') {
       return resultRedirect({
+        clearTransactionCookie: true,
         origin: redirectOrigin,
         result: 'forbidden',
         secure: secureCookie,
@@ -175,6 +183,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     const account = await loadLinkedInAccount(payload, req, transaction, actor)
     if (!account) {
       return resultRedirect({
+        clearTransactionCookie: true,
         origin: redirectOrigin,
         result: 'account_not_found',
         secure: secureCookie,
@@ -189,6 +198,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       account.platformFamily !== 'linkedin'
     ) {
       return resultRedirect({
+        clearTransactionCookie: true,
         origin: redirectOrigin,
         result: 'account_changed',
         secure: secureCookie,
@@ -199,6 +209,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
     if (request.nextUrl.searchParams.has('error')) {
       return resultRedirect({
+        clearTransactionCookie: true,
         origin: redirectOrigin,
         result: 'provider_denied',
         secure: secureCookie,
@@ -252,6 +263,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     })
 
     return resultRedirect({
+      clearTransactionCookie: true,
       origin: redirectOrigin,
       result: 'connected',
       secure: secureCookie,
@@ -259,6 +271,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   } catch (error) {
     if (payload) payload.logger.error(callbackErrorLog(error))
     return resultRedirect({
+      clearTransactionCookie: transactionVerified,
       origin: redirectOrigin,
       result: callbackErrorCode(error),
       secure: secureCookie,

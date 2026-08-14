@@ -102,16 +102,19 @@ export async function PATCH(request: NextRequest): Promise<Response> {
 
     const updated = await withLockedPlatformAccountMutation({
       operation: (req, lockedAccount) => {
-        if (
-          input.value.externalAccountId !== undefined &&
-          input.value.externalAccountId !== null &&
-          (!isPortalSupportedAccountKind(lockedAccount.account_kind) ||
+        if (input.value.externalAccountId !== undefined) {
+          if (!isPortalSupportedAccountKind(lockedAccount.account_kind)) {
+            throw new PlatformAccountIdentityValidationError()
+          }
+          if (
+            input.value.externalAccountId !== null &&
             !isValidPortalExternalAccountId(
               lockedAccount.account_kind,
               input.value.externalAccountId,
-            ))
-        ) {
-          throw new PlatformAccountIdentityValidationError()
+            )
+          ) {
+            throw new PlatformAccountIdentityValidationError()
+          }
         }
         return payload.update({
           collection: 'platform-accounts',

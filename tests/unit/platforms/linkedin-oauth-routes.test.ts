@@ -477,6 +477,7 @@ describe('LinkedIn OAuth routes', () => {
     expect(response.headers.get('location')).toBe(
       'http://localhost:3000/dashboard/platforms?linkedinOAuth=state_mismatch',
     )
+    expect(response.headers.get('set-cookie')).toBeNull()
     expect(fetcher).not.toHaveBeenCalled()
     expect(payload.update).not.toHaveBeenCalled()
   })

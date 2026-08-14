@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
@@ -13,6 +13,7 @@ vi.mock('next/navigation', () => ({
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
   window.localStorage.clear()
 })
 
@@ -82,6 +83,13 @@ describe('Portal platform readiness', () => {
   })
 
   it('does not offer OAuth actions for a historical unsupported account kind', () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ data: { id: 9 } }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    )
+    vi.stubGlobal('fetch', fetcher)
     render(
       React.createElement(
         PortalPreferencesProvider,
@@ -120,5 +128,25 @@ describe('Portal platform readiness', () => {
     expect(screen.queryByRole('button', { name: '断开授权' })).toBeNull()
     expect(screen.getByRole('button', { name: '编辑' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '删除' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+    expect(screen.queryByLabelText('外部账号 ID')).toBeNull()
+    fireEvent.change(screen.getByLabelText('显示名称'), {
+      target: { value: 'Renamed Historical TikTok' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    return waitFor(() =>
+      expect(fetcher).toHaveBeenCalledWith('/api/platforms/accounts/9', {
+        body: JSON.stringify({
+          authorizationRevision: 1,
+          name: 'Renamed Historical TikTok',
+          notes: null,
+        }),
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        method: 'PATCH',
+      }),
+    )
   })
 })

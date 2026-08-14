@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import { isPortalSupportedAccountKind } from '@/modules/platforms/accountPortalDto'
 import {
   getPlatformReadinessAction,
   type PlatformAccountCapability,
@@ -644,9 +645,12 @@ export function PlatformReadinessPage({
     setIsSubmitting(true)
     const formData = new FormData(event.currentTarget)
     const account = accounts.find((item) => item.id === accountId)
+    const supportsExternalAccountId = isPortalSupportedAccountKind(account?.accountKind)
     const body = {
       authorizationRevision: account?.authorizationRevision,
-      externalAccountId: formData.get('externalAccountId') || null,
+      ...(supportsExternalAccountId
+        ? { externalAccountId: formData.get('externalAccountId') || null }
+        : {}),
       name: formData.get('name'),
       notes: formData.get('notes') || null,
     }
@@ -884,15 +888,17 @@ export function PlatformReadinessPage({
                       {copy.name}
                       <input defaultValue={account.name} name="name" required type="text" />
                     </label>
-                    <label>
-                      {copy.externalAccountId}
-                      <input
-                        defaultValue={account.externalAccountId ?? ''}
-                        name="externalAccountId"
-                        type="text"
-                      />
-                      <small>{copy.externalAccountIdHelp}</small>
-                    </label>
+                    {isPortalSupportedAccountKind(account.accountKind) ? (
+                      <label>
+                        {copy.externalAccountId}
+                        <input
+                          defaultValue={account.externalAccountId ?? ''}
+                          name="externalAccountId"
+                          type="text"
+                        />
+                        <small>{copy.externalAccountIdHelp}</small>
+                      </label>
+                    ) : null}
                     <label>
                       {copy.notes}
                       <textarea defaultValue={account.notes ?? ''} name="notes" rows={3} />
