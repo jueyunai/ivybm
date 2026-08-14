@@ -25,6 +25,7 @@ let embeddingProfileID: number
 let embeddingRouteID: number
 let imageProfileID: number
 let imageRouteID: number
+let imageUsageLogID: number | string = 0
 let textUsageKey: string
 let originalEncryptionKey: string | undefined
 
@@ -379,6 +380,7 @@ describe.sequential('AI control plane', () => {
       },
       overrideAccess: true,
     })
+    imageUsageLogID = usage.id
     createdUsageLogIDs.push(usage.id)
 
     expect(imageProfile.capability).toBe('image')
@@ -426,7 +428,7 @@ describe.sequential('AI control plane', () => {
     await expect(
       payload.findByID({
         collection: 'ai-usage-logs',
-        id: createdUsageLogIDs.at(-1),
+        id: imageUsageLogID,
         overrideAccess: true,
       }),
     ).resolves.toMatchObject({ operation: 'generateImage' })
