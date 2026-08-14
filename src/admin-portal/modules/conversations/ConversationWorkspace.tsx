@@ -42,7 +42,6 @@ const COPY = {
     description: '集中处理官网与社媒会话；接管、回复和解决均由服务端状态机授权。',
     emptyDescription: '当前筛选条件下没有可处理的会话。',
     emptyTitle: '暂无会话',
-    eyebrow: 'WORKSPACE / CONVERSATIONS',
     failedDescription: '会话服务读取失败，页面没有把故障伪装成空列表。',
     failedTitle: '统一会话暂时不可用',
     filterLabel: '会话状态',
@@ -81,7 +80,6 @@ const COPY = {
       'Handle website and social conversations through the authoritative server workflow.',
     emptyDescription: 'No conversations match the current filter.',
     emptyTitle: 'No conversations',
-    eyebrow: 'WORKSPACE / CONVERSATIONS',
     failedDescription:
       'The inbox could not be read. The failure is not presented as an empty list.',
     failedTitle: 'Conversation inbox unavailable',
@@ -308,7 +306,6 @@ export function ConversationWorkspace({
     <main className="portal-page portal-conversations">
       <header className="portal-page__intro portal-conversations__intro">
         <div>
-          <p className="portal-page__eyebrow">{copy.eyebrow}</p>
           <h2>{copy.title}</h2>
           <p>{copy.description}</p>
         </div>

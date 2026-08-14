@@ -195,6 +195,117 @@ describe('Portal Content Studio draft commands', () => {
     expect(generateText).toHaveBeenCalledTimes(1)
   })
 
+  it('generates an ordinary draft without knowledge and clears untrusted source references', async () => {
+    const create = vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: 73,
+      updatedAt: '2026-08-12T08:00:00.000Z',
+    }))
+    const find = vi.fn().mockResolvedValue({ docs: [] })
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        body: 'A general brand introduction without knowledge-backed factual claims.',
+        sourceReferences: { claim: 'Invented claim', source: 'unselected-source' },
+        title: 'General IVYBM introduction',
+      }),
+    })
+
+    await expect(
+      generateContentStudioDraft({
+        input: {
+          assets: [4],
+          brief: 'Write a general brand introduction.',
+          contentLocale: 'en',
+          contentType: 'post',
+          idempotencyKey: 'portal-content-studio:generate-without-knowledge',
+          knowledgeSources: [],
+          platform: 'linkedin',
+        },
+        payload: { create, find } as any,
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateText }) as any,
+      }),
+    ).resolves.toMatchObject({ content: { id: 73, status: 'draft' }, duplicate: false })
+
+    expect(find.mock.calls.some(([options]) => options.collection === 'knowledge-documents')).toBe(
+      false,
+    )
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          knowledgeSources: [],
+          sourceReferences: [],
+          status: 'draft',
+        }),
+      }),
+    )
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.not.stringContaining('Approved sources:'),
+        instructions: expect.not.stringContaining('Use only the approved sources'),
+      }),
+    )
+  })
+
+  it('keeps selected knowledge restricted to reviewed ready documents and exact references', async () => {
+    const generationInput = {
+      assets: [],
+      brief: 'Write a knowledge-backed post.',
+      contentLocale: 'en',
+      contentType: 'post',
+      idempotencyKey: 'portal-content-studio:strict-selected-source',
+      knowledgeSources: [9],
+      platform: 'linkedin',
+    }
+    const emptyFind = vi.fn().mockResolvedValue({ docs: [] })
+
+    await expect(
+      generateContentStudioDraft({
+        input: generationInput,
+        payload: { find: emptyFind } as any,
+        req,
+        resolveGateway: vi.fn() as any,
+      }),
+    ).rejects.toMatchObject({
+      code: 'content-studio-generation-sources-unavailable',
+      status: 409,
+    })
+
+    const find = vi.fn(async ({ collection }: { collection: string }) =>
+      collection === 'knowledge-documents'
+        ? {
+            docs: [
+              {
+                content: 'Reviewed source content.',
+                id: 9,
+                indexStatus: 'ready',
+                reviewStatus: 'reviewed',
+                sourceTitle: 'Reviewed source',
+                sourceURL: 'https://example.invalid/reviewed-source',
+                sourceVersion: '1.0',
+              },
+            ],
+          }
+        : { docs: [] },
+    )
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        body: 'Draft body',
+        sourceReferences: [{ claim: 'Claim', source: 'https://example.invalid/not-selected' }],
+        title: 'Draft title',
+      }),
+    })
+
+    await expect(
+      generateContentStudioDraft({
+        input: generationInput,
+        payload: { find } as any,
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateText }) as any,
+      }),
+    ).rejects.toMatchObject({ code: 'content-studio-ai-invalid-response', status: 422 })
+  })
+
   it('rejects past internal schedules before creating a publish job', async () => {
     const approved = {
       id: 71,

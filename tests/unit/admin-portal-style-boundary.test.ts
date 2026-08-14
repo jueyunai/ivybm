@@ -67,4 +67,13 @@ describe('Portal style boundary', () => {
       /\.portal-field__control input:focus-visible\s*\{[^}]*outline: none;[^}]*\}/,
     )
   })
+
+  it('activates the intended spacing on conversation and lead page roots', () => {
+    const portalStyles = readProjectFile('src/admin-portal/core/styles/portal.css')
+
+    expect(portalStyles).toMatch(
+      /\.portal-conversations\s*\{[^}]*display:\s*grid;[^}]*gap:\s*14px;/,
+    )
+    expect(portalStyles).toMatch(/\.portal-leads\s*\{[^}]*display:\s*grid;[^}]*gap:\s*14px;/)
+  })
 })

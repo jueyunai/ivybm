@@ -146,7 +146,7 @@ export function OperationsWorkspace({ pageState, summary }: { pageState: SafeJob
   return (
     <main className="portal-page portal-operations">
       <header className="portal-page__intro portal-operations__intro">
-        <div><p className="portal-page__eyebrow">OPERATIONS / SAFE ACTIONS</p><h2>{copy.title}</h2><p>{copy.retryHelp}</p></div>
+        <div><h2>{copy.title}</h2><p>{copy.retryHelp}</p></div>
         <Button onClick={() => router.refresh()} variant="secondary"><IconRefresh aria-hidden="true" size={16} />{copy.refresh}</Button>
       </header>
       {feedback ? <p className="portal-operations__feedback" role="status">{feedback}</p> : null}

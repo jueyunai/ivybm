@@ -745,7 +745,6 @@ export function PlatformReadinessPage({
     <main className="portal-page portal-platforms">
       <header className="portal-page__intro portal-platforms__intro">
         <div>
-          <p className="portal-page__eyebrow">OPERATIONS / READINESS</p>
           <h2>{copy.title}</h2>
           <p>{copy.description}</p>
         </div>

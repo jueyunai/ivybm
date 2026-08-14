@@ -1,5 +1,6 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
+import { getMediaPreviewUrl, safeMediaUrl } from '@/admin-portal/core/media'
 import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
 import { MEDIA_IMAGE_MAX_BYTES, MEDIA_MIME_TYPES, MEDIA_PDF_MAX_BYTES } from '@/collections/Media'
 
@@ -131,18 +132,6 @@ const buildWhere = (query: MediaQuery): Where => {
   return { and: clauses }
 }
 
-const safeMediaUrl = (value: null | string | undefined): null | string => {
-  if (!value || value.includes('\\')) return null
-  if (value.startsWith('/') && !value.startsWith('//')) return value
-
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null
-  } catch {
-    return null
-  }
-}
-
 const kindFor = (mimeType: null | string | undefined): MediaItemKind => {
   if (mimeType === 'application/pdf') return 'pdf'
   if (mimeType?.startsWith('image/')) return 'image'
@@ -152,11 +141,6 @@ const kindFor = (mimeType: null | string | undefined): MediaItemKind => {
 const mapMediaItem = (document: MediaProjection): MediaSummaryItem => {
   const kind = kindFor(document.mimeType)
   const originalUrl = safeMediaUrl(document.url)
-  const imagePreview =
-    safeMediaUrl(document.sizes?.card?.url) ??
-    safeMediaUrl(document.sizes?.thumbnail?.url) ??
-    safeMediaUrl(document.thumbnailURL) ??
-    originalUrl
 
   return {
     alt: document.alt ?? '',
@@ -168,7 +152,8 @@ const mapMediaItem = (document: MediaProjection): MediaSummaryItem => {
     kind,
     mimeType: document.mimeType ?? null,
     originalUrl,
-    previewUrl: kind === 'image' ? imagePreview : kind === 'pdf' ? originalUrl : null,
+    previewUrl:
+      kind === 'image' ? getMediaPreviewUrl(document) : kind === 'pdf' ? originalUrl : null,
     source: document.source ?? '',
     updatedAt: document.updatedAt,
     width: document.width ?? null,
