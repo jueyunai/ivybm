@@ -350,6 +350,25 @@ describe('LinkedIn OAuth', () => {
     expect(JSON.stringify(tokenFailure)).not.toContain('test-linkedin-app-secret')
     expect(JSON.stringify(tokenFailure)).not.toContain('leaked-token')
 
+    const redirectFailure = await exchangeLinkedInAuthorizationCode({
+      code: 'authorization-code',
+      config: readLinkedInOAuthConfiguration(environment),
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ error: 'invalid_redirect_uri' }), { status: 400 }),
+        ),
+    }).catch((error: unknown) => error)
+
+    expect(redirectFailure).toMatchObject({
+      code: 'token_exchange_failed',
+      diagnostic: {
+        providerErrorCode: 'invalid_redirect_uri',
+        providerStatus: 400,
+        stage: 'token_exchange',
+      },
+    })
+
     const identityFailure = await resolveLinkedInAuthorizedAccount({
       accountKind: 'linkedin-member',
       config: readLinkedInOAuthConfiguration(environment),

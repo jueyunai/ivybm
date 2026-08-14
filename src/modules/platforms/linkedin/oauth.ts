@@ -35,11 +35,13 @@ const LINKEDIN_APP_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 const LINKEDIN_ORGANIZATION_ID_PATTERN = /^[0-9]{1,32}$/
 const LINKEDIN_MEMBER_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 const LINKEDIN_SCOPE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
+// Keep this exact-code allowlist aligned with LinkedIn's documented OAuth error table.
 const SAFE_PROVIDER_ERROR_CODES = new Set([
   'access_denied',
   'invalid_client',
   'invalid_grant',
   'invalid_request',
+  'invalid_redirect_uri',
   'invalid_scope',
   'invalid_token',
   'server_error',
