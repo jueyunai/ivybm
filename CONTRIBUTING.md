@@ -120,7 +120,7 @@ git worktree prune --dry-run
 
 ## PR 与 Review
 
-- 仓库保持 private。当前 GitHub 免费私有仓库无法启用原生 branch protection，因此使用项目规则 + PR 流程 + CODEOWNERS + 本地 `pre-push` hook 形成多层约束。
+- 仓库可根据项目阶段保持 private 或 public。切换为 public 前必须完成公开前安全审计、凭据扫描和敏感资料确认，并由负责人明确批准；当仓库为 private 且当前 GitHub 套餐无法启用原生 branch protection 时，使用项目规则 + PR 流程 + CODEOWNERS + 本地 `pre-push` hook 形成多层约束。
 - 每位开发者首次 clone 后运行 `bash scripts/install-git-hooks.sh`。该 hook 会阻止本机直接 push `main`；紧急绕过必须获得明确授权，并使用 `IVYBM_ALLOW_MAIN_PUSH=1`，事后补 PR 或记录。
 - 不直接 push 到 `main`，一律走 PR。合并前本地运行 `pnpm lint && pnpm typecheck && pnpm test:unit`；涉及数据库 / 契约测试的任务额外运行对应命令，并把结果贴在 PR 描述中。
 - GitHub 管理员仍具有平台侧绕过能力，因此本方案不能等同于服务端 branch protection；若后续升级 GitHub Pro，再启用服务端强制门禁。

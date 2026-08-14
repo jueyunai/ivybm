@@ -4,7 +4,7 @@ Claude Code 在本仓库工作时，必须以 [`AGENTS.md`](AGENTS.md) 为主规
 
 特别强调：
 
-- 仓库必须保持 private。
+- 仓库可根据项目阶段保持 private 或 public；切换为 public 前必须完成公开前安全审计、凭据扫描和敏感资料确认，并由负责人明确批准。
 - `ivybm` 主工作区只保留干净的 `main`；修改文件前从最新 `origin/main` 创建 Task 级短分支和独立 worktree，PR 审查使用临时 detached worktree。
 - 禁止直接 push `main`，禁止 force push；先运行 `bash scripts/install-git-hooks.sh`。
 - 除非用户明确要求，不自行 commit、push、创建或合并 PR、部署 production。
