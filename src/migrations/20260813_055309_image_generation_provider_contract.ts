@@ -18,6 +18,9 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
        OR EXISTS (SELECT 1 FROM "ai_usage_logs" WHERE "operation" = 'generateImage') THEN
        RAISE EXCEPTION 'Cannot roll back image generation migration while image configuration or usage data exists';
      END IF;
+     IF EXISTS (SELECT 1 FROM "ai_providers" WHERE "text_generation_contract" = 'chat-completions') THEN
+       RAISE EXCEPTION 'Cannot roll back image generation/provider contract migration while chat-completions provider configuration exists';
+     END IF;
    END $$;`)
   await db.execute(sql`
    ALTER TABLE "ai_model_profiles" ALTER COLUMN "capability" SET DATA TYPE text;

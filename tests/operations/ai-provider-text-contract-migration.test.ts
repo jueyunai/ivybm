@@ -28,10 +28,18 @@ describe('AI provider text contract migration', () => {
 
     expect(migration).toContain('enum_ai_providers_text_generation_contract')
     expect(migration).toContain('ALTER TABLE "ai_providers" ADD COLUMN "text_generation_contract"')
-    expect(migration).not.toContain('knowledge_source_assets')
+    expect(migration).toContain(
+      'Cannot roll back image generation/provider contract migration while chat-completions provider configuration exists',
+    )
+    expect(migration).toContain('WHERE "text_generation_contract" = \'chat-completions\'')
     expect(
-      snapshot.enums?.['public.enum_ai_providers_text_generation_contract']?.values,
-    ).toEqual(['responses', 'chat-completions'])
+      migration.indexOf('Cannot roll back image generation/provider contract migration'),
+    ).toBeLessThan(migration.indexOf('ALTER TABLE "ai_model_profiles" ALTER COLUMN "capability"'))
+    expect(migration).not.toContain('knowledge_source_assets')
+    expect(snapshot.enums?.['public.enum_ai_providers_text_generation_contract']?.values).toEqual([
+      'responses',
+      'chat-completions',
+    ])
     expect(snapshot.tables?.['public.ai_providers']?.columns).toHaveProperty(
       'text_generation_contract',
     )
