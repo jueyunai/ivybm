@@ -18,7 +18,14 @@ export const AiUsageLogs: CollectionConfig = {
     update: internalWrite,
   },
   admin: {
-    defaultColumns: ['operation', 'provider', 'model', 'totalTokens', 'estimatedCostUSD', 'createdAt'],
+    defaultColumns: [
+      'operation',
+      'provider',
+      'model',
+      'totalTokens',
+      'estimatedCostUSD',
+      'createdAt',
+    ],
     group: 'AI Management',
     useAsTitle: 'model',
   },

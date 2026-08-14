@@ -223,11 +223,7 @@ const claimCommand = async ({
           ((existing.status === 'processing' && expired) ||
             (existing.status === 'failed' && existing.errorCode === UNKNOWN_RESULT_CODE))
         ) {
-          throw new PortalCommandReceiptError(
-            UNKNOWN_RESULT_CODE,
-            UNKNOWN_RESULT_MESSAGE,
-            409,
-          )
+          throw new PortalCommandReceiptError(UNKNOWN_RESULT_CODE, UNKNOWN_RESULT_MESSAGE, 409)
         }
         if (existing.status === 'processing' && !expired) {
           throw new PortalCommandReceiptError(

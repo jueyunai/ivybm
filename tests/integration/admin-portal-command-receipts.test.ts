@@ -282,7 +282,9 @@ describe.sequential('Portal command receipts', () => {
     const idempotencyKey = `portal-receipt:${randomUUID()}`
     const operation = vi
       .fn()
-      .mockRejectedValueOnce(Object.assign(new Error('model is not configured'), { code: 'invalid_request' }))
+      .mockRejectedValueOnce(
+        Object.assign(new Error('model is not configured'), { code: 'invalid_request' }),
+      )
       .mockResolvedValueOnce({ generated: true })
     const command = () =>
       executePortalCommand({

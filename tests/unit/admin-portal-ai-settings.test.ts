@@ -7,10 +7,7 @@ import {
   getPortalAiSettings,
   mapPortalAiProvider,
 } from '@/admin-portal/modules/settings/getPortalAiSettings'
-import {
-  encryptAiCredential,
-  readAiConfigurationEncryptionKey,
-} from '@/modules/ai/credentials'
+import { encryptAiCredential, readAiConfigurationEncryptionKey } from '@/modules/ai/credentials'
 
 describe('Portal AI settings read model', () => {
   afterEach(() => vi.unstubAllEnvs())
@@ -54,7 +51,15 @@ describe('Portal AI settings read model', () => {
         id: 2,
         model: 'text-model',
         name: 'Text',
-        parameters: { dimensions: null, maxOutputTokens: null, reasoningEffort: null, reasoningEnabled: false, temperature: null, timeoutMs: 30000, topP: null },
+        parameters: {
+          dimensions: null,
+          maxOutputTokens: null,
+          reasoningEffort: null,
+          reasoningEnabled: false,
+          temperature: null,
+          timeoutMs: 30000,
+          topP: null,
+        },
         providerID: 1,
         providerName: 'Primary',
         updatedAt: '',
@@ -65,7 +70,15 @@ describe('Portal AI settings read model', () => {
         id: 4,
         model: 'image-model',
         name: 'Image',
-        parameters: { dimensions: null, maxOutputTokens: null, reasoningEffort: 'medium', reasoningEnabled: false, temperature: null, timeoutMs: 60000, topP: null },
+        parameters: {
+          dimensions: null,
+          maxOutputTokens: null,
+          reasoningEffort: 'medium',
+          reasoningEnabled: false,
+          temperature: null,
+          timeoutMs: 60000,
+          topP: null,
+        },
         providerID: 1,
         providerName: 'Primary',
         updatedAt: '',
@@ -77,8 +90,24 @@ describe('Portal AI settings read model', () => {
       providers: [provider],
       readableProviderIDs: new Set([provider.id]),
       routes: [
-        { enabled: true, id: 3, operation: 'text', profileID: 2, profileName: 'Text', updatedAt: '', usageKey: 'chat.reply' },
-        { enabled: true, id: 5, operation: 'image', profileID: 4, profileName: 'Image', updatedAt: '', usageKey: 'content.image-generation' },
+        {
+          enabled: true,
+          id: 3,
+          operation: 'text',
+          profileID: 2,
+          profileName: 'Text',
+          updatedAt: '',
+          usageKey: 'chat.reply',
+        },
+        {
+          enabled: true,
+          id: 5,
+          operation: 'image',
+          profileID: 4,
+          profileName: 'Image',
+          updatedAt: '',
+          usageKey: 'content.image-generation',
+        },
       ],
     })
 
@@ -91,38 +120,74 @@ describe('Portal AI settings read model', () => {
 
   it('reads every access-controlled page and never returns credential ciphertext', async () => {
     vi.stubEnv('AI_CONFIG_ENCRYPTION_KEY', 'a'.repeat(64))
-    const apiKey = encryptAiCredential(
-      'never-return-me',
-      readAiConfigurationEncryptionKey(),
+    const apiKey = encryptAiCredential('never-return-me', readAiConfigurationEncryptionKey())
+    const find = vi.fn(
+      async ({ collection, page }: { collection: string; page: number; req: PayloadRequest }) => {
+        const documents = {
+          'ai-model-profiles': {
+            1: [],
+            2: [
+              {
+                capability: 'text',
+                enabled: true,
+                id: 5,
+                model: 'text-model',
+                name: 'Text',
+                parameters: {},
+                provider: 4,
+                updatedAt: '',
+              },
+            ],
+          },
+          'ai-providers': {
+            1: [
+              {
+                apiKey,
+                apiKeyConfigured: true,
+                baseURL: 'https://api.example.invalid/v1',
+                enabled: true,
+                id: 1,
+                name: 'Primary',
+                protocol: 'openai-compatible',
+                textGenerationContract: 'responses',
+                updatedAt: '',
+              },
+            ],
+            2: [
+              {
+                apiKey,
+                apiKeyConfigured: true,
+                baseURL: 'https://api.example.invalid/v1',
+                enabled: true,
+                id: 4,
+                name: 'Secondary',
+                protocol: 'openai-compatible',
+                textGenerationContract: 'responses',
+                updatedAt: '',
+              },
+            ],
+          },
+          'ai-usage-routes': {
+            1: [],
+            2: [
+              {
+                enabled: true,
+                id: 6,
+                operation: 'text',
+                profile: 5,
+                updatedAt: '',
+                usageKey: 'chat.reply',
+              },
+            ],
+          },
+        } as const
+        return {
+          docs: documents[collection as keyof typeof documents][page as 1 | 2],
+          hasNextPage: page === 1,
+          nextPage: page === 1 ? 2 : null,
+        }
+      },
     )
-    const find = vi.fn(async ({
-      collection,
-      page,
-    }: {
-      collection: string
-      page: number
-      req: PayloadRequest
-    }) => {
-      const documents = {
-        'ai-model-profiles': {
-          1: [],
-          2: [{ capability: 'text', enabled: true, id: 5, model: 'text-model', name: 'Text', parameters: {}, provider: 4, updatedAt: '' }],
-        },
-        'ai-providers': {
-          1: [{ apiKey, apiKeyConfigured: true, baseURL: 'https://api.example.invalid/v1', enabled: true, id: 1, name: 'Primary', protocol: 'openai-compatible', textGenerationContract: 'responses', updatedAt: '' }],
-          2: [{ apiKey, apiKeyConfigured: true, baseURL: 'https://api.example.invalid/v1', enabled: true, id: 4, name: 'Secondary', protocol: 'openai-compatible', textGenerationContract: 'responses', updatedAt: '' }],
-        },
-        'ai-usage-routes': {
-          1: [],
-          2: [{ enabled: true, id: 6, operation: 'text', profile: 5, updatedAt: '', usageKey: 'chat.reply' }],
-        },
-      } as const
-      return {
-        docs: documents[collection as keyof typeof documents][page as 1 | 2],
-        hasNextPage: page === 1,
-        nextPage: page === 1 ? 2 : null,
-      }
-    })
     const req = { context: {}, query: {}, user: { id: 1 } } as unknown as PayloadRequest
     const summary = await getPortalAiSettings({ payload: { find } as unknown as Payload, req })
 
@@ -135,19 +200,21 @@ describe('Portal AI settings read model', () => {
         pagination: true,
       })
     }
-    expect(
-      find.mock.calls.filter(([options]) => options.collection === 'ai-providers'),
-    ).toEqual([
-      [expect.objectContaining({
-        context: { portalAiReadinessCredentialRead: true },
-        page: 1,
-        select: expect.objectContaining({ apiKey: true }),
-      })],
-      [expect.objectContaining({
-        context: { portalAiReadinessCredentialRead: true },
-        page: 2,
-        select: expect.objectContaining({ apiKey: true }),
-      })],
+    expect(find.mock.calls.filter(([options]) => options.collection === 'ai-providers')).toEqual([
+      [
+        expect.objectContaining({
+          context: { portalAiReadinessCredentialRead: true },
+          page: 1,
+          select: expect.objectContaining({ apiKey: true }),
+        }),
+      ],
+      [
+        expect.objectContaining({
+          context: { portalAiReadinessCredentialRead: true },
+          page: 2,
+          select: expect.objectContaining({ apiKey: true }),
+        }),
+      ],
     ])
     for (const [options] of find.mock.calls.filter(
       ([candidate]) => candidate.collection === 'ai-providers',

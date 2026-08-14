@@ -30,39 +30,46 @@ const createPayload = (docs: unknown[]) =>
   }) as unknown as Payload
 
 const createFakeProvider = (calls: Array<Record<string, unknown>>) =>
-  vi.fn((options: { apiKey: string; baseURL: string; name?: string; textGenerationContract?: string }) => ({
-    embed: async (input: { dimensions?: number; input: string[]; model: string }) => {
-      calls.push({ ...options, operation: 'embedding', ...input })
-      return {
-        embeddings: input.input.map(() => [1, 0, 0]),
-        model: input.model,
-        usage: { inputTokens: 2, totalTokens: 2 },
-      }
-    },
-    generateText: async (input: {
-      maxOutputTokens?: number
-      model: string
-      reasoning?: { effort: string }
-    }) => {
-      calls.push({ ...options, operation: 'text', ...input })
-      return {
-        model: input.model,
-        text: 'Configured response',
-        usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
-      }
-    },
-    generateImage: async (input: { model: string; prompt: string }) => {
-      calls.push({ ...options, operation: 'image', ...input })
-      return {
-        image: {
-          data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-          mimeType: 'image/png' as const,
-        },
-        model: input.model,
-      }
-    },
-    name: options.name ?? 'fake-provider',
-  }))
+  vi.fn(
+    (options: {
+      apiKey: string
+      baseURL: string
+      name?: string
+      textGenerationContract?: string
+    }) => ({
+      embed: async (input: { dimensions?: number; input: string[]; model: string }) => {
+        calls.push({ ...options, operation: 'embedding', ...input })
+        return {
+          embeddings: input.input.map(() => [1, 0, 0]),
+          model: input.model,
+          usage: { inputTokens: 2, totalTokens: 2 },
+        }
+      },
+      generateText: async (input: {
+        maxOutputTokens?: number
+        model: string
+        reasoning?: { effort: string }
+      }) => {
+        calls.push({ ...options, operation: 'text', ...input })
+        return {
+          model: input.model,
+          text: 'Configured response',
+          usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
+        }
+      },
+      generateImage: async (input: { model: string; prompt: string }) => {
+        calls.push({ ...options, operation: 'image', ...input })
+        return {
+          image: {
+            data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+            mimeType: 'image/png' as const,
+          },
+          model: input.model,
+        }
+      },
+      name: options.name ?? 'fake-provider',
+    }),
+  )
 
 describe('AI control-plane registry', () => {
   it('resolves one CMS snapshot with independent text and embedding providers', async () => {

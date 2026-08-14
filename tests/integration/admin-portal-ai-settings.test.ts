@@ -31,12 +31,20 @@ describe.sequential('Portal AI settings', () => {
     }
     originalEncryptionKey = process.env.AI_CONFIG_ENCRYPTION_KEY
     process.env.AI_CONFIG_ENCRYPTION_KEY = 'd'.repeat(64)
-    payload = await getPayload({ config, disableOnInit: true, key: 'portal-ai-settings-integration' })
+    payload = await getPayload({
+      config,
+      disableOnInit: true,
+      key: 'portal-ai-settings-integration',
+    })
     const suffix = randomUUID()
     admin = await payload.create({
       collection: 'users',
       context: { skipAudit: true },
-      data: { email: `portal-ai-settings-${suffix}@example.invalid`, password: 'portal-ai-settings-password', role: 'admin' },
+      data: {
+        email: `portal-ai-settings-${suffix}@example.invalid`,
+        password: 'portal-ai-settings-password',
+        role: 'admin',
+      },
       overrideAccess: true,
     })
   })
@@ -53,11 +61,32 @@ describe.sequential('Portal AI settings', () => {
         ['ai-model-profiles', imageProfileID],
         ['ai-providers', providerID],
       ] as const) {
-        if (id) await payload.delete({ collection, id, overrideAccess: true }).catch(() => undefined)
+        if (id)
+          await payload.delete({ collection, id, overrideAccess: true }).catch(() => undefined)
       }
-      await payload.delete({ collection: 'portal-command-receipts', overrideAccess: true, where: { actor: { equals: admin?.id } } }).catch(() => undefined)
-      await payload.delete({ collection: 'audit-logs', overrideAccess: true, where: { actor: { equals: admin?.id } } }).catch(() => undefined)
-      if (admin?.id) await payload.delete({ collection: 'users', context: { skipAudit: true }, id: admin.id, overrideAccess: true }).catch(() => undefined)
+      await payload
+        .delete({
+          collection: 'portal-command-receipts',
+          overrideAccess: true,
+          where: { actor: { equals: admin?.id } },
+        })
+        .catch(() => undefined)
+      await payload
+        .delete({
+          collection: 'audit-logs',
+          overrideAccess: true,
+          where: { actor: { equals: admin?.id } },
+        })
+        .catch(() => undefined)
+      if (admin?.id)
+        await payload
+          .delete({
+            collection: 'users',
+            context: { skipAudit: true },
+            id: admin.id,
+            overrideAccess: true,
+          })
+          .catch(() => undefined)
       await payload.destroy()
     } finally {
       if (originalEncryptionKey === undefined) delete process.env.AI_CONFIG_ENCRYPTION_KEY
@@ -67,47 +96,130 @@ describe.sequential('Portal AI settings', () => {
 
   it('creates encrypted provider/model/route configuration and reports business readiness', async () => {
     const req = await createLocalReq({ user: admin }, payload)
-    const providerInput = { apiKey: `portal-secret-${randomUUID()}`, baseURL: 'https://api.example.invalid/v1', enabled: true, name: `Portal provider ${randomUUID()}` }
-    const operation = vi.fn((transactionReq) => createPortalAiResource({ input: providerInput, payload, req: transactionReq, resource: 'providers' }))
+    const providerInput = {
+      apiKey: `portal-secret-${randomUUID()}`,
+      baseURL: 'https://api.example.invalid/v1',
+      enabled: true,
+      name: `Portal provider ${randomUUID()}`,
+    }
+    const operation = vi.fn((transactionReq) =>
+      createPortalAiResource({
+        input: providerInput,
+        payload,
+        req: transactionReq,
+        resource: 'providers',
+      }),
+    )
     const idempotencyKey = `portal-ai:${randomUUID()}`
-    const created = await executePortalCommand({ fingerprintInput: providerInput, idempotencyKey, operation, payload, req, scope: 'portal.ai-settings:providers:create' })
-    const replayed = await executePortalCommand({ fingerprintInput: providerInput, idempotencyKey, operation, payload, req, scope: 'portal.ai-settings:providers:create' })
+    const created = await executePortalCommand({
+      fingerprintInput: providerInput,
+      idempotencyKey,
+      operation,
+      payload,
+      req,
+      scope: 'portal.ai-settings:providers:create',
+    })
+    const replayed = await executePortalCommand({
+      fingerprintInput: providerInput,
+      idempotencyKey,
+      operation,
+      payload,
+      req,
+      scope: 'portal.ai-settings:providers:create',
+    })
     providerID = created.item.id
     expect(replayed).toEqual(created)
     expect(operation).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(created)).not.toContain(providerInput.apiKey)
 
-    const stored = await payload.findByID({ collection: 'ai-providers', id: providerID, overrideAccess: true })
+    const stored = await payload.findByID({
+      collection: 'ai-providers',
+      id: providerID,
+      overrideAccess: true,
+    })
     expect(stored.apiKey).toMatch(/^v1:/)
     expect(stored.apiKey).not.toContain(providerInput.apiKey)
 
     const textProfile = await createPortalAiResource({
-      input: { capability: 'text', enabled: true, model: 'text-model', name: `Text ${randomUUID()}`, parameters: { maxOutputTokens: 2048, reasoningEffort: 'medium', reasoningEnabled: false, temperature: null, timeoutMs: 30000, topP: null }, providerID },
+      input: {
+        capability: 'text',
+        enabled: true,
+        model: 'text-model',
+        name: `Text ${randomUUID()}`,
+        parameters: {
+          maxOutputTokens: 2048,
+          reasoningEffort: 'medium',
+          reasoningEnabled: false,
+          temperature: null,
+          timeoutMs: 30000,
+          topP: null,
+        },
+        providerID,
+      },
       payload,
       req,
       resource: 'profiles',
     })
     textProfileID = textProfile.item.id
     const embeddingProfile = await createPortalAiResource({
-      input: { capability: 'embedding', enabled: true, model: 'embedding-model', name: `Embedding ${randomUUID()}`, parameters: { dimensions: 3, reasoningEffort: 'medium', reasoningEnabled: false, timeoutMs: 30000 }, providerID },
+      input: {
+        capability: 'embedding',
+        enabled: true,
+        model: 'embedding-model',
+        name: `Embedding ${randomUUID()}`,
+        parameters: {
+          dimensions: 3,
+          reasoningEffort: 'medium',
+          reasoningEnabled: false,
+          timeoutMs: 30000,
+        },
+        providerID,
+      },
       payload,
       req,
       resource: 'profiles',
     })
     embeddingProfileID = embeddingProfile.item.id
     const imageProfile = await createPortalAiResource({
-      input: { capability: 'image', enabled: true, model: 'image-model', name: `Image ${randomUUID()}`, parameters: { timeoutMs: 60000 }, providerID },
+      input: {
+        capability: 'image',
+        enabled: true,
+        model: 'image-model',
+        name: `Image ${randomUUID()}`,
+        parameters: { timeoutMs: 60000 },
+        providerID,
+      },
       payload,
       req,
       resource: 'profiles',
     })
     imageProfileID = imageProfile.item.id
-    const textRoute = await createPortalAiResource({ input: { enabled: true, operation: 'text', profileID: textProfileID, usageKey: 'chat.reply' }, payload, req, resource: 'routes' })
+    const textRoute = await createPortalAiResource({
+      input: { enabled: true, operation: 'text', profileID: textProfileID, usageKey: 'chat.reply' },
+      payload,
+      req,
+      resource: 'routes',
+    })
     textRouteID = textRoute.item.id
-    const embeddingRoute = await createPortalAiResource({ input: { enabled: true, operation: 'embedding', profileID: embeddingProfileID, usageKey: 'knowledge.embedding' }, payload, req, resource: 'routes' })
+    const embeddingRoute = await createPortalAiResource({
+      input: {
+        enabled: true,
+        operation: 'embedding',
+        profileID: embeddingProfileID,
+        usageKey: 'knowledge.embedding',
+      },
+      payload,
+      req,
+      resource: 'routes',
+    })
     embeddingRouteID = embeddingRoute.item.id
     const imageRoute = await createPortalAiResource({
-      input: { enabled: true, operation: 'image', profileID: imageProfileID, usageKey: 'content.image-generation' },
+      input: {
+        enabled: true,
+        operation: 'image',
+        profileID: imageProfileID,
+        usageKey: 'content.image-generation',
+      },
       payload,
       req,
       resource: 'routes',
@@ -138,8 +250,26 @@ describe.sequential('Portal AI settings', () => {
 
   it('preserves encrypted keys, rejects stale writes, and deletes in dependency order', async () => {
     const req = await createLocalReq({ user: admin }, payload)
-    const before = await payload.findByID({ collection: 'ai-providers', id: providerID, overrideAccess: true })
-    await expect(updatePortalAiResource({ id: providerID, input: { apiKey: '', baseURL: 'https://api.example.invalid/v1', enabled: true, name: 'Stale', updatedAt: 'stale' }, payload, req, resource: 'providers' })).rejects.toMatchObject({ code: 'ai-settings-stale', status: 409 })
+    const before = await payload.findByID({
+      collection: 'ai-providers',
+      id: providerID,
+      overrideAccess: true,
+    })
+    await expect(
+      updatePortalAiResource({
+        id: providerID,
+        input: {
+          apiKey: '',
+          baseURL: 'https://api.example.invalid/v1',
+          enabled: true,
+          name: 'Stale',
+          updatedAt: 'stale',
+        },
+        payload,
+        req,
+        resource: 'providers',
+      }),
+    ).rejects.toMatchObject({ code: 'ai-settings-stale', status: 409 })
 
     const contenders = ['Concurrent provider A', 'Concurrent provider B']
     const outcomes = await Promise.allSettled(
@@ -172,22 +302,72 @@ describe.sequential('Portal AI settings', () => {
     const rejected = outcomes.find(({ status }) => status === 'rejected')
     expect(rejected).toMatchObject({ reason: { code: 'ai-settings-stale', status: 409 } })
 
-    const afterConcurrent = await payload.findByID({ collection: 'ai-providers', id: providerID, overrideAccess: true })
+    const afterConcurrent = await payload.findByID({
+      collection: 'ai-providers',
+      id: providerID,
+      overrideAccess: true,
+    })
     expect(contenders).toContain(afterConcurrent.name)
     expect(afterConcurrent.apiKey).toBe(before.apiKey)
 
-    const updated = await updatePortalAiResource({ id: providerID, input: { apiKey: '', baseURL: 'https://api.example.invalid/v1', enabled: true, name: 'Renamed provider', updatedAt: afterConcurrent.updatedAt }, payload, req, resource: 'providers' })
-    const after = await payload.findByID({ collection: 'ai-providers', id: providerID, overrideAccess: true })
+    const updated = await updatePortalAiResource({
+      id: providerID,
+      input: {
+        apiKey: '',
+        baseURL: 'https://api.example.invalid/v1',
+        enabled: true,
+        name: 'Renamed provider',
+        updatedAt: afterConcurrent.updatedAt,
+      },
+      payload,
+      req,
+      resource: 'providers',
+    })
+    const after = await payload.findByID({
+      collection: 'ai-providers',
+      id: providerID,
+      overrideAccess: true,
+    })
     expect(updated).toMatchObject({ item: { name: 'Renamed provider' } })
     expect(after.apiKey).toBe(before.apiKey)
 
-    for (const [resource, id] of [['routes', textRouteID], ['routes', embeddingRouteID], ['routes', imageRouteID], ['profiles', textProfileID], ['profiles', embeddingProfileID], ['profiles', imageProfileID]] as const) {
+    for (const [resource, id] of [
+      ['routes', textRouteID],
+      ['routes', embeddingRouteID],
+      ['routes', imageRouteID],
+      ['profiles', textProfileID],
+      ['profiles', embeddingProfileID],
+      ['profiles', imageProfileID],
+    ] as const) {
       const collection = resource === 'routes' ? 'ai-usage-routes' : 'ai-model-profiles'
       const current = await payload.findByID({ collection, id, overrideAccess: true })
-      await deletePortalAiResource({ id, input: { updatedAt: current.updatedAt }, payload, req, resource })
+      await deletePortalAiResource({
+        id,
+        input: { updatedAt: current.updatedAt },
+        payload,
+        req,
+        resource,
+      })
     }
-    const currentProvider = await payload.findByID({ collection: 'ai-providers', id: providerID, overrideAccess: true })
-    await deletePortalAiResource({ id: providerID, input: { updatedAt: currentProvider.updatedAt }, payload, req, resource: 'providers' })
-    textRouteID = embeddingRouteID = imageRouteID = textProfileID = embeddingProfileID = imageProfileID = providerID = 0
+    const currentProvider = await payload.findByID({
+      collection: 'ai-providers',
+      id: providerID,
+      overrideAccess: true,
+    })
+    await deletePortalAiResource({
+      id: providerID,
+      input: { updatedAt: currentProvider.updatedAt },
+      payload,
+      req,
+      resource: 'providers',
+    })
+    textRouteID =
+      embeddingRouteID =
+      imageRouteID =
+      textProfileID =
+      embeddingProfileID =
+      imageProfileID =
+      providerID =
+        0
   })
 })

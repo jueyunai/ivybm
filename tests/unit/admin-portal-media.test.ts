@@ -27,7 +27,9 @@ afterEach(() => {
 describe('Portal media workspace', () => {
   it('only accepts safe same-origin or HTTP(S) media preview URLs', () => {
     expect(safeMediaUrl('/media/generated.png')).toBe('/media/generated.png')
-    expect(safeMediaUrl('https://cdn.example.invalid/generated.png')).toBe('https://cdn.example.invalid/generated.png')
+    expect(safeMediaUrl('https://cdn.example.invalid/generated.png')).toBe(
+      'https://cdn.example.invalid/generated.png',
+    )
     expect(safeMediaUrl('//evil.invalid/generated.png')).toBeNull()
     expect(safeMediaUrl('javascript:alert(1)')).toBeNull()
     expect(safeMediaUrl('/media\\generated.png')).toBeNull()

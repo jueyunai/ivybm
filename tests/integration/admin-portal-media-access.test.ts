@@ -6,8 +6,14 @@ import { createLocalReq, getPayload, type Payload } from 'payload'
 
 import { getMediaPage, loadMediaPageData } from '@/admin-portal/modules/media/getMediaPage'
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
-import { adoptContentStudioImage, type ContentStudioPayload } from '@/admin-portal/modules/content-studio/contentStudioCommands'
-import { loadContentStudioPageData, parseContentStudioQuery } from '@/admin-portal/modules/content-studio/getContentStudioPage'
+import {
+  adoptContentStudioImage,
+  type ContentStudioPayload,
+} from '@/admin-portal/modules/content-studio/contentStudioCommands'
+import {
+  loadContentStudioPageData,
+  parseContentStudioQuery,
+} from '@/admin-portal/modules/content-studio/getContentStudioPage'
 import { createPortalMedia, deletePortalMedia, updatePortalMedia } from '@/modules/media'
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
@@ -127,12 +133,14 @@ describe.sequential('Portal media access', () => {
     if (!payload) return
 
     for (const id of createdContentIDs.reverse()) {
-      await payload.delete({
-        collection: 'generated-contents',
-        context: { ...contentStudioInternalWriteContext, disableRevalidate: true },
-        id,
-        overrideAccess: true,
-      }).catch(() => undefined)
+      await payload
+        .delete({
+          collection: 'generated-contents',
+          context: { ...contentStudioInternalWriteContext, disableRevalidate: true },
+          id,
+          overrideAccess: true,
+        })
+        .catch(() => undefined)
     }
     for (const id of createdMediaIDs.reverse()) {
       await payload
@@ -265,11 +273,22 @@ describe.sequential('Portal media access', () => {
   it('lets an operator adopt a private image into a draft and reads its safe preview', async () => {
     const image = await sharp({
       create: { background: '#315868', channels: 3, height: 320, width: 480 },
-    }).png().toBuffer()
+    })
+      .png()
+      .toBuffer()
     const req = await requestFor(operator)
     const media = await createPortalMedia({
-      file: { data: image, mimetype: 'image/png', name: `portal-adoption-${randomUUID()}.png`, size: image.length },
-      input: { alt: `${queryToken} generated draft image`, isPublic: false, source: 'IVYBM generated integration fixture' },
+      file: {
+        data: image,
+        mimetype: 'image/png',
+        name: `portal-adoption-${randomUUID()}.png`,
+        size: image.length,
+      },
+      input: {
+        alt: `${queryToken} generated draft image`,
+        isPublic: false,
+        source: 'IVYBM generated integration fixture',
+      },
       payload,
       req,
     })
@@ -300,7 +319,12 @@ describe.sequential('Portal media access', () => {
       req,
     })
     expect(adopted).toMatchObject({ id: content.id, status: 'draft' })
-    const stored = await payload.findByID({ collection: 'generated-contents', depth: 0, id: content.id, overrideAccess: true })
+    const stored = await payload.findByID({
+      collection: 'generated-contents',
+      depth: 0,
+      id: content.id,
+      overrideAccess: true,
+    })
     expect(stored.assets).toEqual([media.id])
 
     const page = await loadContentStudioPageData({

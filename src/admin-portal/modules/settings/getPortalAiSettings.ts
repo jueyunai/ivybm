@@ -1,21 +1,14 @@
 import type { Payload, PayloadRequest } from 'payload'
 
 import { portalAiReadinessCredentialReadContext } from '@/access/aiCredentials'
-import {
-  canDecryptAiCredential,
-  readAiConfigurationEncryptionKey,
-} from '@/modules/ai/credentials'
+import { canDecryptAiCredential, readAiConfigurationEncryptionKey } from '@/modules/ai/credentials'
 import { AI_USAGE_KEYS } from '@/modules/ai/registry'
 import type { OpenAICompatibleTextGenerationContract } from '@/modules/ai/providers/openaiCompatible'
 
 export type PortalAiCapability = 'embedding' | 'image' | 'text'
 export type PortalAiSettingsAccess = 'admin' | 'admin-only'
 export type PortalAiReadinessReason =
-  | 'credential'
-  | 'encryption-key'
-  | 'profile'
-  | 'provider'
-  | 'route'
+  'credential' | 'encryption-key' | 'profile' | 'provider' | 'route'
 
 export interface PortalAiProviderSummary {
   apiKeyConfigured: boolean
@@ -127,9 +120,7 @@ export const mapPortalAiProvider = (value: unknown): PortalAiProviderSummary => 
     name: text(provider.name),
     protocol: 'openai-compatible',
     textGenerationContract:
-      provider.textGenerationContract === 'chat-completions'
-        ? 'chat-completions'
-        : 'responses',
+      provider.textGenerationContract === 'chat-completions' ? 'chat-completions' : 'responses',
     updatedAt: text(provider.updatedAt),
   }
 }
@@ -142,11 +133,12 @@ export const mapPortalAiProfile = (
   const parameters = record(profile.parameters)
   const providerID = portalAiRelationshipID(profile.provider)
   return {
-    capability: profile.capability === 'embedding'
-      ? 'embedding'
-      : profile.capability === 'image'
-        ? 'image'
-        : 'text',
+    capability:
+      profile.capability === 'embedding'
+        ? 'embedding'
+        : profile.capability === 'image'
+          ? 'image'
+          : 'text',
     enabled: profile.enabled === true,
     id: portalAiRelationshipID(profile.id),
     model: text(profile.model),
@@ -175,11 +167,12 @@ export const mapPortalAiRoute = (
   return {
     enabled: route.enabled === true,
     id: portalAiRelationshipID(route.id),
-    operation: route.operation === 'embedding'
-      ? 'embedding'
-      : route.operation === 'image'
-        ? 'image'
-        : 'text',
+    operation:
+      route.operation === 'embedding'
+        ? 'embedding'
+        : route.operation === 'image'
+          ? 'image'
+          : 'text',
     profileID,
     profileName: profiles.find((profile) => profile.id === profileID)?.name ?? null,
     updatedAt: text(route.updatedAt),
@@ -233,7 +226,10 @@ export const buildPortalAiReadiness = ({
   providers,
   readableProviderIDs,
   routes,
-}: Pick<PortalAiSettingsSummary, 'encryptionKeyConfigured' | 'profiles' | 'providers' | 'routes'> & {
+}: Pick<
+  PortalAiSettingsSummary,
+  'encryptionKeyConfigured' | 'profiles' | 'providers' | 'routes'
+> & {
   readableProviderIDs: ReadonlySet<number>
 }): PortalAiReadinessSummary[] => {
   const textReason = routeReadiness({
@@ -298,66 +294,72 @@ export const getPortalAiSettings = async ({
     query: { ...req.query },
   } as PayloadRequest
   const [providerDocuments, profileDocuments, routeDocuments] = await Promise.all([
-    readAllPortalAiPages((page) => payload.find({
-      collection: 'ai-providers',
-      context: portalAiReadinessCredentialReadContext,
-      depth: 0,
-      limit: 100,
-      overrideAccess: false,
-      page,
-      pagination: true,
-      req: credentialReadReq,
-      select: {
-        apiKey: true,
-        apiKeyConfigured: true,
-        baseURL: true,
-        enabled: true,
-        id: true,
-        name: true,
-        protocol: true,
-        textGenerationContract: true,
-        updatedAt: true,
-      },
-      sort: 'name',
-    })),
-    readAllPortalAiPages((page) => payload.find({
-      collection: 'ai-model-profiles',
-      depth: 0,
-      limit: 100,
-      overrideAccess: false,
-      page,
-      pagination: true,
-      req,
-      select: {
-        capability: true,
-        enabled: true,
-        id: true,
-        model: true,
-        name: true,
-        parameters: true,
-        provider: true,
-        updatedAt: true,
-      },
-      sort: 'name',
-    })),
-    readAllPortalAiPages((page) => payload.find({
-      collection: 'ai-usage-routes',
-      depth: 0,
-      limit: 100,
-      overrideAccess: false,
-      page,
-      pagination: true,
-      req,
-      select: {
-        enabled: true,
-        id: true,
-        operation: true,
-        profile: true,
-        updatedAt: true,
-        usageKey: true,
-      },
-      sort: 'usageKey',
-    })),
+    readAllPortalAiPages((page) =>
+      payload.find({
+        collection: 'ai-providers',
+        context: portalAiReadinessCredentialReadContext,
+        depth: 0,
+        limit: 100,
+        overrideAccess: false,
+        page,
+        pagination: true,
+        req: credentialReadReq,
+        select: {
+          apiKey: true,
+          apiKeyConfigured: true,
+          baseURL: true,
+          enabled: true,
+          id: true,
+          name: true,
+          protocol: true,
+          textGenerationContract: true,
+          updatedAt: true,
+        },
+        sort: 'name',
+      }),
+    ),
+    readAllPortalAiPages((page) =>
+      payload.find({
+        collection: 'ai-model-profiles',
+        depth: 0,
+        limit: 100,
+        overrideAccess: false,
+        page,
+        pagination: true,
+        req,
+        select: {
+          capability: true,
+          enabled: true,
+          id: true,
+          model: true,
+          name: true,
+          parameters: true,
+          provider: true,
+          updatedAt: true,
+        },
+        sort: 'name',
+      }),
+    ),
+    readAllPortalAiPages((page) =>
+      payload.find({
+        collection: 'ai-usage-routes',
+        depth: 0,
+        limit: 100,
+        overrideAccess: false,
+        page,
+        pagination: true,
+        req,
+        select: {
+          enabled: true,
+          id: true,
+          operation: true,
+          profile: true,
+          updatedAt: true,
+          usageKey: true,
+        },
+        sort: 'usageKey',
+      }),
+    ),
   ])
   const providers = providerDocuments.map(mapPortalAiProvider)
   const profiles = profileDocuments.map((profile) => mapPortalAiProfile(profile, providers))

@@ -119,8 +119,7 @@ export const contentStudioMessages = {
     imageGeneration: '图片生成',
     imageGenerationDescription:
       '通过已配置的服务端供应商生成私有草稿图片；只有明确点击采用后才会关联内容。',
-    imagePreviewUnavailable:
-      '图片已保存，但没有可用的安全预览地址；请刷新后从素材库选择。',
+    imagePreviewUnavailable: '图片已保存，但没有可用的安全预览地址；请刷新后从素材库选择。',
     imagePrompt: '图片提示词',
     imageSize: '图片尺寸',
     noReference: '不使用参考图',

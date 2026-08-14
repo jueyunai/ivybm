@@ -6,7 +6,9 @@ import { AiUsageLogs } from '@/collections/AiUsageLogs'
 import { AiUsageRoutes } from '@/collections/AiUsageRoutes'
 
 const namedField = (collection: CollectionConfig, name: string) => {
-  const field = collection.fields.find((candidate) => 'name' in candidate && candidate.name === name)
+  const field = collection.fields.find(
+    (candidate) => 'name' in candidate && candidate.name === name,
+  )
   if (!field || !('name' in field)) throw new Error(`Missing field ${name}`)
   return field
 }

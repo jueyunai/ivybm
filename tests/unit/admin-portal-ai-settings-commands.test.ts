@@ -25,37 +25,105 @@ describe('Portal AI settings commands', () => {
       }),
     ).rejects.toMatchObject({ code: 'ai-settings-validation-failed', status: 400 })
 
-    const create = vi.fn().mockResolvedValue({ enabled: true, id: 10, operation: 'image', profile: 8, updatedAt: '', usageKey: 'content.image-generation' })
-    await expect(createPortalAiResource({
-      input: { enabled: true, operation: 'image', profileID: 8, usageKey: 'content.image-generation' },
-      payload: { create, findByID: vi.fn().mockResolvedValue({ id: 8, name: 'Image' }) } as unknown as Payload,
-      req,
-      resource: 'routes',
-    })).resolves.toMatchObject({ item: { operation: 'image' } })
+    const create = vi.fn().mockResolvedValue({
+      enabled: true,
+      id: 10,
+      operation: 'image',
+      profile: 8,
+      updatedAt: '',
+      usageKey: 'content.image-generation',
+    })
+    await expect(
+      createPortalAiResource({
+        input: {
+          enabled: true,
+          operation: 'image',
+          profileID: 8,
+          usageKey: 'content.image-generation',
+        },
+        payload: {
+          create,
+          findByID: vi.fn().mockResolvedValue({ id: 8, name: 'Image' }),
+        } as unknown as Payload,
+        req,
+        resource: 'routes',
+      }),
+    ).resolves.toMatchObject({ item: { operation: 'image' } })
   })
 
   it('creates an image model without text or embedding parameters', async () => {
-    const create = vi.fn().mockResolvedValue({ capability: 'image', enabled: true, id: 11, model: 'image-model', name: 'Image', parameters: { reasoningEffort: 'medium', reasoningEnabled: false, timeoutMs: 60_000 }, provider: 4, updatedAt: '' })
+    const create = vi.fn().mockResolvedValue({
+      capability: 'image',
+      enabled: true,
+      id: 11,
+      model: 'image-model',
+      name: 'Image',
+      parameters: { reasoningEffort: 'medium', reasoningEnabled: false, timeoutMs: 60_000 },
+      provider: 4,
+      updatedAt: '',
+    })
     await createPortalAiResource({
-      input: { capability: 'image', enabled: true, model: 'image-model', name: 'Image', parameters: { timeoutMs: 60_000 }, providerID: 4 },
-      payload: { create, findByID: vi.fn().mockResolvedValue({ id: 4, name: 'Primary' }) } as unknown as Payload,
+      input: {
+        capability: 'image',
+        enabled: true,
+        model: 'image-model',
+        name: 'Image',
+        parameters: { timeoutMs: 60_000 },
+        providerID: 4,
+      },
+      payload: {
+        create,
+        findByID: vi.fn().mockResolvedValue({ id: 4, name: 'Primary' }),
+      } as unknown as Payload,
       req,
       resource: 'profiles',
     })
 
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ capability: 'image', parameters: { reasoningEffort: 'medium', reasoningEnabled: false, timeoutMs: 60_000 } }) }))
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          capability: 'image',
+          parameters: { reasoningEffort: 'medium', reasoningEnabled: false, timeoutMs: 60_000 },
+        }),
+      }),
+    )
   })
 
   it('creates providers through current access-controlled request and never returns the key', async () => {
-    const create = vi.fn().mockResolvedValue({ apiKey: 'v1:ciphertext', apiKeyConfigured: true, baseURL: 'https://api.example.invalid/v1', enabled: true, id: 4, name: 'Primary', protocol: 'openai-compatible', updatedAt: '' })
+    const create = vi.fn().mockResolvedValue({
+      apiKey: 'v1:ciphertext',
+      apiKeyConfigured: true,
+      baseURL: 'https://api.example.invalid/v1',
+      enabled: true,
+      id: 4,
+      name: 'Primary',
+      protocol: 'openai-compatible',
+      updatedAt: '',
+    })
     const result = await createPortalAiResource({
-      input: { apiKey: 'submitted-secret', baseURL: 'https://api.example.invalid/v1', enabled: true, name: 'Primary', textGenerationContract: 'chat-completions' },
+      input: {
+        apiKey: 'submitted-secret',
+        baseURL: 'https://api.example.invalid/v1',
+        enabled: true,
+        name: 'Primary',
+        textGenerationContract: 'chat-completions',
+      },
       payload: { create } as unknown as Payload,
       req,
       resource: 'providers',
     })
 
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({ collection: 'ai-providers', data: expect.objectContaining({ apiKey: 'submitted-secret', textGenerationContract: 'chat-completions' }), overrideAccess: false, req }))
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'ai-providers',
+        data: expect.objectContaining({
+          apiKey: 'submitted-secret',
+          textGenerationContract: 'chat-completions',
+        }),
+        overrideAccess: false,
+        req,
+      }),
+    )
     expect(JSON.stringify(result)).not.toMatch(/submitted-secret|ciphertext/)
   })
 
@@ -115,9 +183,7 @@ describe('Portal AI settings commands', () => {
 
   it('returns related names after updating profiles and routes', async () => {
     const profileFindByID = vi.fn(async ({ collection }: { collection: string }) =>
-      collection === 'ai-model-profiles'
-        ? { updatedAt: 'current' }
-        : { id: 4, name: 'Primary' },
+      collection === 'ai-model-profiles' ? { updatedAt: 'current' } : { id: 4, name: 'Primary' },
     )
     const profile = await updatePortalAiResource({
       id: 8,
@@ -154,9 +220,7 @@ describe('Portal AI settings commands', () => {
       resource: 'profiles',
     })
     const routeFindByID = vi.fn(async ({ collection }: { collection: string }) =>
-      collection === 'ai-usage-routes'
-        ? { updatedAt: 'current' }
-        : { id: 8, name: 'Text' },
+      collection === 'ai-usage-routes' ? { updatedAt: 'current' } : { id: 8, name: 'Text' },
     )
     const route = await updatePortalAiResource({
       id: 9,
@@ -193,11 +257,25 @@ describe('Portal AI settings commands', () => {
   })
 
   it('retains an existing key by omitting blank API key updates', async () => {
-    const update = vi.fn().mockResolvedValue({ apiKeyConfigured: true, baseURL: 'https://api.example.invalid/v1', enabled: true, id: 4, name: 'Primary', protocol: 'openai-compatible', updatedAt: '' })
+    const update = vi.fn().mockResolvedValue({
+      apiKeyConfigured: true,
+      baseURL: 'https://api.example.invalid/v1',
+      enabled: true,
+      id: 4,
+      name: 'Primary',
+      protocol: 'openai-compatible',
+      updatedAt: '',
+    })
     const findByID = vi.fn().mockResolvedValue({ updatedAt: '2026-08-05T00:00:00.000Z' })
     await updatePortalAiResource({
       id: 4,
-      input: { apiKey: '', baseURL: 'https://api.example.invalid/v1', enabled: true, name: 'Primary', updatedAt: '2026-08-05T00:00:00.000Z' },
+      input: {
+        apiKey: '',
+        baseURL: 'https://api.example.invalid/v1',
+        enabled: true,
+        name: 'Primary',
+        updatedAt: '2026-08-05T00:00:00.000Z',
+      },
       payload: { findByID, update } as unknown as Payload,
       req,
       resource: 'providers',
@@ -210,8 +288,17 @@ describe('Portal AI settings commands', () => {
     await expect(
       updatePortalAiResource({
         id: 4,
-        input: { apiKey: '', baseURL: 'https://api.example.invalid/v1', enabled: true, name: 'Primary', updatedAt: 'stale' },
-        payload: { findByID: vi.fn().mockResolvedValue({ updatedAt: 'current' }), update } as unknown as Payload,
+        input: {
+          apiKey: '',
+          baseURL: 'https://api.example.invalid/v1',
+          enabled: true,
+          name: 'Primary',
+          updatedAt: 'stale',
+        },
+        payload: {
+          findByID: vi.fn().mockResolvedValue({ updatedAt: 'current' }),
+          update,
+        } as unknown as Payload,
         req,
         resource: 'providers',
       }),

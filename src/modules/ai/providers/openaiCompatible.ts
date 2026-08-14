@@ -66,9 +66,8 @@ const extractResponseText = (body: UnknownRecord): string => {
 }
 
 const extractChatCompletionText = (body: UnknownRecord): string => {
-  const choice = Array.isArray(body.choices) && isRecord(body.choices[0])
-    ? body.choices[0]
-    : undefined
+  const choice =
+    Array.isArray(body.choices) && isRecord(body.choices[0]) ? body.choices[0] : undefined
   const message = choice && isRecord(choice.message) ? choice.message : undefined
   return message && typeof message.content === 'string' ? message.content : ''
 }
@@ -243,9 +242,7 @@ export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProv
           signal: input.signal,
         },
       )
-      const text = chatCompletions
-        ? extractChatCompletionText(body)
-        : extractResponseText(body)
+      const text = chatCompletions ? extractChatCompletionText(body) : extractResponseText(body)
       if (!text) {
         throw new AiProviderError('invalid_response', 'AI provider returned no output text')
       }
