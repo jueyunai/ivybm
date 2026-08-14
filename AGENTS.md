@@ -15,13 +15,13 @@
 
 ## 仓库与分支
 
-- 仓库必须保持 private，禁止改为 public。
+- 仓库可根据项目阶段保持 private 或 public；切换为 public 前必须完成公开前安全审计、凭据扫描和敏感资料确认，并由负责人明确批准。
 - `main` 是唯一长期分支，始终保持可构建、可部署。
 - 只读审查可以停留在 `main`；任何文件修改前必须从最新 `origin/main` 创建短分支。
 - 功能分支使用 `feat/task-<编号>-<简述>`，修复使用 `fix/<简述>`，文档使用 `docs/<简述>`。
 - 禁止直接向 `main` push，禁止 force push 或改写 `main` 历史。
 - 除非用户明确要求，代理不得自行 push、创建 PR、合并 PR 或部署 production。
-- GitHub 免费私有仓库无法启用服务端 branch protection，因此必须安装并遵守 `.githooks/pre-push`。
+- 当仓库为 private 且当前 GitHub 套餐无法启用服务端 branch protection 时，必须安装并遵守 `.githooks/pre-push`；仓库公开后仍保留本地 hook 和 PR review 约束。
 
 ## 开工流程
 
