@@ -648,9 +648,10 @@ describe('AI gateway contract', () => {
     expect(editBody.get('image')).toBeInstanceOf(Blob)
   })
 
-  it('fails closed for URL-only and malformed provider image responses', async () => {
+  it('fails closed for URL-only, multiple, and malformed provider image responses', async () => {
     const responses = [
       { data: [{ url: 'https://untrusted.example.invalid/image.png' }] },
+      { data: [imagesFixture.data[0], imagesFixture.data[0]] },
       { data: [{ b64_json: 'not-valid-base64!' }] },
     ]
 

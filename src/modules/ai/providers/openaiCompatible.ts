@@ -114,7 +114,13 @@ const extractImage = (
 ): ProviderGenerateImageResult['image'] & {
   revisedPrompt?: string
 } => {
-  const item = Array.isArray(body.data) && isRecord(body.data[0]) ? body.data[0] : undefined
+  if (!Array.isArray(body.data) || body.data.length !== 1) {
+    throw new AiProviderError(
+      'invalid_response',
+      'AI provider must return exactly one inline image',
+    )
+  }
+  const item = isRecord(body.data[0]) ? body.data[0] : undefined
   if (!item || typeof item.b64_json !== 'string') {
     throw new AiProviderError('invalid_response', 'AI provider returned no inline image')
   }
