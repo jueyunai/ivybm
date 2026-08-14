@@ -5,6 +5,7 @@ import { sql, type PostgresAdapter } from '@payloadcms/db-postgres'
 import type { Payload, PayloadRequest } from 'payload'
 
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
+import { getRoleUser } from '@/access/roles'
 import { getSiteOrigin } from '@/lib/seo'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import {
@@ -370,6 +371,14 @@ export const publishContentStudioNow = async ({
       503,
     )
   }
+  const actor = getRoleUser(req.user)
+  if (!actor || (actor.role !== 'admin' && actor.role !== 'operator')) {
+    throw new ContentStudioCommandError(
+      'content-studio-forbidden',
+      'Content Studio access denied',
+      403,
+    )
+  }
   const baseKey = commandKey(input.idempotencyKey)
   await lockPublicationCommand(payload, req, baseKey)
   await lockPublicationContent(payload, req, id)
@@ -394,7 +403,7 @@ export const publishContentStudioNow = async ({
       409,
     )
   }
-  const actorId = positiveID(req.user?.id, 'actor')
+  const actorId = positiveID(actor.id, 'actor')
   const accountResolver = new PayloadPublishingAccountResolver({ payload })
   const resolutions = await Promise.all(
     requestedAccounts(input.targetAccountIds).map(async (platformAccountId) => {
@@ -402,8 +411,12 @@ export const publishContentStudioNow = async ({
         collection: 'platform-accounts',
         depth: 0,
         id: platformAccountId,
-        overrideAccess: false,
+        overrideAccess: true,
         req,
+        select: {
+          accountKind: true,
+          authorizationRevision: true,
+        },
       })
       const platform: PublishingPlatform | null =
         account.accountKind === 'facebook-page'

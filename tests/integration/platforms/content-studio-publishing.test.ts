@@ -23,6 +23,7 @@ import config from '@/payload.config'
 
 let payload: Payload
 let admin: User
+let operator: User
 let media: Media
 let knowledgeDocumentID = 0
 let originalEncryptionKey: string | undefined
@@ -109,14 +110,16 @@ const invoke = async ({
   now = new Date('2026-08-13T01:30:00.000Z'),
   operationAfter,
   targetAccountIds = accountIDs,
+  user = admin,
 }: {
   content: GeneratedContent
   idempotencyKey: string
   now?: Date
   operationAfter?: () => never
   targetAccountIds?: number[]
+  user?: User
 }) => {
-  const req = await createLocalReq({ user: admin }, payload)
+  const req = await createLocalReq({ user }, payload)
   const input = {
     action: 'publish-now',
     idempotencyKey,
@@ -280,6 +283,16 @@ describe.sequential('Content Studio immediate platform publication', () => {
       },
       overrideAccess: true,
     })
+    operator = await payload.create({
+      collection: 'users',
+      context: { skipAudit: true },
+      data: {
+        email: `content-studio-operator-${randomUUID()}@example.invalid`,
+        password: 'content-studio-operator-test-password',
+        role: 'operator',
+      },
+      overrideAccess: true,
+    })
     const knowledgeDocument = await payload.create({
       collection: 'knowledge-documents',
       context: { skipAudit: true },
@@ -365,7 +378,9 @@ describe.sequential('Content Studio immediate platform publication', () => {
 
   afterAll(async () => {
     if (payload) {
-      await pool().query('DELETE FROM portal_command_receipts WHERE actor_id = $1', [admin.id])
+      await pool().query('DELETE FROM portal_command_receipts WHERE actor_id = ANY($1::int[])', [
+        [admin.id, operator.id],
+      ])
       await pool().query(
         'DELETE FROM publish_logs WHERE publish_job_id IN (SELECT id FROM publish_jobs WHERE content_id = ANY($1::int[]))',
         [contentIDs],
@@ -396,7 +411,7 @@ describe.sequential('Content Studio immediate platform publication', () => {
       await payload.delete({
         collection: 'audit-logs',
         overrideAccess: true,
-        where: { actor: { equals: admin.id } },
+        where: { actor: { in: [admin.id, operator.id] } },
       })
       await payload.delete({
         collection: 'knowledge-documents',
@@ -407,8 +422,8 @@ describe.sequential('Content Studio immediate platform publication', () => {
       await payload.delete({
         collection: 'users',
         context: { skipAudit: true },
-        id: admin.id,
         overrideAccess: true,
+        where: { id: { in: [admin.id, operator.id] } },
       })
       await payload.destroy()
     }
@@ -466,6 +481,25 @@ describe.sequential('Content Studio immediate platform publication', () => {
           jobPayload.expectedExecutionRevision === 0,
       ),
     ).toBe(true)
+  })
+
+  it('lets an operator publish through the server authority without PlatformAccounts read access', async () => {
+    const content = await createApprovedContent('operator publication')
+    const publication = await invoke({
+      content,
+      idempotencyKey: `portal-content-studio:operator-publish:${randomUUID()}`,
+      user: operator,
+    })
+
+    expect(publication.jobs).toHaveLength(3)
+    const jobs = await payload.find({
+      collection: 'publish-jobs',
+      depth: 0,
+      overrideAccess: true,
+      pagination: false,
+      where: { content: { equals: content.id } },
+    })
+    expect(jobs.docs).toHaveLength(3)
   })
 
   it('prepares an adopted private AI image for explicit publication and records the public transition', async () => {
