@@ -20,10 +20,18 @@ describe('AI image capability migration', () => {
     expect(migration).toContain('enum_ai_model_profiles_capability')
     expect(migration).toContain('enum_ai_usage_routes_operation')
     expect(migration).toContain('enum_ai_usage_logs_operation')
+    expect(migration).toContain(
+      'Cannot roll back image generation migration while image configuration or usage data exists',
+    )
+    expect(migration.indexOf('Cannot roll back image generation migration')).toBeLessThan(
+      migration.indexOf('ALTER TABLE "ai_model_profiles" ALTER COLUMN "capability"'),
+    )
     expect(migration).not.toContain('publish_jobs')
     expect(migration).not.toContain('publish_logs')
     expect(snapshot.enums?.['public.enum_ai_model_profiles_capability']?.values).toContain('image')
     expect(snapshot.enums?.['public.enum_ai_usage_routes_operation']?.values).toContain('image')
-    expect(snapshot.enums?.['public.enum_ai_usage_logs_operation']?.values).toContain('generateImage')
+    expect(snapshot.enums?.['public.enum_ai_usage_logs_operation']?.values).toContain(
+      'generateImage',
+    )
   })
 })

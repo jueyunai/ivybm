@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { getPayload, type Payload } from 'payload'
+import { createLocalReq, getPayload, initTransaction, killTransaction, type Payload } from 'payload'
 import { NextRequest } from 'next/server'
-import type { PostgresAdapter } from '@payloadcms/db-postgres'
+import type { MigrateDownArgs, PostgresAdapter } from '@payloadcms/db-postgres'
 
 import { POST as graphQLPost } from '@/app/(payload)/api/graphql/route'
 import { GET as restGet } from '@/app/(payload)/api/[...slug]/route'
@@ -11,6 +11,7 @@ import type { AiProvider } from '@/modules/ai/gateway'
 import { AiConfigurationError } from '@/modules/ai/config'
 import { AI_USAGE_KEYS, resolveAiGateway } from '@/modules/ai/registry'
 import type { OpenAICompatibleProviderOptions } from '@/modules/ai/providers/openaiCompatible'
+import { down as removeImageGenerationContract } from '@/migrations/20260813_055309_image_generation_provider_contract'
 import config from '@/payload.config'
 
 let payload: Payload
@@ -383,6 +384,52 @@ describe.sequential('AI control plane', () => {
     expect(imageProfile.capability).toBe('image')
     expect(imageRoute.operation).toBe('image')
     expect(usage).toMatchObject({ operation: 'generateImage', totalTokens: 0 })
+  })
+
+  it('refuses an image schema downgrade before DDL while image data exists', async () => {
+    const request = await createLocalReq({}, payload)
+    await initTransaction(request)
+    const transactionID = await request.transactionID
+    const transaction = transactionID
+      ? (payload.db as unknown as PostgresAdapter).sessions[String(transactionID)]?.db
+      : undefined
+    if (!transaction) throw new Error('Expected an isolated image migration transaction')
+
+    try {
+      await expect(
+        removeImageGenerationContract({
+          db: transaction as MigrateDownArgs['db'],
+          payload,
+          req: request,
+        }),
+      ).rejects.toThrow(
+        'Cannot roll back image generation migration while image configuration or usage data exists',
+      )
+    } finally {
+      await killTransaction(request)
+    }
+
+    await expect(
+      payload.findByID({
+        collection: 'ai-model-profiles',
+        id: imageProfileID,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ capability: 'image' })
+    await expect(
+      payload.findByID({
+        collection: 'ai-usage-routes',
+        id: imageRouteID,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ operation: 'image' })
+    await expect(
+      payload.findByID({
+        collection: 'ai-usage-logs',
+        id: createdUsageLogIDs.at(-1),
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ operation: 'generateImage' })
   })
 
   it('resolves the persisted route snapshot and fails closed for a disabled route', async () => {

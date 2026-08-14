@@ -11,6 +11,15 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
 
 export async function down({ db, payload, req }: MigrateDownArgs): Promise<void> {
   await db.execute(sql`
+   DO $$
+   BEGIN
+     IF EXISTS (SELECT 1 FROM "ai_model_profiles" WHERE "capability" = 'image')
+       OR EXISTS (SELECT 1 FROM "ai_usage_routes" WHERE "operation" = 'image')
+       OR EXISTS (SELECT 1 FROM "ai_usage_logs" WHERE "operation" = 'generateImage') THEN
+       RAISE EXCEPTION 'Cannot roll back image generation migration while image configuration or usage data exists';
+     END IF;
+   END $$;`)
+  await db.execute(sql`
    ALTER TABLE "ai_model_profiles" ALTER COLUMN "capability" SET DATA TYPE text;
   DROP TYPE "public"."enum_ai_model_profiles_capability";
   CREATE TYPE "public"."enum_ai_model_profiles_capability" AS ENUM('text', 'embedding');
