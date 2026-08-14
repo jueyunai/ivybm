@@ -554,13 +554,6 @@ type ContentStudioGenerationInput = {
 const parseGenerationInput = (input: unknown): ContentStudioGenerationInput => {
   const record = asRecord(input)
   const knowledgeSources = idList(record.knowledgeSources, 'knowledgeSources', 20)
-  if (!knowledgeSources.length) {
-    throw new ContentStudioCommandError(
-      'content-studio-generation-sources-required',
-      'Select at least one reviewed knowledge source before generating a draft',
-      400,
-    )
-  }
   return {
     assets: idList(record.assets, 'assets', 100),
     brief: stringValue(record, 'brief', { max: 2_000, required: true }),
@@ -657,8 +650,11 @@ const normalizeGeneratedDraft = ({
 }): ContentStudioDraft => {
   const record = asRecord(generated)
   const allowedSourceLabels = new Set(sources.map(({ label }) => label))
-  const references = sourceReferences(record.sourceReferences)
-  if (!references.length || references.some(({ source }) => !allowedSourceLabels.has(source))) {
+  const references = sources.length > 0 ? sourceReferences(record.sourceReferences) : []
+  if (
+    sources.length > 0 &&
+    (!references.length || references.some(({ source }) => !allowedSourceLabels.has(source)))
+  ) {
     throw new ContentStudioCommandError(
       'content-studio-ai-invalid-response',
       'The AI response did not return traceable source references',
@@ -672,7 +668,7 @@ const normalizeGeneratedDraft = ({
     contentType: input.contentType,
     knowledgeSources: input.knowledgeSources,
     platform: input.platform,
-    sourceReferences: references,
+    sourceReferences: sources.length > 0 ? references : [],
     title: record.title,
   })
 }
@@ -784,7 +780,9 @@ export async function generateContentStudioDraft({
   })
   if (duplicate) return { content: duplicate, duplicate: true }
 
-  const sources = await generationSources({ ids: input.knowledgeSources, payload, req })
+  const sources = input.knowledgeSources.length
+    ? await generationSources({ ids: input.knowledgeSources, payload, req })
+    : []
   const sourceContext = sources
     .map(({ content, label }, index) => `SOURCE ${index + 1}: ${label}\n${content.slice(0, 6_000)}`)
     .join('\n\n')
@@ -796,13 +794,21 @@ export async function generateContentStudioDraft({
       routes: [{ operation: 'text', usageKey: AI_USAGE_KEYS.chatReply }],
     })
     const result = await gateway.generateText({
-      input: `Content brief:\n${input.brief}\n\nApproved sources:\n${sourceContext}`,
-      instructions: [
-        `Create a ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
-        'Use only the approved sources supplied in the request. Do not invent facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
-        'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[{"claim":"...","source":"..."}]}.',
-        `Each source value must be exactly one of: ${sources.map(({ label }) => JSON.stringify(label)).join(', ')}.`,
-      ].join('\n'),
+      input: sources.length
+        ? `Content brief:\n${input.brief}\n\nApproved sources:\n${sourceContext}`
+        : `Content brief:\n${input.brief}`,
+      instructions: sources.length
+        ? [
+            `Create a ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
+            'Use only the approved sources supplied in the request. Do not invent facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
+            'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[{"claim":"...","source":"..."}]}.',
+            `Each source value must be exactly one of: ${sources.map(({ label }) => JSON.stringify(label)).join(', ')}.`,
+          ].join('\n')
+        : [
+            `Create a general ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
+            'No knowledge source was selected. Keep the copy general: do not invent product facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
+            'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[]}.',
+          ].join('\n'),
       maxOutputTokens: 1_800,
       onDispatch: onProviderDispatch,
       temperature: 0.2,

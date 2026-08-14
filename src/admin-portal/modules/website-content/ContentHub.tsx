@@ -437,7 +437,6 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
       {notice ? <ContentEditorNotice notice={notice} onDismiss={() => showNotice(null)} /> : null}
       <header className="portal-page__intro portal-content__intro">
         <div>
-          <p className="portal-page__eyebrow">{messages.eyebrow}</p>
           <h2>{messages.title}</h2>
           <p>{messages.description}</p>
         </div>

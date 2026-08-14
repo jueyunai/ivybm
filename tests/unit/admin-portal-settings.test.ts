@@ -44,7 +44,15 @@ const readyAiSettings = {
       id: 3,
       model: 'image-example',
       name: 'Primary image',
-      parameters: { dimensions: null, maxOutputTokens: null, reasoningEffort: 'medium', reasoningEnabled: false, temperature: null, timeoutMs: 60000, topP: null },
+      parameters: {
+        dimensions: null,
+        maxOutputTokens: null,
+        reasoningEffort: 'medium',
+        reasoningEnabled: false,
+        temperature: null,
+        timeoutMs: 60000,
+        topP: null,
+      },
       providerID: 1,
       providerName: 'Primary provider',
       updatedAt: '2026-08-12T00:00:00.000Z',
@@ -64,10 +72,28 @@ const readyAiSettings = {
   ],
   readiness: [
     { key: 'customer-chat' as const, reason: 'route' as const, status: 'action-required' as const },
-    { key: 'content-studio' as const, reason: null, status: 'configured-pending-verification' as const },
-    { key: 'knowledge-index' as const, reason: 'route' as const, status: 'action-required' as const },
+    {
+      key: 'content-studio' as const,
+      reason: null,
+      status: 'configured-pending-verification' as const,
+    },
+    {
+      key: 'knowledge-index' as const,
+      reason: 'route' as const,
+      status: 'action-required' as const,
+    },
   ],
-  routes: [{ enabled: true, id: 4, operation: 'image' as const, profileID: 3, profileName: 'Primary image', updatedAt: '2026-08-12T00:00:00.000Z', usageKey: 'content.image-generation' }],
+  routes: [
+    {
+      enabled: true,
+      id: 4,
+      operation: 'image' as const,
+      profileID: 3,
+      profileName: 'Primary image',
+      updatedAt: '2026-08-12T00:00:00.000Z',
+      usageKey: 'content.image-generation',
+    },
+  ],
 }
 
 beforeEach(() => window.localStorage.clear())
@@ -182,16 +208,18 @@ describe('Portal settings hub', () => {
     fireEvent.click(screen.getByRole('button', { name: 'English' }))
     expect(document.documentElement.lang).toBe('en')
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy()
-    expect(screen.getByText('SYSTEM / SETTINGS')).toBeTruthy()
+    expect(screen.queryByText('SYSTEM / SETTINGS')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Dark' }))
     expect(screen.getByRole('button', { name: 'Dark' }).getAttribute('aria-pressed')).toBe('true')
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Reduce motion' }))
-    expect((screen.getByRole('checkbox', { name: 'Reduce motion' }) as HTMLInputElement).checked).toBe(
-      true,
+    expect(
+      (screen.getByRole('checkbox', { name: 'Reduce motion' }) as HTMLInputElement).checked,
+    ).toBe(true)
+    expect(window.localStorage.getItem('ivybm.portal.preferences')).toContain(
+      '"reducedMotion":true',
     )
-    expect(window.localStorage.getItem('ivybm.portal.preferences')).toContain('"reducedMotion":true')
   })
 
   it('exposes the safe AI control plane to admins without exposing a stored key', () => {

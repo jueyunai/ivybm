@@ -158,7 +158,6 @@ export function OverviewPage({ pageState = 'available', query, readError = false
     <main className="portal-page portal-overview">
       <header className="portal-page__intro portal-overview__intro">
         <div>
-          <p className="portal-page__eyebrow">{messages.eyebrow}</p>
           <h2>{messages.title}</h2>
           <p>{messages.description}</p>
         </div>

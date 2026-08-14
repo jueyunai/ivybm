@@ -1,8 +1,8 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
+import { getMediaPreviewUrl, safeMediaUrl } from '@/admin-portal/core/media'
 import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
 import { MEDIA_IMAGE_MAX_BYTES, MEDIA_MIME_TYPES, MEDIA_PDF_MAX_BYTES } from '@/collections/Media'
-import { mediaPreviewUrl, safeMediaUrl } from '@/modules/media'
 
 import { MEDIA_MODULE } from './manifest'
 
@@ -141,7 +141,6 @@ const kindFor = (mimeType: null | string | undefined): MediaItemKind => {
 const mapMediaItem = (document: MediaProjection): MediaSummaryItem => {
   const kind = kindFor(document.mimeType)
   const originalUrl = safeMediaUrl(document.url)
-  const imagePreview = mediaPreviewUrl(document)
 
   return {
     alt: document.alt ?? '',
@@ -153,7 +152,8 @@ const mapMediaItem = (document: MediaProjection): MediaSummaryItem => {
     kind,
     mimeType: document.mimeType ?? null,
     originalUrl,
-    previewUrl: kind === 'image' ? imagePreview : kind === 'pdf' ? originalUrl : null,
+    previewUrl:
+      kind === 'image' ? getMediaPreviewUrl(document) : kind === 'pdf' ? originalUrl : null,
     source: document.source ?? '',
     updatedAt: document.updatedAt,
     width: document.width ?? null,

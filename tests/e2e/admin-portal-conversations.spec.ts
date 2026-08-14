@@ -90,6 +90,8 @@ test('conversation workspace renders only server-authorized actions and complete
   await page.goto('/dashboard/conversations?conversation=portal-conversation-e2e')
 
   await expect(page.getByRole('heading', { level: 2, name: '统一会话' })).toBeVisible()
+  await expect(page.locator('.portal-page__eyebrow')).toHaveCount(0)
+  await expect(page.locator('.portal-header__heading')).toBeVisible()
   await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
   await expect(page.getByRole('button', { name: '接管会话' })).toBeVisible()
   await expect(page.getByRole('button', { name: '发送回复' })).toHaveCount(0)
