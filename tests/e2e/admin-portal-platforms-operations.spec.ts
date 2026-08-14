@@ -111,23 +111,26 @@ test('admin sees connect action for an unconnected account and no /admin depende
   await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
 })
 
-test('admin can delete a platform account without entering /admin', async ({ page }) => {
+test('admin can delete a platform account without entering /admin', async ({ page }, testInfo) => {
   await page.setViewportSize({ height: 900, width: 1440 })
   if (!(await login(page, '/dashboard/platforms'))) return
 
+  const deleteTargetName = `E2E Delete Target ${testInfo.retry}`
+  const deleteTargetExternalId = `900000000000000${testInfo.retry}`
   await page.getByRole('button', { name: '添加账号' }).click()
-  await page.getByRole('textbox', { name: '显示名称' }).fill('E2E Delete Target')
+  await page.getByRole('textbox', { name: '显示名称' }).fill(deleteTargetName)
   await page.getByRole('combobox', { name: '平台类型' }).selectOption('instagram-professional')
-  await page.getByRole('textbox', { name: '外部账号 ID' }).fill('e2e-delete-001')
+  await page.getByRole('textbox', { name: '外部账号 ID' }).fill(deleteTargetExternalId)
   await page.getByRole('button', { name: /^保存/ }).click()
 
   const card = page.locator('article', {
-    has: page.getByRole('heading', { name: 'E2E Delete Target' }),
+    has: page.getByRole('heading', { exact: true, name: deleteTargetName }),
   })
+  await expect(card).toBeVisible()
   await card.getByRole('button', { name: '删除' }).click()
   await card.getByRole('button', { name: /^删除账号/ }).click()
 
-  await expect(page.getByRole('heading', { name: 'E2E Delete Target' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { exact: true, name: deleteTargetName })).toHaveCount(0)
   await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
 })
 
