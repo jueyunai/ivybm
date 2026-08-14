@@ -213,7 +213,9 @@ describe('LinkedIn OAuth routes', () => {
           JSON.stringify({
             access_token: 'linkedin-member-token',
             expires_in: 5_184_000,
-            scope: requiredLinkedInPermissions('linkedin-member').join(' '),
+            scope: [...requiredLinkedInPermissions('linkedin-member'), 'extra_provider_scope'].join(
+              ' ',
+            ),
           }),
           { status: 200 },
         ),

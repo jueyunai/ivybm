@@ -24,6 +24,8 @@ const LINKEDIN_API_ORIGIN = 'https://api.linkedin.com'
 const MAX_AUTHORIZATION_CODE_LENGTH = 4_096
 const MAX_CREDENTIAL_LENGTH = 8_192
 const MAX_PROVIDER_RESPONSE_LENGTH = 256 * 1_024
+const MAX_PROVIDER_SCOPE_LENGTH = 128
+const MAX_PROVIDER_SCOPE_TOTAL_LENGTH = 4_096
 const MAX_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60
 const OAUTH_TRANSACTION_VERSION = 1
 const PROVIDER_TIMEOUT_MILLISECONDS = 15_000
@@ -32,6 +34,19 @@ const LINKEDIN_VERSION_PATTERN = /^20\d{2}(0[1-9]|1[0-2])$/
 const LINKEDIN_APP_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 const LINKEDIN_ORGANIZATION_ID_PATTERN = /^[0-9]{1,32}$/
 const LINKEDIN_MEMBER_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
+const LINKEDIN_SCOPE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
+const SAFE_PROVIDER_ERROR_CODES = new Set([
+  'access_denied',
+  'invalid_client',
+  'invalid_grant',
+  'invalid_request',
+  'invalid_scope',
+  'invalid_token',
+  'server_error',
+  'temporarily_unavailable',
+  'unauthorized_client',
+  'unsupported_grant_type',
+])
 
 export type LinkedInOAuthErrorCode =
   | 'identity_mismatch'
@@ -398,6 +413,13 @@ const asProviderRecord = (value: unknown): Record<string, unknown> | undefined =
     ? (value as Record<string, unknown>)
     : undefined
 
+const safeProviderErrorCode = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined
+  const normalized = value.trim()
+  if (value !== normalized) return undefined
+  return SAFE_PROVIDER_ERROR_CODES.has(normalized) ? normalized : undefined
+}
+
 const providerDiagnostic = ({
   payload,
   stage,
@@ -409,11 +431,7 @@ const providerDiagnostic = ({
 }): LinkedInOAuthDiagnostic => {
   const errorRecord = payload ? asProviderRecord(payload.error) : undefined
   const providerErrorCode =
-    typeof errorRecord?.error === 'string' && errorRecord.error.trim()
-      ? errorRecord.error.trim()
-      : typeof payload?.error === 'string' && payload.error.trim()
-        ? payload.error.trim()
-        : undefined
+    safeProviderErrorCode(errorRecord?.error) ?? safeProviderErrorCode(payload?.error)
   return {
     stage,
     ...(status === undefined ? {} : { providerStatus: status }),
@@ -484,12 +502,24 @@ const readGrantedScopes = (
   payload: Record<string, unknown>,
   diagnostic: LinkedInOAuthDiagnostic,
 ): string[] => {
-  const rawScope = typeof payload.scope === 'string' ? payload.scope.trim() : ''
-  if (!rawScope) {
+  const rawScope = typeof payload.scope === 'string' ? payload.scope : ''
+  if (
+    !rawScope ||
+    rawScope !== rawScope.trim() ||
+    rawScope.length > MAX_PROVIDER_SCOPE_TOTAL_LENGTH
+  ) {
     throw new LinkedInOAuthError('token_response_invalid', diagnostic)
   }
-  const scopes = rawScope.split(/\s+/u).filter(Boolean)
-  if (scopes.length === 0 || scopes.length > 100) {
+  const scopes = rawScope.split(' ')
+  if (
+    scopes.length === 0 ||
+    scopes.length > 100 ||
+    scopes.join(' ') !== rawScope ||
+    scopes.some(
+      (scope) => scope.length > MAX_PROVIDER_SCOPE_LENGTH || !LINKEDIN_SCOPE_PATTERN.test(scope),
+    ) ||
+    new Set(scopes).size !== scopes.length
+  ) {
     throw new LinkedInOAuthError('token_response_invalid', diagnostic)
   }
   return scopes
@@ -636,7 +666,7 @@ export const resolveLinkedInAuthorizedAccount = async ({
   const missingScopes = requiredScopes.filter((scope) => !grantedScopeSet.has(scope))
   if (missingScopes.length > 0) {
     throw new LinkedInOAuthError('required_permission_missing', {
-      grantedScopes: [...grantedScopeSet].sort(),
+      grantedScopes: requiredScopes.filter((scope) => grantedScopeSet.has(scope)),
       missingScopes,
       stage:
         accountKind === 'linkedin-organization'
@@ -644,6 +674,7 @@ export const resolveLinkedInAuthorizedAccount = async ({
           : 'userinfo_verification',
     })
   }
+  const persistedScopes = [...new Set(requiredScopes)]
 
   if (accountKind === 'linkedin-member') {
     const profile = await linkedInApiRequest({
@@ -669,7 +700,7 @@ export const resolveLinkedInAuthorizedAccount = async ({
       accessToken: normalizedToken,
       displayName: name || sub,
       externalAccountId: sub,
-      scopes: [...grantedScopeSet],
+      scopes: persistedScopes,
     }
   }
 
@@ -702,6 +733,6 @@ export const resolveLinkedInAuthorizedAccount = async ({
     accessToken: normalizedToken,
     displayName: targetOrganization,
     externalAccountId: targetId,
-    scopes: [...grantedScopeSet],
+    scopes: persistedScopes,
   }
 }

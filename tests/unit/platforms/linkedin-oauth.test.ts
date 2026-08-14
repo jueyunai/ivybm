@@ -182,6 +182,38 @@ describe('LinkedIn OAuth', () => {
     expect(String(tokenCall[0])).not.toContain('test-linkedin-app-secret')
   })
 
+  it('rejects malformed or oversized provider scope lists', async () => {
+    const required = requiredLinkedInPermissions('linkedin-member').join(' ')
+    const oversizedTotal = [
+      required,
+      ...Array.from({ length: 50 }, (_, index) => `extra_${index}_${'x'.repeat(80)}`),
+    ].join(' ')
+    for (const scope of [
+      `${required} ${'x'.repeat(129)}`,
+      `${required}\ninjected_scope`,
+      `${required} control\u0000scope`,
+      `${required} duplicate duplicate`,
+      oversizedTotal,
+    ]) {
+      await expect(
+        exchangeLinkedInAuthorizationCode({
+          code: 'authorization-code',
+          config: readLinkedInOAuthConfiguration(environment),
+          fetcher: vi.fn<typeof fetch>().mockResolvedValue(
+            new Response(
+              JSON.stringify({
+                access_token: 'linkedin-member-token',
+                expires_in: 5_184_000,
+                scope,
+              }),
+              { status: 200 },
+            ),
+          ),
+        }),
+      ).rejects.toMatchObject({ code: 'token_response_invalid' })
+    }
+  })
+
   it('binds a LinkedIn member account by sub and name', async () => {
     const fetcher = vi
       .fn<typeof fetch>()
@@ -195,7 +227,7 @@ describe('LinkedIn OAuth', () => {
         config: readLinkedInOAuthConfiguration(environment),
         externalAccountId: 'abc-123',
         fetcher,
-        grantedScopes: requiredLinkedInPermissions('linkedin-member'),
+        grantedScopes: [...requiredLinkedInPermissions('linkedin-member'), 'extra_provider_scope'],
         requiredScopes: requiredLinkedInPermissions('linkedin-member'),
         userAccessToken: 'linkedin-member-token',
       }),
@@ -347,5 +379,29 @@ describe('LinkedIn OAuth', () => {
     })
     expect(JSON.stringify(identityFailure)).not.toContain('linkedin-member-token')
     expect(JSON.stringify(identityFailure)).not.toContain('test-linkedin-app-secret')
+
+    for (const unsafeError of [
+      `invalid_request\n${'x'.repeat(512)}`,
+      '\ninvalid_request',
+      'invalid_request\u0000injected',
+      'test-linkedin-app-secret',
+      'linkedin-member-token',
+    ]) {
+      const failure = await exchangeLinkedInAuthorizationCode({
+        code: 'authorization-code',
+        config: readLinkedInOAuthConfiguration(environment),
+        fetcher: vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(new Response(JSON.stringify({ error: unsafeError }), { status: 400 })),
+      }).catch((error: unknown) => error)
+
+      expect(failure).toMatchObject({
+        code: 'token_exchange_failed',
+        diagnostic: { providerStatus: 400, stage: 'token_exchange' },
+      })
+      expect(failure).toBeInstanceOf(LinkedInOAuthError)
+      expect((failure as LinkedInOAuthError).diagnostic).not.toHaveProperty('providerErrorCode')
+      expect(JSON.stringify(failure)).not.toContain(unsafeError)
+    }
   })
 })
