@@ -125,13 +125,13 @@ test('admin can delete a platform account without entering /admin', async ({ pag
   await page.getByRole('button', { name: /^保存/ }).click()
 
   const card = page.locator('article', {
-    has: page.getByRole('heading', { name: accountName }),
+    has: page.getByRole('heading', { exact: true, name: accountName }),
   })
   await expect(card).toBeVisible()
   await card.getByRole('button', { name: '删除' }).click()
   await card.getByRole('button', { name: /^删除账号/ }).click()
 
-  await expect(page.getByRole('heading', { name: accountName })).toHaveCount(0)
+  await expect(page.getByRole('heading', { exact: true, name: accountName })).toHaveCount(0)
   await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
 })
 
