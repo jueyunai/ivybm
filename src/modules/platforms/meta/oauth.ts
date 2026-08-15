@@ -50,6 +50,7 @@ export type MetaOAuthErrorCode =
   | 'state_mismatch'
   | 'token_exchange_failed'
   | 'token_response_invalid'
+  | 'webhook_subscription_failed'
 
 export type MetaOAuthDiagnosticStage =
   'page_direct' | 'pages_list' | 'permissions' | 'token_exchange_long' | 'token_exchange_short'
@@ -75,6 +76,7 @@ const errorMessages: Record<MetaOAuthErrorCode, string> = {
   state_mismatch: 'Meta OAuth state validation failed',
   token_exchange_failed: 'Meta OAuth token exchange failed',
   token_response_invalid: 'Meta OAuth token response is invalid',
+  webhook_subscription_failed: 'Meta messaging webhook subscription failed',
 }
 
 export class MetaOAuthError extends Error {
@@ -185,6 +187,8 @@ const FACEBOOK_PAGE_PERMISSIONS = [
   'pages_messaging',
   'pages_read_engagement',
 ] as const
+
+const FACEBOOK_PAGE_OPTIONAL_PERMISSIONS = ['pages_manage_posts'] as const
 
 export const requiredMetaPermissions = (_accountKind: MetaAccountKind): string[] => [
   ...FACEBOOK_PAGE_PERMISSIONS,
@@ -653,13 +657,14 @@ export const resolveMetaAuthorizedAccount = async ({
     stage: 'permissions',
   })
   const requiredPermissions = requiredMetaPermissions(accountKind)
-  const requiredPermissionSet = new Set(requiredPermissions)
+  const knownPermissions = [...requiredPermissions, ...FACEBOOK_PAGE_OPTIONAL_PERMISSIONS]
+  const knownPermissionSet = new Set<string>(knownPermissions)
   const grantedPermissionSet = new Set<string>()
   for (const item of providerArray(permissionPayload.data)) {
     if (
       item.status === 'granted' &&
       typeof item.permission === 'string' &&
-      requiredPermissionSet.has(item.permission)
+      knownPermissionSet.has(item.permission)
     ) {
       grantedPermissionSet.add(item.permission)
     }
@@ -748,6 +753,6 @@ export const resolveMetaAuthorizedAccount = async ({
     accessToken: pageAccessToken,
     displayName: displayName || targetId,
     pageId,
-    scopes: [...new Set(grantedPermissions)],
+    scopes: knownPermissions.filter((permission) => grantedPermissionSet.has(permission)),
   }
 }

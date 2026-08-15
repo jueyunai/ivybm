@@ -8,6 +8,7 @@ import type {
   LinkedInPublishingAccessTokenProvider,
   LinkedInPublishingAccountKind,
 } from './publishingOutbound'
+import { requiredLinkedInPermissions } from './oauth'
 
 const boundedExternalId = (
   value: string,
@@ -73,6 +74,7 @@ export class PayloadLinkedInPublishingTokenProvider {
           accessToken: true,
           accessTokenConfigured: true,
           expiresAt: true,
+          scopes: true,
           state: true,
         },
         authorizationRevision: true,
@@ -97,6 +99,16 @@ export class PayloadLinkedInPublishingTokenProvider {
       authorization?.state !== 'connected' ||
       authorization.accessTokenConfigured !== true
     ) {
+      return undefined
+    }
+    const grantedScopes = new Set(
+      Array.isArray(authorization.scopes)
+        ? authorization.scopes.flatMap((entry) =>
+            typeof entry?.scope === 'string' ? [entry.scope] : [],
+          )
+        : [],
+    )
+    if (requiredLinkedInPermissions(accountKind).some((scope) => !grantedScopes.has(scope))) {
       return undefined
     }
     if (authorization.expiresAt) {

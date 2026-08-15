@@ -32,8 +32,8 @@ const inboundEvent = (
   senderExternalId: 'sender-fixture-1',
 })
 
-const signatureFor = (rawBody: string): string =>
-  `sha256=${createHmac('sha256', appSecret).update(rawBody).digest('hex')}`
+const signatureFor = (rawBody: string, secret = appSecret): string =>
+  `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`
 
 const createConnector = (event = inboundEvent()): PlatformConnector => ({
   normalize: () => [event],
@@ -45,6 +45,7 @@ const createHandlers = ({
   allowedAccountExternalIds = ['page-fixture-1'],
   appSecret: configuredAppSecret = appSecret,
   connector = createConnector(),
+  instagramAppSecret,
   maxBodyBytes,
   rateLimiter = { consume: async () => true } satisfies WebhookRateLimiter,
   repository = new FakePlatformEventRepository(),
@@ -54,6 +55,7 @@ const createHandlers = ({
   allowedAccountExternalIds?: readonly string[]
   appSecret?: string
   connector?: PlatformConnector
+  instagramAppSecret?: string
   maxBodyBytes?: number
   rateLimiter?: WebhookRateLimiter
   repository?: FakePlatformEventRepository
@@ -64,6 +66,7 @@ const createHandlers = ({
     allowedAccountExternalIds,
     appSecret: configuredAppSecret,
     connector,
+    instagramAppSecret,
     maxBodyBytes,
     now: () => now,
     rateLimiter,
@@ -127,6 +130,29 @@ describe('Meta webhook HTTP handlers', () => {
     expect(duplicate.status).toBe(200)
     await expect(duplicate.json()).resolves.toEqual({ accepted: 0, duplicates: 1, total: 1 })
     expect(repository.events.size).toBe(1)
+  })
+
+  it('selects the Instagram App Secret for Instagram webhook signatures', async () => {
+    const instagramSecret = 'fixture-instagram-app-secret'
+    const { handlers } = createHandlers({ instagramAppSecret: instagramSecret })
+    const rawBody = JSON.stringify({ object: 'instagram', fixture: 'instagram-http' })
+    const request = (secret: string) =>
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody, secret),
+        },
+        method: 'POST',
+      })
+
+    const wrongSecret = await handlers.POST(request(appSecret))
+    expect(wrongSecret.status).toBe(401)
+    await expect(wrongSecret.json()).resolves.toEqual({ error: { code: 'invalid_signature' } })
+
+    const accepted = await handlers.POST(request(instagramSecret))
+    expect(accepted.status).toBe(200)
+    await expect(accepted.json()).resolves.toEqual({ accepted: 1, duplicates: 0, total: 1 })
   })
 
   it('rejects an account blocked by PlatformAccounts before durable enqueue', async () => {

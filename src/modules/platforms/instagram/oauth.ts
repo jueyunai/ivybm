@@ -40,6 +40,7 @@ export type InstagramOAuthErrorCode =
   | 'state_mismatch'
   | 'token_exchange_failed'
   | 'token_response_invalid'
+  | 'webhook_subscription_failed'
 
 export type InstagramOAuthDiagnosticStage =
   | 'authorization_code_validation'
@@ -48,14 +49,7 @@ export type InstagramOAuthDiagnosticStage =
   | 'short_token_exchange'
 
 export type InstagramOAuthPermissionsType =
-  | 'array'
-  | 'boolean'
-  | 'missing'
-  | 'null'
-  | 'number'
-  | 'object'
-  | 'other'
-  | 'string'
+  'array' | 'boolean' | 'missing' | 'null' | 'number' | 'object' | 'other' | 'string'
 
 export type InstagramOAuthDiagnostic = {
   grantedScopes?: string[]
@@ -81,6 +75,7 @@ const errorMessages: Record<InstagramOAuthErrorCode, string> = {
   state_mismatch: 'Instagram OAuth state validation failed',
   token_exchange_failed: 'Instagram OAuth token exchange failed',
   token_response_invalid: 'Instagram OAuth token response is invalid',
+  webhook_subscription_failed: 'Instagram messaging webhook subscription failed',
 }
 
 export class InstagramOAuthError extends Error {
@@ -196,6 +191,7 @@ export const readInstagramOAuthConfiguration = (
 
 const INSTAGRAM_PROFESSIONAL_PERMISSIONS = [
   'instagram_business_basic',
+  'instagram_business_content_publish',
   'instagram_business_manage_comments',
   'instagram_business_manage_messages',
 ] as const
@@ -391,12 +387,7 @@ const PROVIDER_RESPONSE_TOP_LEVEL_KEYS = [
   'username',
 ] as const
 const PROVIDER_RESPONSE_DATA_KEYS = ['access_token', 'permissions', 'user_id'] as const
-const PROVIDER_RESPONSE_ERROR_KEYS = [
-  'code',
-  'error_subcode',
-  'message',
-  'type',
-] as const
+const PROVIDER_RESPONSE_ERROR_KEYS = ['code', 'error_subcode', 'message', 'type'] as const
 const PROVIDER_ERROR_TYPE_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/
 
 const hasOwn = (record: Record<string, unknown>, key: string): boolean =>
@@ -419,7 +410,9 @@ const boundedProviderErrorType = (value: unknown): string | undefined => {
 
 const providerResponseKeys = (payload: Record<string, unknown>): string[] => {
   const keys = PROVIDER_RESPONSE_TOP_LEVEL_KEYS.filter((key) => hasOwn(payload, key)).map(String)
-  const firstDataRecord = Array.isArray(payload.data) ? asProviderRecord(payload.data[0]) : undefined
+  const firstDataRecord = Array.isArray(payload.data)
+    ? asProviderRecord(payload.data[0])
+    : undefined
   if (firstDataRecord) {
     for (const key of PROVIDER_RESPONSE_DATA_KEYS) {
       if (hasOwn(firstDataRecord, key)) keys.push(`data[].${key}`)
@@ -444,9 +437,7 @@ const providerDiagnostic = ({
   status?: number
 }): InstagramOAuthDiagnostic => {
   const errorRecord = payload ? asProviderRecord(payload.error) : undefined
-  const providerErrorType = boundedProviderErrorType(
-    errorRecord?.type ?? payload?.error_type,
-  )
+  const providerErrorType = boundedProviderErrorType(errorRecord?.type ?? payload?.error_type)
   const providerErrorCode = boundedProviderInteger(
     errorRecord?.code ?? payload?.code ?? payload?.error_code,
   )
@@ -482,10 +473,7 @@ const readProviderJSON = async (
   try {
     body = await response.text()
   } catch {
-    throw new InstagramOAuthError(
-      errorCode,
-      providerDiagnostic({ stage, status: response.status }),
-    )
+    throw new InstagramOAuthError(errorCode, providerDiagnostic({ stage, status: response.status }))
   }
   if (!body || body.length > MAX_PROVIDER_RESPONSE_LENGTH) {
     throw new InstagramOAuthError(
@@ -645,7 +633,12 @@ const readGrantedPermissions = (
   if (completeDiagnostic.missingScopes?.length) {
     throw new InstagramOAuthError('required_permission_missing', completeDiagnostic)
   }
-  return { permissionsCount: permissionsCount ?? scopes.length, permissionsItemTypes, permissionsType, scopes }
+  return {
+    permissionsCount: permissionsCount ?? scopes.length,
+    permissionsItemTypes,
+    permissionsType,
+    scopes,
+  }
 }
 
 const exchangeCodeForShortToken = async ({

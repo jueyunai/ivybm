@@ -139,10 +139,10 @@ describe('Meta publication HTTP transport', () => {
     ).resolves.toEqual({ permalink: 'https://www.instagram.com/p/ABC123/' })
 
     expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([
-      'https://graph.facebook.com/v25.0/1221206873460693/media',
-      'https://graph.facebook.com/v25.0/112233?fields=status_code',
-      'https://graph.facebook.com/v25.0/1221206873460693/media_publish',
-      'https://graph.facebook.com/v25.0/998877?fields=permalink',
+      'https://graph.instagram.com/v22.0/1221206873460693/media',
+      'https://graph.instagram.com/v22.0/112233?fields=status_code',
+      'https://graph.instagram.com/v22.0/1221206873460693/media_publish',
+      'https://graph.instagram.com/v22.0/998877?fields=permalink',
     ])
     expect(tokenProvider).toHaveBeenCalledTimes(4)
     expect(tokenProvider).toHaveBeenNthCalledWith(1, {

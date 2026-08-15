@@ -21,9 +21,6 @@ describe('platform account readiness', () => {
       },
       environment: {
         ADMIN_PORTAL_PUBLISHING_ENABLED: 'true',
-        LINKEDIN_API_VERSION: '202608',
-        LINKEDIN_UPLOAD_ALLOWED_ORIGINS: 'https://www.linkedin.com',
-        LINKEDIN_UPLOAD_TICKET_KEY: 'a'.repeat(64),
         PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'b'.repeat(64),
         META_WEBHOOK_ALLOWED_ACCOUNT_IDS: 'other-page, page-123 ',
         META_WEBHOOK_APP_SECRET: 'do-not-return-this-secret',
@@ -76,7 +73,7 @@ describe('platform account readiness', () => {
             'external_account_id',
             'authorization',
             'access_token',
-            'meta_app_secret',
+            'instagram_app_secret',
             'meta_verify_token',
             'meta_account_allowlist',
           ]),

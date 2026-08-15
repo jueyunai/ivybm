@@ -66,6 +66,7 @@ export type PlatformReadinessRequirement =
   | 'authorization'
   | 'credential_decryption'
   | 'external_account_id'
+  | 'instagram_app_secret'
   | 'meta_account_allowlist'
   | 'meta_app_secret'
   | 'meta_verify_token'
@@ -203,6 +204,7 @@ export const getPlatformReadinessAction = ({
     return { code: 'configure-publishing-runtime', owner: 'engineering' }
   }
   if (
+    missing.includes('instagram_app_secret') ||
     missing.includes('meta_app_secret') ||
     missing.includes('meta_verify_token') ||
     missing.includes('meta_account_allowlist')
@@ -271,9 +273,14 @@ const configuredMetaAllowlist = (
   )
 
 const publishingEnvironmentMissing = (
+  accountKind: PlatformAccountKind,
   environment: Readonly<Record<string, string | undefined>>,
 ): PlatformReadinessRequirement[] => {
   if (environment.ADMIN_PORTAL_PUBLISHING_ENABLED !== 'true') return ['publishing_disabled']
+  if (!/^[a-fA-F0-9]{64}$/u.test(environment.PLATFORM_CREDENTIAL_ENCRYPTION_KEY ?? '')) {
+    return ['publishing_runtime_configuration']
+  }
+  if (accountKind !== 'linkedin-member' && accountKind !== 'linkedin-organization') return []
   const uploadOrigins = (environment.LINKEDIN_UPLOAD_ALLOWED_ORIGINS ?? '').split(',')
   const validUploadOrigins =
     uploadOrigins.length > 0 &&
@@ -295,7 +302,6 @@ const publishingEnvironmentMissing = (
       }
     })
   if (
-    !/^[a-fA-F0-9]{64}$/u.test(environment.PLATFORM_CREDENTIAL_ENCRYPTION_KEY ?? '') ||
     !/^20\d{2}(0[1-9]|1[0-2])$/u.test(environment.LINKEDIN_API_VERSION ?? '') ||
     !validUploadOrigins ||
     !/^[a-fA-F0-9]{64}$/u.test(environment.LINKEDIN_UPLOAD_TICKET_KEY ?? '')
@@ -347,8 +353,16 @@ export const assessPlatformAccountReadiness = ({
   const externalAccountId = nonEmpty(account.externalAccountId)
   const metaAllowlist = configuredMetaAllowlist(environment)
   const metaEnvironmentMissing: PlatformReadinessRequirement[] = []
-  const publishingEnvironment = publishingEnvironmentMissing(environment)
-  if (!nonEmpty(environment.META_WEBHOOK_APP_SECRET)) metaEnvironmentMissing.push('meta_app_secret')
+  const publishingEnvironment = publishingEnvironmentMissing(account.accountKind, environment)
+  if (account.accountKind === 'facebook-page' && !nonEmpty(environment.META_WEBHOOK_APP_SECRET)) {
+    metaEnvironmentMissing.push('meta_app_secret')
+  }
+  if (
+    account.accountKind === 'instagram-professional' &&
+    !nonEmpty(environment.INSTAGRAM_APP_SECRET)
+  ) {
+    metaEnvironmentMissing.push('instagram_app_secret')
+  }
   if (!nonEmpty(environment.META_WEBHOOK_VERIFY_TOKEN))
     metaEnvironmentMissing.push('meta_verify_token')
   if (!externalAccountId || !metaAllowlist.has(externalAccountId)) {

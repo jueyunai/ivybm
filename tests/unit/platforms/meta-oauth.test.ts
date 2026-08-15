@@ -322,10 +322,14 @@ describe('Meta OAuth', () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            data: requiredMetaPermissions('facebook-page').map((permission) => ({
-              permission,
-              status: 'granted',
-            })),
+            data: [
+              ...requiredMetaPermissions('facebook-page').map((permission) => ({
+                permission,
+                status: 'granted',
+              })),
+              { permission: 'pages_manage_posts', status: 'granted' },
+              { permission: 'unexpected_provider_scope', status: 'granted' },
+            ],
           }),
           { status: 200 },
         ),
@@ -358,7 +362,7 @@ describe('Meta OAuth', () => {
       accessToken: 'page-access-token',
       displayName: 'Foshan Ivy Building Material Co., Ltd.',
       pageId: '123456789012345',
-      scopes: requiredMetaPermissions('facebook-page'),
+      scopes: [...requiredMetaPermissions('facebook-page'), 'pages_manage_posts'],
     })
   })
 

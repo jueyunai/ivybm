@@ -275,7 +275,9 @@ export const createPlatformPublicationJobHandler =
     now?: () => Date
     payload: Payload
     queue?: PublicationJobQueue
-    resolveRuntime: () => Promise<PublicationJobRuntime> | PublicationJobRuntime
+    resolveRuntime: (
+      route: PublicationWorkerRoute,
+    ) => Promise<PublicationJobRuntime> | PublicationJobRuntime
   }): JobHandler =>
   async (claimedJob: ClaimedJob, execution: JobExecution) => {
     const input = parsePlatformPublicationJobPayload(claimedJob.payload)
@@ -285,7 +287,7 @@ export const createPlatformPublicationJobHandler =
     if (persisted.executionRevision !== input.expectedExecutionRevision) {
       throw new PlatformPublicationJobError('Publication execution revision is inconsistent')
     }
-    const runtime = await resolveRuntime()
+    const runtime = await resolveRuntime(route(persisted.executionRoute))
     execution.assertLease()
     try {
       await dispatchPersistedPublication({ claimedJob, job: persisted, payload, runtime })
