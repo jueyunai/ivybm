@@ -150,9 +150,10 @@ const getStagingComposeConfig = (): ComposeConfig => {
 }
 
 describe('production Compose configuration', () => {
-  it('declares the publishing kill switch exactly once per app and worker service', () => {
+  it('declares worker feature switches exactly once per app and worker service', () => {
     for (const file of ['compose.prod.yaml', 'compose.staging.yaml']) {
       const source = readFileSync(resolve(projectRoot, file), 'utf8')
+      expect(source.match(/^\s+ADMIN_PORTAL_CONVERSATIONS_ENABLED:/gm)).toHaveLength(2)
       expect(source.match(/^\s+ADMIN_PORTAL_PUBLISHING_ENABLED:/gm)).toHaveLength(2)
 
       for (const variable of [
@@ -279,6 +280,7 @@ describe('production Compose configuration', () => {
       LINKEDIN_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/linkedin/oauth/callback',
     })
     expect(config.services.worker.environment).toMatchObject({
+      ADMIN_PORTAL_CONVERSATIONS_ENABLED: 'true',
       ADMIN_PORTAL_PUBLISHING_ENABLED: 'false',
       AI_CONFIG_ENCRYPTION_KEY: 'c'.repeat(64),
       LINKEDIN_API_VERSION: '202608',
@@ -301,6 +303,9 @@ describe('production Compose configuration', () => {
 
   it('passes optional platform OAuth configuration only to the app in production and staging', () => {
     for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
+      expect(config.services.worker.environment?.ADMIN_PORTAL_CONVERSATIONS_ENABLED).toBe(
+        config.services.app.environment?.ADMIN_PORTAL_CONVERSATIONS_ENABLED,
+      )
       expect(config.services.app.environment).toMatchObject({
         META_APP_ID: '1111111111111111',
         META_LOGIN_CONFIG_ID: '2222222222222222',

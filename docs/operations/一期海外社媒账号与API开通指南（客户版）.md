@@ -22,11 +22,11 @@ flowchart LR
     D --> E[受控测试与上线]
 ```
 
-| 平台 | 一期目标 | 客户可先完成 | 仍需平台审核/确认 | 当前交付口径 |
-| --- | --- | --- | --- | --- |
-| Meta | Facebook Messenger、Instagram DM、Facebook、Instagram 图文 | Page、Instagram 专业/商业账号、Meta Business Portfolio、管理员及企业验证 | Meta App Review、Advanced Access、Webhook/权限 | `conditional`，审核和真实联调通过后才可用 |
-| TikTok | 商业账号私信 | TikTok Business Account、Business Center、开发者/企业资料 | 目标地区的 Business Messaging 产品资格、应用审核 | `conditional`；没有书面或后台权限证据时按 `blocked` |
-| LinkedIn | 个人或企业主页图文发布 | 个人账号；如发企业主页还需 Company Page 和 Page 管理员 | 企业主页自动发布需 Community Management App Review | 个人可走自助授权；企业主页自动发布为 `conditional` |
+| 平台     | 一期目标                                                   | 客户可先完成                                                             | 仍需平台审核/确认                                  | 当前交付口径                                        |
+| -------- | ---------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------- | --------------------------------------------------- |
+| Meta     | Facebook Messenger、Instagram DM、Facebook、Instagram 图文 | Page、Instagram 专业/商业账号、Meta Business Portfolio、管理员及企业验证 | Meta App Review、Advanced Access、Webhook/权限     | `conditional`，审核和真实联调通过后才可用           |
+| TikTok   | 商业账号私信                                               | TikTok Business Account、Business Center、开发者/企业资料                | 目标地区的 Business Messaging 产品资格、应用审核   | `conditional`；没有书面或后台权限证据时按 `blocked` |
+| LinkedIn | 个人或企业主页图文发布                                     | 个人账号；如发企业主页还需 Company Page 和 Page 管理员                   | 企业主页自动发布需 Community Management App Review | 个人可走自助授权；企业主页自动发布为 `conditional`  |
 
 `available` 只表示已在真实受控环境完成账号授权、Webhook 和目标操作实测；注册账号或通过 mock 测试都不能视为 `available`。
 
@@ -62,12 +62,12 @@ flowchart LR
 
 ## 客户与 IVYBM 的分工
 
-| 客户负责 | IVYBM 负责 |
-| --- | --- |
-| 账号注册、企业资产归属、企业/身份验证、保留最终管理员、同意平台条款 | 创建/维护集成配置、回调地址、Webhook、OAuth、验签、幂等、接口开发和受控测试 |
-| 关联 Facebook Page、Instagram、LinkedIn Company Page、TikTok Business Center 等资产 | 准备 App Review 的技术说明、权限最小化说明、演示视频、测试路径和整改材料 |
-| 向我方授予可撤销的人员/合作伙伴/开发者权限，确认正式授权范围 | 不保存客户密码；令牌后端加密/脱敏；日志不记录密钥；协助核对审核状态 |
-| 提供官网、隐私政策、法定主体和业务资料；在必要时提交或确认企业验证 | 验证入站消息、发布、失败重试和人工补偿，并记录 `available / conditional / blocked` 状态 |
+| 客户负责                                                                            | IVYBM 负责                                                                              |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 账号注册、企业资产归属、企业/身份验证、保留最终管理员、同意平台条款                 | 创建/维护集成配置、回调地址、Webhook、OAuth、验签、幂等、接口开发和受控测试             |
+| 关联 Facebook Page、Instagram、LinkedIn Company Page、TikTok Business Center 等资产 | 准备 App Review 的技术说明、权限最小化说明、演示视频、测试路径和整改材料                |
+| 向我方授予可撤销的人员/合作伙伴/开发者权限，确认正式授权范围                        | 不保存客户密码；令牌后端加密/脱敏；日志不记录密钥；协助核对审核状态                     |
+| 提供官网、隐私政策、法定主体和业务资料；在必要时提交或确认企业验证                  | 验证入站消息、发布、失败重试和人工补偿，并记录 `available / conditional / blocked` 状态 |
 
 ## 如何使用截图和视频
 
@@ -169,14 +169,14 @@ flowchart LR
 
 ## 3. Meta 权限与限制：客户需要理解的版本
 
-| 能力 | 客户侧最小前提 | IVYBM 的技术工作 | 平台关口 |
-| --- | --- | --- | --- |
-| Facebook Messenger 入站/回复 | Facebook Page；授权管理员有消息/审核相关 Page task | Messenger use case、Webhook、签名校验、消息去重 | 面向非 App 角色用户通常需 Advanced Access + App Review |
-| Instagram DM 入站/回复 | Instagram Professional，建议 Business；按选定登录路径完成关联/授权 | Instagram Messaging 产品、Webhook、统一会话映射 | 面向真实客户消息通常需 Advanced Access + App Review |
-| Facebook 图文 | Page；授权管理员有创建内容、管理和审核 Page task | Page token、发布/回调、失败补偿 | 相关 Pages 权限和真实发布授权 |
-| Instagram 图文 | 专业/商业账号；图片有公网可访问 URL；若提示 PPA 先完成 | 内容发布 API、素材校验、状态回写 | 相关 Instagram 内容发布权限和真实发布授权 |
+| 能力                         | 客户侧最小前提                                                     | IVYBM 的技术工作                                | 平台关口                                               |
+| ---------------------------- | ------------------------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------ |
+| Facebook Messenger 入站/回复 | Facebook Page；授权管理员有消息/审核相关 Page task                 | Messenger use case、Webhook、签名校验、消息去重 | 面向非 App 角色用户通常需 Advanced Access + App Review |
+| Instagram DM 入站/回复       | Instagram Professional，建议 Business；按选定登录路径完成关联/授权 | Instagram Messaging 产品、Webhook、统一会话映射 | 面向真实客户消息通常需 Advanced Access + App Review    |
+| Facebook 图文                | Page；授权管理员有创建内容、管理和审核 Page task                   | Page token、发布/回调、失败补偿                 | 相关 Pages 权限和真实发布授权                          |
+| Instagram 图文               | 专业/商业账号；图片有公网可访问 URL；若提示 PPA 先完成             | 内容发布 API、素材校验、状态回写                | 相关 Instagram 内容发布权限和真实发布授权              |
 
-**不要把权限名称当作客户自行勾选清单。** Facebook Messenger 使用 Facebook Login for Business，当前配置包含 `pages_show_list`、`pages_manage_metadata`、`pages_messaging`、`pages_read_engagement`。Instagram 使用独立的 Instagram Login for Business，当前配置包含 `instagram_business_basic`、`instagram_business_manage_comments`、`instagram_business_manage_messages`。Facebook/Instagram 图文发布又涉及不同的 Pages/Instagram scopes。权限名称和登录路径会随 Graph API 和 App 产品更新，IVYBM 会按审核时的官方 App Dashboard 提交最小范围。
+**不要把权限名称当作客户自行勾选清单。** Facebook Messenger 使用 Facebook Login for Business，当前配置包含 `pages_show_list`、`pages_manage_metadata`、`pages_messaging`、`pages_read_engagement`；Facebook 发布 Token 还必须包含 `pages_manage_posts`。Instagram 使用独立的 Instagram Login for Business，当前配置包含 `instagram_business_basic`、`instagram_business_content_publish`、`instagram_business_manage_comments`、`instagram_business_manage_messages`。权限名称和登录路径会随 Graph API 和 App 产品更新，IVYBM 会按审核时的官方 App Dashboard 提交最小范围。
 
 ### Meta 业务规则提醒
 
@@ -187,14 +187,14 @@ flowchart LR
 
 ## 4. Meta 推荐视频/官方学习入口
 
-| 资源 | 适合什么时候看 | 说明 |
-| --- | --- | --- |
-| [Meta 官方视频：How to create a Messenger experience](https://developers.facebook.com/videos/2019/how-to-create-a-messenger-bot/) | 了解从 Page 到 Messenger 体验的总体流程 | Meta for Developers 公开视频，约 32 分钟；视频年份较早，当前权限、审核与 API 版本仍以文档和 Dashboard 为准 |
-| [Meta 官方 Messenger 视频目录](https://developers.facebook.com/videos/messenger/) | 需要进一步熟悉 Messenger/App Review 相关概念时 | Meta for Developers 视频合集；可按当前页面搜索 Messenger 主题 |
-| [Meta 官方视频：Messenger Handover Protocol](https://developers.facebook.com/videos/2019/messenger-handover-protocol/) | 了解系统与人工客服之间的交接概念 | 面向技术/运营协作的背景视频；不是客户自行开通权限的替代步骤 |
-| [Meta Blueprint 课程目录](https://www.facebookblueprint.com/student/catalog) | 创建 Page、Business Suite、广告/业务资产初学者 | Meta 官方学习库；在目录搜索 `Business Suite`、`Facebook Page` 或 `Instagram professional account`，账号/地区可能决定可见课程 |
-| [Meta Business Help Center](https://www.facebook.com/business/help) | 页面访问权限、Business Portfolio、企业验证界面发生变化时 | 官方图文帮助入口；优先按当前界面搜索关键词，不依赖旧教程截图 |
-| [Messenger Platform Overview](https://developers.facebook.com/documentation/business-messaging/messenger-platform/overview) | 技术审核与消息 API 条件核对 | 开发者官方入口，非面向普通运营的操作视频；审核演示视频由 IVYBM 按具体 App 录制 |
+| 资源                                                                                                                              | 适合什么时候看                                           | 说明                                                                                                                         |
+| --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| [Meta 官方视频：How to create a Messenger experience](https://developers.facebook.com/videos/2019/how-to-create-a-messenger-bot/) | 了解从 Page 到 Messenger 体验的总体流程                  | Meta for Developers 公开视频，约 32 分钟；视频年份较早，当前权限、审核与 API 版本仍以文档和 Dashboard 为准                   |
+| [Meta 官方 Messenger 视频目录](https://developers.facebook.com/videos/messenger/)                                                 | 需要进一步熟悉 Messenger/App Review 相关概念时           | Meta for Developers 视频合集；可按当前页面搜索 Messenger 主题                                                                |
+| [Meta 官方视频：Messenger Handover Protocol](https://developers.facebook.com/videos/2019/messenger-handover-protocol/)            | 了解系统与人工客服之间的交接概念                         | 面向技术/运营协作的背景视频；不是客户自行开通权限的替代步骤                                                                  |
+| [Meta Blueprint 课程目录](https://www.facebookblueprint.com/student/catalog)                                                      | 创建 Page、Business Suite、广告/业务资产初学者           | Meta 官方学习库；在目录搜索 `Business Suite`、`Facebook Page` 或 `Instagram professional account`，账号/地区可能决定可见课程 |
+| [Meta Business Help Center](https://www.facebook.com/business/help)                                                               | 页面访问权限、Business Portfolio、企业验证界面发生变化时 | 官方图文帮助入口；优先按当前界面搜索关键词，不依赖旧教程截图                                                                 |
+| [Messenger Platform Overview](https://developers.facebook.com/documentation/business-messaging/messenger-platform/overview)       | 技术审核与消息 API 条件核对                              | 开发者官方入口，非面向普通运营的操作视频；审核演示视频由 IVYBM 按具体 App 录制                                               |
 
 ---
 
@@ -272,13 +272,13 @@ flowchart LR
 
 ## 4. TikTok 官方学习入口
 
-| 资源 | 用途 | 说明 |
-| --- | --- | --- |
-| [TikTok Business API SDK](https://github.com/tiktok/tiktok-business-api-sdk) | 核对官方基础接入顺序和文档链接 | TikTok 官方 GitHub；覆盖账户、开发者、应用、授权、认证等基础路径，不代表 DM 权限已自助开放 |
-| [TikTok for Business 账户创建文档](https://ads.tiktok.com/marketing_api/docs?id=1738855099573250) | 创建企业账户/Business Center | 官方页面可能因账号地区、登录状态而改变或要求登录 |
-| [TikTok Academy](https://www.tiktokacademy.com/) | 了解 TikTok for Business/Business Center 的官方培训 | 官方学习入口；先用企业账号登录，按所在地区检索 Business Center/Account Setup；DM 审批通常不提供通用教学视频 |
-| [TikTok for Business 官方 YouTube 频道](https://www.youtube.com/@TikTokForBusiness) | 熟悉商业账号、广告后台和内容运营界面 | 已核验的官方频道；适合作为通用后台/业务培训，不能用于判断私信 API 产品资格 |
-| [TikTok Ads Manager 官方视频播放列表](https://www.youtube.com/playlist?list=PLgprgjF5vCzYJ3rWbY7YnnTy2YBp6yyUM) | 先了解 TikTok for Business 控制台概念 | 官方频道播放列表；与本项目的 TikTok 私信权限申请是不同产品范围 |
+| 资源                                                                                                            | 用途                                                | 说明                                                                                                        |
+| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| [TikTok Business API SDK](https://github.com/tiktok/tiktok-business-api-sdk)                                    | 核对官方基础接入顺序和文档链接                      | TikTok 官方 GitHub；覆盖账户、开发者、应用、授权、认证等基础路径，不代表 DM 权限已自助开放                  |
+| [TikTok for Business 账户创建文档](https://ads.tiktok.com/marketing_api/docs?id=1738855099573250)               | 创建企业账户/Business Center                        | 官方页面可能因账号地区、登录状态而改变或要求登录                                                            |
+| [TikTok Academy](https://www.tiktokacademy.com/)                                                                | 了解 TikTok for Business/Business Center 的官方培训 | 官方学习入口；先用企业账号登录，按所在地区检索 Business Center/Account Setup；DM 审批通常不提供通用教学视频 |
+| [TikTok for Business 官方 YouTube 频道](https://www.youtube.com/@TikTokForBusiness)                             | 熟悉商业账号、广告后台和内容运营界面                | 已核验的官方频道；适合作为通用后台/业务培训，不能用于判断私信 API 产品资格                                  |
+| [TikTok Ads Manager 官方视频播放列表](https://www.youtube.com/playlist?list=PLgprgjF5vCzYJ3rWbY7YnnTy2YBp6yyUM) | 先了解 TikTok for Business 控制台概念               | 官方频道播放列表；与本项目的 TikTok 私信权限申请是不同产品范围                                              |
 
 > 本轮未发现可公开、可核验且专门讲解 TikTok Business Messaging/DM API 审核的官方视频。客户仍应以 Dashboard 产品资格截图或 TikTok 官方工单/客户经理的书面确认作为进入联调的唯一依据。
 
@@ -305,11 +305,11 @@ flowchart LR
 
 ### 先选一条路径（电脑浏览器）
 
-| 目标路径 | 客户现在要做什么 | 此时不要做什么 |
-| --- | --- | --- |
-| 个人账号发布 + IVYBM 受控 App（仅在 IVYBM 书面确认采用此路径时） | 保留个人账号最终控制权，等待 IVYBM 发出受控测试授权链接 | 不需要为此路径创建 Company Page 或 Developer App |
-| 个人账号发布 + 客户自持 App（仅在合同/IVYBM 书面确认要求时） | 创建客户名下的 Developer App，并添加 Share on LinkedIn | 不需要仅为了个人发布而创建 Company Page 或申请组织发布权限 |
-| 企业主页自动发布 | 创建/确认 Company Page、保留两名 Super admin、创建客户名下的 Developer App，并按要求申请 Community Management App Review | 审核未通过时不绕过，改用人工发布兜底 |
+| 目标路径                                                         | 客户现在要做什么                                                                                                         | 此时不要做什么                                             |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| 个人账号发布 + IVYBM 受控 App（仅在 IVYBM 书面确认采用此路径时） | 保留个人账号最终控制权，等待 IVYBM 发出受控测试授权链接                                                                  | 不需要为此路径创建 Company Page 或 Developer App           |
+| 个人账号发布 + 客户自持 App（仅在合同/IVYBM 书面确认要求时）     | 创建客户名下的 Developer App，并添加 Share on LinkedIn                                                                   | 不需要仅为了个人发布而创建 Company Page 或申请组织发布权限 |
+| 企业主页自动发布                                                 | 创建/确认 Company Page、保留两名 Super admin、创建客户名下的 Developer App，并按要求申请 Community Management App Review | 审核未通过时不绕过，改用人工发布兜底                       |
 
 如果无法判断自己属于哪一行，先把计划发布的目标（个人账号或 Company Page）告诉 IVYBM，收到书面确认后再继续。不要因为“先建一个 App 试试”而创建无主或个人名下的业务资产。
 
@@ -347,10 +347,10 @@ flowchart LR
 
 ### LinkedIn-3：按发布目标添加产品或申请审核（电脑浏览器）
 
-| 发布目标 | 申请/产品路径 | 关键权限 | 结果 |
-| --- | --- | --- | --- |
-| 发布到授权个人账号 | 在 Developer Portal 的 Products 添加 [Share on LinkedIn](https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin?context=linkedin%2Fconsumer%2Fcontext) | `w_member_social` | 可走 OAuth 授权后自动发布个人图文 |
-| 发布到企业主页 | 按 [Community Management App Review](https://learn.microsoft.com/en-us/linkedin/marketing/community-management-app-review) 提交开发者和 App 的 access request | `w_organization_social` | 只有审核通过、管理员授权成功后才启用自动企业主页发布 |
+| 发布目标           | 申请/产品路径                                                                                                                                                                                 | 关键权限                | 结果                                                 |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ---------------------------------------------------- |
+| 发布到授权个人账号 | 在 Developer Portal 的 Products 添加 [Share on LinkedIn](https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin?context=linkedin%2Fconsumer%2Fcontext) | `w_member_social`       | 可走 OAuth 授权后自动发布个人图文                    |
+| 发布到企业主页     | 按 [Community Management App Review](https://learn.microsoft.com/en-us/linkedin/marketing/community-management-app-review) 提交开发者和 App 的 access request                                 | `w_organization_social` | 只有审核通过、管理员授权成功后才启用自动企业主页发布 |
 
 企业主页自动发布的审核材料与演示路径由 IVYBM 准备，客户负责确认企业主页、管理员、官网/隐私资料和业务真实性。审核没通过时不阻塞内容生产：系统会生成已审核文案和素材包，客户在 LinkedIn Page 手动发布后回填状态。
 
@@ -365,13 +365,13 @@ flowchart LR
 
 ## 3. LinkedIn 官方学习入口
 
-| 资源 | 用途 | 说明 |
-| --- | --- | --- |
-| [LinkedIn Page admin roles](https://www.linkedin.com/help/linkedin/answer/a541981) | 让客户理解 Super admin 与 Content admin | 官方帮助图文；适用于创建/分配主页管理员 |
-| [LinkedIn Marketing Labs](https://www.linkedin.com/business/marketing/learning) | 主页内容与营销工具官方培训 | LinkedIn Marketing Solutions 的学习入口，课程可含视频，登录/地区会影响可见性 |
-| [LinkedIn for Marketing 官方 YouTube 频道](https://www.youtube.com/@LinkedInMktg) | 熟悉 LinkedIn Marketing/Company Page 的官方视频资料 | 已核验的 LinkedIn 官方营销频道；更适合主页、内容和营销工具培训，不替代开发者 App 审核 |
-| [LinkedIn Pages 官方 YouTube 播放列表](https://www.youtube.com/playlist?list=PLOiWp3quz2WUN1wzg_2YMl8Ceop27agj5) | 学习 Company Page 的运营与管理基础 | 来自上述官方频道的 LinkedIn Pages 播放列表；API scope 和审核仍以 Microsoft Learn 为准 |
-| [Posts API](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api?view=li-lms-2026-01) | 核对个人与组织发布 scope、角色要求 | 官方开发文档；App 审核与实现由 IVYBM 处理 |
+| 资源                                                                                                                        | 用途                                                | 说明                                                                                  |
+| --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [LinkedIn Page admin roles](https://www.linkedin.com/help/linkedin/answer/a541981)                                          | 让客户理解 Super admin 与 Content admin             | 官方帮助图文；适用于创建/分配主页管理员                                               |
+| [LinkedIn Marketing Labs](https://www.linkedin.com/business/marketing/learning)                                             | 主页内容与营销工具官方培训                          | LinkedIn Marketing Solutions 的学习入口，课程可含视频，登录/地区会影响可见性          |
+| [LinkedIn for Marketing 官方 YouTube 频道](https://www.youtube.com/@LinkedInMktg)                                           | 熟悉 LinkedIn Marketing/Company Page 的官方视频资料 | 已核验的 LinkedIn 官方营销频道；更适合主页、内容和营销工具培训，不替代开发者 App 审核 |
+| [LinkedIn Pages 官方 YouTube 播放列表](https://www.youtube.com/playlist?list=PLOiWp3quz2WUN1wzg_2YMl8Ceop27agj5)            | 学习 Company Page 的运营与管理基础                  | 来自上述官方频道的 LinkedIn Pages 播放列表；API scope 和审核仍以 Microsoft Learn 为准 |
+| [Posts API](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api?view=li-lms-2026-01) | 核对个人与组织发布 scope、角色要求                  | 官方开发文档；App 审核与实现由 IVYBM 处理                                             |
 
 ---
 
@@ -379,12 +379,12 @@ flowchart LR
 
 完成各平台步骤后，请一次性提供下列**非敏感**资料。可用本页末尾的勾选清单核对。
 
-| 项目 | 需要提供 | 不要提供 |
-| --- | --- | --- |
-| Meta | Business Portfolio ID、Page URL/ID、Instagram 用户名、企业验证状态、是否默认 IVYBM App/客户自持 App、授权成员截图 | Facebook/Instagram 密码、App Secret、Page Token |
-| TikTok | Business Account URL、Business Center ID、目标地区、DM 资格截图/官方工单；仅通过 TikTok-3 后再提供 Developer App 状态 | TikTok 密码、Client Secret、Access/refresh token |
-| LinkedIn | 已选择的个人/企业路径、个人/Company Page URL、Super admin/Content admin 状态、App Client ID（如适用）、Products/App Review 状态 | LinkedIn 密码、Client Secret、OAuth access token |
-| 通用 | 官网、隐私政策、条款、数据删除链接、企业主体信息、测试联系人 | 任何生产密钥、身份证/营业执照原件在公开群聊中发送 |
+| 项目     | 需要提供                                                                                                                        | 不要提供                                          |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Meta     | Business Portfolio ID、Page URL/ID、Instagram 用户名、企业验证状态、是否默认 IVYBM App/客户自持 App、授权成员截图               | Facebook/Instagram 密码、App Secret、Page Token   |
+| TikTok   | Business Account URL、Business Center ID、目标地区、DM 资格截图/官方工单；仅通过 TikTok-3 后再提供 Developer App 状态           | TikTok 密码、Client Secret、Access/refresh token  |
+| LinkedIn | 已选择的个人/企业路径、个人/Company Page URL、Super admin/Content admin 状态、App Client ID（如适用）、Products/App Review 状态 | LinkedIn 密码、Client Secret、OAuth access token  |
+| 通用     | 官网、隐私政策、条款、数据删除链接、企业主体信息、测试联系人                                                                    | 任何生产密钥、身份证/营业执照原件在公开群聊中发送 |
 
 ### 统一交付方式与截图规则
 
@@ -410,13 +410,13 @@ flowchart LR
 
 # 五、客户只需认识的几个术语
 
-| 术语 | 通俗含义 | 客户要做什么 |
-| --- | --- | --- |
-| Business Portfolio / Business Center | 企业用来归属 Page、账号和成员权限的后台 | 由客户企业持有，保留两名长期最高管理员 |
-| Full control / Super admin / Owner | 当前平台可提供的最高资产管理角色 | 至少两名客户长期账号拥有该角色或等价最高角色 |
-| App | 让系统通过官方 API 连接平台的集成程序 | 默认 Meta App 由 IVYBM 管理；TikTok/LinkedIn 是否客户自持，以本手册路径和 IVYBM 书面确认为准 |
-| OAuth / scope | 平台弹出的正式授权页和本次允许 App 做什么的范围 | 客户只核对 App 名称、所选资产和用途；不填写技术参数、不发送授权码或 Token |
-| redirect URI / Webhook | 系统接收授权结果或平台消息的技术地址 | 全部由 IVYBM 提供、配置和验证；客户不要自行猜填 |
+| 术语                                 | 通俗含义                                        | 客户要做什么                                                                                 |
+| ------------------------------------ | ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Business Portfolio / Business Center | 企业用来归属 Page、账号和成员权限的后台         | 由客户企业持有，保留两名长期最高管理员                                                       |
+| Full control / Super admin / Owner   | 当前平台可提供的最高资产管理角色                | 至少两名客户长期账号拥有该角色或等价最高角色                                                 |
+| App                                  | 让系统通过官方 API 连接平台的集成程序           | 默认 Meta App 由 IVYBM 管理；TikTok/LinkedIn 是否客户自持，以本手册路径和 IVYBM 书面确认为准 |
+| OAuth / scope                        | 平台弹出的正式授权页和本次允许 App 做什么的范围 | 客户只核对 App 名称、所选资产和用途；不填写技术参数、不发送授权码或 Token                    |
+| redirect URI / Webhook               | 系统接收授权结果或平台消息的技术地址            | 全部由 IVYBM 提供、配置和验证；客户不要自行猜填                                              |
 
 ---
 

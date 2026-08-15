@@ -173,12 +173,15 @@ describe('production environment preflight', () => {
     expect(invalidPublishing.stderr).toContain('ADMIN_PORTAL_PUBLISHING_ENABLED')
   })
 
-  it('requires the complete worker runtime only when controlled publishing is enabled', () => {
+  it('allows Meta-only publishing and validates LinkedIn runtime only when configured', () => {
     const enabled = productionEnvironment.replace(
       'ADMIN_PORTAL_PUBLISHING_ENABLED=false',
       'ADMIN_PORTAL_PUBLISHING_ENABLED=true',
     )
     const missingRuntime = runPreflight(enabled)
+    const metaOnly = runPreflight(
+      `${enabled}PLATFORM_CREDENTIAL_ENCRYPTION_KEY=${'d'.repeat(64)}\n`,
+    )
     const invalidOrigin =
       runPreflight(`${enabled}PLATFORM_CREDENTIAL_ENCRYPTION_KEY=${'d'.repeat(64)}
 LINKEDIN_API_VERSION=202608
@@ -193,6 +196,7 @@ LINKEDIN_UPLOAD_TICKET_KEY=${'e'.repeat(64)}
 
     expect(missingRuntime.status).not.toBe(0)
     expect(missingRuntime.stderr).toContain('PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
+    expect(metaOnly.status).toBe(0)
     expect(invalidOrigin.status).not.toBe(0)
     expect(invalidOrigin.stderr).toContain('LINKEDIN_UPLOAD_ALLOWED_ORIGINS')
     expect(complete.status).toBe(0)

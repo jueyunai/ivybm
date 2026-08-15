@@ -220,10 +220,13 @@ fi
 
 if [[ "$portal_publishing_enabled" == 'true' ]]; then
   require_pattern PLATFORM_CREDENTIAL_ENCRYPTION_KEY "$platform_credential_encryption_key" '^[a-fA-F0-9]{64}$'
+fi
+
+if [[ -n "$linkedin_upload_allowed_origins$linkedin_upload_ticket_key" ]]; then
   require_pattern LINKEDIN_API_VERSION "$linkedin_api_version" '^20[0-9]{2}(0[1-9]|1[0-2])$'
   require_pattern LINKEDIN_UPLOAD_TICKET_KEY "$linkedin_upload_ticket_key" '^[a-fA-F0-9]{64}$'
   if [[ -z "$linkedin_upload_allowed_origins" || "$linkedin_upload_allowed_origins" == *'REPLACE_'* || "$linkedin_upload_allowed_origins" == *'replace-with'* ]]; then
-    echo 'LINKEDIN_UPLOAD_ALLOWED_ORIGINS is required when publishing is enabled' >&2
+    echo 'LINKEDIN_UPLOAD_ALLOWED_ORIGINS is required when LinkedIn uploads are configured' >&2
     exit 1
   fi
   IFS=',' read -r -a linkedin_upload_origins <<<"$linkedin_upload_allowed_origins"
@@ -449,15 +452,21 @@ for key in portal_keys:
 publishing_enabled = app_environment.get('ADMIN_PORTAL_PUBLISHING_ENABLED')
 if publishing_enabled not in {'true', 'false'}:
     raise SystemExit('Compose app environment has an invalid ADMIN_PORTAL_PUBLISHING_ENABLED')
+conversations_enabled = app_environment.get('ADMIN_PORTAL_CONVERSATIONS_ENABLED')
+if worker_environment.get('ADMIN_PORTAL_CONVERSATIONS_ENABLED') != conversations_enabled:
+    raise SystemExit('Compose app and worker conversation switches must match')
 if worker_environment.get('ADMIN_PORTAL_PUBLISHING_ENABLED') != publishing_enabled:
     raise SystemExit('Compose app and worker publishing switches must match')
 if publishing_enabled == 'true':
-    for key in (
-        'PLATFORM_CREDENTIAL_ENCRYPTION_KEY',
-        'LINKEDIN_API_VERSION',
-        'LINKEDIN_UPLOAD_ALLOWED_ORIGINS',
-        'LINKEDIN_UPLOAD_TICKET_KEY',
-    ):
+    if not worker_environment.get('PLATFORM_CREDENTIAL_ENCRYPTION_KEY'):
+        raise SystemExit('Compose worker environment is missing PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
+linkedin_keys = (
+    'LINKEDIN_API_VERSION',
+    'LINKEDIN_UPLOAD_ALLOWED_ORIGINS',
+    'LINKEDIN_UPLOAD_TICKET_KEY',
+)
+if any(worker_environment.get(key) for key in linkedin_keys[1:]):
+    for key in linkedin_keys:
         if not worker_environment.get(key):
             raise SystemExit(f'Compose worker environment is missing {key}')
 if app.get('build') is not None or worker.get('build') is not None or migrate.get('build') is not None:
