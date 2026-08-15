@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { ClaimedJob, JobQueue, JobRecord } from '@/modules/jobs/contracts'
 import { JobWorker } from '@/modules/jobs/worker'
-import { createPlatformConversationDeliveryService } from '@/modules/platforms/conversationDelivery'
+import {
+  createPlatformConversationDeliveryService,
+  PlatformConversationDeliveryPersistenceError,
+} from '@/modules/platforms/conversationDelivery'
 import { PlatformConversationOutboundOutcomeUnknownError } from '@/modules/platforms/conversationOutboundResult'
 import { createFakePlatformConversationDeliveryAuthority } from '@/modules/platforms/fakeConversationDeliveryAuthority'
 import {
@@ -154,7 +157,11 @@ describe('platform conversation delivery service', () => {
     const service = createPlatformConversationDeliveryService({ authority, outbound })
     const queuedBeforeTakeover = deliveryIntent()
 
-    authority.setDeliverySnapshot({ conversationId: 42, handoffStatus: 'human_active', revision: 8 })
+    authority.setDeliverySnapshot({
+      conversationId: 42,
+      handoffStatus: 'human_active',
+      revision: 8,
+    })
 
     await expect(service.deliver(queuedBeforeTakeover, deliveryLease())).resolves.toMatchObject({
       errorCode: 'handoff_required',
@@ -250,12 +257,11 @@ describe('platform conversation delivery service', () => {
         deliveryIntent(),
         deliveryLease(),
       ),
-    ).resolves.toEqual({
+    ).rejects.toMatchObject({
       deliveryKey: 'conversation-42:reply-7',
-      errorCode: 'lease_conflict',
+      code: 'provider_unavailable',
       platform: 'facebook-messenger',
       retryable: true,
-      status: 'blocked',
     })
     expect(send).not.toHaveBeenCalled()
 
@@ -790,10 +796,10 @@ describe('platform conversation delivery service', () => {
         ),
     }
 
-    const outcome = await createPlatformConversationDeliveryService({ authority, outbound }).deliver(
-      deliveryIntent(),
-      deliveryLease(),
-    )
+    const outcome = await createPlatformConversationDeliveryService({
+      authority,
+      outbound,
+    }).deliver(deliveryIntent(), deliveryLease())
     expect(outcome).toEqual({
       deliveryKey: 'conversation-42:reply-7',
       platform: 'facebook-messenger',
@@ -805,7 +811,7 @@ describe('platform conversation delivery service', () => {
     expect(serialized).not.toContain('Authorization')
   })
 
-  it('preserves a confirmed rate limit when claim release fails', async () => {
+  it('defers a confirmed rate limit when claim release fails', async () => {
     const baseAuthority = authorityFor()
     const authority = {
       claimDelivery: baseAuthority.claimDelivery,
@@ -825,17 +831,19 @@ describe('platform conversation delivery service', () => {
         deliveryIntent(),
         deliveryLease(),
       ),
-    ).resolves.toEqual({
-      deliveryKey: 'conversation-42:reply-7',
-      errorCode: 'rate_limited',
-      platform: 'facebook-messenger',
-      retryAfterSeconds: 60,
-      retryable: true,
-      status: 'blocked',
+    ).rejects.toMatchObject({
+      outcome: {
+        deliveryKey: 'conversation-42:reply-7',
+        errorCode: 'rate_limited',
+        platform: 'facebook-messenger',
+        retryAfterSeconds: 60,
+        retryable: true,
+        status: 'blocked',
+      },
     })
   })
 
-  it('downgrades accepted to delivery_unknown when the claim cannot be released', async () => {
+  it('defers accepted delivery to lease recovery when the claim cannot be released', async () => {
     const baseAuthority = authorityFor()
     const authority = {
       claimDelivery: baseAuthority.claimDelivery,
@@ -849,11 +857,7 @@ describe('platform conversation delivery service', () => {
         deliveryIntent(),
         deliveryLease(),
       ),
-    ).resolves.toEqual({
-      deliveryKey: 'conversation-42:reply-7',
-      platform: 'facebook-messenger',
-      status: 'delivery_unknown',
-    })
+    ).rejects.toBeInstanceOf(PlatformConversationDeliveryPersistenceError)
   })
 
   it('reclaims an expired started claim through recovery without a second send', async () => {
@@ -897,46 +901,49 @@ describe('platform conversation delivery service', () => {
   })
 
   it.each([
-    ['a human takeover', { conversationId: 42, handoffStatus: 'human_active' as const, revision: 8 }],
-    ['a newer AI revision', { conversationId: 42, handoffStatus: 'ai_active' as const, revision: 8 }],
-  ])(
-    'fences a same-key recovery retry after %s',
-    async (_description, changedSnapshot) => {
-      const authority = authorityFor()
-      const abandonedClaim = await claimFor(authority)
-      await expect(authority.markProviderIOStarted(abandonedClaim)).resolves.toEqual({
-        status: 'fenced',
-      })
-      expect(authority.expireDeliveryClaim(42)).toBe(true)
-      expect(authority.setDeliverySnapshot(changedSnapshot)).toBe(true)
+    [
+      'a human takeover',
+      { conversationId: 42, handoffStatus: 'human_active' as const, revision: 8 },
+    ],
+    [
+      'a newer AI revision',
+      { conversationId: 42, handoffStatus: 'ai_active' as const, revision: 8 },
+    ],
+  ])('fences a same-key recovery retry after %s', async (_description, changedSnapshot) => {
+    const authority = authorityFor()
+    const abandonedClaim = await claimFor(authority)
+    await expect(authority.markProviderIOStarted(abandonedClaim)).resolves.toEqual({
+      status: 'fenced',
+    })
+    expect(authority.expireDeliveryClaim(42)).toBe(true)
+    expect(authority.setDeliverySnapshot(changedSnapshot)).toBe(true)
 
-      const send = vi.fn(async (input: PlatformConversationOutboundRequest) => ({
+    const send = vi.fn(async (input: PlatformConversationOutboundRequest) => ({
+      deliveryKey: input.deliveryKey,
+      platform: input.platform,
+      status: 'accepted' as const,
+    }))
+    const outbound: PlatformConversationOutboundPort = {
+      recoverUnknownOutcome: vi.fn(async (input) => ({
         deliveryKey: input.deliveryKey,
         platform: input.platform,
-        status: 'accepted' as const,
-      }))
-      const outbound: PlatformConversationOutboundPort = {
-        recoverUnknownOutcome: vi.fn(async (input) => ({
-          deliveryKey: input.deliveryKey,
-          platform: input.platform,
-          status: 'retry_same_delivery_key' as const,
-        })),
-        send,
-      }
+        status: 'retry_same_delivery_key' as const,
+      })),
+      send,
+    }
 
-      await expect(
-        createPlatformConversationDeliveryService({ authority, outbound }).deliver(
-          deliveryIntent(),
-          deliveryLease(),
-        ),
-      ).resolves.toEqual({
-        deliveryKey: 'conversation-42:reply-7',
-        platform: 'facebook-messenger',
-        status: 'delivery_unknown',
-      })
-      expect(send).not.toHaveBeenCalled()
-    },
-  )
+    await expect(
+      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+        deliveryIntent(),
+        deliveryLease(),
+      ),
+    ).resolves.toEqual({
+      deliveryKey: 'conversation-42:reply-7',
+      platform: 'facebook-messenger',
+      status: 'delivery_unknown',
+    })
+    expect(send).not.toHaveBeenCalled()
+  })
 
   it('does not let a changed payload inherit another intent recovery fence', async () => {
     const authority = authorityFor()
@@ -1006,52 +1013,51 @@ describe('platform conversation delivery service', () => {
     await authority.releaseDelivery(nextClaim)
   })
 
-  it.each([
-    '',
-    'conversation-42:reply-7',
-    'provider\nmessage',
-    'x'.repeat(513),
-    '凭'.repeat(200),
-  ])('rejects malformed provider acceptance evidence %j at runtime', async (providerReference) => {
-    const authority = authorityFor()
-    const outbound: PlatformConversationOutboundPort = {
-      recoverUnknownOutcome: vi.fn(async (input) =>
-        ({
-          deliveryKey: input.deliveryKey,
-          platform: input.platform,
-          providerReference,
-          status: 'provider_accepted',
-        }) as never,
-      ),
-      send: vi.fn().mockRejectedValue(
-        new PlatformConversationOutboundOutcomeUnknownError({
-          deliveryKey: 'conversation-42:reply-7',
-          platform: 'facebook-messenger',
-        }),
-      ),
-    }
+  it.each(['', 'conversation-42:reply-7', 'provider\nmessage', 'x'.repeat(513), '凭'.repeat(200)])(
+    'rejects malformed provider acceptance evidence %j at runtime',
+    async (providerReference) => {
+      const authority = authorityFor()
+      const outbound: PlatformConversationOutboundPort = {
+        recoverUnknownOutcome: vi.fn(
+          async (input) =>
+            ({
+              deliveryKey: input.deliveryKey,
+              platform: input.platform,
+              providerReference,
+              status: 'provider_accepted',
+            }) as never,
+        ),
+        send: vi.fn().mockRejectedValue(
+          new PlatformConversationOutboundOutcomeUnknownError({
+            deliveryKey: 'conversation-42:reply-7',
+            platform: 'facebook-messenger',
+          }),
+        ),
+      }
 
-    await expect(
-      createPlatformConversationDeliveryService({ authority, outbound }).deliver(
-        deliveryIntent(),
-        deliveryLease(),
-      ),
-    ).resolves.toEqual({
-      deliveryKey: 'conversation-42:reply-7',
-      platform: 'facebook-messenger',
-      status: 'delivery_unknown',
-    })
-  })
+      await expect(
+        createPlatformConversationDeliveryService({ authority, outbound }).deliver(
+          deliveryIntent(),
+          deliveryLease(),
+        ),
+      ).resolves.toEqual({
+        deliveryKey: 'conversation-42:reply-7',
+        platform: 'facebook-messenger',
+        status: 'delivery_unknown',
+      })
+    },
+  )
 
   it('rejects an unknown recovery status at runtime', async () => {
     const authority = authorityFor()
     const outbound: PlatformConversationOutboundPort = {
-      recoverUnknownOutcome: vi.fn(async (input) =>
-        ({
-          deliveryKey: input.deliveryKey,
-          platform: input.platform,
-          status: 'invented_status',
-        }) as never,
+      recoverUnknownOutcome: vi.fn(
+        async (input) =>
+          ({
+            deliveryKey: input.deliveryKey,
+            platform: input.platform,
+            status: 'invented_status',
+          }) as never,
       ),
       send: vi.fn().mockRejectedValue(
         new PlatformConversationOutboundOutcomeUnknownError({
@@ -1085,13 +1091,14 @@ describe('platform conversation delivery service', () => {
         status: 'accepted',
       })
     const outbound: PlatformConversationOutboundPort = {
-      recoverUnknownOutcome: vi.fn(async (input) =>
-        ({
-          deliveryKey: input.deliveryKey,
-          extra: 'not part of the recovery union',
-          platform: input.platform,
-          status: 'retry_same_delivery_key',
-        }) as never,
+      recoverUnknownOutcome: vi.fn(
+        async (input) =>
+          ({
+            deliveryKey: input.deliveryKey,
+            extra: 'not part of the recovery union',
+            platform: input.platform,
+            status: 'retry_same_delivery_key',
+          }) as never,
       ),
       send,
     }

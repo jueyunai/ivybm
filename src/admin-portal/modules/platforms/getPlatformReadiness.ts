@@ -14,9 +14,20 @@ export type PlatformReadinessPageState =
 
 export interface PlatformReadinessAccountSummary {
   accountKind: PlatformAccount['accountKind']
+  authorization: {
+    accessTokenConfigured: boolean
+    refreshTokenConfigured: boolean
+    state: PlatformAccount['authorization']['state']
+  }
+  authorizationRevision: number
+  capabilities: {
+    messagingInbound: NonNullable<PlatformAccount['capabilities']>['messagingInbound']
+    publishing: NonNullable<PlatformAccount['capabilities']>['publishing']
+  }
   externalAccountId: string | null
   id: number
   name: string
+  notes: string | null
   readiness: PlatformAccountReadiness
 }
 
@@ -52,9 +63,20 @@ export const toPlatformReadinessAccountSummary = ({
 
   return {
     accountKind: account.accountKind,
+    authorization: {
+      accessTokenConfigured,
+      refreshTokenConfigured: authorization.refreshTokenConfigured === true,
+      state: authorization.state,
+    },
+    authorizationRevision: account.authorizationRevision,
+    capabilities: {
+      messagingInbound: capabilities?.messagingInbound,
+      publishing: capabilities?.publishing,
+    },
     externalAccountId: account.externalAccountId ?? null,
     id: account.id,
     name: account.name,
+    notes: account.notes ?? null,
     readiness: assessPlatformAccountReadiness({
       account: {
         accessTokenConfigured,
@@ -160,6 +182,36 @@ export const listPlatformReadiness = async ({
         environment,
       }),
     ),
+  }
+}
+
+export type PlatformAccountsPageData = {
+  accounts: PlatformReadinessAccountSummary[]
+  state: PlatformReadinessPageState | 'read-failed'
+}
+
+export const loadPlatformAccountsPageData = async ({
+  env,
+  payload,
+  req,
+  role,
+}: {
+  env: PortalEnvironment
+  payload: Payload
+  req?: PayloadRequest
+  role: PortalRole
+}): Promise<PlatformAccountsPageData> => {
+  if (env.ADMIN_PORTAL_ENABLED !== 'true') return { accounts: [], state: 'portal-disabled' }
+  if (env.ADMIN_PORTAL_PLATFORMS_ENABLED !== 'true') {
+    return { accounts: [], state: 'module-disabled' }
+  }
+  if (role !== 'admin') return { accounts: [], state: 'forbidden' }
+
+  try {
+    const summary = await listPlatformReadiness({ environment: env, payload, req })
+    return { accounts: summary.accounts, state: 'available' }
+  } catch (error) {
+    throw new PlatformReadinessReadError(error)
   }
 }
 

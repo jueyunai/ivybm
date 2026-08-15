@@ -12,7 +12,7 @@ import type { PlatformAccount, User } from '@/payload-types'
 
 type PlatformOAuthAccountKind = Extract<
   PlatformAccount['accountKind'],
-  'facebook-page' | 'instagram-professional'
+  'facebook-page' | 'instagram-professional' | 'linkedin-member' | 'linkedin-organization'
 >
 
 export type PlatformOAuthAccountSnapshot = {
@@ -22,17 +22,30 @@ export type PlatformOAuthAccountSnapshot = {
   externalAccountId: string
 }
 
-type LockedPlatformAccount = {
+export type LockedPlatformAccount = {
   account_kind: string
   authorization_revision: number | string
   authorization_state: string
   external_account_id: null | string
 }
 
+export type PlatformAccountMutationSnapshot = {
+  accountId: number
+  allowedAuthorizationStates?: readonly PlatformAccount['authorization']['state'][]
+  authorizationRevision: number
+}
+
 export class PlatformOAuthAccountChangedError extends Error {
   constructor() {
     super('Platform account changed during OAuth')
     this.name = 'PlatformOAuthAccountChangedError'
+  }
+}
+
+export class PlatformAccountMutationConflictError extends Error {
+  constructor(public readonly reason: 'state' | 'stale_revision') {
+    super('Platform account changed before the requested mutation')
+    this.name = 'PlatformAccountMutationConflictError'
   }
 }
 
@@ -107,6 +120,60 @@ export const withLockedPlatformOAuthAccount = async <T>({
     if (!matchesSnapshot(account, snapshot)) throw new PlatformOAuthAccountChangedError()
 
     const result = await operation(req)
+    await commitTransaction(req)
+    return result
+  } catch (error) {
+    await killTransaction(req).catch(() => undefined)
+    throw error
+  }
+}
+
+/**
+ * Atomically compare the Portal client's revision (and optional allowed states)
+ * with the row that will be mutated. The operation receives the same Payload
+ * request/transaction so no callback, disconnect, or competing edit can slip
+ * between the comparison and the write.
+ */
+export const withLockedPlatformAccountMutation = async <T>({
+  operation,
+  payload,
+  snapshot,
+  user,
+}: {
+  operation: (req: PayloadRequest, account: LockedPlatformAccount) => Promise<T>
+  payload: Payload
+  snapshot: PlatformAccountMutationSnapshot
+  user: User
+}): Promise<T> => {
+  const req = await createLocalReq({ user }, payload)
+  await initTransaction(req)
+  try {
+    const database = await databaseForRequest(payload, req)
+    const locked = await database.execute(sql`
+      SELECT
+        "account_kind",
+        "authorization_revision",
+        "authorization_state",
+        "external_account_id"
+      FROM "platform_accounts"
+      WHERE "id" = ${snapshot.accountId}
+      FOR UPDATE
+    `)
+    const account = locked.rows[0] as LockedPlatformAccount | undefined
+    if (!account) throw new PlatformAccountMutationConflictError('stale_revision')
+    if (normalizeRevision(account.authorization_revision) !== snapshot.authorizationRevision) {
+      throw new PlatformAccountMutationConflictError('stale_revision')
+    }
+    if (
+      snapshot.allowedAuthorizationStates &&
+      !snapshot.allowedAuthorizationStates.includes(
+        account.authorization_state as PlatformAccount['authorization']['state'],
+      )
+    ) {
+      throw new PlatformAccountMutationConflictError('state')
+    }
+
+    const result = await operation(req, account)
     await commitTransaction(req)
     return result
   } catch (error) {

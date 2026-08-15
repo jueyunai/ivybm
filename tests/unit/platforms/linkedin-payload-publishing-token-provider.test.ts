@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { platformRuntimeCredentialReadContext } from '@/access/platformCredentials'
 import { encryptPlatformCredential } from '@/modules/platforms/credentials'
 import { PayloadLinkedInPublishingTokenProvider } from '@/modules/platforms/linkedin/payloadPublishingTokenProvider'
+import { requiredLinkedInPermissions } from '@/modules/platforms/linkedin/oauth'
 import type { LinkedInPublishingAccountKind } from '@/modules/platforms/linkedin/publishingOutbound'
 
 const encryptionKey = Buffer.alloc(32, 9)
@@ -23,6 +24,7 @@ describe('Payload LinkedIn publishing token provider', () => {
         accessToken: encryptedToken,
         accessTokenConfigured: true,
         expiresAt: '2026-08-13T00:00:00.000Z',
+        scopes: requiredLinkedInPermissions(accountKind).map((scope) => ({ scope })),
         state: 'connected',
       },
       authorizationRevision: 4,
@@ -53,6 +55,7 @@ describe('Payload LinkedIn publishing token provider', () => {
           accessToken: true,
           accessTokenConfigured: true,
           expiresAt: true,
+          scopes: true,
           state: true,
         },
         authorizationRevision: true,
@@ -144,6 +147,36 @@ describe('Payload LinkedIn publishing token provider', () => {
       }),
     ).resolves.toBeUndefined()
   })
+
+  it.each<LinkedInPublishingAccountKind>(['linkedin-member', 'linkedin-organization'])(
+    'rejects a connected %s token with incomplete publishing scopes',
+    async (accountKind) => {
+      const required = requiredLinkedInPermissions(accountKind)
+      const provider = new PayloadLinkedInPublishingTokenProvider({
+        encryptionKey,
+        payload: payloadWith({
+          authorization: {
+            accessToken: encryptedToken,
+            accessTokenConfigured: true,
+            scopes: required.slice(0, -1).map((scope) => ({ scope })),
+            state: 'connected',
+          },
+          authorizationRevision: 4,
+          capabilities: { publishing: 'approved' },
+        }) as never,
+      })
+
+      await expect(
+        provider.getToken({
+          accountExternalId:
+            accountKind === 'linkedin-organization' ? '971937765923229' : 'AbC_123',
+          accountKind,
+          authorizationRevision: 4,
+          platformAccountId: 7,
+        }),
+      ).resolves.toBeUndefined()
+    },
+  )
 
   it('rejects a token from a different authorization revision', async () => {
     const provider = new PayloadLinkedInPublishingTokenProvider({

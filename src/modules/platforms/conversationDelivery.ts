@@ -23,6 +23,16 @@ import {
   type PlatformConversationOutboundResult,
 } from './types'
 
+export class PlatformConversationDeliveryPersistenceError extends Error {
+  readonly outcome: PlatformConversationDeliveryOutcome
+
+  constructor(outcome: PlatformConversationDeliveryOutcome, cause?: unknown) {
+    super('Platform conversation delivery outcome could not be persisted', { cause })
+    this.name = 'PlatformConversationDeliveryPersistenceError'
+    this.outcome = structuredClone(outcome)
+  }
+}
+
 const deliveryUnknown = (
   request: PlatformConversationOutboundRequest,
 ): PlatformConversationOutboundRecoveryResult => ({
@@ -137,8 +147,7 @@ const identitiesMatch = (
 const sameLeaseOwner = (
   left: PlatformConversationDeliveryLeaseFence,
   right: PlatformConversationDeliveryLeaseFence,
-): boolean =>
-  left.jobId === right.jobId && left.ownerToken === right.ownerToken
+): boolean => left.jobId === right.jobId && left.ownerToken === right.ownerToken
 
 const authorityBlockedOutcome = (
   reason: PlatformConversationDeliveryBlockReason,
@@ -264,13 +273,7 @@ const normalizeSendResult = (
   }
 
   if (!result.retryable) {
-    return hasExactKeys(result, [
-      'deliveryKey',
-      'errorCode',
-      'platform',
-      'retryable',
-      'status',
-    ])
+    return hasExactKeys(result, ['deliveryKey', 'errorCode', 'platform', 'retryable', 'status'])
       ? {
           deliveryKey: request.deliveryKey,
           errorCode: result.errorCode,
@@ -305,9 +308,7 @@ const normalizeSendResult = (
     deliveryKey: request.deliveryKey,
     errorCode: result.errorCode,
     platform: request.platform,
-    ...(hasRetryAfterSeconds
-      ? { retryAfterSeconds: result.retryAfterSeconds as number }
-      : {}),
+    ...(hasRetryAfterSeconds ? { retryAfterSeconds: result.retryAfterSeconds as number } : {}),
     retryable: true,
     status: 'blocked',
   }
@@ -455,7 +456,10 @@ export const createPlatformConversationDeliveryService = ({
     if (claim.mode === 'recover') {
       outcome = await recoverUnknownOutcome(outbound, authoritativeIntent.transport)
       if (outcome.status === 'retry_same_delivery_key') {
-        let providerIOStarted: PlatformConversationDeliveryMarkResult = { status: 'blocked', reason: 'claim_conflict' }
+        let providerIOStarted: PlatformConversationDeliveryMarkResult = {
+          status: 'blocked',
+          reason: 'claim_conflict',
+        }
         try {
           providerIOStarted = await authority.markProviderIOStarted(claim)
         } catch {
@@ -472,7 +476,10 @@ export const createPlatformConversationDeliveryService = ({
         }
       }
     } else {
-      let providerIOStarted: PlatformConversationDeliveryMarkResult = { status: 'blocked', reason: 'claim_conflict' }
+      let providerIOStarted: PlatformConversationDeliveryMarkResult = {
+        status: 'blocked',
+        reason: 'claim_conflict',
+      }
       try {
         providerIOStarted = await authority.markProviderIOStarted(claim)
       } catch {
@@ -483,7 +490,9 @@ export const createPlatformConversationDeliveryService = ({
         try {
           await authority.releaseDelivery(claim)
         } catch {
-          // Provider I/O never started, so this remains a confirmed fence block.
+          // Provider I/O never started. A normal Job retry is safe and gives the
+          // authority another chance to clear the durable claim.
+          throw new PlatformConversationOutboundTransportError(authoritativeIntent.transport)
         }
         return authorityBlockedOutcome(providerIOStarted.reason, authoritativeIntent.transport)
       }
@@ -499,9 +508,12 @@ export const createPlatformConversationDeliveryService = ({
 
     try {
       await authority.releaseDelivery(claim, outcome)
-    } catch {
-      if (!sendError && outcome?.status !== 'blocked') {
-        outcome = deliveryUnknown(authoritativeIntent.transport)
+    } catch (error) {
+      if (!sendError) {
+        throw new PlatformConversationDeliveryPersistenceError(
+          outcome ?? deliveryUnknown(authoritativeIntent.transport),
+          error,
+        )
       }
     }
 

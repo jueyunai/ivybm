@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPayload } from 'payload'
+import { createLocalReq, getPayload } from 'payload'
 
 import {
   INSTAGRAM_OAUTH_CALLBACK_PATH,
   INSTAGRAM_OAUTH_TRANSACTION_COOKIE,
 } from '@/modules/platforms/instagram/oauth'
+import { validateDisconnectPlatformAccountInput } from '@/modules/platforms/accountPortalDto'
+import {
+  PlatformAccountMutationConflictError,
+  withLockedPlatformAccountMutation,
+} from '@/modules/platforms/accountOAuthConcurrency'
+import { PlatformPortalRequestError, readPlatformPortalJSON } from '@/modules/platforms/portalHttp'
 import config from '@/payload.config'
 import type { PlatformAccount, User } from '@/payload-types'
 
@@ -21,31 +27,26 @@ const isInstagramAccount = (account: PlatformAccount): boolean =>
   account.accountKind === 'instagram-professional' && account.platformFamily === 'meta'
 
 export async function POST(request: NextRequest): Promise<Response> {
-  const origin = request.headers.get('origin')
-  const trustedOrigin = new URL(request.url).origin
-  const untrustedOrigin = !origin || origin !== trustedOrigin
-  if (untrustedOrigin) {
-    return json(403, { error: { code: 'forbidden' } })
+  if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
+    return json(503, { error: { code: 'portal_disabled' } })
   }
-  if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
-    return json(415, { error: { code: 'unsupported_media_type' } })
-  }
-  const contentLength = Number(request.headers.get('content-length') || '0')
-  if (!Number.isSafeInteger(contentLength) || contentLength < 0 || contentLength > 4_096) {
-    return json(413, { error: { code: 'request_too_large' } })
+  if (process.env.ADMIN_PORTAL_PLATFORMS_ENABLED !== 'true') {
+    return json(503, { error: { code: 'platform_module_disabled' } })
   }
 
-  let body: { accountId?: number }
+  let body: unknown
   try {
-    body = (await request.json()) as { accountId?: number }
-  } catch {
+    body = await readPlatformPortalJSON(request)
+  } catch (error) {
+    if (error instanceof PlatformPortalRequestError) {
+      return json(error.status, { error: { code: error.code } })
+    }
     return json(400, { error: { code: 'invalid_request' } })
   }
 
-  const accountId = body.accountId
-  if (!accountId || !Number.isSafeInteger(accountId) || accountId <= 0) {
-    return json(400, { error: { code: 'invalid_account_id' } })
-  }
+  const input = validateDisconnectPlatformAccountInput(body)
+  if (!input.success) return json(400, { error: input.error })
+  const { accountId, authorizationRevision } = input.value
 
   try {
     const payload = await getPayload({ config })
@@ -63,13 +64,16 @@ export async function POST(request: NextRequest): Promise<Response> {
         { headers: { 'cache-control': 'private, no-store' }, status: 403 },
       )
     }
+    const req = await createLocalReq({ user: actor }, payload)
 
     let account: PlatformAccount
     try {
       account = await payload.findByID({
         collection: 'platform-accounts',
         id: accountId,
-        overrideAccess: true,
+        overrideAccess: false,
+        req,
+        user: actor,
       })
     } catch {
       return json(404, { error: { code: 'platform_account_not_found' } })
@@ -78,19 +82,26 @@ export async function POST(request: NextRequest): Promise<Response> {
       return json(409, { error: { code: 'instagram_account_required' } })
     }
 
-    await payload.update({
-      collection: 'platform-accounts',
-      data: {
-        authorization: {
-          clearAccessToken: true,
-          clearRefreshToken: true,
-          expiresAt: null,
-          scopes: [],
-          state: 'not_started',
-        },
-      },
-      id: accountId,
-      overrideAccess: false,
+    await withLockedPlatformAccountMutation({
+      operation: (lockedReq) =>
+        payload.update({
+          collection: 'platform-accounts',
+          data: {
+            authorization: {
+              clearAccessToken: true,
+              clearRefreshToken: true,
+              expiresAt: null,
+              scopes: [],
+              state: 'not_started',
+            },
+          },
+          id: accountId,
+          overrideAccess: false,
+          req: lockedReq,
+          user: actor,
+        }),
+      payload,
+      snapshot: { accountId, authorizationRevision },
       user: actor,
     })
 
@@ -106,7 +117,10 @@ export async function POST(request: NextRequest): Promise<Response> {
       secure: new URL(request.url).protocol === 'https:',
     })
     return response
-  } catch {
+  } catch (error) {
+    if (error instanceof PlatformAccountMutationConflictError) {
+      return json(409, { error: { code: 'stale_revision' } })
+    }
     return NextResponse.json(
       { error: { code: 'unavailable' } },
       { headers: { 'cache-control': 'private, no-store' }, status: 503 },

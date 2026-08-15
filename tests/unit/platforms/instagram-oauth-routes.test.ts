@@ -31,9 +31,13 @@ import { POST as instagramOAuthDisconnect } from '@/app/api/platforms/instagram/
 import { GET as instagramOAuthStart } from '@/app/api/platforms/instagram/oauth/start/route'
 
 const environmentKeys = [
+  'ADMIN_PORTAL_ENABLED',
+  'ADMIN_PORTAL_PLATFORMS_ENABLED',
   'INSTAGRAM_APP_ID',
   'INSTAGRAM_APP_SECRET',
   'INSTAGRAM_OAUTH_REDIRECT_URI',
+  'META_WEBHOOK_ALLOWED_ACCOUNT_IDS',
+  'META_WEBHOOK_VERIFY_TOKEN',
   'NEXT_PUBLIC_SERVER_URL',
   'PLATFORM_CREDENTIAL_ENCRYPTION_KEY',
 ] as const
@@ -61,8 +65,12 @@ const account = {
   updatedAt: '2026-07-31T00:00:00.000Z',
 }
 
-type TestAccount = Omit<typeof account, 'accountKind' | 'externalAccountId'> & {
+type TestAccount = Omit<typeof account, 'accountKind' | 'capabilities' | 'externalAccountId'> & {
   accountKind: 'facebook-page' | 'instagram-professional'
+  capabilities: {
+    messagingInbound: 'approved' | 'pending'
+    publishing: 'pending'
+  }
   externalAccountId: null | string
 }
 
@@ -123,11 +131,31 @@ describe('Instagram OAuth routes', () => {
     mocks.commitTransaction.mockResolvedValue(undefined)
     mocks.initTransaction.mockResolvedValue(undefined)
     mocks.killTransaction.mockResolvedValue(undefined)
+    process.env.ADMIN_PORTAL_ENABLED = 'true'
+    process.env.ADMIN_PORTAL_PLATFORMS_ENABLED = 'true'
     process.env.INSTAGRAM_APP_ID = '1221206873460693'
     process.env.INSTAGRAM_APP_SECRET = 'test-instagram-app-secret'
     process.env.INSTAGRAM_OAUTH_REDIRECT_URI = `http://localhost:3000${INSTAGRAM_OAUTH_CALLBACK_PATH}`
+    process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS = account.externalAccountId
+    process.env.META_WEBHOOK_VERIFY_TOKEN = 'test-meta-verify-token'
     process.env.NEXT_PUBLIC_SERVER_URL = 'https://ivybm.com'
     process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY = 'b'.repeat(64)
+  })
+
+  it('stops OAuth callbacks while the platform module is disabled', async () => {
+    process.env.ADMIN_PORTAL_PLATFORMS_ENABLED = 'false'
+
+    const response = await instagramOAuthCallback(
+      new NextRequest(
+        `http://localhost:3000${INSTAGRAM_OAUTH_CALLBACK_PATH}?code=ignored&state=ignored`,
+      ),
+    )
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'platform_module_disabled' },
+    })
+    expect(mocks.getPayload).not.toHaveBeenCalled()
   })
 
   afterEach(() => {
@@ -136,6 +164,21 @@ describe('Instagram OAuth routes', () => {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
     }
+  })
+
+  it.each([
+    ['ADMIN_PORTAL_ENABLED', 'portal_disabled'],
+    ['ADMIN_PORTAL_PLATFORMS_ENABLED', 'platform_module_disabled'],
+  ] as const)('stops OAuth start before authentication when %s is disabled', async (key, code) => {
+    process.env[key] = 'false'
+
+    const response = await instagramOAuthStart(startRequest())
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({ error: { code } })
+    expect(mocks.getPayload).not.toHaveBeenCalled()
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect(response.headers.get('location')).toBeNull()
   })
 
   it('requires an administrator before loading a platform account', async () => {
@@ -184,9 +227,7 @@ describe('Instagram OAuth routes', () => {
     }
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify(shortToken), { status: 200 }),
-      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(shortToken), { status: 200 }))
       .mockResolvedValueOnce(
         new Response(JSON.stringify(instagramOAuthFixture.responses.longToken), { status: 200 }),
       )
@@ -204,14 +245,14 @@ describe('Instagram OAuth routes', () => {
 
     expect(response.status).toBe(302)
     expect(response.headers.get('location')).toBe(
-      'http://localhost:3000/admin/collections/platform-accounts/42?instagramOAuth=connected',
+      'http://localhost:3000/dashboard/platforms?instagramOAuth=connected',
     )
     expect(response.headers.get('set-cookie')).toContain(`${INSTAGRAM_OAUTH_TRANSACTION_COOKIE}=;`)
     expect(payload.logger.info).toHaveBeenCalledWith({
       grantedScopes: requiredInstagramPermissions('instagram-professional'),
       message: 'Instagram OAuth permissions resolved',
       missingScopes: [],
-      permissionsCount: 3,
+      permissionsCount: 4,
       permissionsItemTypes: ['string'],
       permissionsType: 'array',
       providerScopes: requiredInstagramPermissions('instagram-professional'),
@@ -252,6 +293,55 @@ describe('Instagram OAuth routes', () => {
     expect(actualRequests.every(({ pathname }) => !pathname.includes('permissions'))).toBe(true)
   })
 
+  it('subscribes an approved Instagram account to messages before storing its token', async () => {
+    const approvedAccount = {
+      ...account,
+      capabilities: { messagingInbound: 'approved' as const, publishing: 'pending' as const },
+    }
+    const payload = createPayload({ foundAccount: approvedAccount })
+    mocks.getPayload.mockResolvedValue(payload)
+    const startResponse = await instagramOAuthStart(startRequest())
+    const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ...instagramOAuthFixture.responses.shortToken,
+            permissions: requiredInstagramPermissions('instagram-professional'),
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(instagramOAuthFixture.responses.longToken), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(instagramOAuthFixture.responses.profile), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetcher)
+
+    const response = await instagramOAuthCallback(
+      new NextRequest(
+        `http://localhost:3000${INSTAGRAM_OAUTH_CALLBACK_PATH}?code=authorization-code&state=${state}`,
+        { headers: { cookie: cookieHeader(startResponse) } },
+      ),
+    )
+
+    expect(response.headers.get('location')).toBe(
+      'http://localhost:3000/dashboard/platforms?instagramOAuth=connected',
+    )
+    const [subscriptionURL, subscriptionInit] = fetcher.mock.calls[3]!
+    expect(String(subscriptionURL)).toBe(
+      `https://graph.instagram.com/v22.0/${account.externalAccountId}/subscribed_apps?subscribed_fields=messages`,
+    )
+    expect(subscriptionInit?.headers).toMatchObject({
+      authorization: `Bearer ${instagramOAuthFixture.responses.longToken.access_token}`,
+    })
+    expect(payload.update).toHaveBeenCalledTimes(1)
+  })
+
   it('logs only safe structured diagnostics when the provider rejects token exchange', async () => {
     const payload = createPayload()
     mocks.getPayload.mockResolvedValue(payload)
@@ -282,7 +372,7 @@ describe('Instagram OAuth routes', () => {
     )
 
     expect(response.headers.get('location')).toBe(
-      'http://localhost:3000/admin/collections/platform-accounts/42?instagramOAuth=token_exchange_failed',
+      'http://localhost:3000/dashboard/platforms?instagramOAuth=token_exchange_failed',
     )
     expect(payload.logger.error).toHaveBeenCalledWith({
       code: 'token_exchange_failed',
@@ -341,7 +431,7 @@ describe('Instagram OAuth routes', () => {
 
     const disconnect = await instagramOAuthDisconnect(
       new NextRequest('http://localhost:3000/api/platforms/instagram/oauth/disconnect', {
-        body: JSON.stringify({ accountId: 42 }),
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
         headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
         method: 'POST',
       }),
@@ -359,7 +449,7 @@ describe('Instagram OAuth routes', () => {
     const response = await callbackPromise
 
     expect(response.headers.get('location')).toBe(
-      'http://localhost:3000/admin/collections/platform-accounts/42?instagramOAuth=account_changed',
+      'http://localhost:3000/dashboard/platforms?instagramOAuth=account_changed',
     )
     expect(payload.update).toHaveBeenCalledTimes(1)
   })
@@ -386,7 +476,7 @@ describe('Instagram OAuth routes', () => {
     )
 
     expect(response.headers.get('location')).toBe(
-      'http://localhost:3000/admin/collections/platform-accounts/42?instagramOAuth=required_permission_missing',
+      'http://localhost:3000/dashboard/platforms?instagramOAuth=required_permission_missing',
     )
     expect(fetcher).toHaveBeenCalledTimes(1)
     expect(payload.update).not.toHaveBeenCalled()
@@ -395,6 +485,7 @@ describe('Instagram OAuth routes', () => {
       grantedScopes: ['instagram_business_basic'],
       message: 'Instagram OAuth callback failed',
       missingScopes: [
+        'instagram_business_content_publish',
         'instagram_business_manage_comments',
         'instagram_business_manage_messages',
       ],
@@ -427,7 +518,7 @@ describe('Instagram OAuth routes', () => {
     )
 
     expect(response.headers.get('location')).toBe(
-      'http://localhost:3000/admin/collections/platform-accounts?instagramOAuth=state_mismatch',
+      'http://localhost:3000/dashboard/platforms?instagramOAuth=state_mismatch',
     )
     expect(fetcher).not.toHaveBeenCalled()
     expect(payload.update).not.toHaveBeenCalled()
@@ -439,7 +530,7 @@ describe('Instagram OAuth routes', () => {
 
     const forbidden = await instagramOAuthDisconnect(
       new NextRequest('http://localhost:3000/api/platforms/instagram/oauth/disconnect', {
-        body: JSON.stringify({ accountId: 42 }),
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
         headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
         method: 'POST',
       }),
@@ -449,7 +540,7 @@ describe('Instagram OAuth routes', () => {
 
     const response = await instagramOAuthDisconnect(
       new NextRequest('http://localhost:3000/api/platforms/instagram/oauth/disconnect', {
-        body: JSON.stringify({ accountId: 42 }),
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
         headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
         method: 'POST',
       }),
@@ -469,8 +560,27 @@ describe('Instagram OAuth routes', () => {
       },
       id: 42,
       overrideAccess: false,
+      req: expect.any(Object),
       user: admin,
     })
+  })
+
+  it('does not disconnect credentials from a stale page revision', async () => {
+    const payload = createPayload()
+    payload.__oauthRow.authorization_revision = 8
+    mocks.getPayload.mockResolvedValue(payload)
+
+    const response = await instagramOAuthDisconnect(
+      new NextRequest('http://localhost:3000/api/platforms/instagram/oauth/disconnect', {
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
+        headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toEqual({ error: { code: 'stale_revision' } })
+    expect(payload.update).not.toHaveBeenCalled()
   })
 
   it('does not disconnect a non-Instagram platform account', async () => {
@@ -485,7 +595,7 @@ describe('Instagram OAuth routes', () => {
 
     const response = await instagramOAuthDisconnect(
       new NextRequest('http://localhost:3000/api/platforms/instagram/oauth/disconnect', {
-        body: JSON.stringify({ accountId: 42 }),
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
         headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
         method: 'POST',
       }),
@@ -504,7 +614,7 @@ describe('Instagram OAuth routes', () => {
 
     const response = await instagramOAuthDisconnect(
       new NextRequest('http://localhost:3000/api/platforms/instagram/oauth/disconnect', {
-        body: JSON.stringify({ accountId: 42 }),
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
         headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
         method: 'POST',
       }),
@@ -523,7 +633,7 @@ describe('Instagram OAuth routes', () => {
 
     const response = await instagramOAuthDisconnect(
       new NextRequest('http://localhost:3000/api/platforms/instagram/oauth/disconnect', {
-        body: JSON.stringify({ accountId: 42 }),
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
         headers: { origin: 'http://localhost:3000' },
         method: 'POST',
       }),

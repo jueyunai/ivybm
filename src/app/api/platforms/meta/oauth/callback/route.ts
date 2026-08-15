@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPayload, type Payload } from 'payload'
+import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
 import {
   META_OAUTH_CALLBACK_PATH,
@@ -12,6 +12,10 @@ import {
   type MetaOAuthTransaction,
 } from '@/modules/platforms/meta/oauth'
 import {
+  isMetaWebhookAccountConfigured,
+  subscribeMetaMessagingWebhook,
+} from '@/modules/platforms/meta/webhookSubscription'
+import {
   PlatformOAuthAccountChangedError,
   withLockedPlatformOAuthAccount,
 } from '@/modules/platforms/accountOAuthConcurrency'
@@ -21,21 +25,18 @@ import type { PlatformAccount, User } from '@/payload-types'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
+const PORTAL_REDIRECT_PATH = '/dashboard/platforms'
+
 const resultRedirect = ({
-  accountId,
   origin,
   result,
   secure,
 }: {
-  accountId?: string
   origin: string
   result: string
   secure: boolean
 }): Response => {
-  const path = accountId
-    ? `/admin/collections/platform-accounts/${accountId}`
-    : '/admin/collections/platform-accounts'
-  const target = new URL(path, origin)
+  const target = new URL(PORTAL_REDIRECT_PATH, origin)
   target.searchParams.set('metaOAuth', result)
   const response = NextResponse.redirect(target, 302)
   response.cookies.set(META_OAUTH_TRANSACTION_COOKIE, '', {
@@ -64,6 +65,8 @@ const callbackErrorCode = (error: unknown): string => {
     case 'token_exchange_failed':
     case 'token_response_invalid':
       return 'token_exchange_failed'
+    case 'webhook_subscription_failed':
+      return 'webhook_subscription_failed'
     case 'invalid_configuration':
       return 'unavailable'
     case 'invalid_transaction':
@@ -115,13 +118,17 @@ const callbackErrorLog = (error: unknown): Record<string, unknown> => {
 
 const loadMetaAccount = async (
   payload: Payload,
+  req: PayloadRequest,
   transaction: MetaOAuthTransaction,
+  user: User,
 ): Promise<PlatformAccount | undefined> => {
   try {
     return await payload.findByID({
       collection: 'platform-accounts',
       id: Number(transaction.accountId),
-      overrideAccess: true,
+      overrideAccess: false,
+      req,
+      user,
     })
   } catch {
     return undefined
@@ -129,6 +136,18 @@ const loadMetaAccount = async (
 }
 
 export async function GET(request: NextRequest): Promise<Response> {
+  if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
+    return NextResponse.json(
+      { error: { code: 'portal_disabled' } },
+      { headers: { 'cache-control': 'private, no-store' }, status: 503 },
+    )
+  }
+  if (process.env.ADMIN_PORTAL_PLATFORMS_ENABLED !== 'true') {
+    return NextResponse.json(
+      { error: { code: 'platform_module_disabled' } },
+      { headers: { 'cache-control': 'private, no-store' }, status: 503 },
+    )
+  }
   let oauth
   try {
     oauth = readMetaOAuthConfiguration()
@@ -153,7 +172,6 @@ export async function GET(request: NextRequest): Promise<Response> {
     const authenticated = await payload.auth({ headers: request.headers })
     if (!authenticated.user || authenticated.user.collection !== 'users') {
       return resultRedirect({
-        accountId: transaction.accountId,
         origin: redirectOrigin,
         result: 'authentication_required',
         secure: secureCookie,
@@ -162,14 +180,14 @@ export async function GET(request: NextRequest): Promise<Response> {
     const actor = authenticated.user as User
     if (actor.role !== 'admin') {
       return resultRedirect({
-        accountId: transaction.accountId,
         origin: redirectOrigin,
         result: 'forbidden',
         secure: secureCookie,
       })
     }
 
-    const account = await loadMetaAccount(payload, transaction)
+    const req = await createLocalReq({ user: actor }, payload)
+    const account = await loadMetaAccount(payload, req, transaction, actor)
     if (!account) {
       return resultRedirect({
         origin: redirectOrigin,
@@ -186,7 +204,6 @@ export async function GET(request: NextRequest): Promise<Response> {
       account.platformFamily !== 'meta'
     ) {
       return resultRedirect({
-        accountId: transaction.accountId,
         origin: redirectOrigin,
         result: 'account_changed',
         secure: secureCookie,
@@ -197,7 +214,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 
     if (request.nextUrl.searchParams.has('error')) {
       return resultRedirect({
-        accountId: transaction.accountId,
         origin: redirectOrigin,
         result: 'provider_denied',
         secure: secureCookie,
@@ -213,6 +229,20 @@ export async function GET(request: NextRequest): Promise<Response> {
       externalAccountId: transaction.externalAccountId,
       userAccessToken: userToken.accessToken,
     })
+    if (account.capabilities?.messagingInbound === 'approved') {
+      if (!isMetaWebhookAccountConfigured({ accountExternalId: authorizedAccount.pageId })) {
+        throw new MetaOAuthError('webhook_subscription_failed')
+      }
+      try {
+        await subscribeMetaMessagingWebhook({
+          accessToken: authorizedAccount.accessToken,
+          accountExternalId: authorizedAccount.pageId,
+          platform: 'facebook-messenger',
+        })
+      } catch {
+        throw new MetaOAuthError('webhook_subscription_failed')
+      }
+    }
     await withLockedPlatformOAuthAccount({
       operation: (req) =>
         callbackPayload.update({
@@ -239,7 +269,6 @@ export async function GET(request: NextRequest): Promise<Response> {
     })
 
     return resultRedirect({
-      accountId: callbackTransaction.accountId,
       origin: redirectOrigin,
       result: 'connected',
       secure: secureCookie,
@@ -247,7 +276,6 @@ export async function GET(request: NextRequest): Promise<Response> {
   } catch (error) {
     if (payload) payload.logger.error(callbackErrorLog(error))
     return resultRedirect({
-      accountId: transaction?.accountId,
       origin: redirectOrigin,
       result: callbackErrorCode(error),
       secure: secureCookie,

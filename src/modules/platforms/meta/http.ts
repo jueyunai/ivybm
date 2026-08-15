@@ -8,10 +8,15 @@ import {
   PayloadPlatformMessagingAccountAuthorizer,
   type PlatformMessagingAccountAuthorizer,
 } from '../payloadMessagingAccountAuthorizer'
-import type { PlatformConnector, PlatformEventRepository, WebhookRateLimiter } from '../ports'
+import type {
+  PlatformConnector,
+  PlatformEventRepository,
+  WebhookRateLimiter,
+  WebhookVerifier,
+} from '../ports'
 import {
-  createMetaWebhookVerifier,
   ingestSignedWebhook,
+  verifyMetaWebhookSignature,
   verifyMetaWebhookChallenge,
   WebhookValidationError,
 } from '../webhook'
@@ -33,6 +38,7 @@ export type MetaWebhookHandlerDependencies = {
   appSecret?: string
   connector?: PlatformConnector
   maxBodyBytes?: number
+  instagramAppSecret?: string
   now?: () => number
   payloadProvider?: PayloadProvider
   rateLimiter?: WebhookRateLimiter
@@ -138,12 +144,46 @@ const configuredValue = (value: string | undefined): string | undefined => {
   return normalized || undefined
 }
 
+const webhookObject = (rawBody: Uint8Array): 'instagram' | 'page' | undefined => {
+  try {
+    const payload = JSON.parse(Buffer.from(rawBody).toString('utf8')) as unknown
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return undefined
+    const object = (payload as { object?: unknown }).object
+    return object === 'instagram' || object === 'page' ? object : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const createPlatformAwareMetaWebhookVerifier = ({
+  instagramAppSecret,
+  metaAppSecret,
+}: {
+  instagramAppSecret?: string
+  metaAppSecret?: string
+}): WebhookVerifier => ({
+  verify: ({ headers, rawBody }) => {
+    const object = webhookObject(rawBody)
+    const secret =
+      object === 'instagram' ? instagramAppSecret : object === 'page' ? metaAppSecret : undefined
+    return Boolean(
+      secret &&
+      verifyMetaWebhookSignature({
+        appSecret: secret,
+        rawBody,
+        signatureHeader: headers['x-hub-signature-256'],
+      }),
+    )
+  },
+})
+
 export const createMetaWebhookHandlers = ({
   accountAuthorizer,
   allowedAccountExternalIds = process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS?.split(',') ?? [],
   appSecret = process.env.META_WEBHOOK_APP_SECRET,
   connector = createMetaConnector(),
   maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
+  instagramAppSecret = process.env.INSTAGRAM_APP_SECRET,
   now = Date.now,
   payloadProvider = defaultPayloadProvider,
   rateLimiter = defaultRateLimiter,
@@ -151,13 +191,16 @@ export const createMetaWebhookHandlers = ({
   verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN,
 }: MetaWebhookHandlerDependencies = {}): MetaWebhookHandlers => {
   const configuredAppSecret = configuredValue(appSecret)
+  const configuredInstagramAppSecret = configuredValue(instagramAppSecret)
   const configuredVerifyToken = configuredValue(verifyToken)
   const allowedAccounts = new Set(
     allowedAccountExternalIds
       .map(configuredValue)
       .filter((accountExternalId): accountExternalId is string => Boolean(accountExternalId)),
   )
-  const isChallengeConfigured = Boolean(configuredAppSecret && configuredVerifyToken)
+  const isChallengeConfigured = Boolean(
+    configuredVerifyToken && (configuredAppSecret || configuredInstagramAppSecret),
+  )
   const isIngressConfigured = Boolean(isChallengeConfigured && allowedAccounts.size > 0)
 
   const unavailable = (): Response => safeErrorResponse('service_unavailable', 503)
@@ -217,7 +260,7 @@ export const createMetaWebhookHandlers = ({
       }
     },
     POST: async (request) => {
-      if (!isIngressConfigured || !configuredAppSecret) return unavailable()
+      if (!isIngressConfigured) return unavailable()
       try {
         const rawBody = await readRawBody(request, maxBodyBytes)
         const result = await ingestSignedWebhook({
@@ -239,7 +282,10 @@ export const createMetaWebhookHandlers = ({
             `meta-webhook:${event.platform}:${event.accountExternalId}`,
           rawBody,
           repository: resolveRepository,
-          verifier: createMetaWebhookVerifier(configuredAppSecret),
+          verifier: createPlatformAwareMetaWebhookVerifier({
+            instagramAppSecret: configuredInstagramAppSecret,
+            metaAppSecret: configuredAppSecret,
+          }),
         })
         return Response.json(result, { headers: NO_STORE_HEADERS, status: 200 })
       } catch (error) {

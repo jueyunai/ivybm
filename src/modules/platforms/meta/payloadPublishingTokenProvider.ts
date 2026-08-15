@@ -14,6 +14,9 @@ const accountKindForPlatform = (
 ): 'facebook-page' | 'instagram-professional' =>
   platform === 'facebook' ? 'facebook-page' : 'instagram-professional'
 
+const requiredPublishingScopeForPlatform = (platform: MetaPublishingPlatform): string =>
+  platform === 'facebook' ? 'pages_manage_posts' : 'instagram_business_content_publish'
+
 const boundedExternalId = (value: string): string | undefined => {
   const normalized = typeof value === 'string' ? value.trim() : ''
   return normalized && normalized === value && /^[0-9]{1,32}$/.test(normalized)
@@ -74,6 +77,7 @@ export class PayloadMetaPublishingTokenProvider {
           accessToken: true,
           accessTokenConfigured: true,
           expiresAt: true,
+          scopes: true,
           state: true,
         },
         authorizationRevision: true,
@@ -99,6 +103,13 @@ export class PayloadMetaPublishingTokenProvider {
     }
     const authorization = account?.authorization
     if (authorization?.state !== 'connected' || authorization.accessTokenConfigured !== true) {
+      return undefined
+    }
+    const requiredScope = requiredPublishingScopeForPlatform(platform)
+    if (
+      !Array.isArray(authorization.scopes) ||
+      !authorization.scopes.some((entry) => entry?.scope === requiredScope)
+    ) {
       return undefined
     }
     if (authorization.expiresAt) {

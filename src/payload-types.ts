@@ -102,6 +102,7 @@ export interface Config {
     messages: Message
     handoffs: Handoff
     'conversation-commands': ConversationCommand
+    'conversation-delivery-intents': ConversationDeliveryIntent
     jobs: Job
     'payload-kv': PayloadKv
     'payload-locked-documents': PayloadLockedDocument
@@ -149,6 +150,8 @@ export interface Config {
     messages: MessagesSelect<false> | MessagesSelect<true>
     handoffs: HandoffsSelect<false> | HandoffsSelect<true>
     'conversation-commands': ConversationCommandsSelect<false> | ConversationCommandsSelect<true>
+    'conversation-delivery-intents':
+      ConversationDeliveryIntentsSelect<false> | ConversationDeliveryIntentsSelect<true>
     jobs: JobsSelect<false> | JobsSelect<true>
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>
     'payload-locked-documents':
@@ -1341,6 +1344,8 @@ export interface Conversation {
   visitorSession: number | VisitorSession
   channel: 'website' | 'whatsapp' | 'facebook' | 'instagram' | 'tiktok'
   externalThreadId?: string | null
+  externalAccountId?: string | null
+  externalSenderId?: string | null
   locale: 'en' | 'ar'
   handoffStatus: 'ai_active' | 'handoff_requested' | 'human_active' | 'resolved'
   revision: number
@@ -1464,6 +1469,38 @@ export interface ConversationCommand {
     | boolean
     | null
   errorCode?: string | null
+  updatedAt: string
+  createdAt: string
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "conversation-delivery-intents".
+ */
+export interface ConversationDeliveryIntent {
+  id: number
+  conversation: number | Conversation
+  replyMessage: number | Message
+  queueJob: number | Job
+  requiredHandoffStatus: 'ai_active' | 'human_active'
+  expectedRevision: number
+  platform: 'facebook-messenger' | 'instagram'
+  accountExternalId: string
+  recipientExternalId: string
+  text: string
+  deliveryKey: string
+  status: 'queued' | 'retrying' | 'accepted' | 'blocked' | 'failed' | 'dead' | 'delivery_unknown'
+  claimId?: string | null
+  claimOwnerToken?: string | null
+  claimLeaseExpiresAt?: string | null
+  fencingGeneration: number
+  providerIOStartedAt?: string | null
+  acceptedAt?: string | null
+  deliveryUnknownAt?: string | null
+  providerReference?: string | null
+  lastErrorCode?: string | null
+  lastErrorSummary?: string | null
+  retryable: boolean
+  retryAfterSeconds?: number | null
   updatedAt: string
   createdAt: string
 }
@@ -1630,6 +1667,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'conversation-commands'
         value: number | ConversationCommand
+      } | null)
+    | ({
+        relationTo: 'conversation-delivery-intents'
+        value: number | ConversationDeliveryIntent
       } | null)
     | ({
         relationTo: 'jobs'
@@ -2466,6 +2507,8 @@ export interface ConversationsSelect<T extends boolean = true> {
   visitorSession?: T
   channel?: T
   externalThreadId?: T
+  externalAccountId?: T
+  externalSenderId?: T
   locale?: T
   handoffStatus?: T
   revision?: T
@@ -2560,6 +2603,37 @@ export interface ConversationCommandsSelect<T extends boolean = true> {
   conversation?: T
   result?: T
   errorCode?: T
+  updatedAt?: T
+  createdAt?: T
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "conversation-delivery-intents_select".
+ */
+export interface ConversationDeliveryIntentsSelect<T extends boolean = true> {
+  conversation?: T
+  replyMessage?: T
+  queueJob?: T
+  requiredHandoffStatus?: T
+  expectedRevision?: T
+  platform?: T
+  accountExternalId?: T
+  recipientExternalId?: T
+  text?: T
+  deliveryKey?: T
+  status?: T
+  claimId?: T
+  claimOwnerToken?: T
+  claimLeaseExpiresAt?: T
+  fencingGeneration?: T
+  providerIOStartedAt?: T
+  acceptedAt?: T
+  deliveryUnknownAt?: T
+  providerReference?: T
+  lastErrorCode?: T
+  lastErrorSummary?: T
+  retryable?: T
+  retryAfterSeconds?: T
   updatedAt?: T
   createdAt?: T
 }

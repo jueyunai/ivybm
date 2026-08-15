@@ -17,7 +17,10 @@ import PlatformAccountOAuthControls, {
 } from '@/admin/components/PlatformAccountOAuthControls'
 
 describe('PlatformAccountOAuthControls', () => {
-  afterEach(() => cleanup())
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
 
   beforeEach(() => {
     mocks.useTranslation.mockReturnValue({ i18n: { language: 'zh' } })
@@ -26,6 +29,7 @@ describe('PlatformAccountOAuthControls', () => {
       data: {
         accountKind: 'facebook-page',
         authorization: { accessTokenConfigured: false, state: 'pending' },
+        authorizationRevision: 3,
         platformFamily: 'meta',
       },
       id: 42,
@@ -79,6 +83,7 @@ describe('PlatformAccountOAuthControls', () => {
       data: {
         accountKind: 'facebook-page',
         authorization: { accessTokenConfigured: true, state: 'connected' },
+        authorizationRevision: 7,
         platformFamily: 'meta',
       },
       id: 42,
@@ -105,12 +110,33 @@ describe('PlatformAccountOAuthControls', () => {
 
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1))
     expect(fetcher).toHaveBeenCalledWith('/api/platforms/meta/oauth/disconnect', {
-      body: JSON.stringify({ accountId: 42 }),
+      body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     })
     expect(window.location.pathname).toBe('/admin/collections/platform-accounts/42')
     expect(window.location.search).toBe('?metaOAuth=disconnected')
+  })
+
+  it('does not send a disconnect request without a valid authorization revision', async () => {
+    mocks.useDocumentInfo.mockReturnValue({
+      collectionSlug: 'platform-accounts',
+      data: {
+        accountKind: 'facebook-page',
+        authorization: { accessTokenConfigured: true, state: 'connected' },
+        platformFamily: 'meta',
+      },
+      id: 42,
+    })
+    const fetcher = vi.fn<typeof fetch>()
+    vi.stubGlobal('fetch', fetcher)
+    render(React.createElement(PlatformAccountOAuthControls))
+
+    fireEvent.click(screen.getByRole('button', { name: '断开授权' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认断开' }))
+
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert').textContent).toContain('清除失败')
   })
 })

@@ -30,6 +30,12 @@ describe('Payload Meta publishing token provider', () => {
         accessToken: encryptedToken,
         accessTokenConfigured: true,
         expiresAt: '2026-08-13T00:00:00.000Z',
+        scopes: [
+          {
+            scope:
+              platform === 'facebook' ? 'pages_manage_posts' : 'instagram_business_content_publish',
+          },
+        ],
         state: 'connected',
       })
       const provider = new PayloadMetaPublishingTokenProvider({
@@ -58,6 +64,7 @@ describe('Payload Meta publishing token provider', () => {
             accessToken: true,
             accessTokenConfigured: true,
             expiresAt: true,
+            scopes: true,
             state: true,
           },
           authorizationRevision: true,
@@ -112,6 +119,33 @@ describe('Payload Meta publishing token provider', () => {
       }),
     ).resolves.toBeUndefined()
   })
+
+  it.each([
+    ['facebook', 'instagram_business_content_publish'],
+    ['instagram', 'pages_manage_posts'],
+  ] as const)(
+    'rejects a %s token without its exact publishing scope',
+    async (platform, wrongScope) => {
+      const provider = new PayloadMetaPublishingTokenProvider({
+        encryptionKey,
+        payload: payloadWith({
+          accessToken: encryptedToken,
+          accessTokenConfigured: true,
+          scopes: [{ scope: wrongScope }],
+          state: 'connected',
+        }) as never,
+      })
+
+      await expect(
+        provider.getToken({
+          accountExternalId: '129472283584550',
+          authorizationRevision: 4,
+          platform,
+          platformAccountId: 7,
+        }),
+      ).resolves.toBeUndefined()
+    },
+  )
 
   it.each([
     ['disconnected', { state: 'pending' }],

@@ -77,6 +77,9 @@ const runPreflight = (environment: string, overrides: Record<string, string | un
       'ADMIN_PORTAL_PUBLISHING_ENABLED',
       'AI_CONFIG_ENCRYPTION_KEY',
       'LINKEDIN_API_VERSION',
+      'LINKEDIN_APP_ID',
+      'LINKEDIN_APP_SECRET',
+      'LINKEDIN_OAUTH_REDIRECT_URI',
       'LINKEDIN_UPLOAD_ALLOWED_ORIGINS',
       'LINKEDIN_UPLOAD_TICKET_KEY',
       'FEISHU_QR_REGISTRATION_ENABLED',
@@ -170,12 +173,15 @@ describe('production environment preflight', () => {
     expect(invalidPublishing.stderr).toContain('ADMIN_PORTAL_PUBLISHING_ENABLED')
   })
 
-  it('requires the complete worker runtime only when controlled publishing is enabled', () => {
+  it('allows Meta-only publishing and validates LinkedIn runtime only when configured', () => {
     const enabled = productionEnvironment.replace(
       'ADMIN_PORTAL_PUBLISHING_ENABLED=false',
       'ADMIN_PORTAL_PUBLISHING_ENABLED=true',
     )
     const missingRuntime = runPreflight(enabled)
+    const metaOnly = runPreflight(
+      `${enabled}PLATFORM_CREDENTIAL_ENCRYPTION_KEY=${'d'.repeat(64)}\n`,
+    )
     const invalidOrigin =
       runPreflight(`${enabled}PLATFORM_CREDENTIAL_ENCRYPTION_KEY=${'d'.repeat(64)}
 LINKEDIN_API_VERSION=202608
@@ -190,6 +196,7 @@ LINKEDIN_UPLOAD_TICKET_KEY=${'e'.repeat(64)}
 
     expect(missingRuntime.status).not.toBe(0)
     expect(missingRuntime.stderr).toContain('PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
+    expect(metaOnly.status).toBe(0)
     expect(invalidOrigin.status).not.toBe(0)
     expect(invalidOrigin.stderr).toContain('LINKEDIN_UPLOAD_ALLOWED_ORIGINS')
     expect(complete.status).toBe(0)
@@ -342,6 +349,52 @@ PLATFORM_CREDENTIAL_ENCRYPTION_KEY=ddddddddddddddddddddddddddddddddddddddddddddd
     expect(missingEncryption.stderr).toContain('PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
     expect(complete.status).toBe(0)
     expect(complete.stdout).not.toContain('operation-instagram-secret')
+  })
+
+  it('requires a complete LinkedIn OAuth set, exact callback, and credential encryption', () => {
+    const partial = runPreflight(`${productionEnvironment}LINKEDIN_APP_ID=linkedin-app-id
+`)
+    const wrongCallback = runPreflight(`${productionEnvironment}LINKEDIN_APP_ID=linkedin-app-id
+LINKEDIN_APP_SECRET=operation-linkedin-secret
+LINKEDIN_OAUTH_REDIRECT_URI=https://evil.example/api/platforms/linkedin/oauth/callback
+LINKEDIN_API_VERSION=202608
+PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+`)
+    const missingEncryption = runPreflight(`${productionEnvironment}LINKEDIN_APP_ID=linkedin-app-id
+LINKEDIN_APP_SECRET=operation-linkedin-secret
+LINKEDIN_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/linkedin/oauth/callback
+LINKEDIN_API_VERSION=202608
+`)
+    const missingVersion = runPreflight(`${productionEnvironment}LINKEDIN_APP_ID=linkedin-app-id
+LINKEDIN_APP_SECRET=operation-linkedin-secret
+LINKEDIN_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/linkedin/oauth/callback
+PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+`)
+    const invalidVersion = runPreflight(`${productionEnvironment}LINKEDIN_APP_ID=linkedin-app-id
+LINKEDIN_APP_SECRET=operation-linkedin-secret
+LINKEDIN_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/linkedin/oauth/callback
+LINKEDIN_API_VERSION=202613
+PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+`)
+    const complete = runPreflight(`${productionEnvironment}LINKEDIN_APP_ID=linkedin-app-id
+LINKEDIN_APP_SECRET=operation-linkedin-secret
+LINKEDIN_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/linkedin/oauth/callback
+LINKEDIN_API_VERSION=202608
+PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+`)
+
+    expect(partial.status).not.toBe(0)
+    expect(partial.stderr).toContain('LINKEDIN_APP_SECRET')
+    expect(wrongCallback.status).not.toBe(0)
+    expect(wrongCallback.stderr).toContain('LINKEDIN_OAUTH_REDIRECT_URI')
+    expect(missingEncryption.status).not.toBe(0)
+    expect(missingEncryption.stderr).toContain('PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
+    expect(missingVersion.status).not.toBe(0)
+    expect(missingVersion.stderr).toContain('LINKEDIN_API_VERSION')
+    expect(invalidVersion.status).not.toBe(0)
+    expect(invalidVersion.stderr).toContain('LINKEDIN_API_VERSION')
+    expect(complete.status).toBe(0)
+    expect(complete.stdout).not.toContain('operation-linkedin-secret')
   })
 
   it('accepts an omitted platform credential key but rejects an invalid configured value', () => {

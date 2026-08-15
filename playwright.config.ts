@@ -51,6 +51,7 @@ export default defineConfig({
         command: isCI ? 'corepack pnpm e2e:server' : 'corepack pnpm dev',
         env: {
           AI_CONFIG_ENCRYPTION_KEY: e2eEncryptionKey,
+          ...(isCI ? { IVYBM_E2E_ALLOW_HTTP_LOOPBACK: 'true' } : {}),
           PORT: isCI ? e2ePort : devPort,
           ...(isCI ? { HOSTNAME: '127.0.0.1' } : {}),
         },

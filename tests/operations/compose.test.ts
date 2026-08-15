@@ -60,6 +60,9 @@ const requiredEnvironment = {
   INSTAGRAM_APP_ID: '3333333333333333',
   INSTAGRAM_APP_SECRET: 'operation-test-instagram-app-secret',
   INSTAGRAM_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/instagram/oauth/callback',
+  LINKEDIN_APP_ID: 'linkedin-operation-app',
+  LINKEDIN_APP_SECRET: 'operation-test-linkedin-app-secret',
+  LINKEDIN_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/linkedin/oauth/callback',
   LINKEDIN_API_VERSION: '202608',
   LINKEDIN_UPLOAD_ALLOWED_ORIGINS: 'https://www.linkedin.com,https://media.licdn.com',
   LINKEDIN_UPLOAD_TICKET_KEY: 'f'.repeat(64),
@@ -147,9 +150,10 @@ const getStagingComposeConfig = (): ComposeConfig => {
 }
 
 describe('production Compose configuration', () => {
-  it('declares the publishing kill switch exactly once per app and worker service', () => {
+  it('declares worker feature switches exactly once per app and worker service', () => {
     for (const file of ['compose.prod.yaml', 'compose.staging.yaml']) {
       const source = readFileSync(resolve(projectRoot, file), 'utf8')
+      expect(source.match(/^\s+ADMIN_PORTAL_CONVERSATIONS_ENABLED:/gm)).toHaveLength(2)
       expect(source.match(/^\s+ADMIN_PORTAL_PUBLISHING_ENABLED:/gm)).toHaveLength(2)
 
       for (const variable of [
@@ -271,8 +275,12 @@ describe('production Compose configuration', () => {
       INSTAGRAM_APP_ID: '3333333333333333',
       INSTAGRAM_APP_SECRET: 'operation-test-instagram-app-secret',
       INSTAGRAM_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/instagram/oauth/callback',
+      LINKEDIN_APP_ID: 'linkedin-operation-app',
+      LINKEDIN_APP_SECRET: 'operation-test-linkedin-app-secret',
+      LINKEDIN_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/linkedin/oauth/callback',
     })
     expect(config.services.worker.environment).toMatchObject({
+      ADMIN_PORTAL_CONVERSATIONS_ENABLED: 'true',
       ADMIN_PORTAL_PUBLISHING_ENABLED: 'false',
       AI_CONFIG_ENCRYPTION_KEY: 'c'.repeat(64),
       LINKEDIN_API_VERSION: '202608',
@@ -293,8 +301,11 @@ describe('production Compose configuration', () => {
     }
   })
 
-  it('passes optional Meta OAuth and webhook configuration only to the app in production and staging', () => {
+  it('passes optional platform OAuth configuration only to the app in production and staging', () => {
     for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
+      expect(config.services.worker.environment?.ADMIN_PORTAL_CONVERSATIONS_ENABLED).toBe(
+        config.services.app.environment?.ADMIN_PORTAL_CONVERSATIONS_ENABLED,
+      )
       expect(config.services.app.environment).toMatchObject({
         META_APP_ID: '1111111111111111',
         META_LOGIN_CONFIG_ID: '2222222222222222',
@@ -305,6 +316,9 @@ describe('production Compose configuration', () => {
         INSTAGRAM_APP_ID: '3333333333333333',
         INSTAGRAM_APP_SECRET: 'operation-test-instagram-app-secret',
         INSTAGRAM_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/instagram/oauth/callback',
+        LINKEDIN_APP_ID: 'linkedin-operation-app',
+        LINKEDIN_APP_SECRET: 'operation-test-linkedin-app-secret',
+        LINKEDIN_OAUTH_REDIRECT_URI: 'https://ivybm.com/api/platforms/linkedin/oauth/callback',
       })
       expect(config.services.migrate.environment).not.toHaveProperty('META_WEBHOOK_APP_SECRET')
       expect(config.services.worker.environment).not.toHaveProperty('META_WEBHOOK_APP_SECRET')
@@ -312,6 +326,8 @@ describe('production Compose configuration', () => {
       expect(config.services.worker.environment).not.toHaveProperty('META_APP_ID')
       expect(config.services.migrate.environment).not.toHaveProperty('INSTAGRAM_APP_ID')
       expect(config.services.worker.environment).not.toHaveProperty('INSTAGRAM_APP_SECRET')
+      expect(config.services.migrate.environment).not.toHaveProperty('LINKEDIN_APP_ID')
+      expect(config.services.worker.environment).not.toHaveProperty('LINKEDIN_APP_SECRET')
     }
   })
 

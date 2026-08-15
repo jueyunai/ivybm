@@ -51,6 +51,7 @@ describe('Instagram OAuth', () => {
   it('uses the permissions required for Instagram professional messaging and content', () => {
     expect(requiredInstagramPermissions('instagram-professional')).toEqual([
       'instagram_business_basic',
+      'instagram_business_content_publish',
       'instagram_business_manage_comments',
       'instagram_business_manage_messages',
     ])
@@ -132,7 +133,7 @@ describe('Instagram OAuth', () => {
     ).resolves.toEqual({
       accessToken: instagramOAuthFixture.responses.longToken.access_token,
       expiresAt: new Date(5_184_001_000).toISOString(),
-      permissionsCount: 3,
+      permissionsCount: 4,
       permissionsType: 'string',
       scopes: requiredInstagramPermissions('instagram-professional'),
     })
@@ -172,7 +173,7 @@ describe('Instagram OAuth', () => {
     ).resolves.toEqual({
       accessToken: instagramOAuthFixture.responses.longToken.access_token,
       expiresAt: new Date(5_184_001_000).toISOString(),
-      permissionsCount: 3,
+      permissionsCount: 4,
       permissionsType: 'string',
       scopes: requiredInstagramPermissions('instagram-professional'),
     })
@@ -204,7 +205,7 @@ describe('Instagram OAuth', () => {
     ).resolves.toEqual({
       accessToken: instagramOAuthFixture.responses.longToken.access_token,
       expiresAt: new Date(5_184_001_000).toISOString(),
-      permissionsCount: 3,
+      permissionsCount: 4,
       permissionsItemTypes: ['string'],
       permissionsType: 'array',
       scopes: requiredInstagramPermissions('instagram-professional'),
@@ -411,6 +412,7 @@ describe('Instagram OAuth', () => {
       diagnostic: {
         grantedScopes: ['instagram_business_basic'],
         missingScopes: [
+          'instagram_business_content_publish',
           'instagram_business_manage_comments',
           'instagram_business_manage_messages',
         ],
@@ -424,7 +426,9 @@ describe('Instagram OAuth', () => {
       },
     })
     expect(JSON.stringify(malformedPermissions)).not.toContain('secret_provider_scope')
-    expect(JSON.stringify(malformedPermissions)).not.toContain('synthetic-short-lived-instagram-token')
+    expect(JSON.stringify(malformedPermissions)).not.toContain(
+      'synthetic-short-lived-instagram-token',
+    )
 
     const identityFailure = await resolveInstagramAuthorizedAccount({
       externalAccountId: '987654321098765',

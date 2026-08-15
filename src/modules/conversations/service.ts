@@ -48,10 +48,7 @@ export type ConversationMutation = {
   handoff?: HandoffCreatedEvent
   leadEvaluation?: ConversationLeadEvaluation
   qualificationState?: ChatQualificationState
-  messageMetadata?: Record<
-    string,
-    { externalMessageId?: string; persistedIdempotencyKey?: string }
-  >
+  messageMetadata?: Record<string, { externalMessageId?: string; persistedIdempotencyKey?: string }>
 }
 
 export interface ConversationRepository {
@@ -94,8 +91,7 @@ export type AiConversationReply = {
 }
 
 export type ConversationResponse =
-  | AiConversationReply
-  | { handoff: { reason: string; source: 'ai_policy' } }
+  AiConversationReply | { handoff: { reason: string; source: 'ai_policy' } }
 
 export interface ConversationResponder {
   generateReply(input: {
@@ -258,7 +254,9 @@ export const createConversationService = ({
       return transitionHandoff(session.handoffStatus, command)
     } catch (error) {
       // Preserve the authoritative conflict even if best-effort audit persistence is unavailable.
-      await repository.recordRejectedTransition(session.id, session.handoffStatus, command).catch(() => undefined)
+      await repository
+        .recordRejectedTransition(session.id, session.handoffStatus, command)
+        .catch(() => undefined)
       throw error
     }
   }
@@ -301,6 +299,13 @@ export const createConversationService = ({
     }
     if (input.externalThreadId !== undefined) {
       requireExternalIdentifier(input.externalThreadId, 'externalThreadId', 500)
+    }
+    if (input.externalAccountId !== undefined || input.externalSenderId !== undefined) {
+      requireExternalIdentifier(input.externalAccountId ?? '', 'externalAccountId', 240)
+      requireExternalIdentifier(input.externalSenderId ?? '', 'externalSenderId', 240)
+      if (!input.externalThreadId) {
+        throw new ChatServiceError('invalid_request', 'External routing requires a thread ID')
+      }
     }
     const result = await idempotent('start', input.idempotencyKey, async (claim) => {
       const session: ChatSession = {
@@ -407,7 +412,10 @@ export const createConversationService = ({
           }
           session.handoffStatus = await transition(session, 'request')
           session.allowedActions = allowedActionsFor(session.handoffStatus)
-          handoff = createHandoff(session, { ...reply.handoff, idempotencyKey: input.idempotencyKey })
+          handoff = createHandoff(session, {
+            ...reply.handoff,
+            idempotencyKey: input.idempotencyKey,
+          })
         } else {
           appendAiReply(session, reply)
           qualificationState = mergeQualificationState(
@@ -439,7 +447,9 @@ export const createConversationService = ({
       return startSession(input)
     },
 
-    async ingestExternalMessage(input: IngestExternalMessageInput): Promise<ExternalMessageDelivery> {
+    async ingestExternalMessage(
+      input: IngestExternalMessageInput,
+    ): Promise<ExternalMessageDelivery> {
       if (
         input.channel !== 'facebook' &&
         input.channel !== 'instagram' &&
@@ -450,9 +460,21 @@ export const createConversationService = ({
       if (input.channel === 'tiktok' && !allowTikTokNormalizedDelivery) {
         throw new ChatServiceError('invalid_request', 'TikTok normalized delivery is not enabled')
       }
-      const externalAccountId = requireExternalIdentifier(input.externalAccountId, 'externalAccountId', 500)
-      const externalSenderId = requireExternalIdentifier(input.externalSenderId, 'externalSenderId', 500)
-      const externalThreadId = requireExternalIdentifier(input.externalThreadId, 'externalThreadId', 500)
+      const externalAccountId = requireExternalIdentifier(
+        input.externalAccountId,
+        'externalAccountId',
+        500,
+      )
+      const externalSenderId = requireExternalIdentifier(
+        input.externalSenderId,
+        'externalSenderId',
+        500,
+      )
+      const externalThreadId = requireExternalIdentifier(
+        input.externalThreadId,
+        'externalThreadId',
+        500,
+      )
       const externalMessageId = requireExternalIdentifier(
         input.externalMessageId,
         'externalMessageId',
@@ -466,6 +488,8 @@ export const createConversationService = ({
       const messageIdempotencyKey = externalMessageCommandKey(input.channel, externalMessageId)
       const session = await startSession({
         channel: input.channel,
+        externalAccountId,
+        externalSenderId,
         externalThreadId,
         idempotencyKey: sessionIdempotencyKey,
         locale: input.locale,
@@ -482,7 +506,10 @@ export const createConversationService = ({
         sessionId: session.id,
         text: input.text,
       })
-      return { session: result.session, status: result.state === 'completed' ? 'duplicate' : 'accepted' }
+      return {
+        session: result.session,
+        status: result.state === 'completed' ? 'duplicate' : 'accepted',
+      }
     },
 
     async sendMessage(input: SendChatMessageInput) {
@@ -490,123 +517,153 @@ export const createConversationService = ({
     },
 
     async sendOperatorMessage(input: SendChatMessageInput) {
-      const result = await idempotent(`operator-message:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
-        const session = await requireSession(input.sessionId)
-        const base = structuredClone(session)
-        const text = input.text.trim()
-        if (!text || text.length > 5_000) {
-          throw new ChatServiceError('invalid_request', 'Message must contain 1 to 5000 characters')
-        }
-        if (session.handoffStatus !== 'human_active') {
-          throw new ChatServiceError('conflict', 'Operator messages require an active handoff')
-        }
-        session.messages.push({
-          author: 'operator',
-          content: text,
-          createdAt: clock().toISOString(),
-          id: createId('message'),
-          status: 'sent',
-        })
-        return repository.saveSession(session, { base }, claim)
-      })
+      const result = await idempotent(
+        `operator-message:${String(input.sessionId)}`,
+        input.idempotencyKey,
+        async (claim) => {
+          const session = await requireSession(input.sessionId)
+          const base = structuredClone(session)
+          const text = input.text.trim()
+          if (!text || text.length > 5_000) {
+            throw new ChatServiceError(
+              'invalid_request',
+              'Message must contain 1 to 5000 characters',
+            )
+          }
+          if (session.handoffStatus !== 'human_active') {
+            throw new ChatServiceError('conflict', 'Operator messages require an active handoff')
+          }
+          session.messages.push({
+            author: 'operator',
+            content: text,
+            createdAt: clock().toISOString(),
+            id: createId('message'),
+            status: 'sent',
+          })
+          return repository.saveSession(session, { base }, claim)
+        },
+      )
       return result.session
     },
 
     async retryMessage(input: RetryChatMessageInput) {
-      const result = await idempotent(`retry:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
-        const session = await requireSession(input.sessionId)
-        const base = structuredClone(session)
-        const message = session.messages.find(({ id }) => String(id) === String(input.messageId))
-        if (!message || message.author !== 'visitor') {
-          throw new ChatServiceError('not_found', 'Retryable visitor message not found')
-        }
-        if (message.status !== 'failed') {
-          throw new ChatServiceError('conflict', 'Only failed visitor messages can be retried')
-        }
-        assertAiReplyAllowed(session.handoffStatus)
-        await repository.renewCommand(claim)
-        const highRiskTopic = requiresHumanReview(message.content)
-        let leadEvaluation = highRiskTopic
-          ? await leadSink?.evaluate(session).catch(() => undefined)
-          : await leadSink?.evaluate(session)
-        const consumedQualificationState = consumeQualificationAnswerContext(
-          session.qualificationState,
-          leadEvaluation,
-        )
-        session.qualificationState = consumedQualificationState
-        if (highRiskTopic && leadEvaluation) {
-          leadEvaluation = { ...leadEvaluation, handoffReason: 'high_risk_topic' }
-        }
-        const reply = highRiskTopic
-          ? { handoff: { reason: 'high_risk_topic', source: 'ai_policy' as const } }
-          : await replyOrHandoff(
-              message.content,
-              session,
-              leadEvaluation?.score.missingFields,
-              consumedQualificationState,
-            )
-        let handoff: HandoffCreatedEvent | undefined
-        let qualificationState: ChatQualificationState = consumedQualificationState
-        if ('handoff' in reply) {
-          if (leadEvaluation && !leadEvaluation.handoffReason) {
-            leadEvaluation = { ...leadEvaluation, handoffReason: reply.handoff.reason }
+      const result = await idempotent(
+        `retry:${String(input.sessionId)}`,
+        input.idempotencyKey,
+        async (claim) => {
+          const session = await requireSession(input.sessionId)
+          const base = structuredClone(session)
+          const message = session.messages.find(({ id }) => String(id) === String(input.messageId))
+          if (!message || message.author !== 'visitor') {
+            throw new ChatServiceError('not_found', 'Retryable visitor message not found')
           }
-          session.handoffStatus = await transition(session, 'request')
-          session.allowedActions = allowedActionsFor(session.handoffStatus)
-          handoff = createHandoff(session, { ...reply.handoff, idempotencyKey: input.idempotencyKey })
-        } else {
-          appendAiReply(session, reply)
-          qualificationState = mergeQualificationState(
-            consumedQualificationState,
-            reply.qualificationState,
+          if (message.status !== 'failed') {
+            throw new ChatServiceError('conflict', 'Only failed visitor messages can be retried')
+          }
+          assertAiReplyAllowed(session.handoffStatus)
+          await repository.renewCommand(claim)
+          const highRiskTopic = requiresHumanReview(message.content)
+          let leadEvaluation = highRiskTopic
+            ? await leadSink?.evaluate(session).catch(() => undefined)
+            : await leadSink?.evaluate(session)
+          const consumedQualificationState = consumeQualificationAnswerContext(
+            session.qualificationState,
+            leadEvaluation,
           )
-          session.qualificationState = qualificationState
-        }
-        return repository.saveSession(
-          session,
-          { base, handoff, leadEvaluation, qualificationState },
-          claim,
-        )
-      })
+          session.qualificationState = consumedQualificationState
+          if (highRiskTopic && leadEvaluation) {
+            leadEvaluation = { ...leadEvaluation, handoffReason: 'high_risk_topic' }
+          }
+          const reply = highRiskTopic
+            ? { handoff: { reason: 'high_risk_topic', source: 'ai_policy' as const } }
+            : await replyOrHandoff(
+                message.content,
+                session,
+                leadEvaluation?.score.missingFields,
+                consumedQualificationState,
+              )
+          let handoff: HandoffCreatedEvent | undefined
+          let qualificationState: ChatQualificationState = consumedQualificationState
+          if ('handoff' in reply) {
+            if (leadEvaluation && !leadEvaluation.handoffReason) {
+              leadEvaluation = { ...leadEvaluation, handoffReason: reply.handoff.reason }
+            }
+            session.handoffStatus = await transition(session, 'request')
+            session.allowedActions = allowedActionsFor(session.handoffStatus)
+            handoff = createHandoff(session, {
+              ...reply.handoff,
+              idempotencyKey: input.idempotencyKey,
+            })
+          } else {
+            appendAiReply(session, reply)
+            qualificationState = mergeQualificationState(
+              consumedQualificationState,
+              reply.qualificationState,
+            )
+            session.qualificationState = qualificationState
+          }
+          return repository.saveSession(
+            session,
+            { base, handoff, leadEvaluation, qualificationState },
+            claim,
+          )
+        },
+      )
       return result.session
     },
 
     async requestHandoff(input: RequestHandoffInput) {
-      const result = await idempotent(`handoff:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
-        const session = await requireSession(input.sessionId)
-        const base = structuredClone(session)
-        if (!input.reason.trim()) {
-          throw new ChatServiceError('invalid_request', 'Handoff reason is required')
-        }
-        session.handoffStatus = await transition(session, 'request')
-        session.allowedActions = allowedActionsFor(session.handoffStatus)
-        return repository.saveSession(session, {
-          base,
-          handoff: createHandoff(session, input),
-        }, claim)
-      })
+      const result = await idempotent(
+        `handoff:${String(input.sessionId)}`,
+        input.idempotencyKey,
+        async (claim) => {
+          const session = await requireSession(input.sessionId)
+          const base = structuredClone(session)
+          if (!input.reason.trim()) {
+            throw new ChatServiceError('invalid_request', 'Handoff reason is required')
+          }
+          session.handoffStatus = await transition(session, 'request')
+          session.allowedActions = allowedActionsFor(session.handoffStatus)
+          return repository.saveSession(
+            session,
+            {
+              base,
+              handoff: createHandoff(session, input),
+            },
+            claim,
+          )
+        },
+      )
       return result.session
     },
 
     async takeOver(input: SessionCommandInput) {
-      const result = await idempotent(`take-over:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
-        const session = await requireSession(input.sessionId)
-        const base = structuredClone(session)
-        session.handoffStatus = await transition(session, 'take_over')
-        session.allowedActions = allowedActionsFor(session.handoffStatus)
-        return repository.saveSession(session, { base }, claim)
-      })
+      const result = await idempotent(
+        `take-over:${String(input.sessionId)}`,
+        input.idempotencyKey,
+        async (claim) => {
+          const session = await requireSession(input.sessionId)
+          const base = structuredClone(session)
+          session.handoffStatus = await transition(session, 'take_over')
+          session.allowedActions = allowedActionsFor(session.handoffStatus)
+          return repository.saveSession(session, { base }, claim)
+        },
+      )
       return result.session
     },
 
     async resolve(input: SessionCommandInput) {
-      const result = await idempotent(`resolve:${String(input.sessionId)}`, input.idempotencyKey, async (claim) => {
-        const session = await requireSession(input.sessionId)
-        const base = structuredClone(session)
-        session.handoffStatus = await transition(session, 'resolve')
-        session.allowedActions = allowedActionsFor(session.handoffStatus)
-        return repository.saveSession(session, { base }, claim)
-      })
+      const result = await idempotent(
+        `resolve:${String(input.sessionId)}`,
+        input.idempotencyKey,
+        async (claim) => {
+          const session = await requireSession(input.sessionId)
+          const base = structuredClone(session)
+          session.handoffStatus = await transition(session, 'resolve')
+          session.allowedActions = allowedActionsFor(session.handoffStatus)
+          return repository.saveSession(session, { base }, claim)
+        },
+      )
       return result.session
     },
   }

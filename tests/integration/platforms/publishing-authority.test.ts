@@ -308,28 +308,30 @@ describe.sequential('Task 13 Payload publication authority', () => {
       platformAccountId: account.id,
       status: 'published',
     })
+    const resolveRuntime = vi.fn(() => ({
+      directService: {
+        getCapability: vi.fn(),
+        getStatus,
+        prepareAssistedPublication: vi.fn(),
+        publish,
+      },
+      linkedInTransport: {} as never,
+      metaTransport: {} as never,
+      readLinkedInAssetBytes: vi.fn(),
+    }))
     const worker = new JobWorker({
       handlers: {
         [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
           payload,
           queue,
-          resolveRuntime: () => ({
-            directService: {
-              getCapability: vi.fn(),
-              getStatus,
-              prepareAssistedPublication: vi.fn(),
-              publish,
-            },
-            linkedInTransport: {} as never,
-            metaTransport: {} as never,
-            readLinkedInAssetBytes: vi.fn(),
-          }),
+          resolveRuntime,
         }),
       },
       queue,
     })
 
     await expect(worker.runOnce()).resolves.toBe('succeeded')
+    expect(resolveRuntime).toHaveBeenCalledWith('facebook-photo-single')
     expect(publish).toHaveBeenCalledTimes(1)
     const queuedContinuation = await pool().query<{ count: string }>(
       'SELECT COUNT(*)::text AS count FROM jobs WHERE idempotency_key = $1',

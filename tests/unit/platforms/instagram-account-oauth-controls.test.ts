@@ -17,7 +17,10 @@ import InstagramAccountOAuthControls, {
 } from '@/admin/components/InstagramAccountOAuthControls'
 
 describe('InstagramAccountOAuthControls', () => {
-  afterEach(() => cleanup())
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
 
   beforeEach(() => {
     mocks.useTranslation.mockReturnValue({ i18n: { language: 'zh' } })
@@ -26,6 +29,7 @@ describe('InstagramAccountOAuthControls', () => {
       data: {
         accountKind: 'instagram-professional',
         authorization: { accessTokenConfigured: false, state: 'pending' },
+        authorizationRevision: 3,
         platformFamily: 'meta',
       },
       id: 42,
@@ -63,6 +67,7 @@ describe('InstagramAccountOAuthControls', () => {
       data: {
         accountKind: 'instagram-professional',
         authorization: { accessTokenConfigured: true, state: 'connected' },
+        authorizationRevision: 7,
         platformFamily: 'meta',
       },
       id: 42,
@@ -89,12 +94,40 @@ describe('InstagramAccountOAuthControls', () => {
 
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1))
     expect(fetcher).toHaveBeenCalledWith('/api/platforms/instagram/oauth/disconnect', {
-      body: JSON.stringify({ accountId: 42 }),
+      body: JSON.stringify({ accountId: 42, authorizationRevision: 7 }),
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
       method: 'POST',
     })
     expect(window.location.pathname).toBe('/admin/collections/platform-accounts/42')
     expect(window.location.search).toBe('?instagramOAuth=disconnected')
+  })
+
+  it('falls back to the initial authorization revision for partial form data', async () => {
+    mocks.useDocumentInfo.mockReturnValue({
+      collectionSlug: 'platform-accounts',
+      data: {
+        accountKind: 'instagram-professional',
+        authorization: { accessTokenConfigured: true, state: 'connected' },
+        platformFamily: 'meta',
+      },
+      id: 42,
+      initialData: { authorizationRevision: 9 },
+    })
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 200 }))
+    vi.stubGlobal('fetch', fetcher)
+    render(React.createElement(InstagramAccountOAuthControls))
+
+    fireEvent.click(screen.getByRole('button', { name: '断开授权' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认断开' }))
+
+    await waitFor(() =>
+      expect(fetcher).toHaveBeenCalledWith('/api/platforms/instagram/oauth/disconnect', {
+        body: JSON.stringify({ accountId: 42, authorizationRevision: 9 }),
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      }),
+    )
   })
 })

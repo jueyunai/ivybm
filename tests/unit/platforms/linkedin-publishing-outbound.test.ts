@@ -207,9 +207,13 @@ describe('LinkedIn publishing transport', () => {
         ticket,
       }),
     ).rejects.toBeInstanceOf(ProviderPublicationConfirmedError)
+    const sealedSegments = ticket.sealedUpload.split('.')
+    const encodedTag = sealedSegments[2]
+    if (!encodedTag) throw new Error('Expected a sealed upload authentication tag')
+    sealedSegments[2] = `${encodedTag[0] === 'A' ? 'B' : 'A'}${encodedTag.slice(1)}`
     const tampered = {
       ...ticket,
-      sealedUpload: `${ticket.sealedUpload.slice(0, -1)}x`,
+      sealedUpload: sealedSegments.join('.'),
     }
     await expect(
       transport.uploadImage({

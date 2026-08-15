@@ -9,6 +9,7 @@ import {
 const input = (
   overrides: Partial<MetaConversationReplyInput> = {},
 ): MetaConversationReplyInput => ({
+  accountExternalId: '129472283584550',
   platform: 'facebook-messenger',
   recipientExternalId: '9876543210987654',
   text: 'Thank you. Which finish and approximate quantity do you need?',
@@ -16,22 +17,28 @@ const input = (
 })
 
 describe('meta conversation reply request builder', () => {
-  it.each(['facebook-messenger', 'instagram'] as const)(
-    'builds the exact Send API request for %s',
-    (platform) => {
-      const request = buildMetaConversationReplyRequest(input({ platform }))
+  it('builds the exact Facebook Page Send API request', () => {
+    expect(buildMetaConversationReplyRequest(input())).toEqual({
+      body: {
+        message: { text: 'Thank you. Which finish and approximate quantity do you need?' },
+        messaging_type: 'RESPONSE',
+        recipient: { id: '9876543210987654' },
+      },
+      method: 'POST',
+      path: '/me/messages',
+    })
+  })
 
-      expect(request).toEqual({
-        body: {
-          message: { text: 'Thank you. Which finish and approximate quantity do you need?' },
-          messaging_type: 'RESPONSE',
-          recipient: { id: '9876543210987654' },
-        },
-        method: 'POST',
-        path: '/me/messages',
-      })
-    },
-  )
+  it('builds the exact Instagram professional account Send API request', () => {
+    expect(buildMetaConversationReplyRequest(input({ platform: 'instagram' }))).toEqual({
+      body: {
+        message: { text: 'Thank you. Which finish and approximate quantity do you need?' },
+        recipient: { id: '9876543210987654' },
+      },
+      method: 'POST',
+      path: '/129472283584550/messages',
+    })
+  })
 
   it('trims the reply text before building the body', () => {
     const request = buildMetaConversationReplyRequest(input({ text: '  Hello there.  ' }))
@@ -70,6 +77,15 @@ describe('meta conversation reply request builder', () => {
     (recipientExternalId) => {
       expect(() => buildMetaConversationReplyRequest(input({ recipientExternalId }))).toThrow(
         /recipient external ID must be a decimal identifier/,
+      )
+    },
+  )
+
+  it.each(['../../etc', '9876/5432', 'ACCOUNT_FIXTURE_1', '', '   ', '9'.repeat(65)])(
+    'rejects an invalid or traversal account external ID %j',
+    (accountExternalId) => {
+      expect(() => buildMetaConversationReplyRequest(input({ accountExternalId }))).toThrow(
+        /account external ID must be a decimal identifier/,
       )
     },
   )

@@ -187,7 +187,10 @@ export default function InstagramAccountOAuthControls() {
   const locale = getAdminLocale(i18n.language)
   const labels = LABELS[locale]
   const documentData = asRecord(data || initialData)
+  const initialDocumentData = asRecord(initialData)
   const authorization = asRecord(documentData.authorization)
+  const authorizationRevision =
+    documentData.authorizationRevision ?? initialDocumentData.authorizationRevision
   const accountKind = documentData.accountKind
   const isInstagramAccount =
     collectionSlug === 'platform-accounts' && accountKind === 'instagram-professional'
@@ -199,7 +202,10 @@ export default function InstagramAccountOAuthControls() {
   const [result, setResult] = useState(currentResult)
   const confirmButtonRef = useRef<HTMLButtonElement>(null)
   const disconnectButtonRef = useRef<HTMLButtonElement>(null)
-  const resultMessage = useMemo(() => getInstagramOAuthResultMessage(result, locale), [locale, result])
+  const resultMessage = useMemo(
+    () => getInstagramOAuthResultMessage(result, locale),
+    [locale, result],
+  )
 
   useEffect(() => {
     if (confirming) confirmButtonRef.current?.focus()
@@ -212,11 +218,22 @@ export default function InstagramAccountOAuthControls() {
 
   const disconnect = async () => {
     if (disconnecting) return
+    if (
+      typeof authorizationRevision !== 'number' ||
+      !Number.isSafeInteger(authorizationRevision) ||
+      authorizationRevision < 0
+    ) {
+      setResult('disconnect_failed')
+      return
+    }
     setDisconnecting(true)
     setResult('')
     try {
       const response = await fetch('/api/platforms/instagram/oauth/disconnect', {
-        body: JSON.stringify({ accountId: Number(accountId) }),
+        body: JSON.stringify({
+          accountId: Number(accountId),
+          authorizationRevision,
+        }),
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
         method: 'POST',

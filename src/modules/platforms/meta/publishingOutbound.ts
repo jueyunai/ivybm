@@ -24,10 +24,12 @@ import {
   type MetaPublishingHttpRequest,
 } from './publishingRequests'
 import { META_GRAPH_API_VERSION } from './oauth'
+import { INSTAGRAM_GRAPH_API_VERSION } from '../instagram/oauth'
 import type { PlatformAccountId } from '../../publishing/contracts'
 import { normalizePlatformAccountId } from '../../publishing/contracts'
 
 const META_GRAPH_ORIGIN = 'https://graph.facebook.com'
+const INSTAGRAM_GRAPH_ORIGIN = 'https://graph.instagram.com'
 const MAX_TOKEN_LENGTH = 8_192
 const DEFAULT_TIMEOUT_MS = 15_000
 
@@ -171,6 +173,13 @@ const publishingAuthorization = ({
   }
 }
 
+const providerOriginAndVersion = (
+  platform: MetaPublishingPlatform,
+): { origin: string; version: string } =>
+  platform === 'instagram'
+    ? { origin: INSTAGRAM_GRAPH_ORIGIN, version: INSTAGRAM_GRAPH_API_VERSION }
+    : { origin: META_GRAPH_ORIGIN, version: META_GRAPH_API_VERSION }
+
 const trustedMediaOrigins = (value: readonly string[]): Set<string> => {
   if (!value.length) throw new Error('Meta publishing requires a trusted media origin')
   const origins = new Set<string>()
@@ -265,7 +274,8 @@ export const createMetaPublishingTransport = ({
     const timeout = setTimeout(() => controller.abort(), timeoutMs)
     let response: Awaited<ReturnType<MetaPublishingFetch>>
     try {
-      const url = new URL(`/${META_GRAPH_API_VERSION}${providerRequest.path}`, META_GRAPH_ORIGIN)
+      const { origin, version } = providerOriginAndVersion(platform)
+      const url = new URL(`/${version}${providerRequest.path}`, origin)
       for (const [key, value] of Object.entries(providerRequest.query ?? {})) {
         url.searchParams.set(key, value)
       }

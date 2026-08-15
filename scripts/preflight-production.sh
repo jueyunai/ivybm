@@ -28,7 +28,8 @@ release_environment_keys=(
   AI_TEXT_MODEL AI_EMBEDDING_MODEL AI_EMBEDDING_DIMENSIONS AI_TEXT_TIMEOUT_MS AI_EMBEDDING_TIMEOUT_MS
   AI_REASONING_ENABLED AI_REASONING_EFFORT META_WEBHOOK_APP_SECRET META_WEBHOOK_VERIFY_TOKEN
   META_WEBHOOK_ALLOWED_ACCOUNT_IDS META_APP_ID META_LOGIN_CONFIG_ID META_OAUTH_REDIRECT_URI
-  INSTAGRAM_APP_ID INSTAGRAM_APP_SECRET INSTAGRAM_OAUTH_REDIRECT_URI LINKEDIN_API_VERSION
+  INSTAGRAM_APP_ID INSTAGRAM_APP_SECRET INSTAGRAM_OAUTH_REDIRECT_URI LINKEDIN_APP_ID
+  LINKEDIN_APP_SECRET LINKEDIN_OAUTH_REDIRECT_URI LINKEDIN_API_VERSION
   LINKEDIN_UPLOAD_ALLOWED_ORIGINS LINKEDIN_UPLOAD_TICKET_KEY FEISHU_APP_ID FEISHU_APP_SECRET FEISHU_OAUTH_REDIRECT_URI
   FEISHU_CREDENTIAL_ENCRYPTION_KEY FEISHU_QR_REGISTRATION_ENABLED FEISHU_RELAY_INTERVAL_MS
   FEISHU_OAUTH_RECOVERY_INTERVAL_MS WORKER_HEARTBEAT_INTERVAL_MS WORKER_JOB_HEARTBEAT_INTERVAL_MS
@@ -131,6 +132,9 @@ meta_oauth_redirect_uri="$(read_optional_env_value META_OAUTH_REDIRECT_URI)"
 instagram_app_id="$(read_optional_env_value INSTAGRAM_APP_ID)"
 instagram_app_secret="$(read_optional_env_value INSTAGRAM_APP_SECRET)"
 instagram_oauth_redirect_uri="$(read_optional_env_value INSTAGRAM_OAUTH_REDIRECT_URI)"
+linkedin_app_id="$(read_optional_env_value LINKEDIN_APP_ID)"
+linkedin_app_secret="$(read_optional_env_value LINKEDIN_APP_SECRET)"
+linkedin_oauth_redirect_uri="$(read_optional_env_value LINKEDIN_OAUTH_REDIRECT_URI)"
 linkedin_api_version="$(read_optional_env_value LINKEDIN_API_VERSION)"
 linkedin_upload_allowed_origins="$(read_optional_env_value LINKEDIN_UPLOAD_ALLOWED_ORIGINS)"
 linkedin_upload_ticket_key="$(read_optional_env_value LINKEDIN_UPLOAD_TICKET_KEY)"
@@ -216,10 +220,13 @@ fi
 
 if [[ "$portal_publishing_enabled" == 'true' ]]; then
   require_pattern PLATFORM_CREDENTIAL_ENCRYPTION_KEY "$platform_credential_encryption_key" '^[a-fA-F0-9]{64}$'
+fi
+
+if [[ -n "$linkedin_upload_allowed_origins$linkedin_upload_ticket_key" ]]; then
   require_pattern LINKEDIN_API_VERSION "$linkedin_api_version" '^20[0-9]{2}(0[1-9]|1[0-2])$'
   require_pattern LINKEDIN_UPLOAD_TICKET_KEY "$linkedin_upload_ticket_key" '^[a-fA-F0-9]{64}$'
   if [[ -z "$linkedin_upload_allowed_origins" || "$linkedin_upload_allowed_origins" == *'REPLACE_'* || "$linkedin_upload_allowed_origins" == *'replace-with'* ]]; then
-    echo 'LINKEDIN_UPLOAD_ALLOWED_ORIGINS is required when publishing is enabled' >&2
+    echo 'LINKEDIN_UPLOAD_ALLOWED_ORIGINS is required when LinkedIn uploads are configured' >&2
     exit 1
   fi
   IFS=',' read -r -a linkedin_upload_origins <<<"$linkedin_upload_allowed_origins"
@@ -358,6 +365,30 @@ if [[ -n "$instagram_app_id" || -n "$instagram_app_secret" || -n "$instagram_oau
   fi
 fi
 
+if [[ -n "$linkedin_app_id" || -n "$linkedin_app_secret" || -n "$linkedin_oauth_redirect_uri" ]]; then
+  for key in LINKEDIN_APP_ID LINKEDIN_APP_SECRET LINKEDIN_OAUTH_REDIRECT_URI; do
+    case "$key" in
+      LINKEDIN_APP_ID) value="$linkedin_app_id" ;;
+      LINKEDIN_APP_SECRET) value="$linkedin_app_secret" ;;
+      LINKEDIN_OAUTH_REDIRECT_URI) value="$linkedin_oauth_redirect_uri" ;;
+    esac
+    if [[ -z "$value" || "$value" == *'REPLACE_'* || "$value" == *'replace-with'* ]]; then
+      echo "LINKEDIN_APP_ID, LINKEDIN_APP_SECRET and LINKEDIN_OAUTH_REDIRECT_URI must be configured together when LinkedIn OAuth is enabled (missing or invalid: $key)" >&2
+      exit 1
+    fi
+  done
+  require_pattern LINKEDIN_APP_ID "$linkedin_app_id" '^[A-Za-z0-9_-]{1,128}$'
+  require_pattern LINKEDIN_API_VERSION "$linkedin_api_version" '^20[0-9]{2}(0[1-9]|1[0-2])$'
+  if [[ "$linkedin_oauth_redirect_uri" != 'https://ivybm.com/api/platforms/linkedin/oauth/callback' ]]; then
+    echo 'LINKEDIN_OAUTH_REDIRECT_URI must be https://ivybm.com/api/platforms/linkedin/oauth/callback in production' >&2
+    exit 1
+  fi
+  if [[ -z "$platform_credential_encryption_key" ]]; then
+    echo 'PLATFORM_CREDENTIAL_ENCRYPTION_KEY is required when LinkedIn OAuth is enabled' >&2
+    exit 1
+  fi
+fi
+
 if grep -Eq '^[[:space:]]*SEED_ADMIN_(EMAIL|PASSWORD)=' "$env_file"; then
   echo 'Production environment must not contain demo seed credentials' >&2
   exit 1
@@ -421,15 +452,21 @@ for key in portal_keys:
 publishing_enabled = app_environment.get('ADMIN_PORTAL_PUBLISHING_ENABLED')
 if publishing_enabled not in {'true', 'false'}:
     raise SystemExit('Compose app environment has an invalid ADMIN_PORTAL_PUBLISHING_ENABLED')
+conversations_enabled = app_environment.get('ADMIN_PORTAL_CONVERSATIONS_ENABLED')
+if worker_environment.get('ADMIN_PORTAL_CONVERSATIONS_ENABLED') != conversations_enabled:
+    raise SystemExit('Compose app and worker conversation switches must match')
 if worker_environment.get('ADMIN_PORTAL_PUBLISHING_ENABLED') != publishing_enabled:
     raise SystemExit('Compose app and worker publishing switches must match')
 if publishing_enabled == 'true':
-    for key in (
-        'PLATFORM_CREDENTIAL_ENCRYPTION_KEY',
-        'LINKEDIN_API_VERSION',
-        'LINKEDIN_UPLOAD_ALLOWED_ORIGINS',
-        'LINKEDIN_UPLOAD_TICKET_KEY',
-    ):
+    if not worker_environment.get('PLATFORM_CREDENTIAL_ENCRYPTION_KEY'):
+        raise SystemExit('Compose worker environment is missing PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
+linkedin_keys = (
+    'LINKEDIN_API_VERSION',
+    'LINKEDIN_UPLOAD_ALLOWED_ORIGINS',
+    'LINKEDIN_UPLOAD_TICKET_KEY',
+)
+if any(worker_environment.get(key) for key in linkedin_keys[1:]):
+    for key in linkedin_keys:
         if not worker_environment.get(key):
             raise SystemExit(f'Compose worker environment is missing {key}')
 if app.get('build') is not None or worker.get('build') is not None or migrate.get('build') is not None:
