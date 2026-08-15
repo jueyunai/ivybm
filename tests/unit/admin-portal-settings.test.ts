@@ -38,6 +38,25 @@ const readyAiSettings = {
       providerName: 'Primary provider',
       updatedAt: '2026-08-05T00:00:00.000Z',
     },
+    {
+      capability: 'image' as const,
+      enabled: true,
+      id: 3,
+      model: 'image-example',
+      name: 'Primary image',
+      parameters: {
+        dimensions: null,
+        maxOutputTokens: null,
+        reasoningEffort: 'medium',
+        reasoningEnabled: false,
+        temperature: null,
+        timeoutMs: 60000,
+        topP: null,
+      },
+      providerID: 1,
+      providerName: 'Primary provider',
+      updatedAt: '2026-08-12T00:00:00.000Z',
+    },
   ],
   providers: [
     {
@@ -47,19 +66,34 @@ const readyAiSettings = {
       id: 1,
       name: 'Primary provider',
       protocol: 'openai-compatible' as const,
+      textGenerationContract: 'responses' as const,
       updatedAt: '2026-08-05T00:00:00.000Z',
     },
   ],
   readiness: [
     { key: 'customer-chat' as const, reason: 'route' as const, status: 'action-required' as const },
-    { key: 'content-studio' as const, reason: null, status: 'ready' as const },
+    {
+      key: 'content-studio' as const,
+      reason: null,
+      status: 'configured-pending-verification' as const,
+    },
     {
       key: 'knowledge-index' as const,
       reason: 'route' as const,
       status: 'action-required' as const,
     },
   ],
-  routes: [],
+  routes: [
+    {
+      enabled: true,
+      id: 4,
+      operation: 'image' as const,
+      profileID: 3,
+      profileName: 'Primary image',
+      updatedAt: '2026-08-12T00:00:00.000Z',
+      usageKey: 'content.image-generation',
+    },
+  ],
 }
 
 beforeEach(() => window.localStorage.clear())
@@ -212,8 +246,54 @@ describe('Portal settings hub', () => {
     expect(screen.getByRole('heading', { name: 'AI 模型配置' })).toBeTruthy()
     expect(screen.getByText('Primary provider')).toBeTruthy()
     expect(screen.getByText('Key 已配置')).toBeTruthy()
+    expect(screen.getAllByText('已配置，待真实验证').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: '模型' }))
+    expect(screen.getByText('Primary image')).toBeTruthy()
+    expect(screen.getByText(/图片生成/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '用途路由' }))
+    fireEvent.click(screen.getByRole('button', { name: /新建路由/ }))
+    expect(screen.getByRole('option', { name: /内容工作台·图片生成/ })).toBeTruthy()
     expect(container.textContent).not.toContain('stored-secret')
     expect(container.innerHTML).not.toContain('/admin')
+  })
+
+  it('requires an explicit text contract and defaults new image profiles to 120 seconds', () => {
+    const modules = resolvePortalAvailability({
+      env: {
+        ADMIN_PORTAL_ENABLED: 'true',
+        ADMIN_PORTAL_SETTINGS_ENABLED: 'true',
+      },
+      role: 'admin',
+    }).modules
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(SettingsHub, {
+          aiSettings: readyAiSettings,
+          modules,
+          summary: { canUpdate: true, siteDescription: null, siteName: 'IVYBM' },
+          user: { email: 'admin@example.com', id: 1, role: 'admin' },
+        }),
+      ),
+    )
+
+    const provider = screen.getByText('Primary provider').closest('article')
+    expect(provider).not.toBeNull()
+    fireEvent.click(provider!.querySelector('button[aria-label="编辑"]')!)
+    expect(
+      (screen.getByRole('combobox', { name: /文本接口契约/ }) as HTMLSelectElement).value,
+    ).toBe('responses')
+    expect(screen.getByRole('option', { name: 'Chat Completions' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '模型' }))
+    fireEvent.click(screen.getByRole('button', { name: /新建模型/ }))
+    fireEvent.change(screen.getByRole('combobox', { name: '能力' }), {
+      target: { value: 'image' },
+    })
+    expect(
+      (screen.getByRole('spinbutton', { name: '超时（毫秒）' }) as HTMLInputElement).value,
+    ).toBe('120000')
   })
 
   it.each(['operator', 'sales'] as const)(

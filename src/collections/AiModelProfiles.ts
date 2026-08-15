@@ -4,7 +4,7 @@ import { admins } from '../access/roles'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 import { AI_REASONING_EFFORTS } from '../modules/ai/gateway'
 
-export const AI_MODEL_CAPABILITIES = ['text', 'embedding'] as const
+export const AI_MODEL_CAPABILITIES = ['text', 'embedding', 'image'] as const
 
 const relationshipID = (value: unknown): number | string | undefined => {
   if (typeof value === 'number' || typeof value === 'string') return value
@@ -126,7 +126,7 @@ const profileBeforeChange: CollectionBeforeChangeHook = async ({ data, originalD
     if (value !== undefined && value !== null) {
       throw validationError(
         req,
-        'Embedding models cannot define text-generation settings',
+        `${capability === 'image' ? 'Image' : 'Embedding'} models cannot define text-generation settings`,
         `parameters.${field}`,
       )
     }
@@ -134,9 +134,19 @@ const profileBeforeChange: CollectionBeforeChangeHook = async ({ data, originalD
   if (parameters.reasoningEnabled === true) {
     throw validationError(
       req,
-      'Embedding models cannot enable reasoning',
+      `${capability === 'image' ? 'Image' : 'Embedding'} models cannot enable reasoning`,
       'parameters.reasoningEnabled',
     )
+  }
+  if (capability === 'image') {
+    if (parameters.dimensions !== undefined && parameters.dimensions !== null) {
+      throw validationError(
+        req,
+        'Image models cannot define embedding dimensions',
+        'parameters.dimensions',
+      )
+    }
+    return candidate
   }
   if (!isIntegerInRange(parameters.dimensions, 1, 16_384)) {
     throw validationError(

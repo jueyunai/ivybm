@@ -59,369 +59,379 @@ export type SupportedTimezones =
   | 'Pacific/Guam'
   | 'Pacific/Noumea'
   | 'Pacific/Auckland'
-  | 'Pacific/Fiji';
+  | 'Pacific/Fiji'
 
 export interface Config {
   auth: {
-    users: UserAuthOperations;
-  };
-  blocks: {};
+    users: UserAuthOperations
+  }
+  blocks: {}
   collections: {
-    users: User;
-    media: Media;
-    'audit-logs': AuditLog;
-    'ai-providers': AiProvider;
-    'ai-model-profiles': AiModelProfile;
-    'ai-usage-routes': AiUsageRoute;
-    'ai-usage-logs': AiUsageLog;
-    'generated-contents': GeneratedContent;
-    'content-reviews': ContentReview;
-    'publish-jobs': PublishJob;
-    'publish-logs': PublishLog;
-    pages: Page;
-    'product-categories': ProductCategory;
-    products: Product;
-    projects: Project;
-    posts: Post;
-    downloads: Download;
-    'knowledge-documents': KnowledgeDocument;
-    'knowledge-source-documents': KnowledgeSourceDocument;
-    'knowledge-source-assets': KnowledgeSourceAsset;
-    'knowledge-chunks': KnowledgeChunk;
-    'prompt-templates': PromptTemplate;
-    'platform-accounts': PlatformAccount;
-    'portal-command-receipts': PortalCommandReceipt;
-    'lead-sources': LeadSource;
-    leads: Lead;
-    'feishu-connections': FeishuConnection;
-    'feishu-app-registrations': FeishuAppRegistration;
-    'feishu-mappings': FeishuMapping;
-    'feishu-oauth-states': FeishuOauthState;
-    'visitor-sessions': VisitorSession;
-    conversations: Conversation;
-    messages: Message;
-    handoffs: Handoff;
-    'conversation-commands': ConversationCommand;
-    jobs: Job;
-    'payload-kv': PayloadKv;
-    'payload-locked-documents': PayloadLockedDocument;
-    'payload-preferences': PayloadPreference;
-    'payload-migrations': PayloadMigration;
-  };
-  collectionsJoins: {};
+    users: User
+    media: Media
+    'audit-logs': AuditLog
+    'ai-providers': AiProvider
+    'ai-model-profiles': AiModelProfile
+    'ai-usage-routes': AiUsageRoute
+    'ai-usage-logs': AiUsageLog
+    'generated-contents': GeneratedContent
+    'content-reviews': ContentReview
+    'publish-jobs': PublishJob
+    'publish-logs': PublishLog
+    pages: Page
+    'product-categories': ProductCategory
+    products: Product
+    projects: Project
+    posts: Post
+    downloads: Download
+    'knowledge-documents': KnowledgeDocument
+    'knowledge-source-documents': KnowledgeSourceDocument
+    'knowledge-source-assets': KnowledgeSourceAsset
+    'knowledge-chunks': KnowledgeChunk
+    'prompt-templates': PromptTemplate
+    'platform-accounts': PlatformAccount
+    'portal-command-receipts': PortalCommandReceipt
+    'lead-sources': LeadSource
+    leads: Lead
+    'feishu-connections': FeishuConnection
+    'feishu-app-registrations': FeishuAppRegistration
+    'feishu-mappings': FeishuMapping
+    'feishu-oauth-states': FeishuOauthState
+    'visitor-sessions': VisitorSession
+    conversations: Conversation
+    messages: Message
+    handoffs: Handoff
+    'conversation-commands': ConversationCommand
+    jobs: Job
+    'payload-kv': PayloadKv
+    'payload-locked-documents': PayloadLockedDocument
+    'payload-preferences': PayloadPreference
+    'payload-migrations': PayloadMigration
+  }
+  collectionsJoins: {}
   collectionsSelect: {
-    users: UsersSelect<false> | UsersSelect<true>;
-    media: MediaSelect<false> | MediaSelect<true>;
-    'audit-logs': AuditLogsSelect<false> | AuditLogsSelect<true>;
-    'ai-providers': AiProvidersSelect<false> | AiProvidersSelect<true>;
-    'ai-model-profiles': AiModelProfilesSelect<false> | AiModelProfilesSelect<true>;
-    'ai-usage-routes': AiUsageRoutesSelect<false> | AiUsageRoutesSelect<true>;
-    'ai-usage-logs': AiUsageLogsSelect<false> | AiUsageLogsSelect<true>;
-    'generated-contents': GeneratedContentsSelect<false> | GeneratedContentsSelect<true>;
-    'content-reviews': ContentReviewsSelect<false> | ContentReviewsSelect<true>;
-    'publish-jobs': PublishJobsSelect<false> | PublishJobsSelect<true>;
-    'publish-logs': PublishLogsSelect<false> | PublishLogsSelect<true>;
-    pages: PagesSelect<false> | PagesSelect<true>;
-    'product-categories': ProductCategoriesSelect<false> | ProductCategoriesSelect<true>;
-    products: ProductsSelect<false> | ProductsSelect<true>;
-    projects: ProjectsSelect<false> | ProjectsSelect<true>;
-    posts: PostsSelect<false> | PostsSelect<true>;
-    downloads: DownloadsSelect<false> | DownloadsSelect<true>;
-    'knowledge-documents': KnowledgeDocumentsSelect<false> | KnowledgeDocumentsSelect<true>;
-    'knowledge-source-documents': KnowledgeSourceDocumentsSelect<false> | KnowledgeSourceDocumentsSelect<true>;
-    'knowledge-source-assets': KnowledgeSourceAssetsSelect<false> | KnowledgeSourceAssetsSelect<true>;
-    'knowledge-chunks': KnowledgeChunksSelect<false> | KnowledgeChunksSelect<true>;
-    'prompt-templates': PromptTemplatesSelect<false> | PromptTemplatesSelect<true>;
-    'platform-accounts': PlatformAccountsSelect<false> | PlatformAccountsSelect<true>;
-    'portal-command-receipts': PortalCommandReceiptsSelect<false> | PortalCommandReceiptsSelect<true>;
-    'lead-sources': LeadSourcesSelect<false> | LeadSourcesSelect<true>;
-    leads: LeadsSelect<false> | LeadsSelect<true>;
-    'feishu-connections': FeishuConnectionsSelect<false> | FeishuConnectionsSelect<true>;
-    'feishu-app-registrations': FeishuAppRegistrationsSelect<false> | FeishuAppRegistrationsSelect<true>;
-    'feishu-mappings': FeishuMappingsSelect<false> | FeishuMappingsSelect<true>;
-    'feishu-oauth-states': FeishuOauthStatesSelect<false> | FeishuOauthStatesSelect<true>;
-    'visitor-sessions': VisitorSessionsSelect<false> | VisitorSessionsSelect<true>;
-    conversations: ConversationsSelect<false> | ConversationsSelect<true>;
-    messages: MessagesSelect<false> | MessagesSelect<true>;
-    handoffs: HandoffsSelect<false> | HandoffsSelect<true>;
-    'conversation-commands': ConversationCommandsSelect<false> | ConversationCommandsSelect<true>;
-    jobs: JobsSelect<false> | JobsSelect<true>;
-    'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
-    'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
-    'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
-    'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
-  };
+    users: UsersSelect<false> | UsersSelect<true>
+    media: MediaSelect<false> | MediaSelect<true>
+    'audit-logs': AuditLogsSelect<false> | AuditLogsSelect<true>
+    'ai-providers': AiProvidersSelect<false> | AiProvidersSelect<true>
+    'ai-model-profiles': AiModelProfilesSelect<false> | AiModelProfilesSelect<true>
+    'ai-usage-routes': AiUsageRoutesSelect<false> | AiUsageRoutesSelect<true>
+    'ai-usage-logs': AiUsageLogsSelect<false> | AiUsageLogsSelect<true>
+    'generated-contents': GeneratedContentsSelect<false> | GeneratedContentsSelect<true>
+    'content-reviews': ContentReviewsSelect<false> | ContentReviewsSelect<true>
+    'publish-jobs': PublishJobsSelect<false> | PublishJobsSelect<true>
+    'publish-logs': PublishLogsSelect<false> | PublishLogsSelect<true>
+    pages: PagesSelect<false> | PagesSelect<true>
+    'product-categories': ProductCategoriesSelect<false> | ProductCategoriesSelect<true>
+    products: ProductsSelect<false> | ProductsSelect<true>
+    projects: ProjectsSelect<false> | ProjectsSelect<true>
+    posts: PostsSelect<false> | PostsSelect<true>
+    downloads: DownloadsSelect<false> | DownloadsSelect<true>
+    'knowledge-documents': KnowledgeDocumentsSelect<false> | KnowledgeDocumentsSelect<true>
+    'knowledge-source-documents':
+      KnowledgeSourceDocumentsSelect<false> | KnowledgeSourceDocumentsSelect<true>
+    'knowledge-source-assets':
+      KnowledgeSourceAssetsSelect<false> | KnowledgeSourceAssetsSelect<true>
+    'knowledge-chunks': KnowledgeChunksSelect<false> | KnowledgeChunksSelect<true>
+    'prompt-templates': PromptTemplatesSelect<false> | PromptTemplatesSelect<true>
+    'platform-accounts': PlatformAccountsSelect<false> | PlatformAccountsSelect<true>
+    'portal-command-receipts':
+      PortalCommandReceiptsSelect<false> | PortalCommandReceiptsSelect<true>
+    'lead-sources': LeadSourcesSelect<false> | LeadSourcesSelect<true>
+    leads: LeadsSelect<false> | LeadsSelect<true>
+    'feishu-connections': FeishuConnectionsSelect<false> | FeishuConnectionsSelect<true>
+    'feishu-app-registrations':
+      FeishuAppRegistrationsSelect<false> | FeishuAppRegistrationsSelect<true>
+    'feishu-mappings': FeishuMappingsSelect<false> | FeishuMappingsSelect<true>
+    'feishu-oauth-states': FeishuOauthStatesSelect<false> | FeishuOauthStatesSelect<true>
+    'visitor-sessions': VisitorSessionsSelect<false> | VisitorSessionsSelect<true>
+    conversations: ConversationsSelect<false> | ConversationsSelect<true>
+    messages: MessagesSelect<false> | MessagesSelect<true>
+    handoffs: HandoffsSelect<false> | HandoffsSelect<true>
+    'conversation-commands': ConversationCommandsSelect<false> | ConversationCommandsSelect<true>
+    jobs: JobsSelect<false> | JobsSelect<true>
+    'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>
+    'payload-locked-documents':
+      PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>
+    'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>
+    'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>
+  }
   db: {
-    defaultIDType: number;
-  };
-  fallbackLocale: ('false' | 'none' | 'null') | false | null | ('en' | 'ar') | ('en' | 'ar')[];
+    defaultIDType: number
+  }
+  fallbackLocale: ('false' | 'none' | 'null') | false | null | ('en' | 'ar') | ('en' | 'ar')[]
   globals: {
-    'site-settings': SiteSetting;
-  };
+    'site-settings': SiteSetting
+  }
   globalsSelect: {
-    'site-settings': SiteSettingsSelect<false> | SiteSettingsSelect<true>;
-  };
-  locale: 'en' | 'ar';
+    'site-settings': SiteSettingsSelect<false> | SiteSettingsSelect<true>
+  }
+  locale: 'en' | 'ar'
   widgets: {
-    collections: CollectionsWidget;
-  };
-  user: User;
+    collections: CollectionsWidget
+  }
+  user: User
   jobs: {
-    tasks: unknown;
-    workflows: unknown;
-  };
+    tasks: unknown
+    workflows: unknown
+  }
 }
 export interface UserAuthOperations {
   forgotPassword: {
-    email: string;
-    password: string;
-  };
+    email: string
+    password: string
+  }
   login: {
-    email: string;
-    password: string;
-  };
+    email: string
+    password: string
+  }
   registerFirstUser: {
-    email: string;
-    password: string;
-  };
+    email: string
+    password: string
+  }
   unlock: {
-    email: string;
-    password: string;
-  };
+    email: string
+    password: string
+  }
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "users".
  */
 export interface User {
-  id: number;
-  role: 'admin' | 'operator' | 'sales';
-  updatedAt: string;
-  createdAt: string;
-  email: string;
-  resetPasswordToken?: string | null;
-  resetPasswordExpiration?: string | null;
-  salt?: string | null;
-  hash?: string | null;
-  loginAttempts?: number | null;
-  lockUntil?: string | null;
+  id: number
+  role: 'admin' | 'operator' | 'sales'
+  updatedAt: string
+  createdAt: string
+  email: string
+  resetPasswordToken?: string | null
+  resetPasswordExpiration?: string | null
+  salt?: string | null
+  hash?: string | null
+  loginAttempts?: number | null
+  lockUntil?: string | null
   sessions?:
     | {
-        id: string;
-        createdAt?: string | null;
-        expiresAt: string;
+        id: string
+        createdAt?: string | null
+        expiresAt: string
       }[]
-    | null;
-  password?: string | null;
-  collection: 'users';
+    | null
+  password?: string | null
+  collection: 'users'
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media".
  */
 export interface Media {
-  id: number;
-  alt: string;
+  id: number
+  alt: string
   /**
    * Copyright owner, license, or source reference for this asset.
    */
-  source: string;
+  source: string
   /**
    * Allow anonymous website visitors to read and download this asset.
    */
-  isPublic?: boolean | null;
-  updatedAt: string;
-  createdAt: string;
-  url?: string | null;
-  thumbnailURL?: string | null;
-  filename?: string | null;
-  mimeType?: string | null;
-  filesize?: number | null;
-  width?: number | null;
-  height?: number | null;
-  focalX?: number | null;
-  focalY?: number | null;
+  isPublic?: boolean | null
+  updatedAt: string
+  createdAt: string
+  url?: string | null
+  thumbnailURL?: string | null
+  filename?: string | null
+  mimeType?: string | null
+  filesize?: number | null
+  width?: number | null
+  height?: number | null
+  focalX?: number | null
+  focalY?: number | null
   sizes?: {
     thumbnail?: {
-      url?: string | null;
-      width?: number | null;
-      height?: number | null;
-      mimeType?: string | null;
-      filesize?: number | null;
-      filename?: string | null;
-    };
+      url?: string | null
+      width?: number | null
+      height?: number | null
+      mimeType?: string | null
+      filesize?: number | null
+      filename?: string | null
+    }
     card?: {
-      url?: string | null;
-      width?: number | null;
-      height?: number | null;
-      mimeType?: string | null;
-      filesize?: number | null;
-      filename?: string | null;
-    };
+      url?: string | null
+      width?: number | null
+      height?: number | null
+      mimeType?: string | null
+      filesize?: number | null
+      filename?: string | null
+    }
     large?: {
-      url?: string | null;
-      width?: number | null;
-      height?: number | null;
-      mimeType?: string | null;
-      filesize?: number | null;
-      filename?: string | null;
-    };
-  };
+      url?: string | null
+      width?: number | null
+      height?: number | null
+      mimeType?: string | null
+      filesize?: number | null
+      filename?: string | null
+    }
+  }
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "audit-logs".
  */
 export interface AuditLog {
-  id: number;
-  action: 'create' | 'update' | 'delete' | 'login';
-  resource: string;
-  documentId: string;
-  actor?: (number | null) | User;
-  updatedAt: string;
-  createdAt: string;
+  id: number
+  action: 'create' | 'update' | 'delete' | 'login'
+  resource: string
+  documentId: string
+  actor?: (number | null) | User
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "ai-providers".
  */
 export interface AiProvider {
-  id: number;
-  name: string;
-  enabled: boolean;
-  protocol: 'openai-compatible';
+  id: number
+  name: string
+  enabled: boolean
+  protocol: 'openai-compatible'
   /**
    * Include the API version prefix, for example https://api.openai.com/v1.
    */
-  baseURL: string;
+  baseURL: string
+  /**
+   * Select the exact text endpoint exposed by the provider; the system never guesses or falls back.
+   */
+  textGenerationContract: 'responses' | 'chat-completions'
   /**
    * Write-only. Enter a value to set or replace the key; leave blank to retain it.
    */
-  apiKey?: string | null;
+  apiKey?: string | null
   /**
    * This indicator never reveals the key.
    */
-  apiKeyConfigured: boolean;
-  updatedAt: string;
-  createdAt: string;
+  apiKeyConfigured: boolean
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "ai-model-profiles".
  */
 export interface AiModelProfile {
-  id: number;
-  name: string;
-  enabled: boolean;
-  provider: number | AiProvider;
-  capability: 'text' | 'embedding';
+  id: number
+  name: string
+  enabled: boolean
+  provider: number | AiProvider
+  capability: 'text' | 'embedding' | 'image'
   /**
    * Exact model identifier accepted by the selected provider.
    */
-  model: string;
+  model: string
   parameters: {
-    timeoutMs: number;
-    maxOutputTokens?: number | null;
-    reasoningEnabled?: boolean | null;
-    reasoningEffort?: ('none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max') | null;
+    timeoutMs: number
+    maxOutputTokens?: number | null
+    reasoningEnabled?: boolean | null
+    reasoningEffort?: ('none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max') | null
     /**
      * Optional sampling temperature, from 0 to 2.
      */
-    temperature?: number | null;
+    temperature?: number | null
     /**
      * Optional nucleus-sampling top-p value, from 0 to 1.
      */
-    topP?: number | null;
+    topP?: number | null
     /**
      * Required fixed output dimensions. Provider responses with a different size are rejected.
      */
-    dimensions?: number | null;
-  };
-  updatedAt: string;
-  createdAt: string;
+    dimensions?: number | null
+  }
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "ai-usage-routes".
  */
 export interface AiUsageRoute {
-  id: number;
+  id: number
   /**
    * Stable internal key, for example chat.reply or knowledge.embedding.
    */
-  usageKey: string;
-  enabled: boolean;
-  operation: 'text' | 'embedding';
-  profile: number | AiModelProfile;
-  updatedAt: string;
-  createdAt: string;
+  usageKey: string
+  enabled: boolean
+  operation: 'text' | 'embedding' | 'image'
+  profile: number | AiModelProfile
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "ai-usage-logs".
  */
 export interface AiUsageLog {
-  id: number;
-  operation: 'embed' | 'generateText';
-  provider: string;
-  model: string;
-  requestId?: string | null;
-  inputTokens: number;
-  outputTokens?: number | null;
-  totalTokens: number;
-  estimatedCostUSD?: number | null;
-  durationMs: number;
-  updatedAt: string;
-  createdAt: string;
+  id: number
+  operation: 'embed' | 'generateImage' | 'generateText'
+  provider: string
+  model: string
+  requestId?: string | null
+  inputTokens: number
+  outputTokens?: number | null
+  totalTokens: number
+  estimatedCostUSD?: number | null
+  durationMs: number
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "generated-contents".
  */
 export interface GeneratedContent {
-  id: number;
-  title: string;
-  platform: 'facebook' | 'instagram' | 'linkedin';
-  contentLocale: 'en' | 'ar';
-  contentType: 'post' | 'carousel' | 'long-form';
-  body: string;
+  id: number
+  title: string
+  platform: 'facebook' | 'instagram' | 'linkedin'
+  contentLocale: 'en' | 'ar'
+  contentType: 'post' | 'carousel' | 'long-form'
+  body: string
   sourceReferences?:
     | {
-        claim: string;
-        source: string;
-        id?: string | null;
+        claim: string
+        source: string
+        id?: string | null
       }[]
-    | null;
-  assets?: (number | Media)[] | null;
-  knowledgeSources?: (number | KnowledgeDocument)[] | null;
-  status: 'draft' | 'review' | 'approved';
-  idempotencyKey: string;
-  creationFingerprint: string;
-  createdBy: number | User;
-  reviewedAt?: string | null;
-  reviewedBy?: (number | null) | User;
-  updatedAt: string;
-  createdAt: string;
+    | null
+  assets?: (number | Media)[] | null
+  knowledgeSources?: (number | KnowledgeDocument)[] | null
+  status: 'draft' | 'review' | 'approved'
+  idempotencyKey: string
+  creationFingerprint: string
+  createdBy: number | User
+  reviewedAt?: string | null
+  reviewedBy?: (number | null) | User
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "knowledge-documents".
  */
 export interface KnowledgeDocument {
-  id: number;
-  sourceTitle: string;
-  sourceType: 'faq' | 'product-manual' | 'technical-specification' | 'sales-script' | 'project-case' | 'other';
+  id: number
+  sourceTitle: string
+  sourceType:
+    'faq' | 'product-manual' | 'technical-specification' | 'sales-script' | 'project-case' | 'other'
   /**
    * Only reviewed, indexed documents marked here may be used by the public website chat.
    */
-  customerVisible?: boolean | null;
-  sourceURL?: string | null;
-  sourceFile?: (number | null) | Media;
-  ingestionSource?: (number | null) | KnowledgeSourceDocument;
-  sourceHash?: string | null;
-  sourceAnchor?: string | null;
-  generationModel?: string | null;
-  generationPromptVersion?: number | null;
+  customerVisible?: boolean | null
+  sourceURL?: string | null
+  sourceFile?: (number | null) | Media
+  ingestionSource?: (number | null) | KnowledgeSourceDocument
+  sourceHash?: string | null
+  sourceAnchor?: string | null
+  generationModel?: string | null
+  generationPromptVersion?: number | null
   riskTopics?:
     | (
         | 'price'
@@ -438,231 +448,242 @@ export interface KnowledgeDocument {
         | 'insurance'
         | 'liability'
       )[]
-    | null;
-  sourceVersion: string;
-  locale: 'en' | 'ar';
-  content: string;
-  reviewStatus: 'draft' | 'reviewed' | 'archived';
-  reviewedAt?: string | null;
-  reviewedBy?: (number | null) | User;
-  indexStatus: 'pending' | 'processing' | 'ready' | 'failed';
-  indexedAt?: string | null;
-  embeddingModel?: string | null;
-  embeddingSpace?: string | null;
-  indexJobId?: number | null;
-  indexOwnerToken?: string | null;
-  updatedAt: string;
-  createdAt: string;
+    | null
+  sourceVersion: string
+  locale: 'en' | 'ar'
+  content: string
+  reviewStatus: 'draft' | 'reviewed' | 'archived'
+  reviewedAt?: string | null
+  reviewedBy?: (number | null) | User
+  indexStatus: 'pending' | 'processing' | 'ready' | 'failed'
+  indexedAt?: string | null
+  embeddingModel?: string | null
+  embeddingSpace?: string | null
+  indexJobId?: number | null
+  indexOwnerToken?: string | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "knowledge-source-documents".
  */
 export interface KnowledgeSourceDocument {
-  id: number;
-  sourceTitle: string;
-  sourceType: 'faq' | 'product-manual' | 'technical-specification' | 'sales-script' | 'project-case' | 'other';
-  sourceVersion: string;
-  originalLanguage: 'auto' | 'en' | 'ar' | 'zh';
-  sourceHash: string;
-  ingestionRevision: string;
-  detectedLanguage?: ('unknown' | 'en' | 'ar' | 'zh') | null;
-  extractedText?: string | null;
-  pageCount?: number | null;
-  paragraphCount?: number | null;
-  imageCount?: number | null;
-  parserVersion?: string | null;
-  processingStatus: 'queued' | 'processing' | 'needs_review' | 'failed' | 'archived';
-  processingStage: 'queued' | 'parsing' | 'translating' | 'finalizing' | 'complete';
-  currentJobId?: number | null;
-  currentJobOwnerToken?: string | null;
-  errorCode?: string | null;
-  errorSummary?: string | null;
-  completedAt?: string | null;
-  updatedAt: string;
-  createdAt: string;
-  url?: string | null;
-  thumbnailURL?: string | null;
-  filename?: string | null;
-  mimeType?: string | null;
-  filesize?: number | null;
-  width?: number | null;
-  height?: number | null;
-  focalX?: number | null;
-  focalY?: number | null;
+  id: number
+  sourceTitle: string
+  sourceType:
+    'faq' | 'product-manual' | 'technical-specification' | 'sales-script' | 'project-case' | 'other'
+  sourceVersion: string
+  originalLanguage: 'auto' | 'en' | 'ar' | 'zh'
+  sourceHash: string
+  ingestionRevision: string
+  detectedLanguage?: ('unknown' | 'en' | 'ar' | 'zh') | null
+  extractedText?: string | null
+  pageCount?: number | null
+  paragraphCount?: number | null
+  imageCount?: number | null
+  parserVersion?: string | null
+  processingStatus: 'queued' | 'processing' | 'needs_review' | 'failed' | 'archived'
+  processingStage: 'queued' | 'parsing' | 'translating' | 'finalizing' | 'complete'
+  currentJobId?: number | null
+  currentJobOwnerToken?: string | null
+  errorCode?: string | null
+  errorSummary?: string | null
+  completedAt?: string | null
+  updatedAt: string
+  createdAt: string
+  url?: string | null
+  thumbnailURL?: string | null
+  filename?: string | null
+  mimeType?: string | null
+  filesize?: number | null
+  width?: number | null
+  height?: number | null
+  focalX?: number | null
+  focalY?: number | null
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "content-reviews".
  */
 export interface ContentReview {
-  id: number;
-  content: number | GeneratedContent;
-  decision: 'approved' | 'revision-requested';
+  id: number
+  content: number | GeneratedContent
+  decision: 'approved' | 'revision-requested'
   checklist: {
-    factsTraceable: boolean;
-    technicalClaimsChecked: boolean;
-    noCommercialCommitment: boolean;
-    platformFormatChecked: boolean;
-    arabicProofread: boolean;
-  };
-  comments?: string | null;
-  reviewedBy: number | User;
-  updatedAt: string;
-  createdAt: string;
+    factsTraceable: boolean
+    technicalClaimsChecked: boolean
+    noCommercialCommitment: boolean
+    platformFormatChecked: boolean
+    arabicProofread: boolean
+  }
+  comments?: string | null
+  reviewedBy: number | User
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "publish-jobs".
  */
 export interface PublishJob {
-  id: number;
-  content: number | GeneratedContent;
-  platform: 'facebook' | 'instagram' | 'linkedin';
-  platformAccount?: (number | null) | PlatformAccount;
-  mode: 'assisted' | 'automatic';
-  status: 'scheduled' | 'accepted' | 'publishing' | 'published' | 'failed' | 'delivery_unknown';
-  scheduledFor: string;
+  id: number
+  content: number | GeneratedContent
+  platform: 'facebook' | 'instagram' | 'linkedin'
+  platformAccount?: (number | null) | PlatformAccount
+  mode: 'assisted' | 'automatic'
+  status: 'scheduled' | 'accepted' | 'publishing' | 'published' | 'failed' | 'delivery_unknown'
+  scheduledFor: string
   executionRoute?:
-    ('facebook-photo-single' | 'instagram-image-staged' | 'linkedin-text-single' | 'linkedin-image-staged') | null;
-  executionRevision: number;
-  requestFingerprint?: string | null;
+    | (
+        | 'facebook-photo-single'
+        | 'instagram-image-staged'
+        | 'linkedin-text-single'
+        | 'linkedin-image-staged'
+      )
+    | null
+  executionRevision: number
+  requestFingerprint?: string | null
   /**
    * Server-normalized publication request; never contains credentials.
    */
   requestSnapshot?:
     | {
-        [k: string]: unknown;
+        [k: string]: unknown
       }
     | unknown[]
     | string
     | number
     | boolean
-    | null;
+    | null
   /**
    * Platform stage checkpoint; never contains access tokens.
    */
   providerCheckpoint?:
     | {
-        [k: string]: unknown;
+        [k: string]: unknown
       }
     | unknown[]
     | string
     | number
     | boolean
-    | null;
-  authorizationRevision?: number | null;
-  claimJob?: (number | null) | Job;
-  claimId?: string | null;
-  claimOwnerToken?: string | null;
-  claimLeaseExpiresAt?: string | null;
-  fencingGeneration: number;
-  providerIOStartedAt?: string | null;
-  deliveryUnknownAt?: string | null;
-  acceptedAt?: string | null;
-  publishedAt?: string | null;
-  externalPublicationId?: string | null;
-  externalPublicationUrl?: string | null;
-  lastErrorCode?: string | null;
-  lastErrorSummary?: string | null;
-  idempotencyKey: string;
-  createdBy: number | User;
-  updatedAt: string;
-  createdAt: string;
+    | null
+  authorizationRevision?: number | null
+  claimJob?: (number | null) | Job
+  claimId?: string | null
+  claimOwnerToken?: string | null
+  claimLeaseExpiresAt?: string | null
+  fencingGeneration: number
+  providerIOStartedAt?: string | null
+  deliveryUnknownAt?: string | null
+  acceptedAt?: string | null
+  publishedAt?: string | null
+  externalPublicationId?: string | null
+  externalPublicationUrl?: string | null
+  lastErrorCode?: string | null
+  lastErrorSummary?: string | null
+  idempotencyKey: string
+  createdBy: number | User
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "platform-accounts".
  */
 export interface PlatformAccount {
-  id: number;
-  name: string;
+  id: number
+  name: string
   accountKind:
-    'facebook-page' | 'instagram-professional' | 'tiktok-business' | 'linkedin-member' | 'linkedin-organization';
-  platformFamily: 'meta' | 'tiktok' | 'linkedin';
+    | 'facebook-page'
+    | 'instagram-professional'
+    | 'tiktok-business'
+    | 'linkedin-member'
+    | 'linkedin-organization'
+  platformFamily: 'meta' | 'tiktok' | 'linkedin'
   /**
    * Provider-side Page, professional account, member, or organization identifier. Leave blank until known.
    */
-  externalAccountId?: string | null;
-  connectionKey?: string | null;
-  authorizationRevision: number;
+  externalAccountId?: string | null
+  connectionKey?: string | null
+  authorizationRevision: number
   authorization: {
-    state: 'not_started' | 'pending' | 'connected' | 'expired' | 'blocked' | 'disabled';
+    state: 'not_started' | 'pending' | 'connected' | 'expired' | 'blocked' | 'disabled'
     /**
      * Non-secret provider application ID only. Never enter an App Secret or Client Secret here.
      */
-    appId?: string | null;
+    appId?: string | null
     /**
      * Write-only. Enter a value to set or replace the token; leave blank to retain it.
      */
-    accessToken?: string | null;
+    accessToken?: string | null
     /**
      * This indicator never reveals the token.
      */
-    accessTokenConfigured?: boolean | null;
+    accessTokenConfigured?: boolean | null
     /**
      * Use only when revoking a credential. A connected account cannot be saved without a token.
      */
-    clearAccessToken?: boolean | null;
+    clearAccessToken?: boolean | null
     /**
      * Write-only. Enter a value to set or replace the refresh token; leave blank to retain it.
      */
-    refreshToken?: string | null;
-    refreshTokenConfigured?: boolean | null;
-    clearRefreshToken?: boolean | null;
-    expiresAt?: string | null;
+    refreshToken?: string | null
+    refreshTokenConfigured?: boolean | null
+    clearRefreshToken?: boolean | null
+    expiresAt?: string | null
     scopes?:
       | {
-          scope: string;
-          id?: string | null;
+          scope: string
+          id?: string | null
         }[]
-      | null;
-  };
+      | null
+  }
   capabilities?: {
-    messagingInbound?: ('not_started' | 'pending' | 'approved' | 'blocked') | null;
-    publishing?: ('not_started' | 'pending' | 'approved' | 'blocked') | null;
-  };
-  notes?: string | null;
-  updatedAt: string;
-  createdAt: string;
+    messagingInbound?: ('not_started' | 'pending' | 'approved' | 'blocked') | null
+    publishing?: ('not_started' | 'pending' | 'approved' | 'blocked') | null
+  }
+  notes?: string | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "jobs".
  */
 export interface Job {
-  id: number;
-  type: string;
-  idempotencyKey?: string | null;
+  id: number
+  type: string
+  idempotencyKey?: string | null
   payload:
     | {
-        [k: string]: unknown;
+        [k: string]: unknown
       }
     | unknown[]
     | string
     | number
     | boolean
-    | null;
-  status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'dead';
-  attempts: number;
-  maxAttempts: number;
-  nextRunAt?: string | null;
-  leaseExpiresAt?: string | null;
-  ownerToken?: string | null;
-  lastError?: string | null;
-  completedAt?: string | null;
-  deadAt?: string | null;
-  manualRetryCount: number;
-  updatedAt: string;
-  createdAt: string;
+    | null
+  status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'dead'
+  attempts: number
+  maxAttempts: number
+  nextRunAt?: string | null
+  leaseExpiresAt?: string | null
+  ownerToken?: string | null
+  lastError?: string | null
+  completedAt?: string | null
+  deadAt?: string | null
+  manualRetryCount: number
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "publish-logs".
  */
 export interface PublishLog {
-  id: number;
-  publishJob: number | PublishJob;
+  id: number
+  publishJob: number | PublishJob
   event:
     | 'created'
     | 'claimed'
@@ -673,512 +694,512 @@ export interface PublishLog {
     | 'checkpoint-committed'
     | 'status-updated'
     | 'failed'
-    | 'delivery-unknown';
-  summary: string;
-  actor?: (number | null) | User;
-  updatedAt: string;
-  createdAt: string;
+    | 'delivery-unknown'
+  summary: string
+  actor?: (number | null) | User
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "pages".
  */
 export interface Page {
-  id: number;
-  title: string;
+  id: number
+  title: string
   /**
    * When enabled, the slug will auto-generate from the title field on save and autosave.
    */
-  generateSlug?: boolean | null;
+  generateSlug?: boolean | null
   /**
    * Stable URL slug shared by all locales. Use Latin letters, numbers, and hyphens.
    */
-  slug: string;
-  hasBeenPublished?: boolean | null;
-  summary?: string | null;
+  slug: string
+  hasBeenPublished?: boolean | null
+  summary?: string | null
   body?: {
     root: {
-      type: string;
+      type: string
       children: {
-        type: any;
-        version: number;
-        [k: string]: unknown;
-      }[];
-      direction: ('ltr' | 'rtl') | null;
-      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
-      indent: number;
-      version: number;
-    };
-    [k: string]: unknown;
-  } | null;
-  heroImage?: (number | null) | Media;
+        type: any
+        version: number
+        [k: string]: unknown
+      }[]
+      direction: ('ltr' | 'rtl') | null
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | ''
+      indent: number
+      version: number
+    }
+    [k: string]: unknown
+  } | null
+  heroImage?: (number | null) | Media
   seo?: {
-    title?: string | null;
-    description?: string | null;
+    title?: string | null
+    description?: string | null
     /**
      * Comma-separated keywords for search and content planning.
      */
-    keywords?: string | null;
+    keywords?: string | null
     /**
      * Optional canonical URL for this locale.
      */
-    canonical?: string | null;
-    ogImage?: (number | null) | Media;
-    noIndex?: boolean | null;
-  };
+    canonical?: string | null
+    ogImage?: (number | null) | Media
+    noIndex?: boolean | null
+  }
   /**
    * Internal notes only. Not rendered on the public website.
    */
-  internalNotes?: string | null;
-  updatedAt: string;
-  createdAt: string;
-  _status?: ('draft' | 'published') | null;
+  internalNotes?: string | null
+  updatedAt: string
+  createdAt: string
+  _status?: ('draft' | 'published') | null
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "product-categories".
  */
 export interface ProductCategory {
-  id: number;
-  title: string;
+  id: number
+  title: string
   /**
    * When enabled, the slug will auto-generate from the title field on save and autosave.
    */
-  generateSlug?: boolean | null;
+  generateSlug?: boolean | null
   /**
    * Stable URL slug shared by all locales. Use Latin letters, numbers, and hyphens.
    */
-  slug: string;
-  description?: string | null;
-  sortOrder?: number | null;
+  slug: string
+  description?: string | null
+  sortOrder?: number | null
   seo?: {
-    title?: string | null;
-    description?: string | null;
+    title?: string | null
+    description?: string | null
     /**
      * Comma-separated keywords for search and content planning.
      */
-    keywords?: string | null;
+    keywords?: string | null
     /**
      * Optional canonical URL for this locale.
      */
-    canonical?: string | null;
-    ogImage?: (number | null) | Media;
-    noIndex?: boolean | null;
-  };
-  updatedAt: string;
-  createdAt: string;
+    canonical?: string | null
+    ogImage?: (number | null) | Media
+    noIndex?: boolean | null
+  }
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "products".
  */
 export interface Product {
-  id: number;
-  title: string;
+  id: number
+  title: string
   /**
    * When enabled, the slug will auto-generate from the title field on save and autosave.
    */
-  generateSlug?: boolean | null;
+  generateSlug?: boolean | null
   /**
    * Stable URL slug shared by all locales. Use Latin letters, numbers, and hyphens.
    */
-  slug: string;
-  hasBeenPublished?: boolean | null;
-  shortDescription?: string | null;
+  slug: string
+  hasBeenPublished?: boolean | null
+  shortDescription?: string | null
   description?: {
     root: {
-      type: string;
+      type: string
       children: {
-        type: any;
-        version: number;
-        [k: string]: unknown;
-      }[];
-      direction: ('ltr' | 'rtl') | null;
-      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
-      indent: number;
-      version: number;
-    };
-    [k: string]: unknown;
-  } | null;
-  category: number | ProductCategory;
-  coverImage: number | Media;
+        type: any
+        version: number
+        [k: string]: unknown
+      }[]
+      direction: ('ltr' | 'rtl') | null
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | ''
+      indent: number
+      version: number
+    }
+    [k: string]: unknown
+  } | null
+  category: number | ProductCategory
+  coverImage: number | Media
   /**
    * Optional product detail images. The cover image is shown first; add up to 12 additional views in display order.
    */
-  gallery?: (number | Media)[] | null;
+  gallery?: (number | Media)[] | null
   specifications?:
     | {
-        label: string;
-        value: string;
-        id?: string | null;
+        label: string
+        value: string
+        id?: string | null
       }[]
-    | null;
+    | null
   seo?: {
-    title?: string | null;
-    description?: string | null;
+    title?: string | null
+    description?: string | null
     /**
      * Comma-separated keywords for search and content planning.
      */
-    keywords?: string | null;
+    keywords?: string | null
     /**
      * Optional canonical URL for this locale.
      */
-    canonical?: string | null;
-    ogImage?: (number | null) | Media;
-    noIndex?: boolean | null;
-  };
+    canonical?: string | null
+    ogImage?: (number | null) | Media
+    noIndex?: boolean | null
+  }
   /**
    * Internal notes only. Not rendered on the public website.
    */
-  internalNotes?: string | null;
-  updatedAt: string;
-  createdAt: string;
-  _status?: ('draft' | 'published') | null;
+  internalNotes?: string | null
+  updatedAt: string
+  createdAt: string
+  _status?: ('draft' | 'published') | null
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "projects".
  */
 export interface Project {
-  id: number;
-  title: string;
+  id: number
+  title: string
   /**
    * When enabled, the slug will auto-generate from the title field on save and autosave.
    */
-  generateSlug?: boolean | null;
+  generateSlug?: boolean | null
   /**
    * Stable URL slug shared by all locales. Use Latin letters, numbers, and hyphens.
    */
-  slug: string;
-  hasBeenPublished?: boolean | null;
-  summary?: string | null;
+  slug: string
+  hasBeenPublished?: boolean | null
+  summary?: string | null
   description?: {
     root: {
-      type: string;
+      type: string
       children: {
-        type: any;
-        version: number;
-        [k: string]: unknown;
-      }[];
-      direction: ('ltr' | 'rtl') | null;
-      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
-      indent: number;
-      version: number;
-    };
-    [k: string]: unknown;
-  } | null;
-  location?: string | null;
-  application?: string | null;
-  coverImage: number | Media;
-  gallery?: (number | Media)[] | null;
+        type: any
+        version: number
+        [k: string]: unknown
+      }[]
+      direction: ('ltr' | 'rtl') | null
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | ''
+      indent: number
+      version: number
+    }
+    [k: string]: unknown
+  } | null
+  location?: string | null
+  application?: string | null
+  coverImage: number | Media
+  gallery?: (number | Media)[] | null
   seo?: {
-    title?: string | null;
-    description?: string | null;
+    title?: string | null
+    description?: string | null
     /**
      * Comma-separated keywords for search and content planning.
      */
-    keywords?: string | null;
+    keywords?: string | null
     /**
      * Optional canonical URL for this locale.
      */
-    canonical?: string | null;
-    ogImage?: (number | null) | Media;
-    noIndex?: boolean | null;
-  };
+    canonical?: string | null
+    ogImage?: (number | null) | Media
+    noIndex?: boolean | null
+  }
   /**
    * Internal notes only. Not rendered on the public website.
    */
-  internalNotes?: string | null;
-  updatedAt: string;
-  createdAt: string;
-  _status?: ('draft' | 'published') | null;
+  internalNotes?: string | null
+  updatedAt: string
+  createdAt: string
+  _status?: ('draft' | 'published') | null
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "posts".
  */
 export interface Post {
-  id: number;
-  title: string;
+  id: number
+  title: string
   /**
    * When enabled, the slug will auto-generate from the title field on save and autosave.
    */
-  generateSlug?: boolean | null;
+  generateSlug?: boolean | null
   /**
    * Stable URL slug shared by all locales. Use Latin letters, numbers, and hyphens.
    */
-  slug: string;
-  hasBeenPublished?: boolean | null;
-  excerpt?: string | null;
+  slug: string
+  hasBeenPublished?: boolean | null
+  excerpt?: string | null
   content?: {
     root: {
-      type: string;
+      type: string
       children: {
-        type: any;
-        version: number;
-        [k: string]: unknown;
-      }[];
-      direction: ('ltr' | 'rtl') | null;
-      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
-      indent: number;
-      version: number;
-    };
-    [k: string]: unknown;
-  } | null;
-  category: 'industry' | 'products' | 'projects' | 'company';
-  featuredImage?: (number | null) | Media;
-  publishedAt?: string | null;
+        type: any
+        version: number
+        [k: string]: unknown
+      }[]
+      direction: ('ltr' | 'rtl') | null
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | ''
+      indent: number
+      version: number
+    }
+    [k: string]: unknown
+  } | null
+  category: 'industry' | 'products' | 'projects' | 'company'
+  featuredImage?: (number | null) | Media
+  publishedAt?: string | null
   seo?: {
-    title?: string | null;
-    description?: string | null;
+    title?: string | null
+    description?: string | null
     /**
      * Comma-separated keywords for search and content planning.
      */
-    keywords?: string | null;
+    keywords?: string | null
     /**
      * Optional canonical URL for this locale.
      */
-    canonical?: string | null;
-    ogImage?: (number | null) | Media;
-    noIndex?: boolean | null;
-  };
+    canonical?: string | null
+    ogImage?: (number | null) | Media
+    noIndex?: boolean | null
+  }
   /**
    * Internal notes only. Not rendered on the public website.
    */
-  internalNotes?: string | null;
-  updatedAt: string;
-  createdAt: string;
-  _status?: ('draft' | 'published') | null;
+  internalNotes?: string | null
+  updatedAt: string
+  createdAt: string
+  _status?: ('draft' | 'published') | null
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "downloads".
  */
 export interface Download {
-  id: number;
-  title: string;
+  id: number
+  title: string
   /**
    * When enabled, the slug will auto-generate from the title field on save and autosave.
    */
-  generateSlug?: boolean | null;
+  generateSlug?: boolean | null
   /**
    * Stable URL slug shared by all locales. Use Latin letters, numbers, and hyphens.
    */
-  slug: string;
-  description?: string | null;
-  type: 'catalog' | 'technical-data' | 'certificate' | 'other';
-  file: number | Media;
-  coverImage?: (number | null) | Media;
-  isActive?: boolean | null;
+  slug: string
+  description?: string | null
+  type: 'catalog' | 'technical-data' | 'certificate' | 'other'
+  file: number | Media
+  coverImage?: (number | null) | Media
+  isActive?: boolean | null
   seo?: {
-    title?: string | null;
-    description?: string | null;
+    title?: string | null
+    description?: string | null
     /**
      * Comma-separated keywords for search and content planning.
      */
-    keywords?: string | null;
+    keywords?: string | null
     /**
      * Optional canonical URL for this locale.
      */
-    canonical?: string | null;
-    ogImage?: (number | null) | Media;
-    noIndex?: boolean | null;
-  };
-  updatedAt: string;
-  createdAt: string;
+    canonical?: string | null
+    ogImage?: (number | null) | Media
+    noIndex?: boolean | null
+  }
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "knowledge-source-assets".
  */
 export interface KnowledgeSourceAsset {
-  id: number;
-  source: number | KnowledgeSourceDocument;
-  sequence: number;
-  originalName: string;
-  sha256: string;
-  byteSize: number;
-  accessibility: 'private' | 'preview-only';
-  updatedAt: string;
-  createdAt: string;
-  url?: string | null;
-  thumbnailURL?: string | null;
-  filename?: string | null;
-  mimeType?: string | null;
-  filesize?: number | null;
-  width?: number | null;
-  height?: number | null;
-  focalX?: number | null;
-  focalY?: number | null;
+  id: number
+  source: number | KnowledgeSourceDocument
+  sequence: number
+  originalName: string
+  sha256: string
+  byteSize: number
+  accessibility: 'private' | 'preview-only'
+  updatedAt: string
+  createdAt: string
+  url?: string | null
+  thumbnailURL?: string | null
+  filename?: string | null
+  mimeType?: string | null
+  filesize?: number | null
+  width?: number | null
+  height?: number | null
+  focalX?: number | null
+  focalY?: number | null
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "knowledge-chunks".
  */
 export interface KnowledgeChunk {
-  id: number;
-  document: number | KnowledgeDocument;
-  stableId: string;
-  index: number;
-  locale: 'en' | 'ar';
-  content: string;
-  sourceTitle: string;
-  sourceVersion: string;
-  sourceURL?: string | null;
-  embeddingModel?: string | null;
-  embeddingSpace?: string | null;
-  embeddingDimensions?: number | null;
-  embeddedAt?: string | null;
-  updatedAt: string;
-  createdAt: string;
+  id: number
+  document: number | KnowledgeDocument
+  stableId: string
+  index: number
+  locale: 'en' | 'ar'
+  content: string
+  sourceTitle: string
+  sourceVersion: string
+  sourceURL?: string | null
+  embeddingModel?: string | null
+  embeddingSpace?: string | null
+  embeddingDimensions?: number | null
+  embeddedAt?: string | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "prompt-templates".
  */
 export interface PromptTemplate {
-  id: number;
-  key: string;
-  purpose: 'customer-chat' | 'conversation-summary' | 'translation' | 'content-generation';
-  locale: 'all' | 'en' | 'ar';
-  version: number;
-  template: string;
+  id: number
+  key: string
+  purpose: 'customer-chat' | 'conversation-summary' | 'translation' | 'content-generation'
+  locale: 'all' | 'en' | 'ar'
+  version: number
+  template: string
   variables?:
     | {
-        [k: string]: unknown;
+        [k: string]: unknown
       }
     | unknown[]
     | string
     | number
     | boolean
-    | null;
-  status: 'draft' | 'active' | 'archived';
-  model?: string | null;
-  updatedAt: string;
-  createdAt: string;
+    | null
+  status: 'draft' | 'active' | 'archived'
+  model?: string | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "portal-command-receipts".
  */
 export interface PortalCommandReceipt {
-  id: number;
-  scope: string;
-  idempotencyKey: string;
-  fingerprint: string;
-  actor: number | User;
-  ownerToken: string;
-  leaseExpiresAt: string;
-  status: 'processing' | 'completed' | 'failed';
+  id: number
+  scope: string
+  idempotencyKey: string
+  fingerprint: string
+  actor: number | User
+  ownerToken: string
+  leaseExpiresAt: string
+  status: 'processing' | 'completed' | 'failed'
   result?:
     | {
-        [k: string]: unknown;
+        [k: string]: unknown
       }
     | unknown[]
     | string
     | number
     | boolean
-    | null;
-  errorCode?: string | null;
-  updatedAt: string;
-  createdAt: string;
+    | null
+  errorCode?: string | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "lead-sources".
  */
 export interface LeadSource {
-  id: number;
-  name: string;
+  id: number
+  name: string
   /**
    * Stable integration key. Create a new source instead of renaming this value.
    */
-  key: string;
-  channel: 'website' | 'ai-chat' | 'social' | 'manual';
-  isActive: boolean;
-  description?: string | null;
-  updatedAt: string;
-  createdAt: string;
+  key: string
+  channel: 'website' | 'ai-chat' | 'social' | 'manual'
+  isActive: boolean
+  description?: string | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "leads".
  */
 export interface Lead {
-  id: number;
-  requestId: string;
-  idempotencyKey: string;
-  source: number | LeadSource;
-  locale: 'en' | 'ar';
-  status: 'new' | 'contacted' | 'qualified' | 'disqualified';
-  intentLevel: 'unscored' | 'a' | 'b' | 'c';
-  assignedTo?: (number | null) | User;
+  id: number
+  requestId: string
+  idempotencyKey: string
+  source: number | LeadSource
+  locale: 'en' | 'ar'
+  status: 'new' | 'contacted' | 'qualified' | 'disqualified'
+  intentLevel: 'unscored' | 'a' | 'b' | 'c'
+  assignedTo?: (number | null) | User
   /**
    * Next sales follow-up deadline. Due reminders are sent once per timestamp.
    */
-  nextFollowUpAt?: string | null;
-  name: string;
-  company?: string | null;
-  country?: string | null;
-  email: string;
-  phone?: string | null;
-  interest?: string | null;
-  budget?: string | null;
-  procurementPlan?: string | null;
-  projectStage?: string | null;
-  quantitySquareMeters?: number | null;
-  timeline?: string | null;
-  hasDrawings?: boolean | null;
-  message: string;
-  sourceURL?: string | null;
+  nextFollowUpAt?: string | null
+  name: string
+  company?: string | null
+  country?: string | null
+  email: string
+  phone?: string | null
+  interest?: string | null
+  budget?: string | null
+  procurementPlan?: string | null
+  projectStage?: string | null
+  quantitySquareMeters?: number | null
+  timeline?: string | null
+  hasDrawings?: boolean | null
+  message: string
+  sourceURL?: string | null
   utm?: {
-    source?: string | null;
-    medium?: string | null;
-    campaign?: string | null;
-    term?: string | null;
-    content?: string | null;
-  };
-  updatedAt: string;
-  createdAt: string;
+    source?: string | null
+    medium?: string | null
+    campaign?: string | null
+    term?: string | null
+    content?: string | null
+  }
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "feishu-connections".
  */
 export interface FeishuConnection {
-  id: number;
-  name: string;
-  authMode: 'store_oauth' | 'qr_registered';
-  tenantKey: string;
-  installerOpenId: string;
-  status: 'provisioning' | 'connected' | 'reconnect_required' | 'disconnected' | 'error';
+  id: number
+  name: string
+  authMode: 'store_oauth' | 'qr_registered'
+  tenantKey: string
+  installerOpenId: string
+  status: 'provisioning' | 'connected' | 'reconnect_required' | 'disconnected' | 'error'
   scopes?:
     | {
-        scope: string;
-        id?: string | null;
+        scope: string
+        id?: string | null
       }[]
-    | null;
-  accessTokenEncrypted?: string | null;
-  refreshTokenEncrypted?: string | null;
-  accessTokenExpiresAt?: string | null;
-  refreshTokenExpiresAt?: string | null;
-  appId?: string | null;
-  appSecretEncrypted?: string | null;
-  appToken?: string | null;
-  tableId?: string | null;
-  baseURL?: string | null;
-  lastConnectedAt?: string | null;
-  lastRefreshedAt?: string | null;
-  lastErrorCode?: string | null;
-  updatedAt: string;
-  createdAt: string;
+    | null
+  accessTokenEncrypted?: string | null
+  refreshTokenEncrypted?: string | null
+  accessTokenExpiresAt?: string | null
+  refreshTokenExpiresAt?: string | null
+  appId?: string | null
+  appSecretEncrypted?: string | null
+  appToken?: string | null
+  tableId?: string | null
+  baseURL?: string | null
+  lastConnectedAt?: string | null
+  lastRefreshedAt?: string | null
+  lastErrorCode?: string | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "feishu-app-registrations".
  */
 export interface FeishuAppRegistration {
-  id: number;
+  id: number
   status:
     | 'pending'
     | 'registering'
@@ -1188,44 +1209,44 @@ export interface FeishuAppRegistration {
     | 'completed'
     | 'failed'
     | 'expired'
-    | 'cancelled';
-  requestedBy?: (number | null) | User;
-  qrUrl?: string | null;
-  qrExpiresAt?: string | null;
-  authorizeUrl?: string | null;
-  authorizeExpiresAt?: string | null;
-  configuringStartedAt?: string | null;
-  appId?: string | null;
-  appSecretEncrypted?: string | null;
-  lastErrorCode?: string | null;
-  completedAt?: string | null;
-  updatedAt: string;
-  createdAt: string;
+    | 'cancelled'
+  requestedBy?: (number | null) | User
+  qrUrl?: string | null
+  qrExpiresAt?: string | null
+  authorizeUrl?: string | null
+  authorizeExpiresAt?: string | null
+  configuringStartedAt?: string | null
+  appId?: string | null
+  appSecretEncrypted?: string | null
+  lastErrorCode?: string | null
+  completedAt?: string | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "feishu-mappings".
  */
 export interface FeishuMapping {
-  id: number;
-  name: string;
+  id: number
+  name: string
   /**
    * Stable internal mapping key, for example primary-leads.
    */
-  key: string;
-  status: 'draft' | 'active' | 'disabled';
+  key: string
+  status: 'draft' | 'active' | 'disabled'
   /**
    * OAuth connection used by this mapping. Leave empty for manual App ID/Secret fallback.
    */
-  connection?: (number | null) | FeishuConnection;
+  connection?: (number | null) | FeishuConnection
   /**
    * Bitable app token. This is an identifier, not the Feishu app secret.
    */
-  appToken?: string | null;
+  appToken?: string | null
   /**
    * Bitable table identifier. Draft mappings may leave this empty.
    */
-  tableId?: string | null;
+  tableId?: string | null
   /**
    * Maps normalized lead fields to customer-defined Bitable field names.
    */
@@ -1244,1435 +1265,1456 @@ export interface FeishuMapping {
           | 'phone'
           | 'nextFollowUpAt'
           | 'sourceURL'
-          | 'originalInquiry';
-        targetField: string;
-        required?: boolean | null;
-        id?: string | null;
+          | 'originalInquiry'
+        targetField: string
+        required?: boolean | null
+        id?: string | null
       }[]
-    | null;
+    | null
   /**
    * Maps Payload sales users to Feishu open_id values for direct notifications.
    */
   memberMappings?:
     | {
-        user: number | User;
-        openId: string;
-        enabled?: boolean | null;
-        id?: string | null;
+        user: number | User
+        openId: string
+        enabled?: boolean | null
+        id?: string | null
       }[]
-    | null;
+    | null
   /**
    * Recipients for high-intent and handoff notifications.
    */
   notificationRecipients?:
     | {
-        label?: string | null;
-        receiveIdType: 'open_id' | 'chat_id';
-        receiveId: string;
-        enabled?: boolean | null;
-        id?: string | null;
+        label?: string | null
+        receiveIdType: 'open_id' | 'chat_id'
+        receiveId: string
+        enabled?: boolean | null
+        id?: string | null
       }[]
-    | null;
-  updatedAt: string;
-  createdAt: string;
+    | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "feishu-oauth-states".
  */
 export interface FeishuOauthState {
-  id: number;
-  stateHash: string;
-  verifierEncrypted: string;
-  expiresAt: string;
-  usedAt?: string | null;
-  processingAt?: string | null;
-  requestedBy: number | User;
-  registration?: (number | null) | FeishuAppRegistration;
-  updatedAt: string;
-  createdAt: string;
+  id: number
+  stateHash: string
+  verifierEncrypted: string
+  expiresAt: string
+  usedAt?: string | null
+  processingAt?: string | null
+  requestedBy: number | User
+  registration?: (number | null) | FeishuAppRegistration
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "visitor-sessions".
  */
 export interface VisitorSession {
-  id: number;
-  publicId: string;
-  sessionTokenHash: string;
-  idempotencyKey: string;
-  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram' | 'tiktok';
-  locale: 'en' | 'ar';
-  sourceURL?: string | null;
-  expiresAt: string;
-  lastSeenAt: string;
-  updatedAt: string;
-  createdAt: string;
+  id: number
+  publicId: string
+  sessionTokenHash: string
+  idempotencyKey: string
+  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram' | 'tiktok'
+  locale: 'en' | 'ar'
+  sourceURL?: string | null
+  expiresAt: string
+  lastSeenAt: string
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "conversations".
  */
 export interface Conversation {
-  id: number;
-  publicId: string;
-  requestId: string;
-  visitorSession: number | VisitorSession;
-  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram' | 'tiktok';
-  externalThreadId?: string | null;
-  locale: 'en' | 'ar';
-  handoffStatus: 'ai_active' | 'handoff_requested' | 'human_active' | 'resolved';
-  revision: number;
-  assignedTo?: (number | null) | User;
-  lead?: (number | null) | Lead;
-  intentLevel: 'unscored' | 'a' | 'b' | 'c';
-  intentScore?: number | null;
+  id: number
+  publicId: string
+  requestId: string
+  visitorSession: number | VisitorSession
+  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram' | 'tiktok'
+  externalThreadId?: string | null
+  locale: 'en' | 'ar'
+  handoffStatus: 'ai_active' | 'handoff_requested' | 'human_active' | 'resolved'
+  revision: number
+  assignedTo?: (number | null) | User
+  lead?: (number | null) | Lead
+  intentLevel: 'unscored' | 'a' | 'b' | 'c'
+  intentScore?: number | null
   qualificationSignals?: {
-    budget?: string | null;
-    procurementPlan?: string | null;
-    projectStage?: string | null;
-    quantitySquareMeters?: number | null;
-    timeline?: string | null;
-    hasDrawings?: boolean | null;
-  };
-  qualificationRoundCount?: number | null;
+    budget?: string | null
+    procurementPlan?: string | null
+    projectStage?: string | null
+    quantitySquareMeters?: number | null
+    timeline?: string | null
+    hasDrawings?: boolean | null
+  }
+  qualificationRoundCount?: number | null
   qualificationAskedFields?:
-    ('country' | 'company' | 'projectStage' | 'quantity' | 'drawings' | 'budget' | 'timeline' | 'contact')[] | null;
-  qualificationAnsweredCompany?: string | null;
+    | (
+        | 'country'
+        | 'company'
+        | 'projectStage'
+        | 'quantity'
+        | 'drawings'
+        | 'budget'
+        | 'timeline'
+        | 'contact'
+      )[]
+    | null
+  qualificationAnsweredCompany?: string | null
   qualificationAwaitingFields?:
-    ('country' | 'company' | 'projectStage' | 'quantity' | 'drawings' | 'budget' | 'timeline' | 'contact')[] | null;
-  summary?: string | null;
-  lastMessageAt?: string | null;
-  updatedAt: string;
-  createdAt: string;
+    | (
+        | 'country'
+        | 'company'
+        | 'projectStage'
+        | 'quantity'
+        | 'drawings'
+        | 'budget'
+        | 'timeline'
+        | 'contact'
+      )[]
+    | null
+  summary?: string | null
+  lastMessageAt?: string | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "messages".
  */
 export interface Message {
-  id: number;
-  conversation: number | Conversation;
-  requestId: string;
-  idempotencyKey: string;
-  externalMessageId?: string | null;
-  author: 'visitor' | 'ai' | 'operator' | 'system';
-  status: 'pending' | 'sent' | 'failed';
-  content: string;
+  id: number
+  conversation: number | Conversation
+  requestId: string
+  idempotencyKey: string
+  externalMessageId?: string | null
+  author: 'visitor' | 'ai' | 'operator' | 'system'
+  status: 'pending' | 'sent' | 'failed'
+  content: string
   citations?:
     | {
-        documentId: string;
-        title: string;
-        version: string;
-        url?: string | null;
-        id?: string | null;
+        documentId: string
+        title: string
+        version: string
+        url?: string | null
+        id?: string | null
       }[]
-    | null;
-  promptVersion?: number | null;
-  model?: string | null;
+    | null
+  promptVersion?: number | null
+  model?: string | null
   tokenUsage?: {
-    inputTokens?: number | null;
-    outputTokens?: number | null;
-    totalTokens?: number | null;
-  };
-  estimatedCostUSD?: number | null;
-  errorCode?: string | null;
-  updatedAt: string;
-  createdAt: string;
+    inputTokens?: number | null
+    outputTokens?: number | null
+    totalTokens?: number | null
+  }
+  estimatedCostUSD?: number | null
+  errorCode?: string | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "handoffs".
  */
 export interface Handoff {
-  id: number;
-  publicId: string;
-  conversation: number | Conversation;
-  idempotencyKey: string;
-  domainEventId: string;
-  status: 'requested' | 'active' | 'resolved';
-  source: 'visitor' | 'ai_policy' | 'operator';
-  reason: string;
-  requestedBy?: (number | null) | User;
-  assignedTo?: (number | null) | User;
-  requestedAt: string;
-  acceptedAt?: string | null;
-  resolvedAt?: string | null;
-  updatedAt: string;
-  createdAt: string;
+  id: number
+  publicId: string
+  conversation: number | Conversation
+  idempotencyKey: string
+  domainEventId: string
+  status: 'requested' | 'active' | 'resolved'
+  source: 'visitor' | 'ai_policy' | 'operator'
+  reason: string
+  requestedBy?: (number | null) | User
+  assignedTo?: (number | null) | User
+  requestedAt: string
+  acceptedAt?: string | null
+  resolvedAt?: string | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "conversation-commands".
  */
 export interface ConversationCommand {
-  id: number;
-  scope: string;
-  idempotencyKey: string;
-  ownerToken: string;
-  leaseExpiresAt: string;
-  status: 'processing' | 'completed' | 'failed';
-  conversation?: (number | null) | Conversation;
+  id: number
+  scope: string
+  idempotencyKey: string
+  ownerToken: string
+  leaseExpiresAt: string
+  status: 'processing' | 'completed' | 'failed'
+  conversation?: (number | null) | Conversation
   result?:
     | {
-        [k: string]: unknown;
+        [k: string]: unknown
       }
     | unknown[]
     | string
     | number
     | boolean
-    | null;
-  errorCode?: string | null;
-  updatedAt: string;
-  createdAt: string;
+    | null
+  errorCode?: string | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
-  id: number;
-  key: string;
+  id: number
+  key: string
   data:
     | {
-        [k: string]: unknown;
+        [k: string]: unknown
       }
     | unknown[]
     | string
     | number
     | boolean
-    | null;
+    | null
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents".
  */
 export interface PayloadLockedDocument {
-  id: number;
+  id: number
   document?:
     | ({
-        relationTo: 'users';
-        value: number | User;
+        relationTo: 'users'
+        value: number | User
       } | null)
     | ({
-        relationTo: 'media';
-        value: number | Media;
+        relationTo: 'media'
+        value: number | Media
       } | null)
     | ({
-        relationTo: 'audit-logs';
-        value: number | AuditLog;
+        relationTo: 'audit-logs'
+        value: number | AuditLog
       } | null)
     | ({
-        relationTo: 'ai-providers';
-        value: number | AiProvider;
+        relationTo: 'ai-providers'
+        value: number | AiProvider
       } | null)
     | ({
-        relationTo: 'ai-model-profiles';
-        value: number | AiModelProfile;
+        relationTo: 'ai-model-profiles'
+        value: number | AiModelProfile
       } | null)
     | ({
-        relationTo: 'ai-usage-routes';
-        value: number | AiUsageRoute;
+        relationTo: 'ai-usage-routes'
+        value: number | AiUsageRoute
       } | null)
     | ({
-        relationTo: 'ai-usage-logs';
-        value: number | AiUsageLog;
+        relationTo: 'ai-usage-logs'
+        value: number | AiUsageLog
       } | null)
     | ({
-        relationTo: 'generated-contents';
-        value: number | GeneratedContent;
+        relationTo: 'generated-contents'
+        value: number | GeneratedContent
       } | null)
     | ({
-        relationTo: 'content-reviews';
-        value: number | ContentReview;
+        relationTo: 'content-reviews'
+        value: number | ContentReview
       } | null)
     | ({
-        relationTo: 'publish-jobs';
-        value: number | PublishJob;
+        relationTo: 'publish-jobs'
+        value: number | PublishJob
       } | null)
     | ({
-        relationTo: 'publish-logs';
-        value: number | PublishLog;
+        relationTo: 'publish-logs'
+        value: number | PublishLog
       } | null)
     | ({
-        relationTo: 'pages';
-        value: number | Page;
+        relationTo: 'pages'
+        value: number | Page
       } | null)
     | ({
-        relationTo: 'product-categories';
-        value: number | ProductCategory;
+        relationTo: 'product-categories'
+        value: number | ProductCategory
       } | null)
     | ({
-        relationTo: 'products';
-        value: number | Product;
+        relationTo: 'products'
+        value: number | Product
       } | null)
     | ({
-        relationTo: 'projects';
-        value: number | Project;
+        relationTo: 'projects'
+        value: number | Project
       } | null)
     | ({
-        relationTo: 'posts';
-        value: number | Post;
+        relationTo: 'posts'
+        value: number | Post
       } | null)
     | ({
-        relationTo: 'downloads';
-        value: number | Download;
+        relationTo: 'downloads'
+        value: number | Download
       } | null)
     | ({
-        relationTo: 'knowledge-documents';
-        value: number | KnowledgeDocument;
+        relationTo: 'knowledge-documents'
+        value: number | KnowledgeDocument
       } | null)
     | ({
-        relationTo: 'knowledge-source-documents';
-        value: number | KnowledgeSourceDocument;
+        relationTo: 'knowledge-source-documents'
+        value: number | KnowledgeSourceDocument
       } | null)
     | ({
-        relationTo: 'knowledge-source-assets';
-        value: number | KnowledgeSourceAsset;
+        relationTo: 'knowledge-source-assets'
+        value: number | KnowledgeSourceAsset
       } | null)
     | ({
-        relationTo: 'knowledge-chunks';
-        value: number | KnowledgeChunk;
+        relationTo: 'knowledge-chunks'
+        value: number | KnowledgeChunk
       } | null)
     | ({
-        relationTo: 'prompt-templates';
-        value: number | PromptTemplate;
+        relationTo: 'prompt-templates'
+        value: number | PromptTemplate
       } | null)
     | ({
-        relationTo: 'platform-accounts';
-        value: number | PlatformAccount;
+        relationTo: 'platform-accounts'
+        value: number | PlatformAccount
       } | null)
     | ({
-        relationTo: 'portal-command-receipts';
-        value: number | PortalCommandReceipt;
+        relationTo: 'portal-command-receipts'
+        value: number | PortalCommandReceipt
       } | null)
     | ({
-        relationTo: 'lead-sources';
-        value: number | LeadSource;
+        relationTo: 'lead-sources'
+        value: number | LeadSource
       } | null)
     | ({
-        relationTo: 'leads';
-        value: number | Lead;
+        relationTo: 'leads'
+        value: number | Lead
       } | null)
     | ({
-        relationTo: 'feishu-connections';
-        value: number | FeishuConnection;
+        relationTo: 'feishu-connections'
+        value: number | FeishuConnection
       } | null)
     | ({
-        relationTo: 'feishu-app-registrations';
-        value: number | FeishuAppRegistration;
+        relationTo: 'feishu-app-registrations'
+        value: number | FeishuAppRegistration
       } | null)
     | ({
-        relationTo: 'feishu-mappings';
-        value: number | FeishuMapping;
+        relationTo: 'feishu-mappings'
+        value: number | FeishuMapping
       } | null)
     | ({
-        relationTo: 'feishu-oauth-states';
-        value: number | FeishuOauthState;
+        relationTo: 'feishu-oauth-states'
+        value: number | FeishuOauthState
       } | null)
     | ({
-        relationTo: 'visitor-sessions';
-        value: number | VisitorSession;
+        relationTo: 'visitor-sessions'
+        value: number | VisitorSession
       } | null)
     | ({
-        relationTo: 'conversations';
-        value: number | Conversation;
+        relationTo: 'conversations'
+        value: number | Conversation
       } | null)
     | ({
-        relationTo: 'messages';
-        value: number | Message;
+        relationTo: 'messages'
+        value: number | Message
       } | null)
     | ({
-        relationTo: 'handoffs';
-        value: number | Handoff;
+        relationTo: 'handoffs'
+        value: number | Handoff
       } | null)
     | ({
-        relationTo: 'conversation-commands';
-        value: number | ConversationCommand;
+        relationTo: 'conversation-commands'
+        value: number | ConversationCommand
       } | null)
     | ({
-        relationTo: 'jobs';
-        value: number | Job;
-      } | null);
-  globalSlug?: string | null;
+        relationTo: 'jobs'
+        value: number | Job
+      } | null)
+  globalSlug?: string | null
   user: {
-    relationTo: 'users';
-    value: number | User;
-  };
-  updatedAt: string;
-  createdAt: string;
+    relationTo: 'users'
+    value: number | User
+  }
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-preferences".
  */
 export interface PayloadPreference {
-  id: number;
+  id: number
   user: {
-    relationTo: 'users';
-    value: number | User;
-  };
-  key?: string | null;
+    relationTo: 'users'
+    value: number | User
+  }
+  key?: string | null
   value?:
     | {
-        [k: string]: unknown;
+        [k: string]: unknown
       }
     | unknown[]
     | string
     | number
     | boolean
-    | null;
-  updatedAt: string;
-  createdAt: string;
+    | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-migrations".
  */
 export interface PayloadMigration {
-  id: number;
-  name?: string | null;
-  batch?: number | null;
-  updatedAt: string;
-  createdAt: string;
+  id: number
+  name?: string | null
+  batch?: number | null
+  updatedAt: string
+  createdAt: string
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
-  role?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  email?: T;
-  resetPasswordToken?: T;
-  resetPasswordExpiration?: T;
-  salt?: T;
-  hash?: T;
-  loginAttempts?: T;
-  lockUntil?: T;
+  role?: T
+  updatedAt?: T
+  createdAt?: T
+  email?: T
+  resetPasswordToken?: T
+  resetPasswordExpiration?: T
+  salt?: T
+  hash?: T
+  loginAttempts?: T
+  lockUntil?: T
   sessions?:
     | T
     | {
-        id?: T;
-        createdAt?: T;
-        expiresAt?: T;
-      };
+        id?: T
+        createdAt?: T
+        expiresAt?: T
+      }
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media_select".
  */
 export interface MediaSelect<T extends boolean = true> {
-  alt?: T;
-  source?: T;
-  isPublic?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  url?: T;
-  thumbnailURL?: T;
-  filename?: T;
-  mimeType?: T;
-  filesize?: T;
-  width?: T;
-  height?: T;
-  focalX?: T;
-  focalY?: T;
+  alt?: T
+  source?: T
+  isPublic?: T
+  updatedAt?: T
+  createdAt?: T
+  url?: T
+  thumbnailURL?: T
+  filename?: T
+  mimeType?: T
+  filesize?: T
+  width?: T
+  height?: T
+  focalX?: T
+  focalY?: T
   sizes?:
     | T
     | {
         thumbnail?:
           | T
           | {
-              url?: T;
-              width?: T;
-              height?: T;
-              mimeType?: T;
-              filesize?: T;
-              filename?: T;
-            };
+              url?: T
+              width?: T
+              height?: T
+              mimeType?: T
+              filesize?: T
+              filename?: T
+            }
         card?:
           | T
           | {
-              url?: T;
-              width?: T;
-              height?: T;
-              mimeType?: T;
-              filesize?: T;
-              filename?: T;
-            };
+              url?: T
+              width?: T
+              height?: T
+              mimeType?: T
+              filesize?: T
+              filename?: T
+            }
         large?:
           | T
           | {
-              url?: T;
-              width?: T;
-              height?: T;
-              mimeType?: T;
-              filesize?: T;
-              filename?: T;
-            };
-      };
+              url?: T
+              width?: T
+              height?: T
+              mimeType?: T
+              filesize?: T
+              filename?: T
+            }
+      }
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "audit-logs_select".
  */
 export interface AuditLogsSelect<T extends boolean = true> {
-  action?: T;
-  resource?: T;
-  documentId?: T;
-  actor?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  action?: T
+  resource?: T
+  documentId?: T
+  actor?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "ai-providers_select".
  */
 export interface AiProvidersSelect<T extends boolean = true> {
-  name?: T;
-  enabled?: T;
-  protocol?: T;
-  baseURL?: T;
-  apiKey?: T;
-  apiKeyConfigured?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  name?: T
+  enabled?: T
+  protocol?: T
+  baseURL?: T
+  textGenerationContract?: T
+  apiKey?: T
+  apiKeyConfigured?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "ai-model-profiles_select".
  */
 export interface AiModelProfilesSelect<T extends boolean = true> {
-  name?: T;
-  enabled?: T;
-  provider?: T;
-  capability?: T;
-  model?: T;
+  name?: T
+  enabled?: T
+  provider?: T
+  capability?: T
+  model?: T
   parameters?:
     | T
     | {
-        timeoutMs?: T;
-        maxOutputTokens?: T;
-        reasoningEnabled?: T;
-        reasoningEffort?: T;
-        temperature?: T;
-        topP?: T;
-        dimensions?: T;
-      };
-  updatedAt?: T;
-  createdAt?: T;
+        timeoutMs?: T
+        maxOutputTokens?: T
+        reasoningEnabled?: T
+        reasoningEffort?: T
+        temperature?: T
+        topP?: T
+        dimensions?: T
+      }
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "ai-usage-routes_select".
  */
 export interface AiUsageRoutesSelect<T extends boolean = true> {
-  usageKey?: T;
-  enabled?: T;
-  operation?: T;
-  profile?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  usageKey?: T
+  enabled?: T
+  operation?: T
+  profile?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "ai-usage-logs_select".
  */
 export interface AiUsageLogsSelect<T extends boolean = true> {
-  operation?: T;
-  provider?: T;
-  model?: T;
-  requestId?: T;
-  inputTokens?: T;
-  outputTokens?: T;
-  totalTokens?: T;
-  estimatedCostUSD?: T;
-  durationMs?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  operation?: T
+  provider?: T
+  model?: T
+  requestId?: T
+  inputTokens?: T
+  outputTokens?: T
+  totalTokens?: T
+  estimatedCostUSD?: T
+  durationMs?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "generated-contents_select".
  */
 export interface GeneratedContentsSelect<T extends boolean = true> {
-  title?: T;
-  platform?: T;
-  contentLocale?: T;
-  contentType?: T;
-  body?: T;
+  title?: T
+  platform?: T
+  contentLocale?: T
+  contentType?: T
+  body?: T
   sourceReferences?:
     | T
     | {
-        claim?: T;
-        source?: T;
-        id?: T;
-      };
-  assets?: T;
-  knowledgeSources?: T;
-  status?: T;
-  idempotencyKey?: T;
-  creationFingerprint?: T;
-  createdBy?: T;
-  reviewedAt?: T;
-  reviewedBy?: T;
-  updatedAt?: T;
-  createdAt?: T;
+        claim?: T
+        source?: T
+        id?: T
+      }
+  assets?: T
+  knowledgeSources?: T
+  status?: T
+  idempotencyKey?: T
+  creationFingerprint?: T
+  createdBy?: T
+  reviewedAt?: T
+  reviewedBy?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "content-reviews_select".
  */
 export interface ContentReviewsSelect<T extends boolean = true> {
-  content?: T;
-  decision?: T;
+  content?: T
+  decision?: T
   checklist?:
     | T
     | {
-        factsTraceable?: T;
-        technicalClaimsChecked?: T;
-        noCommercialCommitment?: T;
-        platformFormatChecked?: T;
-        arabicProofread?: T;
-      };
-  comments?: T;
-  reviewedBy?: T;
-  updatedAt?: T;
-  createdAt?: T;
+        factsTraceable?: T
+        technicalClaimsChecked?: T
+        noCommercialCommitment?: T
+        platformFormatChecked?: T
+        arabicProofread?: T
+      }
+  comments?: T
+  reviewedBy?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "publish-jobs_select".
  */
 export interface PublishJobsSelect<T extends boolean = true> {
-  content?: T;
-  platform?: T;
-  platformAccount?: T;
-  mode?: T;
-  status?: T;
-  scheduledFor?: T;
-  executionRoute?: T;
-  executionRevision?: T;
-  requestFingerprint?: T;
-  requestSnapshot?: T;
-  providerCheckpoint?: T;
-  authorizationRevision?: T;
-  claimJob?: T;
-  claimId?: T;
-  claimOwnerToken?: T;
-  claimLeaseExpiresAt?: T;
-  fencingGeneration?: T;
-  providerIOStartedAt?: T;
-  deliveryUnknownAt?: T;
-  acceptedAt?: T;
-  publishedAt?: T;
-  externalPublicationId?: T;
-  externalPublicationUrl?: T;
-  lastErrorCode?: T;
-  lastErrorSummary?: T;
-  idempotencyKey?: T;
-  createdBy?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  content?: T
+  platform?: T
+  platformAccount?: T
+  mode?: T
+  status?: T
+  scheduledFor?: T
+  executionRoute?: T
+  executionRevision?: T
+  requestFingerprint?: T
+  requestSnapshot?: T
+  providerCheckpoint?: T
+  authorizationRevision?: T
+  claimJob?: T
+  claimId?: T
+  claimOwnerToken?: T
+  claimLeaseExpiresAt?: T
+  fencingGeneration?: T
+  providerIOStartedAt?: T
+  deliveryUnknownAt?: T
+  acceptedAt?: T
+  publishedAt?: T
+  externalPublicationId?: T
+  externalPublicationUrl?: T
+  lastErrorCode?: T
+  lastErrorSummary?: T
+  idempotencyKey?: T
+  createdBy?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "publish-logs_select".
  */
 export interface PublishLogsSelect<T extends boolean = true> {
-  publishJob?: T;
-  event?: T;
-  summary?: T;
-  actor?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  publishJob?: T
+  event?: T
+  summary?: T
+  actor?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "pages_select".
  */
 export interface PagesSelect<T extends boolean = true> {
-  title?: T;
-  generateSlug?: T;
-  slug?: T;
-  hasBeenPublished?: T;
-  summary?: T;
-  body?: T;
-  heroImage?: T;
+  title?: T
+  generateSlug?: T
+  slug?: T
+  hasBeenPublished?: T
+  summary?: T
+  body?: T
+  heroImage?: T
   seo?:
     | T
     | {
-        title?: T;
-        description?: T;
-        keywords?: T;
-        canonical?: T;
-        ogImage?: T;
-        noIndex?: T;
-      };
-  internalNotes?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  _status?: T;
+        title?: T
+        description?: T
+        keywords?: T
+        canonical?: T
+        ogImage?: T
+        noIndex?: T
+      }
+  internalNotes?: T
+  updatedAt?: T
+  createdAt?: T
+  _status?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "product-categories_select".
  */
 export interface ProductCategoriesSelect<T extends boolean = true> {
-  title?: T;
-  generateSlug?: T;
-  slug?: T;
-  description?: T;
-  sortOrder?: T;
+  title?: T
+  generateSlug?: T
+  slug?: T
+  description?: T
+  sortOrder?: T
   seo?:
     | T
     | {
-        title?: T;
-        description?: T;
-        keywords?: T;
-        canonical?: T;
-        ogImage?: T;
-        noIndex?: T;
-      };
-  updatedAt?: T;
-  createdAt?: T;
+        title?: T
+        description?: T
+        keywords?: T
+        canonical?: T
+        ogImage?: T
+        noIndex?: T
+      }
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "products_select".
  */
 export interface ProductsSelect<T extends boolean = true> {
-  title?: T;
-  generateSlug?: T;
-  slug?: T;
-  hasBeenPublished?: T;
-  shortDescription?: T;
-  description?: T;
-  category?: T;
-  coverImage?: T;
-  gallery?: T;
+  title?: T
+  generateSlug?: T
+  slug?: T
+  hasBeenPublished?: T
+  shortDescription?: T
+  description?: T
+  category?: T
+  coverImage?: T
+  gallery?: T
   specifications?:
     | T
     | {
-        label?: T;
-        value?: T;
-        id?: T;
-      };
+        label?: T
+        value?: T
+        id?: T
+      }
   seo?:
     | T
     | {
-        title?: T;
-        description?: T;
-        keywords?: T;
-        canonical?: T;
-        ogImage?: T;
-        noIndex?: T;
-      };
-  internalNotes?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  _status?: T;
+        title?: T
+        description?: T
+        keywords?: T
+        canonical?: T
+        ogImage?: T
+        noIndex?: T
+      }
+  internalNotes?: T
+  updatedAt?: T
+  createdAt?: T
+  _status?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "projects_select".
  */
 export interface ProjectsSelect<T extends boolean = true> {
-  title?: T;
-  generateSlug?: T;
-  slug?: T;
-  hasBeenPublished?: T;
-  summary?: T;
-  description?: T;
-  location?: T;
-  application?: T;
-  coverImage?: T;
-  gallery?: T;
+  title?: T
+  generateSlug?: T
+  slug?: T
+  hasBeenPublished?: T
+  summary?: T
+  description?: T
+  location?: T
+  application?: T
+  coverImage?: T
+  gallery?: T
   seo?:
     | T
     | {
-        title?: T;
-        description?: T;
-        keywords?: T;
-        canonical?: T;
-        ogImage?: T;
-        noIndex?: T;
-      };
-  internalNotes?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  _status?: T;
+        title?: T
+        description?: T
+        keywords?: T
+        canonical?: T
+        ogImage?: T
+        noIndex?: T
+      }
+  internalNotes?: T
+  updatedAt?: T
+  createdAt?: T
+  _status?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "posts_select".
  */
 export interface PostsSelect<T extends boolean = true> {
-  title?: T;
-  generateSlug?: T;
-  slug?: T;
-  hasBeenPublished?: T;
-  excerpt?: T;
-  content?: T;
-  category?: T;
-  featuredImage?: T;
-  publishedAt?: T;
+  title?: T
+  generateSlug?: T
+  slug?: T
+  hasBeenPublished?: T
+  excerpt?: T
+  content?: T
+  category?: T
+  featuredImage?: T
+  publishedAt?: T
   seo?:
     | T
     | {
-        title?: T;
-        description?: T;
-        keywords?: T;
-        canonical?: T;
-        ogImage?: T;
-        noIndex?: T;
-      };
-  internalNotes?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  _status?: T;
+        title?: T
+        description?: T
+        keywords?: T
+        canonical?: T
+        ogImage?: T
+        noIndex?: T
+      }
+  internalNotes?: T
+  updatedAt?: T
+  createdAt?: T
+  _status?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "downloads_select".
  */
 export interface DownloadsSelect<T extends boolean = true> {
-  title?: T;
-  generateSlug?: T;
-  slug?: T;
-  description?: T;
-  type?: T;
-  file?: T;
-  coverImage?: T;
-  isActive?: T;
+  title?: T
+  generateSlug?: T
+  slug?: T
+  description?: T
+  type?: T
+  file?: T
+  coverImage?: T
+  isActive?: T
   seo?:
     | T
     | {
-        title?: T;
-        description?: T;
-        keywords?: T;
-        canonical?: T;
-        ogImage?: T;
-        noIndex?: T;
-      };
-  updatedAt?: T;
-  createdAt?: T;
+        title?: T
+        description?: T
+        keywords?: T
+        canonical?: T
+        ogImage?: T
+        noIndex?: T
+      }
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "knowledge-documents_select".
  */
 export interface KnowledgeDocumentsSelect<T extends boolean = true> {
-  sourceTitle?: T;
-  sourceType?: T;
-  customerVisible?: T;
-  sourceURL?: T;
-  sourceFile?: T;
-  ingestionSource?: T;
-  sourceHash?: T;
-  sourceAnchor?: T;
-  generationModel?: T;
-  generationPromptVersion?: T;
-  riskTopics?: T;
-  sourceVersion?: T;
-  locale?: T;
-  content?: T;
-  reviewStatus?: T;
-  reviewedAt?: T;
-  reviewedBy?: T;
-  indexStatus?: T;
-  indexedAt?: T;
-  embeddingModel?: T;
-  embeddingSpace?: T;
-  indexJobId?: T;
-  indexOwnerToken?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  sourceTitle?: T
+  sourceType?: T
+  customerVisible?: T
+  sourceURL?: T
+  sourceFile?: T
+  ingestionSource?: T
+  sourceHash?: T
+  sourceAnchor?: T
+  generationModel?: T
+  generationPromptVersion?: T
+  riskTopics?: T
+  sourceVersion?: T
+  locale?: T
+  content?: T
+  reviewStatus?: T
+  reviewedAt?: T
+  reviewedBy?: T
+  indexStatus?: T
+  indexedAt?: T
+  embeddingModel?: T
+  embeddingSpace?: T
+  indexJobId?: T
+  indexOwnerToken?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "knowledge-source-documents_select".
  */
 export interface KnowledgeSourceDocumentsSelect<T extends boolean = true> {
-  sourceTitle?: T;
-  sourceType?: T;
-  sourceVersion?: T;
-  originalLanguage?: T;
-  sourceHash?: T;
-  ingestionRevision?: T;
-  detectedLanguage?: T;
-  extractedText?: T;
-  pageCount?: T;
-  paragraphCount?: T;
-  imageCount?: T;
-  parserVersion?: T;
-  processingStatus?: T;
-  processingStage?: T;
-  currentJobId?: T;
-  currentJobOwnerToken?: T;
-  errorCode?: T;
-  errorSummary?: T;
-  completedAt?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  url?: T;
-  thumbnailURL?: T;
-  filename?: T;
-  mimeType?: T;
-  filesize?: T;
-  width?: T;
-  height?: T;
-  focalX?: T;
-  focalY?: T;
+  sourceTitle?: T
+  sourceType?: T
+  sourceVersion?: T
+  originalLanguage?: T
+  sourceHash?: T
+  ingestionRevision?: T
+  detectedLanguage?: T
+  extractedText?: T
+  pageCount?: T
+  paragraphCount?: T
+  imageCount?: T
+  parserVersion?: T
+  processingStatus?: T
+  processingStage?: T
+  currentJobId?: T
+  currentJobOwnerToken?: T
+  errorCode?: T
+  errorSummary?: T
+  completedAt?: T
+  updatedAt?: T
+  createdAt?: T
+  url?: T
+  thumbnailURL?: T
+  filename?: T
+  mimeType?: T
+  filesize?: T
+  width?: T
+  height?: T
+  focalX?: T
+  focalY?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "knowledge-source-assets_select".
  */
 export interface KnowledgeSourceAssetsSelect<T extends boolean = true> {
-  source?: T;
-  sequence?: T;
-  originalName?: T;
-  sha256?: T;
-  byteSize?: T;
-  accessibility?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  url?: T;
-  thumbnailURL?: T;
-  filename?: T;
-  mimeType?: T;
-  filesize?: T;
-  width?: T;
-  height?: T;
-  focalX?: T;
-  focalY?: T;
+  source?: T
+  sequence?: T
+  originalName?: T
+  sha256?: T
+  byteSize?: T
+  accessibility?: T
+  updatedAt?: T
+  createdAt?: T
+  url?: T
+  thumbnailURL?: T
+  filename?: T
+  mimeType?: T
+  filesize?: T
+  width?: T
+  height?: T
+  focalX?: T
+  focalY?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "knowledge-chunks_select".
  */
 export interface KnowledgeChunksSelect<T extends boolean = true> {
-  document?: T;
-  stableId?: T;
-  index?: T;
-  locale?: T;
-  content?: T;
-  sourceTitle?: T;
-  sourceVersion?: T;
-  sourceURL?: T;
-  embeddingModel?: T;
-  embeddingSpace?: T;
-  embeddingDimensions?: T;
-  embeddedAt?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  document?: T
+  stableId?: T
+  index?: T
+  locale?: T
+  content?: T
+  sourceTitle?: T
+  sourceVersion?: T
+  sourceURL?: T
+  embeddingModel?: T
+  embeddingSpace?: T
+  embeddingDimensions?: T
+  embeddedAt?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "prompt-templates_select".
  */
 export interface PromptTemplatesSelect<T extends boolean = true> {
-  key?: T;
-  purpose?: T;
-  locale?: T;
-  version?: T;
-  template?: T;
-  variables?: T;
-  status?: T;
-  model?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  key?: T
+  purpose?: T
+  locale?: T
+  version?: T
+  template?: T
+  variables?: T
+  status?: T
+  model?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "platform-accounts_select".
  */
 export interface PlatformAccountsSelect<T extends boolean = true> {
-  name?: T;
-  accountKind?: T;
-  platformFamily?: T;
-  externalAccountId?: T;
-  connectionKey?: T;
-  authorizationRevision?: T;
+  name?: T
+  accountKind?: T
+  platformFamily?: T
+  externalAccountId?: T
+  connectionKey?: T
+  authorizationRevision?: T
   authorization?:
     | T
     | {
-        state?: T;
-        appId?: T;
-        accessToken?: T;
-        accessTokenConfigured?: T;
-        clearAccessToken?: T;
-        refreshToken?: T;
-        refreshTokenConfigured?: T;
-        clearRefreshToken?: T;
-        expiresAt?: T;
+        state?: T
+        appId?: T
+        accessToken?: T
+        accessTokenConfigured?: T
+        clearAccessToken?: T
+        refreshToken?: T
+        refreshTokenConfigured?: T
+        clearRefreshToken?: T
+        expiresAt?: T
         scopes?:
           | T
           | {
-              scope?: T;
-              id?: T;
-            };
-      };
+              scope?: T
+              id?: T
+            }
+      }
   capabilities?:
     | T
     | {
-        messagingInbound?: T;
-        publishing?: T;
-      };
-  notes?: T;
-  updatedAt?: T;
-  createdAt?: T;
+        messagingInbound?: T
+        publishing?: T
+      }
+  notes?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "portal-command-receipts_select".
  */
 export interface PortalCommandReceiptsSelect<T extends boolean = true> {
-  scope?: T;
-  idempotencyKey?: T;
-  fingerprint?: T;
-  actor?: T;
-  ownerToken?: T;
-  leaseExpiresAt?: T;
-  status?: T;
-  result?: T;
-  errorCode?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  scope?: T
+  idempotencyKey?: T
+  fingerprint?: T
+  actor?: T
+  ownerToken?: T
+  leaseExpiresAt?: T
+  status?: T
+  result?: T
+  errorCode?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "lead-sources_select".
  */
 export interface LeadSourcesSelect<T extends boolean = true> {
-  name?: T;
-  key?: T;
-  channel?: T;
-  isActive?: T;
-  description?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  name?: T
+  key?: T
+  channel?: T
+  isActive?: T
+  description?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "leads_select".
  */
 export interface LeadsSelect<T extends boolean = true> {
-  requestId?: T;
-  idempotencyKey?: T;
-  source?: T;
-  locale?: T;
-  status?: T;
-  intentLevel?: T;
-  assignedTo?: T;
-  nextFollowUpAt?: T;
-  name?: T;
-  company?: T;
-  country?: T;
-  email?: T;
-  phone?: T;
-  interest?: T;
-  budget?: T;
-  procurementPlan?: T;
-  projectStage?: T;
-  quantitySquareMeters?: T;
-  timeline?: T;
-  hasDrawings?: T;
-  message?: T;
-  sourceURL?: T;
+  requestId?: T
+  idempotencyKey?: T
+  source?: T
+  locale?: T
+  status?: T
+  intentLevel?: T
+  assignedTo?: T
+  nextFollowUpAt?: T
+  name?: T
+  company?: T
+  country?: T
+  email?: T
+  phone?: T
+  interest?: T
+  budget?: T
+  procurementPlan?: T
+  projectStage?: T
+  quantitySquareMeters?: T
+  timeline?: T
+  hasDrawings?: T
+  message?: T
+  sourceURL?: T
   utm?:
     | T
     | {
-        source?: T;
-        medium?: T;
-        campaign?: T;
-        term?: T;
-        content?: T;
-      };
-  updatedAt?: T;
-  createdAt?: T;
+        source?: T
+        medium?: T
+        campaign?: T
+        term?: T
+        content?: T
+      }
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "feishu-connections_select".
  */
 export interface FeishuConnectionsSelect<T extends boolean = true> {
-  name?: T;
-  authMode?: T;
-  tenantKey?: T;
-  installerOpenId?: T;
-  status?: T;
+  name?: T
+  authMode?: T
+  tenantKey?: T
+  installerOpenId?: T
+  status?: T
   scopes?:
     | T
     | {
-        scope?: T;
-        id?: T;
-      };
-  accessTokenEncrypted?: T;
-  refreshTokenEncrypted?: T;
-  accessTokenExpiresAt?: T;
-  refreshTokenExpiresAt?: T;
-  appId?: T;
-  appSecretEncrypted?: T;
-  appToken?: T;
-  tableId?: T;
-  baseURL?: T;
-  lastConnectedAt?: T;
-  lastRefreshedAt?: T;
-  lastErrorCode?: T;
-  updatedAt?: T;
-  createdAt?: T;
+        scope?: T
+        id?: T
+      }
+  accessTokenEncrypted?: T
+  refreshTokenEncrypted?: T
+  accessTokenExpiresAt?: T
+  refreshTokenExpiresAt?: T
+  appId?: T
+  appSecretEncrypted?: T
+  appToken?: T
+  tableId?: T
+  baseURL?: T
+  lastConnectedAt?: T
+  lastRefreshedAt?: T
+  lastErrorCode?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "feishu-app-registrations_select".
  */
 export interface FeishuAppRegistrationsSelect<T extends boolean = true> {
-  status?: T;
-  requestedBy?: T;
-  qrUrl?: T;
-  qrExpiresAt?: T;
-  authorizeUrl?: T;
-  authorizeExpiresAt?: T;
-  configuringStartedAt?: T;
-  appId?: T;
-  appSecretEncrypted?: T;
-  lastErrorCode?: T;
-  completedAt?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  status?: T
+  requestedBy?: T
+  qrUrl?: T
+  qrExpiresAt?: T
+  authorizeUrl?: T
+  authorizeExpiresAt?: T
+  configuringStartedAt?: T
+  appId?: T
+  appSecretEncrypted?: T
+  lastErrorCode?: T
+  completedAt?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "feishu-mappings_select".
  */
 export interface FeishuMappingsSelect<T extends boolean = true> {
-  name?: T;
-  key?: T;
-  status?: T;
-  connection?: T;
-  appToken?: T;
-  tableId?: T;
+  name?: T
+  key?: T
+  status?: T
+  connection?: T
+  appToken?: T
+  tableId?: T
   fieldMappings?:
     | T
     | {
-        localField?: T;
-        targetField?: T;
-        required?: T;
-        id?: T;
-      };
+        localField?: T
+        targetField?: T
+        required?: T
+        id?: T
+      }
   memberMappings?:
     | T
     | {
-        user?: T;
-        openId?: T;
-        enabled?: T;
-        id?: T;
-      };
+        user?: T
+        openId?: T
+        enabled?: T
+        id?: T
+      }
   notificationRecipients?:
     | T
     | {
-        label?: T;
-        receiveIdType?: T;
-        receiveId?: T;
-        enabled?: T;
-        id?: T;
-      };
-  updatedAt?: T;
-  createdAt?: T;
+        label?: T
+        receiveIdType?: T
+        receiveId?: T
+        enabled?: T
+        id?: T
+      }
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "feishu-oauth-states_select".
  */
 export interface FeishuOauthStatesSelect<T extends boolean = true> {
-  stateHash?: T;
-  verifierEncrypted?: T;
-  expiresAt?: T;
-  usedAt?: T;
-  processingAt?: T;
-  requestedBy?: T;
-  registration?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  stateHash?: T
+  verifierEncrypted?: T
+  expiresAt?: T
+  usedAt?: T
+  processingAt?: T
+  requestedBy?: T
+  registration?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "visitor-sessions_select".
  */
 export interface VisitorSessionsSelect<T extends boolean = true> {
-  publicId?: T;
-  sessionTokenHash?: T;
-  idempotencyKey?: T;
-  channel?: T;
-  locale?: T;
-  sourceURL?: T;
-  expiresAt?: T;
-  lastSeenAt?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  publicId?: T
+  sessionTokenHash?: T
+  idempotencyKey?: T
+  channel?: T
+  locale?: T
+  sourceURL?: T
+  expiresAt?: T
+  lastSeenAt?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "conversations_select".
  */
 export interface ConversationsSelect<T extends boolean = true> {
-  publicId?: T;
-  requestId?: T;
-  visitorSession?: T;
-  channel?: T;
-  externalThreadId?: T;
-  locale?: T;
-  handoffStatus?: T;
-  revision?: T;
-  assignedTo?: T;
-  lead?: T;
-  intentLevel?: T;
-  intentScore?: T;
+  publicId?: T
+  requestId?: T
+  visitorSession?: T
+  channel?: T
+  externalThreadId?: T
+  locale?: T
+  handoffStatus?: T
+  revision?: T
+  assignedTo?: T
+  lead?: T
+  intentLevel?: T
+  intentScore?: T
   qualificationSignals?:
     | T
     | {
-        budget?: T;
-        procurementPlan?: T;
-        projectStage?: T;
-        quantitySquareMeters?: T;
-        timeline?: T;
-        hasDrawings?: T;
-      };
-  qualificationRoundCount?: T;
-  qualificationAskedFields?: T;
-  qualificationAnsweredCompany?: T;
-  qualificationAwaitingFields?: T;
-  summary?: T;
-  lastMessageAt?: T;
-  updatedAt?: T;
-  createdAt?: T;
+        budget?: T
+        procurementPlan?: T
+        projectStage?: T
+        quantitySquareMeters?: T
+        timeline?: T
+        hasDrawings?: T
+      }
+  qualificationRoundCount?: T
+  qualificationAskedFields?: T
+  qualificationAnsweredCompany?: T
+  qualificationAwaitingFields?: T
+  summary?: T
+  lastMessageAt?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "messages_select".
  */
 export interface MessagesSelect<T extends boolean = true> {
-  conversation?: T;
-  requestId?: T;
-  idempotencyKey?: T;
-  externalMessageId?: T;
-  author?: T;
-  status?: T;
-  content?: T;
+  conversation?: T
+  requestId?: T
+  idempotencyKey?: T
+  externalMessageId?: T
+  author?: T
+  status?: T
+  content?: T
   citations?:
     | T
     | {
-        documentId?: T;
-        title?: T;
-        version?: T;
-        url?: T;
-        id?: T;
-      };
-  promptVersion?: T;
-  model?: T;
+        documentId?: T
+        title?: T
+        version?: T
+        url?: T
+        id?: T
+      }
+  promptVersion?: T
+  model?: T
   tokenUsage?:
     | T
     | {
-        inputTokens?: T;
-        outputTokens?: T;
-        totalTokens?: T;
-      };
-  estimatedCostUSD?: T;
-  errorCode?: T;
-  updatedAt?: T;
-  createdAt?: T;
+        inputTokens?: T
+        outputTokens?: T
+        totalTokens?: T
+      }
+  estimatedCostUSD?: T
+  errorCode?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "handoffs_select".
  */
 export interface HandoffsSelect<T extends boolean = true> {
-  publicId?: T;
-  conversation?: T;
-  idempotencyKey?: T;
-  domainEventId?: T;
-  status?: T;
-  source?: T;
-  reason?: T;
-  requestedBy?: T;
-  assignedTo?: T;
-  requestedAt?: T;
-  acceptedAt?: T;
-  resolvedAt?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  publicId?: T
+  conversation?: T
+  idempotencyKey?: T
+  domainEventId?: T
+  status?: T
+  source?: T
+  reason?: T
+  requestedBy?: T
+  assignedTo?: T
+  requestedAt?: T
+  acceptedAt?: T
+  resolvedAt?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "conversation-commands_select".
  */
 export interface ConversationCommandsSelect<T extends boolean = true> {
-  scope?: T;
-  idempotencyKey?: T;
-  ownerToken?: T;
-  leaseExpiresAt?: T;
-  status?: T;
-  conversation?: T;
-  result?: T;
-  errorCode?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  scope?: T
+  idempotencyKey?: T
+  ownerToken?: T
+  leaseExpiresAt?: T
+  status?: T
+  conversation?: T
+  result?: T
+  errorCode?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "jobs_select".
  */
 export interface JobsSelect<T extends boolean = true> {
-  type?: T;
-  idempotencyKey?: T;
-  payload?: T;
-  status?: T;
-  attempts?: T;
-  maxAttempts?: T;
-  nextRunAt?: T;
-  leaseExpiresAt?: T;
-  ownerToken?: T;
-  lastError?: T;
-  completedAt?: T;
-  deadAt?: T;
-  manualRetryCount?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  type?: T
+  idempotencyKey?: T
+  payload?: T
+  status?: T
+  attempts?: T
+  maxAttempts?: T
+  nextRunAt?: T
+  leaseExpiresAt?: T
+  ownerToken?: T
+  lastError?: T
+  completedAt?: T
+  deadAt?: T
+  manualRetryCount?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv_select".
  */
 export interface PayloadKvSelect<T extends boolean = true> {
-  key?: T;
-  data?: T;
+  key?: T
+  data?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents_select".
  */
 export interface PayloadLockedDocumentsSelect<T extends boolean = true> {
-  document?: T;
-  globalSlug?: T;
-  user?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  document?: T
+  globalSlug?: T
+  user?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-preferences_select".
  */
 export interface PayloadPreferencesSelect<T extends boolean = true> {
-  user?: T;
-  key?: T;
-  value?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  user?: T
+  key?: T
+  value?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-migrations_select".
  */
 export interface PayloadMigrationsSelect<T extends boolean = true> {
-  name?: T;
-  batch?: T;
-  updatedAt?: T;
-  createdAt?: T;
+  name?: T
+  batch?: T
+  updatedAt?: T
+  createdAt?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "site-settings".
  */
 export interface SiteSetting {
-  id: number;
-  siteName: string;
-  siteDescription?: string | null;
-  footerText?: string | null;
-  logo?: (number | null) | Media;
+  id: number
+  siteName: string
+  siteDescription?: string | null
+  footerText?: string | null
+  logo?: (number | null) | Media
   navigation?:
     | {
-        label: string;
-        page: number | Page;
-        id?: string | null;
+        label: string
+        page: number | Page
+        id?: string | null
       }[]
-    | null;
+    | null
   contact?: {
-    email?: string | null;
-    phone?: string | null;
-    whatsapp?: string | null;
-    address?: string | null;
-  };
+    email?: string | null
+    phone?: string | null
+    whatsapp?: string | null
+    address?: string | null
+  }
   socialLinks?:
     | {
-        platform: 'facebook' | 'instagram' | 'linkedin' | 'tiktok' | 'youtube' | 'other';
-        url: string;
-        id?: string | null;
+        platform: 'facebook' | 'instagram' | 'linkedin' | 'tiktok' | 'youtube' | 'other'
+        url: string
+        id?: string | null
       }[]
-    | null;
+    | null
   defaultSeo?: {
-    title?: string | null;
-    description?: string | null;
+    title?: string | null
+    description?: string | null
     /**
      * Comma-separated keywords for search and content planning.
      */
-    keywords?: string | null;
+    keywords?: string | null
     /**
      * Optional canonical URL for this locale.
      */
-    canonical?: string | null;
-    ogImage?: (number | null) | Media;
-    noIndex?: boolean | null;
-  };
-  updatedAt?: string | null;
-  createdAt?: string | null;
+    canonical?: string | null
+    ogImage?: (number | null) | Media
+    noIndex?: boolean | null
+  }
+  updatedAt?: string | null
+  createdAt?: string | null
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "site-settings_select".
  */
 export interface SiteSettingsSelect<T extends boolean = true> {
-  siteName?: T;
-  siteDescription?: T;
-  footerText?: T;
-  logo?: T;
+  siteName?: T
+  siteDescription?: T
+  footerText?: T
+  logo?: T
   navigation?:
     | T
     | {
-        label?: T;
-        page?: T;
-        id?: T;
-      };
+        label?: T
+        page?: T
+        id?: T
+      }
   contact?:
     | T
     | {
-        email?: T;
-        phone?: T;
-        whatsapp?: T;
-        address?: T;
-      };
+        email?: T
+        phone?: T
+        whatsapp?: T
+        address?: T
+      }
   socialLinks?:
     | T
     | {
-        platform?: T;
-        url?: T;
-        id?: T;
-      };
+        platform?: T
+        url?: T
+        id?: T
+      }
   defaultSeo?:
     | T
     | {
-        title?: T;
-        description?: T;
-        keywords?: T;
-        canonical?: T;
-        ogImage?: T;
-        noIndex?: T;
-      };
-  updatedAt?: T;
-  createdAt?: T;
-  globalType?: T;
+        title?: T
+        description?: T
+        keywords?: T
+        canonical?: T
+        ogImage?: T
+        noIndex?: T
+      }
+  updatedAt?: T
+  createdAt?: T
+  globalType?: T
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -2680,18 +2722,17 @@ export interface SiteSettingsSelect<T extends boolean = true> {
  */
 export interface CollectionsWidget {
   data?: {
-    [k: string]: unknown;
-  };
-  width: 'full';
+    [k: string]: unknown
+  }
+  width: 'full'
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "auth".
  */
 export interface Auth {
-  [k: string]: unknown;
+  [k: string]: unknown
 }
-
 
 declare module 'payload' {
   export interface GeneratedTypes extends Config {}

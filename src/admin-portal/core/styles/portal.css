@@ -4271,6 +4271,59 @@
     line-height: 1.55;
   }
 
+  .portal-content-studio__generation-modes,
+  .portal-content-studio__image-upload {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--portal-space-2);
+  }
+
+  .portal-content-studio__generation-modes {
+    margin: 12px 0;
+  }
+
+  .portal-content-studio__image-editor,
+  .portal-content-studio__generated-image {
+    display: grid;
+    gap: 14px;
+  }
+
+  .portal-content-studio__image-upload input {
+    flex: 1 1 240px;
+  }
+
+  .portal-content-studio__image-preview {
+    position: relative;
+    width: min(100%, 512px);
+    overflow: hidden;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-canvas);
+  }
+
+  .portal-content-studio__image-preview.is-reference {
+    width: min(100%, 320px);
+  }
+
+  .portal-content-studio__image-preview img {
+    display: block;
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+  }
+
+  .portal-content-studio__generated-image {
+    padding-top: 14px;
+    border-top: 1px solid var(--portal-border);
+  }
+
+  .portal-content-studio__generated-image > p {
+    margin: 0;
+    color: var(--portal-muted);
+    overflow-wrap: anywhere;
+  }
+
   .portal-content-studio__feedback {
     margin: 0;
     padding: 10px 12px;
@@ -4290,6 +4343,7 @@
 
   .portal-content-studio__filters label,
   .portal-content-studio__form-grid > label,
+  .portal-content-studio__form-grid > .portal-content-studio__upload-field,
   .portal-content-studio__form > .portal-field {
     display: grid;
     min-width: 0;
@@ -4298,6 +4352,7 @@
 
   .portal-content-studio__filters label > span,
   .portal-content-studio__form-grid > label > span,
+  .portal-content-studio__upload-field > label,
   .portal-content-studio__form > .portal-field > span {
     color: var(--portal-muted);
     font-size: 11px;
@@ -4531,6 +4586,10 @@
   }
 
   .portal-content-studio__form-grid > label.is-wide {
+    grid-column: 1 / -1;
+  }
+
+  .portal-content-studio__form-grid > .portal-content-studio__upload-field.is-wide {
     grid-column: 1 / -1;
   }
 

@@ -204,6 +204,28 @@ describe.sequential('media policy integration', () => {
     ).rejects.toBeInstanceOf(ValidationError)
   })
 
+  it('rejects image bytes that do not match the declared MIME type', async () => {
+    const jpeg = await sharp({
+      create: { background: '#1c2f46', channels: 3, height: 2, width: 2 },
+    })
+      .jpeg()
+      .toBuffer()
+
+    await expect(
+      payload.create({
+        collection: 'media',
+        data: { alt: 'Mismatched image', source: 'Test fixture' },
+        file: {
+          data: jpeg,
+          mimetype: 'image/png',
+          name: `task5-mismatched-${randomUUID()}.png`,
+          size: jpeg.length,
+        },
+        overrideAccess: true,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
   it('rejects oversized images through the Local API path', async () => {
     const oversized = Buffer.alloc(MEDIA_IMAGE_MAX_BYTES + 1)
 

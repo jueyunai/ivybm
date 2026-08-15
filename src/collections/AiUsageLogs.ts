@@ -18,7 +18,14 @@ export const AiUsageLogs: CollectionConfig = {
     update: internalWrite,
   },
   admin: {
-    defaultColumns: ['operation', 'provider', 'model', 'totalTokens', 'estimatedCostUSD', 'createdAt'],
+    defaultColumns: [
+      'operation',
+      'provider',
+      'model',
+      'totalTokens',
+      'estimatedCostUSD',
+      'createdAt',
+    ],
     group: 'AI Management',
     useAsTitle: 'model',
   },
@@ -28,6 +35,7 @@ export const AiUsageLogs: CollectionConfig = {
       type: 'select',
       options: [
         { label: 'Embedding', value: 'embed' },
+        { label: 'Image generation', value: 'generateImage' },
         { label: 'Text generation', value: 'generateText' },
       ],
       required: true,

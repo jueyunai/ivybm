@@ -560,6 +560,7 @@ describe.sequential('chat HTTP API', () => {
         enabled: true,
         name: `CMS provider ${suffix}`,
         protocol: 'openai-compatible',
+        textGenerationContract: 'responses',
       },
       overrideAccess: true,
     })

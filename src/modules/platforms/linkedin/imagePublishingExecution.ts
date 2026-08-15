@@ -48,6 +48,10 @@ export type LinkedInImagePublishingIntent = {
   platformAccountId: number | string
 }
 
+export type LinkedInImageAssetReader = (
+  asset: LinkedInImageAssetIdentity,
+) => Promise<Uint8Array | null>
+
 export type LinkedInImagePublishingLeaseFence = {
   leaseExpiresAt: string
   ownerToken: string
@@ -441,15 +445,15 @@ const assertAssetBytes = (asset: LinkedInImageAssetIdentity, bytes: Uint8Array):
 
 const runStage = async ({
   asset,
-  assetBytes,
   checkpoint,
   platformAccountId,
+  readAssetBytes,
   transport,
 }: {
   asset: LinkedInImageAssetIdentity
-  assetBytes?: Uint8Array
   checkpoint: LinkedInImagePublishingCheckpoint
   platformAccountId: number | string
+  readAssetBytes?: LinkedInImageAssetReader
   transport: LinkedInPublishingTransport
 }): Promise<LinkedInImagePublishingTransition> => {
   if (checkpoint.stage === 'scheduled') {
@@ -480,10 +484,12 @@ const runStage = async ({
     }
   }
   if (checkpoint.stage === 'image_initialized') {
-    if (!assetBytes || !checkpoint.uploadTicket || !checkpoint.imageUrn) {
+    if (!readAssetBytes || !checkpoint.uploadTicket || !checkpoint.imageUrn) {
       throw new ProviderPublicationConfirmedError('invalid_request', false)
     }
-    // The caller has already bound bytes to the intent's asset identity.
+    const assetBytes = await readAssetBytes(asset)
+    if (!assetBytes) throw new ProviderPublicationConfirmedError('invalid_request', false)
+    assertAssetBytes(asset, assetBytes)
     await transport.uploadImage({
       authorization: {
         authorizationRevision: checkpoint.authorizationRevision,
@@ -551,16 +557,16 @@ const runStage = async ({
 }
 
 export const executeLinkedInImagePublishingStage = async ({
-  assetBytes,
   authority,
   intent: intentInput,
   leaseFence: leaseInput,
+  readAssetBytes,
   transport,
 }: {
-  assetBytes?: Uint8Array
   authority: LinkedInImagePublishingAuthorityPort
   intent: LinkedInImagePublishingIntent
   leaseFence: LinkedInImagePublishingLeaseFence
+  readAssetBytes?: LinkedInImageAssetReader
   transport: LinkedInPublishingTransport
 }): Promise<LinkedInImagePublishingTransition> => {
   const intent = normalizeIntent(intentInput)
@@ -569,14 +575,9 @@ export const executeLinkedInImagePublishingStage = async ({
   if (terminal.has(intent.checkpoint.stage)) {
     return { changed: false, checkpoint: intent.checkpoint }
   }
-  if (intent.checkpoint.stage === 'image_initialized') {
-    if (!assetBytes) return blocked(intent.checkpoint, 'intent_mismatch')
-    try {
-      assertAssetBytes(intent.asset, assetBytes)
-    } catch {
-      return blocked(intent.checkpoint, 'intent_mismatch')
-    }
-  } else if (assetBytes !== undefined) {
+  if (
+    intent.checkpoint.stage === 'image_initialized' ? !readAssetBytes : readAssetBytes !== undefined
+  ) {
     return blocked(intent.checkpoint, 'intent_mismatch')
   }
 
@@ -628,9 +629,9 @@ export const executeLinkedInImagePublishingStage = async ({
   try {
     transition = await runStage({
       asset: claim.intent.asset,
-      assetBytes,
       checkpoint: claim.intent.checkpoint,
       platformAccountId: claim.intent.platformAccountId,
+      readAssetBytes,
       transport,
     })
   } catch (error) {

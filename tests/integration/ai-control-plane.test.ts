@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { getPayload, type Payload } from 'payload'
+import { createLocalReq, getPayload, initTransaction, killTransaction, type Payload } from 'payload'
 import { NextRequest } from 'next/server'
-import type { PostgresAdapter } from '@payloadcms/db-postgres'
+import { sql, type MigrateDownArgs, type PostgresAdapter } from '@payloadcms/db-postgres'
 
 import { POST as graphQLPost } from '@/app/(payload)/api/graphql/route'
 import { GET as restGet } from '@/app/(payload)/api/[...slug]/route'
@@ -11,6 +11,7 @@ import type { AiProvider } from '@/modules/ai/gateway'
 import { AiConfigurationError } from '@/modules/ai/config'
 import { AI_USAGE_KEYS, resolveAiGateway } from '@/modules/ai/registry'
 import type { OpenAICompatibleProviderOptions } from '@/modules/ai/providers/openaiCompatible'
+import { down as removeImageGenerationContract } from '@/migrations/20260813_055309_image_generation_provider_contract'
 import config from '@/payload.config'
 
 let payload: Payload
@@ -22,6 +23,9 @@ let profileID: number
 let routeID: number
 let embeddingProfileID: number
 let embeddingRouteID: number
+let imageProfileID: number
+let imageRouteID: number
+let imageUsageLogID: number | string = 0
 let textUsageKey: string
 let originalEncryptionKey: string | undefined
 
@@ -29,6 +33,27 @@ const createdUserIDs: Array<number | string> = []
 const createdUsageLogIDs: Array<number | string> = []
 
 describe.sequential('AI control plane', () => {
+  const startMigrationTransaction = async () => {
+    const request = await createLocalReq({}, payload)
+    await initTransaction(request)
+    const transactionID = await request.transactionID
+    const transaction = transactionID
+      ? (payload.db as unknown as PostgresAdapter).sessions[String(transactionID)]?.db
+      : undefined
+    if (!transaction) throw new Error('Expected an isolated AI migration transaction')
+    return { request, transaction }
+  }
+
+  const removeImageState = async (
+    transaction: Awaited<ReturnType<typeof startMigrationTransaction>>['transaction'],
+  ) => {
+    await transaction.execute(sql`
+      DELETE FROM "ai_usage_logs" WHERE "operation" = 'generateImage';
+      DELETE FROM "ai_usage_routes" WHERE "operation" = 'image';
+      DELETE FROM "ai_model_profiles" WHERE "capability" = 'image';
+    `)
+  }
+
   beforeAll(async () => {
     if (!process.env.DATABASE_URL) {
       throw new Error('DATABASE_URL is required for AI control-plane integration tests')
@@ -88,8 +113,10 @@ describe.sequential('AI control plane', () => {
       for (const [collection, id] of [
         ['ai-usage-routes', routeID],
         ['ai-usage-routes', embeddingRouteID],
+        ['ai-usage-routes', imageRouteID],
         ['ai-model-profiles', profileID],
         ['ai-model-profiles', embeddingProfileID],
+        ['ai-model-profiles', imageProfileID],
         ['ai-providers', providerID],
       ] as const) {
         if (id) {
@@ -128,6 +155,7 @@ describe.sequential('AI control plane', () => {
         enabled: true,
         name: `Provider ${suffix}`,
         protocol: 'openai-compatible',
+        textGenerationContract: 'responses',
       },
       overrideAccess: false,
       user: admin,
@@ -212,6 +240,7 @@ describe.sequential('AI control plane', () => {
           enabled: true,
           name: `Sales provider ${suffix}`,
           protocol: 'openai-compatible',
+          textGenerationContract: 'responses',
         },
         overrideAccess: false,
         user: sales,
@@ -308,6 +337,267 @@ describe.sequential('AI control plane', () => {
 
     expect(updated).not.toHaveProperty('apiKey')
     expect(after.apiKey).toBe(before.apiKey)
+  })
+
+  it('persists an image profile, matching usage route and zero-token image telemetry', async () => {
+    const suffix = randomUUID()
+    const imageProfile = await payload.create({
+      collection: 'ai-model-profiles',
+      data: {
+        capability: 'image',
+        enabled: true,
+        model: 'image-model',
+        name: `Image model ${suffix}`,
+        parameters: {
+          reasoningEffort: 'medium',
+          reasoningEnabled: false,
+          timeoutMs: 60_000,
+        },
+        provider: providerID,
+      },
+      overrideAccess: false,
+      user: admin,
+    })
+    imageProfileID = imageProfile.id
+
+    await expect(
+      payload.create({
+        collection: 'ai-usage-routes',
+        data: {
+          enabled: true,
+          operation: 'text',
+          profile: imageProfileID,
+          usageKey: `content.image.invalid.${suffix.replaceAll('-', '')}`,
+        },
+        overrideAccess: false,
+        user: admin,
+      }),
+    ).rejects.toBeDefined()
+
+    const imageRoute = await payload.create({
+      collection: 'ai-usage-routes',
+      data: {
+        enabled: true,
+        operation: 'image',
+        profile: imageProfileID,
+        usageKey: 'content.image-generation',
+      },
+      overrideAccess: false,
+      user: admin,
+    })
+    imageRouteID = imageRoute.id
+
+    const usage = await payload.create({
+      collection: 'ai-usage-logs',
+      data: {
+        durationMs: 250,
+        inputTokens: 0,
+        model: 'image-model',
+        operation: 'generateImage',
+        outputTokens: 0,
+        provider: 'configured-provider',
+        requestId: `${suffix}-image`,
+        totalTokens: 0,
+      },
+      overrideAccess: true,
+    })
+    imageUsageLogID = usage.id
+    createdUsageLogIDs.push(usage.id)
+
+    expect(imageProfile.capability).toBe('image')
+    expect(imageRoute.operation).toBe('image')
+    expect(usage).toMatchObject({ operation: 'generateImage', totalTokens: 0 })
+  })
+
+  it('refuses an image schema downgrade before DDL while image data exists', async () => {
+    const { request, transaction } = await startMigrationTransaction()
+
+    try {
+      await expect(
+        removeImageGenerationContract({
+          db: transaction as MigrateDownArgs['db'],
+          payload,
+          req: request,
+        }),
+      ).rejects.toThrow(
+        'Cannot roll back image generation migration while image configuration or usage data exists',
+      )
+    } finally {
+      await killTransaction(request)
+    }
+
+    await expect(
+      payload.findByID({
+        collection: 'ai-model-profiles',
+        id: imageProfileID,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ capability: 'image' })
+    await expect(
+      payload.findByID({
+        collection: 'ai-usage-routes',
+        id: imageRouteID,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ operation: 'image' })
+    await expect(
+      payload.findByID({
+        collection: 'ai-usage-logs',
+        id: imageUsageLogID,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ operation: 'generateImage' })
+  })
+
+  it('refuses a provider-contract downgrade before DDL with only chat-completions state', async () => {
+    const suffix = randomUUID()
+    const chatProvider = await payload.create({
+      collection: 'ai-providers',
+      data: {
+        apiKey: `chat-provider-secret-${suffix}`,
+        apiKeyConfigured: true,
+        baseURL: 'https://chat.example.invalid/v1',
+        enabled: true,
+        name: `Chat completions provider ${suffix}`,
+        protocol: 'openai-compatible',
+        textGenerationContract: 'chat-completions',
+      },
+      overrideAccess: true,
+    })
+
+    try {
+      const { request, transaction } = await startMigrationTransaction()
+      try {
+        await removeImageState(transaction)
+
+        await expect(
+          removeImageGenerationContract({
+            db: transaction as MigrateDownArgs['db'],
+            payload,
+            req: request,
+          }),
+        ).rejects.toThrow(
+          'Cannot roll back image generation/provider contract migration while chat-completions provider configuration exists',
+        )
+      } finally {
+        await killTransaction(request)
+      }
+
+      await expect(
+        payload.findByID({
+          collection: 'ai-providers',
+          id: chatProvider.id,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({ textGenerationContract: 'chat-completions' })
+      await expect(
+        payload.findByID({
+          collection: 'ai-model-profiles',
+          id: imageProfileID,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({ capability: 'image' })
+    } finally {
+      await payload.delete({
+        collection: 'ai-providers',
+        id: chatProvider.id,
+        overrideAccess: true,
+      })
+    }
+  })
+
+  it('preserves mixed image and chat-completions state when downgrade is refused', async () => {
+    await payload.update({
+      collection: 'ai-providers',
+      data: { textGenerationContract: 'chat-completions' },
+      id: providerID,
+      overrideAccess: true,
+    })
+
+    try {
+      const { request, transaction } = await startMigrationTransaction()
+      try {
+        await expect(
+          removeImageGenerationContract({
+            db: transaction as MigrateDownArgs['db'],
+            payload,
+            req: request,
+          }),
+        ).rejects.toThrow(
+          'Cannot roll back image generation migration while image configuration or usage data exists',
+        )
+      } finally {
+        await killTransaction(request)
+      }
+
+      await expect(
+        payload.findByID({
+          collection: 'ai-providers',
+          id: providerID,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({ textGenerationContract: 'chat-completions' })
+      await expect(
+        payload.findByID({
+          collection: 'ai-model-profiles',
+          id: imageProfileID,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({ capability: 'image' })
+      await expect(
+        payload.findByID({
+          collection: 'ai-usage-routes',
+          id: imageRouteID,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({ operation: 'image' })
+      await expect(
+        payload.findByID({
+          collection: 'ai-usage-logs',
+          id: imageUsageLogID,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({ operation: 'generateImage' })
+    } finally {
+      await payload.update({
+        collection: 'ai-providers',
+        data: { textGenerationContract: 'responses' },
+        id: providerID,
+        overrideAccess: true,
+      })
+    }
+  })
+
+  it('downgrades successfully after all new durable state is removed or normalized', async () => {
+    const { request, transaction } = await startMigrationTransaction()
+
+    try {
+      await removeImageState(transaction)
+      await transaction.execute(sql`
+        UPDATE "ai_providers" SET "text_generation_contract" = 'responses'
+      `)
+
+      await expect(
+        removeImageGenerationContract({
+          db: transaction as MigrateDownArgs['db'],
+          payload,
+          req: request,
+        }),
+      ).resolves.toBeUndefined()
+
+      const schema = await transaction.execute<{ contractColumnExists: boolean }>(sql`
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'ai_providers'
+            AND column_name = 'text_generation_contract'
+        ) AS "contractColumnExists"
+      `)
+      expect(schema.rows).toEqual([{ contractColumnExists: false }])
+    } finally {
+      await killTransaction(request)
+    }
   })
 
   it('resolves the persisted route snapshot and fails closed for a disabled route', async () => {

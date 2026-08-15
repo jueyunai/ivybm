@@ -1,9 +1,24 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 
 import type { Payload, PayloadRequest } from 'payload'
+import sharp from 'sharp'
 
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
+import {
+  AI_IMAGE_SIZES,
+  AI_GENERATED_IMAGE_MAX_BYTES,
+  isValidAiImage,
+  type AiImageMimeType,
+  type AiImageSize,
+} from '@/modules/ai/gateway'
 import { AI_USAGE_KEYS, resolveAiGateway } from '@/modules/ai/registry'
+import {
+  createPortalMedia,
+  mediaBytesMatchMimeType,
+  resolveManagedMediaPath,
+} from '@/modules/media'
 
 import {
   GENERATED_CONTENT_PLATFORMS,
@@ -282,6 +297,249 @@ const findExistingCreate = async ({
 }
 
 type ResolveContentStudioGateway = typeof resolveAiGateway
+
+const CONTENT_STUDIO_REFERENCE_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+] as const satisfies readonly AiImageMimeType[]
+
+type ContentStudioImageInput = {
+  prompt: string
+  referenceMediaId: null | number
+  size: AiImageSize
+}
+
+const parseImageGenerationInput = (input: unknown): ContentStudioImageInput => {
+  const record = asRecord(input)
+  return {
+    prompt: stringValue(record, 'prompt', { max: 2_000, required: true }),
+    referenceMediaId: optionalPositiveID(record.referenceMediaId, 'referenceMediaId'),
+    size: selected(record.size ?? '1024x1024', AI_IMAGE_SIZES, 'size'),
+  }
+}
+
+const mediaReference = async ({
+  id,
+  payload,
+  req,
+}: {
+  id: number
+  payload: ContentStudioPayload
+  req: PayloadRequest
+}): Promise<{ data: Uint8Array; mimeType: AiImageMimeType }> => {
+  let media: LooseRecord
+  try {
+    media = await payload.findByID({
+      collection: 'media',
+      depth: 0,
+      id,
+      overrideAccess: false,
+      req,
+    })
+  } catch {
+    throw new ContentStudioCommandError(
+      'content-studio-reference-unavailable',
+      'The reference image is unavailable',
+      409,
+    )
+  }
+  const filename = typeof media.filename === 'string' ? media.filename : ''
+  const mimeType = typeof media.mimeType === 'string' ? media.mimeType : ''
+  if (!filename || !CONTENT_STUDIO_REFERENCE_MIME_TYPES.includes(mimeType as AiImageMimeType)) {
+    throw new ContentStudioCommandError(
+      'content-studio-reference-unavailable',
+      'The reference image is unavailable',
+      409,
+    )
+  }
+  let data: Uint8Array
+  try {
+    data = new Uint8Array(await readFile(await resolveManagedMediaPath(filename)))
+  } catch {
+    throw new ContentStudioCommandError(
+      'content-studio-reference-unavailable',
+      'The reference image is unavailable',
+      409,
+    )
+  }
+  if (!isValidAiImage(data, mimeType)) {
+    throw new ContentStudioCommandError(
+      'content-studio-reference-unavailable',
+      'The reference image is unavailable',
+      409,
+    )
+  }
+  return { data, mimeType: mimeType as AiImageMimeType }
+}
+
+const imageExtension = (mimeType: AiImageMimeType): string => {
+  if (mimeType === 'image/jpeg') return 'jpg'
+  if (mimeType === 'image/webp') return 'webp'
+  return 'png'
+}
+
+const normalizeGeneratedImage = async ({
+  data,
+  mimeType,
+}: {
+  data: Uint8Array
+  mimeType: AiImageMimeType
+}): Promise<{ data: Buffer; mimeType: 'image/jpeg' | 'image/png' }> => {
+  if (mimeType !== 'image/webp') {
+    return { data: Buffer.from(data), mimeType }
+  }
+  return { data: await sharp(data).png().toBuffer(), mimeType: 'image/png' }
+}
+
+export async function generateContentStudioImage({
+  input: rawInput,
+  onProviderDispatch,
+  payload,
+  readStoredMediaBytes = async (filename) => readFile(await resolveManagedMediaPath(filename)),
+  req,
+  resolveGateway = resolveAiGateway,
+}: {
+  input: unknown
+  onProviderDispatch?: () => void
+  payload: ContentStudioPayload
+  readStoredMediaBytes?: (filename: string) => Promise<Uint8Array>
+  req: PayloadRequest
+  resolveGateway?: ResolveContentStudioGateway
+}) {
+  const input = parseImageGenerationInput(rawInput)
+  const referenceImage = input.referenceMediaId
+    ? await mediaReference({ id: input.referenceMediaId, payload, req })
+    : undefined
+  try {
+    const gateway = await resolveGateway({
+      allowEnvironmentFallback: false,
+      payload: payload as unknown as Payload,
+      routes: [{ operation: 'image', usageKey: AI_USAGE_KEYS.contentImageGeneration }],
+    })
+    const result = await gateway.generateImage({
+      onDispatch: onProviderDispatch,
+      prompt: input.prompt,
+      referenceImage,
+      size: input.size,
+    })
+    const image = await normalizeGeneratedImage(result.image)
+    const media = await createPortalMedia({
+      file: {
+        data: image.data,
+        mimetype: image.mimeType,
+        name: `ai-generated-${randomUUID()}.${imageExtension(image.mimeType)}`,
+        size: image.data.length,
+      },
+      input: {
+        alt: input.prompt.slice(0, 500),
+        isPublic: false,
+        source: `AI generated via ${result.provider} / ${result.model}`,
+      },
+      payload: payload as Payload,
+      req,
+    })
+    const storedBytes = await readStoredMediaBytes(media.filename)
+    if (
+      storedBytes.byteLength > AI_GENERATED_IMAGE_MAX_BYTES ||
+      !mediaBytesMatchMimeType(storedBytes, media.mimeType)
+    ) {
+      throw new ContentStudioCommandError(
+        'content-studio-image-unavailable',
+        'The generated image could not be verified after storage.',
+        503,
+      )
+    }
+    return {
+      media,
+      model: result.model,
+      provider: result.provider,
+      requestId: result.requestId,
+      revisedPrompt: result.revisedPrompt,
+      sha256: createHash('sha256').update(storedBytes).digest('hex'),
+    }
+  } catch (error) {
+    if (error instanceof ContentStudioCommandError) throw error
+    throw new ContentStudioCommandError(
+      'content-studio-image-unavailable',
+      'Image generation is unavailable. Check the configured image model and retry.',
+      503,
+    )
+  }
+}
+
+export async function adoptContentStudioImage({
+  id,
+  input: rawInput,
+  payload,
+  req,
+}: {
+  id: number
+  input: unknown
+  payload: ContentStudioPayload
+  req: PayloadRequest
+}) {
+  const input = asRecord(rawInput)
+  const mediaId = positiveID(input.mediaId, 'mediaId')
+  const updatedAt = revision(input.updatedAt)
+  const content = await findContent({ id, payload, req })
+  assertRevision(content, updatedAt)
+  if (content.status !== 'draft') {
+    throw new ContentStudioCommandError(
+      'content-studio-invalid-transition',
+      'Only drafts can adopt generated images',
+      409,
+    )
+  }
+
+  let media: LooseRecord
+  try {
+    media = await payload.findByID({
+      collection: 'media',
+      depth: 0,
+      id: mediaId,
+      overrideAccess: false,
+      req,
+    })
+  } catch {
+    throw new ContentStudioCommandError(
+      'content-studio-image-unavailable',
+      'The generated image is unavailable',
+      409,
+    )
+  }
+  const filename = typeof media.filename === 'string' ? media.filename : ''
+  const mimeType = typeof media.mimeType === 'string' ? media.mimeType : ''
+  if (
+    !filename ||
+    path.basename(filename) !== filename ||
+    !CONTENT_STUDIO_REFERENCE_MIME_TYPES.includes(mimeType as AiImageMimeType)
+  ) {
+    throw new ContentStudioCommandError(
+      'content-studio-image-unavailable',
+      'The generated image is unavailable',
+      409,
+    )
+  }
+
+  const assets = [
+    ...new Set(
+      (Array.isArray(content.assets) ? content.assets : [])
+        .map(asRelationID)
+        .filter((assetId): assetId is number => assetId !== null),
+    ),
+  ]
+  if (assets.includes(mediaId)) return asContentResult(content)
+  const updated = await payload.update({
+    collection: 'generated-contents',
+    context: internalContext,
+    data: { assets: [...assets, mediaId] },
+    id,
+    overrideAccess: false,
+    req,
+  })
+  return asContentResult(updated)
+}
 
 type ContentStudioGenerationInput = {
   assets: number[]

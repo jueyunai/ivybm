@@ -17,6 +17,8 @@ export type PortalCommandExecution = { markExternalDispatch: () => void }
 
 const COMMAND_LEASE_MS = 2 * 60 * 1000
 const UNKNOWN_RESULT_CODE = 'portal-command-result-unknown'
+const UNKNOWN_RESULT_MESSAGE =
+  'The command outcome is unknown. Check current data before starting a new command.'
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:._-]{7,199}$/
 
 const TARGET_TABLES = {
@@ -221,11 +223,7 @@ const claimCommand = async ({
           ((existing.status === 'processing' && expired) ||
             (existing.status === 'failed' && existing.errorCode === UNKNOWN_RESULT_CODE))
         ) {
-          throw new PortalCommandReceiptError(
-            UNKNOWN_RESULT_CODE,
-            'The command outcome is unknown. Check current data before starting a new command.',
-            409,
-          )
+          throw new PortalCommandReceiptError(UNKNOWN_RESULT_CODE, UNKNOWN_RESULT_MESSAGE, 409)
         }
         if (existing.status === 'processing' && !expired) {
           throw new PortalCommandReceiptError(
@@ -461,6 +459,9 @@ export async function executePortalCommand<T>({
         [error, receiptError],
         'Portal command failed and its receipt failure state could not be recorded',
       )
+    }
+    if (replayPolicy === 'unknown-on-expiry' && externalDispatchStarted) {
+      throw new PortalCommandReceiptError(UNKNOWN_RESULT_CODE, UNKNOWN_RESULT_MESSAGE, 409)
     }
     throw error
   }

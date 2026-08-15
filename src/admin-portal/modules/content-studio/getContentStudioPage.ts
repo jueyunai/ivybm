@@ -219,7 +219,7 @@ export const loadContentStudioPageData = async ({
             collection: 'platform-accounts',
             depth: 0,
             limit: 100,
-            overrideAccess: false,
+            overrideAccess: true,
             pagination: false,
             req,
             select: {
