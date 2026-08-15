@@ -36,6 +36,8 @@ const environmentKeys = [
   'INSTAGRAM_APP_ID',
   'INSTAGRAM_APP_SECRET',
   'INSTAGRAM_OAUTH_REDIRECT_URI',
+  'META_WEBHOOK_ALLOWED_ACCOUNT_IDS',
+  'META_WEBHOOK_VERIFY_TOKEN',
   'NEXT_PUBLIC_SERVER_URL',
   'PLATFORM_CREDENTIAL_ENCRYPTION_KEY',
 ] as const
@@ -63,8 +65,12 @@ const account = {
   updatedAt: '2026-07-31T00:00:00.000Z',
 }
 
-type TestAccount = Omit<typeof account, 'accountKind' | 'externalAccountId'> & {
+type TestAccount = Omit<typeof account, 'accountKind' | 'capabilities' | 'externalAccountId'> & {
   accountKind: 'facebook-page' | 'instagram-professional'
+  capabilities: {
+    messagingInbound: 'approved' | 'pending'
+    publishing: 'pending'
+  }
   externalAccountId: null | string
 }
 
@@ -130,6 +136,8 @@ describe('Instagram OAuth routes', () => {
     process.env.INSTAGRAM_APP_ID = '1221206873460693'
     process.env.INSTAGRAM_APP_SECRET = 'test-instagram-app-secret'
     process.env.INSTAGRAM_OAUTH_REDIRECT_URI = `http://localhost:3000${INSTAGRAM_OAUTH_CALLBACK_PATH}`
+    process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS = account.externalAccountId
+    process.env.META_WEBHOOK_VERIFY_TOKEN = 'test-meta-verify-token'
     process.env.NEXT_PUBLIC_SERVER_URL = 'https://ivybm.com'
     process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY = 'b'.repeat(64)
   })
@@ -244,7 +252,7 @@ describe('Instagram OAuth routes', () => {
       grantedScopes: requiredInstagramPermissions('instagram-professional'),
       message: 'Instagram OAuth permissions resolved',
       missingScopes: [],
-      permissionsCount: 3,
+      permissionsCount: 4,
       permissionsItemTypes: ['string'],
       permissionsType: 'array',
       providerScopes: requiredInstagramPermissions('instagram-professional'),
@@ -283,6 +291,55 @@ describe('Instagram OAuth routes', () => {
     })
     expect(actualRequests).toEqual(instagramOAuthFixture.requests)
     expect(actualRequests.every(({ pathname }) => !pathname.includes('permissions'))).toBe(true)
+  })
+
+  it('subscribes an approved Instagram account to messages before storing its token', async () => {
+    const approvedAccount = {
+      ...account,
+      capabilities: { messagingInbound: 'approved' as const, publishing: 'pending' as const },
+    }
+    const payload = createPayload({ foundAccount: approvedAccount })
+    mocks.getPayload.mockResolvedValue(payload)
+    const startResponse = await instagramOAuthStart(startRequest())
+    const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ...instagramOAuthFixture.responses.shortToken,
+            permissions: requiredInstagramPermissions('instagram-professional'),
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(instagramOAuthFixture.responses.longToken), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(instagramOAuthFixture.responses.profile), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetcher)
+
+    const response = await instagramOAuthCallback(
+      new NextRequest(
+        `http://localhost:3000${INSTAGRAM_OAUTH_CALLBACK_PATH}?code=authorization-code&state=${state}`,
+        { headers: { cookie: cookieHeader(startResponse) } },
+      ),
+    )
+
+    expect(response.headers.get('location')).toBe(
+      'http://localhost:3000/dashboard/platforms?instagramOAuth=connected',
+    )
+    const [subscriptionURL, subscriptionInit] = fetcher.mock.calls[3]!
+    expect(String(subscriptionURL)).toBe(
+      `https://graph.instagram.com/v22.0/${account.externalAccountId}/subscribed_apps?subscribed_fields=messages`,
+    )
+    expect(subscriptionInit?.headers).toMatchObject({
+      authorization: `Bearer ${instagramOAuthFixture.responses.longToken.access_token}`,
+    })
+    expect(payload.update).toHaveBeenCalledTimes(1)
   })
 
   it('logs only safe structured diagnostics when the provider rejects token exchange', async () => {
@@ -427,7 +484,11 @@ describe('Instagram OAuth routes', () => {
       code: 'required_permission_missing',
       grantedScopes: ['instagram_business_basic'],
       message: 'Instagram OAuth callback failed',
-      missingScopes: ['instagram_business_manage_comments', 'instagram_business_manage_messages'],
+      missingScopes: [
+        'instagram_business_content_publish',
+        'instagram_business_manage_comments',
+        'instagram_business_manage_messages',
+      ],
       oauthCode: 'required_permission_missing',
       permissionsCount: 2,
       permissionsType: 'string',

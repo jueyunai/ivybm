@@ -34,7 +34,9 @@ const environmentKeys = [
   'META_APP_ID',
   'META_LOGIN_CONFIG_ID',
   'META_OAUTH_REDIRECT_URI',
+  'META_WEBHOOK_ALLOWED_ACCOUNT_IDS',
   'META_WEBHOOK_APP_SECRET',
+  'META_WEBHOOK_VERIFY_TOKEN',
   'NEXT_PUBLIC_SERVER_URL',
   'PLATFORM_CREDENTIAL_ENCRYPTION_KEY',
 ] as const
@@ -62,8 +64,12 @@ const account = {
   updatedAt: '2026-07-31T00:00:00.000Z',
 }
 
-type TestAccount = Omit<typeof account, 'accountKind' | 'externalAccountId'> & {
+type TestAccount = Omit<typeof account, 'accountKind' | 'capabilities' | 'externalAccountId'> & {
   accountKind: 'facebook-page' | 'instagram-professional'
+  capabilities: {
+    messagingInbound: 'approved' | 'pending'
+    publishing: 'pending'
+  }
   externalAccountId: null | string
 }
 
@@ -125,7 +131,9 @@ describe('Meta OAuth routes', () => {
     process.env.META_APP_ID = '1111111111111111'
     process.env.META_LOGIN_CONFIG_ID = '2222222222222222'
     process.env.META_OAUTH_REDIRECT_URI = `http://localhost:3000${META_OAUTH_CALLBACK_PATH}`
+    process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS = account.externalAccountId
     process.env.META_WEBHOOK_APP_SECRET = 'test-meta-app-secret'
+    process.env.META_WEBHOOK_VERIFY_TOKEN = 'test-meta-verify-token'
     process.env.NEXT_PUBLIC_SERVER_URL = 'https://ivybm.com'
     process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY = 'b'.repeat(64)
   })
@@ -295,6 +303,138 @@ describe('Meta OAuth routes', () => {
       overrideAccess: false,
       req: expect.any(Object),
       user: admin,
+    })
+  })
+
+  it('subscribes an approved Facebook Page to messages before storing its token', async () => {
+    const approvedAccount = {
+      ...account,
+      capabilities: { messagingInbound: 'approved' as const, publishing: 'pending' as const },
+    }
+    const payload = createPayload({ foundAccount: approvedAccount })
+    mocks.getPayload.mockResolvedValue(payload)
+    const startResponse = await metaOAuthStart(startRequest())
+    const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'short-user-token', token_type: 'bearer' }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'long-user-token', token_type: 'bearer' }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: requiredMetaPermissions('facebook-page').map((permission) => ({
+              permission,
+              status: 'granted',
+            })),
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                access_token: 'page-access-token',
+                id: account.externalAccountId,
+                name: account.name,
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetcher)
+
+    const response = await metaOAuthCallback(
+      new NextRequest(
+        `http://localhost:3000${META_OAUTH_CALLBACK_PATH}?code=authorization-code&state=${state}`,
+        { headers: { cookie: cookieHeader(startResponse) } },
+      ),
+    )
+
+    expect(response.headers.get('location')).toBe(
+      'http://localhost:3000/dashboard/platforms?metaOAuth=connected',
+    )
+    const [subscriptionURL, subscriptionInit] = fetcher.mock.calls[4]!
+    expect(String(subscriptionURL)).toBe(
+      `https://graph.facebook.com/v25.0/${account.externalAccountId}/subscribed_apps?subscribed_fields=messages`,
+    )
+    expect(subscriptionInit?.headers).toMatchObject({
+      authorization: 'Bearer page-access-token',
+    })
+    expect(payload.update).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not store a Page token when required message subscription fails', async () => {
+    const approvedAccount = {
+      ...account,
+      capabilities: { messagingInbound: 'approved' as const, publishing: 'pending' as const },
+    }
+    const payload = createPayload({ foundAccount: approvedAccount })
+    mocks.getPayload.mockResolvedValue(payload)
+    const startResponse = await metaOAuthStart(startRequest())
+    const state = new URL(String(startResponse.headers.get('location'))).searchParams.get('state')
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'short-user-token' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: 'long-user-token' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: requiredMetaPermissions('facebook-page').map((permission) => ({
+              permission,
+              status: 'granted',
+            })),
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                access_token: 'page-access-token',
+                id: account.externalAccountId,
+                name: account.name,
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: false }), { status: 403 }))
+    vi.stubGlobal('fetch', fetcher)
+
+    const response = await metaOAuthCallback(
+      new NextRequest(
+        `http://localhost:3000${META_OAUTH_CALLBACK_PATH}?code=authorization-code&state=${state}`,
+        { headers: { cookie: cookieHeader(startResponse) } },
+      ),
+    )
+
+    expect(response.headers.get('location')).toBe(
+      'http://localhost:3000/dashboard/platforms?metaOAuth=webhook_subscription_failed',
+    )
+    expect(payload.update).not.toHaveBeenCalled()
+    expect(payload.logger.error).toHaveBeenCalledWith({
+      code: 'webhook_subscription_failed',
+      message: 'Meta OAuth callback failed',
+      oauthCode: 'webhook_subscription_failed',
     })
   })
 

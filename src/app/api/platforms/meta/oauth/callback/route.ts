@@ -12,6 +12,10 @@ import {
   type MetaOAuthTransaction,
 } from '@/modules/platforms/meta/oauth'
 import {
+  isMetaWebhookAccountConfigured,
+  subscribeMetaMessagingWebhook,
+} from '@/modules/platforms/meta/webhookSubscription'
+import {
   PlatformOAuthAccountChangedError,
   withLockedPlatformOAuthAccount,
 } from '@/modules/platforms/accountOAuthConcurrency'
@@ -61,6 +65,8 @@ const callbackErrorCode = (error: unknown): string => {
     case 'token_exchange_failed':
     case 'token_response_invalid':
       return 'token_exchange_failed'
+    case 'webhook_subscription_failed':
+      return 'webhook_subscription_failed'
     case 'invalid_configuration':
       return 'unavailable'
     case 'invalid_transaction':
@@ -223,6 +229,20 @@ export async function GET(request: NextRequest): Promise<Response> {
       externalAccountId: transaction.externalAccountId,
       userAccessToken: userToken.accessToken,
     })
+    if (account.capabilities?.messagingInbound === 'approved') {
+      if (!isMetaWebhookAccountConfigured({ accountExternalId: authorizedAccount.pageId })) {
+        throw new MetaOAuthError('webhook_subscription_failed')
+      }
+      try {
+        await subscribeMetaMessagingWebhook({
+          accessToken: authorizedAccount.accessToken,
+          accountExternalId: authorizedAccount.pageId,
+          platform: 'facebook-messenger',
+        })
+      } catch {
+        throw new MetaOAuthError('webhook_subscription_failed')
+      }
+    }
     await withLockedPlatformOAuthAccount({
       operation: (req) =>
         callbackPayload.update({
