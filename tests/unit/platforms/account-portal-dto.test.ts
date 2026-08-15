@@ -207,8 +207,28 @@ describe('account portal DTO', () => {
       value: {
         authorizationRevision: 3,
         externalAccountId: 'new-id',
+        messagingInbound: undefined,
         name: 'Updated',
         notes: null,
+        publishing: undefined,
+      },
+    })
+
+    expect(
+      validateUpdatePlatformAccountInput({
+        authorizationRevision: 3,
+        messagingInbound: 'approved',
+        publishing: 'pending',
+      }),
+    ).toEqual({
+      success: true,
+      value: {
+        authorizationRevision: 3,
+        externalAccountId: undefined,
+        messagingInbound: 'approved',
+        name: undefined,
+        notes: undefined,
+        publishing: 'pending',
       },
     })
 
@@ -232,6 +252,19 @@ describe('account portal DTO', () => {
       error: { code: 'no_changes' },
       success: false,
     })
+    expect(
+      validateUpdatePlatformAccountInput({
+        authorizationRevision: 3,
+        messagingInbound: 'approved',
+      }),
+    ).toEqual({ error: { code: 'invalid_capabilities' }, success: false })
+    expect(
+      validateUpdatePlatformAccountInput({
+        authorizationRevision: 3,
+        messagingInbound: 'approved',
+        publishing: 'available',
+      }),
+    ).toEqual({ error: { code: 'invalid_capabilities' }, success: false })
     expect(
       validateUpdatePlatformAccountInput({ authorizationRevision: 3, name: 'x'.repeat(121) }),
     ).toEqual({

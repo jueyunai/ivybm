@@ -380,6 +380,38 @@ describe('platform account portal routes', () => {
     expect(payload.update).not.toHaveBeenCalled()
   })
 
+  it('updates both platform capability approval states atomically', async () => {
+    const payload = createPayload()
+    mocks.getPayload.mockResolvedValue(payload)
+
+    const response = await PATCH(
+      jsonRequest({
+        body: {
+          authorizationRevision: 3,
+          messagingInbound: 'approved',
+          publishing: 'pending',
+        },
+        method: 'PATCH',
+        path: '/api/platforms/accounts/42',
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(payload.update).toHaveBeenCalledWith({
+      collection: 'platform-accounts',
+      data: {
+        capabilities: {
+          messagingInbound: 'approved',
+          publishing: 'pending',
+        },
+      },
+      id: 42,
+      overrideAccess: false,
+      req: expect.any(Object),
+      user: admin,
+    })
+  })
+
   it('rejects malformed external account IDs using the locked account kind', async () => {
     const payload = createPayload()
     mocks.getPayload.mockResolvedValue(payload)

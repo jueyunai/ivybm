@@ -32,6 +32,15 @@ const messages = {
     actionOwner: 'Responsible owner',
     actionTitle: 'Next action',
     addAccount: 'Add account',
+    approvalHelp:
+      'Record the real platform review state. Select Approved only after the provider has granted the capability.',
+    approvalStatus: 'Platform review status',
+    approvalStatuses: {
+      approved: 'Approved',
+      blocked: 'Blocked',
+      not_started: 'Not started',
+      pending: 'Pending',
+    },
     available: 'Available',
     blocked: 'Blocked',
     cancel: 'Cancel',
@@ -107,6 +116,10 @@ const messages = {
         message: 'Token exchange failed. Try again later.',
         tone: 'error' as const,
       },
+      webhook_subscription_failed: {
+        message: 'The account was authorized, but its messaging webhook could not be subscribed.',
+        tone: 'error' as const,
+      },
       unavailable: { message: 'OAuth is not configured on this server.', tone: 'error' as const },
     },
     owners: {
@@ -123,6 +136,8 @@ const messages = {
       authorization: 'Complete the platform authorization flow.',
       credential_decryption: 'The configured credential cannot be verified by this environment.',
       external_account_id: 'An external account ID is required.',
+      instagram_app_secret:
+        'The Instagram app secret must be configured in the restricted maintenance flow.',
       meta_account_allowlist: 'Add this account to the Meta webhook allowlist.',
       meta_app_secret: 'The Meta app secret must be configured in the restricted maintenance flow.',
       meta_verify_token:
@@ -147,6 +162,7 @@ const messages = {
       forbidden: 'You are not allowed to perform this action.',
       identity_change_requires_credential_rotation:
         'Disconnect the account before changing its provider identity.',
+      invalid_capabilities: 'Select a valid review status for both capabilities.',
       invalid_external_account_id: 'Enter a valid provider account ID.',
       invalid_name: 'Enter a valid display name.',
       invalid_notes: 'Notes are too long.',
@@ -191,6 +207,14 @@ const messages = {
     actionOwner: '责任人',
     actionTitle: '下一步',
     addAccount: '添加账号',
+    approvalHelp: '请按平台真实审核结果记录状态；只有平台已授予该能力后才能选择“已批准”。',
+    approvalStatus: '平台审核状态',
+    approvalStatuses: {
+      approved: '已批准',
+      blocked: '已阻止',
+      not_started: '未开始',
+      pending: '审核中',
+    },
     available: '可用',
     blocked: '受阻',
     cancel: '取消',
@@ -242,6 +266,10 @@ const messages = {
       },
       state_mismatch: { message: '授权安全校验失败，请重新连接。', tone: 'error' as const },
       token_exchange_failed: { message: 'Token 交换失败，请稍后重试。', tone: 'error' as const },
+      webhook_subscription_failed: {
+        message: '账号授权成功，但消息 Webhook 订阅失败，请检查平台配置后重新授权。',
+        tone: 'error' as const,
+      },
       unavailable: { message: '当前服务器尚未完成 OAuth 配置。', tone: 'error' as const },
     },
     owners: {
@@ -258,6 +286,7 @@ const messages = {
       authorization: '需要完成平台授权流程。',
       credential_decryption: '当前环境无法验证已配置的凭据。',
       external_account_id: '需要提供外部账号 ID。',
+      instagram_app_secret: '需要通过受限维护流程配置 Instagram 应用密钥。',
       meta_account_allowlist: '需要将该账号加入 Meta Webhook allowlist。',
       meta_app_secret: '需要通过受限维护流程配置 Meta 应用密钥。',
       meta_verify_token: '需要通过受限维护流程配置 Meta 验证令牌。',
@@ -277,6 +306,7 @@ const messages = {
       duplicate_account: '该平台账号已经配置。',
       forbidden: '当前账号无权执行此操作。',
       identity_change_requires_credential_rotation: '请先断开授权，再修改平台账号标识。',
+      invalid_capabilities: '请为两项能力选择有效的审核状态。',
       invalid_external_account_id: '请输入有效的平台账号 ID。',
       invalid_name: '请输入有效的显示名称。',
       invalid_notes: '备注内容过长。',
@@ -381,6 +411,13 @@ const accountKindLabel = (kind: string, locale: keyof typeof messages): string =
   if (!option) return kind.replaceAll('-', ' ')
   return locale === 'zh' ? option.labelZh : option.labelEn
 }
+
+const capabilityApprovalOptions = ['not_started', 'pending', 'approved', 'blocked'] as const
+
+const capabilityApprovalValue = (value: string | null | undefined) =>
+  capabilityApprovalOptions.includes(value as (typeof capabilityApprovalOptions)[number])
+    ? (value as (typeof capabilityApprovalOptions)[number])
+    : 'not_started'
 
 const oauthPaths = (accountKind: string): { disconnect: string; start: string } | undefined => {
   if (accountKind === 'facebook-page') {
@@ -651,8 +688,10 @@ export function PlatformReadinessPage({
       ...(supportsExternalAccountId
         ? { externalAccountId: formData.get('externalAccountId') || null }
         : {}),
+      messagingInbound: formData.get('messagingInbound'),
       name: formData.get('name'),
       notes: formData.get('notes') || null,
+      publishing: formData.get('publishing'),
     }
     try {
       const response = await fetch(`/api/platforms/accounts/${accountId}`, {
@@ -827,6 +866,9 @@ export function PlatformReadinessPage({
         <section className="portal-platforms__grid">
           {summary.accounts.map((account) => {
             const paths = oauthPaths(account.accountKind)
+            const supportsMessaging = account.readiness.capabilities.some(
+              (capability) => capability.capability === 'messaging-inbound',
+            )
             return (
               <Surface as="article" className="portal-platforms__account" key={account.id}>
                 <header>
@@ -902,6 +944,43 @@ export function PlatformReadinessPage({
                     <label>
                       {copy.notes}
                       <textarea defaultValue={account.notes ?? ''} name="notes" rows={3} />
+                    </label>
+                    {supportsMessaging ? (
+                      <label>
+                        {readableCapability('messaging-inbound', copy)} {copy.approvalStatus}
+                        <select
+                          defaultValue={capabilityApprovalValue(
+                            account.capabilities.messagingInbound,
+                          )}
+                          name="messagingInbound"
+                        >
+                          {capabilityApprovalOptions.map((status) => (
+                            <option key={status} value={status}>
+                              {copy.approvalStatuses[status]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <input
+                        name="messagingInbound"
+                        type="hidden"
+                        value={capabilityApprovalValue(account.capabilities.messagingInbound)}
+                      />
+                    )}
+                    <label>
+                      {readableCapability('publishing', copy)} {copy.approvalStatus}
+                      <select
+                        defaultValue={capabilityApprovalValue(account.capabilities.publishing)}
+                        name="publishing"
+                      >
+                        {capabilityApprovalOptions.map((status) => (
+                          <option key={status} value={status}>
+                            {copy.approvalStatuses[status]}
+                          </option>
+                        ))}
+                      </select>
+                      <small>{copy.approvalHelp}</small>
                     </label>
                     <div className="portal-platforms__form-actions">
                       <Button disabled={isSubmitting} type="submit">

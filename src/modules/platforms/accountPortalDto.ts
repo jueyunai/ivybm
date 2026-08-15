@@ -1,4 +1,8 @@
-import { type PlatformAuthorizationState } from '@/modules/platforms/readiness'
+import {
+  isPlatformCapabilityApprovalState,
+  type PlatformAuthorizationState,
+  type PlatformCapabilityApprovalState,
+} from '@/modules/platforms/readiness'
 import type { PlatformAccount } from '@/payload-types'
 
 export type PortalSupportedAccountKind =
@@ -153,8 +157,10 @@ export const validateCreatePlatformAccountInput = (
 export type UpdatePlatformAccountInput = {
   authorizationRevision: number
   externalAccountId?: string | null
+  messagingInbound?: PlatformCapabilityApprovalState
   name?: string
   notes?: string | null
+  publishing?: PlatformCapabilityApprovalState
 }
 
 export const validateUpdatePlatformAccountInput = (
@@ -209,10 +215,41 @@ export const validateUpdatePlatformAccountInput = (
   if (notes !== null && notes !== undefined && notes.length > 2_000) {
     return { error: { code: 'invalid_notes' }, success: false }
   }
-  if (name === undefined && externalAccountId === undefined && notes === undefined) {
+  const rawMessagingInbound = record.messagingInbound
+  const rawPublishing = record.publishing
+  const hasCapabilityUpdate = rawMessagingInbound !== undefined || rawPublishing !== undefined
+  if (
+    hasCapabilityUpdate &&
+    (!isPlatformCapabilityApprovalState(rawMessagingInbound) ||
+      !isPlatformCapabilityApprovalState(rawPublishing))
+  ) {
+    return { error: { code: 'invalid_capabilities' }, success: false }
+  }
+  const messagingInbound = hasCapabilityUpdate
+    ? (rawMessagingInbound as PlatformCapabilityApprovalState)
+    : undefined
+  const publishing = hasCapabilityUpdate
+    ? (rawPublishing as PlatformCapabilityApprovalState)
+    : undefined
+  if (
+    name === undefined &&
+    externalAccountId === undefined &&
+    notes === undefined &&
+    !hasCapabilityUpdate
+  ) {
     return { error: { code: 'no_changes' }, success: false }
   }
-  return { success: true, value: { authorizationRevision, externalAccountId, name, notes } }
+  return {
+    success: true,
+    value: {
+      authorizationRevision,
+      externalAccountId,
+      messagingInbound,
+      name,
+      notes,
+      publishing,
+    },
+  }
 }
 
 export type DeletePlatformAccountInput = {

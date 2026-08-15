@@ -99,6 +99,12 @@ export async function PATCH(request: NextRequest): Promise<Response> {
       data.externalAccountId = input.value.externalAccountId
     }
     if (input.value.notes !== undefined) data.notes = input.value.notes
+    if (input.value.messagingInbound !== undefined && input.value.publishing !== undefined) {
+      data.capabilities = {
+        messagingInbound: input.value.messagingInbound,
+        publishing: input.value.publishing,
+      }
+    }
 
     const updated = await withLockedPlatformAccountMutation({
       operation: (req, lockedAccount) => {

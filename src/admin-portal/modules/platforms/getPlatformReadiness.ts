@@ -20,6 +20,10 @@ export interface PlatformReadinessAccountSummary {
     state: PlatformAccount['authorization']['state']
   }
   authorizationRevision: number
+  capabilities: {
+    messagingInbound: NonNullable<PlatformAccount['capabilities']>['messagingInbound']
+    publishing: NonNullable<PlatformAccount['capabilities']>['publishing']
+  }
   externalAccountId: string | null
   id: number
   name: string
@@ -65,6 +69,10 @@ export const toPlatformReadinessAccountSummary = ({
       state: authorization.state,
     },
     authorizationRevision: account.authorizationRevision,
+    capabilities: {
+      messagingInbound: capabilities?.messagingInbound,
+      publishing: capabilities?.publishing,
+    },
     externalAccountId: account.externalAccountId ?? null,
     id: account.id,
     name: account.name,
