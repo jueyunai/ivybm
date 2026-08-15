@@ -686,12 +686,14 @@ export function PlatformReadinessPage({
     const body = {
       authorizationRevision: account?.authorizationRevision,
       ...(supportsExternalAccountId
-        ? { externalAccountId: formData.get('externalAccountId') || null }
+        ? {
+            externalAccountId: formData.get('externalAccountId') || null,
+            messagingInbound: formData.get('messagingInbound'),
+            publishing: formData.get('publishing'),
+          }
         : {}),
-      messagingInbound: formData.get('messagingInbound'),
       name: formData.get('name'),
       notes: formData.get('notes') || null,
-      publishing: formData.get('publishing'),
     }
     try {
       const response = await fetch(`/api/platforms/accounts/${accountId}`, {
@@ -945,43 +947,47 @@ export function PlatformReadinessPage({
                       {copy.notes}
                       <textarea defaultValue={account.notes ?? ''} name="notes" rows={3} />
                     </label>
-                    {supportsMessaging ? (
-                      <label>
-                        {readableCapability('messaging-inbound', copy)} {copy.approvalStatus}
-                        <select
-                          defaultValue={capabilityApprovalValue(
-                            account.capabilities.messagingInbound,
-                          )}
-                          name="messagingInbound"
-                        >
-                          {capabilityApprovalOptions.map((status) => (
-                            <option key={status} value={status}>
-                              {copy.approvalStatuses[status]}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : (
-                      <input
-                        name="messagingInbound"
-                        type="hidden"
-                        value={capabilityApprovalValue(account.capabilities.messagingInbound)}
-                      />
-                    )}
-                    <label>
-                      {readableCapability('publishing', copy)} {copy.approvalStatus}
-                      <select
-                        defaultValue={capabilityApprovalValue(account.capabilities.publishing)}
-                        name="publishing"
-                      >
-                        {capabilityApprovalOptions.map((status) => (
-                          <option key={status} value={status}>
-                            {copy.approvalStatuses[status]}
-                          </option>
-                        ))}
-                      </select>
-                      <small>{copy.approvalHelp}</small>
-                    </label>
+                    {isPortalSupportedAccountKind(account.accountKind) ? (
+                      <>
+                        {supportsMessaging ? (
+                          <label>
+                            {readableCapability('messaging-inbound', copy)} {copy.approvalStatus}
+                            <select
+                              defaultValue={capabilityApprovalValue(
+                                account.capabilities.messagingInbound,
+                              )}
+                              name="messagingInbound"
+                            >
+                              {capabilityApprovalOptions.map((status) => (
+                                <option key={status} value={status}>
+                                  {copy.approvalStatuses[status]}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : (
+                          <input
+                            name="messagingInbound"
+                            type="hidden"
+                            value={capabilityApprovalValue(account.capabilities.messagingInbound)}
+                          />
+                        )}
+                        <label>
+                          {readableCapability('publishing', copy)} {copy.approvalStatus}
+                          <select
+                            defaultValue={capabilityApprovalValue(account.capabilities.publishing)}
+                            name="publishing"
+                          >
+                            {capabilityApprovalOptions.map((status) => (
+                              <option key={status} value={status}>
+                                {copy.approvalStatuses[status]}
+                              </option>
+                            ))}
+                          </select>
+                          <small>{copy.approvalHelp}</small>
+                        </label>
+                      </>
+                    ) : null}
                     <div className="portal-platforms__form-actions">
                       <Button disabled={isSubmitting} type="submit">
                         {isSubmitting ? copy.saving : copy.save}
