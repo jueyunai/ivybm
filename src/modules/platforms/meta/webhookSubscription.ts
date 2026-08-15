@@ -116,12 +116,11 @@ export const subscribeMetaMessagingWebhook = async ({
       throw new MetaWebhookSubscriptionError()
     }
     const parsed = JSON.parse(raw) as unknown
-    if (
-      !parsed ||
-      typeof parsed !== 'object' ||
-      Array.isArray(parsed) ||
-      (parsed as { success?: unknown }).success !== true
-    ) {
+    const success =
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as { success?: unknown }).success
+        : undefined
+    if (success !== true && success !== 'true') {
       throw new MetaWebhookSubscriptionError()
     }
   } catch (error) {

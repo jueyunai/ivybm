@@ -352,7 +352,7 @@ describe('Meta OAuth routes', () => {
           { status: 200 },
         ),
       )
-      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: 'true' }), { status: 200 }))
     vi.stubGlobal('fetch', fetcher)
 
     const response = await metaOAuthCallback(

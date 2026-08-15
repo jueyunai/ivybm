@@ -6,7 +6,10 @@ import {
   subscribeMetaMessagingWebhook,
 } from '@/modules/platforms/meta/webhookSubscription'
 
-const response = ({ body = { success: true }, status = 200 } = {}) => ({
+const response = ({
+  body = { success: true },
+  status = 200,
+}: { body?: unknown; status?: number } = {}) => ({
   headers: new Headers(),
   ok: status >= 200 && status < 300,
   status,
@@ -73,6 +76,19 @@ describe('Meta messaging webhook asset subscription', () => {
     },
   )
 
+  it('accepts the exact string success response returned by Facebook Page subscriptions', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ body: { success: 'true' } }))
+
+    await expect(
+      subscribeMetaMessagingWebhook({
+        accessToken: 'fixture-subscription-token',
+        accountExternalId: '129472283584550',
+        fetch,
+        platform: 'facebook-messenger',
+      }),
+    ).resolves.toBeUndefined()
+  })
+
   it.each([
     ['invalid account', { accountExternalId: '../../me' }],
     ['invalid token', { accessToken: ' padded-token ' }],
@@ -107,6 +123,7 @@ describe('Meta messaging webhook asset subscription', () => {
   it.each([
     ['provider rejection', response({ status: 403 })],
     ['malformed success', response({ body: { success: false } })],
+    ['unsupported success type', response({ body: { success: 1 } })],
     ['network failure', new Error('socket reset')],
   ])('fails closed on %s', async (_label, providerResult) => {
     const fetch =
