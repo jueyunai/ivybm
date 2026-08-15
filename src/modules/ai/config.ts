@@ -2,7 +2,7 @@ import { AI_REASONING_EFFORTS, type AiReasoning, type AiReasoningEffort } from '
 
 type Environment = Readonly<Record<string, string | undefined>>
 
-export type AiConfigurationOperation = 'text' | 'embedding'
+export type AiConfigurationOperation = 'text' | 'embedding' | 'image'
 
 export type AiOperationConfiguration = {
   apiKey: string
@@ -42,8 +42,11 @@ const optionalValue = (environment: Environment, key: string): string | undefine
 const isReasoningEffort = (value: string): value is AiReasoningEffort =>
   AI_REASONING_EFFORTS.some((effort) => effort === value)
 
-const operationModelKey = (operation: AiConfigurationOperation): string =>
-  operation === 'text' ? 'AI_TEXT_MODEL' : 'AI_EMBEDDING_MODEL'
+const operationModelKey = (operation: AiConfigurationOperation): string => {
+  if (operation === 'text') return 'AI_TEXT_MODEL'
+  if (operation === 'image') return 'AI_IMAGE_MODEL'
+  return 'AI_EMBEDDING_MODEL'
+}
 
 const embeddingDimensions = (environment: Environment): number => {
   const value = Number(requiredValue(environment, 'AI_EMBEDDING_DIMENSIONS'))
@@ -57,10 +60,14 @@ const operationTimeout = (
   operation: AiConfigurationOperation,
   environment: Environment,
 ): number => {
-  const fallback = operation === 'text' ? 30_000 : 15_000
-  const value = Number(
-    environment[operation === 'text' ? 'AI_TEXT_TIMEOUT_MS' : 'AI_EMBEDDING_TIMEOUT_MS'],
-  )
+  const fallback = operation === 'text' ? 30_000 : operation === 'image' ? 60_000 : 15_000
+  const key =
+    operation === 'text'
+      ? 'AI_TEXT_TIMEOUT_MS'
+      : operation === 'image'
+        ? 'AI_IMAGE_TIMEOUT_MS'
+        : 'AI_EMBEDDING_TIMEOUT_MS'
+  const value = Number(environment[key])
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
 

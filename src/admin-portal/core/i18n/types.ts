@@ -38,9 +38,10 @@ export interface PortalSettingsMessages {
     apiKeyDescription: string
     baseURL: string
     capability: string
-    capabilities: Record<'embedding' | 'text', string>
+    capabilities: Record<'embedding' | 'image' | 'text', string>
     cancel: string
     contentStudio: string
+    configuredPendingVerification: string
     create: string
     delete: string
     deleteConfirm: string
@@ -80,11 +81,18 @@ export interface PortalSettingsMessages {
     saved: string
     status: string
     temperature: string
+    textGenerationContract: string
+    textGenerationContractDescription: string
+    textGenerationContracts: Record<'chat-completions' | 'responses', string>
     textRoute: string
     timeout: string
     title: string
     topP: string
     usageKey: string
+    usageLabels: Record<
+      'chat.reply' | 'content.image-generation' | 'knowledge.embedding' | 'knowledge.translation',
+      string
+    >
     customerChat: string
     knowledgeIndex: string
   }
@@ -122,10 +130,7 @@ export interface PortalSettingsMessages {
 
 export interface PortalOverviewMessages {
   dependencyDescription: string
-  dependencyItems: Record<
-    'feishu-failures',
-    { description: string; label: string }
-  >
+  dependencyItems: Record<'feishu-failures', { description: string; label: string }>
   dependencyStatus: string
   dependencyTitle: string
   description: string

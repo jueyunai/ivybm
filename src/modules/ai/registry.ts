@@ -11,6 +11,7 @@ import {
   createAiGateway,
   type AiGateway,
   type AiGatewayEmbeddingOperationConfig,
+  type AiGatewayImageOperationConfig,
   type AiGatewayTextOperationConfig,
   type AiProvider,
   type AiReasoningEffort,
@@ -18,7 +19,9 @@ import {
 } from './gateway'
 import {
   createOpenAICompatibleProvider,
+  OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS,
   type OpenAICompatibleProviderOptions,
+  type OpenAICompatibleTextGenerationContract,
 } from './providers/openaiCompatible'
 
 type Environment = Readonly<Record<string, string | undefined>>
@@ -26,6 +29,7 @@ type UnknownRecord = Record<string, unknown>
 
 export const AI_USAGE_KEYS = {
   chatReply: 'chat.reply',
+  contentImageGeneration: 'content.image-generation',
   knowledgeEmbedding: 'knowledge.embedding',
   knowledgeTranslation: 'knowledge.translation',
 } as const
@@ -94,6 +98,16 @@ const optionalNumber = (
 const validReasoningEffort = (value: unknown): value is AiReasoningEffort =>
   typeof value === 'string' && AI_REASONING_EFFORTS.some((effort) => effort === value)
 
+const textGenerationContract = (value: unknown): OpenAICompatibleTextGenerationContract => {
+  if (
+    typeof value !== 'string' ||
+    !OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS.some((contract) => contract === value)
+  ) {
+    throw new AiConfigurationError('AI route provider text contract is invalid')
+  }
+  return value as OpenAICompatibleTextGenerationContract
+}
+
 const normalizeRuntimeBaseURL = (value: string, environment: Environment): string => {
   try {
     const url = new URL(value)
@@ -127,7 +141,10 @@ const resolveCmsRoute = (
   createProvider: ProviderFactory,
   environment: Environment,
   encryptionKey: { value?: Buffer },
-): AiGatewayTextOperationConfig | AiGatewayEmbeddingOperationConfig => {
+):
+  | AiGatewayTextOperationConfig
+  | AiGatewayEmbeddingOperationConfig
+  | AiGatewayImageOperationConfig => {
   if (route.enabled !== true) {
     throw routeConfigurationError(request.usageKey, 'is disabled')
   }
@@ -174,6 +191,7 @@ const resolveCmsRoute = (
     apiKey,
     baseURL,
     name: requiredString(provider.name, 'provider name'),
+    textGenerationContract: textGenerationContract(provider.textGenerationContract),
   })
 
   if (request.operation === 'embedding') {
@@ -208,6 +226,20 @@ const resolveCmsRoute = (
       provider: resolvedProvider,
       timeoutMs,
     }
+  }
+
+  if (request.operation === 'image') {
+    if (
+      (parameters.maxOutputTokens !== undefined && parameters.maxOutputTokens !== null) ||
+      (parameters.dimensions !== undefined && parameters.dimensions !== null) ||
+      parameters.reasoningEnabled === true ||
+      (parameters.temperature !== undefined && parameters.temperature !== null) ||
+      (parameters.topP !== undefined && parameters.topP !== null)
+    ) {
+      throw routeConfigurationError(request.usageKey, 'contains incompatible model settings')
+    }
+
+    return { model, provider: resolvedProvider, timeoutMs }
   }
 
   if (parameters.dimensions !== undefined && parameters.dimensions !== null) {
@@ -245,7 +277,11 @@ const resolveEnvironmentRoute = (
   operation: AiConfigurationOperation,
   createProvider: ProviderFactory,
   environment: Environment,
-): AiGatewayTextOperationConfig | AiGatewayEmbeddingOperationConfig | undefined => {
+):
+  | AiGatewayTextOperationConfig
+  | AiGatewayEmbeddingOperationConfig
+  | AiGatewayImageOperationConfig
+  | undefined => {
   const fallback = readAIConfigurationOperation(operation, environment)
   if (!fallback) return undefined
 
@@ -263,6 +299,10 @@ const resolveEnvironmentRoute = (
       provider,
       timeoutMs: fallback.timeoutMs,
     }
+  }
+
+  if (operation === 'image') {
+    return { model: fallback.model, provider, timeoutMs: fallback.timeoutMs }
   }
 
   return {
@@ -344,6 +384,7 @@ export const resolveAiGateway = async ({
   const encryptionKey: { value?: Buffer } = {}
   const operations: {
     embedding?: AiGatewayEmbeddingOperationConfig
+    image?: AiGatewayImageOperationConfig
     text?: AiGatewayTextOperationConfig
   } = {}
 
@@ -360,8 +401,10 @@ export const resolveAiGateway = async ({
     }
     if (operation === 'text') {
       operations.text = configuration as AiGatewayTextOperationConfig
-    } else {
+    } else if (operation === 'embedding') {
       operations.embedding = configuration as AiGatewayEmbeddingOperationConfig
+    } else {
+      operations.image = configuration as AiGatewayImageOperationConfig
     }
   }
 

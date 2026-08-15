@@ -122,10 +122,10 @@ describe('LinkedIn staged image publication', () => {
     const adapter = transport({ uploadImage })
     await expect(
       executeLinkedInImagePublishingStage({
-        assetBytes: bytes,
         authority: state.authority,
         intent: input,
         leaseFence: state.fence,
+        readAssetBytes: vi.fn(async () => bytes),
         transport: adapter,
       }),
     ).resolves.toMatchObject({ checkpoint: { stage: 'image_uploaded' } })
@@ -155,10 +155,10 @@ describe('LinkedIn staged image publication', () => {
     const uploadImage = vi.fn().mockResolvedValue(undefined)
     await expect(
       executeLinkedInImagePublishingStage({
-        assetBytes: bytes,
         authority: state.authority,
         intent: input,
         leaseFence: state.fence,
+        readAssetBytes: vi.fn(async () => bytes),
         transport: transport({ uploadImage }),
       }),
     ).resolves.toMatchObject({ checkpoint: { stage: 'image_uploaded' } })
@@ -168,7 +168,7 @@ describe('LinkedIn staged image publication', () => {
   it.each([
     [new Uint8Array([1, 2, 3]), 'wrong length'],
     [new Uint8Array([4, 3, 2, 1]), 'wrong digest'],
-  ])('blocks %s bytes before claim and network', async (assetBytes) => {
+  ])('fails closed on %s bytes after fencing and before upload', async (assetBytes) => {
     const input = intent({
       checkpoint: checkpoint({
         imageUrn: ticket.imageUrn,
@@ -177,18 +177,53 @@ describe('LinkedIn staged image publication', () => {
       }),
     })
     const state = setup(input)
-    const claim = vi.spyOn(state.authority, 'claimStage')
     const uploadImage = vi.fn()
     await expect(
       executeLinkedInImagePublishingStage({
-        assetBytes,
         authority: state.authority,
         intent: input,
         leaseFence: state.fence,
+        readAssetBytes: vi.fn(async () => assetBytes),
         transport: transport({ uploadImage }),
       }),
-    ).resolves.toMatchObject({ event: 'blocked' })
-    expect(claim).not.toHaveBeenCalled()
+    ).resolves.toMatchObject({ checkpoint: { stage: 'failed' }, errorCode: 'invalid_request' })
+    expect(uploadImage).not.toHaveBeenCalled()
+  })
+
+  it('revalidates after the provider fence and fails before upload when the asset is revoked', async () => {
+    const input = intent({
+      checkpoint: checkpoint({
+        imageUrn: ticket.imageUrn,
+        stage: 'image_initialized',
+        uploadTicket: ticket,
+      }),
+    })
+    const state = setup(input)
+    const order: string[] = []
+    const originalMark = state.authority.markProviderIOStarted.bind(state.authority)
+    state.authority.markProviderIOStarted = vi.fn(async (claim) => {
+      order.push('marked')
+      return originalMark(claim)
+    })
+    const readAssetBytes = vi.fn(async () => {
+      order.push('read-current')
+      return null
+    })
+    const uploadImage = vi.fn(async () => {
+      order.push('uploaded')
+    })
+
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        readAssetBytes,
+        transport: transport({ uploadImage }),
+      }),
+    ).resolves.toMatchObject({ checkpoint: { stage: 'failed' }, errorCode: 'invalid_request' })
+    expect(order).toEqual(['marked', 'read-current'])
+    expect(readAssetBytes).toHaveBeenCalledWith(input.asset)
     expect(uploadImage).not.toHaveBeenCalled()
   })
 

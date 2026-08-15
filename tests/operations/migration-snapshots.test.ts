@@ -27,6 +27,19 @@ describe('Payload migration snapshots', () => {
     expect(snapshot.tables).toHaveProperty('public.ai_usage_logs')
   })
 
+  it('keeps Task 13, qualification, and image generation migrations in linear order', () => {
+    const migrationIndex = readFileSync(resolve(migrationsDir, 'index.ts'), 'utf8')
+    const orderedNames = [
+      '20260812_163806_task13_platform_publishing_authority',
+      '20260812_173701_qualification_answer_state',
+      '20260813_055309_image_generation_provider_contract',
+    ]
+    const positions = orderedNames.map((name) => migrationIndex.lastIndexOf(`name: '${name}'`))
+
+    expect(positions.every((position) => position >= 0)).toBe(true)
+    expect(positions).toEqual([...positions].sort((left, right) => left - right))
+  })
+
   it('uses restrictive deletes for required Portal V1 audit relationships', () => {
     const snapshot = JSON.parse(
       readFileSync(resolve(migrationsDir, '20260802_042231_portal_v1.json'), 'utf8'),

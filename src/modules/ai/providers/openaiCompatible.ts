@@ -1,11 +1,15 @@
 import {
   AiProviderError,
+  AI_GENERATED_IMAGE_MAX_BYTES,
   type AiProvider,
+  type AiImageMimeType,
   type AiTokenUsage,
   type ProviderEmbedInput,
   type ProviderEmbedResult,
   type ProviderGenerateTextInput,
   type ProviderGenerateTextResult,
+  type ProviderGenerateImageInput,
+  type ProviderGenerateImageResult,
 } from '../gateway'
 
 type ProviderOptions = {
@@ -14,6 +18,7 @@ type ProviderOptions = {
   fetch?: typeof globalThis.fetch
   headers?: Record<string, string>
   name?: string
+  textGenerationContract?: OpenAICompatibleTextGenerationContract
 }
 
 type UnknownRecord = Record<string, unknown>
@@ -29,6 +34,15 @@ const responseUsage = (value: unknown): AiTokenUsage => {
   return {
     inputTokens: usageNumber(usage.input_tokens),
     outputTokens: usageNumber(usage.output_tokens),
+    totalTokens: usageNumber(usage.total_tokens),
+  }
+}
+
+const chatCompletionUsage = (value: unknown): AiTokenUsage => {
+  const usage = isRecord(value) ? value : {}
+  return {
+    inputTokens: usageNumber(usage.prompt_tokens),
+    outputTokens: usageNumber(usage.completion_tokens),
     totalTokens: usageNumber(usage.total_tokens),
   }
 }
@@ -49,6 +63,72 @@ const extractResponseText = (body: UnknownRecord): string => {
     .filter((part) => isRecord(part) && part.type === 'output_text')
     .map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : ''))
     .join('')
+}
+
+const extractChatCompletionText = (body: UnknownRecord): string => {
+  const choice =
+    Array.isArray(body.choices) && isRecord(body.choices[0]) ? body.choices[0] : undefined
+  const message = choice && isRecord(choice.message) ? choice.message : undefined
+  return message && typeof message.content === 'string' ? message.content : ''
+}
+
+const strictBase64Bytes = (value: unknown): Uint8Array => {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > Math.ceil(AI_GENERATED_IMAGE_MAX_BYTES / 3) * 4 + 4 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
+  ) {
+    throw new AiProviderError('invalid_response', 'AI provider returned invalid image data')
+  }
+  const data = Buffer.from(value, 'base64')
+  if (data.length === 0 || data.length > AI_GENERATED_IMAGE_MAX_BYTES) {
+    throw new AiProviderError('invalid_response', 'AI provider returned invalid image data')
+  }
+  return new Uint8Array(data)
+}
+
+const imageMimeType = (data: Uint8Array): AiImageMimeType => {
+  if ([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((b, i) => data[i] === b)) {
+    return 'image/png'
+  }
+  if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return 'image/jpeg'
+  if (
+    data[0] === 0x52 &&
+    data[1] === 0x49 &&
+    data[2] === 0x46 &&
+    data[3] === 0x46 &&
+    data[8] === 0x57 &&
+    data[9] === 0x45 &&
+    data[10] === 0x42 &&
+    data[11] === 0x50
+  ) {
+    return 'image/webp'
+  }
+  throw new AiProviderError('invalid_response', 'AI provider returned an unsupported image')
+}
+
+const extractImage = (
+  body: UnknownRecord,
+): ProviderGenerateImageResult['image'] & {
+  revisedPrompt?: string
+} => {
+  if (!Array.isArray(body.data) || body.data.length !== 1) {
+    throw new AiProviderError(
+      'invalid_response',
+      'AI provider must return exactly one inline image',
+    )
+  }
+  const item = isRecord(body.data[0]) ? body.data[0] : undefined
+  if (!item || typeof item.b64_json !== 'string') {
+    throw new AiProviderError('invalid_response', 'AI provider returned no inline image')
+  }
+  const data = strictBase64Bytes(item.b64_json)
+  return {
+    data,
+    mimeType: imageMimeType(data),
+    revisedPrompt: typeof item.revised_prompt === 'string' ? item.revised_prompt : undefined,
+  }
 }
 
 const codeForStatus = (status: number) => {
@@ -99,6 +179,12 @@ const requestJSON = async (
   return { body, requestId: response.headers.get('x-request-id') ?? undefined }
 }
 
+export const OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS = [
+  'responses',
+  'chat-completions',
+] as const
+export type OpenAICompatibleTextGenerationContract =
+  (typeof OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS)[number]
 export type OpenAICompatibleProviderOptions = ProviderOptions
 
 export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProvider => {
@@ -112,29 +198,51 @@ export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProv
   const baseURL = parsedBaseURL.toString().replace(/\/+$/, '')
   const headers = {
     Authorization: `Bearer ${options.apiKey}`,
-    'Content-Type': 'application/json',
     ...options.headers,
   }
+  const jsonHeaders = { ...headers, 'Content-Type': 'application/json' }
+  const textGenerationContract = options.textGenerationContract ?? 'responses'
 
   return {
     name: options.name ?? 'openai-compatible',
     generateText: async (input: ProviderGenerateTextInput): Promise<ProviderGenerateTextResult> => {
-      const { body, requestId } = await requestJSON(fetchImplementation, `${baseURL}/responses`, {
-        body: JSON.stringify({
-          input: input.input,
-          instructions: input.instructions,
-          max_output_tokens: input.maxOutputTokens,
-          model: input.model,
-          ...(input.reasoning ? { reasoning: input.reasoning } : {}),
-          store: false,
-          temperature: input.temperature,
-          top_p: input.topP,
-        }),
-        headers,
-        method: 'POST',
-        signal: input.signal,
-      })
-      const text = extractResponseText(body)
+      const chatCompletions = textGenerationContract === 'chat-completions'
+      const { body, requestId } = await requestJSON(
+        fetchImplementation,
+        `${baseURL}/${chatCompletions ? 'chat/completions' : 'responses'}`,
+        {
+          body: JSON.stringify(
+            chatCompletions
+              ? {
+                  max_tokens: input.maxOutputTokens,
+                  messages: [
+                    ...(input.instructions
+                      ? [{ content: input.instructions, role: 'system' as const }]
+                      : []),
+                    { content: input.input, role: 'user' as const },
+                  ],
+                  model: input.model,
+                  ...(input.reasoning ? { reasoning_effort: input.reasoning.effort } : {}),
+                  temperature: input.temperature,
+                  top_p: input.topP,
+                }
+              : {
+                  input: input.input,
+                  instructions: input.instructions,
+                  max_output_tokens: input.maxOutputTokens,
+                  model: input.model,
+                  ...(input.reasoning ? { reasoning: input.reasoning } : {}),
+                  store: false,
+                  temperature: input.temperature,
+                  top_p: input.topP,
+                },
+          ),
+          headers: jsonHeaders,
+          method: 'POST',
+          signal: input.signal,
+        },
+      )
+      const text = chatCompletions ? extractChatCompletionText(body) : extractResponseText(body)
       if (!text) {
         throw new AiProviderError('invalid_response', 'AI provider returned no output text')
       }
@@ -143,7 +251,54 @@ export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProv
         model: typeof body.model === 'string' ? body.model : input.model,
         requestId,
         text,
-        usage: responseUsage(body.usage),
+        usage: chatCompletions ? chatCompletionUsage(body.usage) : responseUsage(body.usage),
+      }
+    },
+    generateImage: async (
+      input: ProviderGenerateImageInput,
+    ): Promise<ProviderGenerateImageResult> => {
+      const url = input.referenceImage ? `${baseURL}/images/edits` : `${baseURL}/images/generations`
+      let init: RequestInit
+      if (input.referenceImage) {
+        const form = new FormData()
+        const extension =
+          input.referenceImage.mimeType === 'image/png'
+            ? 'png'
+            : input.referenceImage.mimeType === 'image/jpeg'
+              ? 'jpg'
+              : 'webp'
+        form.set(
+          'image',
+          new Blob([input.referenceImage.data], { type: input.referenceImage.mimeType }),
+          `reference.${extension}`,
+        )
+        form.set('model', input.model)
+        form.set('n', '1')
+        form.set('prompt', input.prompt)
+        form.set('response_format', 'b64_json')
+        if (input.size) form.set('size', input.size)
+        init = { body: form, headers, method: 'POST', signal: input.signal }
+      } else {
+        init = {
+          body: JSON.stringify({
+            model: input.model,
+            n: 1,
+            prompt: input.prompt,
+            response_format: 'b64_json',
+            size: input.size,
+          }),
+          headers: jsonHeaders,
+          method: 'POST',
+          signal: input.signal,
+        }
+      }
+      const { body, requestId } = await requestJSON(fetchImplementation, url, init)
+      const { revisedPrompt, ...image } = extractImage(body)
+      return {
+        image,
+        model: typeof body.model === 'string' ? body.model : input.model,
+        requestId,
+        revisedPrompt,
       }
     },
     embed: async (input: ProviderEmbedInput): Promise<ProviderEmbedResult> => {
@@ -154,7 +309,7 @@ export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProv
           input: input.input,
           model: input.model,
         }),
-        headers,
+        headers: jsonHeaders,
         method: 'POST',
         signal: input.signal,
       })

@@ -1,6 +1,10 @@
 import type { Payload, PayloadRequest } from 'payload'
 
 import { AI_REASONING_EFFORTS } from '@/modules/ai/gateway'
+import {
+  OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS,
+  type OpenAICompatibleTextGenerationContract,
+} from '@/modules/ai/providers/openaiCompatible'
 import { AI_USAGE_KEYS } from '@/modules/ai/registry'
 
 import {
@@ -57,13 +61,13 @@ const requiredID = (value: unknown, field: string): number => {
   return value
 }
 
-const requiredInteger = (value: unknown, field: string, minimum: number, maximum: number): number => {
-  if (
-    typeof value !== 'number' ||
-    !Number.isInteger(value) ||
-    value < minimum ||
-    value > maximum
-  ) {
+const requiredInteger = (
+  value: unknown,
+  field: string,
+  minimum: number,
+  maximum: number,
+): number => {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < minimum || value > maximum) {
     return fail(field)
   }
   return value
@@ -83,8 +87,19 @@ const optionalNumber = (
 }
 
 const capability = (value: unknown): PortalAiCapability => {
-  if (value !== 'text' && value !== 'embedding') return fail('capability')
+  if (value !== 'text' && value !== 'embedding' && value !== 'image') return fail('capability')
   return value
+}
+
+const providerTextGenerationContract = (value: unknown): OpenAICompatibleTextGenerationContract => {
+  const candidate = value ?? 'responses'
+  if (
+    typeof candidate !== 'string' ||
+    !OPENAI_COMPATIBLE_TEXT_GENERATION_CONTRACTS.some((contract) => contract === candidate)
+  ) {
+    return fail('text generation contract')
+  }
+  return candidate as OpenAICompatibleTextGenerationContract
 }
 
 const providerData = (input: JsonInput) => {
@@ -95,36 +110,51 @@ const providerData = (input: JsonInput) => {
     enabled: requiredBoolean(input.enabled, 'enabled state'),
     name: requiredText(input.name, 'provider name', 100),
     protocol: 'openai-compatible' as const,
+    textGenerationContract: providerTextGenerationContract(input.textGenerationContract),
   }
 }
 
 const profileData = (input: JsonInput) => {
   const selectedCapability = capability(input.capability)
-  const parameters = input.parameters && typeof input.parameters === 'object'
-    ? (input.parameters as JsonInput)
-    : fail('model parameters')
-  const reasoningEffort = optionalText(parameters.reasoningEffort, 'reasoning effort', 20) ?? 'medium'
+  const parameters =
+    input.parameters && typeof input.parameters === 'object'
+      ? (input.parameters as JsonInput)
+      : fail('model parameters')
+  const reasoningEffort =
+    optionalText(parameters.reasoningEffort, 'reasoning effort', 20) ?? 'medium'
   if (!AI_REASONING_EFFORTS.includes(reasoningEffort as never)) return fail('reasoning effort')
   return {
     capability: selectedCapability,
     enabled: requiredBoolean(input.enabled, 'enabled state'),
     model: requiredText(input.model, 'model identifier', 200),
     name: requiredText(input.name, 'profile name', 100),
-    parameters: selectedCapability === 'text'
-      ? {
-          maxOutputTokens: optionalNumber(parameters.maxOutputTokens, 'maximum output tokens', 1, 128_000),
-          reasoningEffort,
-          reasoningEnabled: requiredBoolean(parameters.reasoningEnabled, 'reasoning state'),
-          temperature: optionalNumber(parameters.temperature, 'temperature', 0, 2),
-          timeoutMs: requiredInteger(parameters.timeoutMs, 'timeout', 1_000, 120_000),
-          topP: optionalNumber(parameters.topP, 'top-p', 0, 1),
-        }
-      : {
-          dimensions: requiredInteger(parameters.dimensions, 'embedding dimensions', 1, 16_384),
-          reasoningEffort: 'medium' as const,
-          reasoningEnabled: false,
-          timeoutMs: requiredInteger(parameters.timeoutMs, 'timeout', 1_000, 120_000),
-        },
+    parameters:
+      selectedCapability === 'text'
+        ? {
+            maxOutputTokens: optionalNumber(
+              parameters.maxOutputTokens,
+              'maximum output tokens',
+              1,
+              128_000,
+            ),
+            reasoningEffort,
+            reasoningEnabled: requiredBoolean(parameters.reasoningEnabled, 'reasoning state'),
+            temperature: optionalNumber(parameters.temperature, 'temperature', 0, 2),
+            timeoutMs: requiredInteger(parameters.timeoutMs, 'timeout', 1_000, 120_000),
+            topP: optionalNumber(parameters.topP, 'top-p', 0, 1),
+          }
+        : selectedCapability === 'embedding'
+          ? {
+              dimensions: requiredInteger(parameters.dimensions, 'embedding dimensions', 1, 16_384),
+              reasoningEffort: 'medium' as const,
+              reasoningEnabled: false,
+              timeoutMs: requiredInteger(parameters.timeoutMs, 'timeout', 1_000, 120_000),
+            }
+          : {
+              reasoningEffort: 'medium' as const,
+              reasoningEnabled: false,
+              timeoutMs: requiredInteger(parameters.timeoutMs, 'timeout', 1_000, 120_000),
+            },
     provider: requiredID(input.providerID, 'provider'),
   }
 }
@@ -135,6 +165,7 @@ const routeData = (input: JsonInput) => {
   if (
     ![
       AI_USAGE_KEYS.chatReply,
+      AI_USAGE_KEYS.contentImageGeneration,
       AI_USAGE_KEYS.knowledgeEmbedding,
       AI_USAGE_KEYS.knowledgeTranslation,
     ].includes(usageKey as never)
@@ -143,6 +174,7 @@ const routeData = (input: JsonInput) => {
   }
   if (
     (usageKey === AI_USAGE_KEYS.chatReply && operation !== 'text') ||
+    (usageKey === AI_USAGE_KEYS.contentImageGeneration && operation !== 'image') ||
     (usageKey === AI_USAGE_KEYS.knowledgeEmbedding && operation !== 'embedding') ||
     (usageKey === AI_USAGE_KEYS.knowledgeTranslation && operation !== 'text')
   ) {
@@ -158,7 +190,11 @@ const routeData = (input: JsonInput) => {
 
 export const parsePortalAiResource = (value: string): PortalAiResource => {
   if (!PORTAL_AI_RESOURCES.includes(value as PortalAiResource)) {
-    throw new AiSettingsCommandError('ai-settings-invalid-resource', 'Unsupported AI resource.', 404)
+    throw new AiSettingsCommandError(
+      'ai-settings-invalid-resource',
+      'Unsupported AI resource.',
+      404,
+    )
   }
   return value as PortalAiResource
 }
@@ -166,16 +202,23 @@ export const parsePortalAiResource = (value: string): PortalAiResource => {
 export const requirePortalAiID = (value: string): number => {
   const id = Number.parseInt(value, 10)
   if (!Number.isSafeInteger(id) || id <= 0 || String(id) !== value) {
-    throw new AiSettingsCommandError('ai-settings-invalid-id', 'A valid AI resource id is required.', 400)
+    throw new AiSettingsCommandError(
+      'ai-settings-invalid-id',
+      'A valid AI resource id is required.',
+      400,
+    )
   }
   return id
 }
 
-const collectionFor = (resource: PortalAiResource) => ({
-  profiles: 'ai-model-profiles',
-  providers: 'ai-providers',
-  routes: 'ai-usage-routes',
-} as const)[resource]
+const collectionFor = (resource: PortalAiResource) =>
+  (
+    ({
+      profiles: 'ai-model-profiles',
+      providers: 'ai-providers',
+      routes: 'ai-usage-routes',
+    }) as const
+  )[resource]
 
 const requireUpdatedAt = (input: JsonInput): string =>
   requiredText(input.updatedAt, 'configuration version', 80)
@@ -209,11 +252,12 @@ const assertCurrentVersion = async ({
   }
 }
 
-const dataFor = (resource: PortalAiResource, input: JsonInput) => ({
-  profiles: profileData,
-  providers: providerData,
-  routes: routeData,
-})[resource](input)
+const dataFor = (resource: PortalAiResource, input: JsonInput) =>
+  ({
+    profiles: profileData,
+    providers: providerData,
+    routes: routeData,
+  })[resource](input)
 
 const resultFor = async ({
   document,
@@ -227,9 +271,8 @@ const resultFor = async ({
   resource: PortalAiResource
 }) => {
   if (resource === 'providers') return mapPortalAiProvider(document)
-  const relation = document && typeof document === 'object'
-    ? (document as Record<string, unknown>)
-    : {}
+  const relation =
+    document && typeof document === 'object' ? (document as Record<string, unknown>) : {}
   if (resource === 'profiles') {
     const providerID = portalAiRelationshipID(relation.provider)
     const provider = await payload.findByID({

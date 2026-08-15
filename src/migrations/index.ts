@@ -25,6 +25,7 @@ import * as migration_20260811_162045_task9_qualification_rounds from './2026081
 import * as migration_20260812_113056_task9_optional_lead_country from './20260812_113056_task9_optional_lead_country'
 import * as migration_20260812_163806_task13_platform_publishing_authority from './20260812_163806_task13_platform_publishing_authority'
 import * as migration_20260812_173701_qualification_answer_state from './20260812_173701_qualification_answer_state'
+import * as migration_20260813_055309_image_generation_provider_contract from './20260813_055309_image_generation_provider_contract'
 
 export const migrations = [
   {
@@ -161,5 +162,10 @@ export const migrations = [
     up: migration_20260812_173701_qualification_answer_state.up,
     down: migration_20260812_173701_qualification_answer_state.down,
     name: '20260812_173701_qualification_answer_state',
+  },
+  {
+    up: migration_20260813_055309_image_generation_provider_contract.up,
+    down: migration_20260813_055309_image_generation_provider_contract.down,
+    name: '20260813_055309_image_generation_provider_contract',
   },
 ]

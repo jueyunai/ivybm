@@ -5,11 +5,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createLocalReq, getPayload, type Payload } from 'payload'
 
 import { getMediaPage, loadMediaPageData } from '@/admin-portal/modules/media/getMediaPage'
+import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import {
-  createPortalMedia,
-  deletePortalMedia,
-  updatePortalMedia,
-} from '@/admin-portal/modules/media/mediaCommands'
+  adoptContentStudioImage,
+  type ContentStudioPayload,
+} from '@/admin-portal/modules/content-studio/contentStudioCommands'
+import {
+  loadContentStudioPageData,
+  parseContentStudioQuery,
+} from '@/admin-portal/modules/content-studio/getContentStudioPage'
+import { createPortalMedia, deletePortalMedia, updatePortalMedia } from '@/modules/media'
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
 
@@ -19,6 +24,7 @@ let operator: User
 let sales: User
 const createdMediaIDs: Array<number | string> = []
 const createdUserIDs: Array<number | string> = []
+const createdContentIDs: Array<number | string> = []
 let queryToken = ''
 
 const requestFor = (user: User) => createLocalReq({ user }, payload)
@@ -126,6 +132,16 @@ describe.sequential('Portal media access', () => {
   afterAll(async () => {
     if (!payload) return
 
+    for (const id of createdContentIDs.reverse()) {
+      await payload
+        .delete({
+          collection: 'generated-contents',
+          context: { ...contentStudioInternalWriteContext, disableRevalidate: true },
+          id,
+          overrideAccess: true,
+        })
+        .catch(() => undefined)
+    }
     for (const id of createdMediaIDs.reverse()) {
       await payload
         .delete({
@@ -252,6 +268,75 @@ describe.sequential('Portal media access', () => {
       },
     })
     expect(audits.docs.map((audit) => audit.action).sort()).toEqual(['create', 'delete', 'update'])
+  })
+
+  it('lets an operator adopt a private image into a draft and reads its safe preview', async () => {
+    const image = await sharp({
+      create: { background: '#315868', channels: 3, height: 320, width: 480 },
+    })
+      .png()
+      .toBuffer()
+    const req = await requestFor(operator)
+    const media = await createPortalMedia({
+      file: {
+        data: image,
+        mimetype: 'image/png',
+        name: `portal-adoption-${randomUUID()}.png`,
+        size: image.length,
+      },
+      input: {
+        alt: `${queryToken} generated draft image`,
+        isPublic: false,
+        source: 'IVYBM generated integration fixture',
+      },
+      payload,
+      req,
+    })
+    createdMediaIDs.push(media.id)
+    const content = await payload.create({
+      collection: 'generated-contents',
+      context: { ...contentStudioInternalWriteContext, disableRevalidate: true },
+      data: {
+        body: 'Draft body for image adoption.',
+        contentLocale: 'en',
+        contentType: 'post',
+        createdBy: operator.id,
+        creationFingerprint: randomUUID().replaceAll('-', '').padEnd(64, 'a').slice(0, 64),
+        idempotencyKey: `portal-content-adoption-${randomUUID()}`,
+        platform: 'linkedin',
+        status: 'draft',
+        title: `${queryToken} image adoption draft`,
+      },
+      overrideAccess: true,
+      req,
+    })
+    createdContentIDs.push(content.id)
+
+    const adopted = await adoptContentStudioImage({
+      id: content.id,
+      input: { mediaId: media.id, updatedAt: content.updatedAt },
+      payload: payload as unknown as ContentStudioPayload,
+      req,
+    })
+    expect(adopted).toMatchObject({ id: content.id, status: 'draft' })
+    const stored = await payload.findByID({
+      collection: 'generated-contents',
+      depth: 0,
+      id: content.id,
+      overrideAccess: true,
+    })
+    expect(stored.assets).toEqual([media.id])
+
+    const page = await loadContentStudioPageData({
+      env: { ADMIN_PORTAL_CONTENT_STUDIO_ENABLED: 'true', ADMIN_PORTAL_ENABLED: 'true' },
+      payload,
+      query: parseContentStudioQuery({ q: queryToken }),
+      req,
+      role: 'operator',
+    })
+    const option = page.summary?.options.assets.find((asset) => asset.id === media.id)
+    expect(option).toMatchObject({ id: media.id, meta: 'image/png' })
+    expect(option?.previewUrl).toMatch(/^\/api\/media\/file\//)
   })
 
   it('returns a forbidden page result for sales before reading Media', async () => {

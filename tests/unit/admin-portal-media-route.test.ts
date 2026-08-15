@@ -2,8 +2,8 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { MediaCommandError } from '@/admin-portal/modules/media/mediaCommands'
 import { readMediaUpload } from '@/admin-portal/modules/media/mediaRoute'
+import { MediaCommandError } from '@/modules/media'
 
 describe('Portal media upload request boundary', () => {
   it('parses a bounded multipart upload after reading the request stream', async () => {

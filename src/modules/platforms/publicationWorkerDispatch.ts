@@ -4,6 +4,7 @@ import {
 } from '../publishing/contracts'
 import {
   executeLinkedInImagePublishingStage,
+  type LinkedInImageAssetReader,
   type LinkedInImagePublishingAuthorityPort,
   type LinkedInImagePublishingIntent,
   type LinkedInImagePublishingLeaseFence,
@@ -61,10 +62,10 @@ export type LinkedInTextPublicationWorkItem = {
 }
 
 export type LinkedInImagePublicationWorkItem = {
-  assetBytes?: Uint8Array
   authority: LinkedInImagePublishingAuthorityPort
   intent: LinkedInImagePublishingIntent
   leaseFence: LinkedInImagePublishingLeaseFence
+  readAssetBytes?: LinkedInImageAssetReader
   route: 'linkedin-image-staged'
   transport: LinkedInPublishingTransport
 }
@@ -163,11 +164,11 @@ const assertLinkedInImageRoute = (item: LinkedInImagePublicationWorkItem): void 
     invalid('LinkedIn image publication worker intent is invalid')
   }
   const requiresBytes = item.intent.checkpoint.stage === 'image_initialized'
-  if (requiresBytes !== item.assetBytes instanceof Uint8Array) {
+  if (requiresBytes !== (typeof item.readAssetBytes === 'function')) {
     invalid(
       requiresBytes
-        ? 'LinkedIn image upload stage requires asset bytes'
-        : 'LinkedIn image worker accepts bytes only during the upload stage',
+        ? 'LinkedIn image upload stage requires an asset reader'
+        : 'LinkedIn image worker accepts an asset reader only during the upload stage',
     )
   }
 }
@@ -221,10 +222,10 @@ export const dispatchPublicationWorkItem = async (
   assertLinkedInImageRoute(item)
   return {
     result: await executors.executeLinkedInImage({
-      ...(item.assetBytes ? { assetBytes: item.assetBytes } : {}),
       authority: item.authority,
       intent: item.intent,
       leaseFence: item.leaseFence,
+      ...(item.readAssetBytes ? { readAssetBytes: item.readAssetBytes } : {}),
       transport: item.transport,
     }),
     route: item.route,

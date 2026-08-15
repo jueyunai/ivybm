@@ -2,6 +2,26 @@ import type { PortalLocale } from '@/admin-portal/core/i18n/types'
 
 export const contentStudioMessages = {
   en: {
+    adoptImage: 'Adopt as draft asset',
+    copyGeneration: 'Copy generation',
+    generatedPreview: 'Generated image preview',
+    generateImage: 'Generate image',
+    generationMode: 'Generation mode',
+    imageAdopted: 'Image adopted as a draft asset.',
+    imageGeneration: 'Image generation',
+    imageGenerationDescription:
+      'Generate a private draft image through the configured server-side provider. It is not attached to content until you explicitly adopt it.',
+    imagePreviewUnavailable:
+      'The image was saved, but no safe preview URL is available. Reload and choose it from the Media library.',
+    imagePrompt: 'Image prompt',
+    imageSize: 'Image size',
+    noReference: 'No reference image',
+    referenceAsset: 'Reference asset',
+    referenceInvalid: 'Choose a JPEG, PNG, or WebP image up to 8 MB.',
+    referencePreview: 'Reference image preview',
+    selectDraft: 'Choose a draft',
+    targetDraft: 'Target draft',
+    uploadReference: 'Upload reference image',
     immediatePublish: 'Publish now',
     immediatePublishNotice:
       'This calls the selected platforms through their official APIs. Each platform records its own result. Do not click again when a result is unknown.',
@@ -90,6 +110,25 @@ export const contentStudioMessages = {
     packageReady: 'Package downloaded locally. No platform request was sent.',
   },
   zh: {
+    adoptImage: '采用为草稿资产',
+    copyGeneration: '文案生成',
+    generatedPreview: '生成图片预览',
+    generateImage: '生成图片',
+    generationMode: '生成模式',
+    imageAdopted: '图片已采用为草稿资产。',
+    imageGeneration: '图片生成',
+    imageGenerationDescription:
+      '通过已配置的服务端供应商生成私有草稿图片；只有明确点击采用后才会关联内容。',
+    imagePreviewUnavailable: '图片已保存，但没有可用的安全预览地址；请刷新后从素材库选择。',
+    imagePrompt: '图片提示词',
+    imageSize: '图片尺寸',
+    noReference: '不使用参考图',
+    referenceAsset: '参考素材',
+    referenceInvalid: '请选择不超过 8 MB 的 JPEG、PNG 或 WebP 图片。',
+    referencePreview: '参考图预览',
+    selectDraft: '选择草稿',
+    targetDraft: '目标草稿',
+    uploadReference: '上传参考图',
     immediatePublish: '立即发布',
     immediatePublishNotice:
       '这会通过官方 API 调用所选平台，每个平台分别记录结果。结果未知时不要再次点击，请先到平台核对。',

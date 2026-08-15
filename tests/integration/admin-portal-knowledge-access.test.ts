@@ -188,6 +188,7 @@ describe.sequential('Portal knowledge access', () => {
         enabled: true,
         name: `Portal AI ${suffix}`,
         protocol: 'openai-compatible',
+        textGenerationContract: 'responses',
       },
       overrideAccess: false,
       user: admin,
@@ -309,7 +310,12 @@ describe.sequential('Portal knowledge access', () => {
       routes: [
         { dimensions: 3, operation: 'embedding', status: 'ready', usageKey: 'knowledge.embedding' },
         { dimensions: null, operation: 'text', status: 'ready', usageKey: 'chat.reply' },
-        { dimensions: null, operation: 'text', status: 'action-required', usageKey: 'knowledge.translation' },
+        {
+          dimensions: null,
+          operation: 'text',
+          status: 'action-required',
+          usageKey: 'knowledge.translation',
+        },
       ],
     })
     expect(summary.prompts).toEqual([

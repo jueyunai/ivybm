@@ -9,6 +9,7 @@ import {
   portalCommandFingerprint,
   PortalCommandReceiptError,
 } from '@/admin-portal/core/commands/portalCommandReceipts'
+import { createAiGateway, type AiProvider } from '@/modules/ai/gateway'
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
 
@@ -228,36 +229,52 @@ describe.sequential('Portal command receipts', () => {
     expect(operation).not.toHaveBeenCalled()
   })
 
-  it('does not retry an external command whose failure outcome is unknown', async () => {
-    const req = await createLocalReq({ user: admin }, payload)
-    const input = { action: 'ai-debug', question: 'unknown response' }
-    const idempotencyKey = `portal-receipt:${randomUUID()}`
-    const scope = 'portal.knowledge:ai-debug'
-    const operation = vi.fn(async () => {
-      throw new Error('connection closed after request dispatch')
-    })
-    const command = () =>
-      executePortalCommand({
-        atomic: false,
-        fingerprintInput: input,
-        idempotencyKey,
-        operation: async (_transactionReq, execution) => {
-          execution.markExternalDispatch()
-          return operation()
-        },
-        payload,
-        replayPolicy: 'unknown-on-expiry',
-        req,
-        scope,
+  it.each([false, true])(
+    'does not retry an external command whose failure outcome is unknown (atomic=%s)',
+    async (atomic) => {
+      const req = await createLocalReq({ user: admin }, payload)
+      const input = { action: 'ai-debug', question: 'unknown response' }
+      const idempotencyKey = `portal-receipt:${randomUUID()}`
+      const scope = 'portal.knowledge:ai-debug'
+      const providerGenerateImage = vi.fn(async () => {
+        throw new Error('connection closed after request dispatch')
       })
+      const provider: AiProvider = {
+        embed: vi.fn(),
+        generateImage: providerGenerateImage,
+        generateText: vi.fn(),
+        name: 'receipt-fixture-provider',
+      }
+      const gateway = createAiGateway({
+        operations: { image: { model: 'receipt-fixture-model', provider } },
+      })
+      const command = () =>
+        executePortalCommand({
+          atomic,
+          fingerprintInput: input,
+          idempotencyKey,
+          operation: async (_transactionReq, execution) =>
+            gateway.generateImage({
+              onDispatch: execution.markExternalDispatch,
+              prompt: 'Receipt integration fixture',
+            }),
+          payload,
+          replayPolicy: 'unknown-on-expiry',
+          req,
+          scope,
+        })
 
-    await expect(command()).rejects.toThrow('connection closed after request dispatch')
-    await expect(command()).rejects.toMatchObject({
-      code: 'portal-command-result-unknown',
-      status: 409,
-    })
-    expect(operation).toHaveBeenCalledTimes(1)
-  })
+      await expect(command()).rejects.toMatchObject({
+        code: 'portal-command-result-unknown',
+        status: 409,
+      })
+      await expect(command()).rejects.toMatchObject({
+        code: 'portal-command-result-unknown',
+        status: 409,
+      })
+      expect(providerGenerateImage).toHaveBeenCalledTimes(1)
+    },
+  )
 
   it('keeps deterministic pre-dispatch failures retryable under the external policy', async () => {
     const req = await createLocalReq({ user: admin }, payload)
@@ -265,7 +282,9 @@ describe.sequential('Portal command receipts', () => {
     const idempotencyKey = `portal-receipt:${randomUUID()}`
     const operation = vi
       .fn()
-      .mockRejectedValueOnce(Object.assign(new Error('model is not configured'), { code: 'invalid_request' }))
+      .mockRejectedValueOnce(
+        Object.assign(new Error('model is not configured'), { code: 'invalid_request' }),
+      )
       .mockResolvedValueOnce({ generated: true })
     const command = () =>
       executePortalCommand({

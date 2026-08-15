@@ -152,13 +152,14 @@ describe('publication worker dispatch', () => {
       ),
     ).resolves.toMatchObject({ route: 'instagram-image-staged' })
     const image = linkedInImageIntent('image_initialized')
+    const readAssetBytes = vi.fn(async () => new Uint8Array([1, 2, 3]))
     await expect(
       dispatchPublicationWorkItem(
         {
-          assetBytes: new Uint8Array([1, 2, 3]),
           authority,
           intent: image,
           leaseFence: lease,
+          readAssetBytes,
           route: 'linkedin-image-staged',
           transport,
         },
@@ -167,6 +168,9 @@ describe('publication worker dispatch', () => {
     ).resolves.toMatchObject({ route: 'linkedin-image-staged' })
     expect(operations.executeInstagram).toHaveBeenCalledTimes(1)
     expect(operations.executeLinkedInImage).toHaveBeenCalledTimes(1)
+    expect(operations.executeLinkedInImage).toHaveBeenCalledWith(
+      expect.objectContaining({ readAssetBytes }),
+    )
     expect(operations.executeSingle).not.toHaveBeenCalled()
   })
 
@@ -240,20 +244,20 @@ describe('publication worker dispatch', () => {
   })
 
   it.each([
-    ['scheduled without bytes', 'scheduled', undefined, true],
-    ['scheduled with bytes', 'scheduled', new Uint8Array([1, 2, 3]), false],
-    ['upload without bytes', 'image_initialized', undefined, false],
-    ['upload with bytes', 'image_initialized', new Uint8Array([1, 2, 3]), true],
+    ['scheduled without reader', 'scheduled', undefined, true],
+    ['scheduled with reader', 'scheduled', vi.fn(), false],
+    ['upload without reader', 'image_initialized', undefined, false],
+    ['upload with reader', 'image_initialized', vi.fn(), true],
   ] as const)(
-    'enforces LinkedIn image bytes boundary: %s',
-    async (_label, stage, assetBytes, valid) => {
+    'enforces LinkedIn image reader boundary: %s',
+    async (_label, stage, readAssetBytes, valid) => {
       const operations = executors()
       const promise = dispatchPublicationWorkItem(
         {
-          ...(assetBytes ? { assetBytes } : {}),
           authority,
           intent: linkedInImageIntent(stage),
           leaseFence: lease,
+          ...(readAssetBytes ? { readAssetBytes } : {}),
           route: 'linkedin-image-staged',
           transport,
         },
