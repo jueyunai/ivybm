@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs'
 
 import { getPayload } from 'payload'
 
+import { createPayloadConversationResponder } from '@/modules/conversations/payloadResponder'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import type { JobHandler } from '@/modules/jobs/contracts'
 import {
@@ -41,12 +42,22 @@ import {
   KNOWLEDGE_INGEST_JOB_TYPE,
 } from '@/modules/knowledge/ingestion/jobs'
 import {
+  createPlatformConversationDeliveryJobHandler,
+  PLATFORM_CONVERSATION_DELIVERY_JOB_TYPE,
+} from '@/modules/platforms/conversationDeliveryJobs'
+import { createPlatformConversationDeliveryService } from '@/modules/platforms/conversationDelivery'
+import {
   createPlatformEventJobHandler,
   PLATFORM_EVENT_JOB_TYPE,
 } from '@/modules/platforms/eventJobs'
+import { createMetaConversationOutboundAdapter } from '@/modules/platforms/meta/conversationOutbound'
+import { PayloadMetaMessagingTokenProvider } from '@/modules/platforms/meta/payloadMessagingTokenProvider'
 import { PayloadPlatformConversationPort } from '@/modules/platforms/payloadConversationPort'
 import { PayloadPlatformMessagingAccountAuthorizer } from '@/modules/platforms/payloadMessagingAccountAuthorizer'
-import { createLinkedInPublishingTransport } from '@/modules/platforms/linkedin/publishingOutbound'
+import {
+  createLinkedInPublishingTransport,
+  type LinkedInPublishingTransport,
+} from '@/modules/platforms/linkedin/publishingOutbound'
 import { PayloadLinkedInPublishingTokenProvider } from '@/modules/platforms/linkedin/payloadPublishingTokenProvider'
 import { createMetaPublishingTransport } from '@/modules/platforms/meta/publishingOutbound'
 import { PayloadMetaPublishingTokenProvider } from '@/modules/platforms/meta/payloadPublishingTokenProvider'
@@ -55,9 +66,11 @@ import {
   PLATFORM_PUBLICATION_JOB_TYPE,
   type PublicationJobRuntime,
 } from '@/modules/platforms/publicationJobs'
+import type { PublicationWorkerRoute } from '@/modules/platforms/publicationWorkerDispatch'
 import { PayloadPublishingAccountResolver } from '@/modules/platforms/publishingAccountResolver'
 import { readLinkedInPublicationAsset } from '@/modules/media'
 import { createPlatformPublishingService } from '@/modules/platforms/publishingServiceAdapter'
+import { PayloadPlatformConversationDeliveryAuthority } from '@/modules/platforms/payloadConversationDeliveryAuthority'
 import config from '@/payload.config'
 
 const readPositiveInteger = (name: string, fallback: number): number => {
@@ -86,6 +99,7 @@ const feishuOAuthRecoveryIntervalMs = readPositiveInteger(
   FEISHU_OAUTH_CALLBACK_RECOVERY_INTERVAL_MS,
 )
 const payload = await getPayload({ config, disableOnInit: true, key: 'job-worker' })
+const conversationsEnabled = process.env.ADMIN_PORTAL_CONVERSATIONS_ENABLED === 'true'
 
 const requiredEnvironment = (name: string): string => {
   const value = process.env[name]?.trim()
@@ -98,25 +112,47 @@ const commaSeparatedOrigins = (name: string): string[] =>
     .split(',')
     .map((value) => new URL(value.trim()).origin)
 
-let publicationRuntime: PublicationJobRuntime | undefined
-const resolvePublicationRuntime = async (): Promise<PublicationJobRuntime> => {
+let metaPublicationRuntime: PublicationJobRuntime | undefined
+let linkedInPublicationRuntime: PublicationJobRuntime | undefined
+
+const unavailableLinkedInTransport = (): LinkedInPublishingTransport => {
+  const unavailable = async (): Promise<never> => {
+    throw new Error('LinkedIn publishing runtime is unavailable')
+  }
+  return {
+    getPostStatus: unavailable,
+    initializeImageUpload: unavailable,
+    publishImagePost: unavailable,
+    publishTextPost: unavailable,
+    uploadImage: unavailable,
+  }
+}
+
+const resolvePublicationRuntime = async (
+  route: PublicationWorkerRoute,
+): Promise<PublicationJobRuntime> => {
   if (process.env.ADMIN_PORTAL_PUBLISHING_ENABLED !== 'true') {
     throw new Error('Platform publishing is disabled')
   }
-  if (publicationRuntime) return publicationRuntime
+  const requiresLinkedIn = route === 'linkedin-text-single' || route === 'linkedin-image-staged'
+  if (requiresLinkedIn && linkedInPublicationRuntime) return linkedInPublicationRuntime
+  if (!requiresLinkedIn && metaPublicationRuntime) return metaPublicationRuntime
   const publicOrigin = new URL(requiredEnvironment('NEXT_PUBLIC_SERVER_URL')).origin
-  const ticketKey = Buffer.from(requiredEnvironment('LINKEDIN_UPLOAD_TICKET_KEY'), 'hex')
-  if (ticketKey.byteLength !== 32) {
-    throw new Error('LINKEDIN_UPLOAD_TICKET_KEY must be a 64-character hexadecimal value')
-  }
-  const linkedInTokenProvider = new PayloadLinkedInPublishingTokenProvider({ payload })
   const metaTokenProvider = new PayloadMetaPublishingTokenProvider({ payload })
-  const linkedInTransport = createLinkedInPublishingTransport({
-    allowedUploadOrigins: commaSeparatedOrigins('LINKEDIN_UPLOAD_ALLOWED_ORIGINS'),
-    linkedInVersion: requiredEnvironment('LINKEDIN_API_VERSION'),
-    tokenProvider: linkedInTokenProvider.getToken,
-    uploadTicketKey: ticketKey,
-  })
+  let linkedInTransport = unavailableLinkedInTransport()
+  if (requiresLinkedIn) {
+    const ticketKey = Buffer.from(requiredEnvironment('LINKEDIN_UPLOAD_TICKET_KEY'), 'hex')
+    if (ticketKey.byteLength !== 32) {
+      throw new Error('LINKEDIN_UPLOAD_TICKET_KEY must be a 64-character hexadecimal value')
+    }
+    const linkedInTokenProvider = new PayloadLinkedInPublishingTokenProvider({ payload })
+    linkedInTransport = createLinkedInPublishingTransport({
+      allowedUploadOrigins: commaSeparatedOrigins('LINKEDIN_UPLOAD_ALLOWED_ORIGINS'),
+      linkedInVersion: requiredEnvironment('LINKEDIN_API_VERSION'),
+      tokenProvider: linkedInTokenProvider.getToken,
+      uploadTicketKey: ticketKey,
+    })
+  }
   const metaTransport = createMetaPublishingTransport({
     allowedMediaOrigins: [publicOrigin],
     tokenProvider: metaTokenProvider.getToken,
@@ -141,7 +177,8 @@ const resolvePublicationRuntime = async (): Promise<PublicationJobRuntime> => {
       })
     },
   }
-  publicationRuntime = runtime
+  if (requiresLinkedIn) linkedInPublicationRuntime = runtime
+  else metaPublicationRuntime = runtime
   return runtime
 }
 
@@ -155,8 +192,21 @@ const handlers: Record<string, JobHandler> = {
   [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload }),
   [PLATFORM_EVENT_JOB_TYPE]: createPlatformEventJobHandler({
     accountAuthorizer: new PayloadPlatformMessagingAccountAuthorizer({ payload }),
-    conversations: new PayloadPlatformConversationPort({ payload }),
+    conversations: new PayloadPlatformConversationPort({
+      payload,
+      ...(conversationsEnabled ? { responder: createPayloadConversationResponder(payload) } : {}),
+    }),
   }),
+}
+if (conversationsEnabled) {
+  const tokenProvider = new PayloadMetaMessagingTokenProvider({ payload })
+  handlers[PLATFORM_CONVERSATION_DELIVERY_JOB_TYPE] = createPlatformConversationDeliveryJobHandler({
+    delivery: createPlatformConversationDeliveryService({
+      authority: new PayloadPlatformConversationDeliveryAuthority(payload),
+      outbound: createMetaConversationOutboundAdapter({ tokenProvider: tokenProvider.getToken }),
+    }),
+    payload,
+  })
 }
 if (process.env.ADMIN_PORTAL_PUBLISHING_ENABLED === 'true') {
   handlers[PLATFORM_PUBLICATION_JOB_TYPE] = createPlatformPublicationJobHandler({

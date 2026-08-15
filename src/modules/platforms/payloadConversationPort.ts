@@ -2,7 +2,10 @@ import type { Payload } from 'payload'
 
 import { createVisitorToken, hashVisitorToken } from '@/modules/conversations/auth'
 import { PayloadConversationRepository } from '@/modules/conversations/payloadRepository'
-import { createConversationService } from '@/modules/conversations/service'
+import {
+  createConversationService,
+  type ConversationResponder,
+} from '@/modules/conversations/service'
 import { PayloadConversationLeadSink } from '@/modules/leads/conversationLeadSink'
 
 import type { ConversationMessagePort, PlatformEventDeliveryResult } from './ports'
@@ -11,6 +14,12 @@ import type { MessagingPlatform, NormalizedInboundMessage } from './types'
 // The durable Job lease is 120s. Keeping the nested ConversationCommand lease shorter
 // guarantees that a worker reclaim can recover after a process dies mid-delivery.
 export const PLATFORM_CONVERSATION_COMMAND_LEASE_MS = 60_000
+
+const handoffOnlyResponder: ConversationResponder = {
+  generateReply: async () => ({
+    handoff: { reason: 'platform_outbound_not_configured', source: 'ai_policy' as const },
+  }),
+}
 
 const conversationChannelFor = (
   platform: MessagingPlatform,
@@ -38,16 +47,17 @@ const inboundText = (message: NormalizedInboundMessage): string => {
     return text
   }
   const attachmentTypes = Array.isArray(message.content.attachments)
-    ? message.content.attachments.slice(0, 10).flatMap((attachment) =>
-        attachment && typeof attachment.type === 'string' && attachment.type.trim()
-          ? [attachment.type.trim()]
-          : [],
-      )
+    ? message.content.attachments
+        .slice(0, 10)
+        .flatMap((attachment) =>
+          attachment && typeof attachment.type === 'string' && attachment.type.trim()
+            ? [attachment.type.trim()]
+            : [],
+        )
     : []
   if (attachmentTypes.length > 0) return `[Attachment: ${attachmentTypes.join(', ')}]`
-  const messageType = typeof message.content.messageType === 'string'
-    ? message.content.messageType.trim()
-    : ''
+  const messageType =
+    typeof message.content.messageType === 'string' ? message.content.messageType.trim() : ''
   if (!messageType) throw new Error('Platform inbound message content is invalid')
   return `[${messageType} message]`
 }
@@ -56,24 +66,31 @@ export class PayloadPlatformConversationPort implements ConversationMessagePort 
   private readonly allowTikTokNormalizedDelivery: boolean
   private readonly commandLeaseMs: number
   private readonly payload: Payload
+  private readonly responder: ConversationResponder
 
   constructor({
     allowTikTokNormalizedDelivery = false,
     commandLeaseMs = PLATFORM_CONVERSATION_COMMAND_LEASE_MS,
     payload,
+    responder = handoffOnlyResponder,
   }: {
     allowTikTokNormalizedDelivery?: boolean
     commandLeaseMs?: number
     payload: Payload
+    responder?: ConversationResponder
   }) {
     this.allowTikTokNormalizedDelivery = allowTikTokNormalizedDelivery
     this.commandLeaseMs = commandLeaseMs
     this.payload = payload
+    this.responder = responder
   }
 
-  async writeInboundMessage(message: NormalizedInboundMessage): Promise<PlatformEventDeliveryResult> {
+  async writeInboundMessage(
+    message: NormalizedInboundMessage,
+  ): Promise<PlatformEventDeliveryResult> {
     const channel = conversationChannelFor(message.platform, this.allowTikTokNormalizedDelivery)
     const externalThreadId = `${message.accountExternalId}:${message.senderExternalId}`
+    const text = inboundText(message)
     const service = createConversationService({
       allowTikTokNormalizedDelivery: this.allowTikTokNormalizedDelivery,
       leadSink: new PayloadConversationLeadSink(),
@@ -82,13 +99,7 @@ export class PayloadPlatformConversationPort implements ConversationMessagePort 
         payload: this.payload,
         sessionTokenHash: hashVisitorToken(createVisitorToken()),
       }),
-      // Until an account has approved outbound messaging, the only truthful outcome is
-      // a durable operator handoff. Do not persist an AI reply that was never delivered.
-      responder: {
-        generateReply: async () => ({
-          handoff: { reason: 'platform_outbound_not_configured', source: 'ai_policy' as const },
-        }),
-      },
+      responder: this.responder,
     })
     const delivery = await service.ingestExternalMessage({
       channel,
@@ -96,8 +107,8 @@ export class PayloadPlatformConversationPort implements ConversationMessagePort 
       externalMessageId: message.externalEventId,
       externalSenderId: message.senderExternalId,
       externalThreadId,
-      locale: 'en',
-      text: inboundText(message),
+      locale: /\p{Script=Arabic}/u.test(text) ? 'ar' : 'en',
+      text,
     })
     return { idempotencyKey: message.idempotencyKey, status: delivery.status }
   }

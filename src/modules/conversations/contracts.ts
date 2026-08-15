@@ -101,6 +101,10 @@ export type ChatSessionList = {
 export type StartChatSessionInput = {
   /** WhatsApp remains readable as a historical channel but cannot start a new phase-one session. */
   channel: CreatableChatChannel
+  /** Server-only provider account identity; public website routes never accept this field. */
+  externalAccountId?: string
+  /** Server-only provider-scoped visitor identity used for outbound replies. */
+  externalSenderId?: string
   /** Internal connector identity; never accepted from the public website route. */
   externalThreadId?: string
   idempotencyKey: string

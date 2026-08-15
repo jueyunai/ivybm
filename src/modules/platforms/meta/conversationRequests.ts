@@ -2,8 +2,9 @@ import type { MessagingPlatform } from '../types'
 
 /**
  * Pure, credential-free builders and parsers for one Meta Send API text reply
- * (POST /me/messages with a Page access token), shared by facebook-messenger and instagram
- * channels of the phase-one conversation outbound contract.
+ * shared by facebook-messenger and instagram channels of the phase-one
+ * conversation outbound contract. Facebook uses POST /me/messages with a Page
+ * access token; Instagram Login uses POST /<IG_ID>/messages.
  *
  * This module performs no fetch, no network, no config/env access and never
  * sees a Page access token: the outbound adapter attaches the credential at
@@ -23,6 +24,8 @@ export type MetaConversationReplyPlatform = Extract<
 >
 
 export type MetaConversationReplyInput = {
+  /** Facebook Page ID or Instagram professional account ID. */
+  accountExternalId: string
   platform: MetaConversationReplyPlatform
   /** Recipient-scoped ID (PSID / IGSID): bounded decimal identifier. */
   recipientExternalId: string
@@ -32,12 +35,11 @@ export type MetaConversationReplyInput = {
 export type MetaConversationReplyRequest = {
   body: {
     message: { text: string }
-    messaging_type: 'RESPONSE'
+    messaging_type?: 'RESPONSE'
     recipient: { id: string }
   }
   method: 'POST'
-  /** Page access tokens resolve `/me` to the authorized Facebook Page. */
-  path: '/me/messages'
+  path: string
 }
 
 export type MetaConversationReplyAcceptance = {
@@ -93,6 +95,7 @@ export const buildMetaConversationReplyRequest = (
     )
   }
 
+  const accountExternalId = decimalId(input.accountExternalId, 'Meta account external ID')
   const recipientExternalId = decimalId(input.recipientExternalId, 'Meta recipient external ID')
 
   if (typeof input.text !== 'string') {
@@ -112,6 +115,17 @@ export const buildMetaConversationReplyRequest = (
     throw new MetaConversationReplyError(
       `Meta conversation reply text must be at most ${limitDescription} for ${input.platform}`,
     )
+  }
+
+  if (input.platform === 'instagram') {
+    return {
+      body: {
+        message: { text },
+        recipient: { id: recipientExternalId },
+      },
+      method: 'POST',
+      path: `/${accountExternalId}/messages`,
+    }
   }
 
   return {

@@ -11,6 +11,12 @@ import {
 } from 'payload'
 
 import type { Conversation, Lead, LeadSource, Message, User } from '@/payload-types'
+import { PayloadJobQueue } from '@/modules/jobs/claim'
+import {
+  createPlatformConversationDeliveryKey,
+  messagingPlatformForChannel,
+  PLATFORM_CONVERSATION_DELIVERY_JOB_TYPE,
+} from '@/modules/platforms/conversationDeliveryJobs'
 
 import { visitorSessionExpiresAt } from './auth'
 import type {
@@ -553,6 +559,8 @@ export class PayloadConversationRepository implements ConversationRepository {
         context: { skipAudit: true },
         data: {
           channel: session.channel,
+          externalAccountId: input.externalAccountId,
+          externalSenderId: input.externalSenderId,
           externalThreadId: input.externalThreadId,
           handoffStatus: session.handoffStatus,
           intentLevel: 'unscored',
@@ -679,6 +687,29 @@ export class PayloadConversationRepository implements ConversationRepository {
       const baseMessageIDs = new Set(mutation.base.messages.map(({ id }) => String(id)))
       const newMessages = session.messages.filter(({ id }) => !baseMessageIDs.has(String(id)))
       const stateChanged = mutation.base.handoffStatus !== session.handoffStatus
+      if (stateChanged) {
+        const activeDelivery = await (
+          await this.transactionDB(req)
+        ).execute(sql`
+          SELECT "id"
+          FROM "conversation_delivery_intents"
+          WHERE "conversation_id" = ${conversation.id}
+            AND "claim_id" IS NOT NULL
+            AND (
+              "claim_lease_expires_at" > NOW()
+              OR "provider_i_o_started_at" IS NOT NULL
+            )
+          LIMIT 1
+          FOR UPDATE
+        `)
+        if (activeDelivery.rows.length > 0) {
+          throw new ChatServiceError(
+            'conflict',
+            'Conversation delivery is active; retry the handoff transition',
+            { retryable: true },
+          )
+        }
+      }
       if (!Number.isInteger(mutation.base.revision)) {
         throw new ChatServiceError('internal_error', 'Conversation revision is invalid')
       }
@@ -739,8 +770,7 @@ export class PayloadConversationRepository implements ConversationRepository {
               : {}),
             ...(mutation.qualificationState
               ? {
-                  qualificationAnsweredCompany:
-                    mutation.qualificationState.answeredCompany ?? null,
+                  qualificationAnsweredCompany: mutation.qualificationState.answeredCompany ?? null,
                   qualificationAskedFields: mutation.qualificationState.askedFields,
                   qualificationAwaitingFields: mutation.qualificationState.awaitingFields,
                   qualificationRoundCount: mutation.qualificationState.roundCount,
@@ -761,7 +791,15 @@ export class PayloadConversationRepository implements ConversationRepository {
 
       for (const message of newMessages) {
         const metadata = mutation.messageMetadata?.[String(message.id)]
-        await this.payload.create({
+        const platform = messagingPlatformForChannel(session.channel)
+        const requiredHandoffStatus =
+          message.author === 'ai' && session.handoffStatus === 'ai_active'
+            ? 'ai_active'
+            : message.author === 'operator' && session.handoffStatus === 'human_active'
+              ? 'human_active'
+              : undefined
+        const shouldEnqueueDelivery = Boolean(platform && requiredHandoffStatus)
+        const persistedMessage = await this.payload.create({
           collection: 'messages',
           context: { skipAudit: true },
           data: {
@@ -781,12 +819,62 @@ export class PayloadConversationRepository implements ConversationRepository {
             model: message.model,
             promptVersion: message.promptVersion,
             requestId: String(message.id),
-            status: 'sent',
+            status: shouldEnqueueDelivery ? 'pending' : 'sent',
             tokenUsage: message.tokenUsage,
           },
           overrideAccess: true,
           req,
         })
+        if (shouldEnqueueDelivery && platform && requiredHandoffStatus) {
+          const accountExternalId = persistedConversation.externalAccountId?.trim()
+          const recipientExternalId = persistedConversation.externalSenderId?.trim()
+          if (
+            !accountExternalId ||
+            !recipientExternalId ||
+            !/^\d{1,32}$/u.test(accountExternalId) ||
+            !/^\d{1,64}$/u.test(recipientExternalId)
+          ) {
+            throw new ChatServiceError(
+              'internal_error',
+              'External conversation delivery routing is unavailable',
+            )
+          }
+          const deliveryKey = createPlatformConversationDeliveryKey({
+            accountExternalId,
+            messageId: message.id,
+            platform,
+          })
+          const queued = await new PayloadJobQueue({ payload: this.payload }).enqueue(
+            {
+              idempotencyKey: deliveryKey,
+              maxAttempts: 5,
+              payload: { deliveryKey },
+              type: PLATFORM_CONVERSATION_DELIVERY_JOB_TYPE,
+            },
+            req,
+          )
+          await this.payload.create({
+            collection: 'conversation-delivery-intents',
+            context: { skipAudit: true },
+            data: {
+              accountExternalId,
+              conversation: persistedConversation.id,
+              deliveryKey,
+              expectedRevision: persistedConversation.revision,
+              fencingGeneration: 0,
+              platform,
+              queueJob: queued.job.id,
+              recipientExternalId,
+              replyMessage: persistedMessage.id,
+              requiredHandoffStatus,
+              retryable: false,
+              status: 'queued',
+              text: message.content,
+            },
+            overrideAccess: true,
+            req,
+          })
+        }
       }
 
       if (mutation.handoff) {

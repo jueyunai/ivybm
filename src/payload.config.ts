@@ -22,6 +22,7 @@ import { FeishuMappings } from './collections/FeishuMappings'
 import { FeishuOAuthStates } from './collections/FeishuOAuthStates'
 import { Conversations } from './collections/Conversations'
 import { ConversationCommands } from './collections/ConversationCommands'
+import { ConversationDeliveryIntents } from './collections/ConversationDeliveryIntents'
 import { Handoffs } from './collections/Handoffs'
 import { Jobs } from './collections/Jobs'
 import { KnowledgeChunks } from './collections/KnowledgeChunks'
@@ -115,6 +116,7 @@ export default buildConfig({
     Messages,
     Handoffs,
     ConversationCommands,
+    ConversationDeliveryIntents,
     Jobs,
   ]),
   editor: lexicalEditor(),
