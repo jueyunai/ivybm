@@ -68,7 +68,7 @@ A/B/C 是三条并行的“案例准备流水线”，不是三条 production �
 | 产品准备 | 16 个规范产品的文案、规格和图片映射 | 共享准备根目录的 `products/` | 不改案例；不写 production | `batch-manifest.json`、媒体、处理报告 |
 | 案例准备 A | 原始案例 01–23 | 共享准备根目录的 `cases-a/` | 不改产品；不写 production | `batch-manifest.json`、媒体、重复报告 |
 | 案例准备 B | 原始案例 24–46 | 共享准备根目录的 `cases-b/` | 不改产品；不写 production | `batch-manifest.json`、媒体、缺失事实报告 |
-| 案例准备 C | 原始案例 47–69及产品参考内容归并 | 共享准备根目录的 `cases-c/` | 不改产品；不写 production | `batch-manifest.json`、媒体、归并报告 |
+| 案例准备 C | 原始案例 47–69；负责范围内 65 号产品参考内容归并 | 共享准备根目录的 `cases-c/` | 不改产品；不写 production | `batch-manifest.json`、媒体、归并报告 |
 | 独立 QA | 检查合并后的 slug、双语、媒体和重复项 | 共享准备根目录的 `qa/` | 不修改批次产物；不写 production | `qa-report.md`、阻塞清单 |
 
 ## 4. Worktree 与目录规则
@@ -212,7 +212,7 @@ pnpm content:import -- --manifest <external-manifest> --resume <external-checkpo
 - 效果图、施工图、工厂图和完工图在文案中不混写为同一状态；
 - 与线上既有案例或其它批次疑似重复时只标记候选，不自行创建第二个 slug。
 
-会话 C 负责把两个通用天花参考文档标记为 `merge-into-product`，但无权修改产品批次；主会话在合并阶段决定具体目标产品和图库顺序。
+会话 B 负责把 38 号 `Aluminum Baffle Ceiling Reference` 标记为 `merge-into-product`；会话 C 负责把 65 号 `Custom-Shaped Ceiling Reference` 标记为 `merge-into-product`。两者都无权修改产品批次，主会话在合并阶段决定具体目标产品和图库顺序。
 
 ## 9. 图片处理与去重
 
