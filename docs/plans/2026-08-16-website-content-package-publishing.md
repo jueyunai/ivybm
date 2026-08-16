@@ -37,7 +37,7 @@
 | 案例准备 C | 案例清单后 1/3、产品参考型案例归并 | 自己 worktree 和独立准备目录 | 不改产品；不创建线上记录 | `cases-c/batch.json`、归并报告 |
 | 独立 QA | 只读检查合并后的 manifest、slug 冲突、媒体尺寸、双语完整性 | QA 报告目录 | 不修改 manifest；不写 production | `qa-report.json`、阻塞清单 |
 
-会话之间不共享可写的 `.env`、`.next`、数据库或 media 目录。每个会话从最新 `origin/main` 创建独立 worktree；准备产物写入 Git 外部的独立目录，例如 `/Users/zhiyun.lee/Downloads/ivybm建站素材-上架准备/<batch>/`。主会话只接受带 SHA-256 清单的产物。
+本次是内容准备和 CMS 上架，不是并行代码开发。产品/案例准备会话可以共用一个协调 worktree，甚至可以完全不创建开发 worktree：原始素材目录只读，所有产物写入 Git 外部且按批次隔离的目录，例如 `/Users/zhiyun.lee/Downloads/ivybm建站素材-上架准备/<batch>/`。会话不得同时编辑同一个 tracked 文件、不得共享可写 `.env`、`.next`、数据库或 media 目录。只有某个会话需要修改 tracked 脚本、测试或文档时，才为该会话创建独立 worktree。主会话只接受带 SHA-256 清单的产物。
 
 生产写入必须串行：媒体上传、产品/案例 upsert、发布和缓存清理不能由并行会话执行。并行会话只减少资料整理时间，不扩大 production 写权限。
 
@@ -223,9 +223,9 @@ Expected: PASS。
 
 ## 6. 主会话合并与并行准备验收
 
-### Step 1: 创建工作区
+### Step 1: 创建协调工作区
 
-主会话从最新 `origin/main` 创建短分支和独立 worktree；执行会话不得复用主 worktree，不得改写客户原始目录。
+主会话保留一个协调 worktree，用于维护计划、导入脚本和最终文档。内容准备会话不需要各自创建 worktree，直接读取同一份只读客户素材，并分别写入 `products/`、`cases-a/`、`cases-b/`、`cases-c/` 和 `qa/` 输出目录。执行会话不得改写客户原始目录；一旦涉及 tracked 代码或共享文档修改，立即切换为独立 worktree，避免并发覆盖。
 
 ### Step 2: 并行运行准备会话
 
