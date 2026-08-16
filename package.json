@@ -9,6 +9,7 @@
     "ai:eval:csv": "node scripts/ai-eval/export-csv.mjs",
     "ai:eval:validate": "node scripts/ai-eval/validate.mjs",
     "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build",
+    "content:import": "cross-env NODE_OPTIONS=--no-deprecation tsx scripts/content-import/cli.ts",
     "db:migrate": "cross-env NODE_OPTIONS=--no-deprecation payload migrate",
     "db:migrate:create": "cross-env NODE_OPTIONS=--no-deprecation payload migrate:create",
     "db:migrate:down": "cross-env NODE_OPTIONS=--no-deprecation payload migrate:down",
