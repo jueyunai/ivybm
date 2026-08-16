@@ -62,14 +62,14 @@ A/B/C 是三条并行的“案例准备流水线”，不是三条 production �
                        主会话唯一执行 production 写入
 ```
 
-| 会话 | 责任 | 允许写入 | 禁止事项 | 交付物 |
-| --- | --- | --- | --- | --- |
-| 主会话 | 冻结规则、合并批次、备份、上架、验收、回滚 | 协调 worktree、共享准备根目录的 `merged/` 与 `checkpoints/`、production | 不改产品/案例准备目录；不发布未审内容；不允许其他会话写 production | release manifest、导入日志、验收证据 |
-| 产品准备 | 16 个规范产品的文案、规格和图片映射 | 共享准备根目录的 `products/` | 不改案例；不写 production | `batch-manifest.json`、媒体、处理报告 |
-| 案例准备 A | 原始案例 01–23 | 共享准备根目录的 `cases-a/` | 不改产品；不写 production | `batch-manifest.json`、媒体、重复报告 |
-| 案例准备 B | 原始案例 24–46 | 共享准备根目录的 `cases-b/` | 不改产品；不写 production | `batch-manifest.json`、媒体、缺失事实报告 |
-| 案例准备 C | 原始案例 47–69；负责范围内 65 号产品参考内容归并 | 共享准备根目录的 `cases-c/` | 不改产品；不写 production | `batch-manifest.json`、媒体、归并报告 |
-| 独立 QA | 检查合并后的 slug、双语、媒体和重复项 | 共享准备根目录的 `qa/` | 不修改批次产物；不写 production | `qa-report.md`、阻塞清单 |
+| 会话       | 责任                                             | 允许写入                                                                | 禁止事项                                                           | 交付物                                    |
+| ---------- | ------------------------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------- |
+| 主会话     | 冻结规则、合并批次、备份、上架、验收、回滚       | 协调 worktree、共享准备根目录的 `merged/` 与 `checkpoints/`、production | 不改产品/案例准备目录；不发布未审内容；不允许其他会话写 production | release manifest、导入日志、验收证据      |
+| 产品准备   | 16 个规范产品的文案、规格和图片映射              | 共享准备根目录的 `products/`                                            | 不改案例；不写 production                                          | `batch-manifest.json`、媒体、处理报告     |
+| 案例准备 A | 原始案例 01–23                                   | 共享准备根目录的 `cases-a/`                                             | 不改产品；不写 production                                          | `batch-manifest.json`、媒体、重复报告     |
+| 案例准备 B | 原始案例 24–46                                   | 共享准备根目录的 `cases-b/`                                             | 不改产品；不写 production                                          | `batch-manifest.json`、媒体、缺失事实报告 |
+| 案例准备 C | 原始案例 47–69；负责范围内 65 号产品参考内容归并 | 共享准备根目录的 `cases-c/`                                             | 不改产品；不写 production                                          | `batch-manifest.json`、媒体、归并报告     |
+| 独立 QA    | 检查合并后的 slug、双语、媒体和重复项            | 共享准备根目录的 `qa/`                                                  | 不修改批次产物；不写 production                                    | `qa-report.md`、阻塞清单                  |
 
 ## 4. Worktree 与目录规则
 
