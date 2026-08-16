@@ -126,8 +126,7 @@ class FakePayloadRest {
       if (collection === 'media') {
         if (typeof body.isPublic === 'boolean') this.mediaPatchVisibility.push(body.isPublic)
         Object.assign(document, body)
-      }
-      else this.updateLocalized(document, body, locale)
+      } else this.updateLocalized(document, body, locale)
       this.writes += 1
       return Response.json(this.render(document, requestURL.searchParams.get('locale')))
     }

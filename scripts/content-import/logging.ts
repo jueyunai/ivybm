@@ -1,5 +1,5 @@
 const SECRET_KEYS =
-  /(?:password|passphrase|cookie|token|authorization|secret|api[-_]?key|credential|private[-_]?key)/i
+  /(?:password|passphrase|cookie|token|authorization|secret|api[-_]?key|credential|private[-_]?key|sha(?:256)?|hash)/i
 const PATH_KEYS = /(?:path|filepath|file_path|source|absolute)/i
 const CONTENT_KEYS = /(?:body|prompt|original|raw|content|description|response)/i
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g
@@ -7,7 +7,15 @@ const ABSOLUTE_PATH = /(?:\/Users\/|\/private\/|\/tmp\/|\/var\/|[A-Za-z]:\\)[^\s
 
 const redactString = (value: string): string => {
   const withoutControls = value.replace(CONTROL_CHARS, '').replace(ABSOLUTE_PATH, '[OMITTED]')
-  if (/^\s*(?:bearer\s+)?[A-Za-z0-9_./+=-]{24,}\s*$/i.test(withoutControls)) {
+  const trimmed = withoutControls.trim()
+  const looksLikeBearer = /^bearer\s+[A-Za-z0-9_./+=-]{16,}$/i.test(trimmed)
+  const looksLikeOpaqueSecret =
+    trimmed.length >= 32 &&
+    /^[A-Za-z0-9_./+=-]+$/.test(trimmed) &&
+    /[A-Z]/.test(trimmed) &&
+    /[a-z]/.test(trimmed) &&
+    /\d/.test(trimmed)
+  if (looksLikeBearer || looksLikeOpaqueSecret) {
     return '[REDACTED]'
   }
 
