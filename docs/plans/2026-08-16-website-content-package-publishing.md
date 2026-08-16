@@ -6,8 +6,9 @@
 
 执行期间：
 
-- 不修改应用代码、`package.json`、Collection、migration、CI、Compose 或 Cloudflare 缓存规则；
-- 不新增仓库内导入脚本、测试或功能 PR；
+- 不修改官网运行时代码、Collection、migration、CI、Compose 或 Cloudflare 缓存规则；
+- 新增一个独立、可复用的 `scripts/content-import/**` 运营导入 CLI 及最小单元测试；它不注册路由、不进入 app/worker runtime、不携带客户素材；
+- 导入 CLI 的代码变更单独走代码 worktree 和小 PR，但不需要部署新镜像；
 - 不执行 seed，不删除现有产品、案例、分类或媒体；
 - 原始 ZIP、DOCX、图片和处理后的客户媒体均留在 Git 外部，不提交仓库；
 - 只使用官网现有 Payload CMS/REST API、Lighthouse/1Panel 运维控制、生产备份脚本和缓存失效能力完成上架；
@@ -72,7 +73,7 @@ A/B/C 是三条并行的“案例准备流水线”，不是三条 production �
 
 ## 4. Worktree 与目录规则
 
-本次不做并行代码开发，因此内容准备会话不需要各自创建 worktree。
+本次不做官网业务功能开发。内容准备会话不需要各自创建 worktree；导入 CLI 的维护另按代码任务使用独立 worktree。
 
 - 主会话保留一个协调 worktree，仅用于读取项目配置、维护本计划和最终更新 `docs/开发进度.md`；
 - 产品、案例 A/B/C 和 QA 会话可以只读共用该协调 worktree，也可以完全不使用开发 worktree；
@@ -81,7 +82,8 @@ A/B/C 是三条并行的“案例准备流水线”，不是三条 production �
 - 每个会话只能写自己负责的子目录，不能同时编辑另一个会话的 manifest 或媒体；
 - 主会话只写 `merged/`、`checkpoints/` 和协调 worktree 内的治理文档，不修改 `products/`、`cases-a/`、`cases-b/`、`cases-c/` 或 `qa/` 产物；
 - 准备会话不读取或共享 production `.env`、Cookie、token、数据库、uploads 或 media 卷；
-- 若后续确实需要修改 tracked 应用代码、脚本或测试，必须先暂停该会话，并把它转换为独立代码任务和独立 worktree；这不属于本次内容上架范围。
+- 若后续确实需要修改除 `scripts/content-import/**` 之外的 tracked 应用代码、脚本或测试，必须先暂停该会话，并把它转换为独立代码任务和独立 worktree；这不属于本次内容上架范围。
+- `scripts/content-import/**` 属于可复用运营工具的例外：由主会话或指定工具会话在独立 worktree 维护，准备会话只消费已审版本，不直接修改工具代码。
 
 共享准备根目录结构：
 
@@ -123,7 +125,41 @@ Media 的 `alt` 字段在当前 Payload 模型中不是 localized 字段，因�
 - `SHA256SUMS`：manifest 和全部准备媒体的校验清单；
 - 不包含密码、Cookie、token、Authorization、客户原始绝对路径、完整原文或 production 响应头。
 
-## 6. 产品准备流水线
+## 6. 可复用导入 CLI
+
+导入脚本不是官网业务功能，而是版本化的运营工具，负责把外部批次 manifest 和处理后的媒体写入 Payload。它必须支持本次上架，也支持后续客户资料追加。
+
+建议文件：
+
+- `scripts/content-import/cli.ts`：命令入口和参数校验；
+- `scripts/content-import/manifest.ts`：manifest 读取、schema 校验和 SHA-256 校验；
+- `scripts/content-import/payload-client.ts`：Payload REST 登录、查询、创建、草稿更新和发布；
+- `scripts/content-import/media.ts`：媒体查询、上传、复用和 `isPublic` 状态处理；
+- `tests/unit/content-import/*.test.ts`：不含客户素材的 fake REST/manifest 单测；
+- `package.json`：只增加本地 CLI 别名，不改变 production runtime。
+
+CLI 必须具备以下模式：
+
+```text
+pnpm content:import -- --manifest <external-manifest> --dry-run
+pnpm content:import -- --manifest <external-manifest> --batch products --execute --confirm <manifest-sha>
+pnpm content:import -- --manifest <external-manifest> --resume <external-checkpoint>
+```
+
+安全约束：
+
+- 默认 `dry-run`，没有 `--execute` 和精确 manifest SHA 时拒绝写入；
+- production origin 只允许 `https://ivybm.com`，本地测试只允许显式 localhost；
+- 按稳定 slug 幂等 upsert，按媒体 SHA/确定性文件名复用 Media；
+- 不执行删除、不执行 seed、不修改 Collection/migration，不覆盖未在 manifest 声明的字段；
+- 新文档先草稿，双语字段/媒体/SEO读回完整后才发布；
+- 结果未知时先查询 slug、版本和媒体状态，禁止盲目重发；
+- checkpoint、日志和错误输出不得包含密码、Cookie、token、Authorization、production 响应头、客户原始绝对路径或完整原文；
+- production 凭据只由主会话在进程环境中提供，准备会话和 QA 会话不能读取。
+
+工具测试只使用合成 manifest 和 fake REST server，至少覆盖 dry-run 零写入、重复媒体复用、slug 幂等、草稿发布、已发布记录版本更新、结果未知查询恢复、错误 origin 拒绝和日志脱敏。CLI 合并前运行相关定向 unit、typecheck、lint 和 `git diff --check`；合并后不需要重新构建 production 镜像，因为工具由受控工作站执行。
+
+## 7. 产品准备流水线
 
 产品会话以 16 个规范产品 slug 为唯一 URL 基线。
 
@@ -157,7 +193,7 @@ Media 的 `alt` 字段在当前 Payload 模型中不是 localized 字段，因�
 - 不发布文档里的内部审核说明和 `To be confirmed`；
 - 图片完成旋转、尺寸、格式和视觉重复检查。
 
-## 7. 案例准备 A/B/C 流水线
+## 8. 案例准备 A/B/C 流水线
 
 三个会话按原始编号分配，不按最终行业分类重新抢占，避免相互覆盖：
 
@@ -178,7 +214,7 @@ Media 的 `alt` 字段在当前 Payload 模型中不是 localized 字段，因�
 
 会话 C 负责把两个通用天花参考文档标记为 `merge-into-product`，但无权修改产品批次；主会话在合并阶段决定具体目标产品和图库顺序。
 
-## 8. 图片处理与去重
+## 9. 图片处理与去重
 
 准备会话使用现有本机图片工具处理素材，不新增应用代码：
 
@@ -193,7 +229,7 @@ Media 的 `alt` 字段在当前 Payload 模型中不是 localized 字段，因�
 
 单图上限统一按“不超过 8 MiB”执行；准备阶段建议保留安全余量，不把文件压到临界字节值。产品与案例原始可用图上限为 `119 + 344 = 463` 张，扣除已确认复用的 15 张产品 Media 后最多 448 张待处理；最终上传数还要扣除 Zengcheng、现有案例和其它视觉重复，预计低于该上限。并行准备阶段不上传任何图片。
 
-## 9. 主会话合并与 QA
+## 10. 主会话合并与 QA
 
 主会话依次执行：
 
@@ -208,7 +244,7 @@ Media 的 `alt` 字段在当前 Payload 模型中不是 localized 字段，因�
 
 QA 有阻塞项时，主会话把问题退回原 owner 会话；QA 会话本身不修改 manifest。所有阻塞关闭后，主会话冻结 release manifest SHA-256，后续任何变化都必须重新 QA。
 
-## 10. Production 写入前检查
+## 11. Production 写入前检查
 
 主会话在唯一写入窗口开始前：
 
@@ -224,9 +260,9 @@ QA 有阻塞项时，主会话把问题退回原 owner 会话；QA 会话本身�
 
 本次没有代码、镜像或 migration 变化，因此不拉取新镜像、不执行应用部署。备份完成后继续使用当前 production 版本。
 
-## 11. Production 上架批次
+## 12. Production 上架批次
 
-主会话使用现有 Payload CMS/REST API 串行写入。需要批量操作时，只能在主会话负责的 `checkpoints/operations/` 使用一次性运营脚本或命令；不得写在共享根目录或其它批次目录，不得提交仓库、不得改变应用代码，也不得让准备会话获得 production 凭据。
+主会话使用已审的 `scripts/content-import/cli.ts` 串行写入。运行时只读取共享准备根目录中的 manifest/媒体，不把客户素材复制回仓库；不得让准备会话获得 production 凭据。
 
 每张新媒体先以 `isPublic=false` 上传并绑定到草稿。复用现有 Media 时必须先核对 baseline 中的 `isPublic`：已经公开的保持不变；private Media 按新媒体同样处理。草稿英文/阿语内容、封面、图库和 SEO 全部读回确认后，先公开该文档引用的新/private 媒体，再发布文档；发布失败时把本批次刚公开且尚未被其它公开内容引用的媒体恢复为 private。已有公开媒体不改变可见性。
 
@@ -256,7 +292,7 @@ QA 有阻塞项时，主会话把问题退回原 owner 会话；QA 会话本身�
 
 每个 batch 在 `checkpoints/` 记录 manifest SHA、完成 slug、Payload ID、媒体 ID、失败原因和时间。结果未知时先查询线上实际状态，不能直接重发。
 
-## 12. 每批验证
+## 13. 每批验证
 
 每批写入后可并行执行只读验证：
 
@@ -270,7 +306,7 @@ QA 有阻塞项时，主会话把问题退回原 owner 会话；QA 会话本身�
 
 只有当前 batch 验证通过，主会话才进入下一批。
 
-## 13. 缓存、回滚和收尾
+## 14. 缓存、回滚和收尾
 
 全部批次成功后：
 
@@ -286,8 +322,8 @@ QA 有阻塞项时，主会话把问题退回原 owner 会话；QA 会话本身�
 
 单个 batch 失败时停止后续写入，保留 checkpoint，先按 slug 和媒体 ID 查询实际状态。不得删除已有客户内容、不得运行 migration down、不得把镜像回滚当作数据回滚。确需恢复导入前数据库和媒体时，由 production 负责人根据已验证的服务器副本、离机副本和 restore rehearsal 结果单独批准。
 
-## 14. 会话创建条件
+## 15. 会话创建条件
 
-推荐采用“主会话 + 产品准备 + 案例 A/B/C + 独立 QA”。用户明确要求开始执行后，再创建这些 Codex 会话。
+推荐采用“主会话 + 导入 CLI 工具会话 + 产品准备 + 案例 A/B/C + 独立 QA”。用户明确要求开始执行后，再创建这些 Codex 会话；导入 CLI 工具会话只负责独立 worktree 中的通用脚本和测试，不读取客户原始媒体，也不写 production。
 
 新会话收到的任务必须包含：只读素材路径、负责编号范围、唯一输出目录、manifest 格式、禁止 production 写入和完成回报格式。内容准备/QA 会话只读共用协调 worktree；不为它们创建独立开发 worktree。主会话始终保持唯一 production writer。
