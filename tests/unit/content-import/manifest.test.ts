@@ -87,6 +87,38 @@ describe('content import manifest validation', () => {
         ],
       }),
     ).toThrow(/mimeType is unsupported/)
+    expect(() =>
+      parseManifest({
+        ...validManifest(bytes),
+        items: [
+          {
+            ...validManifest(bytes).items[0],
+            gallery: Array.from({ length: 13 }, (_, index) =>
+              media(bytes, {
+                filename: `panel-${index + 2}.jpg`,
+                path: `media/panel-${index + 2}.jpg`,
+              }),
+            ),
+          },
+        ],
+      }),
+    ).toThrow(/product limit of 12/)
+    expect(() =>
+      parseManifest({
+        version: 1,
+        batch: 'category-test',
+        items: [
+          {
+            kind: 'category',
+            sourceNumbers: ['taxonomy-02'],
+            slug: 'aluminum-ceilings',
+            action: 'create',
+            sortOrder: 2,
+            locales: { en: text('Aluminum Ceilings'), ar: text('أسقف الألمنيوم') },
+          },
+        ],
+      }),
+    ).not.toThrow()
   })
 
   it('verifies external media bytes against the manifest SHA-256', async () => {

@@ -106,7 +106,7 @@ ivybm建站素材-上架准备/
 
 每个准备会话交付相同结构的 `batch-manifest.json`。manifest 至少包含：
 
-- `kind`：`product` 或 `project`；
+- `kind`：`category`、`product` 或 `project`；分类项不包含媒体，使用 `sortOrder`；
 - `sourceNumbers`：一个或多个原始产品/案例编号；多源合并必须全部列出；
 - `slug`：稳定英文 URL slug；
 - `action`：`create`、`enrich-existing`、`merge-into-product` 或 `merge-into-project`；
@@ -151,13 +151,14 @@ pnpm content:import -- --manifest <external-manifest> --resume <external-checkpo
 - 默认 `dry-run`，没有 `--execute` 和精确 manifest SHA 时拒绝写入；
 - production origin 只允许 `https://ivybm.com`，本地测试只允许显式 localhost；
 - 按稳定 slug 幂等 upsert，按媒体 SHA/确定性文件名复用 Media；
+- 同一 release manifest 可先 upsert 产品分类，再由后续产品引用本次计划创建的分类；完整 dry-run 必须模拟该批次内依赖；
 - 不执行删除、不执行 seed、不修改 Collection/migration，不覆盖未在 manifest 声明的字段；
 - 新文档先草稿，双语字段/媒体/SEO读回完整后才发布；
 - 结果未知时先查询 slug、版本和媒体状态，禁止盲目重发；
 - checkpoint、日志和错误输出不得包含密码、Cookie、token、Authorization、production 响应头、客户原始绝对路径或完整原文；
 - production 凭据只由主会话在进程环境中提供，准备会话和 QA 会话不能读取。
 
-工具测试只使用合成 manifest 和 fake REST server，至少覆盖 dry-run 零写入、重复媒体复用、slug 幂等、草稿发布、已发布记录版本更新、结果未知查询恢复、错误 origin 拒绝和日志脱敏。CLI 合并前运行相关定向 unit、typecheck、lint 和 `git diff --check`；合并后不需要重新构建 production 镜像，因为工具由受控工作站执行。
+工具测试只使用合成 manifest 和 fake REST server，至少覆盖 dry-run 零写入、批次内分类依赖、分类 upsert、重复媒体复用、产品图库最多 12 张、slug 幂等、草稿发布、已发布记录版本更新、结果未知查询恢复、错误 origin 拒绝和日志脱敏。CLI 合并前运行相关定向 unit、typecheck、lint 和 `git diff --check`；合并后不需要重新构建 production 镜像，因为工具由受控工作站执行。
 
 ## 7. 产品准备流水线
 
@@ -189,6 +190,7 @@ pnpm content:import -- --manifest <external-manifest> --resume <external-checkpo
 产品会话完成标准：
 
 - 16 个产品均有唯一 slug、分类、英文/阿语内容、封面和图库顺序；
+- 每个产品最多引用 1 张封面和 12 张图库；更多合格素材留在外部批次，待后续精选替换，不绕过 Collection 上限；
 - 技术参数只使用素材中存在且适合作为能力参考的内容；
 - 不发布文档里的内部审核说明和 `To be confirmed`；
 - 图片完成旋转、尺寸、格式和视觉重复检查。
@@ -266,7 +268,9 @@ QA 有阻塞项时，主会话把问题退回原 owner 会话；QA 会话本身�
 
 每张新媒体先以 `isPublic=false` 上传并绑定到草稿。复用现有 Media 时必须先核对 baseline 中的 `isPublic`：已经公开的保持不变；private Media 按新媒体同样处理。草稿英文/阿语内容、封面、图库和 SEO 全部读回确认后，先公开该文档引用的新/private 媒体，再发布文档；发布失败时把本批次刚公开且尚未被其它公开内容引用的媒体恢复为 private。已有公开媒体不改变可见性。
 
-修改现有已发布产品、案例或分类时，先记录当前文档和版本 ID，通过 Payload drafts/version 能力创建待审版本，并确认公开页面仍保持上一发布版本；不得直接在 published 记录上分步原地修改。待审版本和媒体验证完成后一次发布新版本。失败时保留上一发布版本，恢复本批次新公开媒体的可见性；必要时由主会话恢复先前版本。
+修改现有已发布产品或案例时，先记录当前文档和版本 ID，通过 Payload drafts/version 能力创建待审版本，并确认公开页面仍保持上一发布版本；不得直接在 published 记录上分步原地修改。待审版本和媒体验证完成后一次发布新版本。失败时保留上一发布版本，恢复本批次新公开媒体的可见性；必要时由主会话恢复先前版本。
+
+`ProductCategories` 当前没有 drafts/version。分类是唯一例外：只能在已验证备份、完整 dry-run 和 Batch 0 checkpoint 后执行同步 upsert；每条分类写入后立即读回英文、阿语、slug 与 `sortOrder`。失败时停止后续产品写入，并按 checkpoint 保存的旧字段恢复，不把分类更新误称为草稿发布。
 
 上架顺序：
 

@@ -158,7 +158,8 @@ const itemValue = (value: unknown, index: number): ContentManifestItem => {
   const name = `items[${index}]`
   const record = isRecord(value) ? value : fail(`${name} must be an object`)
   const kind = record.kind
-  if (kind !== 'product' && kind !== 'project') fail(`${name}.kind is invalid`)
+  if (kind !== 'category' && kind !== 'product' && kind !== 'project')
+    fail(`${name}.kind is invalid`)
   const normalizedKind = kind as ContentManifestItem['kind']
   const action = record.action
   if (
@@ -186,6 +187,31 @@ const itemValue = (value: unknown, index: number): ContentManifestItem => {
     fail(`${name}.targetSlug is required for merge actions`)
   if (!normalizedAction.startsWith('merge-') && targetSlug)
     fail(`${name}.targetSlug is only valid for merge actions`)
+  const locales = localizedPair(
+    record.locales ??
+      (record.en !== undefined && record.ar !== undefined
+        ? { en: record.en, ar: record.ar }
+        : undefined),
+    `${name}.locales`,
+  )
+  if (normalizedKind === 'category') {
+    if (normalizedAction !== 'create' && normalizedAction !== 'enrich-existing') {
+      fail(`${name}.category action must be create or enrich-existing`)
+    }
+    const sortOrder = record.sortOrder
+    if (typeof sortOrder !== 'number' || !Number.isSafeInteger(sortOrder) || sortOrder < 0) {
+      fail(`${name}.sortOrder is invalid`)
+    }
+    return {
+      kind: 'category',
+      sourceNumbers,
+      slug,
+      action: normalizedAction as 'create' | 'enrich-existing',
+      locales,
+      sortOrder: sortOrder as number,
+      publish: false,
+    }
+  }
   const coverImage = mediaValue(record.coverImage, `${name}.coverImage`)
   const galleryValue = record.gallery
   if (galleryValue !== undefined && !Array.isArray(galleryValue))
@@ -194,6 +220,8 @@ const itemValue = (value: unknown, index: number): ContentManifestItem => {
     (media: unknown, mediaIndex: number) => mediaValue(media, `${name}.gallery[${mediaIndex}]`),
   )
   if (gallery.length > MAX_MEDIA_PER_ITEM) fail(`${name}.gallery has too many assets`)
+  if (normalizedKind === 'product' && gallery.length > 12)
+    fail(`${name}.gallery exceeds the product limit of 12 assets`)
   if (normalizedKind === 'product' && normalizedAction === 'create' && !record.categorySlug) {
     fail(`${name}.categorySlug is required for new products`)
   }
@@ -215,13 +243,7 @@ const itemValue = (value: unknown, index: number): ContentManifestItem => {
     action: normalizedAction,
     targetSlug,
     categorySlug,
-    locales: localizedPair(
-      record.locales ??
-        (record.en !== undefined && record.ar !== undefined
-          ? { en: record.en, ar: record.ar }
-          : undefined),
-      `${name}.locales`,
-    ),
+    locales,
     specifications,
     coverImage,
     gallery,

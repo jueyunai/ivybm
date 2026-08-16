@@ -1,4 +1,4 @@
-export type ContentKind = 'product' | 'project'
+export type ContentKind = 'category' | 'product' | 'project'
 export type ContentAction =
   'create' | 'enrich-existing' | 'merge-into-product' | 'merge-into-project'
 
@@ -47,19 +47,30 @@ export type SpecificationManifest = {
   value: LocalizedStringPair
 }
 
-export type ContentManifestItem = {
-  kind: ContentKind
+type BaseManifestItem = {
   sourceNumbers: string[]
   slug: string
   action: ContentAction
   targetSlug?: string
-  categorySlug?: string
   locales: LocalizedPair
+  publish?: boolean
+}
+
+export type CategoryManifestItem = BaseManifestItem & {
+  kind: 'category'
+  action: 'create' | 'enrich-existing'
+  sortOrder: number
+}
+
+export type MediaContentManifestItem = BaseManifestItem & {
+  kind: 'product' | 'project'
+  categorySlug?: string
   specifications?: SpecificationManifest[]
   coverImage: MediaManifest
   gallery?: MediaManifest[]
-  publish?: boolean
 }
+
+export type ContentManifestItem = CategoryManifestItem | MediaContentManifestItem
 
 export type BatchManifest = {
   version: 1
@@ -102,7 +113,7 @@ export type ImportOptions = {
 
 export type ImportOperation = {
   key: string
-  collection: 'products' | 'projects'
+  collection: 'product-categories' | 'products' | 'projects'
   action: ContentAction
   slug: string
   status: 'planned' | 'created' | 'updated' | 'reused' | 'published' | 'skipped' | 'failed'

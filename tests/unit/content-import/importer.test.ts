@@ -26,6 +26,8 @@ type StoredDocument = {
   mimeType?: string
   alt?: string
   source?: string
+  sortOrder?: number
+  description?: string
 }
 
 const digest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
@@ -117,9 +119,33 @@ class FakePayloadRest {
       this.writes += 1
       return Response.json(document)
     }
-    if ((collection === 'products' || collection === 'media') && method === 'PATCH' && id) {
+    if (collection === 'product-categories' && method === 'POST') {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+      const document: StoredDocument = {
+        id: this.nextID++,
+        slug: String(body.slug),
+        title: { en: String(body.title ?? ''), ar: '' },
+        seo: { en: (body.seo ?? {}) as Record<string, string>, ar: {} },
+        sortOrder: Number(body.sortOrder ?? 0),
+        description: typeof body.description === 'string' ? body.description : undefined,
+        _status: 'published',
+      }
+      this.categories.push(document)
+      this.writes += 1
+      return Response.json(document)
+    }
+    if (
+      (collection === 'products' ||
+        collection === 'media' ||
+        collection === 'product-categories') &&
+      method === 'PATCH' &&
+      id
+    ) {
       const store = collection === 'products' ? this.products : this.media
-      const document = store.find((candidate) => String(candidate.id) === decodeURIComponent(id))
+      const resolvedStore = collection === 'product-categories' ? this.categories : store
+      const document = resolvedStore.find(
+        (candidate) => String(candidate.id) === decodeURIComponent(id),
+      )
       if (!document) return new Response('not found', { status: 404 })
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>
       const locale = (requestURL.searchParams.get('locale') ?? 'en') as 'en' | 'ar'
@@ -163,6 +189,8 @@ class FakePayloadRest {
       '_status',
       'shortDescription',
       'description',
+      'sortOrder',
+      'slug',
     ]) {
       if (key in body) (document as unknown as Record<string, unknown>)[key] = body[key]
     }
@@ -231,6 +259,30 @@ const makeFixture = async (title = 'Test Panel') => {
   return { manifestPath, manifestSha: digest(new Uint8Array(await readFile(manifestPath))), root }
 }
 
+const makeCategoryFixture = async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'ivybm-content-category-import-'))
+  const manifest = {
+    version: 1,
+    batch: 'category-unit-test',
+    items: [
+      {
+        kind: 'category',
+        sourceNumbers: ['taxonomy-02'],
+        slug: 'aluminum-ceilings',
+        action: 'create',
+        sortOrder: 2,
+        locales: {
+          en: text('Aluminum Ceilings'),
+          ar: text('أسقف الألمنيوم'),
+        },
+      },
+    ],
+  }
+  const manifestPath = path.join(root, 'batch-manifest.json')
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+  return { manifestPath, manifestSha: digest(new Uint8Array(await readFile(manifestPath))) }
+}
+
 const clientFor = (server: FakePayloadRest): PayloadRestClient =>
   new PayloadRestClient({
     origin: 'http://localhost:43123',
@@ -239,6 +291,53 @@ const clientFor = (server: FakePayloadRest): PayloadRestClient =>
   })
 
 describe('content importer against fake Payload REST', () => {
+  it('upserts localized product categories before product records', async () => {
+    const fixture = await makeCategoryFixture()
+    const server = new FakePayloadRest()
+    const summary = await importContentManifest(clientFor(server), fixture.manifestPath, {
+      mode: 'execute',
+      confirmSha: fixture.manifestSha,
+      batch: 'products',
+    })
+    expect(summary.operations[0]).toMatchObject({
+      collection: 'product-categories',
+      slug: 'aluminum-ceilings',
+      status: 'created',
+    })
+    expect(
+      server.categories.find((category) => category.slug === 'aluminum-ceilings'),
+    ).toMatchObject({
+      title: { en: 'Aluminum Ceilings', ar: 'أسقف الألمنيوم' },
+      sortOrder: 2,
+    })
+  })
+
+  it('resolves categories planned earlier in the same zero-write dry-run', async () => {
+    const fixture = await makeFixture()
+    const manifest = JSON.parse(await readFile(fixture.manifestPath, 'utf8')) as {
+      items: Array<Record<string, unknown>>
+    }
+    manifest.items[0].categorySlug = 'new-category'
+    manifest.items.unshift({
+      kind: 'category',
+      sourceNumbers: ['taxonomy-new'],
+      slug: 'new-category',
+      action: 'create',
+      sortOrder: 9,
+      locales: { en: text('New Category'), ar: text('فئة جديدة') },
+    })
+    await writeFile(fixture.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+    const server = new FakePayloadRest()
+    const summary = await importContentManifest(clientFor(server), fixture.manifestPath, {
+      mode: 'dry-run',
+      batch: 'products',
+    })
+    expect(summary.operations).toHaveLength(2)
+    expect(summary.operations.every((operation) => operation.status === 'planned')).toBe(true)
+    expect(summary.writes).toBe(0)
+    expect(server.writes).toBe(0)
+  })
+
   it('performs a dry-run with zero remote writes', async () => {
     const fixture = await makeFixture()
     const server = new FakePayloadRest()

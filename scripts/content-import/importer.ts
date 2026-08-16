@@ -17,6 +17,7 @@ import type {
   ImportOptions,
   ImportSummary,
   Locale,
+  MediaContentManifestItem,
   MediaManifest,
   PayloadDocument,
 } from './types'
@@ -34,7 +35,11 @@ type MediaResolution = {
   wasPublic: boolean
 }
 
-const COLLECTION_BY_KIND: Record<'product' | 'project', 'products' | 'projects'> = {
+const COLLECTION_BY_KIND: Record<
+  'category' | 'product' | 'project',
+  'product-categories' | 'products' | 'projects'
+> = {
+  category: 'product-categories',
   product: 'products',
   project: 'projects',
 }
@@ -98,7 +103,9 @@ const uniqueIds = (ids: Array<number | string>): Array<number | string> =>
 const checkpointKey = (item: ContentManifestItem): string =>
   `${item.kind}:${item.slug}:${item.action}:${item.targetSlug ?? ''}`
 
-const operationCollection = (item: ContentManifestItem): 'products' | 'projects' => {
+const operationCollection = (
+  item: ContentManifestItem,
+): 'product-categories' | 'products' | 'projects' => {
   if (item.action === 'merge-into-product') return 'products'
   if (item.action === 'merge-into-project') return 'projects'
   return COLLECTION_BY_KIND[item.kind]
@@ -167,6 +174,7 @@ export class ContentImporter {
   private readonly manifestPath: string
   private readonly manifest: BatchManifest
   private readonly manifestHash: string
+  private readonly plannedDocuments = new Map<string, PayloadDocument>()
   private checkpoint: Checkpoint | null = null
   private writes = 0
 
@@ -208,7 +216,9 @@ export class ContentImporter {
   async run(): Promise<ImportSummary> {
     const selected = this.manifest.items.filter((item) => {
       if (!this.options.batch || this.options.batch === 'all') return true
-      return this.options.batch === 'products' ? item.kind === 'product' : item.kind === 'project'
+      return this.options.batch === 'products'
+        ? item.kind === 'category' || item.kind === 'product'
+        : item.kind === 'project'
     })
     const operations: ImportOperation[] = []
     for (const item of selected) {
@@ -217,7 +227,7 @@ export class ContentImporter {
       if (completed) {
         operations.push({
           key,
-          collection: operationCollection(item) as 'products' | 'projects',
+          collection: operationCollection(item),
           action: item.action,
           slug: operationSlug(item),
           status: 'skipped',
@@ -244,7 +254,7 @@ export class ContentImporter {
         this.logger({ event: 'item-failed', key, error: safeErrorMessage(error) })
         operations.push({
           key,
-          collection: operationCollection(item) as 'products' | 'projects',
+          collection: operationCollection(item),
           action: item.action,
           slug: operationSlug(item),
           status: 'failed',
@@ -272,6 +282,7 @@ export class ContentImporter {
     const collection = operationCollection(item)
     const slug = operationSlug(item)
     this.logger({ event: 'item-start', key, action: item.action, collection, slug })
+    if (item.kind === 'category') return this.processCategory(item)
     const media = [item.coverImage, ...(item.gallery ?? [])]
     const mediaResolutions: MediaResolution[] = []
     const byHash = new Map<string, MediaResolution>()
@@ -284,9 +295,9 @@ export class ContentImporter {
     const mediaIds = mediaResolutions.map((resolution) => resolution.id)
     const mediaUploaded = mediaResolutions.filter((resolution) => resolution.uploaded).length
     const mediaReused = mediaResolutions.filter((resolution) => resolution.reused).length
-    const existing = (
-      await this.client.find(collection, { slug, locale: 'all', draft: true, limit: 1 })
-    ).docs[0]
+    const existing =
+      (await this.client.find(collection, { slug, locale: 'all', draft: true, limit: 1 }))
+        .docs[0] ?? this.plannedDocuments.get(`${collection}:${slug}`)
 
     if (item.action.startsWith('merge-')) {
       if (!existing) throw new Error(`merge target was not found for ${slug}`)
@@ -313,7 +324,7 @@ export class ContentImporter {
       if (this.options.mode === 'execute') {
         if (this.options.publish === true && item.publish === true) {
           await this.publishMedia(mediaResolutions)
-          await this.publishDocument(collection, existing.id)
+          await this.publishDocument(collection as 'products' | 'projects', existing.id)
         }
       }
       this.logger({ event: 'item-complete', key, collection, slug, status: 'updated' })
@@ -342,6 +353,7 @@ export class ContentImporter {
       if (this.options.mode === 'dry-run') {
         status = 'planned'
         document = { id: `planned:${slug}`, slug }
+        this.plannedDocuments.set(`${collection}:${slug}`, document)
       } else {
         document = await this.mutate(
           () => this.client.create(collection, enData, { locale: 'en', draft: true }),
@@ -376,7 +388,7 @@ export class ContentImporter {
       await this.assertReadBack(collection, document.id, item)
       if (this.options.publish === true && item.publish === true) {
         await this.publishMedia(mediaResolutions)
-        document = await this.publishDocument(collection, document.id)
+        document = await this.publishDocument(collection as 'products' | 'projects', document.id)
         status = 'published'
       }
     }
@@ -393,16 +405,123 @@ export class ContentImporter {
     }
   }
 
+  private async processCategory(
+    item: Extract<ContentManifestItem, { kind: 'category' }>,
+  ): Promise<ImportOperation> {
+    const key = checkpointKey(item)
+    const collection = 'product-categories' as const
+    const existing =
+      (
+        await this.client.find(collection, {
+          slug: item.slug,
+          locale: 'all',
+          draft: false,
+          limit: 1,
+        })
+      ).docs[0] ?? this.plannedDocuments.get(`${collection}:${item.slug}`)
+    const categoryData = (locale: Locale, includeShared: boolean): Record<string, unknown> => {
+      const copy = item.locales[locale]
+      return {
+        title: copy.title,
+        ...(typeof copy.description === 'string' ? { description: copy.description } : {}),
+        seo: {
+          title: copy.seo.title,
+          description: copy.seo.description,
+          keywords: copy.seo.keywords,
+          ...(copy.seo.canonical ? { canonical: copy.seo.canonical } : {}),
+        },
+        ...(includeShared ? { slug: item.slug, sortOrder: item.sortOrder } : {}),
+      }
+    }
+    if (this.options.mode === 'dry-run') {
+      this.plannedDocuments.set(
+        `${collection}:${item.slug}`,
+        existing ?? {
+          id: `planned-category:${item.slug}`,
+          slug: item.slug,
+        },
+      )
+      return {
+        key,
+        collection,
+        action: item.action,
+        slug: item.slug,
+        status: 'planned',
+        id: existing?.id,
+        mediaUploaded: 0,
+        mediaReused: 0,
+      }
+    }
+    let document = existing
+      ? await this.mutate(
+          () =>
+            this.client.update(collection, existing.id, categoryData('en', true), {
+              locale: 'en',
+              draft: false,
+            }),
+          async () => this.client.findById(collection, existing.id, { locale: 'en', draft: false }),
+          (candidate) => localeTitle(candidate, 'en') === item.locales.en.title,
+        )
+      : await this.mutate(
+          () =>
+            this.client.create(collection, categoryData('en', true), {
+              locale: 'en',
+              draft: false,
+            }),
+          async () =>
+            (
+              await this.client.find(collection, {
+                slug: item.slug,
+                locale: 'en',
+                draft: false,
+                limit: 1,
+              })
+            ).docs[0],
+          (candidate) => localeTitle(candidate, 'en') === item.locales.en.title,
+        )
+    this.writes += 1
+    document = await this.mutate(
+      () =>
+        this.client.update(collection, document.id, categoryData('ar', false), {
+          locale: 'ar',
+          draft: false,
+        }),
+      async () => this.client.findById(collection, document.id, { locale: 'ar', draft: false }),
+      (candidate) => localeTitle(candidate, 'ar') === item.locales.ar.title,
+    )
+    this.writes += 1
+    const [en, ar] = await Promise.all([
+      this.client.findById(collection, document.id, { locale: 'en', draft: false }),
+      this.client.findById(collection, document.id, { locale: 'ar', draft: false }),
+    ])
+    if (
+      localeTitle(en, 'en') !== item.locales.en.title ||
+      localeTitle(ar, 'ar') !== item.locales.ar.title
+    ) {
+      throw new Error(`localized category read-back incomplete for ${item.slug}`)
+    }
+    return {
+      key,
+      collection,
+      action: item.action,
+      slug: item.slug,
+      status: existing ? 'updated' : 'created',
+      id: document.id,
+      mediaUploaded: 0,
+      mediaReused: 0,
+    }
+  }
+
   private async resolveCategory(slug: string): Promise<number | string | null> {
-    const category = (
-      await this.client.find('product-categories', { slug, locale: 'all', draft: true, limit: 1 })
-    ).docs[0]
+    const category =
+      (await this.client.find('product-categories', { slug, locale: 'all', draft: true, limit: 1 }))
+        .docs[0] ?? this.plannedDocuments.get(`product-categories:${slug}`)
     if (!category) throw new Error(`product category was not found for ${slug}`)
     return category.id
   }
 
   private documentData(
-    item: ContentManifestItem,
+    item: MediaContentManifestItem,
     locale: Locale,
     mediaIds: Array<number | string>,
     categoryId: number | string | null,
@@ -429,7 +548,7 @@ export class ContentImporter {
     }
     const description = toRichText(copy.description, locale)
     if (description) data.description = description
-    if (item.specifications && item.kind === 'product') {
+    if (item.kind === 'product' && item.specifications) {
       data.specifications = item.specifications.map((specification) => ({
         label: specification.label[locale],
         value: specification.value[locale],
