@@ -35,10 +35,13 @@ const parseResponseBody = async (response: Response): Promise<Record<string, unk
 
 const responseDocument = (body: Record<string, unknown>): PayloadDocument => {
   const result = body.result
+  const doc = body.doc
   const document =
     result && typeof result === 'object' && !Array.isArray(result)
       ? (result as PayloadDocument)
-      : (body as PayloadDocument)
+      : doc && typeof doc === 'object' && !Array.isArray(doc)
+        ? (doc as PayloadDocument)
+        : (body as PayloadDocument)
   if (!document || document.id === undefined || document.id === null) {
     throw new PayloadRestError('Payload write response was incomplete', {
       code: 'payload-response-invalid',
@@ -283,7 +286,7 @@ export class PayloadRestClient {
     }
     const body = await parseResponseBody(response)
     if (!response.ok) {
-      throw new PayloadRestError('Payload request was rejected', {
+      throw new PayloadRestError(`Payload request was rejected (${response.status})`, {
         status: response.status,
         code: 'payload-http-error',
       })

@@ -44,6 +44,8 @@ const COLLECTION_BY_KIND: Record<
   project: 'projects',
 }
 
+const MAX_PRODUCT_GALLERY = 12
+
 const isPayloadDocument = (value: unknown): value is PayloadDocument =>
   value !== null && typeof value === 'object' && !Array.isArray(value) && 'id' in value
 
@@ -167,6 +169,15 @@ const matchesMediaHash = async (
     return false
   }
 }
+
+const matchesDeterministicMediaIdentity = (
+  document: PayloadDocument,
+  media: MediaManifest,
+): boolean =>
+  document.filename === media.filename &&
+  document.mimeType === media.mimeType &&
+  Number(document.width) === media.width &&
+  Number(document.height) === media.height
 
 export class ContentImporter {
   private readonly logger: (event: Record<string, unknown>) => void
@@ -302,8 +313,24 @@ export class ContentImporter {
     if (item.action.startsWith('merge-')) {
       if (!existing) throw new Error(`merge target was not found for ${slug}`)
       const existingGallery = relationIds(existing.gallery)
-      const nextGallery = uniqueIds([...existingGallery, ...mediaIds])
-      if (this.options.mode === 'execute' && nextGallery.length !== existingGallery.length) {
+      const mergedGallery = uniqueIds([...existingGallery, ...mediaIds])
+      const nextGallery =
+        collection === 'products' && mergedGallery.length > MAX_PRODUCT_GALLERY
+          ? mergedGallery.slice(-MAX_PRODUCT_GALLERY)
+          : mergedGallery
+      if (nextGallery.length !== mergedGallery.length) {
+        this.logger({
+          event: 'gallery-trimmed',
+          collection,
+          slug,
+          dropped: mergedGallery.length - nextGallery.length,
+          retained: nextGallery.length,
+        })
+      }
+      const galleryChanged =
+        nextGallery.length !== existingGallery.length ||
+        nextGallery.some((id, index) => !idEquals(id, existingGallery[index]))
+      if (this.options.mode === 'execute' && galleryChanged) {
         await this.mutate(
           () =>
             this.client.update(
@@ -645,7 +672,11 @@ export class ContentImporter {
     }
     const candidates = [...candidatesById.values()]
     for (const candidate of candidates) {
-      if (!(await matchesMediaHash(this.client, candidate, media))) continue
+      if (
+        !matchesDeterministicMediaIdentity(candidate, media) &&
+        !(await matchesMediaHash(this.client, candidate, media))
+      )
+        continue
       if (this.options.mode === 'execute') {
         await this.mutate(
           () =>

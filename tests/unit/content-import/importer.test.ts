@@ -28,6 +28,8 @@ type StoredDocument = {
   source?: string
   sortOrder?: number
   description?: string
+  width?: number
+  height?: number
 }
 
 const digest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
@@ -384,6 +386,81 @@ describe('content importer against fake Payload REST', () => {
     expect(server.media).toHaveLength(1)
   })
 
+  it('reuses deterministic media identity when Payload has recompressed the bytes', async () => {
+    const fixture = await makeFixture()
+    const server = new FakePayloadRest()
+    server.media.push({
+      id: 9,
+      filename: 'panel-01.jpg',
+      width: 1,
+      height: 1,
+      mimeType: 'image/jpeg',
+      alt: 'Existing panel',
+      source: 'Existing source',
+      isPublic: true,
+      slug: 'panel-01.jpg',
+      title: { en: 'panel-01.jpg', ar: 'panel-01.jpg' },
+      seo: { en: {}, ar: {} },
+      _status: 'published',
+    })
+    server.bytes.set('panel-01.jpg', new Uint8Array([1, 2, 3]))
+
+    const summary = await importContentManifest(clientFor(server), fixture.manifestPath, {
+      mode: 'execute',
+      confirmSha: fixture.manifestSha,
+      publish: true,
+    })
+
+    expect(summary.operations[0]).toMatchObject({ mediaUploaded: 0, mediaReused: 1 })
+    expect(server.media).toHaveLength(1)
+  })
+
+  it('keeps the newest media when a product merge exceeds the gallery limit', async () => {
+    const fixture = await makeFixture()
+    const manifest = JSON.parse(await readFile(fixture.manifestPath, 'utf8')) as {
+      items: Array<Record<string, unknown>>
+    }
+    manifest.items[0].kind = 'project'
+    manifest.items[0].action = 'merge-into-product'
+    manifest.items[0].targetSlug = 'existing-panel'
+    delete manifest.items[0].categorySlug
+    await writeFile(fixture.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+    const manifestSha = digest(new Uint8Array(await readFile(fixture.manifestPath)))
+    const server = new FakePayloadRest()
+    server.products.push({
+      id: 8,
+      slug: 'existing-panel',
+      title: { en: 'Existing Panel', ar: 'لوح قائم' },
+      seo: { en: {}, ar: {} },
+      gallery: Array.from({ length: 12 }, (_, index) => 100 + index),
+      _status: 'published',
+    })
+    server.media.push({
+      id: 9,
+      filename: 'panel-01.jpg',
+      width: 1,
+      height: 1,
+      mimeType: 'image/jpeg',
+      alt: 'Merged panel',
+      source: 'Merged source',
+      isPublic: true,
+      slug: 'panel-01.jpg',
+      title: { en: 'panel-01.jpg', ar: 'panel-01.jpg' },
+      seo: { en: {}, ar: {} },
+      _status: 'published',
+    })
+
+    await importContentManifest(clientFor(server), fixture.manifestPath, {
+      mode: 'execute',
+      confirmSha: manifestSha,
+      publish: true,
+    })
+
+    expect(server.products[0].gallery).toHaveLength(12)
+    expect(server.products[0].gallery).not.toContain(100)
+    expect(server.products[0].gallery).toContain(9)
+  })
+
   it('writes and resumes an external checkpoint without re-running the item', async () => {
     const fixture = await makeFixture()
     const checkpointPath = path.join(fixture.root, 'checkpoint.json')
@@ -419,6 +496,22 @@ describe('content importer against fake Payload REST', () => {
 })
 
 describe('content import security boundaries', () => {
+  it('accepts the Payload REST mutation doc envelope', async () => {
+    const client = new PayloadRestClient({
+      origin: 'http://localhost:43123',
+      token: 'synthetic-token',
+      fetchImpl: async () =>
+        Response.json({
+          doc: { id: 42, slug: 'test-panel', title: 'Test Panel' },
+          message: 'Updated successfully.',
+        }),
+    })
+
+    await expect(
+      client.update('products', 42, { title: 'Test Panel' }, { locale: 'en', draft: true }),
+    ).resolves.toMatchObject({ id: 42, slug: 'test-panel' })
+  })
+
   it('uses Payload JWT authentication for REST reads', async () => {
     let authorization = ''
     const client = new PayloadRestClient({
