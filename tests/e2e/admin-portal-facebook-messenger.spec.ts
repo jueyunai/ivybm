@@ -88,6 +88,16 @@ test.describe.serial('FB-IN-01 Facebook Messenger durable closure', () => {
     })
   })
 
+  test('cleanup preserves jobs and audits whose numeric IDs belong to another resource', async () => {
+    if (!harness) throw new Error('Facebook E2E harness is unavailable')
+    const sentinels = await harness.createCleanupCollisionSentinels()
+
+    const preserved = await harness.cleanup()
+    harness = undefined
+
+    expect(preserved).toEqual(sentinels)
+  })
+
   test('second signed message closes Lead, Feishu, takeover, human reply, and resolve', async ({
     page,
     request,

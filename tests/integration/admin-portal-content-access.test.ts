@@ -13,6 +13,7 @@ import {
   createPortalContent,
   deletePortalContent,
   getPortalContentEditor,
+  getPortalContentOptions,
   type ContentCommandResult,
   updatePortalContent,
 } from '@/admin-portal/modules/website-content/contentCommands'
@@ -429,7 +430,8 @@ describe.sequential('Portal website content access', () => {
       )
       productID = product.id
 
-      await expect(
+      const originalLocale = operatorReq.locale
+      const [editor, options] = await Promise.all([
         getPortalContentEditor({
           id: product.id,
           locale: 'ar',
@@ -437,7 +439,10 @@ describe.sequential('Portal website content access', () => {
           req: operatorReq,
           type: 'products',
         }),
-      ).resolves.toMatchObject({
+        getPortalContentOptions({ payload, req: operatorReq }),
+      ])
+
+      expect(editor).toMatchObject({
         data: {
           bodyText: '',
           categoryId: category.id,
@@ -451,6 +456,9 @@ describe.sequential('Portal website content access', () => {
         locale: 'ar',
         status: 'published',
       })
+      expect(options.categories).toContainEqual(expect.objectContaining({ id: category.id }))
+      expect(options.media).toContainEqual(expect.objectContaining({ id: image!.id }))
+      expect(operatorReq.locale).toBe(originalLocale)
     } finally {
       if (productID !== null) {
         await payload.delete({ collection: 'products', id: productID, overrideAccess: true })

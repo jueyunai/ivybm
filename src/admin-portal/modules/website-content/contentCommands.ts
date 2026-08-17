@@ -989,7 +989,7 @@ export async function getPortalContentEditor({
   type: ContentTypeId
 }): Promise<ContentEditorRecord> {
   const find = requireMethod(payload, 'find')
-  // Payload Local API mutates req.locale, so this read must not share state with option queries.
+  // Isolate top-level locale mutation; depth 0 also avoids sharing relationship DataLoaders.
   const editorReq = {
     ...req,
     context: { ...req.context },
@@ -997,7 +997,7 @@ export async function getPortalContentEditor({
   } as PayloadRequest
   const result = await find({
     collection: type,
-    depth: 1,
+    depth: 0,
     draft: VERSIONED_TYPES.has(type),
     fallbackLocale: false,
     limit: 1,

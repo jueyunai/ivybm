@@ -79,6 +79,11 @@ type FacebookHighIntentState = FacebookConversationState & {
   }>
 }
 
+type CleanupSentinels = {
+  auditIDs: number[]
+  jobIDs: number[]
+}
+
 const relationshipID = (value: Relationship): number =>
   typeof value === 'number' ? value : value.id
 
@@ -142,6 +147,7 @@ export class FacebookE2EHarness {
   private readonly externalThreadIDs: string[] = []
   private readonly leadRequestIDs: string[] = []
   private readonly mappingIDs: number[] = []
+  private readonly cleanupSentinels: CleanupSentinels = { auditIDs: [], jobIDs: [] }
   private readonly queue: PayloadJobQueue
   private readonly worker: JobWorker
 
@@ -527,146 +533,252 @@ export class FacebookE2EHarness {
     return leads.docs[0]
   }
 
-  async cleanup(): Promise<void> {
-    const conversations =
-      this.externalThreadIDs.length > 0
-        ? await this.payload.find({
-            collection: 'conversations',
-            depth: 0,
-            limit: 100,
-            overrideAccess: true,
-            where: { externalThreadId: { in: this.externalThreadIDs } },
-          })
-        : { docs: [] }
-    const conversationIDs = conversations.docs.map(({ id }) => id)
-    const trackedLeads =
-      this.leadRequestIDs.length > 0
-        ? await this.payload.find({
-            collection: 'leads',
-            depth: 0,
-            limit: 100,
-            overrideAccess: true,
-            where: { requestId: { in: this.leadRequestIDs } },
-          })
-        : { docs: [] }
-    const leadIDs = [
-      ...new Set([
-        ...conversations.docs.flatMap(({ lead }) => (lead ? [relationshipID(lead)] : [])),
-        ...trackedLeads.docs.map(({ id }) => id),
-      ]),
-    ]
-    const visitorIDs = conversations.docs.map(({ visitorSession }) =>
-      relationshipID(visitorSession),
+  async createCleanupCollisionSentinels(): Promise<CleanupSentinels> {
+    const accountID = this.accountIDs[0]
+    if (!accountID) throw new Error('A tracked platform account is required for cleanup sentinels')
+
+    const sources = await this.payload.find({
+      collection: 'lead-sources',
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      where: { key: { equals: 'ai-chat' } },
+    })
+    const source = sources.docs[0]
+    if (!source) throw new Error('AI chat lead source is required for cleanup sentinels')
+
+    const suffix = randomUUID()
+    const requestId = `facebook-cleanup-sentinel-${suffix}`
+    const lead = await this.payload.create({
+      collection: 'leads',
+      context: { skipAudit: true },
+      data: {
+        email: `facebook-cleanup-${suffix}@example.invalid`,
+        idempotencyKey: `facebook-cleanup-sentinel:${suffix}`,
+        intentLevel: 'unscored',
+        locale: 'en',
+        message: 'Cleanup collision sentinel',
+        name: 'Cleanup collision sentinel',
+        requestId,
+        source: source.id,
+        status: 'new',
+      },
+      overrideAccess: true,
+    })
+    this.trackLeadRequest(requestId)
+
+    const wrongTypeJob = await this.queue.enqueue({
+      idempotencyKey: `facebook-cleanup-wrong-type:${suffix}`,
+      payload: { entityId: lead.id },
+      type: FEISHU_HANDOFF_NOTIFY_JOB_TYPE,
+    })
+    this.cleanupSentinels.jobIDs.push(wrongTypeJob.job.id)
+    const audit = await this.pool.query<{ id: number }>(
+      `INSERT INTO audit_logs (action, resource, document_id, updated_at, created_at)
+       VALUES ('update', 'feishu-mappings', $1, now(), now())
+       RETURNING id`,
+      [String(accountID)],
     )
-    const handoffs =
-      conversationIDs.length > 0
-        ? await this.payload.find({
-            collection: 'handoffs',
-            depth: 0,
-            limit: 100,
-            overrideAccess: true,
-            where: { conversation: { in: conversationIDs } },
-          })
-        : { docs: [] }
-    const handoffIDs = handoffs.docs.map(({ id }) => id)
-    const intents =
-      conversationIDs.length > 0
-        ? await this.pool.query<{ id: number; queue_job_id: number }>(
-            `SELECT id, queue_job_id FROM conversation_delivery_intents
-             WHERE conversation_id = ANY($1::int[])`,
+    const auditID = audit.rows[0]?.id
+    if (!auditID) throw new Error('Cleanup audit sentinel was not created')
+
+    this.cleanupSentinels.auditIDs.push(auditID)
+    return structuredClone(this.cleanupSentinels)
+  }
+
+  async cleanup(): Promise<CleanupSentinels> {
+    const result: CleanupSentinels = { auditIDs: [], jobIDs: [] }
+    const pool = this.pool
+
+    try {
+      const client = await pool.connect()
+      try {
+        await client.query('BEGIN')
+
+        const conversations =
+          this.externalThreadIDs.length > 0
+            ? await client.query<{
+                id: number
+                lead_id: number | null
+                visitor_session_id: number
+              }>(
+                `SELECT id, lead_id, visitor_session_id
+                 FROM conversations
+                 WHERE external_thread_id = ANY($1::text[])`,
+                [this.externalThreadIDs],
+              )
+            : { rows: [] }
+        const conversationIDs = conversations.rows.map(({ id }) => id)
+        const trackedLeads =
+          this.leadRequestIDs.length > 0
+            ? await client.query<{ id: number }>(
+                'SELECT id FROM leads WHERE request_id = ANY($1::text[])',
+                [this.leadRequestIDs],
+              )
+            : { rows: [] }
+        const leadIDs = [
+          ...new Set([
+            ...conversations.rows.flatMap(({ lead_id }) => (lead_id ? [lead_id] : [])),
+            ...trackedLeads.rows.map(({ id }) => id),
+          ]),
+        ]
+        const visitorIDs = [
+          ...new Set(conversations.rows.map(({ visitor_session_id }) => visitor_session_id)),
+        ]
+        const handoffs =
+          conversationIDs.length > 0
+            ? await client.query<{ id: number }>(
+                'SELECT id FROM handoffs WHERE conversation_id = ANY($1::int[])',
+                [conversationIDs],
+              )
+            : { rows: [] }
+        const handoffIDs = handoffs.rows.map(({ id }) => id)
+        const messages =
+          conversationIDs.length > 0
+            ? await client.query<{ id: number }>(
+                'SELECT id FROM messages WHERE conversation_id = ANY($1::int[])',
+                [conversationIDs],
+              )
+            : { rows: [] }
+        const messageIDs = messages.rows.map(({ id }) => id)
+        const intents =
+          conversationIDs.length > 0
+            ? await client.query<{ id: number; queue_job_id: number }>(
+                `SELECT id, queue_job_id FROM conversation_delivery_intents
+                 WHERE conversation_id = ANY($1::int[])`,
+                [conversationIDs],
+              )
+            : { rows: [] }
+        const eventJobs =
+          this.eventKeys.length > 0
+            ? await client.query<{ id: number }>(
+                'SELECT id FROM jobs WHERE type = $1 AND idempotency_key = ANY($2::text[])',
+                [PLATFORM_EVENT_JOB_TYPE, this.eventKeys],
+              )
+            : { rows: [] }
+        const feishuJobs =
+          leadIDs.length > 0 || handoffIDs.length > 0
+            ? await client.query<{ id: number }>(
+                `SELECT id FROM jobs
+                 WHERE (type = $1 AND payload->>'entityId' = ANY($2::text[]))
+                    OR (type = $3 AND payload->>'entityId' = ANY($4::text[]))`,
+                [
+                  FEISHU_LEAD_SYNC_JOB_TYPE,
+                  leadIDs.map(String),
+                  FEISHU_HANDOFF_NOTIFY_JOB_TYPE,
+                  handoffIDs.map(String),
+                ],
+              )
+            : { rows: [] }
+        const jobIDs = [
+          ...new Set([
+            ...intents.rows.map(({ queue_job_id }) => queue_job_id),
+            ...eventJobs.rows.map(({ id }) => id),
+            ...feishuJobs.rows.map(({ id }) => id),
+          ]),
+        ]
+        const auditTargets: Array<[resource: string, ids: number[]]> = [
+          ['platform-accounts', this.accountIDs],
+          ['conversations', conversationIDs],
+          ['handoffs', handoffIDs],
+          ['leads', leadIDs],
+          ['feishu-mappings', this.mappingIDs],
+          ['visitor-sessions', visitorIDs],
+          ['conversation-delivery-intents', intents.rows.map(({ id }) => id)],
+          ['jobs', jobIDs],
+          ['messages', messageIDs],
+        ]
+
+        for (const [resource, ids] of auditTargets) {
+          if (ids.length > 0) {
+            await client.query(
+              'DELETE FROM audit_logs WHERE resource = $1 AND document_id = ANY($2::text[])',
+              [resource, ids.map(String)],
+            )
+          }
+        }
+        if (conversationIDs.length > 0) {
+          await client.query(
+            `DELETE FROM audit_logs
+             WHERE resource LIKE 'conversation.handoff.%'
+               AND document_id = ANY($1::text[])`,
+            [conversationIDs.map(String)],
+          )
+          await client.query(
+            'DELETE FROM conversation_commands WHERE conversation_id = ANY($1::int[])',
             [conversationIDs],
           )
-        : { rows: [] }
-    const eventJobs =
-      this.eventKeys.length > 0
-        ? await this.pool.query<{ id: number }>(
-            'SELECT id FROM jobs WHERE type = $1 AND idempotency_key = ANY($2::text[])',
-            [PLATFORM_EVENT_JOB_TYPE, this.eventKeys],
+          await client.query(
+            'DELETE FROM conversation_delivery_intents WHERE conversation_id = ANY($1::int[])',
+            [conversationIDs],
           )
-        : { rows: [] }
-    const feishuJobs =
-      leadIDs.length > 0 || handoffIDs.length > 0
-        ? await this.pool.query<{ id: number }>(
-            `SELECT id FROM jobs
-             WHERE type = ANY($1::text[])
-               AND payload->>'entityId' = ANY($2::text[])`,
-            [
-              [FEISHU_LEAD_SYNC_JOB_TYPE, FEISHU_HANDOFF_NOTIFY_JOB_TYPE],
-              [...leadIDs, ...handoffIDs].map(String),
-            ],
-          )
-        : { rows: [] }
-    const jobIDs = [
-      ...intents.rows.map(({ queue_job_id }) => queue_job_id),
-      ...eventJobs.rows.map(({ id }) => id),
-      ...feishuJobs.rows.map(({ id }) => id),
-    ]
-    const documentIDs = [
-      ...this.accountIDs,
-      ...conversationIDs,
-      ...handoffIDs,
-      ...leadIDs,
-      ...this.mappingIDs,
-      ...visitorIDs,
-      ...intents.rows.map(({ id }) => id),
-      ...jobIDs,
-    ].map(String)
+          await client.query('DELETE FROM handoffs WHERE id = ANY($1::int[])', [handoffIDs])
+          await client.query('DELETE FROM conversations WHERE id = ANY($1::int[])', [
+            conversationIDs,
+          ])
+        }
+        if (jobIDs.length > 0) {
+          await client.query('DELETE FROM jobs WHERE id = ANY($1::int[])', [jobIDs])
+        }
+        if (visitorIDs.length > 0) {
+          await client.query('DELETE FROM visitor_sessions WHERE id = ANY($1::int[])', [visitorIDs])
+        }
+        if (leadIDs.length > 0) {
+          await client.query('DELETE FROM leads WHERE id = ANY($1::int[])', [leadIDs])
+        }
+        if (this.accountIDs.length > 0) {
+          await client.query('DELETE FROM platform_accounts WHERE id = ANY($1::int[])', [
+            this.accountIDs,
+          ])
+        }
+        if (this.mappingIDs.length > 0) {
+          await client.query('DELETE FROM feishu_mappings WHERE id = ANY($1::int[])', [
+            this.mappingIDs,
+          ])
+        }
 
-    if (conversationIDs.length > 0) {
-      await this.pool.query(
-        'DELETE FROM conversation_commands WHERE conversation_id = ANY($1::int[])',
-        [conversationIDs],
-      )
-      await this.pool.query(
-        'DELETE FROM conversation_delivery_intents WHERE conversation_id = ANY($1::int[])',
-        [conversationIDs],
-      )
-      if (handoffIDs.length > 0) {
-        await this.pool.query('DELETE FROM handoffs WHERE id = ANY($1::int[])', [handoffIDs])
+        if (this.cleanupSentinels.auditIDs.length > 0) {
+          const audits = await client.query<{ id: number }>(
+            'SELECT id FROM audit_logs WHERE id = ANY($1::int[]) ORDER BY id',
+            [this.cleanupSentinels.auditIDs],
+          )
+          result.auditIDs = audits.rows.map(({ id }) => id)
+        }
+        if (this.cleanupSentinels.jobIDs.length > 0) {
+          const jobs = await client.query<{ id: number }>(
+            'SELECT id FROM jobs WHERE id = ANY($1::int[]) ORDER BY id',
+            [this.cleanupSentinels.jobIDs],
+          )
+          result.jobIDs = jobs.rows.map(({ id }) => id)
+        }
+        if (
+          result.auditIDs.length !== this.cleanupSentinels.auditIDs.length ||
+          result.jobIDs.length !== this.cleanupSentinels.jobIDs.length
+        ) {
+          throw new Error('Facebook E2E cleanup deleted a cross-resource collision sentinel')
+        }
+        if (this.cleanupSentinels.auditIDs.length > 0) {
+          await client.query('DELETE FROM audit_logs WHERE id = ANY($1::int[])', [
+            this.cleanupSentinels.auditIDs,
+          ])
+        }
+        if (this.cleanupSentinels.jobIDs.length > 0) {
+          await client.query('DELETE FROM jobs WHERE id = ANY($1::int[])', [
+            this.cleanupSentinels.jobIDs,
+          ])
+        }
+
+        await client.query('COMMIT')
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined)
+        throw error
+      } finally {
+        client.release()
       }
-      await this.pool.query('DELETE FROM conversations WHERE id = ANY($1::int[])', [
-        conversationIDs,
-      ])
+    } finally {
+      await this.payload.destroy()
     }
-    if (jobIDs.length > 0) {
-      await this.pool.query('DELETE FROM jobs WHERE id = ANY($1::int[])', [jobIDs])
-    }
-    if (visitorIDs.length > 0) {
-      await this.pool.query('DELETE FROM visitor_sessions WHERE id = ANY($1::int[])', [visitorIDs])
-    }
-    if (leadIDs.length > 0) {
-      await this.pool.query('DELETE FROM leads WHERE id = ANY($1::int[])', [leadIDs])
-    }
-    if (this.accountIDs.length > 0) {
-      await this.payload.delete({
-        collection: 'platform-accounts',
-        context: { skipAudit: true },
-        overrideAccess: true,
-        where: { id: { in: this.accountIDs } },
-      })
-    }
-    if (this.mappingIDs.length > 0) {
-      await this.payload.delete({
-        collection: 'feishu-mappings',
-        context: { skipAudit: true },
-        overrideAccess: true,
-        where: { id: { in: this.mappingIDs } },
-      })
-    }
-    if (documentIDs.length > 0) {
-      await this.pool.query(
-        `DELETE FROM audit_logs
-         WHERE document_id = ANY($1::text[])
-           AND (
-             resource IN (
-               'conversation-delivery-intents', 'conversations', 'jobs', 'messages',
-               'feishu-mappings', 'handoffs', 'leads', 'platform-accounts', 'visitor-sessions'
-             )
-             OR resource LIKE 'conversation.handoff.%'
-           )`,
-        [documentIDs],
-      )
-    }
-    await this.payload.destroy()
+
+    return result
   }
 }
