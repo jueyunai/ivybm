@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createLocalReq, getPayload, type Payload } from 'payload'
+import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
+import { executePortalRouteCommand } from '@/admin-portal/core/commands/portalCommandReceipts'
 import {
   getContentSummary,
   loadWebsiteContentPageData,
@@ -116,6 +117,11 @@ describe.sequential('Portal website content access', () => {
     }
     if (createdUserIDs.length > 0) {
       await payload.delete({
+        collection: 'portal-command-receipts',
+        overrideAccess: true,
+        where: { actor: { in: createdUserIDs } },
+      })
+      await payload.delete({
         collection: 'audit-logs',
         overrideAccess: true,
         where: { actor: { in: createdUserIDs } },
@@ -189,6 +195,43 @@ describe.sequential('Portal website content access', () => {
     const slug = `portal-command-${randomUUID()}`
     const operatorReq = await requestFor(operator)
 
+    const directSlug = `portal-command-direct-${randomUUID()}`
+    const directPublished = await createPortalContent({
+      input: {
+        action: 'publish',
+        bodyText: 'Direct English body',
+        heroImageId,
+        locale: 'en',
+        seoDescription: 'Direct English search description',
+        seoTitle: 'Direct English search title',
+        slug: directSlug,
+        summary: 'Direct English summary',
+        title: 'Direct Portal command page',
+      },
+      payload,
+      req: operatorReq,
+      type: 'pages',
+    })
+    createdPageIDs.push(directPublished.id)
+    await expect(
+      getPortalContentEditor({
+        id: directPublished.id,
+        locale: 'ar',
+        payload,
+        req: operatorReq,
+        type: 'pages',
+      }),
+    ).resolves.toMatchObject({
+      data: {
+        bodyText: '',
+        seoDescription: '',
+        seoTitle: '',
+        slug: directSlug,
+        summary: '',
+        title: '',
+      },
+    })
+
     const created = await createPortalContent({
       input: {
         action: 'save-draft',
@@ -227,6 +270,22 @@ describe.sequential('Portal website content access', () => {
       type: 'pages',
     })
     expect(published.status).toBe('published')
+
+    const missingArabic = await getPortalContentEditor({
+      id: created.id,
+      locale: 'ar',
+      payload,
+      req: operatorReq,
+      type: 'pages',
+    })
+    expect(missingArabic.data).toMatchObject({
+      bodyText: '',
+      seoDescription: '',
+      seoTitle: '',
+      slug,
+      summary: '',
+      title: '',
+    })
 
     const localized = await updatePortalContent({
       id: created.id,
@@ -297,6 +356,113 @@ describe.sequential('Portal website content access', () => {
       }),
     ).resolves.toMatchObject({ id: created.id })
     createdPageIDs.splice(createdPageIDs.indexOf(created.id), 1)
+  })
+
+  it('keeps an untranslated Arabic product empty after direct publication', async () => {
+    const assets = await payload.find({
+      collection: 'media',
+      limit: 20,
+      overrideAccess: true,
+      pagination: false,
+    })
+    const image = assets.docs.find((asset) => asset.mimeType?.startsWith('image/'))
+    expect(image).toBeTruthy()
+
+    const operatorReq = await requestFor(operator)
+    const suffix = randomUUID()
+    let categoryID: number | string | null = null
+    let productID: number | string | null = null
+
+    const executeCreate = <T>(
+      scope: string,
+      operation: (transactionReq: PayloadRequest) => Promise<T>,
+    ) =>
+      executePortalRouteCommand({
+        fingerprintInput: { scope },
+        operation,
+        payload,
+        req: operatorReq,
+        request: new Request('http://localhost/api/portal/content', {
+          headers: { 'Idempotency-Key': `portal-content-test:${randomUUID()}` },
+        }),
+        scope,
+      })
+
+    try {
+      const category = await executeCreate(
+        'portal.website-content:product-categories:create',
+        (transactionReq) =>
+          createPortalContent({
+            input: {
+              action: 'save',
+              locale: 'en',
+              slug: `portal-direct-product-category-${suffix}`,
+              title: 'Direct product category',
+            },
+            payload,
+            req: transactionReq,
+            type: 'product-categories',
+          }),
+      )
+      categoryID = category.id
+
+      const product = await executeCreate(
+        'portal.website-content:products:create',
+        (transactionReq) =>
+          createPortalContent({
+            input: {
+              action: 'publish',
+              bodyText: 'Direct English product body',
+              categoryId: category.id,
+              coverImageId: image!.id,
+              locale: 'en',
+              seoDescription: 'Direct English product search description',
+              seoTitle: 'Direct English product search title',
+              shortDescription: 'Direct English product summary',
+              slug: `portal-direct-product-${suffix}`,
+              title: 'Direct Portal product',
+            },
+            payload,
+            req: transactionReq,
+            type: 'products',
+          }),
+      )
+      productID = product.id
+
+      await expect(
+        getPortalContentEditor({
+          id: product.id,
+          locale: 'ar',
+          payload,
+          req: operatorReq,
+          type: 'products',
+        }),
+      ).resolves.toMatchObject({
+        data: {
+          bodyText: '',
+          categoryId: category.id,
+          coverImageId: image!.id,
+          seoDescription: '',
+          seoTitle: '',
+          shortDescription: '',
+          slug: `portal-direct-product-${suffix}`,
+          title: '',
+        },
+        locale: 'ar',
+        status: 'published',
+      })
+    } finally {
+      if (productID !== null) {
+        await payload.delete({ collection: 'products', id: productID, overrideAccess: true })
+      }
+      if (categoryID !== null) {
+        await payload.delete({
+          collection: 'product-categories',
+          id: categoryID,
+          overrideAccess: true,
+        })
+      }
+    }
   })
 
   it('persists bilingual create, update, state, and delete flows for all six content types', async () => {
