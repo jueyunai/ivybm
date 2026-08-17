@@ -140,6 +140,7 @@ export class FacebookE2EHarness {
   private readonly accountIDs: number[] = []
   private readonly eventKeys: string[] = []
   private readonly externalThreadIDs: string[] = []
+  private readonly leadRequestIDs: string[] = []
   private readonly mappingIDs: number[] = []
   private readonly queue: PayloadJobQueue
   private readonly worker: JobWorker
@@ -255,6 +256,48 @@ export class FacebookE2EHarness {
     this.accountIDs.push(account.id)
   }
 
+  async createBlockedPlatformAccount({
+    accountKind,
+    externalAccountId,
+    name,
+  }: {
+    accountKind: 'instagram-professional' | 'linkedin-member'
+    externalAccountId: string
+    name: string
+  }): Promise<void> {
+    const account = await this.payload.create({
+      collection: 'platform-accounts',
+      context: { skipAudit: true },
+      data: {
+        accountKind,
+        authorizationRevision: 0,
+        authorization: {
+          accessToken: null,
+          accessTokenConfigured: false,
+          appId: null,
+          clearAccessToken: false,
+          clearRefreshToken: false,
+          expiresAt: null,
+          refreshToken: null,
+          refreshTokenConfigured: false,
+          scopes: [],
+          state: 'not_started',
+        },
+        capabilities: {
+          messagingInbound: accountKind === 'instagram-professional' ? 'blocked' : 'not_started',
+          publishing: 'blocked',
+        },
+        connectionKey: null,
+        externalAccountId,
+        name,
+        notes: null,
+        platformFamily: accountKind === 'instagram-professional' ? 'meta' : 'linkedin',
+      },
+      overrideAccess: true,
+    })
+    this.accountIDs.push(account.id)
+  }
+
   async createFeishuMapping(): Promise<void> {
     const mapping = await this.payload.create({
       collection: 'feishu-mappings',
@@ -297,6 +340,10 @@ export class FacebookE2EHarness {
   }): void {
     this.eventKeys.push(platformEventKeyV2('facebook-messenger', E2E_META_PAGE_ID, messageId))
     this.externalThreadIDs.push(`${E2E_META_PAGE_ID}:${senderExternalId}`)
+  }
+
+  trackLeadRequest(requestId: string): void {
+    this.leadRequestIDs.push(requestId)
   }
 
   async runUntilIdle(maximumJobs = 4): Promise<Array<'failed' | 'idle' | 'succeeded'>> {
@@ -468,6 +515,18 @@ export class FacebookE2EHarness {
     return conversations.docs[0]!.handoffStatus
   }
 
+  async readLeadByRequestId(requestId: string) {
+    const leads = await this.payload.find({
+      collection: 'leads',
+      depth: 0,
+      limit: 2,
+      overrideAccess: true,
+      where: { requestId: { equals: requestId } },
+    })
+    if (leads.docs.length !== 1) throw new Error('Expected one inquiry Lead')
+    return leads.docs[0]
+  }
+
   async cleanup(): Promise<void> {
     const conversations =
       this.externalThreadIDs.length > 0
@@ -480,7 +539,22 @@ export class FacebookE2EHarness {
           })
         : { docs: [] }
     const conversationIDs = conversations.docs.map(({ id }) => id)
-    const leadIDs = conversations.docs.flatMap(({ lead }) => (lead ? [relationshipID(lead)] : []))
+    const trackedLeads =
+      this.leadRequestIDs.length > 0
+        ? await this.payload.find({
+            collection: 'leads',
+            depth: 0,
+            limit: 100,
+            overrideAccess: true,
+            where: { requestId: { in: this.leadRequestIDs } },
+          })
+        : { docs: [] }
+    const leadIDs = [
+      ...new Set([
+        ...conversations.docs.flatMap(({ lead }) => (lead ? [relationshipID(lead)] : [])),
+        ...trackedLeads.docs.map(({ id }) => id),
+      ]),
+    ]
     const visitorIDs = conversations.docs.map(({ visitorSession }) =>
       relationshipID(visitorSession),
     )
