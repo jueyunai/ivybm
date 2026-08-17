@@ -53,13 +53,23 @@ export function SpecificationTable({
   rows,
 }: {
   caption?: string
-  rows: { label: string; value: string }[]
+  rows: Array<{ label?: null | string; value?: null | string }>
 }) {
+  const completeRows = rows.filter(
+    (row): row is { label: string; value: string } =>
+      typeof row.label === 'string' &&
+      row.label.trim() !== '' &&
+      typeof row.value === 'string' &&
+      row.value.trim() !== '',
+  )
+
+  if (!completeRows.length) return null
+
   return (
     <table className="spec-table">
       {caption ? <caption>{caption}</caption> : null}
       <tbody>
-        {rows.map((row, index) => (
+        {completeRows.map((row, index) => (
           <tr key={`${row.label || 'specification'}-${row.value || 'value'}-${index}`}>
             <th scope="row">{row.label}</th>
             <td>{row.value}</td>

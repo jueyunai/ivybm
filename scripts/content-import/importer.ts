@@ -99,6 +99,21 @@ const localeTitle = (document: PayloadDocument, locale: Locale): string | undefi
   return undefined
 }
 
+const specificationRows = (
+  document: PayloadDocument | undefined,
+): Array<{ id?: string; label?: unknown; value?: unknown }> => {
+  if (!Array.isArray(document?.specifications)) return []
+  return document.specifications.map((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+    const row = value as Record<string, unknown>
+    return {
+      ...(typeof row.id === 'string' && row.id.trim() ? { id: row.id } : {}),
+      label: row.label,
+      value: row.value,
+    }
+  })
+}
+
 const uniqueIds = (ids: Array<number | string>): Array<number | string> =>
   ids.filter((id, index) => ids.findIndex((candidate) => idEquals(candidate, id)) === index)
 
@@ -374,7 +389,6 @@ export class ContentImporter {
         ? await this.resolveCategory(item.categorySlug)
         : relationId(existing?.category)
     const enData = this.documentData(item, 'en', mediaIds, categoryId, existing, true)
-    const arData = this.documentData(item, 'ar', mediaIds, categoryId, existing, false)
 
     if (!document) {
       if (this.options.mode === 'dry-run') {
@@ -402,6 +416,12 @@ export class ContentImporter {
     }
 
     if (this.options.mode === 'execute' && document) {
+      document = await this.client.findById(collection, document.id, {
+        locale: 'all',
+        draft: true,
+      })
+      this.assertSpecificationIdentities(document, item)
+      const arData = this.documentData(item, 'ar', mediaIds, categoryId, document, false)
       document = await this.mutate(
         () => this.client.update(collection, document!.id, arData, { locale: 'ar', draft: true }),
         async () => this.client.findById(collection, document!.id, { locale: 'all', draft: true }),
@@ -576,7 +596,9 @@ export class ContentImporter {
     const description = toRichText(copy.description, locale)
     if (description) data.description = description
     if (item.kind === 'product' && item.specifications) {
-      data.specifications = item.specifications.map((specification) => ({
+      const existingSpecifications = specificationRows(existing)
+      data.specifications = item.specifications.map((specification, index) => ({
+        ...(existingSpecifications[index]?.id ? { id: existingSpecifications[index].id } : {}),
         label: specification.label[locale],
         value: specification.value[locale],
       }))
@@ -594,6 +616,23 @@ export class ContentImporter {
       data._status = 'draft'
     }
     return data
+  }
+
+  private assertSpecificationIdentities(
+    document: PayloadDocument,
+    item: ContentManifestItem,
+  ): void {
+    if (item.kind !== 'product') return
+    const expected = item.specifications ?? []
+    const actual = specificationRows(document)
+    const ids = actual.map((row) => row.id)
+    if (
+      actual.length !== expected.length ||
+      ids.some((id) => !id) ||
+      new Set(ids).size !== ids.length
+    ) {
+      throw new Error(`specification row identity read-back incomplete for ${item.slug}`)
+    }
   }
 
   private async assertReadBack(
@@ -615,6 +654,29 @@ export class ContentImporter {
     const arSeo = ar.seo
     if (!enSeo || !arSeo || typeof enSeo !== 'object' || typeof arSeo !== 'object') {
       throw new Error(`SEO read-back incomplete for ${item.slug}`)
+    }
+    if (item.kind === 'product') {
+      const expected = item.specifications ?? []
+      const enSpecifications = specificationRows(en)
+      const arSpecifications = specificationRows(ar)
+      const complete =
+        enSpecifications.length === expected.length &&
+        arSpecifications.length === expected.length &&
+        expected.every((specification, index) => {
+          const enRow = enSpecifications[index]
+          const arRow = arSpecifications[index]
+          return (
+            enRow?.id !== undefined &&
+            enRow.id === arRow?.id &&
+            enRow.label === specification.label.en &&
+            enRow.value === specification.value.en &&
+            arRow.label === specification.label.ar &&
+            arRow.value === specification.value.ar
+          )
+        })
+      if (!complete) {
+        throw new Error(`localized specification read-back incomplete for ${item.slug}`)
+      }
     }
   }
 

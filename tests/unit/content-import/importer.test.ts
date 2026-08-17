@@ -11,6 +11,12 @@ import { redactLogValue } from '../../../scripts/content-import/logging'
 import { importContentManifest } from '../../../scripts/content-import/importer'
 import { PayloadRestClient, PayloadRestError } from '../../../scripts/content-import/payload-client'
 
+type StoredSpecification = {
+  id: string
+  label: Partial<Record<'ar' | 'en', string>>
+  value: Partial<Record<'ar' | 'en', string>>
+}
+
 type StoredDocument = {
   id: number
   slug: string
@@ -30,6 +36,7 @@ type StoredDocument = {
   description?: string
   width?: number
   height?: number
+  specifications?: StoredSpecification[]
 }
 
 const digest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
@@ -41,6 +48,7 @@ class FakePayloadRest {
   mediaPatchVisibility: boolean[] = []
   failMediaUpload = false
   nextID = 10
+  nextSpecificationID = 1
   media: StoredDocument[] = []
   products: StoredDocument[] = []
   categories: StoredDocument[] = [
@@ -115,6 +123,7 @@ class FakePayloadRest {
         category: body.category as number | string,
         coverImage: body.coverImage as number | string,
         gallery: body.gallery as Array<number | string>,
+        specifications: this.updateSpecifications([], body.specifications, 'en'),
         _status: 'draft',
       }
       this.products.push(document)
@@ -184,6 +193,13 @@ class FakePayloadRest {
     if (typeof body.title === 'string') document.title[locale] = body.title
     if (body.seo && typeof body.seo === 'object')
       document.seo[locale] = body.seo as Record<string, string>
+    if ('specifications' in body) {
+      document.specifications = this.updateSpecifications(
+        document.specifications ?? [],
+        body.specifications,
+        locale,
+      )
+    }
     for (const key of [
       'category',
       'coverImage',
@@ -198,15 +214,58 @@ class FakePayloadRest {
     }
   }
 
+  private updateSpecifications(
+    existing: StoredSpecification[],
+    input: unknown,
+    locale: 'en' | 'ar',
+  ): StoredSpecification[] {
+    if (!Array.isArray(input)) return existing
+    return input.map((value) => {
+      const row = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+      const requestedID = typeof row.id === 'string' ? row.id : undefined
+      const current = requestedID
+        ? existing.find((specification) => specification.id === requestedID)
+        : undefined
+      const specification: StoredSpecification = current
+        ? {
+            id: current.id,
+            label: { ...current.label },
+            value: { ...current.value },
+          }
+        : {
+            id: requestedID ?? `spec-${this.nextSpecificationID++}`,
+            label: {},
+            value: {},
+          }
+      if (typeof row.label === 'string') specification.label[locale] = row.label
+      if (typeof row.value === 'string') specification.value[locale] = row.value
+      return specification
+    })
+  }
+
   private render(document: StoredDocument, locale: string | null): PayloadDocumentLike {
     if (locale === 'en' || locale === 'ar') {
       return {
         ...document,
         title: document.title[locale],
         seo: document.seo[locale],
+        specifications: document.specifications?.map((specification) => ({
+          id: specification.id,
+          label: specification.label[locale],
+          value: specification.value[locale],
+        })),
       }
     }
-    return { ...document, title: { ...document.title }, seo: { ...document.seo } }
+    return {
+      ...document,
+      title: { ...document.title },
+      seo: { ...document.seo },
+      specifications: document.specifications?.map((specification) => ({
+        id: specification.id,
+        label: { ...specification.label },
+        value: { ...specification.value },
+      })),
+    }
   }
 }
 
@@ -241,6 +300,16 @@ const makeFixture = async (title = 'Test Panel') => {
         action: 'create',
         categorySlug: 'aluminum-panels',
         locales: { en: text(title), ar: text('لوح اختبار') },
+        specifications: [
+          {
+            label: { en: 'Thickness', ar: 'السماكة' },
+            value: { en: '2.0 mm', ar: '2.0 مم' },
+          },
+          {
+            label: { en: 'Finish', ar: 'التشطيب' },
+            value: { en: 'PVDF coating', ar: 'طلاء PVDF' },
+          },
+        ],
         coverImage: {
           filename: 'panel-01.jpg',
           path: 'media/panel-01.jpg',
@@ -371,6 +440,19 @@ describe('content importer against fake Payload REST', () => {
     expect(server.products[0]._status).toBe('published')
     expect(server.mediaPostVisibility).toEqual([false])
     expect(server.mediaPatchVisibility).toEqual([true])
+    expect(server.products[0].specifications).toEqual([
+      {
+        id: expect.any(String),
+        label: { en: 'Thickness', ar: 'السماكة' },
+        value: { en: '2.0 mm', ar: '2.0 مم' },
+      },
+      {
+        id: expect.any(String),
+        label: { en: 'Finish', ar: 'التشطيب' },
+        value: { en: 'PVDF coating', ar: 'طلاء PVDF' },
+      },
+    ])
+    const firstSpecificationIDs = server.products[0].specifications?.map(({ id }) => id)
 
     const second = await importContentManifest(clientFor(server), fixture.manifestPath, {
       mode: 'execute',
@@ -384,6 +466,7 @@ describe('content importer against fake Payload REST', () => {
     })
     expect(server.products).toHaveLength(1)
     expect(server.media).toHaveLength(1)
+    expect(server.products[0].specifications?.map(({ id }) => id)).toEqual(firstSpecificationIDs)
   })
 
   it('reuses deterministic media identity when Payload has recompressed the bytes', async () => {
