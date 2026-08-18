@@ -118,6 +118,22 @@ describe('CI workflow policy', () => {
     expect(e2eStep).toContain('if [[ "$FULL_FALLBACK" == \'true\' ]]')
   })
 
+  it('retains browser E2E evidence when the browser suite fails', () => {
+    const evidenceStep = workflow.slice(
+      workflow.indexOf('      - name: Upload browser E2E evidence'),
+      workflow.indexOf('      - name: Build runtime image for PR validation'),
+    )
+
+    expect(evidenceStep).toContain('${{ always() &&')
+    expect(evidenceStep).toContain(
+      'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02',
+    )
+    expect(evidenceStep).toContain('browser-e2e-${{ needs.changes.outputs.head_sha }}')
+    expect(evidenceStep).toContain('playwright-report/')
+    expect(evidenceStep).toContain('test-results/')
+    expect(evidenceStep).toContain('retention-days: 7')
+  })
+
   it('keeps visual baselines isolated by runner platform', () => {
     const playwrightConfig = readFileSync(resolve(projectRoot, 'playwright.config.ts'), 'utf8')
     const packageJSON = readFileSync(resolve(projectRoot, 'package.json'), 'utf8')

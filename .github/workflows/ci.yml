@@ -353,6 +353,21 @@ jobs:
 
           pnpm test:e2e -- "${suites[@]}"
 
+      - name: Upload browser E2E evidence
+        if: >-
+          ${{ always() &&
+          (needs.changes.outputs.website_e2e == 'true' ||
+          needs.changes.outputs.admin_e2e == 'true' ||
+          needs.changes.outputs.chat_e2e == 'true') }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-e2e-${{ needs.changes.outputs.head_sha }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Build runtime image for PR validation
         if: github.event_name == 'pull_request' && needs.changes.outputs.operations == 'true'
         run: >-
