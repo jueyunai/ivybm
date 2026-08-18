@@ -1,10 +1,8 @@
 type WorkerDatabaseTarget = {
-  allowTestDatabaseWorker?: string
   databaseURL?: string
 }
 
 export const assertWorkerDatabaseTarget = ({
-  allowTestDatabaseWorker = process.env.IVYBM_ALLOW_TEST_DATABASE_WORKER,
   databaseURL = process.env.DATABASE_URL,
 }: WorkerDatabaseTarget = {}): void => {
   if (!databaseURL) return
@@ -18,9 +16,9 @@ export const assertWorkerDatabaseTarget = ({
 
   const databaseName = decodeURIComponent(parsedDatabaseURL.pathname.replace(/^\//u, ''))
   const isTestDatabase = databaseName.endsWith('_test') || databaseName.endsWith('_ci')
-  if (isTestDatabase && allowTestDatabaseWorker !== 'true') {
+  if (isTestDatabase) {
     throw new Error(
-      `Refusing real worker connection to test database "${databaseName}"; use the in-process E2E harness or explicitly set IVYBM_ALLOW_TEST_DATABASE_WORKER=true for an isolated worker test`,
+      `Refusing real worker connection to test database "${databaseName}"; browser E2E must use the in-process harness and isolated real-worker tests require a separate test-only entrypoint`,
     )
   }
 }

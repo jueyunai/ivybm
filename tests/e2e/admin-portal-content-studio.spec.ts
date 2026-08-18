@@ -1,3 +1,4 @@
+import './require-mutation-launch'
 import { expect, test, type Page } from '@playwright/test'
 import { getPayload } from 'payload'
 

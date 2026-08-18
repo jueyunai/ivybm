@@ -1,3 +1,4 @@
+import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
 
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
@@ -60,10 +61,13 @@ test('mobile Portal Shell uses an accessible navigation drawer without horizonta
   )
   const first = focusable.first()
   const last = focusable.last()
+  await expect(first).toBeFocused()
   await last.focus()
+  await expect(last).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(first).toBeFocused()
   await first.focus()
+  await expect(first).toBeFocused()
   await page.keyboard.press('Shift+Tab')
   await expect(last).toBeFocused()
   await page.screenshot({

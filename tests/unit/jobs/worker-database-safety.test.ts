@@ -22,12 +22,11 @@ describe('real worker database safety', () => {
     },
   )
 
-  it('requires an explicit override for an isolated real-worker test', () => {
+  it('does not allow a generic environment override for test databases', () => {
     expect(() =>
       assertWorkerDatabaseTarget({
-        allowTestDatabaseWorker: 'true',
         databaseURL: 'postgres://postgres:postgres@127.0.0.1:5432/ivybm_worker_ci',
       }),
-    ).not.toThrow()
+    ).toThrow('isolated real-worker tests require a separate test-only entrypoint')
   })
 })

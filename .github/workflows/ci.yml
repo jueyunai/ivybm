@@ -324,7 +324,6 @@ jobs:
           ADMIN_E2E: ${{ needs.changes.outputs.admin_e2e }}
           CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}
           FULL_FALLBACK: ${{ needs.changes.outputs.full_fallback }}
-          IVYBM_E2E_WORKER_MODE: harness-only
           PLATFORM_CREDENTIAL_ENCRYPTION_KEY: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
           WEBSITE_E2E: ${{ needs.changes.outputs.website_e2e }}
         shell: bash
@@ -336,24 +335,23 @@ jobs:
             exit 0
           fi
 
-          specs=()
+          suites=()
           if [[ "$WEBSITE_E2E" == 'true' ]]; then
-            specs+=(tests/e2e/website.spec.ts)
+            suites+=(website)
           fi
           if [[ "$ADMIN_E2E" == 'true' ]]; then
-            specs+=(tests/e2e/admin-visual.spec.ts)
-            specs+=(tests/e2e/admin-portal-*.spec.ts)
+            suites+=(admin)
           fi
           if [[ "$CHAT_E2E" == 'true' ]]; then
-            specs+=(tests/e2e/chat-handoff.spec.ts)
+            suites+=(chat)
           fi
 
-          if [[ "${#specs[@]}" -eq 0 ]]; then
+          if [[ "${#suites[@]}" -eq 0 ]]; then
             echo 'Browser E2E was scheduled without a selected test suite.' >&2
             exit 1
           fi
 
-          pnpm test:e2e -- "${specs[@]}"
+          pnpm test:e2e -- "${suites[@]}"
 
       - name: Build runtime image for PR validation
         if: github.event_name == 'pull_request' && needs.changes.outputs.operations == 'true'

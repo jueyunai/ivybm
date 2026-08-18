@@ -1,3 +1,4 @@
+import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
 
 const readPublicSurface = async (page: import('@playwright/test').Page) =>

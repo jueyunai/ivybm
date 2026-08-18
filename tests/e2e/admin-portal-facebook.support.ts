@@ -38,7 +38,7 @@ import { PayloadPlatformMessagingAccountAuthorizer } from '@/modules/platforms/p
 import { platformEventKeyV2 } from '@/modules/platforms/types'
 
 import { E2E_META_APP_SECRET, E2E_META_PAGE_ID } from './admin-portal-facebook.constants'
-import { assertMutationE2ETarget } from './mutation-safety'
+import { assertMutationSpecLaunch } from './launch-context'
 
 type Relationship = number | { id: number }
 
@@ -201,9 +201,7 @@ export class FacebookE2EHarness {
   }
 
   static async create(): Promise<FacebookE2EHarness> {
-    assertMutationE2ETarget({
-      selectedArguments: ['tests/e2e/admin-portal-facebook-messenger.spec.ts'],
-    })
+    assertMutationSpecLaunch()
     const payload = await getPayload({
       config,
       disableOnInit: true,

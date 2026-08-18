@@ -1,3 +1,4 @@
+import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
 
 import { FacebookE2EHarness } from './admin-portal-facebook.support'

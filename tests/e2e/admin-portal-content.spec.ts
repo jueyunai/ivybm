@@ -1,3 +1,4 @@
+import './require-mutation-launch'
 import { expect, test, type Browser, type Page, type TestInfo } from '@playwright/test'
 import { getPayload, type Where } from 'payload'
 
