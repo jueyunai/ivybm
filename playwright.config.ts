@@ -5,12 +5,15 @@ import {
   E2E_META_PAGE_ID,
   E2E_META_VERIFY_TOKEN,
 } from './tests/e2e/admin-portal-facebook.constants'
+import { assertMutationE2ETarget } from './tests/e2e/mutation-safety'
 
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
  */
 import 'dotenv/config'
+
+assertMutationE2ETarget()
 
 const isCI = Boolean(process.env.CI)
 const e2ePort = process.env.E2E_PORT || '3000'
@@ -60,6 +63,7 @@ export default defineConfig({
           META_WEBHOOK_ALLOWED_ACCOUNT_IDS: E2E_META_PAGE_ID,
           META_WEBHOOK_APP_SECRET: E2E_META_APP_SECRET,
           META_WEBHOOK_VERIFY_TOKEN: E2E_META_VERIFY_TOKEN,
+          NEXT_PUBLIC_SERVER_URL: baseURL,
           ...(isCI ? { IVYBM_E2E_ALLOW_HTTP_LOOPBACK: 'true' } : {}),
           PORT: isCI ? e2ePort : devPort,
           ...(isCI ? { HOSTNAME: '127.0.0.1' } : {}),

@@ -47,7 +47,7 @@ describe('CI workflow policy', () => {
     expect(fullGate).toContain('ADMIN_PORTAL_PUBLISHING_ENABLED: false')
     expect(fullGate).toContain('ADMIN_PORTAL_PLATFORMS_ENABLED: true')
     expect(fullGate).toContain('ADMIN_PORTAL_OPERATIONS_ENABLED: true')
-    expect(fullGateEnvironment).toMatch(/PLATFORM_CREDENTIAL_ENCRYPTION_KEY: [a-f0-9]{64}/)
+    expect(fullGateEnvironment).not.toContain('PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
   })
 
   it('always evaluates a stable fail-closed policy for the current head', () => {
@@ -108,6 +108,7 @@ describe('CI workflow policy', () => {
     expect(e2eStep).toContain('WEBSITE_E2E: ${{ needs.changes.outputs.website_e2e }}')
     expect(e2eStep).toContain('ADMIN_E2E: ${{ needs.changes.outputs.admin_e2e }}')
     expect(e2eStep).toContain('CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}')
+    expect(e2eStep).toMatch(/PLATFORM_CREDENTIAL_ENCRYPTION_KEY: [a-f0-9]{64}/)
     expect(e2eStep).toContain('specs+=(tests/e2e/website.spec.ts)')
     expect(e2eStep).toContain('specs+=(tests/e2e/admin-visual.spec.ts)')
     expect(e2eStep).toContain('specs+=(tests/e2e/admin-portal-*.spec.ts)')
@@ -123,5 +124,6 @@ describe('CI workflow policy', () => {
     expect(playwrightConfig).toContain(
       "snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{platform}/{arg}-{projectName}{ext}'",
     )
+    expect(playwrightConfig).toContain('NEXT_PUBLIC_SERVER_URL: baseURL')
   })
 })
