@@ -4,20 +4,39 @@ type MutationE2ETarget = {
   baseURL?: string
   databaseURL?: string
   selectedArguments?: string[]
+  workerMode?: string
 }
 
 const normalizeHostname = (hostname: string): string => hostname.replace(/^\[(.*)\]$/u, '$1')
 
-const selectedSpecArguments = (arguments_: string[]): string[] =>
-  arguments_.filter((argument) => argument.includes('.spec.ts'))
+const positionalSelectorArguments = (arguments_: string[]): string[] => {
+  let afterDelimiter = false
+  let commandConsumed = false
+  const selectors: string[] = []
+
+  for (const argument of arguments_) {
+    if (!afterDelimiter && !commandConsumed && argument === 'test') {
+      commandConsumed = true
+      continue
+    }
+    if (!afterDelimiter && argument === '--') {
+      afterDelimiter = true
+      continue
+    }
+    if (!afterDelimiter && argument.startsWith('-')) continue
+    selectors.push(argument)
+  }
+
+  return selectors
+}
 
 const readOnlySpecPatterns = [/(?:^|\/)website-visual\.spec\.ts(?::\d+)?$/u]
 
 export const mutationE2EIsScheduled = (arguments_: string[]): boolean => {
-  const selectedSpecs = selectedSpecArguments(arguments_)
-  if (selectedSpecs.length === 0) return true
+  const selectors = positionalSelectorArguments(arguments_)
+  if (selectors.length === 0) return true
 
-  return selectedSpecs.some((argument) => {
+  return selectors.some((argument) => {
     const normalized = argument.replaceAll('\\', '/')
     return !readOnlySpecPatterns.some((pattern) => pattern.test(normalized))
   })
@@ -35,6 +54,7 @@ export const assertMutationE2ETarget = ({
   baseURL = process.env.BASE_URL,
   databaseURL = process.env.DATABASE_URL,
   selectedArguments = process.argv.slice(2),
+  workerMode = process.env.IVYBM_E2E_WORKER_MODE,
 }: MutationE2ETarget = {}): void => {
   if (!mutationE2EIsScheduled(selectedArguments)) return
 
@@ -49,6 +69,12 @@ export const assertMutationE2ETarget = ({
     }
     throw new Error(
       'Refusing mutation E2E with BASE_URL; mutation suites must use the Playwright-managed local server',
+    )
+  }
+
+  if (workerMode !== 'harness-only') {
+    throw new Error(
+      'Mutation E2E requires IVYBM_E2E_WORKER_MODE=harness-only; stop external workers and use the canonical pnpm test:e2e command',
     )
   }
 

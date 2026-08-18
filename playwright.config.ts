@@ -5,7 +5,7 @@ import {
   E2E_META_PAGE_ID,
   E2E_META_VERIFY_TOKEN,
 } from './tests/e2e/admin-portal-facebook.constants'
-import { assertMutationE2ETarget } from './tests/e2e/mutation-safety'
+import { assertMutationE2ETarget, mutationE2EIsScheduled } from './tests/e2e/mutation-safety'
 
 /**
  * Read environment variables from file.
@@ -13,7 +13,9 @@ import { assertMutationE2ETarget } from './tests/e2e/mutation-safety'
  */
 import 'dotenv/config'
 
-assertMutationE2ETarget()
+const selectedArguments = process.argv.slice(2)
+const mutationE2EScheduled = mutationE2EIsScheduled(selectedArguments)
+assertMutationE2ETarget({ selectedArguments })
 
 const isCI = Boolean(process.env.CI)
 const e2ePort = process.env.E2E_PORT || '3000'
@@ -68,7 +70,7 @@ export default defineConfig({
           PORT: isCI ? e2ePort : devPort,
           ...(isCI ? { HOSTNAME: '127.0.0.1' } : {}),
         },
-        reuseExistingServer: !isCI,
+        reuseExistingServer: !mutationE2EScheduled,
         timeout: 120_000,
         url: isCI ? `${baseURL}/api/health/ready` : baseURL,
       },

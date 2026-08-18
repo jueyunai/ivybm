@@ -12,6 +12,7 @@ describe('mutation E2E target safety', () => {
         baseURL: '',
         databaseURL: safeDatabaseURL,
         selectedArguments: mutationArguments,
+        workerMode: 'harness-only',
       }),
     ).not.toThrow()
   })
@@ -40,6 +41,7 @@ describe('mutation E2E target safety', () => {
         baseURL: '',
         databaseURL: 'postgres://ivybm:secret@db.production.internal:5432/ivybm_ci',
         selectedArguments: mutationArguments,
+        workerMode: 'harness-only',
       }),
     ).toThrow('test databases must use a local loopback host')
 
@@ -48,16 +50,18 @@ describe('mutation E2E target safety', () => {
         baseURL: '',
         databaseURL: 'postgres://postgres:postgres@127.0.0.1:55483/ivybm',
         selectedArguments: mutationArguments,
+        workerMode: 'harness-only',
       }),
     ).toThrow('test databases must end with _test or _ci')
   })
 
   it('allows an explicitly selected read-only visual spec to use an external server', () => {
-    expect(mutationE2EIsScheduled(['tests/e2e/website-visual.spec.ts'])).toBe(false)
+    const selectedArguments = ['test', '--list', 'tests/e2e/website-visual.spec.ts']
+    expect(mutationE2EIsScheduled(selectedArguments)).toBe(false)
     expect(() =>
       assertMutationE2ETarget({
         baseURL: 'https://example.invalid',
-        selectedArguments: ['tests/e2e/website-visual.spec.ts'],
+        selectedArguments,
       }),
     ).not.toThrow()
   })
@@ -67,6 +71,24 @@ describe('mutation E2E target safety', () => {
     expect(mutationE2EIsScheduled(['tests/e2e/admin-visual.spec.ts'])).toBe(true)
   })
 
+  it('fails closed for mixed read-only and selector arguments', () => {
+    const selectedArguments = [
+      'test',
+      '--',
+      'tests/e2e/website-visual.spec.ts',
+      'admin-portal-content',
+    ]
+    expect(mutationE2EIsScheduled(selectedArguments)).toBe(true)
+    expect(() =>
+      assertMutationE2ETarget({
+        baseURL: 'https://example.invalid',
+        databaseURL: safeDatabaseURL,
+        selectedArguments,
+        workerMode: 'harness-only',
+      }),
+    ).toThrow('Refusing mutation E2E against external BASE_URL host')
+  })
+
   it('treats a full-suite invocation as mutation-capable', () => {
     expect(mutationE2EIsScheduled([])).toBe(true)
     expect(() =>
@@ -74,7 +96,19 @@ describe('mutation E2E target safety', () => {
         baseURL: '',
         databaseURL: '',
         selectedArguments: [],
+        workerMode: 'harness-only',
       }),
     ).toThrow('DATABASE_URL is required for mutation E2E')
+  })
+
+  it('requires the canonical harness-only worker mode', () => {
+    expect(() =>
+      assertMutationE2ETarget({
+        baseURL: '',
+        databaseURL: safeDatabaseURL,
+        selectedArguments: mutationArguments,
+        workerMode: '',
+      }),
+    ).toThrow('IVYBM_E2E_WORKER_MODE=harness-only')
   })
 })

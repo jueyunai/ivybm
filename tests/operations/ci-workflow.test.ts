@@ -108,6 +108,7 @@ describe('CI workflow policy', () => {
     expect(e2eStep).toContain('WEBSITE_E2E: ${{ needs.changes.outputs.website_e2e }}')
     expect(e2eStep).toContain('ADMIN_E2E: ${{ needs.changes.outputs.admin_e2e }}')
     expect(e2eStep).toContain('CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}')
+    expect(e2eStep).toContain('IVYBM_E2E_WORKER_MODE: harness-only')
     expect(e2eStep).toMatch(/PLATFORM_CREDENTIAL_ENCRYPTION_KEY: [a-f0-9]{64}/)
     expect(e2eStep).toContain('specs+=(tests/e2e/website.spec.ts)')
     expect(e2eStep).toContain('specs+=(tests/e2e/admin-visual.spec.ts)')
@@ -120,10 +121,13 @@ describe('CI workflow policy', () => {
 
   it('keeps visual baselines isolated by runner platform', () => {
     const playwrightConfig = readFileSync(resolve(projectRoot, 'playwright.config.ts'), 'utf8')
+    const packageJSON = readFileSync(resolve(projectRoot, 'package.json'), 'utf8')
 
     expect(playwrightConfig).toContain(
       "snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{platform}/{arg}-{projectName}{ext}'",
     )
     expect(playwrightConfig).toContain('NEXT_PUBLIC_SERVER_URL: baseURL')
+    expect(playwrightConfig).toContain('reuseExistingServer: !mutationE2EScheduled')
+    expect(packageJSON).toContain('IVYBM_E2E_WORKER_MODE=harness-only')
   })
 })

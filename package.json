@@ -29,7 +29,7 @@
     "start": "cross-env NODE_OPTIONS=--no-deprecation next start",
     "test": "pnpm run test:unit",
     "test:contract": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; exec cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.contract.config.mts \"$@\"' --",
-    "test:e2e": "cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" playwright test --config=playwright.config.ts",
+    "test:e2e": "cross-env IVYBM_E2E_WORKER_MODE=harness-only NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" playwright test --config=playwright.config.ts",
     "test:integration": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; exec cross-env NODE_OPTIONS=--no-deprecation NODE_ENV=test vitest run --config ./vitest.integration.config.mts \"$@\"' --",
     "test:operations": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; exec vitest run --config ./vitest.operations.config.mts \"$@\"' --",
     "test:unit": "node scripts/ai-eval/validate.mjs && sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; exec cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts \"$@\"' --",
