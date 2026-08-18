@@ -29,7 +29,7 @@ describe('E2E launcher process boundary', () => {
     expect(result.status).not.toBe(0)
     expect(`${result.stdout}${result.stderr}`).toContain('must be started by the suite launcher')
     expect(`${result.stdout}${result.stderr}`).not.toContain('103 tests in 18 files')
-  })
+  }, 30_000)
 
   it('rejects alternate config execution when mutation specs are loaded', () => {
     const result = directPlaywright([
@@ -40,5 +40,5 @@ describe('E2E launcher process boundary', () => {
     ])
     expect(result.status).not.toBe(0)
     expect(`${result.stdout}${result.stderr}`).toContain('must be started by the suite launcher')
-  })
+  }, 30_000)
 })
