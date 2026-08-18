@@ -55,22 +55,36 @@ chmod 700 "$temporary_dir"
 
 "$compose_script" "$env_file" exec -T db sh -c 'pg_restore --list >/dev/null' <"$temporary_dir/database.dump"
 
-docker run --rm \
-  -v ivybm-prod-media:/media:ro \
-  -v "$temporary_dir:/backup" \
-  alpine:3.22 \
-  sh -c 'set -eu; tar -czf /backup/media.tar.gz.tmp -C /media .; tar -tzf /backup/media.tar.gz.tmp >/dev/null; mv /backup/media.tar.gz.tmp /backup/media.tar.gz'
-[[ -s "$temporary_dir/media.tar.gz" ]] || {
-  echo 'Media archive is empty' >&2
-  exit 1
+archive_volume() {
+  local volume_name="$1"
+  local archive_name="$2"
+
+  docker volume inspect "$volume_name" >/dev/null 2>&1 || {
+    echo "Production volume is missing: $volume_name" >&2
+    return 1
+  }
+  docker run --rm \
+    -v "$volume_name:/source:ro" \
+    -v "$temporary_dir:/backup" \
+    alpine:3.22 \
+    sh -c 'set -eu; archive_name="$1"; tar -czf "/backup/${archive_name}.tmp" -C /source .; tar -tzf "/backup/${archive_name}.tmp" >/dev/null; mv "/backup/${archive_name}.tmp" "/backup/$archive_name"' \
+    sh "$archive_name"
+  [[ -s "$temporary_dir/$archive_name" ]] || {
+    echo "Archive is empty: $archive_name" >&2
+    return 1
+  }
 }
+
+archive_volume ivybm-prod-media media.tar.gz
+archive_volume ivybm-prod-knowledge-sources knowledge-sources.tar.gz
+archive_volume ivybm-prod-knowledge-source-assets knowledge-source-assets.tar.gz
 
 (
   cd "$temporary_dir"
-  sha256sum database.dump media.tar.gz >SHA256SUMS
+  sha256sum database.dump media.tar.gz knowledge-sources.tar.gz knowledge-source-assets.tar.gz >SHA256SUMS
   sha256sum -c SHA256SUMS >/dev/null
   printf 'created_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >MANIFEST
-  printf 'database_dump=database.dump\nmedia_archive=media.tar.gz\n' >>MANIFEST
+  printf 'database_dump=database.dump\nmedia_archive=media.tar.gz\nknowledge_sources_archive=knowledge-sources.tar.gz\nknowledge_source_assets_archive=knowledge-source-assets.tar.gz\n' >>MANIFEST
 )
 
 mv "$temporary_dir" "$backup_dir"

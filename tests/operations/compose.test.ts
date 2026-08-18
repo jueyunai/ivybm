@@ -244,12 +244,13 @@ describe('production Compose configuration', () => {
         '/app/private/knowledge-sources',
         '/app/private/knowledge-source-assets',
       ]) {
-        expect(config.services.app.volumes).toEqual(
-          expect.arrayContaining([expect.objectContaining({ target })]),
+        const appMount = config.services.app.volumes?.find((volume) => volume.target === target)
+        const workerMount = config.services.worker.volumes?.find(
+          (volume) => volume.target === target,
         )
-        expect(config.services.worker.volumes).toEqual(
-          expect.arrayContaining([expect.objectContaining({ target })]),
-        )
+        expect(appMount).toEqual(expect.objectContaining({ target, type: 'volume' }))
+        expect(workerMount).toEqual(expect.objectContaining({ target, type: 'volume' }))
+        expect(workerMount?.source).toBe(appMount?.source)
       }
     }
 

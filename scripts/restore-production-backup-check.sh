@@ -16,8 +16,9 @@ container_name="ivybm-backup-restore-$RANDOM-$$"
   exit 66
 }
 backup_dir="$(cd "$backup_dir" && pwd)"
-[[ -r "$backup_dir/database.dump" && -r "$backup_dir/media.tar.gz" ]] || {
-  echo 'Backup directory must contain database.dump and media.tar.gz' >&2
+[[ -r "$backup_dir/database.dump" && -r "$backup_dir/media.tar.gz" && \
+  -r "$backup_dir/knowledge-sources.tar.gz" && -r "$backup_dir/knowledge-source-assets.tar.gz" ]] || {
+  echo 'Backup directory must contain database.dump, media.tar.gz, knowledge-sources.tar.gz, and knowledge-source-assets.tar.gz' >&2
   exit 1
 }
 
@@ -50,6 +51,8 @@ docker exec -i "$container_name" pg_restore \
 
 docker run --rm \
   -v "$backup_dir/media.tar.gz:/backup/media.tar.gz:ro" \
-  alpine:3.22 tar -tzf /backup/media.tar.gz >/dev/null
+  -v "$backup_dir/knowledge-sources.tar.gz:/backup/knowledge-sources.tar.gz:ro" \
+  -v "$backup_dir/knowledge-source-assets.tar.gz:/backup/knowledge-source-assets.tar.gz:ro" \
+  alpine:3.22 sh -c 'set -eu; for archive in media.tar.gz knowledge-sources.tar.gz knowledge-source-assets.tar.gz; do tar -tzf "/backup/$archive" >/dev/null; done'
 
 echo 'Production backup restore rehearsal passed in an isolated temporary database and media archive reader.'

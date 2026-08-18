@@ -29,7 +29,7 @@ for directory in "$local_backup_dir" "$offsite_copy_dir"; do
     echo "Backup directory must have mode 700: $directory" >&2
     exit 1
   fi
-  for file in database.dump media.tar.gz SHA256SUMS MANIFEST; do
+  for file in database.dump media.tar.gz knowledge-sources.tar.gz knowledge-source-assets.tar.gz SHA256SUMS MANIFEST; do
     [[ -f "$directory/$file" ]] || {
       echo "Backup file is missing: $directory/$file" >&2
       exit 1
@@ -41,7 +41,9 @@ for directory in "$local_backup_dir" "$offsite_copy_dir"; do
     fi
   done
   (cd "$directory" && sha256sum -c SHA256SUMS >/dev/null)
-  tar -tzf "$directory/media.tar.gz" >/dev/null
+  for archive in media.tar.gz knowledge-sources.tar.gz knowledge-source-assets.tar.gz; do
+    tar -tzf "$directory/$archive" >/dev/null
+  done
 done
 
 local_device="$(stat -c '%d' "$local_backup_dir" 2>/dev/null || stat -f '%d' "$local_backup_dir")"

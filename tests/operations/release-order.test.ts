@@ -32,7 +32,10 @@ describe('production release order', () => {
   })
 
   it('keeps the backup and Compose wrappers fail closed', () => {
-    const composeWrapper = readFileSync(resolve(projectRoot, 'scripts/production-compose.sh'), 'utf8')
+    const composeWrapper = readFileSync(
+      resolve(projectRoot, 'scripts/production-compose.sh'),
+      'utf8',
+    )
     const backupScript = readFileSync(resolve(projectRoot, 'scripts/backup-production.sh'), 'utf8')
     const verificationScript = readFileSync(
       resolve(projectRoot, 'scripts/verify-production-backup.sh'),
@@ -49,13 +52,23 @@ describe('production release order', () => {
     expect(backupScript).toContain('pg_restore --list')
     expect(backupScript).toContain('sha256sum -c SHA256SUMS')
     expect(backupScript).toContain('Refusing to overwrite an existing production backup')
-    expect(backupScript).toContain('ivybm-prod-media:/media:ro')
+    expect(backupScript).toContain('archive_volume ivybm-prod-media media.tar.gz')
+    expect(backupScript).toContain(
+      'archive_volume ivybm-prod-knowledge-sources knowledge-sources.tar.gz',
+    )
+    expect(backupScript).toContain(
+      'archive_volume ivybm-prod-knowledge-source-assets knowledge-source-assets.tar.gz',
+    )
+    expect(verificationScript).toContain('knowledge-sources.tar.gz')
+    expect(verificationScript).toContain('knowledge-source-assets.tar.gz')
     expect(verificationScript).toContain('different filesystem/device')
     expect(verificationScript).toContain('sha256sum -c SHA256SUMS')
     expect(verificationScript).toContain('does not match the verified production backup manifest')
     expect(restoreScript).toContain('--exit-on-error')
     expect(restoreScript).toContain('--tmpfs /var/lib/postgresql')
     expect(restoreScript).toContain('media.tar.gz')
+    expect(restoreScript).toContain('knowledge-sources.tar.gz')
+    expect(restoreScript).toContain('knowledge-source-assets.tar.gz')
   })
 
   it('strips caller release variables before invoking Compose', () => {
