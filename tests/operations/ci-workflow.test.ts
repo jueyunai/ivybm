@@ -29,6 +29,10 @@ describe('CI workflow policy', () => {
       workflow.indexOf('  full_gate:'),
       workflow.indexOf('  ci_policy:'),
     )
+    const fullGateEnvironment = fullGate.slice(
+      fullGate.indexOf('\n    env:\n'),
+      fullGate.indexOf('\n    steps:\n'),
+    )
 
     expect(fullGate).toContain('timeout-minutes: 30')
     expect(fullGate).toContain('ADMIN_PORTAL_ENABLED: true')
@@ -43,6 +47,7 @@ describe('CI workflow policy', () => {
     expect(fullGate).toContain('ADMIN_PORTAL_PUBLISHING_ENABLED: false')
     expect(fullGate).toContain('ADMIN_PORTAL_PLATFORMS_ENABLED: true')
     expect(fullGate).toContain('ADMIN_PORTAL_OPERATIONS_ENABLED: true')
+    expect(fullGateEnvironment).toMatch(/PLATFORM_CREDENTIAL_ENCRYPTION_KEY: [a-f0-9]{64}/)
   })
 
   it('always evaluates a stable fail-closed policy for the current head', () => {

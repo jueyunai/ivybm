@@ -241,6 +241,7 @@ jobs:
       APP_VERSION: ci
       E2E_ADMIN_EMAIL: admin@example.invalid
       E2E_ADMIN_PASSWORD: ci-demo-admin-password
+      PLATFORM_CREDENTIAL_ENCRYPTION_KEY: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
       SEED_ADMIN_EMAIL: admin@example.invalid
       SEED_ADMIN_PASSWORD: ci-demo-admin-password
     steps:
