@@ -238,6 +238,28 @@ describe('production Compose configuration', () => {
     expect(config.volumes.media_data.name).toBe('ivybm-prod-media')
   })
 
+  it('shares protected knowledge source storage between app and worker', () => {
+    for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
+      for (const target of [
+        '/app/private/knowledge-sources',
+        '/app/private/knowledge-source-assets',
+      ]) {
+        expect(config.services.app.volumes).toEqual(
+          expect.arrayContaining([expect.objectContaining({ target })]),
+        )
+        expect(config.services.worker.volumes).toEqual(
+          expect.arrayContaining([expect.objectContaining({ target })]),
+        )
+      }
+    }
+
+    const production = getProductionComposeConfig()
+    expect(production.volumes.knowledge_sources_data.name).toBe('ivybm-prod-knowledge-sources')
+    expect(production.volumes.knowledge_source_assets_data.name).toBe(
+      'ivybm-prod-knowledge-source-assets',
+    )
+  })
+
   it('waits for a successful migration and keeps resource, health, and log guards', () => {
     const config = getProductionComposeConfig()
 
