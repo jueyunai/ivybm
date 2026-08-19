@@ -5,7 +5,9 @@ import { getPortalFeatureState } from '@/admin-portal/core/modules/getPortalFeat
 import { resolvePortalAvailability } from '@/admin-portal/core/modules/resolvePortalAvailability'
 import {
   getPortalSettingsSummary,
+  getPortalSiteSettingsEditor,
   type PortalSettingsSummary,
+  type PortalSiteSettingsEditor,
 } from '@/admin-portal/modules/settings/getPortalSettingsSummary'
 import { SettingsHub } from '@/admin-portal/modules/settings/SettingsHub'
 import { SETTINGS_MODULE } from '@/admin-portal/modules/settings/manifest'
@@ -27,17 +29,29 @@ export default async function PortalSettingsPage() {
       ? 'portal-disabled'
       : 'module-disabled'
   if (pageState !== 'available') {
-    return <SettingsHub aiSettings={portalAiSettingsAdminOnly()} modules={availability.modules} pageState={pageState} summary={null} user={user} />
+    return (
+      <SettingsHub
+        aiSettings={portalAiSettingsAdminOnly()}
+        modules={availability.modules}
+        pageState={pageState}
+        summary={null}
+        user={user}
+      />
+    )
   }
   let readError = false
   let aiReadError = false
   let summary: PortalSettingsSummary | null = null
+  let siteSettings: PortalSiteSettingsEditor | null = null
   let aiSettings: PortalAiSettingsSummary = portalAiSettingsAdminOnly()
 
   try {
     const payload = await getPayload({ config })
     const req = await createLocalReq({ user: { ...user, collection: 'users' } as User }, payload)
     summary = await getPortalSettingsSummary({ payload, req, user })
+    if (summary.canUpdate) {
+      siteSettings = await getPortalSiteSettingsEditor({ payload, req })
+    }
     if (user.role === 'admin') {
       try {
         aiSettings = await getPortalAiSettings({ payload, req })
@@ -68,6 +82,7 @@ export default async function PortalSettingsPage() {
       pageState={pageState}
       readError={readError}
       summary={summary}
+      siteSettings={siteSettings}
       user={user}
     />
   )
