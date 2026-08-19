@@ -282,6 +282,78 @@ describe('production knowledge volume migration', () => {
     expect(existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources'))).toBe(false)
   })
 
+  it('preserves unreferenced legacy files from old containers while validating database references', () => {
+    const { directory, run } = createHarness()
+    writeFileSync(
+      resolve(directory, 'old-app', 'sources', 'unreferenced.pdf'),
+      'unreferenced-source',
+    )
+    writeFileSync(
+      resolve(directory, 'old-worker', 'assets', 'unreferenced.png'),
+      'unreferenced-asset',
+    )
+
+    const result = run()
+
+    expect(result.status).toBe(0)
+    expect(
+      existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources', 'source.pdf')),
+    ).toBe(true)
+    expect(
+      existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources', 'unreferenced.pdf')),
+    ).toBe(true)
+    expect(
+      existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets', 'asset.png')),
+    ).toBe(true)
+    expect(
+      existsSync(
+        resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets', 'unreferenced.png'),
+      ),
+    ).toBe(true)
+    expect(
+      readFileSync(
+        resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources', 'unreferenced.pdf'),
+        'utf8',
+      ),
+    ).toBe('unreferenced-source')
+    expect(
+      readFileSync(
+        resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets', 'unreferenced.png'),
+        'utf8',
+      ),
+    ).toBe('unreferenced-asset')
+  })
+
+  it('exports and preserves legacy files even when database manifests are empty', () => {
+    const { directory, run } = createHarness()
+    writeFileSync(resolve(directory, 'expected-sources'), '')
+    writeFileSync(resolve(directory, 'expected-assets'), '')
+    writeFileSync(resolve(directory, 'old-app', 'sources', 'orphan.pdf'), 'orphan-source')
+    writeFileSync(resolve(directory, 'old-worker', 'assets', 'orphan.png'), 'orphan-asset')
+
+    const result = run()
+
+    expect(result.status).toBe(0)
+    expect(
+      existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources', 'orphan.pdf')),
+    ).toBe(true)
+    expect(
+      existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets', 'orphan.png')),
+    ).toBe(true)
+    expect(
+      readFileSync(
+        resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources', 'orphan.pdf'),
+        'utf8',
+      ),
+    ).toBe('orphan-source')
+    expect(
+      readFileSync(
+        resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets', 'orphan.png'),
+        'utf8',
+      ),
+    ).toBe('orphan-asset')
+  })
+
   it('allows a missing legacy worker assets directory only when the asset manifest is empty', () => {
     const { directory, run } = createHarness()
     writeFileSync(resolve(directory, 'expected-assets'), '')
@@ -291,10 +363,8 @@ describe('production knowledge volume migration', () => {
 
     expect(result.status).toBe(0)
     expect(result.stdout).toContain(
-      'No database-referenced knowledge assets; skipping legacy worker asset export.',
+      'Legacy knowledge source assets directory is missing from old-worker, and database manifest is empty; proceeding with empty directory.',
     )
-    const log = readFileSync(resolve(directory, 'docker.log'), 'utf8')
-    expect(log).not.toContain('cp old-worker:/app/private/knowledge-source-assets/.')
   })
 
   it('allows a missing legacy app source directory only when the source manifest is empty', () => {
@@ -306,10 +376,8 @@ describe('production knowledge volume migration', () => {
 
     expect(result.status).toBe(0)
     expect(result.stdout).toContain(
-      'No database-referenced knowledge sources; skipping legacy app source export.',
+      'Legacy knowledge sources directory is missing from old-app, and database manifest is empty; proceeding with empty directory.',
     )
-    const log = readFileSync(resolve(directory, 'docker.log'), 'utf8')
-    expect(log).not.toContain('cp old-app:/app/private/knowledge-sources/.')
   })
 
   it('replaces unattached migration volumes on an explicit pre-deploy retry', () => {

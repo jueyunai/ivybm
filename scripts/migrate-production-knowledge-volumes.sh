@@ -199,16 +199,36 @@ query_expected() {
 query_expected knowledge_source_documents "$temporary_dir/expected-sources.encoded" "$temporary_dir/expected-sources"
 query_expected knowledge_source_assets "$temporary_dir/expected-assets.encoded" "$temporary_dir/expected-assets"
 
-if [[ -s "$temporary_dir/expected-sources" ]]; then
-  docker cp "$old_app_container:/app/private/knowledge-sources/." "$temporary_dir/sources/"
-else
-  echo 'No database-referenced knowledge sources; skipping legacy app source export.'
-fi
-if [[ -s "$temporary_dir/expected-assets" ]]; then
-  docker cp "$old_worker_container:/app/private/knowledge-source-assets/." "$temporary_dir/assets/"
-else
-  echo 'No database-referenced knowledge assets; skipping legacy worker asset export.'
-fi
+export_legacy_sources() {
+  if docker cp "$old_app_container:/app/private/knowledge-sources/." "$temporary_dir/sources/" 2>/dev/null; then
+    return 0
+  fi
+
+  if [[ ! -s "$temporary_dir/expected-sources" ]]; then
+    echo "Legacy knowledge sources directory is missing from $old_app_container, and database manifest is empty; proceeding with empty directory."
+    return 0
+  fi
+
+  echo "Failed to export legacy knowledge sources directory from $old_app_container:/app/private/knowledge-sources while database manifest is not empty" >&2
+  return 1
+}
+
+export_legacy_assets() {
+  if docker cp "$old_worker_container:/app/private/knowledge-source-assets/." "$temporary_dir/assets/" 2>/dev/null; then
+    return 0
+  fi
+
+  if [[ ! -s "$temporary_dir/expected-assets" ]]; then
+    echo "Legacy knowledge source assets directory is missing from $old_worker_container, and database manifest is empty; proceeding with empty directory."
+    return 0
+  fi
+
+  echo "Failed to export legacy knowledge source assets directory from $old_worker_container:/app/private/knowledge-source-assets while database manifest is not empty" >&2
+  return 1
+}
+
+export_legacy_sources
+export_legacy_assets
 
 verify_expected() {
   local expected_file="$1" root="$2"
