@@ -8,6 +8,7 @@ import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import { JobWorker } from '@/modules/jobs/worker'
 import { PayloadPlatformPublicationAuthority } from '@/modules/platforms/payloadPublishingAuthority'
+import { PayloadPublishingAccountResolver } from '@/modules/platforms/publishingAccountResolver'
 import {
   createPlatformPublicationJobHandler,
   PLATFORM_PUBLICATION_JOB_TYPE,
@@ -16,6 +17,7 @@ import type {
   PlatformPublicationIntent,
   PlatformPublicationLeaseFence,
 } from '@/modules/platforms/publishingAuthority'
+import { createPlatformPublishingService } from '@/modules/platforms/publishingServiceAdapter'
 import type { PlatformAccount, User } from '@/payload-types'
 import config from '@/payload.config'
 
@@ -365,5 +367,142 @@ describe.sequential('Task 13 Payload publication authority', () => {
       externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/987654321',
       status: 'published',
     })
+  })
+
+  it('blocks a queued direct publication when only the account authorization revision changes', async () => {
+    const suffix = randomUUID()
+    const content = await payload.create({
+      collection: 'generated-contents',
+      context: contentStudioInternalWriteContext,
+      data: {
+        body: 'Stale authorization publication update',
+        contentLocale: 'en',
+        contentType: 'post',
+        createdBy: admin.id,
+        creationFingerprint: 'e'.repeat(64),
+        idempotencyKey: `stale-authorization-content:${suffix}`,
+        platform: 'facebook',
+        status: 'approved',
+        title: 'Stale authorization publication fixture',
+      },
+      overrideAccess: true,
+    })
+    contentIDs.push(content.id)
+    const requestSnapshot = {
+      assets: [
+        {
+          fileName: 'facade.jpg',
+          id: 'asset-stale-authorization',
+          mimeType: 'image/jpeg',
+          sourceUrl: 'https://media.example.invalid/facade.jpg',
+        },
+      ],
+      idempotencyKey: `publish:v1:${suffix.replaceAll('-', '')}:facebook`,
+      platform: 'facebook',
+      platformAccountId: account.id,
+      status: 'scheduled',
+      text: 'Stale authorization publication update',
+    }
+    const publishJob = await payload.create({
+      collection: 'publish-jobs',
+      context: contentStudioInternalWriteContext,
+      data: {
+        authorizationRevision: account.authorizationRevision,
+        content: content.id,
+        createdBy: admin.id,
+        executionRevision: 0,
+        executionRoute: 'facebook-photo-single',
+        fencingGeneration: 0,
+        idempotencyKey: requestSnapshot.idempotencyKey,
+        mode: 'automatic',
+        platform: 'facebook',
+        platformAccount: account.id,
+        requestFingerprint: 'f'.repeat(64),
+        requestSnapshot,
+        scheduledFor: new Date().toISOString(),
+        status: 'scheduled',
+      },
+      overrideAccess: true,
+    })
+    publishJobIDs.push(publishJob.id)
+    const queue = new PayloadJobQueue({ payload })
+    const queued = await queue.enqueue({
+      idempotencyKey: `publication-execute:${publishJob.id}:0`,
+      maxAttempts: 2,
+      payload: { expectedExecutionRevision: 0, publishJobId: publishJob.id },
+      type: PLATFORM_PUBLICATION_JOB_TYPE,
+    })
+    jobIDs.push(queued.job.id)
+
+    const publishFacebookPagePhoto = vi.fn()
+    const getFacebookPagePostPermalink = vi.fn()
+    const accountResolver = new PayloadPublishingAccountResolver({ payload })
+    const resolveAccount = vi.spyOn(accountResolver, 'resolve')
+    const directService = createPlatformPublishingService({
+      accountResolver,
+      linkedInTransport: {} as never,
+      metaTransport: {
+        createInstagramMedia: vi.fn(),
+        getFacebookPagePostPermalink,
+        getInstagramContainerStatus: vi.fn(),
+        getInstagramMediaPermalink: vi.fn(),
+        publishFacebookPagePhoto,
+        publishInstagramMedia: vi.fn(),
+      },
+    })
+    const worker = new JobWorker({
+      handlers: {
+        [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+          payload,
+          queue,
+          resolveRuntime: () => ({
+            directService,
+            linkedInTransport: {} as never,
+            metaTransport: {} as never,
+            readLinkedInAssetBytes: vi.fn(),
+          }),
+        }),
+      },
+      queue,
+    })
+
+    await pool().query(
+      'UPDATE platform_accounts SET authorization_revision = authorization_revision + 1 WHERE id = $1',
+      [account.id],
+    )
+    try {
+      await expect(worker.runOnce()).resolves.toBe('succeeded')
+      expect(resolveAccount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedAuthorizationRevision: account.authorizationRevision,
+          platform: 'facebook',
+          platformAccountId: account.id,
+        }),
+      )
+      expect(publishFacebookPagePhoto).not.toHaveBeenCalled()
+      expect(getFacebookPagePostPermalink).not.toHaveBeenCalled()
+      await expect(
+        payload.findByID({
+          collection: 'publish-jobs',
+          depth: 0,
+          id: publishJob.id,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({
+        executionRevision: 1,
+        lastErrorCode: 'authorization_required',
+        status: 'failed',
+      })
+      const continuations = await pool().query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM jobs WHERE idempotency_key = $1',
+        [`publication-execute:${publishJob.id}:1`],
+      )
+      expect(continuations.rows[0]?.count).toBe('0')
+    } finally {
+      await pool().query('UPDATE platform_accounts SET authorization_revision = $1 WHERE id = $2', [
+        account.authorizationRevision,
+        account.id,
+      ])
+    }
   })
 })

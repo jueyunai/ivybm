@@ -116,6 +116,10 @@ const directSnapshot = (job: PublishJob): PlatformPublishExecutionSnapshot => {
   }
   return {
     ...request,
+    expectedAuthorizationRevision: nonNegativeInteger(
+      job.authorizationRevision,
+      'authorizationRevision',
+    ),
     ...(job.externalPublicationId ? { externalPublicationId: job.externalPublicationId } : {}),
     status: job.status,
   }

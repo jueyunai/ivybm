@@ -102,6 +102,9 @@ const normalizeSnapshot = (input: unknown): PlatformPublishExecutionSnapshot | u
   if (snapshot.externalPublicationId !== undefined && !externalPublicationId) return undefined
   return {
     assets: request.assets,
+    ...(request.expectedAuthorizationRevision !== undefined
+      ? { expectedAuthorizationRevision: request.expectedAuthorizationRevision }
+      : {}),
     ...(externalPublicationId ? { externalPublicationId } : {}),
     idempotencyKey: request.idempotencyKey,
     platform: request.platform,
@@ -157,6 +160,7 @@ const sameSnapshot = (
   right: PlatformPublishExecutionSnapshot,
 ): boolean =>
   left.idempotencyKey === right.idempotencyKey &&
+  left.expectedAuthorizationRevision === right.expectedAuthorizationRevision &&
   left.platform === right.platform &&
   left.platformAccountId === right.platformAccountId &&
   left.externalPublicationId === right.externalPublicationId &&
