@@ -88,6 +88,7 @@ const facebookRequest = (overrides: Record<string, unknown> = {}) => ({
       sourceUrl: 'https://media.example.test/facade.jpg?sig=opaque',
     },
   ],
+  expectedAuthorizationRevision: 4,
   idempotencyKey: 'publish-facebook-1',
   platform: 'facebook' as const,
   platformAccountId: 7,
@@ -164,8 +165,12 @@ describe('platform publishing service adapter', () => {
   })
 
   it('publishes one Facebook image with the resolved page identity', async () => {
+    const resolve = vi.fn<PublishingAccountResolverPort['resolve']>(async (input) => ({
+      account: { ...account(input.platform), platformAccountId: input.platformAccountId },
+      status: 'resolved',
+    }))
     const meta = metaTransport()
-    const service = serviceWith({ meta })
+    const service = serviceWith({ accountResolver: resolver(resolve), meta })
 
     await expect(service.publish(facebookRequest())).resolves.toEqual({
       externalPublicationId: '129472283584550_7654321',
@@ -182,6 +187,9 @@ describe('platform publishing service adapter', () => {
       platformAccountId: 7,
       url: 'https://media.example.test/facade.jpg?sig=opaque',
     })
+    expect(resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedAuthorizationRevision: 4 }),
+    )
     expect(meta.getFacebookPagePostPermalink).toHaveBeenCalledWith({
       accountExternalId: '129472283584550',
       authorizationRevision: 4,
@@ -269,6 +277,7 @@ describe('platform publishing service adapter', () => {
     const service = serviceWith({ linkedIn })
     const request = {
       assets: [],
+      expectedAuthorizationRevision: 4,
       idempotencyKey: 'publish-linkedin-1',
       platform: 'linkedin' as const,
       platformAccountId: 7,
@@ -314,6 +323,7 @@ describe('platform publishing service adapter', () => {
     const service = serviceWith({ linkedIn })
     await expect(
       service.getStatus({
+        expectedAuthorizationRevision: 4,
         externalPublicationId: 'urn:li:share:123456789',
         idempotencyKey: 'publish-linkedin-1',
         platform: 'linkedin',
@@ -335,6 +345,7 @@ describe('platform publishing service adapter', () => {
     })
     await expect(
       service.getStatus({
+        expectedAuthorizationRevision: 4,
         externalPublicationId: 'urn:li:share:123456789',
         idempotencyKey: 'publish-linkedin-1',
         platform: 'linkedin',
@@ -344,9 +355,14 @@ describe('platform publishing service adapter', () => {
   })
 
   it('confirms Facebook publication only through the provider permalink field', async () => {
-    const service = serviceWith()
+    const resolve = vi.fn<PublishingAccountResolverPort['resolve']>(async (input) => ({
+      account: { ...account(input.platform), platformAccountId: input.platformAccountId },
+      status: 'resolved',
+    }))
+    const service = serviceWith({ accountResolver: resolver(resolve) })
     await expect(
       service.getStatus({
+        expectedAuthorizationRevision: 4,
         externalPublicationId: '129472283584550_7654321',
         idempotencyKey: 'publish-facebook-1',
         platform: 'facebook',
@@ -357,6 +373,9 @@ describe('platform publishing service adapter', () => {
       externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/7654321',
       status: 'published',
     })
+    expect(resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedAuthorizationRevision: 4 }),
+    )
   })
 
   it('builds LinkedIn assisted packages locally without provider I/O', async () => {

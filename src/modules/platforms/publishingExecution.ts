@@ -212,6 +212,9 @@ export const executePlatformPublication = async ({
   if (snapshot.status === 'scheduled') {
     const result = await service.publish({
       assets: snapshot.assets,
+      ...(snapshot.expectedAuthorizationRevision !== undefined
+        ? { expectedAuthorizationRevision: snapshot.expectedAuthorizationRevision }
+        : {}),
       idempotencyKey: snapshot.idempotencyKey,
       platform: snapshot.platform,
       platformAccountId: snapshot.platformAccountId,
@@ -241,6 +244,9 @@ export const executePlatformPublication = async ({
   }
   const result = await service.getStatus({
     ...(snapshotExternalId ? { externalPublicationId: snapshotExternalId } : {}),
+    ...(snapshot.expectedAuthorizationRevision !== undefined
+      ? { expectedAuthorizationRevision: snapshot.expectedAuthorizationRevision }
+      : {}),
     idempotencyKey: snapshot.idempotencyKey,
     platform: snapshot.platform,
     platformAccountId: snapshot.platformAccountId,

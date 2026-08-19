@@ -25,8 +25,9 @@ describe('publishing public contract validation', () => {
     expect(() => normalizePublicationSourceURL('http://example.invalid/panel.jpg')).toThrow(
       'Publication asset source URL must be HTTPS',
     )
-    expect(() => normalizePublicationSourceURL('https://user:secret@example.invalid/panel.jpg'))
-      .toThrow('Publication asset source URL must be HTTPS')
+    expect(() =>
+      normalizePublicationSourceURL('https://user:secret@example.invalid/panel.jpg'),
+    ).toThrow('Publication asset source URL must be HTTPS')
   })
 
   it('counts idempotency keys by UTF-8 bytes and rejects non-canonical whitespace', () => {
@@ -41,6 +42,18 @@ describe('publishing public contract validation', () => {
     expect(() => normalizePlatformPublishRequest(request({ idempotencyKey: ' spaced ' }))).toThrow(
       'Publishing idempotency key is invalid or too long',
     )
+  })
+
+  it('normalizes the durable authorization revision fence and rejects malformed revisions', () => {
+    expect(
+      normalizePlatformPublishRequest(request({ expectedAuthorizationRevision: 4 })),
+    ).toMatchObject({ expectedAuthorizationRevision: 4 })
+    expect(() =>
+      normalizePlatformPublishRequest(request({ expectedAuthorizationRevision: -1 })),
+    ).toThrow('Expected authorization revision is invalid')
+    expect(() =>
+      normalizePlatformPublishRequest(request({ expectedAuthorizationRevision: 1.5 })),
+    ).toThrow('Expected authorization revision is invalid')
   })
 
   it('normalizes reviewed text, MIME type, asset identity and schedule before fingerprinting', () => {

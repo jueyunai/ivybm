@@ -21,6 +21,7 @@ const snapshot = (
       sourceUrl: 'https://cdn.example.invalid/facade.jpg',
     },
   ],
+  expectedAuthorizationRevision: 4,
   idempotencyKey: 'publish-job-42-facebook',
   platform: 'facebook',
   platformAccountId: 7,
@@ -218,6 +219,10 @@ describe('lease-fenced single-call publication', () => {
     ['job', intent({ publishJobId: 43 })],
     ['revision', intent({ expectedRevision: 4 })],
     ['platform account', intent({ snapshot: snapshot({ platformAccountId: 8 }) })],
+    [
+      'authorization revision',
+      intent({ snapshot: snapshot({ expectedAuthorizationRevision: 5 }) }),
+    ],
     ['command key', intent({ snapshot: snapshot({ idempotencyKey: 'other-key' }) })],
   ])('blocks a mismatched %s before publish', async (_label, mismatched) => {
     const state = setup()

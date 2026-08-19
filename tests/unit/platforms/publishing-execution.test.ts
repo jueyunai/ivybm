@@ -17,6 +17,7 @@ const snapshot = (
       sourceUrl: 'https://cdn.example.invalid/facade.jpg',
     },
   ],
+  expectedAuthorizationRevision: 4,
   idempotencyKey: 'publish:job:42:facebook',
   platform: 'facebook',
   platformAccountId: 7,
@@ -63,6 +64,7 @@ describe('platform publication execution state machine', () => {
     })
     expect(publish).toHaveBeenCalledWith(
       expect.objectContaining({
+        expectedAuthorizationRevision: 4,
         idempotencyKey: 'publish:job:42:facebook',
         platform: 'facebook',
         platformAccountId: 7,
@@ -243,6 +245,7 @@ describe('platform publication execution state machine', () => {
       ).resolves.toMatchObject({ status: 'published' })
       expect(getStatus).toHaveBeenCalledWith(
         expect.objectContaining({
+          expectedAuthorizationRevision: 4,
           externalPublicationId: 'provider-post-42',
           idempotencyKey: 'publish:job:42:facebook',
         }),
