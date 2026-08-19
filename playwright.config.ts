@@ -1,42 +1,30 @@
 import { defineConfig, devices } from '@playwright/test'
 
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
+import {
+  E2E_META_APP_SECRET,
+  E2E_META_PAGE_ID,
+  E2E_META_VERIFY_TOKEN,
+} from './tests/e2e/admin-portal-facebook.constants'
+import { readE2ELaunchContext } from './tests/e2e/launch-context'
+
 import 'dotenv/config'
 
+const context = readE2ELaunchContext()
 const isCI = Boolean(process.env.CI)
-const e2ePort = process.env.E2E_PORT || '3000'
-const devPort = process.env.PORT || '3001'
-// Chromium grants localhost a secure-context exception, which lets production-mode
-// Secure session cookies work without weakening Payload's cookie configuration.
-const defaultBaseURL = `http://localhost:${isCI ? e2ePort : devPort}`
-const baseURL = process.env.BASE_URL || defaultBaseURL
-const usesExternalServer = Boolean(process.env.BASE_URL)
-const e2eEncryptionKey = process.env.AI_CONFIG_ENCRYPTION_KEY || 'e'.repeat(64)
+const isExternalReadOnly = context.mode === 'readonly-external'
+const testMatch = context.specPaths.map((specPath) => specPath.replace(/^tests\/e2e\//u, ''))
 
-/**
- * See https://playwright.dev/docs/test-configuration.
- */
 export default defineConfig({
   testDir: './tests/e2e',
+  testMatch,
+  globalSetup: './tests/e2e/global-setup.ts',
   snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{platform}/{arg}-{projectName}{ext}',
-  /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
   retries: isCI ? 2 : 0,
-  // All Portal browser scenarios share one local seed account. Run serially so
-  // login failure protection is exercised without tests locking each other out.
   workers: 1,
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL,
-
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
+    baseURL: context.baseURL,
     trace: 'on-first-retry',
   },
   projects: [
@@ -45,18 +33,23 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: usesExternalServer
+  webServer: isExternalReadOnly
     ? undefined
     : {
         command: isCI ? 'corepack pnpm e2e:server' : 'corepack pnpm dev',
         env: {
-          AI_CONFIG_ENCRYPTION_KEY: e2eEncryptionKey,
-          ...(isCI ? { IVYBM_E2E_ALLOW_HTTP_LOOPBACK: 'true' } : {}),
-          PORT: isCI ? e2ePort : devPort,
-          ...(isCI ? { HOSTNAME: '127.0.0.1' } : {}),
+          AI_CONFIG_ENCRYPTION_KEY: 'e'.repeat(64),
+          HOSTNAME: '127.0.0.1',
+          IVYBM_E2E_ALLOW_HTTP_LOOPBACK: 'true',
+          META_WEBHOOK_ALLOWED_ACCOUNT_IDS: E2E_META_PAGE_ID,
+          META_WEBHOOK_APP_SECRET: E2E_META_APP_SECRET,
+          META_WEBHOOK_VERIFY_TOKEN: E2E_META_VERIFY_TOKEN,
+          NEXT_PUBLIC_SERVER_URL: context.baseURL,
+          PORT: new URL(context.baseURL).port,
+          PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'b'.repeat(64),
         },
-        reuseExistingServer: !isCI,
+        reuseExistingServer: false,
         timeout: 120_000,
-        url: isCI ? `${baseURL}/api/health/ready` : baseURL,
+        url: isCI ? `${context.baseURL}/api/health/ready` : context.baseURL,
       },
 })

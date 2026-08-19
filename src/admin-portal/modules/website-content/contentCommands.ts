@@ -1,6 +1,11 @@
 import type { Payload, PayloadRequest } from 'payload'
 
-import { CONTENT_TYPE_IDS, type ContentItemStatus, type ContentLocale, type ContentTypeId } from './getContentSummary'
+import {
+  CONTENT_TYPE_IDS,
+  type ContentItemStatus,
+  type ContentLocale,
+  type ContentTypeId,
+} from './getContentSummary'
 
 export const CONTENT_MUTATION_ACTIONS = [
   'save',
@@ -153,13 +158,15 @@ const numericList = (input: LooseRecord, key: string, max = 12): number[] => {
         ? []
         : [raw]
 
-  const result = values.filter((value) => value !== '').map((value) => {
-    try {
-      return positiveID(value)
-    } catch {
-      throw new ContentCommandError('content-invalid-input', `${key} contains an invalid id`, 400)
-    }
-  })
+  const result = values
+    .filter((value) => value !== '')
+    .map((value) => {
+      try {
+        return positiveID(value)
+      } catch {
+        throw new ContentCommandError('content-invalid-input', `${key} contains an invalid id`, 400)
+      }
+    })
   if (result.length > max) {
     throw new ContentCommandError('content-invalid-input', `${key} contains too many items`, 400)
   }
@@ -179,10 +186,18 @@ const actionValue = (type: ContentTypeId, input: LooseRecord): ContentMutationAc
   }
   const normalized = action as ContentMutationAction
   if (VERSIONED_TYPES.has(type) && !['save-draft', 'publish', 'unpublish'].includes(normalized)) {
-    throw new ContentCommandError('content-invalid-action', 'Versioned content uses draft or publish actions', 400)
+    throw new ContentCommandError(
+      'content-invalid-action',
+      'Versioned content uses draft or publish actions',
+      400,
+    )
   }
   if (type === 'downloads' && !['save', 'activate', 'deactivate'].includes(normalized)) {
-    throw new ContentCommandError('content-invalid-action', 'Downloads use save, activate, or deactivate', 400)
+    throw new ContentCommandError(
+      'content-invalid-action',
+      'Downloads use save, activate, or deactivate',
+      400,
+    )
   }
   if (type === 'product-categories' && normalized !== 'save') {
     throw new ContentCommandError('content-invalid-action', 'Categories are always visible', 400)
@@ -251,7 +266,11 @@ export const richTextToPlainText = (value: unknown): string => {
     if (record.root) visit(record.root)
   }
   visit(value)
-  return texts.join(' ').replace(/\s+\n\s+/g, '\n\n').replace(/\s+/g, ' ').trim()
+  return texts
+    .join(' ')
+    .replace(/\s+\n\s+/g, '\n\n')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 const commonData = (input: LooseRecord) => {
@@ -285,7 +304,10 @@ export const parseContentType = (value: unknown): ContentTypeId => {
   throw new ContentCommandError('content-invalid-type', 'Unsupported content type', 404)
 }
 
-export function parseContentMutation(type: ContentTypeId, rawInput: unknown): ParsedContentMutation {
+export function parseContentMutation(
+  type: ContentTypeId,
+  rawInput: unknown,
+): ParsedContentMutation {
   const input = asRecord(rawInput)
   const locale = localeValue(input)
   const action = actionValue(type, input)
@@ -423,7 +445,8 @@ const requireMethod = <T extends keyof ContentCommandPayload>(
 ): NonNullable<ContentCommandPayload[T]> => {
   const port = payload as ContentCommandPayload
   const value = port[method]
-  if (!value) throw new ContentCommandError('content-command-unavailable', 'Content command unavailable', 500)
+  if (!value)
+    throw new ContentCommandError('content-command-unavailable', 'Content command unavailable', 500)
   return value.bind(payload) as NonNullable<ContentCommandPayload[T]>
 }
 
@@ -480,7 +503,8 @@ const assertPublishable = (type: ContentTypeId, data: LooseRecord) => {
     ['seo.title', seo.title],
     ['seo.description', seo.description],
   ]
-  if (type === 'pages') required.push(['summary', data.summary], ['body', data.body], ['heroImage', data.heroImage])
+  if (type === 'pages')
+    required.push(['summary', data.summary], ['body', data.body], ['heroImage', data.heroImage])
   if (type === 'products') {
     required.push(
       ['shortDescription', data.shortDescription],
@@ -572,10 +596,18 @@ const assertContentMediaReferences = async ({
   for (const reference of references) {
     const mimeType = mimeTypeByID.get(reference.id)
     if (mimeType === undefined) {
-      throw new ContentCommandError('content-media-not-found', `${reference.field} references unavailable media`, 400)
+      throw new ContentCommandError(
+        'content-media-not-found',
+        `${reference.field} references unavailable media`,
+        400,
+      )
     }
     if (reference.requiresImage && !mimeType.startsWith('image/')) {
-      throw new ContentCommandError('content-media-image-required', `${reference.field} must reference an image`, 400)
+      throw new ContentCommandError(
+        'content-media-image-required',
+        `${reference.field} must reference an image`,
+        400,
+      )
     }
   }
 }
@@ -657,7 +689,11 @@ export async function createPortalContent({
     where: { slug: { equals: mutation.data.slug } },
   })
   if (existing.docs.length) {
-    throw new ContentCommandError('content-slug-conflict', 'A record with this slug already exists', 409)
+    throw new ContentCommandError(
+      'content-slug-conflict',
+      'A record with this slug already exists',
+      409,
+    )
   }
 
   await assertContentMediaReferences({ data: mutation.data, payload, req, type })
@@ -668,7 +704,13 @@ export async function createPortalContent({
     data: mutation.data,
     ...writeOptions(type, mutation, req),
   })
-  await writePortalContentAudit({ action: 'create', documentId: document.id as number | string, payload, req, type })
+  await writePortalContentAudit({
+    action: 'create',
+    documentId: document.id as number | string,
+    payload,
+    req,
+    type,
+  })
   return toResult(type, document)
 }
 
@@ -728,7 +770,13 @@ export async function updatePortalContent({
     id,
     ...writeOptions(type, mutation, req),
   })
-  await writePortalContentAudit({ action: 'update', documentId: document.id as number | string, payload, req, type })
+  await writePortalContentAudit({
+    action: 'update',
+    documentId: document.id as number | string,
+    payload,
+    req,
+    type,
+  })
   return toResult(type, document)
 }
 
@@ -790,7 +838,13 @@ export async function deletePortalContent({
     overrideLock: false,
     req,
   })
-  await writePortalContentAudit({ action: 'delete', documentId: document.id as number | string, payload, req, type })
+  await writePortalContentAudit({
+    action: 'delete',
+    documentId: document.id as number | string,
+    payload,
+    req,
+    type,
+  })
   return toResult(type, document)
 }
 
@@ -821,20 +875,28 @@ const editorDataFor = (type: ContentTypeId, document: LooseRecord): LooseRecord 
         bodyText: richTextToPlainText(document.description),
         categoryId: relationID(document.category),
         coverImageId: relationID(document.coverImage),
-        galleryIds: Array.isArray(document.gallery) ? document.gallery.map(relationID).filter(Boolean) : [],
+        galleryIds: Array.isArray(document.gallery)
+          ? document.gallery.map(relationID).filter(Boolean)
+          : [],
         internalNotes: document.internalNotes ?? '',
         shortDescription: document.shortDescription ?? '',
         specifications: Array.isArray(document.specifications) ? document.specifications : [],
       }
     case 'product-categories':
-      return { ...common, description: document.description ?? '', sortOrder: document.sortOrder ?? 0 }
+      return {
+        ...common,
+        description: document.description ?? '',
+        sortOrder: document.sortOrder ?? 0,
+      }
     case 'projects':
       return {
         ...common,
         application: document.application ?? '',
         bodyText: richTextToPlainText(document.description),
         coverImageId: relationID(document.coverImage),
-        galleryIds: Array.isArray(document.gallery) ? document.gallery.map(relationID).filter(Boolean) : [],
+        galleryIds: Array.isArray(document.gallery)
+          ? document.gallery.map(relationID).filter(Boolean)
+          : [],
         internalNotes: document.internalNotes ?? '',
         location: document.location ?? '',
         summary: document.summary ?? '',
@@ -861,6 +923,58 @@ const editorDataFor = (type: ContentTypeId, document: LooseRecord): LooseRecord 
   }
 }
 
+const LOCALIZED_EDITOR_FIELDS: Record<ContentTypeId, readonly string[]> = {
+  downloads: ['description', 'title'],
+  pages: ['body', 'summary', 'title'],
+  posts: ['content', 'excerpt', 'title'],
+  'product-categories': ['description', 'title'],
+  products: ['description', 'shortDescription', 'title'],
+  projects: ['application', 'description', 'location', 'summary', 'title'],
+}
+
+const valueForLocale = (value: unknown, locale: ContentLocale): unknown => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const localized = value as LooseRecord
+    if (Object.hasOwn(localized, 'ar') || Object.hasOwn(localized, 'en')) {
+      return localized[locale]
+    }
+  }
+  return value
+}
+
+const editorDocumentForLocale = (
+  type: ContentTypeId,
+  document: LooseRecord,
+  locale: ContentLocale,
+): LooseRecord => {
+  const localized = { ...document }
+  for (const field of LOCALIZED_EDITOR_FIELDS[type]) {
+    localized[field] = valueForLocale(document[field], locale)
+  }
+
+  const seo = asRecord(document.seo)
+  localized.seo = {
+    ...seo,
+    canonical: valueForLocale(seo.canonical, locale),
+    description: valueForLocale(seo.description, locale),
+    keywords: valueForLocale(seo.keywords, locale),
+    title: valueForLocale(seo.title, locale),
+  }
+
+  if (type === 'products' && Array.isArray(document.specifications)) {
+    localized.specifications = document.specifications.map((item) => {
+      const specification = asRecord(item)
+      return {
+        ...specification,
+        label: valueForLocale(specification.label, locale),
+        value: valueForLocale(specification.value, locale),
+      }
+    })
+  }
+
+  return localized
+}
+
 export async function getPortalContentEditor({
   id,
   locale,
@@ -874,19 +988,32 @@ export async function getPortalContentEditor({
   req: PayloadRequest
   type: ContentTypeId
 }): Promise<ContentEditorRecord> {
-  const findByID = requireMethod(payload, 'findByID')
-  const document = await findByID({
+  const find = requireMethod(payload, 'find')
+  // Isolate top-level locale mutation; depth 0 also avoids sharing relationship DataLoaders.
+  const editorReq = {
+    ...req,
+    context: { ...req.context },
+    query: { ...req.query },
+  } as PayloadRequest
+  const result = await find({
     collection: type,
-    depth: 1,
+    depth: 0,
     draft: VERSIONED_TYPES.has(type),
     fallbackLocale: false,
-    id,
-    locale,
+    limit: 1,
+    locale: 'all',
     overrideAccess: false,
-    req,
+    pagination: false,
+    req: editorReq,
+    where: { id: { equals: id } },
   })
+  const document = result.docs[0]
+  if (!document) {
+    throw new ContentCommandError('content-invalid-id', 'The selected content is unavailable', 404)
+  }
+  const editorDocument = editorDocumentForLocale(type, document, locale)
   return {
-    data: editorDataFor(type, document),
+    data: editorDataFor(type, editorDocument),
     id,
     locale,
     status: statusFromDocument(type, document),

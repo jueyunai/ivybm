@@ -55,7 +55,8 @@ export type ContentEditorTransitionRequest = (
 
 const EMPTY_OPTIONS: EditorOptions = { categories: [], media: [] }
 const VERSIONED = new Set<ContentTypeId>(['pages', 'posts', 'products', 'projects'])
-const commitTransitionImmediately: ContentEditorTransitionRequest = (_targetTitle, commit) => commit()
+const commitTransitionImmediately: ContentEditorTransitionRequest = (_targetTitle, commit) =>
+  commit()
 
 const toDateTimeLocalValue = (value: unknown): string => {
   if (typeof value !== 'string' || !value) return ''
@@ -560,6 +561,7 @@ export const ContentEditor = forwardRef<
   const text = copy[portalLocale]
   const editorRef = useRef<HTMLElement>(null)
   const [form, setForm] = useState<EditorForm>(() => emptyForm(initialLocale))
+  const [loadTarget, setLoadTarget] = useState(() => ({ locale: initialLocale, revision: 0 }))
   const [options, setOptions] = useState<EditorOptions>(EMPTY_OPTIONS)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -577,9 +579,9 @@ export const ContentEditor = forwardRef<
   const recordURL = useMemo(
     () =>
       mode === 'edit' && item
-        ? `/api/portal/content/${type}/${item.id}?locale=${form.locale}`
+        ? `/api/portal/content/${type}/${item.id}?locale=${loadTarget.locale}`
         : `/api/portal/content/${type}`,
-    [form.locale, item, mode, type],
+    [item, loadTarget.locale, mode, type],
   )
 
   useEffect(() => {
@@ -599,7 +601,9 @@ export const ContentEditor = forwardRef<
         .then((payload) => {
           if (!active) return
           setOptions(payload.options ?? EMPTY_OPTIONS)
-          const nextForm = payload.record ? normalizeForm(payload.record) : emptyForm(form.locale)
+          const nextForm = payload.record
+            ? normalizeForm(payload.record)
+            : emptyForm(loadTarget.locale)
           baselineRef.current = JSON.stringify(nextForm)
           setForm(nextForm)
         })
@@ -620,16 +624,19 @@ export const ContentEditor = forwardRef<
       clearTimeout(timer)
       controller.abort()
     }
-  }, [form.locale, portalLocale, recordURL, showNotice, text.error])
+  }, [loadTarget, portalLocale, recordURL, showNotice, text.error])
 
   const update = <K extends keyof EditorForm>(key: K, value: EditorForm[K]) =>
     setForm((current) => ({ ...current, [key]: value }))
 
   const requestLocaleChange = (nextLocale: 'ar' | 'en') => {
-    if (nextLocale === form.locale) return
+    if (nextLocale === form.locale && nextLocale === loadTarget.locale) return
     onRequestTransition(
       nextLocale === 'en' ? text.english : text.arabic,
-      () => update('locale', nextLocale),
+      () => {
+        setLoading(true)
+        setLoadTarget((current) => ({ locale: nextLocale, revision: current.revision + 1 }))
+      },
       { locale: nextLocale },
     )
   }

@@ -258,6 +258,51 @@ describe('Portal content hub editing transitions', () => {
     await waitFor(() => expect(screen.queryByRole('region', { name: '编辑内容' })).toBeNull())
   })
 
+  it('hides the previous locale while loading a requested translation', async () => {
+    let resolveArabic: ((response: Response) => void) | undefined
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/1?locale=ar')) {
+        return new Promise<Response>((resolve) => {
+          resolveArabic = resolve
+        })
+      }
+      if (url.includes('/product-categories/')) return editorResponse(1)
+      return Response.json({ options: { categories: [], media: [] } })
+    })
+
+    renderHub()
+    fireEvent.click(screen.getByRole('button', { name: '编辑内容' }))
+    await screen.findByDisplayValue('第一项')
+
+    fireEvent.click(screen.getByRole('button', { name: '阿语' }))
+
+    expect(screen.queryByLabelText('标题')).toBeNull()
+    expect(screen.getByText('正在加载编辑器…')).toBeTruthy()
+
+    await waitFor(() => expect(resolveArabic).toBeTypeOf('function'))
+
+    await act(async () => {
+      resolveArabic?.(
+        Response.json({
+          options: { categories: [], media: [] },
+          record: {
+            data: { description: '', slug: 'first', title: '' },
+            id: 1,
+            locale: 'ar',
+            status: 'always-visible',
+            type: 'product-categories',
+            updatedAt: '2026-08-04T10:00:00.000Z',
+          },
+        }),
+      )
+    })
+
+    await waitFor(() => expect((screen.getByLabelText('标题') as HTMLInputElement).value).toBe(''))
+    expect((screen.getByLabelText('固定链接标识') as HTMLInputElement).value).toBe('first')
+    expect(screen.getByRole('button', { name: '阿语' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
   it('promotes a saved create session before switching locale', async () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
@@ -307,7 +352,9 @@ describe('Portal content hub editing transitions', () => {
     expect(screen.getByRole('region', { name: '编辑内容' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '阿语' }).getAttribute('aria-pressed')).toBe('true')
 
-    const postCalls = vi.mocked(fetch).mock.calls.filter(([, request]) => request?.method === 'POST')
+    const postCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([, request]) => request?.method === 'POST')
     expect(postCalls).toHaveLength(1)
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/3?locale=ar'))).toBe(
       true,

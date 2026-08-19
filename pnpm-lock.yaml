@@ -108,6 +108,9 @@ importers:
       prettier:
         specifier: ^3.4.2
         version: 3.9.5
+      pg:
+        specifier: 8.20.0
+        version: 8.20.0
       sass:
         specifier: 1.77.4
         version: 1.77.4

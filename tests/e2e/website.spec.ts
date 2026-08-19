@@ -1,4 +1,10 @@
+import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
+
+import { FacebookE2EHarness } from './admin-portal-facebook.support'
+
+const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
+const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
 const routes = ['', '/about', '/products', '/projects', '/news', '/contact']
 
@@ -123,6 +129,68 @@ test('contact form exposes accessible validation without simulated success', asy
   await expect(page.getByLabel('Name *')).toHaveAttribute('aria-invalid', 'true')
   await expect(page.getByLabel('Name *')).toHaveAttribute('aria-describedby', 'name-error')
   await expect(page.getByText(/Thank you|success/i)).toHaveCount(0)
+})
+
+test('INQ-01 closes website inquiry, idempotent Lead, Portal, and fake Feishu', async ({
+  page,
+}) => {
+  test.skip(
+    !adminEmail || !adminPassword,
+    'Requires local non-production administrator credentials.',
+  )
+  if (!adminEmail || !adminPassword) return
+  const harness = await FacebookE2EHarness.create()
+  try {
+    await harness.createFeishuMapping()
+    const suffix = crypto.randomUUID()
+    const email = `e2e-inquiry-${suffix}@example.invalid`
+    await page.goto('/en/contact')
+    await page.getByLabel('Name *').fill('E2E Inquiry Buyer')
+    await page.getByLabel('Email *').fill(email)
+    await page.getByLabel('Phone').fill('+971501234567')
+    await page.getByLabel('Country *').selectOption('United Arab Emirates')
+    await page.getByLabel('Message *').fill('Please quote aluminum facade panels for our project.')
+    const submittedRequest = page.waitForRequest(
+      (request) =>
+        request.method() === 'POST' && new URL(request.url()).pathname === '/api/inquiries',
+    )
+    await page.getByRole('button', { name: 'Send Inquiry' }).click()
+    const requestBody = (await submittedRequest).postDataJSON() as Record<string, unknown>
+    await expect(page.getByText(/Inquiry received/)).toBeVisible()
+    const requestId = await page.locator('[data-testid="inquiry-request-id"]').textContent()
+    if (!requestId) throw new Error('Inquiry response did not expose a request ID')
+    harness.trackLeadRequest(requestId)
+
+    await expect(harness.runUntilIdle()).resolves.toEqual(['succeeded', 'idle'])
+    const lead = await harness.readLeadByRequestId(requestId)
+    expect(lead).toMatchObject({ email, name: 'E2E Inquiry Buyer', status: 'new' })
+    expect(harness.feishuUpserts).toHaveLength(1)
+    expect(harness.feishuUpserts[0]).toMatchObject({ localLeadId: String(lead.id) })
+    expect(harness.feishuMessages).toHaveLength(1)
+    expect(harness.feishuMessages[0]?.text).toContain('新客户线索')
+
+    const replay = await page.request.post('/api/inquiries', { data: requestBody })
+    expect(replay.status()).toBe(200)
+    await expect(replay.json()).resolves.toMatchObject({ duplicate: true, requestId })
+    await expect(harness.runUntilIdle()).resolves.toEqual(['idle'])
+    await expect(
+      harness.payload.count({
+        collection: 'leads',
+        overrideAccess: true,
+        where: { requestId: { equals: requestId } },
+      }),
+    ).resolves.toEqual({ totalDocs: 1 })
+    expect(harness.feishuUpserts).toHaveLength(1)
+
+    await page.goto('/dashboard/login?returnTo=%2Fdashboard%2Fleads')
+    await page.getByRole('textbox', { name: '邮箱' }).fill(adminEmail)
+    await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
+    await page.getByRole('button', { name: '登录后台' }).click()
+    await expect(page).toHaveURL(/\/dashboard\/leads$/)
+    await expect(page.getByRole('definition').filter({ hasText: email })).toBeVisible()
+  } finally {
+    await harness.cleanup()
+  }
 })
 
 test('dynamic detail pages expose localized metadata and migrated project and article content', async ({

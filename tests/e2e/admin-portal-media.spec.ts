@@ -1,3 +1,4 @@
+import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
 
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL

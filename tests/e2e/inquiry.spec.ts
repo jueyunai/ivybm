@@ -1,3 +1,4 @@
+import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
 
 const uniqueTestIP = () => `2001:db8::${crypto.randomUUID().slice(0, 4)}`

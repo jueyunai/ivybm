@@ -47,6 +47,40 @@ describe('content cache revalidation', () => {
     ])
   })
 
+  it.each([
+    {
+      doc: { _status: 'published', slug: 'airport-facade' },
+      label: 'publication',
+      previousDoc: { _status: 'draft', slug: 'airport-facade' },
+    },
+    {
+      doc: { _status: 'published', slug: 'airport-facade' },
+      label: 'same-slug edit',
+      previousDoc: { _status: 'published', slug: 'airport-facade' },
+    },
+    {
+      doc: { _status: 'draft', slug: 'airport-facade' },
+      label: 'unpublish',
+      previousDoc: { _status: 'published', slug: 'airport-facade' },
+    },
+  ])('revalidates project indexes and details after $label', async ({ doc, previousDoc }) => {
+    await revalidateContentAfterChange({
+      collection: { slug: 'projects' },
+      context: {},
+      doc,
+      operation: 'update',
+      previousDoc,
+      req,
+    } as never)
+
+    expect(revalidatePathMock.mock.calls).toEqual([
+      ['/en/projects'],
+      ['/en/projects/airport-facade'],
+      ['/ar/projects'],
+      ['/ar/projects/airport-facade'],
+    ])
+  })
+
   it('revalidates the previous public path when content is unpublished or renamed', async () => {
     await revalidateContentAfterChange({
       collection: { slug: 'posts' },
