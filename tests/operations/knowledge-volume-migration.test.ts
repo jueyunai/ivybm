@@ -53,17 +53,54 @@ case "\${1-}" in
       [[ "\${2-}" == 'old-app' || "\${2-}" == 'old-worker' ]]
     fi
     ;;
+  exec)
+    if [[ -e "$root/fail-exec" ]]; then
+      exit 125
+    fi
+    container="$2"
+    shift 2
+    if [[ "$1" == 'test' && "$2" == '-d' ]]; then
+      dir="$3"
+      case "$container:$dir" in
+        old-app:/app/private/knowledge-sources)
+          if [[ -d "$root/old-app/sources" ]]; then
+            exit 0
+          else
+            exit 1
+          fi
+          ;;
+        old-worker:/app/private/knowledge-source-assets)
+          if [[ -d "$root/old-worker/assets" ]]; then
+            exit 0
+          else
+            exit 1
+          fi
+          ;;
+        *) exit 1 ;;
+      esac
+    fi
+    exit 64
+    ;;
   volume)
     action="$2"
-    volume="\${@: -1}"
     case "$action" in
-      inspect) [[ -d "$root/volumes/$volume" ]] ;;
+      inspect)
+        volume="\${@: -1}"
+        [[ -d "$root/volumes/$volume" ]]
+        ;;
       create)
-        [[ "$volume" =~ ^[a-zA-Z0-9_.-]+$ ]]
+        volume="\${@: -1}"
+        [[ "$volume" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]+$ ]]
         mkdir -p "$root/volumes/$volume"
         printf '%s\n' "$volume"
         ;;
-      rm) rm -rf "$root/volumes/$volume"; printf '%s\n' "$volume" ;;
+      rm)
+        shift 2
+        for v in "$@"; do
+          rm -rf "$root/volumes/$v"
+          printf '%s\n' "$v"
+        done
+        ;;
       *) exit 64 ;;
     esac
     ;;
@@ -77,10 +114,24 @@ case "\${1-}" in
     destination="$3"
     case "$source" in
       old-app:/app/private/knowledge-sources/.)
-        cp -a "$root/old-app/sources/." "$destination"
+        if [[ -e "$root/fail-sources-cp" ]]; then
+          exit 1
+        fi
+        if [[ -d "$root/old-app/sources" ]]; then
+          cp -a "$root/old-app/sources/." "$destination"
+        else
+          exit 1
+        fi
         ;;
       old-worker:/app/private/knowledge-source-assets/.)
-        cp -a "$root/old-worker/assets/." "$destination"
+        if [[ -e "$root/fail-assets-cp" ]]; then
+          exit 1
+        fi
+        if [[ -d "$root/old-worker/assets" ]]; then
+          cp -a "$root/old-worker/assets/." "$destination"
+        else
+          exit 1
+        fi
         ;;
       *) exit 65 ;;
     esac
@@ -187,6 +238,8 @@ describe('production knowledge volume migration', () => {
       existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets', 'asset.png')),
     ).toBe(true)
     const log = readFileSync(resolve(directory, 'docker.log'), 'utf8')
+    expect(log).toContain('exec old-app test -d /app/private/knowledge-sources')
+    expect(log).toContain('exec old-worker test -d /app/private/knowledge-source-assets')
     expect(log).toContain('cp old-app:/app/private/knowledge-sources/.')
     expect(log).toContain('cp old-worker:/app/private/knowledge-source-assets/.')
     expect(log).toContain('chown\\ -R\\ 1001:1001')
@@ -378,6 +431,44 @@ describe('production knowledge volume migration', () => {
     expect(result.stdout).toContain(
       'Legacy knowledge sources directory is missing from old-app, and database manifest is empty; proceeding with empty directory.',
     )
+  })
+
+  it('fails when legacy sources directory exists but docker cp fails even if database manifest is empty', () => {
+    const { directory, run } = createHarness()
+    writeFileSync(resolve(directory, 'expected-sources'), '')
+    writeFileSync(resolve(directory, 'fail-sources-cp'), '')
+
+    const result = run()
+
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('Failed to export legacy knowledge sources directory')
+    expect(existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources'))).toBe(false)
+  })
+
+  it('fails when legacy assets directory exists but docker cp fails even if database manifest is empty', () => {
+    const { directory, run } = createHarness()
+    writeFileSync(resolve(directory, 'expected-assets'), '')
+    writeFileSync(resolve(directory, 'fail-assets-cp'), '')
+
+    const result = run()
+
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('Failed to export legacy knowledge source assets directory')
+    expect(existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets'))).toBe(
+      false,
+    )
+  })
+
+  it('fails when docker exec directory inspection fails', () => {
+    const { directory, run } = createHarness()
+    writeFileSync(resolve(directory, 'expected-sources'), '')
+    writeFileSync(resolve(directory, 'fail-exec'), '')
+
+    const result = run()
+
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('Failed to inspect legacy knowledge sources directory')
+    expect(existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources'))).toBe(false)
   })
 
   it('replaces unattached migration volumes on an explicit pre-deploy retry', () => {
