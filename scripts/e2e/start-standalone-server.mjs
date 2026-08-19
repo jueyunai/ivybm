@@ -10,6 +10,21 @@ const staticTarget = path.join(standaloneDirectory, '.next', 'static')
 const publicSource = path.join(projectRoot, 'public')
 const publicTarget = path.join(standaloneDirectory, 'public')
 
+if (
+  process.env.IVYBM_E2E_MODE === 'mutation' &&
+  (process.env.IVYBM_E2E_ENVIRONMENT_ALLOWLIST !== 'v1' ||
+    process.env.IVYBM_E2E_EXTERNAL_SIDE_EFFECTS !== 'deny')
+) {
+  throw new Error(
+    'Standalone E2E server requires the launcher environment allowlist and deny policy',
+  )
+}
+
+const port = process.env.PORT?.trim() ?? ''
+if (!/^\d{1,5}$/u.test(port) || Number(port) < 1 || Number(port) > 65_535) {
+  throw new Error('Standalone E2E server requires a numeric loopback PORT')
+}
+
 const assertReadableDirectory = async (directory, description) => {
   try {
     await access(directory)
@@ -42,8 +57,8 @@ await copyRuntimeAssets()
 const child = spawn(process.execPath, [standaloneServer], {
   env: {
     ...process.env,
-    HOSTNAME: process.env.HOSTNAME || '127.0.0.1',
-    PORT: process.env.PORT || '3000',
+    HOSTNAME: '127.0.0.1',
+    PORT: port,
   },
   stdio: 'inherit',
 })

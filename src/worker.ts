@@ -30,6 +30,7 @@ import {
   DEFAULT_JOB_POLL_INTERVAL_MS,
   JobWorker,
 } from '@/modules/jobs/worker'
+import { assertWorkerDatabaseTarget } from '@/modules/jobs/workerDatabaseSafety'
 import { createIntervalGate } from '@/modules/jobs/maintenance'
 import {
   createKnowledgeIndexJobHandler,
@@ -98,6 +99,7 @@ const feishuOAuthRecoveryIntervalMs = readPositiveInteger(
   'FEISHU_OAUTH_RECOVERY_INTERVAL_MS',
   FEISHU_OAUTH_CALLBACK_RECOVERY_INTERVAL_MS,
 )
+assertWorkerDatabaseTarget()
 const payload = await getPayload({ config, disableOnInit: true, key: 'job-worker' })
 const conversationsEnabled = process.env.ADMIN_PORTAL_CONVERSATIONS_ENABLED === 'true'
 

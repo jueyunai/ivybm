@@ -7,6 +7,7 @@ import {
   type ContentCommandPayload,
   createPortalContent,
   deletePortalContent,
+  getPortalContentEditor,
   getPortalContentOptions,
   parseContentMutation,
   updatePortalContent,
@@ -79,7 +80,7 @@ describe('Portal website content commands', () => {
           slug: 'new-page',
           title: 'New page',
         },
-        payload: { create, find } as any,
+        payload: { create, find } as ContentCommandPayload,
         req,
         type: 'pages',
       }),
@@ -97,11 +98,138 @@ describe('Portal website content commands', () => {
     )
   })
 
+  it('selects the requested editor locale without falling back to another translation', async () => {
+    const find = vi.fn().mockResolvedValue({
+      docs: [
+        {
+          _status: 'published',
+          category: 7,
+          coverImage: 91,
+          description: { ar: null, en: { root: { children: [{ text: 'English body' }] } } },
+          id: 44,
+          seo: {
+            description: { ar: null, en: 'English search description' },
+            title: { ar: null, en: 'English search title' },
+          },
+          shortDescription: { ar: null, en: 'English summary' },
+          slug: 'localized-product',
+          specifications: [
+            {
+              id: 'row-1',
+              label: { ar: null, en: 'Thickness' },
+              value: { ar: null, en: '3 mm' },
+            },
+          ],
+          title: { ar: null, en: 'English product' },
+          updatedAt: '2026-07-30T10:00:00.000Z',
+        },
+      ],
+    })
+
+    await expect(
+      getPortalContentEditor({
+        id: 44,
+        locale: 'ar',
+        payload: { find },
+        req,
+        type: 'products',
+      }),
+    ).resolves.toMatchObject({
+      data: {
+        bodyText: '',
+        categoryId: 7,
+        coverImageId: 91,
+        seoDescription: '',
+        seoTitle: '',
+        shortDescription: '',
+        slug: 'localized-product',
+        specifications: [{ id: 'row-1', label: null, value: null }],
+        title: '',
+      },
+      locale: 'ar',
+    })
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draft: true,
+        fallbackLocale: false,
+        locale: 'all',
+        where: { id: { equals: 44 } },
+      }),
+    )
+  })
+
+  it('isolates the editor locale from concurrent option queries that mutate their request', async () => {
+    const sharedReq = {
+      locale: 'en',
+      query: {},
+      user: req.user,
+    } as unknown as PayloadRequest
+    const find = vi.fn(async (rawArgs: Record<string, unknown>) => {
+      const args = rawArgs as {
+        collection: string
+        locale?: 'all' | 'ar' | 'en'
+        req: PayloadRequest
+      }
+      const localReq = args.req
+      localReq.locale = args.locale ?? localReq.locale
+      if (args.collection === 'products') {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        return {
+          docs: [
+            {
+              _status: 'published',
+              category: 7,
+              coverImage: 91,
+              id: 44,
+              seo: {
+                description:
+                  localReq.locale === 'all'
+                    ? { en: 'English search description' }
+                    : 'English search description',
+                title:
+                  localReq.locale === 'all'
+                    ? { en: 'English search title' }
+                    : 'English search title',
+              },
+              shortDescription:
+                localReq.locale === 'all' ? { en: 'English summary' } : 'English summary',
+              slug: 'concurrent-product',
+              title: localReq.locale === 'all' ? { en: 'English product' } : 'English product',
+              updatedAt: '2026-07-30T10:00:00.000Z',
+            },
+          ],
+        }
+      }
+      return { docs: [] }
+    }) as NonNullable<ContentCommandPayload['find']>
+
+    const [editor] = await Promise.all([
+      getPortalContentEditor({
+        id: 44,
+        locale: 'ar',
+        payload: { find },
+        req: sharedReq,
+        type: 'products',
+      }),
+      getPortalContentOptions({ payload: { find }, req: sharedReq }),
+    ])
+
+    expect(editor.data).toMatchObject({
+      seoDescription: '',
+      seoTitle: '',
+      shortDescription: '',
+      title: '',
+    })
+    expect(sharedReq.locale).toBe('en')
+  })
+
   it('rejects a non-image asset when an image relation is submitted', async () => {
     const create = vi.fn()
-    const find = vi.fn(async ({ collection }: { collection: string }) =>
-      collection === 'media' ? { docs: [{ id: 91, mimeType: 'application/pdf' }] } : { docs: [] },
-    )
+    const find = vi.fn(async (args: Record<string, unknown>) =>
+      args.collection === 'media'
+        ? { docs: [{ id: 91, mimeType: 'application/pdf' }] }
+        : { docs: [] },
+    ) as NonNullable<ContentCommandPayload['find']>
 
     await expect(
       createPortalContent({
@@ -112,7 +240,7 @@ describe('Portal website content commands', () => {
           slug: 'pdf-hero-page',
           title: 'PDF hero page',
         },
-        payload: { create, find } as any,
+        payload: { create, find },
         req,
         type: 'pages',
       }),

@@ -1,4 +1,7 @@
+import './require-mutation-launch'
 import { expect, test, type Page } from '@playwright/test'
+
+import { FacebookE2EHarness } from './admin-portal-facebook.support'
 
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
@@ -38,6 +41,90 @@ test('admin can inspect platform readiness and operation compensation without a 
     fullPage: true,
     path: testInfo.outputPath('portal-operations-desktop.png'),
   })
+})
+
+test('FB-READY-01 and READY-02 expose fail-closed platform truth without available false positives', async ({
+  page,
+}) => {
+  const harness = await FacebookE2EHarness.create()
+  try {
+    await harness.createFacebookAccount()
+    await harness.createBlockedPlatformAccount({
+      accountKind: 'instagram-professional',
+      externalAccountId: '178414000001234',
+      name: 'e2e Instagram blocked',
+    })
+    await harness.createBlockedPlatformAccount({
+      accountKind: 'linkedin-member',
+      externalAccountId: 'e2e-linkedin-blocked',
+      name: 'e2e LinkedIn blocked',
+    })
+    if (!(await login(page, '/dashboard/platforms'))) return
+
+    const response = await page.request.get('/api/platforms/readiness')
+    expect(response.status()).toBe(200)
+    const body = (await response.json()) as {
+      accounts: Array<{
+        name: string
+        readiness: {
+          capabilities: Array<{ capability: string; missing: string[]; status: string }>
+          connection: { missing: string[]; status: string }
+        }
+      }>
+    }
+    const facebook = body.accounts.find(({ name }) => name.startsWith('e2e-fb-page-'))
+    const instagram = body.accounts.find(({ name }) => name === 'e2e Instagram blocked')
+    const linkedIn = body.accounts.find(({ name }) => name === 'e2e LinkedIn blocked')
+    expect(facebook?.readiness.connection).toEqual({
+      missing: [],
+      status: 'ready-for-controlled-test',
+    })
+    expect(facebook?.readiness.capabilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          capability: 'messaging-inbound',
+          missing: [],
+          status: 'ready-for-controlled-test',
+        }),
+        expect.objectContaining({
+          capability: 'publishing',
+          missing: ['publishing_disabled'],
+          status: 'action-required',
+        }),
+      ]),
+    )
+    expect(instagram?.readiness.capabilities.every(({ status }) => status !== 'available')).toBe(
+      true,
+    )
+    expect(instagram?.readiness.capabilities).toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: 'blocked' })]),
+    )
+    expect(linkedIn?.readiness.capabilities.every(({ status }) => status !== 'available')).toBe(
+      true,
+    )
+    expect(linkedIn?.readiness.capabilities).toEqual([
+      expect.objectContaining({ status: 'blocked' }),
+    ])
+
+    await page.reload()
+    for (const [accountName, blockedCount] of [
+      ['e2e Instagram blocked', 2],
+      ['e2e LinkedIn blocked', 1],
+    ] as const) {
+      const card = page.locator('article', {
+        has: page.getByRole('heading', { exact: true, name: accountName }),
+      })
+      await expect(card.getByText('受阻')).toHaveCount(blockedCount)
+      await expect(card.getByText('可用')).toHaveCount(0)
+    }
+    const facebookCard = page.locator('article', {
+      has: page.getByRole('heading', { name: /^e2e-fb-page-/ }),
+    })
+    await expect(facebookCard.getByText('受控发布 kill switch 当前未启用。')).toBeVisible()
+    await expect(facebookCard.getByText('可用')).toHaveCount(0)
+  } finally {
+    await harness.cleanup()
+  }
 })
 
 test('mobile platform readiness and operations stay within 390px', async ({ page }, testInfo) => {

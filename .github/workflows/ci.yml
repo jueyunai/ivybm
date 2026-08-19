@@ -324,6 +324,7 @@ jobs:
           ADMIN_E2E: ${{ needs.changes.outputs.admin_e2e }}
           CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}
           FULL_FALLBACK: ${{ needs.changes.outputs.full_fallback }}
+          PLATFORM_CREDENTIAL_ENCRYPTION_KEY: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
           WEBSITE_E2E: ${{ needs.changes.outputs.website_e2e }}
         shell: bash
         run: |
@@ -334,24 +335,38 @@ jobs:
             exit 0
           fi
 
-          specs=()
+          suites=()
           if [[ "$WEBSITE_E2E" == 'true' ]]; then
-            specs+=(tests/e2e/website.spec.ts)
+            suites+=(website)
           fi
           if [[ "$ADMIN_E2E" == 'true' ]]; then
-            specs+=(tests/e2e/admin-visual.spec.ts)
-            specs+=(tests/e2e/admin-portal-*.spec.ts)
+            suites+=(admin)
           fi
           if [[ "$CHAT_E2E" == 'true' ]]; then
-            specs+=(tests/e2e/chat-handoff.spec.ts)
+            suites+=(chat)
           fi
 
-          if [[ "${#specs[@]}" -eq 0 ]]; then
+          if [[ "${#suites[@]}" -eq 0 ]]; then
             echo 'Browser E2E was scheduled without a selected test suite.' >&2
             exit 1
           fi
 
-          pnpm test:e2e -- "${specs[@]}"
+          pnpm test:e2e -- "${suites[@]}"
+
+      - name: Upload browser E2E evidence
+        if: >-
+          ${{ always() &&
+          (needs.changes.outputs.website_e2e == 'true' ||
+          needs.changes.outputs.admin_e2e == 'true' ||
+          needs.changes.outputs.chat_e2e == 'true') }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-e2e-${{ needs.changes.outputs.head_sha }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Build runtime image for PR validation
         if: github.event_name == 'pull_request' && needs.changes.outputs.operations == 'true'

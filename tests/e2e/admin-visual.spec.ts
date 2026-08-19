@@ -1,3 +1,4 @@
+import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
 
 const adminEmail = process.env.E2E_ADMIN_EMAIL
@@ -10,7 +11,7 @@ const openTaskNavigation = async ({
   mobile?: boolean
   page: import('@playwright/test').Page
 }) => {
-  const openNavigation = page.locator('aside.nav--nav-open')
+  const openNavigation = page.locator('.nav--nav-open')
 
   if ((await openNavigation.count()) === 1) return
 
@@ -115,7 +116,7 @@ test('operations dashboard and owned navigation remain available after an Admin 
   await expect(page.getByTestId('operations-dashboard')).toBeVisible()
   await openTaskNavigation({ mobile: true, page })
   await expect(page.getByTestId('operations-nav')).toBeVisible()
-  await expect(page.locator('aside.nav--nav-open')).toHaveCount(1)
+  await expect(page.locator('.nav--nav-open')).toHaveCount(1)
   await expect(page.getByTestId('operations-nav-close')).toBeVisible()
   expect(
     await dashboard.evaluate((element) => {
@@ -135,7 +136,7 @@ test('operations dashboard and owned navigation remain available after an Admin 
   })
 
   await page.getByTestId('operations-nav-close').click()
-  await expect(page.locator('aside.nav--nav-open')).toHaveCount(0)
+  await expect(page.locator('.nav--nav-open')).toHaveCount(0)
   await expect(page.locator('.app-header__mobile-nav-toggler')).toBeVisible()
   await expect(headerControls).toBeVisible()
   await expect(headerLocalizer).toBeVisible()

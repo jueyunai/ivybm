@@ -29,6 +29,10 @@ describe('CI workflow policy', () => {
       workflow.indexOf('  full_gate:'),
       workflow.indexOf('  ci_policy:'),
     )
+    const fullGateEnvironment = fullGate.slice(
+      fullGate.indexOf('\n    env:\n'),
+      fullGate.indexOf('\n    steps:\n'),
+    )
 
     expect(fullGate).toContain('timeout-minutes: 30')
     expect(fullGate).toContain('ADMIN_PORTAL_ENABLED: true')
@@ -43,6 +47,7 @@ describe('CI workflow policy', () => {
     expect(fullGate).toContain('ADMIN_PORTAL_PUBLISHING_ENABLED: false')
     expect(fullGate).toContain('ADMIN_PORTAL_PLATFORMS_ENABLED: true')
     expect(fullGate).toContain('ADMIN_PORTAL_OPERATIONS_ENABLED: true')
+    expect(fullGateEnvironment).not.toContain('PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
   })
 
   it('always evaluates a stable fail-closed policy for the current head', () => {
@@ -103,20 +108,42 @@ describe('CI workflow policy', () => {
     expect(e2eStep).toContain('WEBSITE_E2E: ${{ needs.changes.outputs.website_e2e }}')
     expect(e2eStep).toContain('ADMIN_E2E: ${{ needs.changes.outputs.admin_e2e }}')
     expect(e2eStep).toContain('CHAT_E2E: ${{ needs.changes.outputs.chat_e2e }}')
-    expect(e2eStep).toContain('specs+=(tests/e2e/website.spec.ts)')
-    expect(e2eStep).toContain('specs+=(tests/e2e/admin-visual.spec.ts)')
-    expect(e2eStep).toContain('specs+=(tests/e2e/admin-portal-*.spec.ts)')
-    expect(e2eStep).toContain('specs+=(tests/e2e/chat-handoff.spec.ts)')
+    expect(e2eStep).toMatch(/PLATFORM_CREDENTIAL_ENCRYPTION_KEY: [a-f0-9]{64}/)
+    expect(e2eStep).toContain('suites+=(website)')
+    expect(e2eStep).toContain('suites+=(admin)')
+    expect(e2eStep).toContain('suites+=(chat)')
+    expect(e2eStep).not.toContain('admin-portal-*.spec.ts')
     expect(e2eStep.match(/pnpm test:e2e/g)).toHaveLength(2)
-    expect(e2eStep).toContain('pnpm test:e2e -- "${specs[@]}"')
+    expect(e2eStep).toContain('pnpm test:e2e -- "${suites[@]}"')
     expect(e2eStep).toContain('if [[ "$FULL_FALLBACK" == \'true\' ]]')
+  })
+
+  it('retains browser E2E evidence when the browser suite fails', () => {
+    const evidenceStep = workflow.slice(
+      workflow.indexOf('      - name: Upload browser E2E evidence'),
+      workflow.indexOf('      - name: Build runtime image for PR validation'),
+    )
+
+    expect(evidenceStep).toContain('${{ always() &&')
+    expect(evidenceStep).toContain(
+      'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02',
+    )
+    expect(evidenceStep).toContain('browser-e2e-${{ needs.changes.outputs.head_sha }}')
+    expect(evidenceStep).toContain('playwright-report/')
+    expect(evidenceStep).toContain('test-results/')
+    expect(evidenceStep).toContain('retention-days: 7')
   })
 
   it('keeps visual baselines isolated by runner platform', () => {
     const playwrightConfig = readFileSync(resolve(projectRoot, 'playwright.config.ts'), 'utf8')
+    const packageJSON = readFileSync(resolve(projectRoot, 'package.json'), 'utf8')
 
     expect(playwrightConfig).toContain(
       "snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{platform}/{arg}-{projectName}{ext}'",
     )
+    expect(playwrightConfig).toContain('NEXT_PUBLIC_SERVER_URL: context.baseURL')
+    expect(playwrightConfig).toContain('reuseExistingServer: false')
+    expect(playwrightConfig).toContain('readE2ELaunchContext()')
+    expect(packageJSON).toContain('node scripts/e2e/run-suite.mjs')
   })
 })
