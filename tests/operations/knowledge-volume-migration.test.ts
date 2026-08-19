@@ -119,7 +119,12 @@ case "\${1-}" in
       if [[ -e "$root/fail-assets-copy" && "$source_path" == */assets ]]; then
         exit 42
       fi
-      cp -a "$source_path/." "$volume_path/"
+      if [[ -d "$root/volumes/$source_path" ]]; then
+        source_dir="$root/volumes/$source_path"
+      else
+        source_dir="$source_path"
+      fi
+      cp -a "$source_dir/." "$volume_path/"
     elif [[ -n "$expected_path" ]]; then
       while IFS= read -r filename; do
         [[ -z "$filename" || -f "$volume_path/$filename" ]]
@@ -202,7 +207,7 @@ describe('production knowledge volume migration', () => {
     expect(existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources'))).toBe(false)
   })
 
-  it('removes only newly created volumes when an import fails so the migration can retry', () => {
+  it('removes only newly created staging volumes when an import fails so the migration can retry', () => {
     const { directory, run } = createHarness()
     writeFileSync(resolve(directory, 'fail-assets-copy'), '')
 
@@ -214,8 +219,38 @@ describe('production knowledge volume migration', () => {
       false,
     )
     const log = readFileSync(resolve(directory, 'docker.log'), 'utf8')
-    expect(log).toContain('volume rm ivybm-prod-knowledge-sources')
-    expect(log).toContain('volume rm ivybm-prod-knowledge-source-assets')
+    expect(log).toMatch(/volume rm ivybm-prod-knowledge-sources-stage-/)
+    expect(log).toMatch(/volume rm ivybm-prod-knowledge-source-assets-stage-/)
+  })
+
+  it('preserves existing volumes and their contents when replacement import fails', () => {
+    const { directory, run } = createHarness()
+    const sourcesVolume = resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources')
+    const assetsVolume = resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets')
+    mkdirSync(sourcesVolume, { recursive: true })
+    mkdirSync(assetsVolume, { recursive: true })
+    writeFileSync(resolve(sourcesVolume, 'existing.pdf'), 'existing-source')
+    writeFileSync(resolve(assetsVolume, 'existing.png'), 'existing-asset')
+    writeFileSync(resolve(directory, 'fail-assets-copy'), '')
+
+    const failedResult = run(['--replace-unattached'])
+
+    expect(failedResult.status).toBe(42)
+    expect(readFileSync(resolve(sourcesVolume, 'existing.pdf'), 'utf8')).toBe('existing-source')
+    expect(readFileSync(resolve(assetsVolume, 'existing.png'), 'utf8')).toBe('existing-asset')
+    const failedLog = readFileSync(resolve(directory, 'docker.log'), 'utf8')
+    expect(failedLog).toMatch(/volume rm ivybm-prod-knowledge-sources-stage-/)
+    expect(failedLog).toMatch(/volume rm ivybm-prod-knowledge-source-assets-stage-/)
+    expect(failedLog).not.toContain('volume rm ivybm-prod-knowledge-sources\n')
+
+    rmSync(resolve(directory, 'fail-assets-copy'))
+    const retryResult = run(['--replace-unattached'])
+
+    expect(retryResult.status).toBe(0)
+    expect(existsSync(resolve(sourcesVolume, 'source.pdf'))).toBe(true)
+    expect(existsSync(resolve(assetsVolume, 'asset.png'))).toBe(true)
+    expect(existsSync(resolve(sourcesVolume, 'existing.pdf'))).toBe(false)
+    expect(existsSync(resolve(assetsVolume, 'existing.png'))).toBe(false)
   })
 
   it('requires both legacy containers to be stopped', () => {

@@ -2,9 +2,9 @@
 
 set -euo pipefail
 
-replace_unattached='false'
-if [[ "${1-}" == '--replace-unattached' ]]; then
-  replace_unattached='true'
+replace_unattached="false"
+if [[ "${1-}" == "--replace-unattached" ]]; then
+  replace_unattached="true"
   shift
 fi
 
@@ -17,8 +17,8 @@ env_file="$1"
 old_app_container="$2"
 old_worker_container="$3"
 compose_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/production-compose.sh"
-sources_volume='ivybm-prod-knowledge-sources'
-assets_volume='ivybm-prod-knowledge-source-assets'
+sources_volume="ivybm-prod-knowledge-sources"
+assets_volume="ivybm-prod-knowledge-source-assets"
 
 [[ -r "$env_file" ]] || { echo "Production environment file is not readable: $env_file" >&2; exit 66; }
 [[ -x "$compose_script" ]] || { echo "Production Compose wrapper is not executable: $compose_script" >&2; exit 66; }
@@ -28,7 +28,7 @@ for container in "$old_app_container" "$old_worker_container"; do
     exit 66
   }
   running="$(docker inspect -f '{{.State.Running}}' "$container")"
-  [[ "$running" == 'false' ]] || {
+  [[ "$running" == "false" ]] || {
     echo "Stop the old container before exporting knowledge files: $container" >&2
     exit 1
   }
@@ -40,23 +40,47 @@ for volume in "$sources_volume" "$assets_volume"; do
     existing_volumes+=("$volume")
   fi
 done
-if ((${#existing_volumes[@]})) && [[ "$replace_unattached" != 'true' ]]; then
+if ((${#existing_volumes[@]})) && [[ "$replace_unattached" != "true" ]]; then
   echo "Refusing to overwrite existing volume: ${existing_volumes[0]}" >&2
   exit 1
 fi
 
+if ((${#existing_volumes[@]})); then
+  for volume in "${existing_volumes[@]}"; do
+    attached_containers="$(docker ps -aq --filter "volume=$volume")"
+    [[ -z "$attached_containers" ]] || {
+      echo "Refusing to replace volume referenced by a container: $volume" >&2
+      exit 1
+    }
+  done
+fi
+
 temporary_dir="$(mktemp -d)"
-created_volumes=()
-migration_complete='false'
+unique_suffix="$$-$${RANDOM}"
+stage_sources_volume="${sources_volume}-stage-${unique_suffix}"
+stage_assets_volume="${assets_volume}-stage-${unique_suffix}"
+staging_volumes=()
+switching_started="false"
+migration_complete="false"
+
 cleanup() {
   local status=$?
   trap - EXIT
 
-  if [[ "$migration_complete" != 'true' ]] && ((${#created_volumes[@]})); then
-    for volume in "${created_volumes[@]}"; do
-      docker volume rm "$volume" >/dev/null 2>&1 ||
-        echo "Warning: failed to remove incomplete migration volume: $volume" >&2
-    done
+  if [[ "$migration_complete" != "true" ]]; then
+    if [[ "$switching_started" == "true" ]]; then
+      echo "Warning: volume switching failed during migration." >&2
+      echo "Staging volumes have been preserved for recovery:" >&2
+      echo "  - $stage_sources_volume" >&2
+      echo "  - $stage_assets_volume" >&2
+    else
+      if ((${#staging_volumes[@]})); then
+        for volume in "${staging_volumes[@]}"; do
+          docker volume rm "$volume" >/dev/null 2>&1 ||
+            echo "Warning: failed to remove incomplete staging volume: $volume" >&2
+        done
+      fi
+    fi
   fi
 
   rm -rf -- "$temporary_dir"
@@ -123,6 +147,29 @@ verify_expected() {
 verify_expected "$temporary_dir/expected-sources" "$temporary_dir/sources"
 verify_expected "$temporary_dir/expected-assets" "$temporary_dir/assets"
 
+docker volume create "$stage_sources_volume" >/dev/null
+staging_volumes+=("$stage_sources_volume")
+docker volume create "$stage_assets_volume" >/dev/null
+staging_volumes+=("$stage_assets_volume")
+
+copy_into_volume() {
+  local volume="$1" source="$2"
+  docker run --rm -u 0 -v "$volume:/target" -v "$source:/source:ro" alpine:3.22 \
+    sh -c 'set -eu; cp -a /source/. /target/; chown -R 1001:1001 /target; find /target -type f -print -quit >/dev/null'
+}
+copy_into_volume "$stage_sources_volume" "$temporary_dir/sources"
+copy_into_volume "$stage_assets_volume" "$temporary_dir/assets"
+
+verify_volume() {
+  local volume="$1" expected_file="$2"
+  docker run --rm -v "$volume:/target:ro" -v "$expected_file:/expected:ro" alpine:3.22 \
+    sh -c 'set -eu; while IFS= read -r filename; do [ -z "$filename" ] || test -f "/target/$filename"; done < /expected; test "$(stat -c %u:%g /target)" = 1001:1001; test -z "$(find /target -mindepth 1 \( ! -user 1001 -o ! -group 1001 \) -print -quit)"'
+}
+verify_volume "$stage_sources_volume" "$temporary_dir/expected-sources"
+verify_volume "$stage_assets_volume" "$temporary_dir/expected-assets"
+
+switching_started="true"
+
 if ((${#existing_volumes[@]})); then
   for volume in "${existing_volumes[@]}"; do
     attached_containers="$(docker ps -aq --filter "volume=$volume")"
@@ -137,24 +184,20 @@ if ((${#existing_volumes[@]})); then
 fi
 
 docker volume create "$sources_volume" >/dev/null
-created_volumes+=("$sources_volume")
 docker volume create "$assets_volume" >/dev/null
-created_volumes+=("$assets_volume")
-copy_into_volume() {
-  local volume="$1" source="$2"
-  docker run --rm -u 0 -v "$volume:/target" -v "$source:/source:ro" alpine:3.22 \
+
+copy_volume_to_volume() {
+  local source_volume="$1" target_volume="$2"
+  docker run --rm -u 0 -v "$target_volume:/target" -v "$source_volume:/source:ro" alpine:3.22 \
     sh -c 'set -eu; cp -a /source/. /target/; chown -R 1001:1001 /target; find /target -type f -print -quit >/dev/null'
 }
-copy_into_volume "$sources_volume" "$temporary_dir/sources"
-copy_into_volume "$assets_volume" "$temporary_dir/assets"
+copy_volume_to_volume "$stage_sources_volume" "$sources_volume"
+copy_volume_to_volume "$stage_assets_volume" "$assets_volume"
 
-verify_volume() {
-  local volume="$1" expected_file="$2"
-  docker run --rm -v "$volume:/target:ro" -v "$expected_file:/expected:ro" alpine:3.22 \
-    sh -c 'set -eu; while IFS= read -r filename; do [ -z "$filename" ] || test -f "/target/$filename"; done < /expected; test "$(stat -c %u:%g /target)" = 1001:1001; test -z "$(find /target -mindepth 1 \( ! -user 1001 -o ! -group 1001 \) -print -quit)"'
-}
 verify_volume "$sources_volume" "$temporary_dir/expected-sources"
 verify_volume "$assets_volume" "$temporary_dir/expected-assets"
 
-migration_complete='true'
+migration_complete="true"
+docker volume rm "$stage_sources_volume" "$stage_assets_volume" >/dev/null 2>&1 || true
+
 echo "Migrated and verified database-referenced knowledge files into $sources_volume and $assets_volume"
