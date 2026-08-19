@@ -56,7 +56,7 @@ if ((${#existing_volumes[@]})); then
 fi
 
 temporary_dir="$(mktemp -d)"
-unique_suffix="$$-$${RANDOM}"
+unique_suffix="$$-${RANDOM}"
 stage_sources_volume="${sources_volume}-stage-${unique_suffix}"
 stage_assets_volume="${assets_volume}-stage-${unique_suffix}"
 staging_volumes=()

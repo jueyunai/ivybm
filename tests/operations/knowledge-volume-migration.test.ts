@@ -58,7 +58,11 @@ case "\${1-}" in
     volume="\${@: -1}"
     case "$action" in
       inspect) [[ -d "$root/volumes/$volume" ]] ;;
-      create) mkdir -p "$root/volumes/$volume"; printf '%s\n' "$volume" ;;
+      create)
+        [[ "$volume" =~ ^[a-zA-Z0-9_.-]+$ ]]
+        mkdir -p "$root/volumes/$volume"
+        printf '%s\n' "$volume"
+        ;;
       rm) rm -rf "$root/volumes/$volume"; printf '%s\n' "$volume" ;;
       *) exit 64 ;;
     esac
@@ -187,6 +191,9 @@ describe('production knowledge volume migration', () => {
     expect(log).toContain('cp old-worker:/app/private/knowledge-source-assets/.')
     expect(log).toContain('chown\\ -R\\ 1001:1001')
     expect(log).toContain('stat\\ -c\\ %u:%g\\ /target')
+    expect(log).not.toMatch(/\{RANDOM\}/)
+    expect(log).toMatch(/volume create ivybm-prod-knowledge-sources-stage-[0-9]+-[0-9]+/)
+    expect(log).toMatch(/volume create ivybm-prod-knowledge-source-assets-stage-[0-9]+-[0-9]+/)
   })
 
   it('rejects unsafe database filenames before creating volumes', () => {
