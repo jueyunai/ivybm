@@ -273,6 +273,17 @@ describe('production Compose configuration', () => {
     }
   })
 
+  it('declares the Media volume for both services even before Docker is available', () => {
+    for (const file of ['compose.prod.yaml', 'compose.staging.yaml']) {
+      const source = readFileSync(resolve(projectRoot, file), 'utf8')
+      const appBlock = source.match(/\n  app:\n([\s\S]*?)(?=\n  worker:\n)/)?.[1] ?? ''
+      const workerBlock =
+        source.match(/\n  worker:\n([\s\S]*?)(?=\n(?:  [a-z][\w-]*:|volumes:|$))/)?.[1] ?? ''
+      expect(appBlock).toContain('- media_data:/app/media')
+      expect(workerBlock).toContain('- media_data:/app/media')
+    }
+  })
+
   it('waits for a successful migration and keeps resource, health, and log guards', () => {
     const config = getProductionComposeConfig()
 

@@ -24,15 +24,17 @@ describe('production release order', () => {
 
     expect(handbook.indexOf(pullCommand)).toBeGreaterThanOrEqual(0)
     expect(handbook.indexOf(stopServicesCommand)).toBeGreaterThan(handbook.indexOf(pullCommand))
-    expect(handbook.indexOf(stopServicesCommand)).toBeLessThan(handbook.indexOf(backupCommand))
+    expect(handbook.indexOf(knowledgeMigrationCommand)).toBeGreaterThan(
+      handbook.indexOf(stopServicesCommand),
+    )
+    expect(handbook.indexOf(knowledgeMigrationCommand)).toBeLessThan(
+      handbook.indexOf(backupCommand),
+    )
     expect(handbook.indexOf(backupCommand)).toBeLessThan(handbook.indexOf(migrateCommand))
     expect(handbook.indexOf(verifyCommand)).toBeGreaterThan(handbook.indexOf(backupCommand))
     expect(handbook.indexOf(verifyCommand)).toBeLessThan(handbook.indexOf(migrateCommand))
     expect(handbook.indexOf(restoreCommand)).toBeGreaterThan(handbook.indexOf(verifyCommand))
     expect(handbook.indexOf(restoreCommand)).toBeLessThan(handbook.indexOf(migrateCommand))
-    expect(handbook.indexOf(knowledgeMigrationCommand)).toBeGreaterThan(
-      handbook.indexOf(stopServicesCommand),
-    )
     expect(handbook.indexOf(knowledgeMigrationCommand)).toBeLessThan(
       handbook.indexOf(startServicesCommand),
     )
@@ -86,6 +88,9 @@ describe('production release order', () => {
     expect(knowledgeMigrationScript).toContain('knowledge_source_assets')
     expect(knowledgeMigrationScript).toContain('chown -R 1001:1001')
     expect(knowledgeMigrationScript).toContain('verify_volume')
+    expect(knowledgeMigrationScript).toContain("grep -q '[[:cntrl:]]'")
+    expect(knowledgeMigrationScript).toContain('docker volume rm "$volume"')
+    expect(knowledgeMigrationScript).toContain('stat -c %u:%g /target')
   })
 
   it('strips caller release variables before invoking Compose', () => {
