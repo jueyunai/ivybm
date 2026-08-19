@@ -76,23 +76,27 @@ restore_existing_volumes() {
   local volume backup was_existing
   for volume in "$sources_volume" "$assets_volume"; do
     was_existing="false"
-    for existing_volume in "${existing_volumes[@]}"; do
-      [[ "$existing_volume" == "$volume" ]] && was_existing="true"
-    done
+    if ((${#existing_volumes[@]})); then
+      for existing_volume in "${existing_volumes[@]}"; do
+        [[ "$existing_volume" == "$volume" ]] && was_existing="true"
+      done
+    fi
     if [[ "$was_existing" != "true" ]]; then
       docker volume rm "$volume" >/dev/null 2>&1 || true
     fi
   done
-  for volume in "${existing_volumes[@]}"; do
-    case "$volume" in
-      "$sources_volume") backup="$backup_sources_volume" ;;
-      "$assets_volume") backup="$backup_assets_volume" ;;
-      *) echo "Warning: no backup volume mapped for $volume" >&2; return 1 ;;
-    esac
-    docker volume rm "$volume" >/dev/null 2>&1 || true
-    docker volume create "$volume" >/dev/null || return 1
-    copy_volume_to_volume "$backup" "$volume" || return 1
-  done
+  if ((${#existing_volumes[@]})); then
+    for volume in "${existing_volumes[@]}"; do
+      case "$volume" in
+        "$sources_volume") backup="$backup_sources_volume" ;;
+        "$assets_volume") backup="$backup_assets_volume" ;;
+        *) echo "Warning: no backup volume mapped for $volume" >&2; return 1 ;;
+      esac
+      docker volume rm "$volume" >/dev/null 2>&1 || true
+      docker volume create "$volume" >/dev/null || return 1
+      copy_volume_to_volume "$backup" "$volume" || return 1
+    done
+  fi
 }
 
 cleanup() {
@@ -104,19 +108,30 @@ cleanup() {
       if restore_existing_volumes; then
         echo "Migration switch failed; existing volumes were restored from backup." >&2
         echo "Retained recovery backups (remove only after verification):" >&2
-        for volume in "${backup_volumes[@]}"; do
-          echo "  - $volume" >&2
-        done
-        for volume in "${staging_volumes[@]}"; do
-          docker volume rm "$volume" >/dev/null 2>&1 ||
-            echo "Warning: failed to remove incomplete staging volume: $volume" >&2
-        done
+        if ((${#backup_volumes[@]})); then
+          for volume in "${backup_volumes[@]}"; do
+            echo "  - $volume" >&2
+          done
+        fi
+        if ((${#staging_volumes[@]})); then
+          for volume in "${staging_volumes[@]}"; do
+            docker volume rm "$volume" >/dev/null 2>&1 ||
+              echo "Warning: failed to remove incomplete staging volume: $volume" >&2
+          done
+        fi
       else
         echo "Warning: volume switching failed and automatic restoration failed." >&2
         echo "Staging and backup volumes have been preserved for manual recovery:" >&2
-        for volume in "${staging_volumes[@]}" "${backup_volumes[@]}"; do
-          echo "  - $volume" >&2
-        done
+        if ((${#staging_volumes[@]})); then
+          for volume in "${staging_volumes[@]}"; do
+            echo "  - $volume" >&2
+          done
+        fi
+        if ((${#backup_volumes[@]})); then
+          for volume in "${backup_volumes[@]}"; do
+            echo "  - $volume" >&2
+          done
+        fi
       fi
     else
       if ((${#staging_volumes[@]})); then
@@ -135,10 +150,12 @@ cleanup() {
   fi
 
   if [[ "$migration_complete" == "true" ]]; then
-    for volume in "${backup_volumes[@]}"; do
-      docker volume rm "$volume" >/dev/null 2>&1 ||
-        echo "Warning: failed to remove migration backup volume: $volume" >&2
-    done
+    if ((${#backup_volumes[@]})); then
+      for volume in "${backup_volumes[@]}"; do
+        docker volume rm "$volume" >/dev/null 2>&1 ||
+          echo "Warning: failed to remove migration backup volume: $volume" >&2
+      done
+    fi
   fi
 
   rm -rf -- "$temporary_dir"
