@@ -173,6 +173,63 @@ describe('AI control-plane registry', () => {
     )
   })
 
+  it('allows HTTP loopback only for an explicit side-effect-denied mutation E2E launch', async () => {
+    const calls: Array<Record<string, unknown>> = []
+    const gateway = await resolveAiGateway({
+      createProvider: createFakeProvider(calls),
+      environment: {
+        AI_EMBEDDING_DIMENSIONS: '3',
+        AI_EMBEDDING_MODEL: 'e2e-embedding-model',
+        AI_PROVIDER_API_KEY: 'e2e-key',
+        AI_PROVIDER_BASE_URL: 'http://127.0.0.1:43123/v1',
+        AI_TEXT_MODEL: 'e2e-text-model',
+        IVYBM_E2E_ALLOW_HTTP_AI_LOOPBACK: 'true',
+        IVYBM_E2E_EXTERNAL_SIDE_EFFECTS: 'deny',
+        IVYBM_E2E_MODE: 'mutation',
+        NODE_ENV: 'production',
+      },
+      payload: createPayload([]),
+      routes: [{ operation: 'text', usageKey: AI_USAGE_KEYS.chatReply }],
+    })
+
+    await gateway.generateText({ input: 'E2E loopback' })
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        baseURL: 'http://127.0.0.1:43123/v1',
+        operation: 'text',
+      }),
+    )
+  })
+
+  it('rejects production HTTP providers when any mutation E2E guard is missing', async () => {
+    for (const environment of [
+      {},
+      { IVYBM_E2E_ALLOW_HTTP_AI_LOOPBACK: 'true' },
+      {
+        IVYBM_E2E_ALLOW_HTTP_AI_LOOPBACK: 'true',
+        IVYBM_E2E_EXTERNAL_SIDE_EFFECTS: 'deny',
+        IVYBM_E2E_MODE: 'mutation',
+      },
+    ]) {
+      await expect(
+        resolveAiGateway({
+          createProvider: createFakeProvider([]),
+          environment: {
+            AI_PROVIDER_API_KEY: 'e2e-key',
+            AI_PROVIDER_BASE_URL: environment.IVYBM_E2E_MODE
+              ? 'http://provider.example.invalid/v1'
+              : 'http://127.0.0.1:43123/v1',
+            AI_TEXT_MODEL: 'e2e-text-model',
+            NODE_ENV: 'production',
+            ...environment,
+          },
+          payload: createPayload([]),
+          routes: [{ operation: 'text', usageKey: AI_USAGE_KEYS.chatReply }],
+        }),
+      ).rejects.toBeInstanceOf(AiConfigurationError)
+    }
+  })
+
   it('resolves the stable content image route from the CMS snapshot', async () => {
     const calls: Array<Record<string, unknown>> = []
     const payload = createPayload([

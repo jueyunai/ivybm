@@ -61,6 +61,7 @@ const providerEnvironmentKeys = () => {
 }
 
 export const createE2EEnvironment = ({
+  aiProviderPort,
   baseURL,
   commitSHA,
   databaseURL,
@@ -95,6 +96,12 @@ export const createE2EEnvironment = ({
   const fixedEnvironment = {
     ADMIN_PORTAL_PUBLISHING_ENABLED: 'false',
     AI_CONFIG_ENCRYPTION_KEY: 'e'.repeat(64),
+    AI_EMBEDDING_DIMENSIONS: mode === 'mutation' ? '3' : '',
+    AI_EMBEDDING_MODEL: mode === 'mutation' ? 'e2e-embedding-model' : '',
+    AI_PROVIDER_API_KEY: mode === 'mutation' ? launchToken : '',
+    AI_PROVIDER_BASE_URL:
+      mode === 'mutation' && aiProviderPort ? `http://127.0.0.1:${aiProviderPort}/v1` : '',
+    AI_TEXT_MODEL: mode === 'mutation' ? 'e2e-text-model' : '',
     APP_VERSION: process.env.APP_VERSION || 'e2e',
     ...(mode === 'readonly-external' ? { BASE_URL: baseURL } : {}),
     DATABASE_URL: databaseURL || '',
@@ -102,6 +109,8 @@ export const createE2EEnvironment = ({
     E2E_PORT: port ? String(port) : '',
     HOSTNAME: '127.0.0.1',
     IVYBM_ALLOW_TEST_DATABASE_WORKER: '',
+    IVYBM_E2E_AI_PROVIDER_PORT: aiProviderPort ? String(aiProviderPort) : '',
+    IVYBM_E2E_ALLOW_HTTP_AI_LOOPBACK: mode === 'mutation' ? 'true' : '',
     IVYBM_E2E_ENVIRONMENT_ALLOWLIST: 'v1',
     IVYBM_E2E_COMMIT_SHA: commitSHA,
     IVYBM_E2E_DATABASE_NAME: databaseName,
@@ -116,6 +125,7 @@ export const createE2EEnvironment = ({
     NEXT_PUBLIC_SERVER_URL: baseURL || '',
     PAYLOAD_SECRET: 'e2e-build-only-secret-at-least-32-characters',
     PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'b'.repeat(64),
+    PLAYWRIGHT_HTML_OPEN: 'never',
   }
 
   return { ...environment, ...fixedEnvironment }
@@ -133,6 +143,14 @@ export const assertE2EEnvironmentDoesNotExposeProviderCredentials = (environment
       /^(?:AI_PROVIDER|FEISHU|INSTAGRAM|LINKEDIN|META)_/u.test(key) &&
       /(?:SECRET|TOKEN|PASSWORD|API_KEY|APP_ID|PRIVATE|TICKET_KEY)/u.test(key)
     ) {
+      if (
+        key === 'AI_PROVIDER_API_KEY' &&
+        environment.IVYBM_E2E_MODE === 'mutation' &&
+        environment.IVYBM_E2E_EXTERNAL_SIDE_EFFECTS === 'deny' &&
+        environment.AI_PROVIDER_API_KEY === environment.IVYBM_E2E_LAUNCH_TOKEN
+      ) {
+        continue
+      }
       if (environment[key]) throw new Error(`E2E environment must not expose ${key}`)
     }
   }

@@ -100,9 +100,11 @@ const bootstrapURL = externalBaseURL
 const databaseName = bootstrapURL ? createE2EDatabaseName() : ''
 const databaseURL = bootstrapURL ? databaseURLForName(bootstrapURL, databaseName) : ''
 const port = bootstrapURL ? await allocatePort() : null
+const aiProviderPort = bootstrapURL ? await allocatePort() : null
 const baseURL = externalBaseURL || (port ? `http://localhost:${port}` : '')
 const mode = externalBaseURL ? 'readonly-external' : plan.mode
 const environment = createE2EEnvironment({
+  aiProviderPort,
   baseURL,
   commitSHA,
   databaseName,

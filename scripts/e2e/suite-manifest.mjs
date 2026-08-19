@@ -17,6 +17,7 @@ const mutationSpecs = [
   'tests/e2e/admin-visual.spec.ts',
   'tests/e2e/chat-handoff.spec.ts',
   'tests/e2e/inquiry.spec.ts',
+  'tests/e2e/website-chat-real.spec.ts',
   'tests/e2e/website.spec.ts',
 ]
 
@@ -25,7 +26,10 @@ export const e2eSuiteManifest = Object.freeze({
     mode: 'mutation',
     specs: mutationSpecs.filter((spec) => spec.includes('admin-')),
   }),
-  chat: Object.freeze({ mode: 'mutation', specs: ['tests/e2e/chat-handoff.spec.ts'] }),
+  chat: Object.freeze({
+    mode: 'mutation',
+    specs: ['tests/e2e/chat-handoff.spec.ts', 'tests/e2e/website-chat-real.spec.ts'],
+  }),
   inquiry: Object.freeze({ mode: 'mutation', specs: ['tests/e2e/inquiry.spec.ts'] }),
   'readonly-visual': Object.freeze({
     mode: 'readonly-external',

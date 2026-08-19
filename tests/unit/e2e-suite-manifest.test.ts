@@ -33,7 +33,11 @@ describe('E2E suite manifest', () => {
   it('resolves explicit suite IDs without accepting Playwright selectors', () => {
     const plan = resolveE2ESuitePlan(['website', 'chat'])
     expect(plan.mode).toBe('mutation')
-    expect(plan.specs).toEqual(['tests/e2e/website.spec.ts', 'tests/e2e/chat-handoff.spec.ts'])
+    expect(plan.specs).toEqual([
+      'tests/e2e/website.spec.ts',
+      'tests/e2e/chat-handoff.spec.ts',
+      'tests/e2e/website-chat-real.spec.ts',
+    ])
     expect(plan.planDigest).toMatch(/^[a-f0-9]{64}$/u)
 
     expect(() => resolveE2ESuitePlan(['--output', 'readonly-visual'])).toThrow('suite IDs only')
