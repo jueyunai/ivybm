@@ -2,8 +2,14 @@
 
 set -euo pipefail
 
+replace_unattached='false'
+if [[ "${1-}" == '--replace-unattached' ]]; then
+  replace_unattached='true'
+  shift
+fi
+
 if (($# != 3)); then
-  echo "Usage: $0 <production-env-file> <stopped-old-app-container> <stopped-old-worker-container>" >&2
+  echo "Usage: $0 [--replace-unattached] <production-env-file> <stopped-old-app-container> <stopped-old-worker-container>" >&2
   exit 64
 fi
 
@@ -28,12 +34,16 @@ for container in "$old_app_container" "$old_worker_container"; do
   }
 done
 
+existing_volumes=()
 for volume in "$sources_volume" "$assets_volume"; do
   if docker volume inspect "$volume" >/dev/null 2>&1; then
-    echo "Refusing to overwrite existing volume: $volume" >&2
-    exit 1
+    existing_volumes+=("$volume")
   fi
 done
+if ((${#existing_volumes[@]})) && [[ "$replace_unattached" != 'true' ]]; then
+  echo "Refusing to overwrite existing volume: ${existing_volumes[0]}" >&2
+  exit 1
+fi
 
 temporary_dir="$(mktemp -d)"
 created_volumes=()
@@ -42,7 +52,7 @@ cleanup() {
   local status=$?
   trap - EXIT
 
-  if [[ "$migration_complete" != 'true' ]]; then
+  if [[ "$migration_complete" != 'true' ]] && ((${#created_volumes[@]})); then
     for volume in "${created_volumes[@]}"; do
       docker volume rm "$volume" >/dev/null 2>&1 ||
         echo "Warning: failed to remove incomplete migration volume: $volume" >&2
@@ -90,7 +100,11 @@ query_expected() {
 query_expected knowledge_source_documents "$temporary_dir/expected-sources.encoded" "$temporary_dir/expected-sources"
 query_expected knowledge_source_assets "$temporary_dir/expected-assets.encoded" "$temporary_dir/expected-assets"
 
-docker cp "$old_app_container:/app/private/knowledge-sources/." "$temporary_dir/sources/"
+if [[ -s "$temporary_dir/expected-sources" ]]; then
+  docker cp "$old_app_container:/app/private/knowledge-sources/." "$temporary_dir/sources/"
+else
+  echo 'No database-referenced knowledge sources; skipping legacy app source export.'
+fi
 if [[ -s "$temporary_dir/expected-assets" ]]; then
   docker cp "$old_worker_container:/app/private/knowledge-source-assets/." "$temporary_dir/assets/"
 else
@@ -108,6 +122,19 @@ verify_expected() {
 }
 verify_expected "$temporary_dir/expected-sources" "$temporary_dir/sources"
 verify_expected "$temporary_dir/expected-assets" "$temporary_dir/assets"
+
+if ((${#existing_volumes[@]})); then
+  for volume in "${existing_volumes[@]}"; do
+    attached_containers="$(docker ps -aq --filter "volume=$volume")"
+    [[ -z "$attached_containers" ]] || {
+      echo "Refusing to replace volume referenced by a container: $volume" >&2
+      exit 1
+    }
+  done
+  for volume in "${existing_volumes[@]}"; do
+    docker volume rm "$volume" >/dev/null
+  done
+fi
 
 docker volume create "$sources_volume" >/dev/null
 created_volumes+=("$sources_volume")

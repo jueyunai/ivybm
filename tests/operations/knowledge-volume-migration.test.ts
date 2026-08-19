@@ -63,6 +63,11 @@ case "\${1-}" in
       *) exit 64 ;;
     esac
     ;;
+  ps)
+    if [[ -e "$root/volume-attached" ]]; then
+      printf 'new-app-container\n'
+    fi
+    ;;
   cp)
     source="$2"
     destination="$3"
@@ -129,11 +134,12 @@ esac
   )
   chmodSync(fakeDocker, 0o755)
 
-  const run = () =>
+  const run = (options: string[] = []) =>
     spawnSync(
       'bash',
       [
         './scripts/migrate-production-knowledge-volumes.sh',
+        ...options,
         resolve(directory, '.env'),
         'old-app',
         'old-worker',
@@ -238,5 +244,68 @@ describe('production knowledge volume migration', () => {
     )
     const log = readFileSync(resolve(directory, 'docker.log'), 'utf8')
     expect(log).not.toContain('cp old-worker:/app/private/knowledge-source-assets/.')
+  })
+
+  it('allows a missing legacy app source directory only when the source manifest is empty', () => {
+    const { directory, run } = createHarness()
+    writeFileSync(resolve(directory, 'expected-sources'), '')
+    rmSync(resolve(directory, 'old-app', 'sources'), { recursive: true })
+
+    const result = run()
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain(
+      'No database-referenced knowledge sources; skipping legacy app source export.',
+    )
+    const log = readFileSync(resolve(directory, 'docker.log'), 'utf8')
+    expect(log).not.toContain('cp old-app:/app/private/knowledge-sources/.')
+  })
+
+  it('replaces unattached migration volumes on an explicit pre-deploy retry', () => {
+    const { directory, run } = createHarness()
+    const sourcesVolume = resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources')
+    const assetsVolume = resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets')
+    mkdirSync(sourcesVolume, { recursive: true })
+    mkdirSync(assetsVolume, { recursive: true })
+    writeFileSync(resolve(sourcesVolume, 'stale.pdf'), 'stale')
+    writeFileSync(resolve(assetsVolume, 'stale.png'), 'stale')
+
+    const result = run(['--replace-unattached'])
+
+    expect(result.status).toBe(0)
+    expect(existsSync(resolve(sourcesVolume, 'source.pdf'))).toBe(true)
+    expect(existsSync(resolve(assetsVolume, 'asset.png'))).toBe(true)
+    expect(existsSync(resolve(sourcesVolume, 'stale.pdf'))).toBe(false)
+    expect(existsSync(resolve(assetsVolume, 'stale.png'))).toBe(false)
+  })
+
+  it('never overwrites an existing migration volume without the explicit retry option', () => {
+    const { directory, run } = createHarness()
+    const sourcesVolume = resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources')
+    mkdirSync(sourcesVolume, { recursive: true })
+    writeFileSync(resolve(sourcesVolume, 'existing.pdf'), 'existing')
+
+    const result = run()
+
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('Refusing to overwrite existing volume')
+    expect(existsSync(resolve(sourcesVolume, 'existing.pdf'))).toBe(true)
+  })
+
+  it('refuses to replace a migration volume referenced by any container', () => {
+    const { directory, run } = createHarness()
+    const sourcesVolume = resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources')
+    const assetsVolume = resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets')
+    mkdirSync(sourcesVolume, { recursive: true })
+    mkdirSync(assetsVolume, { recursive: true })
+    writeFileSync(resolve(sourcesVolume, 'stale.pdf'), 'stale')
+    writeFileSync(resolve(directory, 'volume-attached'), '')
+
+    const result = run(['--replace-unattached'])
+
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('Refusing to replace volume referenced by a container')
+    expect(existsSync(resolve(sourcesVolume, 'stale.pdf'))).toBe(true)
+    expect(existsSync(assetsVolume)).toBe(true)
   })
 })

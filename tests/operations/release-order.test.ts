@@ -96,6 +96,8 @@ describe('production release order', () => {
     expect(knowledgeMigrationScript).toContain('verify_volume')
     expect(knowledgeMigrationScript).toContain("grep -q '[[:cntrl:]]'")
     expect(knowledgeMigrationScript).toContain('docker volume rm "$volume"')
+    expect(knowledgeMigrationScript).toContain('--replace-unattached')
+    expect(knowledgeMigrationScript).toContain('docker ps -aq --filter "volume=$volume"')
     expect(knowledgeMigrationScript).toContain('stat -c %u:%g /target')
   })
 
