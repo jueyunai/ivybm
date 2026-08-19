@@ -56,6 +56,10 @@ describe('E2E suite manifest', () => {
 
     const full = resolveE2ESuitePlan([])
     expect(full.mode).toBe('mutation')
-    expect(full.specs).toHaveLength(e2eSpecPaths.length)
+    expect(full.specs).not.toContain('tests/e2e/admin-portal-facebook-publishing.spec.ts')
+    expect(resolveE2ESuitePlan(['facebook-publishing'])).toMatchObject({
+      mode: 'mutation',
+      specs: ['tests/e2e/admin-portal-facebook-publishing.spec.ts'],
+    })
   })
 })

@@ -21,10 +21,19 @@ const mutationSpecs = [
   'tests/e2e/website.spec.ts',
 ]
 
+// Official publishing is an explicit local-only checkpoint. It is intentionally
+// excluded from the default/full mutation plan because that plan keeps the
+// publishing kill switch disabled and must never exercise provider side effects.
+const optInMutationSpecs = ['tests/e2e/admin-portal-facebook-publishing.spec.ts']
+
 export const e2eSuiteManifest = Object.freeze({
   admin: Object.freeze({
     mode: 'mutation',
     specs: mutationSpecs.filter((spec) => spec.includes('admin-')),
+  }),
+  'facebook-publishing': Object.freeze({
+    mode: 'mutation',
+    specs: optInMutationSpecs,
   }),
   chat: Object.freeze({
     mode: 'mutation',
@@ -42,7 +51,8 @@ export const e2eSuiteManifest = Object.freeze({
   website: Object.freeze({ mode: 'mutation', specs: ['tests/e2e/website.spec.ts'] }),
 })
 
-const allSpecs = [...mutationSpecs, 'tests/e2e/website-visual.spec.ts']
+const allSpecs = [...mutationSpecs, ...optInMutationSpecs, 'tests/e2e/website-visual.spec.ts']
+const defaultMutationSpecs = [...mutationSpecs]
 
 export const e2eSpecPaths = Object.freeze(allSpecs)
 
@@ -64,7 +74,7 @@ export const resolveE2ESuitePlan = (requestedSuites = []) => {
   }
 
   if (requestsFull) {
-    const plan = { mode: 'mutation', requestedSuites: ['full'], specs: allSpecs }
+    const plan = { mode: 'mutation', requestedSuites: ['full'], specs: defaultMutationSpecs }
     const planDigest = createHash('sha256').update(JSON.stringify(plan)).digest('hex')
     return Object.freeze({ ...plan, planDigest })
   }

@@ -75,6 +75,7 @@ export const createE2EEnvironment = ({
   port,
 }) => {
   const environment = {}
+  const publishingOptIn = requestedSuites.includes('facebook-publishing')
   for (const key of systemEnvironmentKeys) copyIfPresent(environment, process.env, key)
 
   for (const key of localEnvironmentKeys()) environment[key] = ''
@@ -94,7 +95,23 @@ export const createE2EEnvironment = ({
   }
 
   const fixedEnvironment = {
-    ADMIN_PORTAL_PUBLISHING_ENABLED: 'false',
+    ADMIN_PORTAL_CONTENT_STUDIO_ENABLED: mode === 'mutation' ? 'true' : 'false',
+    ADMIN_PORTAL_CONVERSATIONS_ENABLED: mode === 'mutation' ? 'true' : 'false',
+    ADMIN_PORTAL_ENABLED: mode === 'mutation' ? 'true' : 'false',
+    ADMIN_PORTAL_KNOWLEDGE_ENABLED: mode === 'mutation' ? 'true' : 'false',
+    ADMIN_PORTAL_LEADS_ENABLED: mode === 'mutation' ? 'true' : 'false',
+    ADMIN_PORTAL_MEDIA_ENABLED: mode === 'mutation' ? 'true' : 'false',
+    ADMIN_PORTAL_OPERATIONS_ENABLED: mode === 'mutation' ? 'true' : 'false',
+    ADMIN_PORTAL_OVERVIEW_ENABLED: mode === 'mutation' ? 'true' : 'false',
+    ADMIN_PORTAL_PLATFORMS_ENABLED: mode === 'mutation' ? 'true' : 'false',
+    ADMIN_PORTAL_PUBLISHING_ENABLED:
+      publishingOptIn &&
+      process.env.CI !== 'true' &&
+      process.env.ADMIN_PORTAL_PUBLISHING_ENABLED === 'true'
+        ? 'true'
+        : 'false',
+    ADMIN_PORTAL_SETTINGS_ENABLED: mode === 'mutation' ? 'true' : 'false',
+    ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED: mode === 'mutation' ? 'true' : 'false',
     AI_CONFIG_ENCRYPTION_KEY: 'e'.repeat(64),
     AI_EMBEDDING_DIMENSIONS: mode === 'mutation' ? '3' : '',
     AI_EMBEDDING_MODEL: mode === 'mutation' ? 'e2e-embedding-model' : '',
@@ -122,7 +139,7 @@ export const createE2EEnvironment = ({
     IVYBM_E2E_RUN_ID: runID,
     IVYBM_E2E_SPEC_PATHS_JSON: JSON.stringify(specPaths),
     IVYBM_E2E_WORKER_MODE: mode === 'mutation' ? 'harness-only' : '',
-    NEXT_PUBLIC_SERVER_URL: baseURL || '',
+    NEXT_PUBLIC_SERVER_URL: publishingOptIn ? 'https://e2e-publication.invalid' : baseURL || '',
     PAYLOAD_SECRET: 'e2e-build-only-secret-at-least-32-characters',
     PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'b'.repeat(64),
     PLAYWRIGHT_HTML_OPEN: 'never',

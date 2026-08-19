@@ -52,13 +52,14 @@ export default defineConfig({
         {
           command: isCI ? 'corepack pnpm e2e:server' : 'corepack pnpm dev',
           env: {
+            ADMIN_PORTAL_PUBLISHING_ENABLED: process.env.ADMIN_PORTAL_PUBLISHING_ENABLED ?? 'false',
             AI_CONFIG_ENCRYPTION_KEY: 'e'.repeat(64),
             HOSTNAME: '127.0.0.1',
             IVYBM_E2E_ALLOW_HTTP_LOOPBACK: 'true',
             META_WEBHOOK_ALLOWED_ACCOUNT_IDS: E2E_META_PAGE_ID,
             META_WEBHOOK_APP_SECRET: E2E_META_APP_SECRET,
             META_WEBHOOK_VERIFY_TOKEN: E2E_META_VERIFY_TOKEN,
-            NEXT_PUBLIC_SERVER_URL: context.baseURL,
+            NEXT_PUBLIC_SERVER_URL: process.env.NEXT_PUBLIC_SERVER_URL ?? context.baseURL,
             PORT: new URL(context.baseURL).port,
             PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'b'.repeat(64),
           },
