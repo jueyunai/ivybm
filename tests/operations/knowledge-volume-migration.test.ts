@@ -119,6 +119,10 @@ case "\${1-}" in
       if [[ -e "$root/fail-assets-copy" && "$source_path" == */assets ]]; then
         exit 42
       fi
+      if [[ -e "$root/fail-target-assets-copy" && ! -e "$root/target-assets-failed" && "$target_volume" == ivybm-prod-knowledge-source-assets ]]; then
+        touch "$root/target-assets-failed"
+        exit 42
+      fi
       if [[ -d "$root/volumes/$source_path" ]]; then
         source_dir="$root/volumes/$source_path"
       else
@@ -223,7 +227,7 @@ describe('production knowledge volume migration', () => {
     expect(log).toMatch(/volume rm ivybm-prod-knowledge-source-assets-stage-/)
   })
 
-  it('preserves existing volumes and their contents when replacement import fails', () => {
+  it('restores existing volumes when replacement import fails after the switch starts', () => {
     const { directory, run } = createHarness()
     const sourcesVolume = resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources')
     const assetsVolume = resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets')
@@ -231,7 +235,7 @@ describe('production knowledge volume migration', () => {
     mkdirSync(assetsVolume, { recursive: true })
     writeFileSync(resolve(sourcesVolume, 'existing.pdf'), 'existing-source')
     writeFileSync(resolve(assetsVolume, 'existing.png'), 'existing-asset')
-    writeFileSync(resolve(directory, 'fail-assets-copy'), '')
+    writeFileSync(resolve(directory, 'fail-target-assets-copy'), '')
 
     const failedResult = run(['--replace-unattached'])
 
@@ -241,9 +245,14 @@ describe('production knowledge volume migration', () => {
     const failedLog = readFileSync(resolve(directory, 'docker.log'), 'utf8')
     expect(failedLog).toMatch(/volume rm ivybm-prod-knowledge-sources-stage-/)
     expect(failedLog).toMatch(/volume rm ivybm-prod-knowledge-source-assets-stage-/)
-    expect(failedLog).not.toContain('volume rm ivybm-prod-knowledge-sources\n')
+    expect(failedResult.stderr).toContain(
+      'Migration switch failed; existing volumes were restored from backup.',
+    )
+    expect(failedResult.stderr).toContain('Retained recovery backups')
+    expect(failedLog).toMatch(/volume create ivybm-prod-knowledge-sources-backup-/)
+    expect(failedLog).toMatch(/volume create ivybm-prod-knowledge-source-assets-backup-/)
 
-    rmSync(resolve(directory, 'fail-assets-copy'))
+    rmSync(resolve(directory, 'fail-target-assets-copy'))
     const retryResult = run(['--replace-unattached'])
 
     expect(retryResult.status).toBe(0)

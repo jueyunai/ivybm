@@ -60,8 +60,40 @@ unique_suffix="$$-$${RANDOM}"
 stage_sources_volume="${sources_volume}-stage-${unique_suffix}"
 stage_assets_volume="${assets_volume}-stage-${unique_suffix}"
 staging_volumes=()
+backup_sources_volume="${sources_volume}-backup-${unique_suffix}"
+backup_assets_volume="${assets_volume}-backup-${unique_suffix}"
+backup_volumes=()
 switching_started="false"
 migration_complete="false"
+
+copy_volume_to_volume() {
+  local source_volume="$1" target_volume="$2"
+  docker run --rm -u 0 -v "$target_volume:/target" -v "$source_volume:/source:ro" alpine:3.22 \
+    sh -c 'set -eu; cp -a /source/. /target/; chown -R 1001:1001 /target; find /target -type f -print -quit >/dev/null'
+}
+
+restore_existing_volumes() {
+  local volume backup was_existing
+  for volume in "$sources_volume" "$assets_volume"; do
+    was_existing="false"
+    for existing_volume in "${existing_volumes[@]}"; do
+      [[ "$existing_volume" == "$volume" ]] && was_existing="true"
+    done
+    if [[ "$was_existing" != "true" ]]; then
+      docker volume rm "$volume" >/dev/null 2>&1 || true
+    fi
+  done
+  for volume in "${existing_volumes[@]}"; do
+    case "$volume" in
+      "$sources_volume") backup="$backup_sources_volume" ;;
+      "$assets_volume") backup="$backup_assets_volume" ;;
+      *) echo "Warning: no backup volume mapped for $volume" >&2; return 1 ;;
+    esac
+    docker volume rm "$volume" >/dev/null 2>&1 || true
+    docker volume create "$volume" >/dev/null || return 1
+    copy_volume_to_volume "$backup" "$volume" || return 1
+  done
+}
 
 cleanup() {
   local status=$?
@@ -69,10 +101,23 @@ cleanup() {
 
   if [[ "$migration_complete" != "true" ]]; then
     if [[ "$switching_started" == "true" ]]; then
-      echo "Warning: volume switching failed during migration." >&2
-      echo "Staging volumes have been preserved for recovery:" >&2
-      echo "  - $stage_sources_volume" >&2
-      echo "  - $stage_assets_volume" >&2
+      if restore_existing_volumes; then
+        echo "Migration switch failed; existing volumes were restored from backup." >&2
+        echo "Retained recovery backups (remove only after verification):" >&2
+        for volume in "${backup_volumes[@]}"; do
+          echo "  - $volume" >&2
+        done
+        for volume in "${staging_volumes[@]}"; do
+          docker volume rm "$volume" >/dev/null 2>&1 ||
+            echo "Warning: failed to remove incomplete staging volume: $volume" >&2
+        done
+      else
+        echo "Warning: volume switching failed and automatic restoration failed." >&2
+        echo "Staging and backup volumes have been preserved for manual recovery:" >&2
+        for volume in "${staging_volumes[@]}" "${backup_volumes[@]}"; do
+          echo "  - $volume" >&2
+        done
+      fi
     else
       if ((${#staging_volumes[@]})); then
         for volume in "${staging_volumes[@]}"; do
@@ -80,7 +125,20 @@ cleanup() {
             echo "Warning: failed to remove incomplete staging volume: $volume" >&2
         done
       fi
+      if ((${#backup_volumes[@]})); then
+        for volume in "${backup_volumes[@]}"; do
+          docker volume rm "$volume" >/dev/null 2>&1 ||
+            echo "Warning: failed to remove incomplete backup volume: $volume" >&2
+        done
+      fi
     fi
+  fi
+
+  if [[ "$migration_complete" == "true" ]]; then
+    for volume in "${backup_volumes[@]}"; do
+      docker volume rm "$volume" >/dev/null 2>&1 ||
+        echo "Warning: failed to remove migration backup volume: $volume" >&2
+    done
   fi
 
   rm -rf -- "$temporary_dir"
@@ -168,6 +226,19 @@ verify_volume() {
 verify_volume "$stage_sources_volume" "$temporary_dir/expected-sources"
 verify_volume "$stage_assets_volume" "$temporary_dir/expected-assets"
 
+if ((${#existing_volumes[@]})); then
+  if [[ " ${existing_volumes[*]} " == *" $sources_volume "* ]]; then
+    docker volume create "$backup_sources_volume" >/dev/null
+    backup_volumes+=("$backup_sources_volume")
+    copy_volume_to_volume "$sources_volume" "$backup_sources_volume"
+  fi
+  if [[ " ${existing_volumes[*]} " == *" $assets_volume "* ]]; then
+    docker volume create "$backup_assets_volume" >/dev/null
+    backup_volumes+=("$backup_assets_volume")
+    copy_volume_to_volume "$assets_volume" "$backup_assets_volume"
+  fi
+fi
+
 switching_started="true"
 
 if ((${#existing_volumes[@]})); then
@@ -186,11 +257,6 @@ fi
 docker volume create "$sources_volume" >/dev/null
 docker volume create "$assets_volume" >/dev/null
 
-copy_volume_to_volume() {
-  local source_volume="$1" target_volume="$2"
-  docker run --rm -u 0 -v "$target_volume:/target" -v "$source_volume:/source:ro" alpine:3.22 \
-    sh -c 'set -eu; cp -a /source/. /target/; chown -R 1001:1001 /target; find /target -type f -print -quit >/dev/null'
-}
 copy_volume_to_volume "$stage_sources_volume" "$sources_volume"
 copy_volume_to_volume "$stage_assets_volume" "$assets_volume"
 
