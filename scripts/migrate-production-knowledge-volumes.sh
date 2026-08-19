@@ -2,23 +2,31 @@
 
 set -euo pipefail
 
-if (($# != 2)); then
-  echo "Usage: $0 <production-env-file> <stopped-old-app-container>" >&2
+if (($# != 3)); then
+  echo "Usage: $0 <production-env-file> <stopped-old-app-container> <stopped-old-worker-container>" >&2
   exit 64
 fi
 
 env_file="$1"
 old_app_container="$2"
+old_worker_container="$3"
 compose_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/production-compose.sh"
 sources_volume='ivybm-prod-knowledge-sources'
 assets_volume='ivybm-prod-knowledge-source-assets'
 
 [[ -r "$env_file" ]] || { echo "Production environment file is not readable: $env_file" >&2; exit 66; }
 [[ -x "$compose_script" ]] || { echo "Production Compose wrapper is not executable: $compose_script" >&2; exit 66; }
-docker inspect "$old_app_container" >/dev/null 2>&1 || { echo "Old app container not found: $old_app_container" >&2; exit 66; }
-
-running="$(docker inspect -f '{{.State.Running}}' "$old_app_container")"
-[[ "$running" == 'false' ]] || { echo 'Stop the old app container before exporting knowledge files.' >&2; exit 1; }
+for container in "$old_app_container" "$old_worker_container"; do
+  docker inspect "$container" >/dev/null 2>&1 || {
+    echo "Old container not found: $container" >&2
+    exit 66
+  }
+  running="$(docker inspect -f '{{.State.Running}}' "$container")"
+  [[ "$running" == 'false' ]] || {
+    echo "Stop the old container before exporting knowledge files: $container" >&2
+    exit 1
+  }
+done
 
 for volume in "$sources_volume" "$assets_volume"; do
   if docker volume inspect "$volume" >/dev/null 2>&1; then
@@ -46,9 +54,6 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir "$temporary_dir/sources" "$temporary_dir/assets"
-
-docker cp "$old_app_container:/app/private/knowledge-sources/." "$temporary_dir/sources/"
-docker cp "$old_app_container:/app/private/knowledge-source-assets/." "$temporary_dir/assets/"
 
 # The database is the source of truth for every file that must survive migration. Encode each
 # filename so control characters cannot corrupt the line-oriented manifest before validation.
@@ -84,6 +89,13 @@ query_expected() {
 }
 query_expected knowledge_source_documents "$temporary_dir/expected-sources.encoded" "$temporary_dir/expected-sources"
 query_expected knowledge_source_assets "$temporary_dir/expected-assets.encoded" "$temporary_dir/expected-assets"
+
+docker cp "$old_app_container:/app/private/knowledge-sources/." "$temporary_dir/sources/"
+if [[ -s "$temporary_dir/expected-assets" ]]; then
+  docker cp "$old_worker_container:/app/private/knowledge-source-assets/." "$temporary_dir/assets/"
+else
+  echo 'No database-referenced knowledge assets; skipping legacy worker asset export.'
+fi
 
 verify_expected() {
   local expected_file="$1" root="$2"

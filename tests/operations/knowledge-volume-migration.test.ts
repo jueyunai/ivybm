@@ -22,11 +22,11 @@ const encodeFilename = (filename: string): string => Buffer.from(filename).toStr
 const createHarness = () => {
   const directory = mkdtempSync(resolve(tmpdir(), 'ivybm-knowledge-volume-migration-'))
   temporaryDirectories.push(directory)
-  mkdirSync(resolve(directory, 'old', 'sources'), { recursive: true })
-  mkdirSync(resolve(directory, 'old', 'assets'), { recursive: true })
+  mkdirSync(resolve(directory, 'old-app', 'sources'), { recursive: true })
+  mkdirSync(resolve(directory, 'old-worker', 'assets'), { recursive: true })
   mkdirSync(resolve(directory, 'volumes'), { recursive: true })
-  writeFileSync(resolve(directory, 'old', 'sources', 'source.pdf'), 'source')
-  writeFileSync(resolve(directory, 'old', 'assets', 'asset.png'), 'asset')
+  writeFileSync(resolve(directory, 'old-app', 'sources', 'source.pdf'), 'source')
+  writeFileSync(resolve(directory, 'old-worker', 'assets', 'asset.png'), 'asset')
   writeFileSync(resolve(directory, 'expected-sources'), `${encodeFilename('source.pdf')}\n`)
   writeFileSync(resolve(directory, 'expected-assets'), `${encodeFilename('asset.png')}\n`)
   writeFileSync(resolve(directory, '.env'), 'POSTGRES_USER=ivybm\nPOSTGRES_DB=ivybm\n')
@@ -43,9 +43,14 @@ printf '\n' >>"$root/docker.log"
 case "\${1-}" in
   inspect)
     if [[ "\${2-}" == '-f' ]]; then
-      printf 'false\n'
+      container="\${@: -1}"
+      if [[ "$container" == 'old-worker' && -e "$root/worker-running" ]]; then
+        printf 'true\n'
+      else
+        printf 'false\n'
+      fi
     else
-      [[ "\${2-}" == 'old-app' ]]
+      [[ "\${2-}" == 'old-app' || "\${2-}" == 'old-worker' ]]
     fi
     ;;
   volume)
@@ -61,11 +66,15 @@ case "\${1-}" in
   cp)
     source="$2"
     destination="$3"
-    if [[ "$source" == *knowledge-sources* ]]; then
-      cp -a "$root/old/sources/." "$destination"
-    else
-      cp -a "$root/old/assets/." "$destination"
-    fi
+    case "$source" in
+      old-app:/app/private/knowledge-sources/.)
+        cp -a "$root/old-app/sources/." "$destination"
+        ;;
+      old-worker:/app/private/knowledge-source-assets/.)
+        cp -a "$root/old-worker/assets/." "$destination"
+        ;;
+      *) exit 65 ;;
+    esac
     ;;
   compose)
     arguments="$*"
@@ -123,7 +132,12 @@ esac
   const run = () =>
     spawnSync(
       'bash',
-      ['./scripts/migrate-production-knowledge-volumes.sh', resolve(directory, '.env'), 'old-app'],
+      [
+        './scripts/migrate-production-knowledge-volumes.sh',
+        resolve(directory, '.env'),
+        'old-app',
+        'old-worker',
+      ],
       {
         cwd: projectRoot,
         encoding: 'utf8',
@@ -154,6 +168,8 @@ describe('production knowledge volume migration', () => {
       existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets', 'asset.png')),
     ).toBe(true)
     const log = readFileSync(resolve(directory, 'docker.log'), 'utf8')
+    expect(log).toContain('cp old-app:/app/private/knowledge-sources/.')
+    expect(log).toContain('cp old-worker:/app/private/knowledge-source-assets/.')
     expect(log).toContain('chown\\ -R\\ 1001:1001')
     expect(log).toContain('stat\\ -c\\ %u:%g\\ /target')
   })
@@ -194,5 +210,33 @@ describe('production knowledge volume migration', () => {
     const log = readFileSync(resolve(directory, 'docker.log'), 'utf8')
     expect(log).toContain('volume rm ivybm-prod-knowledge-sources')
     expect(log).toContain('volume rm ivybm-prod-knowledge-source-assets')
+  })
+
+  it('requires both legacy containers to be stopped', () => {
+    const { directory, run } = createHarness()
+    writeFileSync(resolve(directory, 'worker-running'), '')
+
+    const result = run()
+
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain(
+      'Stop the old container before exporting knowledge files: old-worker',
+    )
+    expect(existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources'))).toBe(false)
+  })
+
+  it('allows a missing legacy worker assets directory only when the asset manifest is empty', () => {
+    const { directory, run } = createHarness()
+    writeFileSync(resolve(directory, 'expected-assets'), '')
+    rmSync(resolve(directory, 'old-worker', 'assets'), { recursive: true })
+
+    const result = run()
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain(
+      'No database-referenced knowledge assets; skipping legacy worker asset export.',
+    )
+    const log = readFileSync(resolve(directory, 'docker.log'), 'utf8')
+    expect(log).not.toContain('cp old-worker:/app/private/knowledge-source-assets/.')
   })
 })

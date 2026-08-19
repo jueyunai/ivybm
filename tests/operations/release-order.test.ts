@@ -18,7 +18,7 @@ describe('production release order', () => {
     const verifyCommand = './scripts/verify-production-backup.sh .env'
     const restoreCommand = './scripts/restore-production-backup-check.sh "$offsite_dir"'
     const knowledgeMigrationCommand =
-      './scripts/migrate-production-knowledge-volumes.sh .env "$old_app_container"'
+      './scripts/migrate-production-knowledge-volumes.sh .env "$old_app_container" "$old_worker_container"'
     const migrateCommand = `${compose} up --exit-code-from migrate migrate`
     const startServicesCommand = `${compose} up -d --wait --wait-timeout 120 app worker`
 
@@ -86,6 +86,12 @@ describe('production release order', () => {
     expect(knowledgeMigrationScript).toContain('Refusing to overwrite existing volume')
     expect(knowledgeMigrationScript).toContain('knowledge_source_documents')
     expect(knowledgeMigrationScript).toContain('knowledge_source_assets')
+    expect(knowledgeMigrationScript).toContain(
+      'docker cp "$old_app_container:/app/private/knowledge-sources/."',
+    )
+    expect(knowledgeMigrationScript).toContain(
+      'docker cp "$old_worker_container:/app/private/knowledge-source-assets/."',
+    )
     expect(knowledgeMigrationScript).toContain('chown -R 1001:1001')
     expect(knowledgeMigrationScript).toContain('verify_volume')
     expect(knowledgeMigrationScript).toContain("grep -q '[[:cntrl:]]'")
