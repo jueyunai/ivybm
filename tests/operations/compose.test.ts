@@ -261,6 +261,18 @@ describe('production Compose configuration', () => {
     )
   })
 
+  it('shares the Media volume between app and worker for platform publishing', () => {
+    for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
+      const appMount = config.services.app.volumes?.find((volume) => volume.target === '/app/media')
+      const workerMount = config.services.worker.volumes?.find(
+        (volume) => volume.target === '/app/media',
+      )
+      expect(appMount).toEqual(expect.objectContaining({ target: '/app/media', type: 'volume' }))
+      expect(workerMount).toEqual(expect.objectContaining({ target: '/app/media', type: 'volume' }))
+      expect(workerMount?.source).toBe(appMount?.source)
+    }
+  })
+
   it('waits for a successful migration and keeps resource, health, and log guards', () => {
     const config = getProductionComposeConfig()
 

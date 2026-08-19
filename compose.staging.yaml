@@ -146,6 +146,7 @@ services:
       migrate:
         condition: service_completed_successfully
     volumes:
+      - media_data:/app/media
       - knowledge_sources_data:/app/private/knowledge-sources
       - knowledge_source_assets_data:/app/private/knowledge-source-assets
     logging: *app-logging

@@ -17,6 +17,8 @@ describe('production release order', () => {
     const backupCommand = 'backup_dir="$(./scripts/backup-production.sh .env)"'
     const verifyCommand = './scripts/verify-production-backup.sh .env'
     const restoreCommand = './scripts/restore-production-backup-check.sh "$offsite_dir"'
+    const knowledgeMigrationCommand =
+      './scripts/migrate-production-knowledge-volumes.sh .env "$old_app_container"'
     const migrateCommand = `${compose} up --exit-code-from migrate migrate`
     const startServicesCommand = `${compose} up -d --wait --wait-timeout 120 app worker`
 
@@ -28,6 +30,12 @@ describe('production release order', () => {
     expect(handbook.indexOf(verifyCommand)).toBeLessThan(handbook.indexOf(migrateCommand))
     expect(handbook.indexOf(restoreCommand)).toBeGreaterThan(handbook.indexOf(verifyCommand))
     expect(handbook.indexOf(restoreCommand)).toBeLessThan(handbook.indexOf(migrateCommand))
+    expect(handbook.indexOf(knowledgeMigrationCommand)).toBeGreaterThan(
+      handbook.indexOf(stopServicesCommand),
+    )
+    expect(handbook.indexOf(knowledgeMigrationCommand)).toBeLessThan(
+      handbook.indexOf(startServicesCommand),
+    )
     expect(handbook.indexOf(startServicesCommand)).toBeGreaterThan(handbook.indexOf(migrateCommand))
   })
 
@@ -43,6 +51,10 @@ describe('production release order', () => {
     )
     const restoreScript = readFileSync(
       resolve(projectRoot, 'scripts/restore-production-backup-check.sh'),
+      'utf8',
+    )
+    const knowledgeMigrationScript = readFileSync(
+      resolve(projectRoot, 'scripts/migrate-production-knowledge-volumes.sh'),
       'utf8',
     )
 
@@ -69,6 +81,11 @@ describe('production release order', () => {
     expect(restoreScript).toContain('media.tar.gz')
     expect(restoreScript).toContain('knowledge-sources.tar.gz')
     expect(restoreScript).toContain('knowledge-source-assets.tar.gz')
+    expect(knowledgeMigrationScript).toContain('Refusing to overwrite existing volume')
+    expect(knowledgeMigrationScript).toContain('knowledge_source_documents')
+    expect(knowledgeMigrationScript).toContain('knowledge_source_assets')
+    expect(knowledgeMigrationScript).toContain('chown -R 1001:1001')
+    expect(knowledgeMigrationScript).toContain('verify_volume')
   })
 
   it('strips caller release variables before invoking Compose', () => {
