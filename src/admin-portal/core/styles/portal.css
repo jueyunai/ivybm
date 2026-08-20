@@ -3502,164 +3502,288 @@
   }
 
   .portal-conversations__intro {
+    display: flex;
     align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
   }
 
   .portal-conversations__metrics {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
+    gap: 12px;
   }
 
-  .portal-conversations__metrics .portal-surface {
+  .portal-conversations__metric-card {
     display: flex;
-    min-height: 78px;
-    align-items: flex-end;
+    flex-direction: column;
     justify-content: space-between;
-    padding: 13px;
+    min-height: 84px;
+    padding: 12px 14px;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-card);
+    background: var(--portal-surface);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
   }
 
-  .portal-conversations__metrics span {
+  .portal-conversations__metric-card:hover {
+    border-color: var(--portal-ink-2);
+    box-shadow: 0 2px 8px rgb(15 23 42 / 6%);
+    transform: translateY(-1px);
+  }
+
+  .portal-conversations__metric-card:focus-visible {
+    outline: 2px solid var(--portal-accent);
+    outline-offset: 2px;
+  }
+
+  .portal-conversations__metric-card.is-active {
+    border-color: var(--portal-accent);
+    background: var(--portal-surface);
+    box-shadow: 0 0 0 1px var(--portal-accent), 0 2px 8px rgb(79 70 229 / 10%);
+  }
+
+  .portal-conversations__metric-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .portal-conversations__metric-label {
     color: var(--portal-muted);
-    font-size: 10px;
+    font-size: 11px;
+    font-weight: 500;
   }
 
-  .portal-conversations__metrics strong {
+  .portal-conversations__metric-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-surface-subtle);
+    color: var(--portal-ink-2);
+  }
+
+  .portal-conversations__metric-card--info .portal-conversations__metric-icon {
+    background: var(--portal-info-soft);
+    color: var(--portal-info);
+  }
+
+  .portal-conversations__metric-card--warning .portal-conversations__metric-icon {
+    background: var(--portal-warning-soft);
+    color: var(--portal-warning);
+  }
+
+  .portal-conversations__metric-card--success .portal-conversations__metric-icon {
+    background: var(--portal-success-soft);
+    color: var(--portal-success);
+  }
+
+  .portal-conversations__metric-card--neutral .portal-conversations__metric-icon {
+    background: var(--portal-surface-subtle);
+    color: var(--portal-muted);
+  }
+
+  .portal-conversations__metric-count {
+    margin-top: 8px;
+    color: var(--portal-ink);
     font-family: var(--portal-font-data);
     font-size: 24px;
+    font-weight: 600;
+    line-height: 1;
   }
 
   .portal-conversations__toolbar {
     display: flex;
-    align-items: end;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-card);
+    background: var(--portal-surface);
   }
 
-  .portal-conversations__toolbar label {
-    display: grid;
-    gap: 5px;
+  .portal-conversations__toolbar-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     color: var(--portal-ink-2);
-    font-size: 10px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .portal-conversations__toolbar-icon {
+    color: var(--portal-muted);
   }
 
   .portal-conversations__toolbar select {
-    min-width: 210px;
-    height: 34px;
-    padding: 0 9px;
+    min-width: 180px;
+    height: 32px;
+    padding: 0 10px;
     border: 1px solid var(--portal-border);
     border-radius: var(--portal-radius-control);
     background: var(--portal-surface);
     color: var(--portal-ink);
+    font-size: 12px;
   }
 
-  .portal-conversations__toolbar > span {
+  .portal-conversations__toolbar select:focus-visible {
+    outline: 2px solid var(--portal-accent);
+    outline-offset: 1px;
+  }
+
+  .portal-conversations__count-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-surface-subtle);
     color: var(--portal-muted);
     font-family: var(--portal-font-data);
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .portal-conversations__workspace {
     display: grid;
-    min-height: 620px;
-    grid-template-columns: minmax(280px, 0.35fr) minmax(0, 0.65fr);
-    gap: 12px;
+    min-height: 640px;
+    grid-template-columns: minmax(310px, 0.36fr) minmax(0, 0.64fr);
+    gap: 14px;
+    align-items: stretch;
   }
 
   .portal-conversations__inbox,
   .portal-conversations__detail {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
     overflow: hidden;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-card);
+    background: var(--portal-surface);
   }
 
-  .portal-conversations__panel-heading,
-  .portal-conversations__detail-heading {
+  .portal-conversations__panel-heading {
     display: flex;
-    min-height: 55px;
+    min-height: 52px;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 12px 14px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--portal-border);
+    background: var(--portal-surface);
   }
 
-  .portal-conversations__panel-heading > div,
-  .portal-conversations__detail-heading > div {
+  .portal-conversations__panel-heading > div {
     display: flex;
-    min-width: 0;
     align-items: center;
     gap: 8px;
+    color: var(--portal-ink);
   }
 
-  .portal-conversations__panel-heading h3,
-  .portal-conversations__detail-heading h3,
-  .portal-conversations__detail-heading p {
+  .portal-conversations__panel-heading h3 {
     margin: 0;
-  }
-
-  .portal-conversations__panel-heading h3,
-  .portal-conversations__detail-heading h3 {
     font-size: 13px;
+    font-weight: 600;
   }
 
-  .portal-conversations__panel-heading > span,
-  .portal-conversations__detail-heading p {
+  .portal-conversations__panel-heading > span {
     color: var(--portal-muted);
     font-family: var(--portal-font-data);
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .portal-conversations__list {
-    display: grid;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
     margin: 0;
-    padding: 7px;
+    padding: 6px;
     list-style: none;
+    overflow-y: auto;
   }
 
   .portal-conversations__list li + li {
-    border-top: 1px solid var(--portal-border);
+    margin-top: 4px;
   }
 
-  .portal-conversations__list button {
-    display: grid;
+  .portal-conversations__list-item {
+    display: flex;
+    flex-direction: column;
     width: 100%;
-    min-height: 76px;
-    gap: 4px;
-    padding: 10px;
-    border: 0;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid transparent;
     border-radius: var(--portal-radius-control);
     background: transparent;
     color: var(--portal-ink);
     text-align: start;
     cursor: pointer;
+    transition: all 0.12s ease;
   }
 
-  .portal-conversations__list button:hover,
-  .portal-conversations__list button.is-selected {
+  .portal-conversations__list-item:hover {
+    border-color: var(--portal-border);
+    background: var(--portal-surface-subtle);
+  }
+
+  .portal-conversations__list-item.is-selected {
+    border-color: var(--portal-accent);
     background: var(--portal-accent-soft);
+    box-shadow: inset 3px 0 0 var(--portal-accent);
+  }
+
+  .portal-conversations__list-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .portal-conversations__list-channel-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--portal-ink-2);
+    font-size: 11px;
+    font-weight: 500;
   }
 
   .portal-conversations__list-title {
     display: flex;
-    min-width: 0;
     align-items: center;
-    justify-content: space-between;
-    gap: 6px;
   }
 
-  .portal-conversations__list strong {
+  .portal-conversations__list-title strong {
     overflow: hidden;
+    color: var(--portal-ink);
     font-family: var(--portal-font-data);
-    font-size: 10px;
+    font-size: 12px;
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .portal-conversations__list button > span:not(.portal-conversations__list-title),
-  .portal-conversations__list time {
+  .portal-conversations__list-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     color: var(--portal-muted);
-    font-size: 9px;
+    font-size: 10px;
+  }
+
+  .portal-conversations__list-locale,
+  .portal-conversations__list-footer time {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--portal-font-data);
   }
 
   .portal-conversations__pagination {
@@ -3667,142 +3791,389 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 10px;
+    padding: 10px 14px;
     border-top: 1px solid var(--portal-border);
+    background: var(--portal-surface);
   }
 
   .portal-conversations__pagination > span {
     color: var(--portal-muted);
     font-family: var(--portal-font-data);
-    font-size: 9px;
+    font-size: 11px;
+  }
+
+  .portal-conversations__detail-heading {
+    display: flex;
+    min-height: 60px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--portal-border);
+    background: var(--portal-surface);
+  }
+
+  .portal-conversations__detail-lead {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .portal-conversations__channel-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--portal-radius-card);
+    background: var(--portal-accent-soft);
+    color: var(--portal-accent);
+    flex-shrink: 0;
+  }
+
+  .portal-conversations__channel-avatar.is-facebook {
+    background: #1877F2;
+    color: #FFFFFF;
+  }
+
+  .portal-conversations__channel-avatar.is-instagram {
+    background: linear-gradient(45deg, #F58529, #DD2A7B, #8134AF);
+    color: #FFFFFF;
+  }
+
+  .portal-conversations__channel-avatar.is-tiktok {
+    background: #000000;
+    color: #FFFFFF;
+  }
+
+  .portal-conversations__channel-avatar.is-whatsapp {
+    background: #25D366;
+    color: #FFFFFF;
+  }
+
+  .portal-conversations__channel-avatar.is-website {
+    background: var(--portal-accent);
+    color: #FFFFFF;
+  }
+
+  .portal-conversations__detail-title-group {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .portal-conversations__detail-title-group h3 {
+    margin: 0;
+    font-family: var(--portal-font-data);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .portal-conversations__detail-sub {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: var(--portal-muted);
+    font-size: 11px;
+  }
+
+  .portal-conversations__dot {
+    opacity: 0.6;
   }
 
   .portal-conversations__metadata {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
     margin: 0;
-    padding: 10px 14px;
+    padding: 10px 18px;
     border-bottom: 1px solid var(--portal-border);
+    background: var(--portal-canvas);
   }
 
-  .portal-conversations__metadata > div {
-    display: grid;
-    gap: 3px;
+  .portal-conversations__meta-chip {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 10px;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-surface);
   }
 
-  .portal-conversations__metadata dt {
+  .portal-conversations__meta-chip dt {
     color: var(--portal-muted);
-    font-size: 8px;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
-  .portal-conversations__metadata dd {
+  .portal-conversations__meta-chip dd {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     margin: 0;
     overflow: hidden;
+    color: var(--portal-ink);
     font-family: var(--portal-font-data);
-    font-size: 9px;
+    font-size: 11px;
+    font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .portal-conversations__feedback {
-    margin: 10px 14px 0;
-    padding: 8px 10px;
+    margin: 10px 18px 0;
+    padding: 8px 12px;
     border-radius: var(--portal-radius-control);
     background: var(--portal-info-soft);
     color: var(--portal-info);
-    font-size: 10px;
+    font-size: 12px;
+    font-weight: 500;
   }
 
   .portal-conversations__timeline {
-    display: grid;
-    max-height: 430px;
-    gap: 9px;
-    overflow: auto;
-    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 320px;
+    max-height: 480px;
+    gap: 12px;
+    overflow-y: auto;
+    padding: 18px;
+    background: var(--portal-canvas);
   }
 
-  .portal-conversations__timeline article {
-    width: min(82%, 620px);
-    padding: 10px 12px;
+  .portal-conversations__bubble {
+    display: flex;
+    flex-direction: column;
+    width: min(85%, 600px);
+    padding: 12px 14px;
     border: 1px solid var(--portal-border);
     border-radius: var(--portal-radius-card);
-    background: var(--portal-surface-subtle);
+    background: var(--portal-surface);
+    box-shadow: 0 1px 3px rgb(15 23 42 / 4%);
   }
 
-  .portal-conversations__timeline article.is-operator {
-    justify-self: end;
+  .portal-conversations__bubble.is-visitor {
+    align-self: flex-start;
+    border-color: var(--portal-border);
+    background: var(--portal-surface);
+  }
+
+  .portal-conversations__bubble.is-ai {
+    align-self: flex-start;
+    border-color: #D4D0F8;
+    background: #FAF9FF;
+  }
+
+  .portal-conversations__bubble.is-operator {
+    align-self: flex-end;
     border-color: var(--portal-accent);
     background: var(--portal-accent-soft);
   }
 
-  .portal-conversations__timeline article.is-system {
-    width: 100%;
+  .portal-conversations__bubble.is-system {
+    align-self: center;
+    width: min(90%, 500px);
+    border-color: var(--portal-warning);
     background: var(--portal-warning-soft);
+    text-align: center;
   }
 
-  .portal-conversations__timeline article header {
+  .portal-conversations__bubble-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    margin-bottom: 6px;
   }
 
-  .portal-conversations__timeline article strong,
-  .portal-conversations__timeline article time {
-    font-size: 9px;
+  .portal-conversations__bubble-author {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
-  .portal-conversations__timeline article time {
+  .portal-conversations__author-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--portal-surface-subtle);
+    color: var(--portal-ink-2);
+  }
+
+  .portal-conversations__bubble.is-ai .portal-conversations__author-avatar {
+    background: #EBE8FD;
+    color: var(--portal-accent);
+  }
+
+  .portal-conversations__bubble.is-operator .portal-conversations__author-avatar {
+    background: var(--portal-accent);
+    color: #FFFFFF;
+  }
+
+  .portal-conversations__bubble.is-system .portal-conversations__author-avatar {
+    background: var(--portal-warning);
+    color: #FFFFFF;
+  }
+
+  .portal-conversations__bubble-author strong {
+    color: var(--portal-ink);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .portal-conversations__bubble-header time {
     color: var(--portal-muted);
     font-family: var(--portal-font-data);
+    font-size: 10px;
   }
 
-  .portal-conversations__timeline article p,
-  .portal-conversations__timeline article ul,
-  .portal-conversations__empty-messages {
-    margin: 7px 0 0;
-    color: var(--portal-ink-2);
-    font-size: 11px;
+  .portal-conversations__bubble-content p {
+    margin: 0;
+    color: var(--portal-ink);
+    font-size: 13px;
+    line-height: 1.6;
     white-space: pre-wrap;
+    word-break: break-word;
   }
 
-  .portal-conversations__timeline article ul {
-    padding-left: 16px;
+  .portal-conversations__citations {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--portal-border);
+  }
+
+  .portal-conversations__citations-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     color: var(--portal-muted);
-    font-size: 9px;
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  .portal-conversations__citations ul {
+    margin: 4px 0 0;
+    padding-left: 16px;
+    color: var(--portal-ink-2);
+    font-size: 10px;
+  }
+
+  .portal-conversations__empty-messages {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: auto;
+    padding: 32px;
+    color: var(--portal-muted);
+    text-align: center;
+  }
+
+  .portal-conversations__empty-messages p {
+    margin: 0;
+    font-size: 12px;
   }
 
   .portal-conversations__composer {
     display: flex;
-    align-items: flex-end;
+    flex-direction: column;
     gap: 10px;
-    padding: 12px 14px;
+    padding: 14px 18px;
     border-top: 1px solid var(--portal-border);
+    background: var(--portal-surface);
+  }
+
+  .portal-conversations__takeover-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 1px solid #D4D0F8;
+    border-radius: var(--portal-radius-card);
+    background: #FAF9FF;
+  }
+
+  .portal-conversations__takeover-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--portal-ink-2);
+    font-size: 12px;
+  }
+
+  .portal-conversations__takeover-icon {
+    color: var(--portal-accent);
+    flex-shrink: 0;
+  }
+
+  .portal-conversations__takeover-info p {
+    margin: 0;
   }
 
   .portal-conversations__reply {
     display: flex;
-    min-width: 0;
-    flex: 1;
-    align-items: flex-end;
-    gap: 8px;
+    flex-direction: column;
+    gap: 10px;
   }
 
-  .portal-conversations__reply label {
-    flex: 1;
+  .portal-conversations__reply-field {
+    display: block;
+    width: 100%;
   }
 
   .portal-conversations__reply textarea {
     display: block;
     width: 100%;
-    min-height: 74px;
+    min-height: 80px;
     resize: vertical;
-    padding: 9px;
+    padding: 10px 12px;
     border: 1px solid var(--portal-border);
     border-radius: var(--portal-radius-control);
     background: var(--portal-surface);
     color: var(--portal-ink);
-    font: inherit;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .portal-conversations__reply textarea:focus-visible {
+    outline: 2px solid var(--portal-accent);
+    outline-offset: 1px;
+  }
+
+  .portal-conversations__reply-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .portal-conversations__shortcut-hint {
+    color: var(--portal-muted);
+    font-size: 11px;
+  }
+
+  .portal-conversations__reply-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .portal-conversations__standalone-resolve {
+    display: flex;
+    justify-content: flex-end;
   }
 
   .portal-leads {
@@ -5235,7 +5606,7 @@
     gap: 7px;
   }
 
-  .portal-conversations__metrics .portal-surface {
+  .portal-conversations__metric-card {
     min-height: 66px;
     padding: 10px;
   }
@@ -5258,7 +5629,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .portal-conversations__timeline article {
+  .portal-conversations__bubble {
     width: 100%;
   }
 
