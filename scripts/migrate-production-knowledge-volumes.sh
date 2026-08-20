@@ -199,58 +199,50 @@ query_expected() {
 query_expected knowledge_source_documents "$temporary_dir/expected-sources.encoded" "$temporary_dir/expected-sources"
 query_expected knowledge_source_assets "$temporary_dir/expected-assets.encoded" "$temporary_dir/expected-assets"
 
-export_legacy_sources() {
-  local check_status=0
-  docker exec "$old_app_container" test -d /app/private/knowledge-sources >/dev/null 2>&1 || check_status=$?
+export_legacy_directory() {
+  local container="$1" rootfs_path="$2" destination="$3" expected_file="$4" label="$5"
+  local archive="$temporary_dir/$label-rootfs.tar"
+  local relative_path="${rootfs_path#/}" archive_member=""
 
-  if ((check_status == 0)); then
-    if docker cp "$old_app_container:/app/private/knowledge-sources/." "$temporary_dir/sources/" 2>/dev/null; then
-      return 0
-    fi
-    echo "Failed to export legacy knowledge sources directory from $old_app_container:/app/private/knowledge-sources" >&2
+  docker export --output "$archive" "$container" || {
+    echo "Failed to export stopped legacy container rootfs: $container" >&2
+    return 1
+  }
+  tar --list --file "$archive" >/dev/null 2>&1 || {
+    echo "Invalid rootfs archive exported from stopped legacy container: $container" >&2
+    return 1
+  }
+
+  if tar --list --file "$archive" "$relative_path" >/dev/null 2>&1; then
+    archive_member="$relative_path"
+  elif tar --list --file "$archive" "./$relative_path" >/dev/null 2>&1; then
+    archive_member="./$relative_path"
+  elif [[ ! -s "$expected_file" ]]; then
+    echo "Legacy $label directory is missing from $container, and database manifest is empty; proceeding with empty directory."
+    return 0
+  else
+    echo "Legacy $label directory is missing from $container while database manifest is not empty" >&2
     return 1
   fi
 
-  if ((check_status == 1)); then
-    if [[ ! -s "$temporary_dir/expected-sources" ]]; then
-      echo "Legacy knowledge sources directory is missing from $old_app_container, and database manifest is empty; proceeding with empty directory."
-      return 0
-    fi
-    echo "Failed to export legacy knowledge sources directory from $old_app_container:/app/private/knowledge-sources while database manifest is not empty" >&2
+  tar --extract --file "$archive" --directory "$destination" --strip-components=3 "$archive_member" || {
+    echo "Failed to extract legacy $label directory from stopped container rootfs: $container" >&2
     return 1
-  fi
-
-  echo "Failed to inspect legacy knowledge sources directory in $old_app_container:/app/private/knowledge-sources" >&2
-  return 1
+  }
 }
 
-export_legacy_assets() {
-  local check_status=0
-  docker exec "$old_worker_container" test -d /app/private/knowledge-source-assets >/dev/null 2>&1 || check_status=$?
-
-  if ((check_status == 0)); then
-    if docker cp "$old_worker_container:/app/private/knowledge-source-assets/." "$temporary_dir/assets/" 2>/dev/null; then
-      return 0
-    fi
-    echo "Failed to export legacy knowledge source assets directory from $old_worker_container:/app/private/knowledge-source-assets" >&2
-    return 1
-  fi
-
-  if ((check_status == 1)); then
-    if [[ ! -s "$temporary_dir/expected-assets" ]]; then
-      echo "Legacy knowledge source assets directory is missing from $old_worker_container, and database manifest is empty; proceeding with empty directory."
-      return 0
-    fi
-    echo "Failed to export legacy knowledge source assets directory from $old_worker_container:/app/private/knowledge-source-assets while database manifest is not empty" >&2
-    return 1
-  fi
-
-  echo "Failed to inspect legacy knowledge source assets directory in $old_worker_container:/app/private/knowledge-source-assets" >&2
-  return 1
-}
-
-export_legacy_sources
-export_legacy_assets
+export_legacy_directory \
+  "$old_app_container" \
+  /app/private/knowledge-sources \
+  "$temporary_dir/sources" \
+  "$temporary_dir/expected-sources" \
+  'knowledge sources'
+export_legacy_directory \
+  "$old_worker_container" \
+  /app/private/knowledge-source-assets \
+  "$temporary_dir/assets" \
+  "$temporary_dir/expected-assets" \
+  'knowledge source assets'
 
 verify_expected() {
   local expected_file="$1" root="$2"

@@ -86,12 +86,10 @@ describe('production release order', () => {
     expect(knowledgeMigrationScript).toContain('Refusing to overwrite existing volume')
     expect(knowledgeMigrationScript).toContain('knowledge_source_documents')
     expect(knowledgeMigrationScript).toContain('knowledge_source_assets')
-    expect(knowledgeMigrationScript).toContain(
-      'docker cp "$old_app_container:/app/private/knowledge-sources/."',
-    )
-    expect(knowledgeMigrationScript).toContain(
-      'docker cp "$old_worker_container:/app/private/knowledge-source-assets/."',
-    )
+    expect(knowledgeMigrationScript).toContain('docker export --output "$archive" "$container"')
+    expect(knowledgeMigrationScript).toContain('tar --list --file "$archive"')
+    expect(knowledgeMigrationScript).toContain('tar --extract --file "$archive"')
+    expect(knowledgeMigrationScript).not.toContain('docker exec')
     expect(knowledgeMigrationScript).toContain('chown -R 1001:1001')
     expect(knowledgeMigrationScript).toContain('verify_volume')
     expect(knowledgeMigrationScript).toContain("grep -q '[[:cntrl:]]'")

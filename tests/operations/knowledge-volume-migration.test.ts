@@ -16,6 +16,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const temporaryDirectories: string[] = []
+const temporaryDockerContainers: string[] = []
+const temporaryDockerImages: string[] = []
+const dockerAvailable = spawnSync('docker', ['info'], { encoding: 'utf8' }).status === 0
 
 const encodeFilename = (filename: string): string => Buffer.from(filename).toString('base64')
 
@@ -54,32 +57,35 @@ case "\${1-}" in
     fi
     ;;
   exec)
-    if [[ -e "$root/fail-exec" ]]; then
+    exit 1
+    ;;
+  export)
+    [[ "$2" == '--output' ]]
+    output="$3"
+    container="$4"
+    if [[ -e "$root/fail-export" || -e "$root/fail-$container-export" ]]; then
       exit 125
     fi
-    container="$2"
-    shift 2
-    if [[ "$1" == 'test' && "$2" == '-d' ]]; then
-      dir="$3"
-      case "$container:$dir" in
-        old-app:/app/private/knowledge-sources)
-          if [[ -d "$root/old-app/sources" ]]; then
-            exit 0
-          else
-            exit 1
-          fi
-          ;;
-        old-worker:/app/private/knowledge-source-assets)
-          if [[ -d "$root/old-worker/assets" ]]; then
-            exit 0
-          else
-            exit 1
-          fi
-          ;;
-        *) exit 1 ;;
-      esac
+    if [[ -e "$root/corrupt-$container-export" ]]; then
+      printf 'not a tar archive' >"$output"
+      exit 0
     fi
-    exit 64
+    export_root="$(mktemp -d "$root/export-root.XXXXXX")"
+    mkdir -p "$export_root/app/private"
+    case "$container" in
+      old-app)
+        if [[ -d "$root/old-app/sources" ]]; then
+          cp -a "$root/old-app/sources" "$export_root/app/private/knowledge-sources"
+        fi
+        ;;
+      old-worker)
+        if [[ -d "$root/old-worker/assets" ]]; then
+          cp -a "$root/old-worker/assets" "$export_root/app/private/knowledge-source-assets"
+        fi
+        ;;
+      *) exit 66 ;;
+    esac
+    tar -cf "$output" -C "$export_root" app
     ;;
   volume)
     action="$2"
@@ -108,33 +114,6 @@ case "\${1-}" in
     if [[ -e "$root/volume-attached" ]]; then
       printf 'new-app-container\n'
     fi
-    ;;
-  cp)
-    source="$2"
-    destination="$3"
-    case "$source" in
-      old-app:/app/private/knowledge-sources/.)
-        if [[ -e "$root/fail-sources-cp" ]]; then
-          exit 1
-        fi
-        if [[ -d "$root/old-app/sources" ]]; then
-          cp -a "$root/old-app/sources/." "$destination"
-        else
-          exit 1
-        fi
-        ;;
-      old-worker:/app/private/knowledge-source-assets/.)
-        if [[ -e "$root/fail-assets-cp" ]]; then
-          exit 1
-        fi
-        if [[ -d "$root/old-worker/assets" ]]; then
-          cp -a "$root/old-worker/assets/." "$destination"
-        else
-          exit 1
-        fi
-        ;;
-      *) exit 65 ;;
-    esac
     ;;
   compose)
     arguments="$*"
@@ -219,12 +198,83 @@ esac
 }
 
 afterEach(() => {
+  for (const container of temporaryDockerContainers.splice(0)) {
+    spawnSync('docker', ['container', 'rm', '--force', container], { encoding: 'utf8' })
+  }
+  for (const image of temporaryDockerImages.splice(0)) {
+    spawnSync('docker', ['image', 'rm', '--force', image], { encoding: 'utf8' })
+  }
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { force: true, recursive: true })
   }
 })
 
 describe('production knowledge volume migration', () => {
+  it.runIf(dockerAvailable)(
+    'exports and extracts a target directory from a real stopped Docker container',
+    () => {
+      const directory = mkdtempSync(resolve(tmpdir(), 'ivybm-stopped-container-export-'))
+      temporaryDirectories.push(directory)
+      const rootfs = resolve(directory, 'rootfs')
+      const extracted = resolve(directory, 'extracted')
+      const importArchive = resolve(directory, 'import.tar')
+      const exportArchive = resolve(directory, 'export.tar')
+      mkdirSync(resolve(rootfs, 'app', 'private', 'knowledge-sources'), { recursive: true })
+      mkdirSync(extracted, { recursive: true })
+      writeFileSync(
+        resolve(rootfs, 'app', 'private', 'knowledge-sources', 'orphan.pdf'),
+        'orphan-source',
+      )
+
+      expect(
+        spawnSync('tar', ['-cf', importArchive, '-C', rootfs, '.'], { encoding: 'utf8' }).status,
+      ).toBe(0)
+      const imported = spawnSync('docker', ['image', 'import', importArchive], {
+        encoding: 'utf8',
+      })
+      expect(imported.status).toBe(0)
+      const image = imported.stdout.trim()
+      temporaryDockerImages.push(image)
+
+      const created = spawnSync('docker', ['container', 'create', image, '/bin/true'], {
+        encoding: 'utf8',
+      })
+      expect(created.status).toBe(0)
+      const container = created.stdout.trim()
+      temporaryDockerContainers.push(container)
+      expect(
+        spawnSync('docker', ['inspect', '-f', '{{.State.Running}}', container], {
+          encoding: 'utf8',
+        }).stdout.trim(),
+      ).toBe('false')
+      expect(
+        spawnSync('docker', ['exec', container, 'test', '-d', '/app/private/knowledge-sources'])
+          .status,
+      ).not.toBe(0)
+      expect(
+        spawnSync('docker', ['export', '--output', exportArchive, container], {
+          encoding: 'utf8',
+        }).status,
+      ).toBe(0)
+      expect(
+        spawnSync(
+          'tar',
+          [
+            '--extract',
+            '--file',
+            exportArchive,
+            '--directory',
+            extracted,
+            '--strip-components=3',
+            'app/private/knowledge-sources',
+          ],
+          { encoding: 'utf8' },
+        ).status,
+      ).toBe(0)
+      expect(readFileSync(resolve(extracted, 'orphan.pdf'), 'utf8')).toBe('orphan-source')
+    },
+  )
+
   it('exports every database-referenced file and verifies imported ownership', () => {
     const { directory, run } = createHarness()
     const result = run()
@@ -238,10 +288,11 @@ describe('production knowledge volume migration', () => {
       existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets', 'asset.png')),
     ).toBe(true)
     const log = readFileSync(resolve(directory, 'docker.log'), 'utf8')
-    expect(log).toContain('exec old-app test -d /app/private/knowledge-sources')
-    expect(log).toContain('exec old-worker test -d /app/private/knowledge-source-assets')
-    expect(log).toContain('cp old-app:/app/private/knowledge-sources/.')
-    expect(log).toContain('cp old-worker:/app/private/knowledge-source-assets/.')
+    expect(log).toContain('export --output')
+    expect(log).toContain('old-app')
+    expect(log).toContain('old-worker')
+    expect(log).not.toContain('exec old-app')
+    expect(log).not.toContain('exec old-worker')
     expect(log).toContain('chown\\ -R\\ 1001:1001')
     expect(log).toContain('stat\\ -c\\ %u:%g\\ /target')
     expect(log).not.toMatch(/\{RANDOM\}/)
@@ -433,42 +484,32 @@ describe('production knowledge volume migration', () => {
     )
   })
 
-  it('fails when legacy sources directory exists but docker cp fails even if database manifest is empty', () => {
+  it('fails closed when stopped legacy container rootfs export fails', () => {
     const { directory, run } = createHarness()
     writeFileSync(resolve(directory, 'expected-sources'), '')
-    writeFileSync(resolve(directory, 'fail-sources-cp'), '')
+    writeFileSync(resolve(directory, 'fail-old-app-export'), '')
 
     const result = run()
 
     expect(result.status).not.toBe(0)
-    expect(result.stderr).toContain('Failed to export legacy knowledge sources directory')
+    expect(result.stderr).toContain('Failed to export stopped legacy container rootfs: old-app')
     expect(existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources'))).toBe(false)
   })
 
-  it('fails when legacy assets directory exists but docker cp fails even if database manifest is empty', () => {
+  it('fails closed when stopped legacy container export is not a valid tar archive', () => {
     const { directory, run } = createHarness()
     writeFileSync(resolve(directory, 'expected-assets'), '')
-    writeFileSync(resolve(directory, 'fail-assets-cp'), '')
+    writeFileSync(resolve(directory, 'corrupt-old-worker-export'), '')
 
     const result = run()
 
     expect(result.status).not.toBe(0)
-    expect(result.stderr).toContain('Failed to export legacy knowledge source assets directory')
+    expect(result.stderr).toContain(
+      'Invalid rootfs archive exported from stopped legacy container: old-worker',
+    )
     expect(existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-source-assets'))).toBe(
       false,
     )
-  })
-
-  it('fails when docker exec directory inspection fails', () => {
-    const { directory, run } = createHarness()
-    writeFileSync(resolve(directory, 'expected-sources'), '')
-    writeFileSync(resolve(directory, 'fail-exec'), '')
-
-    const result = run()
-
-    expect(result.status).not.toBe(0)
-    expect(result.stderr).toContain('Failed to inspect legacy knowledge sources directory')
-    expect(existsSync(resolve(directory, 'volumes', 'ivybm-prod-knowledge-sources'))).toBe(false)
   })
 
   it('replaces unattached migration volumes on an explicit pre-deploy retry', () => {
