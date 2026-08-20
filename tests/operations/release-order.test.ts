@@ -17,22 +17,35 @@ describe('production release order', () => {
     const backupCommand = 'backup_dir="$(./scripts/backup-production.sh .env)"'
     const verifyCommand = './scripts/verify-production-backup.sh .env'
     const restoreCommand = './scripts/restore-production-backup-check.sh "$offsite_dir"'
+    const knowledgeMigrationCommand =
+      './scripts/migrate-production-knowledge-volumes.sh .env "$old_app_container" "$old_worker_container"'
     const migrateCommand = `${compose} up --exit-code-from migrate migrate`
     const startServicesCommand = `${compose} up -d --wait --wait-timeout 120 app worker`
 
     expect(handbook.indexOf(pullCommand)).toBeGreaterThanOrEqual(0)
     expect(handbook.indexOf(stopServicesCommand)).toBeGreaterThan(handbook.indexOf(pullCommand))
-    expect(handbook.indexOf(stopServicesCommand)).toBeLessThan(handbook.indexOf(backupCommand))
+    expect(handbook.indexOf(knowledgeMigrationCommand)).toBeGreaterThan(
+      handbook.indexOf(stopServicesCommand),
+    )
+    expect(handbook.indexOf(knowledgeMigrationCommand)).toBeLessThan(
+      handbook.indexOf(backupCommand),
+    )
     expect(handbook.indexOf(backupCommand)).toBeLessThan(handbook.indexOf(migrateCommand))
     expect(handbook.indexOf(verifyCommand)).toBeGreaterThan(handbook.indexOf(backupCommand))
     expect(handbook.indexOf(verifyCommand)).toBeLessThan(handbook.indexOf(migrateCommand))
     expect(handbook.indexOf(restoreCommand)).toBeGreaterThan(handbook.indexOf(verifyCommand))
     expect(handbook.indexOf(restoreCommand)).toBeLessThan(handbook.indexOf(migrateCommand))
+    expect(handbook.indexOf(knowledgeMigrationCommand)).toBeLessThan(
+      handbook.indexOf(startServicesCommand),
+    )
     expect(handbook.indexOf(startServicesCommand)).toBeGreaterThan(handbook.indexOf(migrateCommand))
   })
 
   it('keeps the backup and Compose wrappers fail closed', () => {
-    const composeWrapper = readFileSync(resolve(projectRoot, 'scripts/production-compose.sh'), 'utf8')
+    const composeWrapper = readFileSync(
+      resolve(projectRoot, 'scripts/production-compose.sh'),
+      'utf8',
+    )
     const backupScript = readFileSync(resolve(projectRoot, 'scripts/backup-production.sh'), 'utf8')
     const verificationScript = readFileSync(
       resolve(projectRoot, 'scripts/verify-production-backup.sh'),
@@ -42,6 +55,10 @@ describe('production release order', () => {
       resolve(projectRoot, 'scripts/restore-production-backup-check.sh'),
       'utf8',
     )
+    const knowledgeMigrationScript = readFileSync(
+      resolve(projectRoot, 'scripts/migrate-production-knowledge-volumes.sh'),
+      'utf8',
+    )
 
     expect(composeWrapper).toContain('env -i')
     expect(composeWrapper).toContain('compose.prod.yaml')
@@ -49,13 +66,37 @@ describe('production release order', () => {
     expect(backupScript).toContain('pg_restore --list')
     expect(backupScript).toContain('sha256sum -c SHA256SUMS')
     expect(backupScript).toContain('Refusing to overwrite an existing production backup')
-    expect(backupScript).toContain('ivybm-prod-media:/media:ro')
+    expect(backupScript).toContain('archive_volume ivybm-prod-media media.tar.gz')
+    expect(backupScript).toContain(
+      'archive_volume ivybm-prod-knowledge-sources knowledge-sources.tar.gz',
+    )
+    expect(backupScript).toContain(
+      'archive_volume ivybm-prod-knowledge-source-assets knowledge-source-assets.tar.gz',
+    )
+    expect(verificationScript).toContain('knowledge-sources.tar.gz')
+    expect(verificationScript).toContain('knowledge-source-assets.tar.gz')
     expect(verificationScript).toContain('different filesystem/device')
     expect(verificationScript).toContain('sha256sum -c SHA256SUMS')
     expect(verificationScript).toContain('does not match the verified production backup manifest')
     expect(restoreScript).toContain('--exit-on-error')
     expect(restoreScript).toContain('--tmpfs /var/lib/postgresql')
     expect(restoreScript).toContain('media.tar.gz')
+    expect(restoreScript).toContain('knowledge-sources.tar.gz')
+    expect(restoreScript).toContain('knowledge-source-assets.tar.gz')
+    expect(knowledgeMigrationScript).toContain('Refusing to overwrite existing volume')
+    expect(knowledgeMigrationScript).toContain('knowledge_source_documents')
+    expect(knowledgeMigrationScript).toContain('knowledge_source_assets')
+    expect(knowledgeMigrationScript).toContain('docker export --output "$archive" "$container"')
+    expect(knowledgeMigrationScript).toContain('tar --list --file "$archive"')
+    expect(knowledgeMigrationScript).toContain('tar --extract --file "$archive"')
+    expect(knowledgeMigrationScript).not.toContain('docker exec')
+    expect(knowledgeMigrationScript).toContain('chown -R 1001:1001')
+    expect(knowledgeMigrationScript).toContain('verify_volume')
+    expect(knowledgeMigrationScript).toContain("grep -q '[[:cntrl:]]'")
+    expect(knowledgeMigrationScript).toContain('docker volume rm "$volume"')
+    expect(knowledgeMigrationScript).toContain('--replace-unattached')
+    expect(knowledgeMigrationScript).toContain('docker ps -aq --filter "volume=$volume"')
+    expect(knowledgeMigrationScript).toContain('stat -c %u:%g /target')
   })
 
   it('strips caller release variables before invoking Compose', () => {

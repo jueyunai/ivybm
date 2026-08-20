@@ -40,8 +40,8 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY . .
-RUN mkdir -p /app/media \
-  && chown -R nextjs:nodejs /app/media
+RUN mkdir -p /app/media /app/private/knowledge-sources /app/private/knowledge-source-assets \
+  && chown -R nextjs:nodejs /app/media /app/private
 
 USER nextjs
 
@@ -62,7 +62,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-RUN mkdir -p /app/media \
+RUN mkdir -p /app/media /app/private/knowledge-sources /app/private/knowledge-source-assets \
   && chown -R nextjs:nodejs /app
 
 USER nextjs

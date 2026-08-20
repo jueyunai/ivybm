@@ -238,6 +238,52 @@ describe('production Compose configuration', () => {
     expect(config.volumes.media_data.name).toBe('ivybm-prod-media')
   })
 
+  it('shares protected knowledge source storage between app and worker', () => {
+    for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
+      for (const target of [
+        '/app/private/knowledge-sources',
+        '/app/private/knowledge-source-assets',
+      ]) {
+        const appMount = config.services.app.volumes?.find((volume) => volume.target === target)
+        const workerMount = config.services.worker.volumes?.find(
+          (volume) => volume.target === target,
+        )
+        expect(appMount).toEqual(expect.objectContaining({ target, type: 'volume' }))
+        expect(workerMount).toEqual(expect.objectContaining({ target, type: 'volume' }))
+        expect(workerMount?.source).toBe(appMount?.source)
+      }
+    }
+
+    const production = getProductionComposeConfig()
+    expect(production.volumes.knowledge_sources_data.name).toBe('ivybm-prod-knowledge-sources')
+    expect(production.volumes.knowledge_source_assets_data.name).toBe(
+      'ivybm-prod-knowledge-source-assets',
+    )
+  })
+
+  it('shares the Media volume between app and worker for platform publishing', () => {
+    for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
+      const appMount = config.services.app.volumes?.find((volume) => volume.target === '/app/media')
+      const workerMount = config.services.worker.volumes?.find(
+        (volume) => volume.target === '/app/media',
+      )
+      expect(appMount).toEqual(expect.objectContaining({ target: '/app/media', type: 'volume' }))
+      expect(workerMount).toEqual(expect.objectContaining({ target: '/app/media', type: 'volume' }))
+      expect(workerMount?.source).toBe(appMount?.source)
+    }
+  })
+
+  it('declares the Media volume for both services even before Docker is available', () => {
+    for (const file of ['compose.prod.yaml', 'compose.staging.yaml']) {
+      const source = readFileSync(resolve(projectRoot, file), 'utf8')
+      const appBlock = source.match(/\n  app:\n([\s\S]*?)(?=\n  worker:\n)/)?.[1] ?? ''
+      const workerBlock =
+        source.match(/\n  worker:\n([\s\S]*?)(?=\n(?:  [a-z][\w-]*:|volumes:|$))/)?.[1] ?? ''
+      expect(appBlock).toContain('- media_data:/app/media')
+      expect(workerBlock).toContain('- media_data:/app/media')
+    }
+  })
+
   it('waits for a successful migration and keeps resource, health, and log guards', () => {
     const config = getProductionComposeConfig()
 

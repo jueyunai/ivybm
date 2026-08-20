@@ -106,6 +106,8 @@ services:
       - ${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3000}:3000
     volumes:
       - media_data:/app/media
+      - knowledge_sources_data:/app/private/knowledge-sources
+      - knowledge_source_assets_data:/app/private/knowledge-source-assets
     logging: *app-logging
 
   worker:
@@ -143,7 +145,13 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    volumes:
+      - media_data:/app/media
+      - knowledge_sources_data:/app/private/knowledge-sources
+      - knowledge_source_assets_data:/app/private/knowledge-source-assets
     logging: *app-logging
 
 volumes:
   media_data:
+  knowledge_sources_data:
+  knowledge_source_assets_data:
