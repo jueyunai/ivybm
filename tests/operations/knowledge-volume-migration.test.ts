@@ -226,13 +226,15 @@ describe('production knowledge volume migration', () => {
         'orphan-source',
       )
 
-      expect(
-        spawnSync('tar', ['-cf', importArchive, '-C', rootfs, '.'], { encoding: 'utf8' }).status,
-      ).toBe(0)
+      const archived = spawnSync('tar', ['--no-xattrs', '-cf', importArchive, '-C', rootfs, '.'], {
+        encoding: 'utf8',
+        env: { ...process.env, COPYFILE_DISABLE: '1' },
+      })
+      expect(archived.status, archived.stderr).toBe(0)
       const imported = spawnSync('docker', ['image', 'import', importArchive], {
         encoding: 'utf8',
       })
-      expect(imported.status).toBe(0)
+      expect(imported.status, imported.stderr).toBe(0)
       const image = imported.stdout.trim()
       temporaryDockerImages.push(image)
 
