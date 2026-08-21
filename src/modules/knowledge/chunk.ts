@@ -31,6 +31,17 @@ type ChunkOptions = {
 const STRUCTURED_QA_START = /^([A-Z][A-Z0-9-]{1,32}-\d{2})(?:\s|$)/
 const STRUCTURED_TOPIC_START = /^\d{2}\.\s+\S/
 
+const isStructuredTopicForQA = (topicLine: string, qaID: string): boolean => {
+  const topic = topicLine
+    .replace(/^\d{2}\.\s+/, '')
+    .replace(/[^a-z0-9]/gi, '')
+    .toUpperCase()
+  const qaPrefix = qaID.replace(/-\d{2}$/, '').replace(/[^A-Z0-9]/g, '')
+  const singularTopic = topic.endsWith('S') ? topic.slice(0, -1) : topic
+
+  return topic.startsWith(qaPrefix) || singularTopic.startsWith(qaPrefix)
+}
+
 const normalizeText = (text: string): string =>
   text
     .replace(/\r\n?/g, '\n')
@@ -78,11 +89,12 @@ const splitStructuredQASections = (text: string): string[] | null => {
 
   for (const line of text.split('\n')) {
     const trimmed = line.trim()
-    if (STRUCTURED_QA_START.test(trimmed)) {
-      if (pendingTopics.length === 1) {
+    const qaMatch = STRUCTURED_QA_START.exec(trimmed)
+    if (qaMatch) {
+      if (pendingTopics.length === 1 && isStructuredTopicForQA(pendingTopics[0], qaMatch[1])) {
         pushCurrent()
         current.push(pendingTopics[0])
-      } else if (pendingTopics.length > 1) {
+      } else if (pendingTopics.length > 0) {
         current.push(...pendingTopics)
         pushCurrent()
       } else if (currentHasQA || (qaCount === 0 && current.some((value) => value.trim()))) {

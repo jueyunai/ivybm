@@ -134,6 +134,32 @@ describe('knowledge document chunking', () => {
     expect(chunks[1].content).toBe('SECOND-01\nRecommended answer: Next topic.')
   })
 
+  it('keeps a single two-digit numbered answer step with its Q&A entry', () => {
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'single-numbered-answer-step',
+        locale: 'en',
+        sourceTitle: 'Single numbered answer step',
+        sourceVersion: '1',
+        text: [
+          'FIRST-01',
+          'Recommended procedure:',
+          '01. Inspect the substrate.',
+          'SECOND-01',
+          'Recommended answer: Next topic.',
+        ].join('\n'),
+      },
+      { maxCharacters: 1_200 },
+    )
+
+    expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? [])).toEqual([
+      ['FIRST-01'],
+      ['SECOND-01'],
+    ])
+    expect(chunks[0].content).toContain('01. Inspect the substrate.')
+    expect(chunks[1].content).toBe('SECOND-01\nRecommended answer: Next topic.')
+  })
+
   it('repeats the Q&A identifier on continuation chunks', () => {
     const chunks = chunkKnowledgeDocument(
       {
