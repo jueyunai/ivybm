@@ -160,6 +160,32 @@ describe('knowledge document chunking', () => {
     expect(chunks[1].content).toBe('SECOND-01\nRecommended answer: Next topic.')
   })
 
+  it('does not treat an answer sentence starting with the next Q&A prefix as a topic', () => {
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'prefixed-numbered-answer-step',
+        locale: 'en',
+        sourceTitle: 'Prefixed numbered answer step',
+        sourceVersion: '1',
+        text: [
+          'PRODUCT-01',
+          'Recommended procedure:',
+          '01. Product must be inspected before coating.',
+          'PRODUCT-02',
+          'Recommended answer: Next product topic.',
+        ].join('\n'),
+      },
+      { maxCharacters: 1_200 },
+    )
+
+    expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? [])).toEqual([
+      ['PRODUCT-01'],
+      ['PRODUCT-02'],
+    ])
+    expect(chunks[0].content).toContain('01. Product must be inspected before coating.')
+    expect(chunks[1].content).toBe('PRODUCT-02\nRecommended answer: Next product topic.')
+  })
+
   it('repeats the Q&A identifier on continuation chunks', () => {
     const chunks = chunkKnowledgeDocument(
       {

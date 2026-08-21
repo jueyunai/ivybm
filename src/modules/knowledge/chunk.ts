@@ -39,7 +39,7 @@ const isStructuredTopicForQA = (topicLine: string, qaID: string): boolean => {
   const qaPrefix = qaID.replace(/-\d{2}$/, '').replace(/[^A-Z0-9]/g, '')
   const singularTopic = topic.endsWith('S') ? topic.slice(0, -1) : topic
 
-  return topic.startsWith(qaPrefix) || singularTopic.startsWith(qaPrefix)
+  return topic === qaPrefix || singularTopic === qaPrefix
 }
 
 const normalizeText = (text: string): string =>
