@@ -7,7 +7,10 @@ import {
   updatePortalSiteSettings,
 } from '@/admin-portal/modules/settings/siteSettingsCommands'
 
-const request = { user: { collection: 'users', id: 1 } } as unknown as PayloadRequest
+const request = {
+  transactionID: Promise.resolve('site-settings-test'),
+  user: { collection: 'users', id: 1 },
+} as unknown as PayloadRequest
 
 describe('Portal site settings command', () => {
   it('updates both locales while preserving existing non-editable site fields', async () => {
@@ -16,6 +19,7 @@ describe('Portal site settings command', () => {
       .mockResolvedValueOnce({ updatedAt: '2026-08-19T00:00:01.000Z' })
       .mockResolvedValueOnce({ updatedAt: '2026-08-19T00:00:02.000Z' })
     const payload = {
+      db: { sessions: { 'site-settings-test': { db: { execute: vi.fn() } } } },
       findGlobal: vi.fn().mockResolvedValue({
         contact: {
           address: 'Existing address',
@@ -70,6 +74,7 @@ describe('Portal site settings command', () => {
   it('rejects stale site settings before writing either locale', async () => {
     const updateGlobal = vi.fn()
     const payload = {
+      db: { sessions: { 'site-settings-test': { db: { execute: vi.fn() } } } },
       findGlobal: vi.fn().mockResolvedValue({ updatedAt: 'current-version' }),
       updateGlobal,
     } as unknown as Payload

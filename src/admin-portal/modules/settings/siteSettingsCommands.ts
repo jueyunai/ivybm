@@ -1,4 +1,5 @@
 import type { Payload, PayloadRequest } from 'payload'
+import { sql, type PostgresAdapter } from '@payloadcms/db-postgres'
 
 type JsonInput = Record<string, unknown>
 
@@ -48,6 +49,32 @@ const localeData = (input: JsonInput, locale: 'ar' | 'en') => {
   }
 }
 
+const lockSiteSettings = async (payload: Payload, req: PayloadRequest): Promise<void> => {
+  const transactionID = await req.transactionID
+  if (!transactionID) {
+    throw new SiteSettingsCommandError(
+      'site-settings-transaction-required',
+      'Site settings updates require a database transaction.',
+      500,
+    )
+  }
+  const adapter = payload.db as unknown as PostgresAdapter
+  const database = adapter.sessions[transactionID]?.db
+  if (!database) {
+    throw new SiteSettingsCommandError(
+      'site-settings-transaction-unavailable',
+      'The site settings transaction is unavailable.',
+      500,
+    )
+  }
+
+  // SiteSettings is a Payload global, so it has no portal target row that can
+  // be passed to the generic command lock. A transaction-scoped advisory lock
+  // serializes all writers before the revision is read, including when the
+  // global row has not been initialized yet.
+  await database.execute(sql`SELECT pg_advisory_xact_lock(1876432101, 1)`)
+}
+
 const parseInput = (value: unknown) => {
   const input = record(value)
   return {
@@ -71,6 +98,7 @@ export const updatePortalSiteSettings = async ({
   req: PayloadRequest
 }) => {
   const parsed = parseInput(input)
+  await lockSiteSettings(payload, req)
   const current = await payload.findGlobal({
     depth: 0,
     fallbackLocale: false,
