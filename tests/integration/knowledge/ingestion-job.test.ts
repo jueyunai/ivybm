@@ -26,11 +26,11 @@ import config from '@/payload.config'
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-const makeDocx = (): Buffer => {
+const makeDocx = (text = 'AA3003 aluminum panel price'): Buffer => {
   const files = [
     {
       name: 'word/document.xml',
-      value: `<?xml version="1.0"?><w:document xmlns:w="x" xmlns:r="r"><w:body><w:p><w:r><w:t>AA3003 aluminum panel price</w:t></w:r><w:drawing r:embed="rId1"/></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Width</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1200 mm</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`,
+      value: `<?xml version="1.0"?><w:document xmlns:w="x" xmlns:r="r"><w:body><w:p><w:r><w:t>${text}</w:t></w:r><w:drawing r:embed="rId1"/></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Width</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1200 mm</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`,
     },
     {
       name: 'word/_rels/document.xml.rels',
@@ -381,6 +381,59 @@ describe.sequential('knowledge source ingestion job', () => {
       })
     }
     await expect(worker.runOnce()).resolves.toBe('succeeded')
+  })
+
+  it('ingests source text above Payload default length while preserving numeric fidelity markers', async () => {
+    const text = Array.from(
+      { length: 60 },
+      (_, index) =>
+        `LARGE-${String(index + 1).padStart(2, '0')} Topic ${String(index + 1).padStart(2, '0')} ${'aluminum facade knowledge '.repeat(35)}1200 mm price warranty`,
+    ).join(' ')
+    expect(text.length).toBeGreaterThan(40_000)
+    const data = makeDocx(text)
+    const req = await createLocalReq({ user: operator }, payload)
+    const version = `large-${randomUUID()}`
+    const created = await createKnowledgeSourceAndEnqueue({
+      file: { data, mimetype: DOCX_MIME, name: `large-${version}.docx`, size: data.length },
+      metadata: {
+        originalLanguage: 'en',
+        sourceTitle: `Large source ${version}`,
+        sourceType: 'sales-script',
+        sourceVersion: version,
+      },
+      payload,
+      req,
+    })
+    sourceIDs.push(Number(created.source.id))
+    jobIDs.push(created.job.id)
+
+    const worker = new JobWorker({
+      handlers: {
+        [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({
+          payload,
+          resolveGateway: async () => gateway(),
+        }),
+      },
+      queue: new PayloadJobQueue({ payload }),
+    })
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+
+    const outputs = await payload.find({
+      collection: 'knowledge-documents',
+      overrideAccess: true,
+      pagination: false,
+      where: { ingestionSource: { equals: created.source.id } },
+    })
+    expect(outputs.docs).toHaveLength(2)
+    for (const document of outputs.docs) {
+      expect(document.content.length).toBeGreaterThan(40_000)
+      expect(document).toMatchObject({
+        customerVisible: false,
+        indexStatus: 'pending',
+        reviewStatus: 'draft',
+        riskTopics: expect.arrayContaining(['price', 'warranty']),
+      })
+    }
   })
 
   it('keeps partial failures private and allows only an admin-controlled retry', async () => {

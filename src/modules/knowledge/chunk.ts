@@ -28,6 +28,9 @@ type ChunkOptions = {
   maxCharacters?: number
 }
 
+const STRUCTURED_QA_START = /^[A-Z][A-Z0-9-]{1,32}-\d{2}(?:\s|$)/
+const STRUCTURED_TOPIC_START = /^\d{2}\.\s+\S/
+
 const normalizeText = (text: string): string =>
   text
     .replace(/\r\n?/g, '\n')
@@ -58,6 +61,60 @@ const splitParagraphs = (text: string, maxCharacters: number): string[] =>
     .split(/\n{2,}/)
     .flatMap((paragraph) => splitAtWordBoundary(paragraph, maxCharacters))
     .filter(Boolean)
+
+const splitStructuredQASections = (text: string): string[] | null => {
+  const sections: string[] = []
+  let current: string[] = []
+  let currentHasQA = false
+  let qaCount = 0
+
+  const pushCurrent = () => {
+    const section = current.join('\n').trim()
+    if (section) sections.push(section)
+    current = []
+    currentHasQA = false
+  }
+
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (STRUCTURED_QA_START.test(trimmed)) {
+      if (currentHasQA || (qaCount === 0 && current.some((value) => value.trim()))) {
+        pushCurrent()
+      }
+      current.push(trimmed)
+      currentHasQA = true
+      qaCount += 1
+      continue
+    }
+    if (qaCount > 0 && currentHasQA && STRUCTURED_TOPIC_START.test(trimmed)) {
+      pushCurrent()
+    }
+    current.push(line)
+  }
+  pushCurrent()
+
+  return qaCount >= 2 ? sections : null
+}
+
+const splitStructuredQASection = (section: string, maxCharacters: number): string[] => {
+  const pieces = splitAtWordBoundary(section, maxCharacters)
+  const qaID = section
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => STRUCTURED_QA_START.test(line))
+  if (!qaID || pieces.length < 2) return pieces
+
+  const continuationBudget = maxCharacters - qaID.length - 1
+  if (continuationBudget < 50) return pieces
+  return [
+    pieces[0],
+    ...pieces.slice(1).flatMap((piece) =>
+      splitAtWordBoundary(piece, continuationBudget).map((continuation) =>
+        `${qaID}\n${continuation}`,
+      ),
+    ),
+  ]
+}
 
 const packParagraphs = (paragraphs: string[], maxCharacters: number): string[] => {
   const chunks: string[] = []
@@ -97,7 +154,12 @@ export const chunkKnowledgeDocument = (
     version: document.sourceVersion,
   }
 
-  return packParagraphs(splitParagraphs(text, maxCharacters), maxCharacters).map(
+  const structuredSections = splitStructuredQASections(text)
+  const contents = structuredSections
+    ? structuredSections.flatMap((section) => splitStructuredQASection(section, maxCharacters))
+    : packParagraphs(splitParagraphs(text, maxCharacters), maxCharacters)
+
+  return contents.map(
     (content, index) => ({
       citation,
       content,

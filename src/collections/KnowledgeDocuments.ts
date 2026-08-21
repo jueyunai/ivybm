@@ -246,6 +246,7 @@ export const KnowledgeDocuments: CollectionConfig = {
     {
       name: 'content',
       type: 'textarea',
+      maxLength: 1_000_000,
       required: true,
     },
     {

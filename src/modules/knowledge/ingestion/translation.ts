@@ -155,18 +155,25 @@ const requiredFidelityTokens = (value: string): string[] => {
   )
 }
 
+const escapeRegularExpression = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 const shieldFidelityTokens = (value: string): { markers: Array<[string, string]>; text: string } => {
   const tokens = requiredFidelityTokens(value).sort((left, right) => right.length - left.length)
-  const markers: Array<[string, string]> = []
-  let text = value
-  for (const [index, token] of tokens.entries()) {
+  const markers = tokens.map((token, index): [string, string] => {
     const marker = `[[knowledge-token-${index + 1}]]`
-    if (text.includes(marker)) {
+    if (value.includes(marker)) {
       throw new KnowledgeTranslationError('translation-fidelity', 'The source contains a reserved translation placeholder')
     }
-    text = text.split(token).join(marker)
-    markers.push([marker, token])
-  }
+    return [marker, token]
+  })
+  const markerByToken = new Map(markers.map(([marker, token]) => [token, marker]))
+  const tokenPattern = tokens.length
+    ? new RegExp(tokens.map(escapeRegularExpression).join('|'), 'g')
+    : null
+  const text = tokenPattern
+    ? value.replace(tokenPattern, (token) => markerByToken.get(token) ?? token)
+    : value
   return { markers, text }
 }
 

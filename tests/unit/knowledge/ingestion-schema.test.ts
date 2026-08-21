@@ -6,6 +6,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { KnowledgeSourceAssets } from '@/collections/KnowledgeSourceAssets'
+import { KnowledgeDocuments } from '@/collections/KnowledgeDocuments'
 
 const migrationBase = path.join(
   process.cwd(),
@@ -13,6 +14,13 @@ const migrationBase = path.join(
 )
 
 describe('knowledge source asset lifecycle', () => {
+  it('allows ingested knowledge content up to the parser text limit', () => {
+    const contentField = KnowledgeDocuments.fields.find(
+      (field) => 'name' in field && field.name === 'content',
+    )
+    expect(contentField).toMatchObject({ maxLength: 1_000_000, type: 'textarea' })
+  })
+
   it('keeps the required Collection relation and migration cascade semantics aligned', () => {
     const sourceField = KnowledgeSourceAssets.fields.find(
       (field) => 'name' in field && field.name === 'source',

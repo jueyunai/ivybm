@@ -69,4 +69,60 @@ describe('knowledge document chunking', () => {
       'Knowledge document text is required',
     )
   })
+
+  it('keeps structured sales Q&A entries in separate chunks', () => {
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'sales-script-1',
+        locale: 'en',
+        sourceTitle: 'Sales knowledge',
+        sourceVersion: '1',
+        text: [
+          'Sales agent rules',
+          '01. Company',
+          'COMPANY-01',
+          'Customer question: Who are you?',
+          'Recommended answer: We supply facade materials.',
+          'Follow-up question: Where is the project?',
+          '2. Product support remains available after delivery.',
+          'COMPANY-02',
+          'Customer question: Where are you based?',
+          'Recommended answer: Confirm the relevant legal entity with sales.',
+          '02. Products',
+          'PRODUCT-01',
+          'Customer question: What products do you supply?',
+          'Recommended answer: Solid aluminum facade products.',
+        ].join('\n'),
+      },
+      { maxCharacters: 1_200 },
+    )
+
+    expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? []))
+      .toEqual([[], ['COMPANY-01'], ['COMPANY-02'], ['PRODUCT-01']])
+    expect(chunks[1].content).toContain('2. Product support remains available after delivery.')
+    expect(chunks[3].content).toContain('02. Products')
+  })
+
+  it('repeats the Q&A identifier on continuation chunks', () => {
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'long-sales-script',
+        locale: 'en',
+        sourceTitle: 'Long sales knowledge',
+        sourceVersion: '1',
+        text: [
+          'LONG-01',
+          `Recommended answer: ${'verified facade detail '.repeat(20)}`,
+          'LONG-02',
+          'Recommended answer: Short answer.',
+        ].join('\n'),
+      },
+      { maxCharacters: 120 },
+    )
+
+    expect(chunks.length).toBeGreaterThan(2)
+    expect(chunks.every((chunk) => chunk.content.length <= 120)).toBe(true)
+    expect(chunks.slice(0, -1).every((chunk) => chunk.content.startsWith('LONG-01'))).toBe(true)
+    expect(chunks.at(-1)?.content).toBe('LONG-02\nRecommended answer: Short answer.')
+  })
 })

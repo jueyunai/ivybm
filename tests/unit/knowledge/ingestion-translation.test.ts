@@ -79,6 +79,35 @@ describe('knowledge translation safeguards', () => {
     })).rejects.toMatchObject({ code: 'translation-fidelity' })
   })
 
+  it('does not let later numeric tokens corrupt previously inserted fidelity markers', async () => {
+    const generateText = vi.fn<AiProvider['generateText']>(async ({ input, model }) => ({
+      model,
+      text: input,
+      usage: { inputTokens: input.length, outputTokens: input.length, totalTokens: input.length * 2 },
+    }))
+    const gateway = createAiGateway({
+      operations: {
+        text: {
+          model: 'configured-model',
+          provider: { embed: vi.fn(), generateText, name: 'test' },
+        },
+      },
+    })
+
+    await expect(translateKnowledgeText({
+      gateway,
+      prompt: { id: 1, key: 'translation', locale: 'all', model: null, template: 'Translate', version: 1 },
+      sourceLocale: 'en',
+      targetLocale: 'en',
+      text: 'COMPANY-01 Topic 09 includes 1200 mm and Version 1.0.',
+    })).resolves.toMatchObject({
+      locale: 'en',
+      model: 'configured-model',
+      promptVersion: 1,
+      text: 'COMPANY-01 Topic 09 includes 1200 mm and Version 1.0.',
+    })
+  })
+
   it('returns stable multilingual high-risk labels', () => {
     expect(detectKnowledgeRiskTopics('价格、交期、质保、السعر والضمان')).toEqual(['price', 'lead-time', 'warranty'])
   })
