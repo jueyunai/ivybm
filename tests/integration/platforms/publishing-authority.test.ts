@@ -61,6 +61,7 @@ const createIntentAndLease = async () => {
     idempotencyKey: `publish:v1:${suffix.replaceAll('-', '')}:facebook`,
     platform: 'facebook' as const,
     platformAccountId: account.id,
+    expectedAuthorizationRevision: account.authorizationRevision,
     status: 'scheduled' as const,
     text: 'Facade project update',
   }
@@ -302,13 +303,30 @@ describe.sequential('Task 13 Payload publication authority', () => {
       platformAccountId: account.id,
       status: 'accepted',
     })
-    const getStatus = vi.fn().mockResolvedValue({
-      externalPublicationId: '129472283584550_987654321',
-      externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/987654321',
-      idempotencyKey: requestSnapshot.idempotencyKey,
-      platform: 'facebook',
-      platformAccountId: account.id,
-      status: 'published',
+    const getStatus = vi.fn().mockImplementation(async (lookup) => {
+      const current = await pool().query<{ authorization_revision: number }>(
+        'SELECT authorization_revision FROM platform_accounts WHERE id = $1',
+        [account.id],
+      )
+      if (lookup.expectedAuthorizationRevision !== current.rows[0]?.authorization_revision) {
+        return {
+          errorCode: 'delivery_unknown' as const,
+          externalPublicationId: '129472283584550_987654321',
+          idempotencyKey: requestSnapshot.idempotencyKey,
+          platform: 'facebook' as const,
+          platformAccountId: account.id,
+          retryable: false as const,
+          status: 'delivery_unknown' as const,
+        }
+      }
+      return {
+        externalPublicationId: '129472283584550_987654321',
+        externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/987654321',
+        idempotencyKey: requestSnapshot.idempotencyKey,
+        platform: 'facebook' as const,
+        platformAccountId: account.id,
+        status: 'published' as const,
+      }
     })
     const resolveRuntime = vi.fn(() => ({
       directService: {
@@ -335,6 +353,7 @@ describe.sequential('Task 13 Payload publication authority', () => {
     await expect(worker.runOnce()).resolves.toBe('succeeded')
     expect(resolveRuntime).toHaveBeenCalledWith('facebook-photo-single')
     expect(publish).toHaveBeenCalledTimes(1)
+    expect(getStatus).not.toHaveBeenCalled()
     const queuedContinuation = await pool().query<{ count: string }>(
       'SELECT COUNT(*)::text AS count FROM jobs WHERE idempotency_key = $1',
       [`publication-execute:${publishJob.id}:1`],
@@ -347,12 +366,19 @@ describe.sequential('Task 13 Payload publication authority', () => {
     const continuationJobId = continuationJob.rows[0]?.id
     if (!continuationJobId) throw new Error('Expected direct status continuation')
     jobIDs.push(continuationJobId)
+    await pool().query(
+      'UPDATE platform_accounts SET authorization_revision = authorization_revision + 1 WHERE id = $1',
+      [account.id],
+    )
     await pool().query('UPDATE jobs SET next_run_at = $1 WHERE id = $2', [
       new Date(Date.now() - 1_000).toISOString(),
       continuationJobId,
     ])
     await expect(worker.runOnce()).resolves.toBe('succeeded')
     expect(getStatus).toHaveBeenCalledTimes(1)
+    expect(getStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedAuthorizationRevision: account.authorizationRevision }),
+    )
     expect(publish).toHaveBeenCalledTimes(1)
     await expect(
       payload.findByID({
@@ -364,8 +390,8 @@ describe.sequential('Task 13 Payload publication authority', () => {
     ).resolves.toMatchObject({
       executionRevision: 2,
       externalPublicationId: '129472283584550_987654321',
-      externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/987654321',
-      status: 'published',
+      lastErrorCode: 'delivery_unknown',
+      status: 'delivery_unknown',
     })
   })
 

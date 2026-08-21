@@ -251,6 +251,7 @@ describe('lease-fenced single-call publication', () => {
     ],
     ['blank text', { text: '   ' }],
     ['invalid scheduled time', { scheduledFor: 'not-a-date' }],
+    ['missing authorization revision', { expectedAuthorizationRevision: undefined }],
   ])(
     'rejects malformed authority %s before claiming or provider I/O',
     async (_label, malformed) => {

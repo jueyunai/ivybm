@@ -40,6 +40,18 @@ const service = ({
 })
 
 describe('platform publication execution state machine', () => {
+  it('rejects a worker snapshot without an authorization revision before provider I/O', async () => {
+    const publish = vi.fn()
+
+    await expect(
+      executePlatformPublication({
+        service: service({ publish }),
+        snapshot: snapshot({ expectedAuthorizationRevision: undefined }),
+      }),
+    ).rejects.toThrow('authorization revision is required')
+    expect(publish).not.toHaveBeenCalled()
+  })
+
   it('sends one scheduled command with the persisted account-scoped idempotency key', async () => {
     const publish = vi.fn().mockResolvedValue({
       externalPublicationId: 'provider-post-42',

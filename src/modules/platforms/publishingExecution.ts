@@ -205,6 +205,11 @@ export const executePlatformPublication = async ({
   service: PublishingService
   snapshot: PlatformPublishExecutionSnapshot
 }): Promise<PlatformPublishExecutionTransition> => {
+  const expectedAuthorizationRevision = snapshot.expectedAuthorizationRevision
+  if (!Number.isSafeInteger(expectedAuthorizationRevision) || expectedAuthorizationRevision! < 0) {
+    throw new Error('Platform publication authorization revision is required')
+  }
+
   if (terminalStatuses.has(snapshot.status)) {
     return { changed: false, status: snapshot.status }
   }
@@ -212,9 +217,7 @@ export const executePlatformPublication = async ({
   if (snapshot.status === 'scheduled') {
     const result = await service.publish({
       assets: snapshot.assets,
-      ...(snapshot.expectedAuthorizationRevision !== undefined
-        ? { expectedAuthorizationRevision: snapshot.expectedAuthorizationRevision }
-        : {}),
+      expectedAuthorizationRevision: expectedAuthorizationRevision!,
       idempotencyKey: snapshot.idempotencyKey,
       platform: snapshot.platform,
       platformAccountId: snapshot.platformAccountId,
@@ -244,9 +247,7 @@ export const executePlatformPublication = async ({
   }
   const result = await service.getStatus({
     ...(snapshotExternalId ? { externalPublicationId: snapshotExternalId } : {}),
-    ...(snapshot.expectedAuthorizationRevision !== undefined
-      ? { expectedAuthorizationRevision: snapshot.expectedAuthorizationRevision }
-      : {}),
+    expectedAuthorizationRevision: expectedAuthorizationRevision!,
     idempotencyKey: snapshot.idempotencyKey,
     platform: snapshot.platform,
     platformAccountId: snapshot.platformAccountId,

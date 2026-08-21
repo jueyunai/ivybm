@@ -95,6 +95,10 @@ const normalizeSnapshot = (input: unknown): PlatformPublishExecutionSnapshot | u
   } catch {
     return undefined
   }
+  const expectedAuthorizationRevision = request.expectedAuthorizationRevision
+  if (!Number.isSafeInteger(expectedAuthorizationRevision) || expectedAuthorizationRevision! < 0) {
+    return undefined
+  }
   const externalPublicationId =
     snapshot.externalPublicationId === undefined
       ? undefined
@@ -102,9 +106,7 @@ const normalizeSnapshot = (input: unknown): PlatformPublishExecutionSnapshot | u
   if (snapshot.externalPublicationId !== undefined && !externalPublicationId) return undefined
   return {
     assets: request.assets,
-    ...(request.expectedAuthorizationRevision !== undefined
-      ? { expectedAuthorizationRevision: request.expectedAuthorizationRevision }
-      : {}),
+    expectedAuthorizationRevision: expectedAuthorizationRevision!,
     ...(externalPublicationId ? { externalPublicationId } : {}),
     idempotencyKey: request.idempotencyKey,
     platform: request.platform,
