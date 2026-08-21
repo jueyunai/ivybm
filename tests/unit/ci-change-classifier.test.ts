@@ -97,6 +97,7 @@ describe('CI change classifier', () => {
     'src/components/chat/ChatWidget.tsx',
     'src/app/api/chat/sessions/route.ts',
     'tests/e2e/chat-handoff.spec.ts',
+    'tests/e2e/website-chat-real.spec.ts',
   ])('selects only Chat E2E for %s', (path) => {
     expect(classifyChangedFiles([path])).toMatchObject({
       admin_e2e: false,
