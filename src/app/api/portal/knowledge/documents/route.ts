@@ -9,7 +9,7 @@ import {
   authorizeKnowledgeRequest,
   knowledgeErrorResponse,
   knowledgeJSON,
-  readKnowledgeJSON,
+  readKnowledgeDocumentJSON,
 } from '@/admin-portal/modules/knowledge/knowledgeRoute'
 
 export const dynamic = 'force-dynamic'
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 export async function POST(request: NextRequest): Promise<Response> {
   try {
     const { payload, req } = await authorizeKnowledgeRequest(request)
-    const input = await readKnowledgeJSON(request)
+    const input = await readKnowledgeDocumentJSON(request)
     const result = await executePortalRouteCommand({
       fingerprintInput: input,
       operation: (transactionReq) =>

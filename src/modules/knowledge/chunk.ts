@@ -28,6 +28,23 @@ type ChunkOptions = {
   maxCharacters?: number
 }
 
+const STRUCTURED_QA_START = /^([A-Z][A-Z0-9-]{1,32}-\d{2})(?:\s|$)/
+const STRUCTURED_TOPIC_START = /^\d{2}\.\s+\S/
+
+const structuredQAPrefix = (qaID: string): string =>
+  qaID.replace(/-\d{2}$/, '').replace(/[^A-Z0-9]/g, '')
+
+const isStructuredTopicForQA = (topicLine: string, qaID: string): boolean => {
+  const topic = topicLine
+    .replace(/^\d{2}\.\s+/, '')
+    .replace(/[^a-z0-9]/gi, '')
+    .toUpperCase()
+  const qaPrefix = structuredQAPrefix(qaID)
+  const singularTopic = topic.endsWith('S') ? topic.slice(0, -1) : topic
+
+  return topic === qaPrefix || singularTopic === qaPrefix
+}
+
 const normalizeText = (text: string): string =>
   text
     .replace(/\r\n?/g, '\n')
@@ -58,6 +75,90 @@ const splitParagraphs = (text: string, maxCharacters: number): string[] =>
     .split(/\n{2,}/)
     .flatMap((paragraph) => splitAtWordBoundary(paragraph, maxCharacters))
     .filter(Boolean)
+
+const splitStructuredQASections = (text: string): string[] | null => {
+  const sections: string[] = []
+  let current: string[] = []
+  let currentHasQA = false
+  let currentQAPrefix: string | undefined
+  let pendingTopics: string[] = []
+  let qaCount = 0
+
+  const pushCurrent = () => {
+    const section = current.join('\n').trim()
+    if (section) sections.push(section)
+    current = []
+    currentHasQA = false
+    currentQAPrefix = undefined
+  }
+
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    const qaMatch = STRUCTURED_QA_START.exec(trimmed)
+    if (qaMatch) {
+      const nextQAPrefix = structuredQAPrefix(qaMatch[1])
+      if (
+        pendingTopics.length === 1 &&
+        currentQAPrefix !== undefined &&
+        currentQAPrefix !== nextQAPrefix &&
+        isStructuredTopicForQA(pendingTopics[0], qaMatch[1])
+      ) {
+        pushCurrent()
+        current.push(pendingTopics[0])
+      } else if (pendingTopics.length > 0) {
+        current.push(...pendingTopics)
+        pushCurrent()
+      } else if (currentHasQA || (qaCount === 0 && current.some((value) => value.trim()))) {
+        pushCurrent()
+      }
+      pendingTopics = []
+      current.push(trimmed)
+      currentHasQA = true
+      currentQAPrefix = nextQAPrefix
+      qaCount += 1
+      continue
+    }
+    if (qaCount > 0 && currentHasQA && STRUCTURED_TOPIC_START.test(trimmed)) {
+      pendingTopics.push(line)
+      continue
+    }
+    if (pendingTopics.length > 0) {
+      current.push(...pendingTopics)
+      pendingTopics = []
+    }
+    current.push(line)
+  }
+  current.push(...pendingTopics)
+  pushCurrent()
+
+  return qaCount >= 2 ? sections : null
+}
+
+const splitStructuredQASection = (section: string, maxCharacters: number): string[] => {
+  const pieces = splitAtWordBoundary(section, maxCharacters)
+  let qaID: string | undefined
+  for (const line of section.split('\n')) {
+    const match = STRUCTURED_QA_START.exec(line.trim())
+    if (match) {
+      qaID = match[1]
+      break
+    }
+  }
+  if (!qaID || pieces.length < 2) return pieces
+
+  const continuationBudget = maxCharacters - qaID.length - 1
+  if (continuationBudget < 50) return pieces
+  return [
+    pieces[0],
+    ...pieces
+      .slice(1)
+      .flatMap((piece) =>
+        splitAtWordBoundary(piece, continuationBudget).map(
+          (continuation) => `${qaID}\n${continuation}`,
+        ),
+      ),
+  ]
+}
 
 const packParagraphs = (paragraphs: string[], maxCharacters: number): string[] => {
   const chunks: string[] = []
@@ -97,23 +198,26 @@ export const chunkKnowledgeDocument = (
     version: document.sourceVersion,
   }
 
-  return packParagraphs(splitParagraphs(text, maxCharacters), maxCharacters).map(
-    (content, index) => ({
-      citation,
-      content,
-      index,
-      locale: document.locale,
-      stableId: createHash('sha256')
-        .update(
-          JSON.stringify({
-            content,
-            documentId: document.documentId,
-            index,
-            locale: document.locale,
-            version: document.sourceVersion,
-          }),
-        )
-        .digest('hex'),
-    }),
-  )
+  const structuredSections = splitStructuredQASections(text)
+  const contents = structuredSections
+    ? structuredSections.flatMap((section) => splitStructuredQASection(section, maxCharacters))
+    : packParagraphs(splitParagraphs(text, maxCharacters), maxCharacters)
+
+  return contents.map((content, index) => ({
+    citation,
+    content,
+    index,
+    locale: document.locale,
+    stableId: createHash('sha256')
+      .update(
+        JSON.stringify({
+          content,
+          documentId: document.documentId,
+          index,
+          locale: document.locale,
+          version: document.sourceVersion,
+        }),
+      )
+      .digest('hex'),
+  }))
 }

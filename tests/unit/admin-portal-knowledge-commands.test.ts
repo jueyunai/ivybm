@@ -10,6 +10,7 @@ import {
   parseKnowledgeMutation,
   updatePortalKnowledgeDocument,
 } from '@/admin-portal/modules/knowledge/knowledgeCommands'
+import { KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS } from '@/modules/knowledge/limits'
 
 const req = {
   user: { collection: 'users', email: 'operator@example.invalid', id: 2, role: 'operator' },
@@ -54,6 +55,28 @@ describe('Portal knowledge commands', () => {
         sourceVersion: '1',
       }),
     ).toThrow(KnowledgeCommandError)
+  })
+
+  it('accepts imported drafts above the previous Portal limit and enforces the shared limit', () => {
+    const input = {
+      action: 'save',
+      customerVisible: false,
+      locale: 'en',
+      sourceTitle: 'Large imported draft',
+      sourceType: 'sales-script',
+      sourceVersion: '1',
+    }
+    const importedContent = 'x'.repeat(200_001)
+
+    expect(
+      parseKnowledgeMutation({ ...input, content: importedContent }).data.content,
+    ).toHaveLength(200_001)
+    expect(() =>
+      parseKnowledgeMutation({
+        ...input,
+        content: 'x'.repeat(KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS + 1),
+      }),
+    ).toThrow('content is too long')
   })
 
   it('creates drafts with access control and explicit audit', async () => {

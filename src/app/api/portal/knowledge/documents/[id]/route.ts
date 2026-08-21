@@ -11,6 +11,7 @@ import {
   authorizeKnowledgeRequest,
   knowledgeErrorResponse,
   knowledgeJSON,
+  readKnowledgeDocumentJSON,
   readKnowledgeJSON,
   requireKnowledgeID,
 } from '@/admin-portal/modules/knowledge/knowledgeRoute'
@@ -44,7 +45,7 @@ export async function PATCH(
   try {
     const id = await documentID(params)
     const { payload, req } = await authorizeKnowledgeRequest(request)
-    const input = await readKnowledgeJSON(request)
+    const input = await readKnowledgeDocumentJSON(request)
     return knowledgeJSON({
       result: await executePortalRouteCommand({
         fingerprintInput: { id, input },

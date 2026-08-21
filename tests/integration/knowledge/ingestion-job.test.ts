@@ -26,11 +26,11 @@ import config from '@/payload.config'
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-const makeDocx = (): Buffer => {
+const makeDocx = (text = 'AA3003 aluminum panel price'): Buffer => {
   const files = [
     {
       name: 'word/document.xml',
-      value: `<?xml version="1.0"?><w:document xmlns:w="x" xmlns:r="r"><w:body><w:p><w:r><w:t>AA3003 aluminum panel price</w:t></w:r><w:drawing r:embed="rId1"/></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Width</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1200 mm</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`,
+      value: `<?xml version="1.0"?><w:document xmlns:w="x" xmlns:r="r"><w:body><w:p><w:r><w:t>${text}</w:t></w:r><w:drawing r:embed="rId1"/></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Width</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1200 mm</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`,
     },
     {
       name: 'word/_rels/document.xml.rels',
@@ -75,7 +75,10 @@ const makeDocx = (): Buffer => {
   end.writeUInt32LE(0x06054b50, 0)
   end.writeUInt16LE(files.length, 8)
   end.writeUInt16LE(files.length, 10)
-  end.writeUInt32LE(central.reduce((sum, part) => sum + part.length, 0), 12)
+  end.writeUInt32LE(
+    central.reduce((sum, part) => sum + part.length, 0),
+    12,
+  )
   end.writeUInt32LE(offset, 16)
   return Buffer.concat([...local, ...central, end])
 }
@@ -84,7 +87,10 @@ const assertIsolatedDatabase = () => {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
   const url = new URL(process.env.DATABASE_URL)
   const database = decodeURIComponent(url.pathname.replace(/^\//, ''))
-  if (!new Set(['127.0.0.1', 'localhost', '::1']).has(url.hostname) || (!database.endsWith('_test') && !database.endsWith('_ci'))) {
+  if (
+    !new Set(['127.0.0.1', 'localhost', '::1']).has(url.hostname) ||
+    (!database.endsWith('_test') && !database.endsWith('_ci'))
+  ) {
     throw new Error('Knowledge ingestion integration tests require a local _test or _ci database')
   }
 }
@@ -108,7 +114,11 @@ describe.sequential('knowledge source ingestion job', () => {
 
   beforeAll(async () => {
     assertIsolatedDatabase()
-    payload = await getPayload({ config, disableOnInit: true, key: 'knowledge-ingestion-integration' })
+    payload = await getPayload({
+      config,
+      disableOnInit: true,
+      key: 'knowledge-ingestion-integration',
+    })
     const suffix = randomUUID()
     for (const role of ['admin', 'operator', 'sales'] as const) {
       const user = await payload.create({
@@ -126,7 +136,11 @@ describe.sequential('knowledge source ingestion job', () => {
       if (role === 'operator') operator = user
       if (role === 'sales') sales = user
     }
-    operatorAuthorization = await loginHeader(payload, operator, 'knowledge-ingestion-test-password')
+    operatorAuthorization = await loginHeader(
+      payload,
+      operator,
+      'knowledge-ingestion-test-password',
+    )
     salesAuthorization = await loginHeader(payload, sales, 'knowledge-ingestion-test-password')
     const prompt = await payload.create({
       collection: 'prompt-templates',
@@ -146,15 +160,50 @@ describe.sequential('knowledge source ingestion job', () => {
   afterAll(async () => {
     if (!payload) return
     if (sourceIDs.length) {
-      await payload.delete({ collection: 'knowledge-documents', overrideAccess: true, where: { ingestionSource: { in: sourceIDs } } })
-      await payload.delete({ collection: 'knowledge-source-assets', overrideAccess: true, where: { source: { in: sourceIDs } } })
-      await payload.delete({ collection: 'knowledge-source-documents', overrideAccess: true, where: { id: { in: sourceIDs } } })
+      await payload.delete({
+        collection: 'knowledge-documents',
+        overrideAccess: true,
+        where: { ingestionSource: { in: sourceIDs } },
+      })
+      await payload.delete({
+        collection: 'knowledge-source-assets',
+        overrideAccess: true,
+        where: { source: { in: sourceIDs } },
+      })
+      await payload.delete({
+        collection: 'knowledge-source-documents',
+        overrideAccess: true,
+        where: { id: { in: sourceIDs } },
+      })
     }
-    if (jobIDs.length) await payload.delete({ collection: 'jobs', overrideAccess: true, where: { id: { in: jobIDs } } })
-    if (promptIDs.length) await payload.delete({ collection: 'prompt-templates', overrideAccess: true, where: { id: { in: promptIDs } } })
-    await payload.delete({ collection: 'portal-command-receipts', overrideAccess: true, where: { actor: { in: userIDs } } })
-    await payload.delete({ collection: 'audit-logs', overrideAccess: true, where: { actor: { in: userIDs } } })
-    await payload.delete({ collection: 'users', context: { skipAudit: true }, overrideAccess: true, where: { id: { in: userIDs } } })
+    if (jobIDs.length)
+      await payload.delete({
+        collection: 'jobs',
+        overrideAccess: true,
+        where: { id: { in: jobIDs } },
+      })
+    if (promptIDs.length)
+      await payload.delete({
+        collection: 'prompt-templates',
+        overrideAccess: true,
+        where: { id: { in: promptIDs } },
+      })
+    await payload.delete({
+      collection: 'portal-command-receipts',
+      overrideAccess: true,
+      where: { actor: { in: userIDs } },
+    })
+    await payload.delete({
+      collection: 'audit-logs',
+      overrideAccess: true,
+      where: { actor: { in: userIDs } },
+    })
+    await payload.delete({
+      collection: 'users',
+      context: { skipAudit: true },
+      overrideAccess: true,
+      where: { id: { in: userIDs } },
+    })
     await payload.destroy()
   })
 
@@ -163,7 +212,12 @@ describe.sequential('knowledge source ingestion job', () => {
     const req = await createLocalReq({ user: operator }, payload)
     const result = await createKnowledgeSourceAndEnqueue({
       file: { data, mimetype: DOCX_MIME, name: `synthetic-${version}.docx`, size: data.length },
-      metadata: { originalLanguage: 'en', sourceTitle: `Synthetic source ${version}`, sourceType: 'technical-specification', sourceVersion: version },
+      metadata: {
+        originalLanguage: 'en',
+        sourceTitle: `Synthetic source ${version}`,
+        sourceType: 'technical-specification',
+        sourceVersion: version,
+      },
       payload,
       req,
     })
@@ -173,16 +227,22 @@ describe.sequential('knowledge source ingestion job', () => {
   }
 
   const gateway = (failure: 'all' | 'arabic' | 'none' = 'none') => {
-    const generateText = vi.fn<AiProvider['generateText']>(async ({ input, instructions, model }) => {
-      if (failure === 'all' || (failure === 'arabic' && instructions?.includes('Arabic'))) {
-        throw new Error('simulated translation outage')
-      }
-      return {
-        model,
-        text: `${instructions?.includes('Arabic') ? 'نص مترجم' : 'Translated text'}: ${input}`,
-        usage: { inputTokens: input.length, outputTokens: input.length, totalTokens: input.length * 2 },
-      }
-    })
+    const generateText = vi.fn<AiProvider['generateText']>(
+      async ({ input, instructions, model }) => {
+        if (failure === 'all' || (failure === 'arabic' && instructions?.includes('Arabic'))) {
+          throw new Error('simulated translation outage')
+        }
+        return {
+          model,
+          text: `${instructions?.includes('Arabic') ? 'نص مترجم' : 'Translated text'}: ${input}`,
+          usage: {
+            inputTokens: input.length,
+            outputTokens: input.length,
+            totalTokens: input.length * 2,
+          },
+        }
+      },
+    )
     return createAiGateway({
       operations: {
         text: {
@@ -217,7 +277,10 @@ describe.sequential('knowledge source ingestion job', () => {
     expect((await uploadKnowledgeSource(request(salesAuthorization))).status).toBe(403)
     const created = await uploadKnowledgeSource(request(operatorAuthorization))
     expect(created.status).toBe(201)
-    const createdBody = (await created.json()) as { job: { id: number } & Record<string, unknown>; source: { id: number } }
+    const createdBody = (await created.json()) as {
+      job: { id: number } & Record<string, unknown>
+      source: { id: number }
+    }
     sourceIDs.push(createdBody.source.id)
     jobIDs.push(createdBody.job.id)
     for (const forbidden of ['payload', 'ownerToken', 'leaseExpiresAt', 'lastError']) {
@@ -226,7 +289,10 @@ describe.sequential('knowledge source ingestion job', () => {
     const duplicate = await uploadKnowledgeSource(request(operatorAuthorization))
     // An idempotency receipt replays the original HTTP result exactly.
     expect(duplicate.status).toBe(201)
-    const duplicateBody = (await duplicate.json()) as { job: { id: number } & Record<string, unknown>; source: { id: number } }
+    const duplicateBody = (await duplicate.json()) as {
+      job: { id: number } & Record<string, unknown>
+      source: { id: number }
+    }
     expect(duplicateBody).toMatchObject({
       job: { id: createdBody.job.id },
       source: { id: createdBody.source.id },
@@ -235,7 +301,12 @@ describe.sequential('knowledge source ingestion job', () => {
       expect(duplicateBody.job).not.toHaveProperty(forbidden)
     }
     const worker = new JobWorker({
-      handlers: { [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload, resolveGateway: async () => gateway() }) },
+      handlers: {
+        [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({
+          payload,
+          resolveGateway: async () => gateway(),
+        }),
+      },
       queue: new PayloadJobQueue({ payload }),
     })
     await expect(worker.runOnce()).resolves.toBe('succeeded')
@@ -266,11 +337,16 @@ describe.sequential('knowledge source ingestion job', () => {
       uploadKnowledgeSource(request('second')),
     ])
     expect(responses.map((response) => response.status).sort()).toEqual([200, 201])
-    const results = await Promise.all(responses.map(async (response) => response.json() as Promise<{
-      job: { id: number }
-      source: { id: number }
-      state: 'created' | 'duplicate'
-    }>))
+    const results = await Promise.all(
+      responses.map(
+        async (response) =>
+          response.json() as Promise<{
+            job: { id: number }
+            source: { id: number }
+            state: 'created' | 'duplicate'
+          }>,
+      ),
+    )
     expect(results.map((result) => result.state).sort()).toEqual(['created', 'duplicate'])
     expect(new Set(results.map((result) => result.source.id))).toHaveProperty('size', 1)
     expect(new Set(results.map((result) => result.job.id))).toHaveProperty('size', 1)
@@ -299,7 +375,12 @@ describe.sequential('knowledge source ingestion job', () => {
   it('deduplicates upload, creates private EN/AR drafts, and protects source files', async () => {
     const uploaded = await upload(`happy-${randomUUID()}`)
     const duplicate = await createKnowledgeSourceAndEnqueue({
-      file: { data: uploaded.data, mimetype: DOCX_MIME, name: 'duplicate-name.docx', size: uploaded.data.length },
+      file: {
+        data: uploaded.data,
+        mimetype: DOCX_MIME,
+        name: 'duplicate-name.docx',
+        size: uploaded.data.length,
+      },
       metadata: {
         originalLanguage: 'en',
         sourceTitle: 'Different display title does not duplicate billing',
@@ -309,19 +390,41 @@ describe.sequential('knowledge source ingestion job', () => {
       payload,
       req: uploaded.req,
     })
-    expect(duplicate).toMatchObject({ job: { id: uploaded.result.job.id }, source: { id: uploaded.result.source.id }, state: 'duplicate' })
+    expect(duplicate).toMatchObject({
+      job: { id: uploaded.result.job.id },
+      source: { id: uploaded.result.source.id },
+      state: 'duplicate',
+    })
 
     const worker = new JobWorker({
       handlers: {
-        [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload, resolveGateway: async () => gateway() }),
+        [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({
+          payload,
+          resolveGateway: async () => gateway(),
+        }),
       },
       queue: new PayloadJobQueue({ payload }),
     })
     await expect(worker.runOnce()).resolves.toBe('succeeded')
 
-    const source = await payload.findByID({ collection: 'knowledge-source-documents', id: uploaded.result.source.id, overrideAccess: true })
-    expect(source).toMatchObject({ detectedLanguage: 'en', imageCount: 1, parserVersion: 'task8-ingestion-v1', processingStage: 'complete', processingStatus: 'needs_review' })
-    const outputs = await payload.find({ collection: 'knowledge-documents', overrideAccess: true, pagination: false, where: { ingestionSource: { equals: source.id } } })
+    const source = await payload.findByID({
+      collection: 'knowledge-source-documents',
+      id: uploaded.result.source.id,
+      overrideAccess: true,
+    })
+    expect(source).toMatchObject({
+      detectedLanguage: 'en',
+      imageCount: 1,
+      parserVersion: 'task8-ingestion-v1',
+      processingStage: 'complete',
+      processingStatus: 'needs_review',
+    })
+    const outputs = await payload.find({
+      collection: 'knowledge-documents',
+      overrideAccess: true,
+      pagination: false,
+      where: { ingestionSource: { equals: source.id } },
+    })
     expect(outputs.docs).toHaveLength(2)
     expect(outputs.docs.map((document) => document.locale).sort()).toEqual(['ar', 'en'])
     for (const document of outputs.docs) {
@@ -335,33 +438,99 @@ describe.sequential('knowledge source ingestion job', () => {
         sourceHash: uploaded.result.source.sourceHash,
       })
     }
-    const assets = await payload.find({ collection: 'knowledge-source-assets', overrideAccess: true, pagination: false, where: { source: { equals: source.id } } })
+    const assets = await payload.find({
+      collection: 'knowledge-source-assets',
+      overrideAccess: true,
+      pagination: false,
+      where: { source: { equals: source.id } },
+    })
     expect(assets.docs).toHaveLength(1)
-    expect(assets.docs[0]).toMatchObject({ accessibility: 'preview-only', originalName: 'image1.png', sequence: 1 })
+    expect(assets.docs[0]).toMatchObject({
+      accessibility: 'preview-only',
+      originalName: 'image1.png',
+      sequence: 1,
+    })
 
-    const anonymous = await getSourceFile(new NextRequest(`http://localhost/api/portal/knowledge/sources/${source.id}/file`), { params: Promise.resolve({ id: String(source.id) }) })
+    const anonymous = await getSourceFile(
+      new NextRequest(`http://localhost/api/portal/knowledge/sources/${source.id}/file`),
+      { params: Promise.resolve({ id: String(source.id) }) },
+    )
     expect(anonymous.status).toBe(401)
-    const forbidden = await getSourceFile(new NextRequest(`http://localhost/api/portal/knowledge/sources/${source.id}/file`, { headers: { authorization: salesAuthorization } }), { params: Promise.resolve({ id: String(source.id) }) })
+    const forbidden = await getSourceFile(
+      new NextRequest(`http://localhost/api/portal/knowledge/sources/${source.id}/file`, {
+        headers: { authorization: salesAuthorization },
+      }),
+      { params: Promise.resolve({ id: String(source.id) }) },
+    )
     expect(forbidden.status).toBe(403)
-    const original = await getSourceFile(new NextRequest(`http://localhost/api/portal/knowledge/sources/${source.id}/file`, { headers: { authorization: operatorAuthorization } }), { params: Promise.resolve({ id: String(source.id) }) })
+    const original = await getSourceFile(
+      new NextRequest(`http://localhost/api/portal/knowledge/sources/${source.id}/file`, {
+        headers: { authorization: operatorAuthorization },
+      }),
+      { params: Promise.resolve({ id: String(source.id) }) },
+    )
     expect(original.status).toBe(200)
     expect(Buffer.from(await original.arrayBuffer())).toEqual(uploaded.data)
-    const preview = await getSourceAsset(new NextRequest(`http://localhost/api/portal/knowledge/sources/${source.id}/assets/${assets.docs[0].id}`, { headers: { authorization: operatorAuthorization } }), { params: Promise.resolve({ assetId: String(assets.docs[0].id), id: String(source.id) }) })
+    const preview = await getSourceAsset(
+      new NextRequest(
+        `http://localhost/api/portal/knowledge/sources/${source.id}/assets/${assets.docs[0].id}`,
+        { headers: { authorization: operatorAuthorization } },
+      ),
+      { params: Promise.resolve({ assetId: String(assets.docs[0].id), id: String(source.id) }) },
+    )
     expect(preview.status).toBe(200)
     expect(preview.headers.get('cache-control')).toBe('private, no-store')
 
     const operatorReq = await createLocalReq({ user: operator }, payload)
-    const safeSource = await payload.findByID({ collection: 'knowledge-source-documents', id: source.id, overrideAccess: false, req: operatorReq })
+    const safeSource = await payload.findByID({
+      collection: 'knowledge-source-documents',
+      id: source.id,
+      overrideAccess: false,
+      req: operatorReq,
+    })
     expect(safeSource).not.toHaveProperty('currentJobOwnerToken')
-    await expect(payload.update({ collection: 'knowledge-source-documents', data: { processingStatus: 'archived' }, id: source.id, overrideAccess: false, req: operatorReq })).rejects.toThrow()
+    await expect(
+      payload.update({
+        collection: 'knowledge-source-documents',
+        data: { processingStatus: 'archived' },
+        id: source.id,
+        overrideAccess: false,
+        req: operatorReq,
+      }),
+    ).rejects.toThrow()
 
     for (const output of outputs.docs) {
-      await payload.update({ collection: 'knowledge-documents', data: { customerVisible: true }, id: output.id, overrideAccess: true })
-      await payload.update({ collection: 'knowledge-documents', data: { reviewStatus: 'reviewed' }, id: output.id, overrideAccess: true })
-      await payload.update({ collection: 'knowledge-documents', data: { embeddingModel: 'stale-model', embeddingSpace: 'stale-space', indexStatus: 'ready', indexedAt: new Date().toISOString() }, id: output.id, overrideAccess: true })
+      await payload.update({
+        collection: 'knowledge-documents',
+        data: { customerVisible: true },
+        id: output.id,
+        overrideAccess: true,
+      })
+      await payload.update({
+        collection: 'knowledge-documents',
+        data: { reviewStatus: 'reviewed' },
+        id: output.id,
+        overrideAccess: true,
+      })
+      await payload.update({
+        collection: 'knowledge-documents',
+        data: {
+          embeddingModel: 'stale-model',
+          embeddingSpace: 'stale-space',
+          indexStatus: 'ready',
+          indexedAt: new Date().toISOString(),
+        },
+        id: output.id,
+        overrideAccess: true,
+      })
     }
     const replacement = await createKnowledgeSourceAndEnqueue({
-      file: { data: uploaded.data, mimetype: DOCX_MIME, name: 'replacement.docx', size: uploaded.data.length },
+      file: {
+        data: uploaded.data,
+        mimetype: DOCX_MIME,
+        name: 'replacement.docx',
+        size: uploaded.data.length,
+      },
       metadata: {
         originalLanguage: 'en',
         sourceTitle: source.sourceTitle,
@@ -374,7 +543,13 @@ describe.sequential('knowledge source ingestion job', () => {
     sourceIDs.push(Number(replacement.source.id))
     jobIDs.push(replacement.job.id)
     for (const output of outputs.docs) {
-      await expect(payload.findByID({ collection: 'knowledge-documents', id: output.id, overrideAccess: true })).resolves.toMatchObject({
+      await expect(
+        payload.findByID({
+          collection: 'knowledge-documents',
+          id: output.id,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({
         customerVisible: false,
         indexStatus: 'pending',
         reviewStatus: 'draft',
@@ -383,46 +558,168 @@ describe.sequential('knowledge source ingestion job', () => {
     await expect(worker.runOnce()).resolves.toBe('succeeded')
   })
 
+  it('ingests source text above Payload default length while preserving numeric fidelity markers', async () => {
+    const text = Array.from(
+      { length: 220 },
+      (_, index) =>
+        `LARGE-${String(index + 1).padStart(2, '0')} Topic ${String(index + 1).padStart(2, '0')} ${'aluminum facade knowledge '.repeat(35)}1200 mm price warranty`,
+    ).join(' ')
+    expect(text.length).toBeGreaterThan(200_000)
+    const data = makeDocx(text)
+    const req = await createLocalReq({ user: operator }, payload)
+    const version = `large-${randomUUID()}`
+    const created = await createKnowledgeSourceAndEnqueue({
+      file: { data, mimetype: DOCX_MIME, name: `large-${version}.docx`, size: data.length },
+      metadata: {
+        originalLanguage: 'en',
+        sourceTitle: `Large source ${version}`,
+        sourceType: 'sales-script',
+        sourceVersion: version,
+      },
+      payload,
+      req,
+    })
+    sourceIDs.push(Number(created.source.id))
+    jobIDs.push(created.job.id)
+
+    const worker = new JobWorker({
+      handlers: {
+        [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({
+          payload,
+          resolveGateway: async () => gateway(),
+        }),
+      },
+      queue: new PayloadJobQueue({ payload }),
+    })
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+
+    const outputs = await payload.find({
+      collection: 'knowledge-documents',
+      overrideAccess: true,
+      pagination: false,
+      where: { ingestionSource: { equals: created.source.id } },
+    })
+    expect(outputs.docs).toHaveLength(2)
+    for (const document of outputs.docs) {
+      expect(document.content.length).toBeGreaterThan(200_000)
+      expect(document).toMatchObject({
+        customerVisible: false,
+        indexStatus: 'pending',
+        reviewStatus: 'draft',
+        riskTopics: expect.arrayContaining(['price', 'warranty']),
+      })
+    }
+  })
+
   it('keeps partial failures private and allows only an admin-controlled retry', async () => {
     const uploaded = await upload(`retry-${randomUUID()}`)
     const failingWorker = new JobWorker({
-      handlers: { [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload, resolveGateway: async () => gateway('arabic') }) },
+      handlers: {
+        [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({
+          payload,
+          resolveGateway: async () => gateway('arabic'),
+        }),
+      },
       queue: new PayloadJobQueue({ payload }),
     })
     await expect(failingWorker.runOnce()).resolves.toBe('failed')
-    await expect(payload.findByID({ collection: 'knowledge-source-documents', id: uploaded.result.source.id, overrideAccess: true })).resolves.toMatchObject({ processingStatus: 'failed' })
-    const outputs = await payload.find({ collection: 'knowledge-documents', overrideAccess: true, where: { ingestionSource: { equals: uploaded.result.source.id } } })
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-source-documents',
+        id: uploaded.result.source.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ processingStatus: 'failed' })
+    const outputs = await payload.find({
+      collection: 'knowledge-documents',
+      overrideAccess: true,
+      where: { ingestionSource: { equals: uploaded.result.source.id } },
+    })
     expect(outputs.totalDocs).toBe(0)
 
-    await expect(retryKnowledgeSource({ actor: { id: operator.id, role: 'operator' }, id: Number(uploaded.result.source.id), payload, req: uploaded.req })).rejects.toMatchObject({ status: 403 })
-    await payload.update({ collection: 'knowledge-source-documents', data: { currentJobId: null }, id: uploaded.result.source.id, overrideAccess: true })
+    await expect(
+      retryKnowledgeSource({
+        actor: { id: operator.id, role: 'operator' },
+        id: Number(uploaded.result.source.id),
+        payload,
+        req: uploaded.req,
+      }),
+    ).rejects.toMatchObject({ status: 403 })
+    await payload.update({
+      collection: 'knowledge-source-documents',
+      data: { currentJobId: null },
+      id: uploaded.result.source.id,
+      overrideAccess: true,
+    })
     const adminReq = await createLocalReq({ user: admin }, payload)
-    await expect(retryKnowledgeSource({ actor: { id: admin.id, role: 'admin' }, id: Number(uploaded.result.source.id), payload, req: adminReq })).resolves.toMatchObject({ job: { id: uploaded.result.job.id, manualRetryCount: 1, status: 'pending' }, source: { processingStatus: 'queued' } })
+    await expect(
+      retryKnowledgeSource({
+        actor: { id: admin.id, role: 'admin' },
+        id: Number(uploaded.result.source.id),
+        payload,
+        req: adminReq,
+      }),
+    ).resolves.toMatchObject({
+      job: { id: uploaded.result.job.id, manualRetryCount: 1, status: 'pending' },
+      source: { processingStatus: 'queued' },
+    })
     const succeedingWorker = new JobWorker({
-      handlers: { [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload, resolveGateway: async () => gateway() }) },
+      handlers: {
+        [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({
+          payload,
+          resolveGateway: async () => gateway(),
+        }),
+      },
       queue: new PayloadJobQueue({ payload }),
     })
     await expect(succeedingWorker.runOnce()).resolves.toBe('succeeded')
-    await expect(payload.findByID({ collection: 'knowledge-source-documents', id: uploaded.result.source.id, overrideAccess: true })).resolves.toMatchObject({ processingStatus: 'needs_review' })
-    await expect(retryKnowledgeSource({ actor: { id: admin.id, role: 'admin' }, id: Number(uploaded.result.source.id), payload, req: adminReq })).rejects.toMatchObject({ code: 'source-not-retryable', status: 409 })
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-source-documents',
+        id: uploaded.result.source.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ processingStatus: 'needs_review' })
+    await expect(
+      retryKnowledgeSource({
+        actor: { id: admin.id, role: 'admin' },
+        id: Number(uploaded.result.source.id),
+        payload,
+        req: adminReq,
+      }),
+    ).rejects.toMatchObject({ code: 'source-not-retryable', status: 409 })
   })
 
   it('commits the source reset before a manually retried Job becomes claimable', async () => {
     const uploaded = await upload(`retry-atomic-${randomUUID()}`)
     const failingWorker = new JobWorker({
-      handlers: { [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload, resolveGateway: async () => gateway('all') }) },
+      handlers: {
+        [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({
+          payload,
+          resolveGateway: async () => gateway('all'),
+        }),
+      },
       queue: new PayloadJobQueue({ payload }),
     })
     await expect(failingWorker.runOnce()).resolves.toBe('failed')
 
     let releaseSourceReset!: () => void
     let markSourceResetStarted!: () => void
-    const sourceResetStarted = new Promise<void>((resolve) => { markSourceResetStarted = resolve })
-    const sourceResetRelease = new Promise<void>((resolve) => { releaseSourceReset = resolve })
-    const originalUpdate = payload.update.bind(payload) as unknown as (options: unknown) => Promise<unknown>
+    const sourceResetStarted = new Promise<void>((resolve) => {
+      markSourceResetStarted = resolve
+    })
+    const sourceResetRelease = new Promise<void>((resolve) => {
+      releaseSourceReset = resolve
+    })
+    const originalUpdate = payload.update.bind(payload) as unknown as (
+      options: unknown,
+    ) => Promise<unknown>
     const interceptedUpdate = async (options: unknown): Promise<unknown> => {
       const candidate = options as { collection?: unknown; data?: Record<string, unknown> }
-      if (candidate.collection === 'knowledge-source-documents' && candidate.data?.processingStatus === 'queued') {
+      if (
+        candidate.collection === 'knowledge-source-documents' &&
+        candidate.data?.processingStatus === 'queued'
+      ) {
         markSourceResetStarted()
         await sourceResetRelease
       }
@@ -431,18 +728,39 @@ describe.sequential('knowledge source ingestion job', () => {
     const update = vi.spyOn(payload, 'update')
     update.mockImplementation(interceptedUpdate as never)
     const adminReq = await createLocalReq({ user: admin }, payload)
-    const retry = retryKnowledgeSource({ actor: { id: admin.id, role: 'admin' }, id: Number(uploaded.result.source.id), payload, req: adminReq })
+    const retry = retryKnowledgeSource({
+      actor: { id: admin.id, role: 'admin' },
+      id: Number(uploaded.result.source.id),
+      payload,
+      req: adminReq,
+    })
     let sourceResetTimeout: ReturnType<typeof setTimeout> | undefined
     try {
       await new Promise<void>((resolve, reject) => {
-        sourceResetTimeout = setTimeout(() => reject(new Error('Timed out waiting for the retry source reset')), 2_000)
+        sourceResetTimeout = setTimeout(
+          () => reject(new Error('Timed out waiting for the retry source reset')),
+          2_000,
+        )
         void sourceResetStarted.then(resolve, reject)
       })
       clearTimeout(sourceResetTimeout)
-      await expect(new PayloadJobQueue({ payload }).getByID(uploaded.result.job.id)).resolves.toMatchObject({ manualRetryCount: 0, status: 'failed' })
-      await expect(payload.findByID({ collection: 'knowledge-source-documents', id: uploaded.result.source.id, overrideAccess: true })).resolves.toMatchObject({ processingStatus: 'failed' })
+      await expect(
+        new PayloadJobQueue({ payload }).getByID(uploaded.result.job.id),
+      ).resolves.toMatchObject({ manualRetryCount: 0, status: 'failed' })
+      await expect(
+        payload.findByID({
+          collection: 'knowledge-source-documents',
+          id: uploaded.result.source.id,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({ processingStatus: 'failed' })
       const worker = new JobWorker({
-        handlers: { [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({ payload, resolveGateway: async () => gateway() }) },
+        handlers: {
+          [KNOWLEDGE_INGEST_JOB_TYPE]: createKnowledgeIngestJobHandler({
+            payload,
+            resolveGateway: async () => gateway(),
+          }),
+        },
         queue: new PayloadJobQueue({ payload }),
       })
       await expect(worker.runOnce()).resolves.toBe('idle')
@@ -456,9 +774,24 @@ describe.sequential('knowledge source ingestion job', () => {
       update.mockRestore()
     }
 
-    await expect(payload.findByID({ collection: 'knowledge-source-documents', id: uploaded.result.source.id, overrideAccess: true })).resolves.toMatchObject({ processingStage: 'complete', processingStatus: 'needs_review' })
-    await expect(retryKnowledgeSource({ actor: { id: admin.id, role: 'admin' }, id: Number(uploaded.result.source.id), payload, req: adminReq })).rejects.toMatchObject({ code: 'source-not-retryable', status: 409 })
-    await expect(new PayloadJobQueue({ payload }).getByID(uploaded.result.job.id)).resolves.toMatchObject({ manualRetryCount: 1, status: 'succeeded' })
+    await expect(
+      payload.findByID({
+        collection: 'knowledge-source-documents',
+        id: uploaded.result.source.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ processingStage: 'complete', processingStatus: 'needs_review' })
+    await expect(
+      retryKnowledgeSource({
+        actor: { id: admin.id, role: 'admin' },
+        id: Number(uploaded.result.source.id),
+        payload,
+        req: adminReq,
+      }),
+    ).rejects.toMatchObject({ code: 'source-not-retryable', status: 409 })
+    await expect(
+      new PayloadJobQueue({ payload }).getByID(uploaded.result.job.id),
+    ).resolves.toMatchObject({ manualRetryCount: 1, status: 'succeeded' })
   })
 
   it('cascades private assets when their required source is deleted', async () => {
@@ -477,7 +810,12 @@ describe.sequential('knowledge source ingestion job', () => {
         sourceType: 'technical-specification',
         sourceVersion: suffix,
       },
-      file: { data: sourceFile, mimetype: DOCX_MIME, name: `cascade-${suffix}.docx`, size: sourceFile.length },
+      file: {
+        data: sourceFile,
+        mimetype: DOCX_MIME,
+        name: `cascade-${suffix}.docx`,
+        size: sourceFile.length,
+      },
       overrideAccess: true,
     })
     sourceIDs.push(source.id)
@@ -492,7 +830,11 @@ describe.sequential('knowledge source ingestion job', () => {
     )
     const assetID = inserted.rows[0].id
 
-    await payload.delete({ collection: 'knowledge-source-documents', id: source.id, overrideAccess: true })
+    await payload.delete({
+      collection: 'knowledge-source-documents',
+      id: source.id,
+      overrideAccess: true,
+    })
     const remaining = await payload.find({
       collection: 'knowledge-source-assets',
       overrideAccess: true,
