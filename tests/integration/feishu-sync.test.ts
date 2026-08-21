@@ -38,6 +38,8 @@ const fieldMappings = [
   { localField: 'country' as const, required: false, targetField: 'Country' },
   { localField: 'source' as const, required: true, targetField: 'Source' },
   { localField: 'intentLevel' as const, required: true, targetField: 'Intent' },
+  { localField: 'productNeed' as const, targetField: 'Product Need' },
+  { localField: 'projectStage' as const, targetField: 'Project Stage' },
   { localField: 'email' as const, targetField: 'Email' },
   { localField: 'sourceURL' as const, targetField: 'Source URL' },
   { localField: 'originalInquiry' as const, targetField: 'Original Inquiry' },
@@ -265,13 +267,17 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
         idempotencyKey: randomUUID(),
         intentLevel: 'a',
         interest: 'Aluminum facade panels',
+        hasDrawings: true,
         locale: 'en',
         message: 'Please review our drawings and quotation requirements.',
         name: 'Buyer Name',
+        projectStage: 'tender',
+        quantitySquareMeters: 3200,
         requestId: randomUUID(),
         source: sourceID,
         sourceURL: 'https://ivybm.example.invalid/en/products',
         status: 'qualified',
+        timeline: 'within_3_months',
       },
       overrideAccess: true,
     })
@@ -738,7 +744,9 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     })
 
     expect(upsertRecord).toHaveBeenCalledWith(
-      expect.objectContaining({ fields: expect.not.objectContaining({ Country: expect.anything() }) }),
+      expect.objectContaining({
+        fields: expect.not.objectContaining({ Country: expect.anything() }),
+      }),
     )
     expect(
       (sendText.mock.calls as unknown as Array<[SendTextInput]>)
@@ -1102,7 +1110,16 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     expect(upsertRecord).toHaveBeenCalledTimes(1)
     expect(upsertRecord).toHaveBeenCalledWith(
       expect.objectContaining({
-        fields: expect.objectContaining({ Customer: 'Acme Facades', Intent: 'A' }),
+        fields: expect.objectContaining({
+          Country: 'United Arab Emirates',
+          Customer: 'Acme Facades',
+          Intent: 'A',
+          'Original Inquiry': expect.stringMatching(
+            /Project stage: tender[\s\S]*Quantity \(sqm\): 3200[\s\S]*Drawings available: Yes[\s\S]*Purchase timeline: within_3_months/u,
+          ),
+          'Product Need': 'Aluminum facade panels',
+          'Project Stage': 'tender',
+        }),
         localLeadId: String(leadID),
       }),
     )
