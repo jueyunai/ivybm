@@ -62,6 +62,16 @@ bash scripts/install-git-hooks.sh
 - production 发布仍由 jueyunai 审批，一期上线验收必须由两人共同确认。
 - `main` 上的紧急修复只能在用户明确授权后使用 `IVYBM_ALLOW_MAIN_PUSH=1` 绕过本地 hook；完成后必须补建 PR 或事故记录。
 
+### 本地闭环与 PR 创建顺序
+
+- PR 是稳定结果的交付和审查入口，不是业务调试器。探索、E2E 失败定位、测试假设修正和本地联调优先在独立 worktree 完成，不在远程 PR 上逐提交试错。
+- 每个业务 checkpoint 先写或调整 E2E，再运行真实本地主流程；失败后必须区分“测试定位 / 断言错误”“环境阻塞”和“生产代码缺陷”。生产代码缺陷与能证明修复的回归测试放在同一 PR，不得只提交假设已通过的测试。
+- 创建 Draft PR 前必须完成范围冻结记录：业务目标、覆盖 Task、owner、指定 reviewer、共享结构 / 跨人契约、外部依赖、回滚方式、明确不包含的范围，以及本地验证证据。范围未冻结时只保留本地 checkpoint commit，不 push、不创建 PR。
+- 一个 PR 以一个业务 / 工程目标和一个可独立回滚 / 发布单元为边界；不得按测试文件、单个 commit 或 reviewer 数量机械拆分。只有 owner、强制 Review 边界、依赖顺序或回滚风险确实不同才拆分；有依赖时明确记录 base PR 和合并顺序。
+- 同一轮小修改必须集中完成后一次 push；收到 Review 后先完成同一轮可归并的修复，再对最新 head 重新运行定向验证并一次性更新 PR。若修复改变 owner、回滚或共享契约边界，先暂停编码并重新冻结范围。
+- 外部账号、数据库或受控环境缺失时，记录为 blocker 并说明已完成的本地 / fixture 证据；不得把未运行、skipped 或 fake 结果描述为真实联调通过。
+- 不建立长期 integration / develop 分支。需要整理最终 PR 时可使用临时本地 worktree 或短期整合分支，完成迁移后删除；远程只保留已经范围冻结的 Draft / Ready PR。
+
 ## AI 与 CI 门禁
 
 - AI 创建 PR 时，只有本地完整门禁、PR 描述、风险 / 回滚和 Review 边界全部完成，并得到当前任务级明确授权，才可以直接创建 Ready PR。否则必须创建 Draft，并保持 Draft 到真实 Ready 检查点；禁止 Draft 创建后几十秒内立即转 Ready。
