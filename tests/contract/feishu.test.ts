@@ -27,7 +27,6 @@ const mapping: FeishuMappingConfig = {
     { localField: 'source', required: true, targetField: 'Source' },
     { localField: 'intentLevel', required: true, targetField: 'Intent' },
     { localField: 'productNeed', targetField: 'Product Need' },
-    { localField: 'projectStage', targetField: 'Project Stage' },
     { localField: 'email', targetField: 'Email' },
     { localField: 'nextFollowUpAt', targetField: 'Next Follow-up' },
     { localField: 'sourceURL', targetField: 'Source URL' },
@@ -108,7 +107,6 @@ describe('Feishu CRM contract', () => {
     expect(mapLead({ lead: qualifiedLead, mapping }).fields['Original Inquiry']).toContain(
       'Project stage: tender',
     )
-    expect(mapLead({ lead: qualifiedLead, mapping }).fields['Project Stage']).toBe('tender')
     expect(mapLead({ lead: qualifiedLead, mapping }).fields['Original Inquiry']).toContain(
       'Budget: USD 450000',
     )

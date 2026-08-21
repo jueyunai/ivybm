@@ -73,7 +73,7 @@ const leadValues = (lead: LeadForFeishu): Record<FeishuLeadField, FeishuFieldVal
   originalInquiry: originalInquiry(lead),
   phone: lead.phone?.trim() ?? '',
   productNeed: lead.interest?.trim() ?? '',
-  projectStage: lead.projectStage?.trim() ?? '',
+  projectStage: lead.status,
   source: relationshipLabel(lead.source),
   sourceURL: lead.sourceURL?.trim() ?? '',
 })
