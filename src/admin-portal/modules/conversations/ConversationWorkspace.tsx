@@ -133,8 +133,7 @@ const COPY = {
       resolved: 'Resolved',
     },
     takeOver: 'Take over',
-    takeOverHint:
-      'This conversation is currently handled by AI. Take over to reply directly.',
+    takeOverHint: 'This conversation is currently handled by AI. Take over to reply directly.',
     title: 'Unified conversations',
     total: 'conversations',
     unassigned: 'Unassigned',
