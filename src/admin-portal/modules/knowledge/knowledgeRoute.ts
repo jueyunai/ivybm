@@ -4,6 +4,7 @@ import { getRoleUser } from '@/access/roles'
 import config from '@/payload.config'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
+import { KNOWLEDGE_DOCUMENT_MAX_REQUEST_BYTES } from '@/modules/knowledge/limits'
 
 import { KnowledgeCommandError } from './knowledgeCommands'
 
@@ -50,11 +51,14 @@ export async function authorizeKnowledgeRequest(
   }
 }
 
-export async function readKnowledgeJSON(request: Request): Promise<Record<string, unknown>> {
-  return readLimitedJSONObject(request, {
+const readKnowledgeJSONObject = async (
+  request: Request,
+  maximumBytes: number,
+): Promise<Record<string, unknown>> =>
+  readLimitedJSONObject(request, {
     invalid: () =>
       new KnowledgeCommandError('knowledge-invalid-json', 'A JSON object is required', 400),
-    maximumBytes: 256_000,
+    maximumBytes,
     tooLarge: () =>
       new KnowledgeCommandError(
         'knowledge-request-too-large',
@@ -62,6 +66,15 @@ export async function readKnowledgeJSON(request: Request): Promise<Record<string
         413,
       ),
   })
+
+export async function readKnowledgeJSON(request: Request): Promise<Record<string, unknown>> {
+  return readKnowledgeJSONObject(request, 256_000)
+}
+
+export async function readKnowledgeDocumentJSON(
+  request: Request,
+): Promise<Record<string, unknown>> {
+  return readKnowledgeJSONObject(request, KNOWLEDGE_DOCUMENT_MAX_REQUEST_BYTES)
 }
 
 export function requireKnowledgeID(value: string): number {

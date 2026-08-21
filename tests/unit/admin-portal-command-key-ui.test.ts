@@ -16,6 +16,7 @@ import { KnowledgeAiDebug } from '@/admin-portal/modules/knowledge/KnowledgeAiDe
 import { LeadsHub } from '@/admin-portal/modules/leads/LeadsHub'
 import type { LeadsSummary } from '@/admin-portal/modules/leads/getLeadsPage'
 import { MediaEditor } from '@/admin-portal/modules/media/MediaEditor'
+import { KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS } from '@/modules/knowledge/limits'
 
 const router = { refresh: vi.fn(), replace: vi.fn() }
 
@@ -235,6 +236,9 @@ describe('Portal create command keys', () => {
     )
 
     await screen.findByRole('heading', { name: '新增文档' })
+    expect((screen.getByLabelText('知识正文') as HTMLTextAreaElement).maxLength).toBe(
+      KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS,
+    )
     fireEvent.change(screen.getByLabelText('来源标题'), {
       target: { value: 'Stable key document' },
     })
