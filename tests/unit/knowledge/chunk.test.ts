@@ -134,30 +134,94 @@ describe('knowledge document chunking', () => {
     expect(chunks[1].content).toBe('SECOND-01\nRecommended answer: Next topic.')
   })
 
-  it('keeps a single two-digit numbered answer step with its Q&A entry', () => {
+  it('keeps same-prefix numbered answer steps inside the current Q&A group', () => {
+    for (const step of ['01. Product', '01. Product installation requires a dry substrate.']) {
+      const chunks = chunkKnowledgeDocument(
+        {
+          documentId: 'same-prefix-numbered-answer-step',
+          locale: 'en',
+          sourceTitle: 'Same-prefix numbered answer step',
+          sourceVersion: '1',
+          text: [
+            'PRODUCT-01',
+            'Recommended procedure:',
+            step,
+            'PRODUCT-02',
+            'Recommended answer: Next topic.',
+          ].join('\n'),
+        },
+        { maxCharacters: 1_200 },
+      )
+
+      expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? [])).toEqual([
+        ['PRODUCT-01'],
+        ['PRODUCT-02'],
+      ])
+      expect(chunks[0].content).toContain(step)
+      expect(chunks[1].content).toBe('PRODUCT-02\nRecommended answer: Next topic.')
+    }
+  })
+
+  it('keeps a prefix-colliding answer step with the preceding Q&A', () => {
     const chunks = chunkKnowledgeDocument(
       {
-        documentId: 'single-numbered-answer-step',
+        documentId: 'prefix-colliding-answer-step',
         locale: 'en',
-        sourceTitle: 'Single numbered answer step',
+        sourceTitle: 'Prefix-colliding answer step',
         sourceVersion: '1',
         text: [
-          'FIRST-01',
+          'COMPANY-01',
           'Recommended procedure:',
-          '01. Inspect the substrate.',
-          'SECOND-01',
-          'Recommended answer: Next topic.',
+          '02. Product installation requires a dry substrate.',
+          'PRODUCT-01',
+          'Recommended answer: Confirm dimensions with sales.',
         ].join('\n'),
       },
       { maxCharacters: 1_200 },
     )
 
     expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? [])).toEqual([
-      ['FIRST-01'],
-      ['SECOND-01'],
+      ['COMPANY-01'],
+      ['PRODUCT-01'],
     ])
-    expect(chunks[0].content).toContain('01. Inspect the substrate.')
-    expect(chunks[1].content).toBe('SECOND-01\nRecommended answer: Next topic.')
+    expect(chunks[0].content).toContain('02. Product installation requires a dry substrate.')
+    expect(chunks[1].content).toBe('PRODUCT-01\nRecommended answer: Confirm dimensions with sales.')
+  })
+
+  it('keeps 240 large structured Q&A entries semantically isolated', () => {
+    const lines = ['Sanitized large sales knowledge']
+    const expectedIDs: string[] = []
+    for (let group = 1; group <= 12; group += 1) {
+      const groupID = `GROUP${String(group).padStart(2, '0')}`
+      if (group > 1) lines.push(`${String(group).padStart(2, '0')}. ${groupID}`)
+      for (let entry = 1; entry <= 20; entry += 1) {
+        const entryID = `${groupID}-${String(entry).padStart(2, '0')}`
+        expectedIDs.push(entryID)
+        lines.push(entryID)
+        lines.push(`Recommended answer: ${'verified facade detail '.repeat(50)}`)
+        lines.push(`${String(entry).padStart(2, '0')}. ${groupID}`)
+      }
+    }
+    const text = lines.join('\n')
+
+    expect(text.length).toBeGreaterThan(200_000)
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'sanitized-large-structured-sales-knowledge',
+        locale: 'en',
+        sourceTitle: 'Sanitized large structured sales knowledge',
+        sourceVersion: '1',
+        text,
+      },
+      { maxCharacters: 1_200 },
+    )
+
+    const idsByChunk = chunks.map(
+      ({ content }) => content.match(/\b[A-Z][A-Z0-9-]+-\d{2}\b/g) ?? [],
+    )
+    expect(chunks.every(({ content }) => content.length <= 1_200)).toBe(true)
+    expect(idsByChunk.every((ids) => new Set(ids).size <= 1)).toBe(true)
+    expect([...new Set(idsByChunk.flat())]).toEqual(expectedIDs)
   })
 
   it('does not treat an answer sentence starting with the next Q&A prefix as a topic', () => {

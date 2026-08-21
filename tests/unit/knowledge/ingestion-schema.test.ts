@@ -6,7 +6,10 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { KnowledgeSourceAssets } from '@/collections/KnowledgeSourceAssets'
+import { KnowledgeSourceDocuments } from '@/collections/KnowledgeSourceDocuments'
 import { KnowledgeDocuments } from '@/collections/KnowledgeDocuments'
+import { KNOWLEDGE_SOURCE_MAX_TEXT_CHARACTERS } from '@/modules/knowledge/ingestion/parser'
+import { KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS } from '@/modules/knowledge/limits'
 
 const migrationBase = path.join(
   process.cwd(),
@@ -18,7 +21,18 @@ describe('knowledge source asset lifecycle', () => {
     const contentField = KnowledgeDocuments.fields.find(
       (field) => 'name' in field && field.name === 'content',
     )
-    expect(contentField).toMatchObject({ maxLength: 1_000_000, type: 'textarea' })
+    const extractedTextField = KnowledgeSourceDocuments.fields.find(
+      (field) => 'name' in field && field.name === 'extractedText',
+    )
+    expect(KNOWLEDGE_SOURCE_MAX_TEXT_CHARACTERS).toBe(KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS)
+    expect(contentField).toMatchObject({
+      maxLength: KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS,
+      type: 'textarea',
+    })
+    expect(extractedTextField).toMatchObject({
+      maxLength: KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS,
+      type: 'textarea',
+    })
   })
 
   it('keeps the required Collection relation and migration cascade semantics aligned', () => {

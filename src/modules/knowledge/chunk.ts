@@ -31,12 +31,15 @@ type ChunkOptions = {
 const STRUCTURED_QA_START = /^([A-Z][A-Z0-9-]{1,32}-\d{2})(?:\s|$)/
 const STRUCTURED_TOPIC_START = /^\d{2}\.\s+\S/
 
+const structuredQAPrefix = (qaID: string): string =>
+  qaID.replace(/-\d{2}$/, '').replace(/[^A-Z0-9]/g, '')
+
 const isStructuredTopicForQA = (topicLine: string, qaID: string): boolean => {
   const topic = topicLine
     .replace(/^\d{2}\.\s+/, '')
     .replace(/[^a-z0-9]/gi, '')
     .toUpperCase()
-  const qaPrefix = qaID.replace(/-\d{2}$/, '').replace(/[^A-Z0-9]/g, '')
+  const qaPrefix = structuredQAPrefix(qaID)
   const singularTopic = topic.endsWith('S') ? topic.slice(0, -1) : topic
 
   return topic === qaPrefix || singularTopic === qaPrefix
@@ -77,6 +80,7 @@ const splitStructuredQASections = (text: string): string[] | null => {
   const sections: string[] = []
   let current: string[] = []
   let currentHasQA = false
+  let currentQAPrefix: string | undefined
   let pendingTopics: string[] = []
   let qaCount = 0
 
@@ -85,13 +89,20 @@ const splitStructuredQASections = (text: string): string[] | null => {
     if (section) sections.push(section)
     current = []
     currentHasQA = false
+    currentQAPrefix = undefined
   }
 
   for (const line of text.split('\n')) {
     const trimmed = line.trim()
     const qaMatch = STRUCTURED_QA_START.exec(trimmed)
     if (qaMatch) {
-      if (pendingTopics.length === 1 && isStructuredTopicForQA(pendingTopics[0], qaMatch[1])) {
+      const nextQAPrefix = structuredQAPrefix(qaMatch[1])
+      if (
+        pendingTopics.length === 1 &&
+        currentQAPrefix !== undefined &&
+        currentQAPrefix !== nextQAPrefix &&
+        isStructuredTopicForQA(pendingTopics[0], qaMatch[1])
+      ) {
         pushCurrent()
         current.push(pendingTopics[0])
       } else if (pendingTopics.length > 0) {
@@ -103,6 +114,7 @@ const splitStructuredQASections = (text: string): string[] | null => {
       pendingTopics = []
       current.push(trimmed)
       currentHasQA = true
+      currentQAPrefix = nextQAPrefix
       qaCount += 1
       continue
     }

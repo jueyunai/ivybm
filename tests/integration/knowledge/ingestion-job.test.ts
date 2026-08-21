@@ -560,11 +560,11 @@ describe.sequential('knowledge source ingestion job', () => {
 
   it('ingests source text above Payload default length while preserving numeric fidelity markers', async () => {
     const text = Array.from(
-      { length: 60 },
+      { length: 220 },
       (_, index) =>
         `LARGE-${String(index + 1).padStart(2, '0')} Topic ${String(index + 1).padStart(2, '0')} ${'aluminum facade knowledge '.repeat(35)}1200 mm price warranty`,
     ).join(' ')
-    expect(text.length).toBeGreaterThan(40_000)
+    expect(text.length).toBeGreaterThan(200_000)
     const data = makeDocx(text)
     const req = await createLocalReq({ user: operator }, payload)
     const version = `large-${randomUUID()}`
@@ -601,7 +601,7 @@ describe.sequential('knowledge source ingestion job', () => {
     })
     expect(outputs.docs).toHaveLength(2)
     for (const document of outputs.docs) {
-      expect(document.content.length).toBeGreaterThan(40_000)
+      expect(document.content.length).toBeGreaterThan(200_000)
       expect(document).toMatchObject({
         customerVisible: false,
         indexStatus: 'pending',

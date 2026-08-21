@@ -8,6 +8,7 @@ import {
   knowledgeUpdate,
 } from '../access/knowledge'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
+import { KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS } from '../modules/knowledge/limits'
 
 const reviewRelevantFields = [
   'content',
@@ -246,7 +247,7 @@ export const KnowledgeDocuments: CollectionConfig = {
     {
       name: 'content',
       type: 'textarea',
-      maxLength: 1_000_000,
+      maxLength: KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS,
       required: true,
     },
     {
