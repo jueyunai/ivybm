@@ -16,8 +16,8 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   try {
     const { payload, req } = await authorizeSiteSettingsRequest(request)
     const input = await readSiteSettingsJSON(request)
-    return siteSettingsJSON(
-      await executePortalRouteCommand({
+    return siteSettingsJSON({
+      result: await executePortalRouteCommand({
         fingerprintInput: input,
         operation: (transactionReq) =>
           updatePortalSiteSettings({ input, payload, req: transactionReq }),
@@ -26,7 +26,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
         request,
         scope: 'portal.settings:site:update',
       }),
-    )
+    })
   } catch (error) {
     return siteSettingsErrorResponse(error)
   }

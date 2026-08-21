@@ -691,13 +691,37 @@ test('CMS-01 syncs localized site identity and contact details to the public web
     expect(saveResponse.ok()).toBe(true)
     await expect(page.getByText('网站资料已保存。')).toBeVisible()
 
+    const secondUpdates = {
+      enDescription: `CMS public website description updated ${suffix}`,
+      enName: `IVYBM CMS Site Updated ${suffix}`,
+    }
+    await page.getByRole('button', { name: '编辑网站资料' }).click()
+    await page.getByRole('button', { name: '英文', exact: true }).click()
+    await page.getByLabel('站点名称', { exact: true }).fill(secondUpdates.enName)
+    await page.getByLabel('站点说明', { exact: true }).fill(secondUpdates.enDescription)
+
+    const [secondSaveResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PATCH' &&
+          response.url().endsWith('/api/portal/settings/site'),
+      ),
+      page.getByRole('button', { name: '保存网站资料' }).click(),
+    ])
+    expect(secondSaveResponse.ok()).toBe(true)
+    const secondSaveBody = (await secondSaveResponse.json()) as {
+      result?: { updatedAt?: string }
+    }
+    expect(secondSaveBody.result?.updatedAt).toEqual(expect.any(String))
+    await expect(page.getByText('网站资料已保存。')).toBeVisible()
+
     const anonymousContext = await browser.newContext({
       baseURL: testInfo.project.use.baseURL,
     })
     const anonymousPage = await anonymousContext.newPage()
     try {
       for (const [locale, expected] of [
-        ['en', { description: updates.enDescription, name: updates.enName }],
+        ['en', { description: secondUpdates.enDescription, name: secondUpdates.enName }],
         ['ar', { description: updates.arDescription, name: updates.arName }],
       ] as const) {
         const response = await anonymousPage.goto(`/${locale}/contact`)
