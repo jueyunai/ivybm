@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   e2eSpecPaths,
+  fullMutationSuiteNames,
   manifestSpecCoverage,
   resolveE2ESuitePlan,
 } from '../../scripts/e2e/suite-manifest.mjs'
@@ -57,5 +58,10 @@ describe('E2E suite manifest', () => {
     const full = resolveE2ESuitePlan([])
     expect(full.mode).toBe('mutation')
     expect(full.specs).toHaveLength(e2eSpecPaths.length)
+  })
+
+  it('defines complete isolated coverage for the full mutation run', () => {
+    const specs = fullMutationSuiteNames.flatMap((suite) => resolveE2ESuitePlan([suite]).specs)
+    expect([...new Set(specs)].sort()).toEqual([...e2eSpecPaths].sort())
   })
 })

@@ -21,6 +21,17 @@ const mutationSpecs = [
   'tests/e2e/website.spec.ts',
 ]
 
+// Full mutation coverage is deliberately split into isolated launcher runs.
+// Keeping the order stable makes failures reproducible while giving every
+// suite a fresh database, worker queue, and server process.
+export const fullMutationSuiteNames = Object.freeze([
+  'admin',
+  'inquiry',
+  'website',
+  'chat',
+  'visual',
+])
+
 export const e2eSuiteManifest = Object.freeze({
   admin: Object.freeze({
     mode: 'mutation',
@@ -31,6 +42,7 @@ export const e2eSuiteManifest = Object.freeze({
     specs: ['tests/e2e/chat-handoff.spec.ts', 'tests/e2e/website-chat-real.spec.ts'],
   }),
   inquiry: Object.freeze({ mode: 'mutation', specs: ['tests/e2e/inquiry.spec.ts'] }),
+  visual: Object.freeze({ mode: 'mutation', specs: ['tests/e2e/website-visual.spec.ts'] }),
   'readonly-visual': Object.freeze({
     mode: 'readonly-external',
     specs: ['tests/e2e/website-visual.spec.ts'],

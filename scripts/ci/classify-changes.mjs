@@ -77,7 +77,10 @@ const classifyE2eTest = (path, classification) => {
     classification.website_e2e = true
     return true
   }
-  if (path === 'tests/e2e/website-chat-real.spec.ts') {
+  if (
+    path === 'tests/e2e/website-chat-real.spec.ts' ||
+    path === 'tests/e2e/website-chat.support.ts'
+  ) {
     classification.chat_e2e = true
     return true
   }

@@ -133,8 +133,7 @@ const COPY = {
       resolved: 'Resolved',
     },
     takeOver: 'Take over',
-    takeOverHint:
-      'This conversation is currently handled by AI. Take over to reply directly.',
+    takeOverHint: 'This conversation is currently handled by AI. Take over to reply directly.',
     title: 'Unified conversations',
     total: 'conversations',
     unassigned: 'Unassigned',
@@ -256,10 +255,10 @@ export function ConversationWorkspace({
   const [status, setStatus] = useState<StatusFilter>('all')
   const [page, setPage] = useState(1)
   const [list, setList] = useState<ChatSessionList | null>(null)
-  const [selection, setSelection] = useState<ConversationSelection>(() => ({
-    routeConversationId,
-    selectedId: routeConversationId,
-  }))
+  const [selection, setSelection] = useState<ConversationSelection>({
+    routeConversationId: null,
+    selectedId: null,
+  })
   const selectedId =
     selection.routeConversationId === routeConversationId
       ? selection.selectedId
@@ -286,7 +285,7 @@ export function ConversationWorkspace({
       if (requestID !== listRequest.current) return
       setList(result)
       setSelection((current) => {
-        if (routeConversationId) {
+        if (current.routeConversationId !== routeConversationId && routeConversationId) {
           return { routeConversationId, selectedId: routeConversationId }
         }
         const currentId =

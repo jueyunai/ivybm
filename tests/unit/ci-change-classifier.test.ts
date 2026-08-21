@@ -108,18 +108,32 @@ describe('CI change classifier', () => {
     })
   })
 
-  it.each([
-    'src/app/(frontend)/[locale]/layout.tsx',
-    'src/app/(frontend)/website.css',
-  ])('selects Website and Chat E2E for shared frontend path %s', (path) => {
-    expect(classifyChangedFiles([path])).toMatchObject({
-      admin_e2e: false,
-      chat_e2e: true,
-      code: true,
-      docs_only: false,
-      website_e2e: true,
-    })
-  })
+  it.each(['src/app/(frontend)/[locale]/layout.tsx', 'src/app/(frontend)/website.css'])(
+    'selects Website and Chat E2E for shared frontend path %s',
+    (path) => {
+      expect(classifyChangedFiles([path])).toMatchObject({
+        admin_e2e: false,
+        chat_e2e: true,
+        code: true,
+        docs_only: false,
+        website_e2e: true,
+      })
+    },
+  )
+
+  it.each(['tests/e2e/website-chat-real.spec.ts', 'tests/e2e/website-chat.support.ts'])(
+    'selects Chat E2E for the website chat test boundary %s',
+    (path) => {
+      expect(classifyChangedFiles([path])).toMatchObject({
+        admin_e2e: false,
+        chat_e2e: true,
+        code: true,
+        docs_only: false,
+        full_fallback: false,
+        website_e2e: false,
+      })
+    },
+  )
 
   it('combines Website and Admin E2E for a mixed change', () => {
     expect(
