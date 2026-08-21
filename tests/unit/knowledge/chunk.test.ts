@@ -97,10 +97,41 @@ describe('knowledge document chunking', () => {
       { maxCharacters: 1_200 },
     )
 
-    expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? []))
-      .toEqual([[], ['COMPANY-01'], ['COMPANY-02'], ['PRODUCT-01']])
+    expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? [])).toEqual([
+      [],
+      ['COMPANY-01'],
+      ['COMPANY-02'],
+      ['PRODUCT-01'],
+    ])
     expect(chunks[1].content).toContain('2. Product support remains available after delivery.')
     expect(chunks[3].content).toContain('02. Products')
+  })
+
+  it('keeps two-digit numbered answer steps with their Q&A entry', () => {
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'numbered-answer-steps',
+        locale: 'en',
+        sourceTitle: 'Numbered answer steps',
+        sourceVersion: '1',
+        text: [
+          'FIRST-01',
+          'Recommended procedure:',
+          '01. Inspect the substrate.',
+          '02. Apply the coating.',
+          'SECOND-01',
+          'Recommended answer: Next topic.',
+        ].join('\n'),
+      },
+      { maxCharacters: 1_200 },
+    )
+
+    expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? [])).toEqual([
+      ['FIRST-01'],
+      ['SECOND-01'],
+    ])
+    expect(chunks[0].content).toContain('01. Inspect the substrate.\n02. Apply the coating.')
+    expect(chunks[1].content).toBe('SECOND-01\nRecommended answer: Next topic.')
   })
 
   it('repeats the Q&A identifier on continuation chunks', () => {
@@ -124,5 +155,30 @@ describe('knowledge document chunking', () => {
     expect(chunks.every((chunk) => chunk.content.length <= 120)).toBe(true)
     expect(chunks.slice(0, -1).every((chunk) => chunk.content.startsWith('LONG-01'))).toBe(true)
     expect(chunks.at(-1)?.content).toBe('LONG-02\nRecommended answer: Short answer.')
+  })
+
+  it('repeats only the identifier when a long question shares the Q&A start line', () => {
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'long-inline-question',
+        locale: 'en',
+        sourceTitle: 'Long inline question',
+        sourceVersion: '1',
+        text: [
+          `LONG-01 Customer question: ${'detailed specification '.repeat(10)}`,
+          `Recommended answer: ${'verified facade detail '.repeat(20)}`,
+          'LONG-02 Recommended answer: Short answer.',
+        ].join('\n'),
+      },
+      { maxCharacters: 120 },
+    )
+
+    expect(chunks.length).toBeGreaterThan(2)
+    expect(chunks.every((chunk) => chunk.content.length <= 120)).toBe(true)
+    expect(chunks.slice(0, -1).every((chunk) => chunk.content.startsWith('LONG-01'))).toBe(true)
+    expect(
+      chunks.slice(1, -1).every((chunk) => chunk.content.split('\n', 1)[0] === 'LONG-01'),
+    ).toBe(true)
+    expect(chunks.at(-1)?.content).toBe('LONG-02 Recommended answer: Short answer.')
   })
 })
