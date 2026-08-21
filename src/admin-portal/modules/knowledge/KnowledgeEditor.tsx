@@ -15,6 +15,7 @@ import {
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, StatusBadge } from '@/admin-portal/core/ui'
+import { KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS } from '@/modules/knowledge/limits'
 
 import type { KnowledgeDocumentSummary, KnowledgeSourceType } from './getKnowledgePage'
 import type { KnowledgeEditorOption, KnowledgeEditorRecord } from './knowledgeCommands'
@@ -201,9 +202,7 @@ export function KnowledgeEditor({
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key':
-            mode === 'create' && createKey
-              ? createKey
-              : `portal-knowledge:${crypto.randomUUID()}`,
+            mode === 'create' && createKey ? createKey : `portal-knowledge:${crypto.randomUUID()}`,
         },
         method: mode === 'edit' ? 'PATCH' : 'POST',
       })
@@ -356,7 +355,7 @@ export function KnowledgeEditor({
         <label className="portal-knowledge-editor__field is-wide">
           <span>{text.content}</span>
           <textarea
-            maxLength={200_000}
+            maxLength={KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS}
             onChange={(event) => update('content', event.target.value)}
             required
             rows={12}

@@ -1,5 +1,7 @@
 import type { Payload, PayloadRequest } from 'payload'
 
+import { KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS } from '@/modules/knowledge/limits'
+
 import type {
   KnowledgeIndexStatus,
   KnowledgeLocale,
@@ -176,7 +178,10 @@ export function parseKnowledgeMutation(value: unknown): ParsedKnowledgeDocument 
   return {
     action: normalizedAction,
     data: {
-      content: stringValue(input, 'content', { max: 200_000, required: true }),
+      content: stringValue(input, 'content', {
+        max: KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS,
+        required: true,
+      }),
       customerVisible: booleanValue(input, 'customerVisible'),
       embeddingModel: null,
       embeddingSpace: null,

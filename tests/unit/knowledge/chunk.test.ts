@@ -69,4 +69,232 @@ describe('knowledge document chunking', () => {
       'Knowledge document text is required',
     )
   })
+
+  it('keeps structured sales Q&A entries in separate chunks', () => {
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'sales-script-1',
+        locale: 'en',
+        sourceTitle: 'Sales knowledge',
+        sourceVersion: '1',
+        text: [
+          'Sales agent rules',
+          '01. Company',
+          'COMPANY-01',
+          'Customer question: Who are you?',
+          'Recommended answer: We supply facade materials.',
+          'Follow-up question: Where is the project?',
+          '2. Product support remains available after delivery.',
+          'COMPANY-02',
+          'Customer question: Where are you based?',
+          'Recommended answer: Confirm the relevant legal entity with sales.',
+          '02. Products',
+          'PRODUCT-01',
+          'Customer question: What products do you supply?',
+          'Recommended answer: Solid aluminum facade products.',
+        ].join('\n'),
+      },
+      { maxCharacters: 1_200 },
+    )
+
+    expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? [])).toEqual([
+      [],
+      ['COMPANY-01'],
+      ['COMPANY-02'],
+      ['PRODUCT-01'],
+    ])
+    expect(chunks[1].content).toContain('2. Product support remains available after delivery.')
+    expect(chunks[3].content).toContain('02. Products')
+  })
+
+  it('keeps two-digit numbered answer steps with their Q&A entry', () => {
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'numbered-answer-steps',
+        locale: 'en',
+        sourceTitle: 'Numbered answer steps',
+        sourceVersion: '1',
+        text: [
+          'FIRST-01',
+          'Recommended procedure:',
+          '01. Inspect the substrate.',
+          '02. Apply the coating.',
+          'SECOND-01',
+          'Recommended answer: Next topic.',
+        ].join('\n'),
+      },
+      { maxCharacters: 1_200 },
+    )
+
+    expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? [])).toEqual([
+      ['FIRST-01'],
+      ['SECOND-01'],
+    ])
+    expect(chunks[0].content).toContain('01. Inspect the substrate.\n02. Apply the coating.')
+    expect(chunks[1].content).toBe('SECOND-01\nRecommended answer: Next topic.')
+  })
+
+  it('keeps same-prefix numbered answer steps inside the current Q&A group', () => {
+    for (const step of ['01. Product', '01. Product installation requires a dry substrate.']) {
+      const chunks = chunkKnowledgeDocument(
+        {
+          documentId: 'same-prefix-numbered-answer-step',
+          locale: 'en',
+          sourceTitle: 'Same-prefix numbered answer step',
+          sourceVersion: '1',
+          text: [
+            'PRODUCT-01',
+            'Recommended procedure:',
+            step,
+            'PRODUCT-02',
+            'Recommended answer: Next topic.',
+          ].join('\n'),
+        },
+        { maxCharacters: 1_200 },
+      )
+
+      expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? [])).toEqual([
+        ['PRODUCT-01'],
+        ['PRODUCT-02'],
+      ])
+      expect(chunks[0].content).toContain(step)
+      expect(chunks[1].content).toBe('PRODUCT-02\nRecommended answer: Next topic.')
+    }
+  })
+
+  it('keeps a prefix-colliding answer step with the preceding Q&A', () => {
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'prefix-colliding-answer-step',
+        locale: 'en',
+        sourceTitle: 'Prefix-colliding answer step',
+        sourceVersion: '1',
+        text: [
+          'COMPANY-01',
+          'Recommended procedure:',
+          '02. Product installation requires a dry substrate.',
+          'PRODUCT-01',
+          'Recommended answer: Confirm dimensions with sales.',
+        ].join('\n'),
+      },
+      { maxCharacters: 1_200 },
+    )
+
+    expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? [])).toEqual([
+      ['COMPANY-01'],
+      ['PRODUCT-01'],
+    ])
+    expect(chunks[0].content).toContain('02. Product installation requires a dry substrate.')
+    expect(chunks[1].content).toBe('PRODUCT-01\nRecommended answer: Confirm dimensions with sales.')
+  })
+
+  it('keeps 240 large structured Q&A entries semantically isolated', () => {
+    const lines = ['Sanitized large sales knowledge']
+    const expectedIDs: string[] = []
+    for (let group = 1; group <= 12; group += 1) {
+      const groupID = `GROUP${String(group).padStart(2, '0')}`
+      if (group > 1) lines.push(`${String(group).padStart(2, '0')}. ${groupID}`)
+      for (let entry = 1; entry <= 20; entry += 1) {
+        const entryID = `${groupID}-${String(entry).padStart(2, '0')}`
+        expectedIDs.push(entryID)
+        lines.push(entryID)
+        lines.push(`Recommended answer: ${'verified facade detail '.repeat(50)}`)
+        lines.push(`${String(entry).padStart(2, '0')}. ${groupID}`)
+      }
+    }
+    const text = lines.join('\n')
+
+    expect(text.length).toBeGreaterThan(200_000)
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'sanitized-large-structured-sales-knowledge',
+        locale: 'en',
+        sourceTitle: 'Sanitized large structured sales knowledge',
+        sourceVersion: '1',
+        text,
+      },
+      { maxCharacters: 1_200 },
+    )
+
+    const idsByChunk = chunks.map(
+      ({ content }) => content.match(/\b[A-Z][A-Z0-9-]+-\d{2}\b/g) ?? [],
+    )
+    expect(chunks.every(({ content }) => content.length <= 1_200)).toBe(true)
+    expect(idsByChunk.every((ids) => new Set(ids).size <= 1)).toBe(true)
+    expect([...new Set(idsByChunk.flat())]).toEqual(expectedIDs)
+  })
+
+  it('does not treat an answer sentence starting with the next Q&A prefix as a topic', () => {
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'prefixed-numbered-answer-step',
+        locale: 'en',
+        sourceTitle: 'Prefixed numbered answer step',
+        sourceVersion: '1',
+        text: [
+          'PRODUCT-01',
+          'Recommended procedure:',
+          '01. Product must be inspected before coating.',
+          'PRODUCT-02',
+          'Recommended answer: Next product topic.',
+        ].join('\n'),
+      },
+      { maxCharacters: 1_200 },
+    )
+
+    expect(chunks.map((chunk) => chunk.content.match(/\b[A-Z][A-Z-]+-\d{2}\b/g) ?? [])).toEqual([
+      ['PRODUCT-01'],
+      ['PRODUCT-02'],
+    ])
+    expect(chunks[0].content).toContain('01. Product must be inspected before coating.')
+    expect(chunks[1].content).toBe('PRODUCT-02\nRecommended answer: Next product topic.')
+  })
+
+  it('repeats the Q&A identifier on continuation chunks', () => {
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'long-sales-script',
+        locale: 'en',
+        sourceTitle: 'Long sales knowledge',
+        sourceVersion: '1',
+        text: [
+          'LONG-01',
+          `Recommended answer: ${'verified facade detail '.repeat(20)}`,
+          'LONG-02',
+          'Recommended answer: Short answer.',
+        ].join('\n'),
+      },
+      { maxCharacters: 120 },
+    )
+
+    expect(chunks.length).toBeGreaterThan(2)
+    expect(chunks.every((chunk) => chunk.content.length <= 120)).toBe(true)
+    expect(chunks.slice(0, -1).every((chunk) => chunk.content.startsWith('LONG-01'))).toBe(true)
+    expect(chunks.at(-1)?.content).toBe('LONG-02\nRecommended answer: Short answer.')
+  })
+
+  it('repeats only the identifier when a long question shares the Q&A start line', () => {
+    const chunks = chunkKnowledgeDocument(
+      {
+        documentId: 'long-inline-question',
+        locale: 'en',
+        sourceTitle: 'Long inline question',
+        sourceVersion: '1',
+        text: [
+          `LONG-01 Customer question: ${'detailed specification '.repeat(10)}`,
+          `Recommended answer: ${'verified facade detail '.repeat(20)}`,
+          'LONG-02 Recommended answer: Short answer.',
+        ].join('\n'),
+      },
+      { maxCharacters: 120 },
+    )
+
+    expect(chunks.length).toBeGreaterThan(2)
+    expect(chunks.every((chunk) => chunk.content.length <= 120)).toBe(true)
+    expect(chunks.slice(0, -1).every((chunk) => chunk.content.startsWith('LONG-01'))).toBe(true)
+    expect(
+      chunks.slice(1, -1).every((chunk) => chunk.content.split('\n', 1)[0] === 'LONG-01'),
+    ).toBe(true)
+    expect(chunks.at(-1)?.content).toBe('LONG-02 Recommended answer: Short answer.')
+  })
 })
