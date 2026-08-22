@@ -9,6 +9,7 @@ import {
   portalCommandFingerprint,
   PortalCommandReceiptError,
 } from '@/admin-portal/core/commands/portalCommandReceipts'
+import { updatePortalSiteSettings } from '@/admin-portal/modules/settings/siteSettingsCommands'
 import { createAiGateway, type AiProvider } from '@/modules/ai/gateway'
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
@@ -16,6 +17,7 @@ import config from '@/payload.config'
 let payload: Payload
 let admin: User
 let pageID = 0
+let originalSiteSettings: { ar: Record<string, unknown>; en: Record<string, unknown> } | null = null
 
 describe.sequential('Portal command receipts', () => {
   beforeAll(async () => {
@@ -43,6 +45,43 @@ describe.sequential('Portal command receipts', () => {
       overrideAccess: true,
     })
     pageID = page.id
+    await payload.updateGlobal({
+      data: {
+        contact: { email: 'receipt-site@example.invalid', phone: '+8613800000000' },
+        siteDescription: 'Portal receipt site settings fixture',
+        siteName: 'Portal receipt site',
+      },
+      locale: 'en',
+      overrideAccess: true,
+      slug: 'site-settings',
+    })
+    await payload.updateGlobal({
+      data: {
+        siteDescription: 'إعدادات موقع اختبار الإيصالات',
+        siteName: 'موقع اختبار الإيصالات',
+      },
+      locale: 'ar',
+      overrideAccess: true,
+      slug: 'site-settings',
+    })
+    const [en, ar] = await Promise.all([
+      payload.findGlobal({
+        fallbackLocale: false,
+        locale: 'en',
+        overrideAccess: true,
+        slug: 'site-settings',
+      }),
+      payload.findGlobal({
+        fallbackLocale: false,
+        locale: 'ar',
+        overrideAccess: true,
+        slug: 'site-settings',
+      }),
+    ])
+    originalSiteSettings = {
+      ar: ar as unknown as Record<string, unknown>,
+      en: en as unknown as Record<string, unknown>,
+    }
   })
 
   afterAll(async () => {
@@ -61,6 +100,24 @@ describe.sequential('Portal command receipts', () => {
           context: { skipAudit: true },
           id: pageID,
           overrideAccess: true,
+        })
+        .catch(() => undefined)
+    }
+    if (originalSiteSettings) {
+      await payload
+        .updateGlobal({
+          data: originalSiteSettings.en,
+          locale: 'en',
+          overrideAccess: true,
+          slug: 'site-settings',
+        })
+        .catch(() => undefined)
+      await payload
+        .updateGlobal({
+          data: originalSiteSettings.ar,
+          locale: 'ar',
+          overrideAccess: true,
+          slug: 'site-settings',
         })
         .catch(() => undefined)
     }
@@ -162,6 +219,55 @@ describe.sequential('Portal command receipts', () => {
     expect(results.filter(({ status }) => status === 'rejected')).toHaveLength(1)
     expect(results.find(({ status }) => status === 'rejected')).toMatchObject({
       reason: { code: 'portal-stale', status: 409 },
+    })
+  })
+
+  it('serializes concurrent SiteSettings global writers before the revision read', async () => {
+    const current = await payload.findGlobal({
+      fallbackLocale: false,
+      locale: 'en',
+      overrideAccess: true,
+      slug: 'site-settings',
+    })
+    const arabic = await payload.findGlobal({
+      fallbackLocale: false,
+      locale: 'ar',
+      overrideAccess: true,
+      slug: 'site-settings',
+    })
+    const expectedUpdatedAt = current.updatedAt
+    const req = await createLocalReq({ user: admin }, payload)
+    const save = (siteName: string) =>
+      executePortalCommand({
+        fingerprintInput: { expectedUpdatedAt, siteName },
+        idempotencyKey: `portal-site-settings:${randomUUID()}`,
+        operation: (transactionReq) =>
+          updatePortalSiteSettings({
+            input: {
+              ar: { siteDescription: arabic.siteDescription ?? null, siteName: 'اختبار الموقع' },
+              contact: {
+                email: current.contact?.email ?? null,
+                phone: current.contact?.phone ?? null,
+              },
+              en: { siteDescription: current.siteDescription ?? null, siteName },
+              updatedAt: expectedUpdatedAt,
+            },
+            payload,
+            req: transactionReq,
+          }),
+        payload,
+        req,
+        scope: 'portal.settings:site:update',
+      })
+
+    const results = await Promise.allSettled([
+      save('Concurrent winner A'),
+      save('Concurrent winner B'),
+    ])
+    expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter(({ status }) => status === 'rejected')).toHaveLength(1)
+    expect(results.find(({ status }) => status === 'rejected')).toMatchObject({
+      reason: { code: 'site-settings-stale', status: 409 },
     })
   })
 

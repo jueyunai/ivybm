@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   IconArrowLeft,
   IconArrowRight,
@@ -46,6 +47,10 @@ import {
 
 type StatusFilter = HandoffStatus | 'all'
 type CommandName = 'operator-messages' | 'resolve' | 'take-over'
+type ConversationSelection = {
+  routeConversationId: string | null
+  selectedId: number | string | null
+}
 
 const COPY = {
   zh: {
@@ -128,8 +133,7 @@ const COPY = {
       resolved: 'Resolved',
     },
     takeOver: 'Take over',
-    takeOverHint:
-      'This conversation is currently handled by AI. Take over to reply directly.',
+    takeOverHint: 'This conversation is currently handled by AI. Take over to reply directly.',
     title: 'Unified conversations',
     total: 'conversations',
     unassigned: 'Unassigned',
@@ -244,12 +248,21 @@ export function ConversationWorkspace({
   initialConversationId?: string
   role: PortalRole
 }) {
+  const searchParams = useSearchParams()
   const { locale } = usePortalPreferences()
   const copy = COPY[locale]
+  const routeConversationId = searchParams.get('conversation') ?? initialConversationId ?? null
   const [status, setStatus] = useState<StatusFilter>('all')
   const [page, setPage] = useState(1)
   const [list, setList] = useState<ChatSessionList | null>(null)
-  const [selectedId, setSelectedId] = useState<number | string | null>(null)
+  const [selection, setSelection] = useState<ConversationSelection>({
+    routeConversationId: null,
+    selectedId: null,
+  })
+  const selectedId =
+    selection.routeConversationId === routeConversationId
+      ? selection.selectedId
+      : routeConversationId
   const [selected, setSelected] = useState<ChatSession | null>(null)
   const [listLoading, setListLoading] = useState(enabled)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -261,7 +274,6 @@ export function ConversationWorkspace({
   const listRequest = useRef(0)
   const detailRequest = useRef(0)
   const commandKeys = useRef(new Map<string, string>())
-  const requestedConversationId = useRef(initialConversationId ?? null)
 
   const loadList = useCallback(async () => {
     if (!enabled) return
@@ -272,14 +284,21 @@ export function ConversationWorkspace({
       const result = await fetchConversationList({ page, status })
       if (requestID !== listRequest.current) return
       setList(result)
-      setSelectedId((current) => {
-        const requested = requestedConversationId.current
-        if (requested) {
-          requestedConversationId.current = null
-          return requested
+      setSelection((current) => {
+        if (current.routeConversationId !== routeConversationId && routeConversationId) {
+          return { routeConversationId, selectedId: routeConversationId }
         }
-        if (current && result.docs.some(({ id }) => String(id) === String(current))) return current
-        return result.docs[0]?.id ?? null
+        const currentId =
+          current.routeConversationId === routeConversationId
+            ? current.selectedId
+            : routeConversationId
+        return {
+          routeConversationId,
+          selectedId:
+            currentId && result.docs.some(({ id }) => String(id) === String(currentId))
+              ? currentId
+              : (result.docs[0]?.id ?? null),
+        }
       })
     } catch (error) {
       if (requestID !== listRequest.current) return
@@ -287,7 +306,7 @@ export function ConversationWorkspace({
     } finally {
       if (requestID === listRequest.current) setListLoading(false)
     }
-  }, [copy.failedDescription, enabled, page, status])
+  }, [copy.failedDescription, enabled, page, routeConversationId, status])
 
   const loadDetail = useCallback(async () => {
     if (!enabled || selectedId === null) {
@@ -492,7 +511,7 @@ export function ConversationWorkspace({
                         String(selectedId) === String(item.id) && 'is-selected',
                       )}
                       onClick={() => {
-                        setSelectedId(item.id)
+                        setSelection({ routeConversationId, selectedId: item.id })
                         setFeedback(null)
                       }}
                       type="button"

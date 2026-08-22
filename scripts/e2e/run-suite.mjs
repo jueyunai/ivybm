@@ -16,7 +16,7 @@ import {
   assertE2EEnvironmentDoesNotExposeProviderCredentials,
   createE2EEnvironment,
 } from './environment.mjs'
-import { resolveE2ESuitePlan } from './suite-manifest.mjs'
+import { fullMutationSuiteNames, resolveE2ESuitePlan } from './suite-manifest.mjs'
 
 const allocatePort = async () => {
   const server = createServer()
@@ -83,6 +83,21 @@ const runCommand = (command, args, environment) =>
 const commitSHA = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
 const requestedSuites = process.argv.slice(2)
 if (requestedSuites[0] === '--') requestedSuites.shift()
+
+const isFullRequest =
+  requestedSuites.length === 0 || (requestedSuites.length === 1 && requestedSuites[0] === 'full')
+
+// A full mutation run must not share a database or global Jobs queue between
+// suites. The outer launcher is only an orchestrator; each child invocation
+// owns its own database, server, AI stub, and cleanup lifecycle.
+if (isFullRequest && !process.env.BASE_URL?.trim()) {
+  for (const suite of fullMutationSuiteNames) {
+    console.log(`\n=== E2E suite: ${suite} (isolated launcher) ===`)
+    await runCommand('corepack', ['pnpm', 'test:e2e', '--', suite], process.env)
+  }
+  process.exit(0)
+}
+
 const plan = resolveE2ESuitePlan(requestedSuites)
 const externalBaseURL = process.env.BASE_URL?.trim()
 if (plan.mode === 'mutation' && externalBaseURL) {
@@ -100,9 +115,11 @@ const bootstrapURL = externalBaseURL
 const databaseName = bootstrapURL ? createE2EDatabaseName() : ''
 const databaseURL = bootstrapURL ? databaseURLForName(bootstrapURL, databaseName) : ''
 const port = bootstrapURL ? await allocatePort() : null
+const aiProviderPort = bootstrapURL ? await allocatePort() : null
 const baseURL = externalBaseURL || (port ? `http://localhost:${port}` : '')
 const mode = externalBaseURL ? 'readonly-external' : plan.mode
 const environment = createE2EEnvironment({
+  aiProviderPort,
   baseURL,
   commitSHA,
   databaseName,
