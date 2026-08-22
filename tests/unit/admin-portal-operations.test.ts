@@ -6,6 +6,7 @@ import {
   parsePublicationRecoveryIdempotencyKey,
 } from '@/modules/jobs/compensation/contracts'
 import {
+  loadSafeJobPageData,
   parseSafeJobQuery,
   toSafeJobSummary,
 } from '@/admin-portal/modules/operations/getSafeJobPage'
@@ -53,6 +54,13 @@ describe('Portal operations', () => {
     ).toMatchObject({
       action: 'retry-publication-recovery',
     })
+    expect(
+      getJobCompensation({
+        idempotencyKey: 'publication-status:42:1',
+        status: 'dead',
+        type: 'platform.publication.execute',
+      }),
+    ).toMatchObject({ action: 'retry-publication-status-recovery' })
     expect(
       getJobCompensation({
         idempotencyKey: 'publication-recovery:42:0',
@@ -117,11 +125,47 @@ describe('Portal operations', () => {
       action: 'retry-publication-recovery',
       label: 'Retry publication recovery',
     })
+    expect(
+      toSafeJobSummary(
+        job({
+          id: 100,
+          idempotencyKey: 'publication-status:42:1',
+          type: 'platform.publication.execute',
+        }),
+      ).reference,
+    ).toBe('Publication status recovery job #100')
   })
 
   it('bounds operations query parameters', () => {
     expect(parseSafeJobQuery({ page: '3', status: 'dead' })).toEqual({ page: 3, status: 'dead' })
     expect(parseSafeJobQuery({ page: '-1', status: 'outside' })).toEqual({ page: 1, status: 'all' })
+  })
+
+  it('loads Portal job summaries without selecting the stored payload', async () => {
+    const find = vi.fn().mockResolvedValue({
+      docs: [job()],
+      page: 1,
+      totalDocs: 1,
+      totalPages: 1,
+    })
+
+    await expect(
+      loadSafeJobPageData({
+        env: {
+          ADMIN_PORTAL_ENABLED: 'true',
+          ADMIN_PORTAL_OPERATIONS_ENABLED: 'true',
+        } as never,
+        payload: { find } as unknown as Payload,
+        query: { page: 1, status: 'dead' },
+        req: {} as PayloadRequest,
+        role: 'admin',
+      }),
+    ).resolves.toMatchObject({ state: 'available' })
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({ payload: expect.anything() }),
+      }),
+    )
   })
 
   it('executes only the registered knowledge compensation with the authenticated admin', async () => {
@@ -214,7 +258,15 @@ describe('Portal operations', () => {
     })
 
     expect(retryManually).toHaveBeenCalledTimes(1)
-    expect(retryManually).toHaveBeenCalledWith(88, { id: 3, role: 'admin' }, req)
+    expect(retryManually).toHaveBeenCalledWith(
+      88,
+      { id: 3, role: 'admin' },
+      req,
+      expect.objectContaining({
+        afterRetry: expect.any(Function),
+        beforeRetry: expect.any(Function),
+      }),
+    )
   })
 
   it('rejects publication recovery retry on invalid or mismatched conditions', async () => {

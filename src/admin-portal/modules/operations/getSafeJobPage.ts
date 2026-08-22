@@ -4,6 +4,7 @@ import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/
 import {
   getJobCompensation,
   parsePublicationRecoveryIdempotencyKey,
+  parsePublicationStatusRecoveryIdempotencyKey,
   type JobCompensationAction,
 } from '@/modules/jobs/compensation/contracts'
 import type { JobStatus } from '@/modules/jobs/contracts'
@@ -80,7 +81,6 @@ const safeErrorSummary = (value: string | null | undefined): string | null =>
 export const toSafeJobSummary = (job: Job): SafeJobSummary => {
   const compensation = getJobCompensation({
     idempotencyKey: job.idempotencyKey,
-    payload: job.payload,
     status: job.status,
     type: job.type,
   })
@@ -98,7 +98,10 @@ export const toSafeJobSummary = (job: Job): SafeJobSummary => {
         : job.type === 'platform.publication.execute' &&
             parsePublicationRecoveryIdempotencyKey(job.idempotencyKey)
           ? `Publication recovery job #${job.id}`
-          : `Internal job #${job.id}`,
+          : job.type === 'platform.publication.execute' &&
+              parsePublicationStatusRecoveryIdempotencyKey(job.idempotencyKey)
+            ? `Publication status recovery job #${job.id}`
+            : `Internal job #${job.id}`,
     status: job.status,
     type: job.type,
     updatedAt: job.updatedAt,
@@ -139,7 +142,6 @@ export const loadSafeJobPageData = async ({
         lastError: true,
         maxAttempts: true,
         nextRunAt: true,
-        payload: true,
         status: true,
         type: true,
         updatedAt: true,

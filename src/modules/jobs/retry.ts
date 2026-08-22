@@ -41,11 +41,13 @@ export const transitionAfterFailure = ({
   attempts,
   maxAttempts,
   now,
+  retryNotBefore,
   retryOptions,
 }: {
   attempts: number
   maxAttempts: number
   now: Date
+  retryNotBefore?: Date
   retryOptions?: RetryOptions
 }): FailureTransition => {
   validateMaxAttempts(maxAttempts)
@@ -58,9 +60,15 @@ export const transitionAfterFailure = ({
     }
   }
 
+  const backoffNextRunAt = new Date(now.getTime() + retryDelayMs(attempts, retryOptions))
+  const leaseAwareNextRunAt =
+    retryNotBefore && Number.isFinite(retryNotBefore.getTime())
+      ? new Date(Math.max(backoffNextRunAt.getTime(), retryNotBefore.getTime()))
+      : backoffNextRunAt
+
   return {
     deadAt: null,
-    nextRunAt: new Date(now.getTime() + retryDelayMs(attempts, retryOptions)),
+    nextRunAt: leaseAwareNextRunAt,
     status: 'failed',
   }
 }
@@ -71,6 +79,7 @@ export const canRetryManually = (status: JobStatus): boolean =>
 export const manualRetryState = (
   job: Pick<JobRecord, 'manualRetryCount' | 'status'>,
   now: Date,
+  nextRunAt: Date = now,
 ) => {
   if (!canRetryManually(job.status)) {
     throw new RangeError(`Cannot manually retry a ${job.status} job`)
@@ -83,7 +92,7 @@ export const manualRetryState = (
     lastError: null,
     leaseExpiresAt: null,
     manualRetryCount: job.manualRetryCount + 1,
-    nextRunAt: now,
+    nextRunAt,
     ownerToken: null,
     status: 'pending' as const,
   }

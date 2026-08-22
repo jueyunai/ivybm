@@ -3,6 +3,7 @@ import type { JobStatus } from '../contracts'
 export const JOB_COMPENSATION_ACTIONS = [
   'retry-knowledge-index',
   'retry-publication-recovery',
+  'retry-publication-status-recovery',
 ] as const
 
 export type JobCompensationAction = (typeof JOB_COMPENSATION_ACTIONS)[number]
@@ -21,12 +22,26 @@ export interface JobCompensationDefinition {
 }
 
 const PUBLICATION_RECOVERY_KEY_PATTERN = /^publication-recovery:(\d+):(\d+)$/
+const PUBLICATION_STATUS_RECOVERY_KEY_PATTERN = /^publication-status:(\d+):(\d+)$/
 
 export const parsePublicationRecoveryIdempotencyKey = (
   key: string | null | undefined,
 ): { publishJobId: number; revision: number } | null => {
   if (!key || typeof key !== 'string') return null
   const match = PUBLICATION_RECOVERY_KEY_PATTERN.exec(key.trim())
+  if (!match) return null
+  const publishJobId = Number.parseInt(match[1]!, 10)
+  const revision = Number.parseInt(match[2]!, 10)
+  if (!Number.isSafeInteger(publishJobId) || publishJobId < 1) return null
+  if (!Number.isSafeInteger(revision) || revision < 0) return null
+  return { publishJobId, revision }
+}
+
+export const parsePublicationStatusRecoveryIdempotencyKey = (
+  key: string | null | undefined,
+): { publishJobId: number; revision: number } | null => {
+  if (!key || typeof key !== 'string') return null
+  const match = PUBLICATION_STATUS_RECOVERY_KEY_PATTERN.exec(key.trim())
   if (!match) return null
   const publishJobId = Number.parseInt(match[1]!, 10)
   const revision = Number.parseInt(match[2]!, 10)
@@ -45,6 +60,11 @@ const DEFINITIONS: readonly JobCompensationDefinition[] = [
     action: 'retry-publication-recovery',
     jobType: 'platform.publication.execute',
     label: 'Retry publication recovery',
+  },
+  {
+    action: 'retry-publication-status-recovery',
+    jobType: 'platform.publication.execute',
+    label: 'Retry publication status recovery',
   },
 ]
 
@@ -66,6 +86,15 @@ export const getJobCompensation = (job: SafeCompensationJob): JobCompensationDef
   ) {
     return (
       DEFINITIONS.find((definition) => definition.action === 'retry-publication-recovery') ?? null
+    )
+  }
+  if (
+    job.type === 'platform.publication.execute' &&
+    parsePublicationStatusRecoveryIdempotencyKey(job.idempotencyKey)
+  ) {
+    return (
+      DEFINITIONS.find((definition) => definition.action === 'retry-publication-status-recovery') ??
+      null
     )
   }
   return null

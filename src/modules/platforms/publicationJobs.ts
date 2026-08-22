@@ -1,7 +1,13 @@
 import type { Payload, PayloadRequest } from 'payload'
 
 import { PayloadJobQueue } from '@/modules/jobs/claim'
-import type { ClaimedJob, JobExecution, JobHandler, JobRecord } from '@/modules/jobs/contracts'
+import {
+  JobRetryNotBeforeError,
+  type ClaimedJob,
+  type JobExecution,
+  type JobHandler,
+  type JobRecord,
+} from '@/modules/jobs/contracts'
 import type { PublishJob } from '@/payload-types'
 
 import { normalizePlatformPublishRequest, type PublishingService } from '../publishing/contracts'
@@ -161,7 +167,7 @@ export type PublicationQueueObligation =
 export const classifyPublicationQueueObligation = (
   job: PublicationQueueState & { claimId?: string | null; claimLeaseExpiresAt?: string | null },
   expectedExecutionRevision: number,
-  now: Date = new Date(),
+  _now: Date = new Date(),
 ): PublicationQueueObligation => {
   if (terminalStatuses.has(job.status)) return 'complete'
   if (job.providerIOStartedAt) return 'recovery'
@@ -169,10 +175,7 @@ export const classifyPublicationQueueObligation = (
     return 'continuation'
   }
   if (job.executionRevision === expectedExecutionRevision && continuationNeeded(job)) {
-    const leaseExpiry = job.claimLeaseExpiresAt ? Date.parse(job.claimLeaseExpiresAt) : Number.NaN
-    if (job.claimId && Number.isFinite(leaseExpiry) && leaseExpiry > now.getTime()) {
-      return 'status-successor'
-    }
+    return 'status-successor'
   }
   return 'unresolved'
 }
@@ -220,6 +223,12 @@ export const enqueuePublicationStatusSuccessor = async ({
     payload: { expectedExecutionRevision: revision, publishJobId },
     type: PLATFORM_PUBLICATION_JOB_TYPE,
   })
+
+export const isPublicationStatusRecoveryKey = (
+  key: string | null | undefined,
+  publishJobId: number,
+  revision: number,
+): boolean => key === `publication-status:${publishJobId}:${revision}`
 
 export const enqueuePublicationRecovery = async ({
   nextRunAt,
@@ -341,12 +350,14 @@ const loadPublishJob = async (payload: Payload, id: number): Promise<PublishJob>
   payload.findByID({ collection: 'publish-jobs', depth: 0, id, overrideAccess: true })
 
 const reconcileDurableOutcome = async ({
+  currentIdempotencyKey,
   dispatchError,
   expectedExecutionRevision,
   job,
   now,
   queue,
 }: {
+  currentIdempotencyKey?: string | null
   dispatchError?: unknown
   expectedExecutionRevision: number
   job: PublishJob
@@ -369,6 +380,21 @@ const reconcileDurableOutcome = async ({
     return
   }
   if (obligation === 'status-successor') {
+    if (isPublicationStatusRecoveryKey(currentIdempotencyKey, job.id, job.executionRevision)) {
+      const leaseExpiry = job.claimLeaseExpiresAt ? Date.parse(job.claimLeaseExpiresAt) : Number.NaN
+      if (Number.isFinite(leaseExpiry) && leaseExpiry > now().getTime()) {
+        throw new JobRetryNotBeforeError(
+          dispatchError instanceof Error
+            ? dispatchError.message
+            : 'Publication status checkpoint remains unresolved; waiting for the retained claim lease to expire.',
+          new Date(leaseExpiry + 1),
+        )
+      }
+      if (dispatchError) throw dispatchError
+      throw new PlatformPublicationJobError(
+        'Publication status checkpoint remains unresolved; the bounded status recovery job must be retried or manually compensated.',
+      )
+    }
     await scheduleStatusSuccessor(job, queue, now)
     throw new PlatformPublicationJobError(
       'Publication status checkpoint is unresolved with a retained claim; durable status successor was scheduled',
@@ -479,6 +505,7 @@ export const createPlatformPublicationJobHandler =
     if (terminalStatuses.has(persisted.status)) return
     if (persisted.executionRevision > input.expectedExecutionRevision) {
       await reconcileDurableOutcome({
+        currentIdempotencyKey: claimedJob.idempotencyKey,
         expectedExecutionRevision: input.expectedExecutionRevision,
         job: persisted,
         now,
@@ -505,6 +532,7 @@ export const createPlatformPublicationJobHandler =
     persisted = await loadPublishJob(payload, input.publishJobId)
     await reconcileDurableOutcome({
       ...(dispatchError ? { dispatchError } : {}),
+      currentIdempotencyKey: claimedJob.idempotencyKey,
       expectedExecutionRevision: input.expectedExecutionRevision,
       job: persisted,
       now,

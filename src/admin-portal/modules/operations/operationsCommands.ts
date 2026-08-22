@@ -3,8 +3,9 @@ import type { Payload, PayloadRequest } from 'payload'
 import {
   getJobCompensation,
   parsePublicationRecoveryIdempotencyKey,
+  parsePublicationStatusRecoveryIdempotencyKey,
 } from '@/modules/jobs/compensation/contracts'
-import { PayloadJobQueue } from '@/modules/jobs/claim'
+import { PayloadJobQueue, type ManualRetryOptions } from '@/modules/jobs/claim'
 import { enqueueKnowledgeIndexJob, parseKnowledgeIndexJobPayload } from '@/modules/knowledge/jobs'
 import { parsePlatformPublicationJobPayload } from '@/modules/platforms/publicationJobs'
 import type { User } from '@/payload-types'
@@ -25,6 +26,14 @@ const expectedRevision = (value: unknown): string => {
     throw new OperationsCommandError('operations-stale', 'Reload the job before retrying.', 409)
   }
   return value
+}
+
+const retryNotBefore = (claimLeaseExpiresAt: string | null | undefined): Date => {
+  const now = new Date()
+  const leaseExpiry = claimLeaseExpiresAt ? Date.parse(claimLeaseExpiresAt) : Number.NaN
+  return Number.isFinite(leaseExpiry) && leaseExpiry > now.getTime()
+    ? new Date(leaseExpiry + 1)
+    : now
 }
 
 export const retryPortalJob = async ({
@@ -158,7 +167,149 @@ export const retryPortalJob = async ({
       )
     }
 
-    const retried = await queue.retryManually(job.id, { id: user.id, role: user.role }, req)
+    const retryOptions: ManualRetryOptions = {
+      beforeRetry: async (_currentJob, transactionReq) => {
+        const currentPublishJob = await payload.findByID({
+          collection: 'publish-jobs',
+          depth: 0,
+          id: keyInfo.publishJobId,
+          overrideAccess: true,
+          req: transactionReq,
+        })
+        if (
+          currentPublishJob.executionRevision !== keyInfo.revision ||
+          !currentPublishJob.providerIOStartedAt
+        ) {
+          throw new OperationsCommandError(
+            'operations-invalid-job-payload',
+            'The publication job state does not match the recovery requirement.',
+            409,
+          )
+        }
+        return retryNotBefore(currentPublishJob.claimLeaseExpiresAt)
+      },
+      afterRetry: async (_currentJob, _retried, transactionReq) => {
+        await payload.create({
+          collection: 'publish-logs',
+          data: {
+            actor: user.id,
+            event: 'status-updated',
+            publishJob: keyInfo.publishJobId,
+            summary: `Manual publication recovery rearmed for publish job ${keyInfo.publishJobId}, execution revision ${keyInfo.revision}.`,
+          },
+          overrideAccess: true,
+          req: transactionReq,
+        })
+      },
+    }
+    const retried = await queue.retryManually(
+      job.id,
+      { id: user.id, role: user.role },
+      req,
+      retryOptions,
+    )
+    return { action: compensation.action, jobId: retried.id, status: retried.status }
+  }
+
+  if (compensation.action === 'retry-publication-status-recovery') {
+    const keyInfo = parsePublicationStatusRecoveryIdempotencyKey(job.idempotencyKey)
+    if (!keyInfo) {
+      throw new OperationsCommandError(
+        'operations-invalid-job-payload',
+        'The publication status recovery job cannot be safely retried.',
+        409,
+      )
+    }
+    let parsedPayload: ReturnType<typeof parsePlatformPublicationJobPayload>
+    try {
+      if (!job.payload || typeof job.payload !== 'object' || Array.isArray(job.payload)) {
+        throw new Error('invalid payload')
+      }
+      parsedPayload = parsePlatformPublicationJobPayload(job.payload as Record<string, unknown>)
+    } catch {
+      throw new OperationsCommandError(
+        'operations-invalid-job-payload',
+        'The publication status recovery payload is invalid.',
+        409,
+      )
+    }
+    if (
+      parsedPayload.publishJobId !== keyInfo.publishJobId ||
+      parsedPayload.expectedExecutionRevision !== keyInfo.revision
+    ) {
+      throw new OperationsCommandError(
+        'operations-invalid-job-payload',
+        'The publication status recovery payload does not match its idempotency key.',
+        409,
+      )
+    }
+    const publishJob = await payload.findByID({
+      collection: 'publish-jobs',
+      depth: 0,
+      id: keyInfo.publishJobId,
+      overrideAccess: true,
+      req,
+    })
+    if (!publishJob) {
+      throw new OperationsCommandError(
+        'operations-invalid-job-payload',
+        'The associated publication job was not found.',
+        404,
+      )
+    }
+    if (
+      publishJob.executionRevision !== keyInfo.revision ||
+      publishJob.providerIOStartedAt ||
+      !['accepted', 'publishing'].includes(publishJob.status)
+    ) {
+      throw new OperationsCommandError(
+        'operations-invalid-job-payload',
+        'The publication status is no longer eligible for read-only recovery.',
+        409,
+      )
+    }
+    const retryOptions: ManualRetryOptions = {
+      beforeRetry: async (_currentJob, transactionReq) => {
+        const currentPublishJob = await payload.findByID({
+          collection: 'publish-jobs',
+          depth: 0,
+          id: keyInfo.publishJobId,
+          overrideAccess: true,
+          req: transactionReq,
+        })
+        if (
+          currentPublishJob.executionRevision !== keyInfo.revision ||
+          currentPublishJob.providerIOStartedAt ||
+          !['accepted', 'publishing'].includes(currentPublishJob.status)
+        ) {
+          throw new OperationsCommandError(
+            'operations-invalid-job-payload',
+            'The publication status is no longer eligible for read-only recovery.',
+            409,
+          )
+        }
+        return retryNotBefore(currentPublishJob.claimLeaseExpiresAt)
+      },
+      afterRetry: async (_currentJob, _retried, transactionReq) => {
+        await payload.create({
+          collection: 'publish-logs',
+          data: {
+            actor: user.id,
+            event: 'status-updated',
+            publishJob: keyInfo.publishJobId,
+            summary: `Manual publication status recovery rearmed for publish job ${keyInfo.publishJobId}, execution revision ${keyInfo.revision}; provider mutation will not be replayed.`,
+          },
+          overrideAccess: true,
+          req: transactionReq,
+        })
+      },
+    }
+    const retried = await queue.retryManually(
+      job.id,
+      { id: user.id, role: user.role },
+      req,
+      retryOptions,
+    )
     return { action: compensation.action, jobId: retried.id, status: retried.status }
   }
 

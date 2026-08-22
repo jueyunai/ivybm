@@ -6,6 +6,7 @@ import {
   enqueuePublicationExecution,
   enqueuePublicationRecovery,
   enqueuePublicationStatusSuccessor,
+  isPublicationStatusRecoveryKey,
   isRunnableSuccessor,
   parsePlatformPublicationJobPayload,
   PLATFORM_PUBLICATION_JOB_TYPE,
@@ -32,6 +33,11 @@ const makeJob = (overrides: Partial<JobRecord> = {}): JobRecord => ({
 })
 
 describe('publication queue jobs', () => {
+  it('recognizes the bounded status recovery identity', () => {
+    expect(isPublicationStatusRecoveryKey('publication-status:42:1', 42, 1)).toBe(true)
+    expect(isPublicationStatusRecoveryKey('publication-status:42:2', 42, 1)).toBe(false)
+    expect(isPublicationStatusRecoveryKey('publication-execute:42:1', 42, 1)).toBe(false)
+  })
   it('parses the queue revision separately from the PublishJob identity', () => {
     expect(
       parsePlatformPublicationJobPayload({ expectedExecutionRevision: 7, publishJobId: 42 }),
@@ -178,7 +184,7 @@ describe('publication queue jobs', () => {
         status: 'accepted' as const,
       },
       1,
-      'unresolved',
+      'status-successor',
     ],
     [
       'the current non-terminal attempt with retained active claim',
@@ -204,7 +210,7 @@ describe('publication queue jobs', () => {
         status: 'accepted' as const,
       },
       1,
-      'unresolved',
+      'status-successor',
     ],
   ] as const)('classifies %s without a success-path bypass', (_name, job, revision, expected) => {
     const now = new Date('2026-08-22T10:00:00.000Z')
