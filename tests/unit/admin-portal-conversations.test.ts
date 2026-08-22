@@ -284,6 +284,182 @@ describe('Portal conversations module', () => {
     expect(textarea2Preserved.value).toBe('Draft for conversation 2')
   })
 
+  it('does not clear a newer draft when an earlier reply completes', async () => {
+    let resolveCommand: (value: Response) => void = () => {}
+    const commandPromise = new Promise<Response>((resolve) => {
+      resolveCommand = resolve
+    })
+    const commandRequests: Array<{
+      url: string
+      body: { idempotencyKey?: string; text?: string }
+    }> = []
+
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const urlStr = String(url)
+      if (
+        urlStr.startsWith('/api/portal/conversations?') ||
+        urlStr === '/api/portal/conversations'
+      ) {
+        return Promise.resolve(
+          jsonResponse({
+            docs: [
+              { ...session1, lastMessageAt: session1.messages[0]?.createdAt, messages: undefined },
+              { ...session2, lastMessageAt: session2.messages[0]?.createdAt, messages: undefined },
+            ],
+            page: 1,
+            totalDocs: 2,
+            totalPages: 1,
+          }),
+        )
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-1/operator-messages')) {
+        commandRequests.push({
+          body: JSON.parse(String(init?.body)) as { idempotencyKey?: string; text?: string },
+          url: urlStr,
+        })
+        return commandPromise
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-1')) {
+        return Promise.resolve(jsonResponse(session1))
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-2')) {
+        return Promise.resolve(jsonResponse(session2))
+      }
+      return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWorkspace('conv-1')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined()
+    })
+
+    const textarea = screen.getByPlaceholderText('输入给客户的回复…') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'first draft' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送回复' }))
+    expect(commandRequests).toHaveLength(1)
+
+    fireEvent.change(textarea, { target: { value: 'second unsent draft' } })
+    expect(textarea.value).toBe('second unsent draft')
+
+    await act(async () => {
+      resolveCommand(
+        jsonResponse({
+          ...session1,
+          messages: [
+            ...session1.messages,
+            {
+              author: 'operator',
+              content: 'first draft',
+              createdAt: '2026-08-01T10:10:00.000Z',
+              id: 'm-reply-1',
+              status: 'sent',
+            },
+          ],
+          revision: session1.revision + 1,
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(textarea.value).toBe('second unsent draft')
+    })
+    expect(commandRequests).toHaveLength(1)
+    expect(commandRequests[0]).toMatchObject({
+      body: {
+        idempotencyKey: expect.stringMatching(/^portal:operator-messages:conv-1:/u),
+        text: 'first draft',
+      },
+      url: '/api/portal/conversations/conv-1/operator-messages',
+    })
+  })
+
+  it('refreshes using the current filter after an older command completes', async () => {
+    let resolveCommand: (value: Response) => void = () => {}
+    const commandPromise = new Promise<Response>((resolve) => {
+      resolveCommand = resolve
+    })
+    const listUrls: string[] = []
+    const resolvedSession: ChatSession = {
+      ...session2,
+      allowedActions: [],
+      handoffStatus: 'resolved',
+    }
+
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      const urlStr = String(url)
+      if (urlStr.startsWith('/api/portal/conversations?')) {
+        listUrls.push(urlStr)
+        const isResolved =
+          new URL(`http://localhost${urlStr}`).searchParams.get('status') === 'resolved'
+        const docs = isResolved ? [resolvedSession] : [session1, session2]
+        return Promise.resolve(
+          jsonResponse({
+            docs: docs.map((session) => ({
+              ...session,
+              lastMessageAt: session.messages[0]?.createdAt,
+              messages: undefined,
+            })),
+            page: 1,
+            totalDocs: docs.length,
+            totalPages: 1,
+          }),
+        )
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-1/resolve')) {
+        return commandPromise
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-1')) {
+        return Promise.resolve(jsonResponse(session1))
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-2')) {
+        return Promise.resolve(jsonResponse(resolvedSession))
+      }
+      return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWorkspace('conv-1')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined()
+    })
+    fireEvent.click(screen.getByRole('button', { name: '解决会话' }))
+
+    const listRequestCountBeforeFilter = listUrls.length
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'resolved' } })
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+      expect(screen.getAllByText('已解决').length).toBeGreaterThan(0)
+    })
+    const listRequestCountBeforeCommandCompletion = listUrls.length
+
+    await act(async () => {
+      resolveCommand(
+        jsonResponse({
+          ...session1,
+          allowedActions: [],
+          handoffStatus: 'resolved',
+          revision: session1.revision + 1,
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(listUrls.length).toBeGreaterThan(listRequestCountBeforeCommandCompletion)
+    })
+    const refreshedListUrls = listUrls.slice(listRequestCountBeforeFilter)
+    expect(refreshedListUrls.length).toBeGreaterThan(0)
+    expect(
+      refreshedListUrls.every(
+        (url) => new URL(`http://localhost${url}`).searchParams.get('status') === 'resolved',
+      ),
+    ).toBe(true)
+    expect(screen.queryByRole('heading', { name: '#conv-1' })).toBeNull()
+    expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+  })
+
   it('prevents stale conversation detail response from mutating active session or leaking actions', async () => {
     let resolveConv1: (val: Response) => void = () => {}
     const conv1Promise = new Promise<Response>((resolve) => {

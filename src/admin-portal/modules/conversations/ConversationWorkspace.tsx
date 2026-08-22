@@ -273,6 +273,7 @@ export function ConversationWorkspace({
     conversationId: string
   } | null>(null)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [listRefreshGeneration, setListRefreshGeneration] = useState(0)
   const [feedback, setFeedback] = useState<string | null>(null)
   const listRequest = useRef(0)
   const detailRequest = useRef(0)
@@ -397,7 +398,7 @@ export function ConversationWorkspace({
   useEffect(() => {
     const timer = setTimeout(() => void loadList(), 0)
     return () => clearTimeout(timer)
-  }, [loadList])
+  }, [listRefreshGeneration, loadList])
 
   useEffect(() => {
     const timer = setTimeout(() => void loadDetail(), 0)
@@ -418,7 +419,8 @@ export function ConversationWorkspace({
   const runCommand = async (nextCommand: CommandName) => {
     if (!activeSession || activeCommand) return
     const targetConversationId = String(activeSession.id)
-    const text = (drafts[targetConversationId] || '').trim()
+    const draftSnapshot = drafts[targetConversationId] || ''
+    const text = draftSnapshot.trim()
     if (nextCommand === 'operator-messages' && !text) return
     const commandSignature = [nextCommand, targetConversationId, text].join(':')
     const stableKey =
@@ -439,7 +441,11 @@ export function ConversationWorkspace({
       }
       commandKeys.current.delete(commandSignature)
       if (nextCommand === 'operator-messages') {
-        setDrafts((prev) => ({ ...prev, [targetConversationId]: '' }))
+        setDrafts((prev) =>
+          prev[targetConversationId] === draftSnapshot
+            ? { ...prev, [targetConversationId]: '' }
+            : prev,
+        )
       }
       if (String(selectedIdRef.current) === targetConversationId) {
         setFeedback(
@@ -450,7 +456,7 @@ export function ConversationWorkspace({
               : copy.reply,
         )
       }
-      await loadList()
+      setListRefreshGeneration((current) => current + 1)
     } catch (error) {
       if (!(error instanceof ConversationClientError) || !error.retryable) {
         commandKeys.current.delete(commandSignature)

@@ -25,6 +25,7 @@ const installConversationMock = async (
     secondDelayMs?: number
   },
 ) => {
+  const commandRequests: string[] = []
   const session = {
     allowedActions: ['take_over'],
     channel: 'website',
@@ -116,6 +117,7 @@ const installConversationMock = async (
       return
     }
 
+    commandRequests.push(`${request.method()} ${request.url()}`)
     if (command === 'take-over') {
       targetSession.allowedActions = ['send_operator_message', 'resolve']
       targetSession.handoffStatus = 'human_active'
@@ -144,6 +146,8 @@ const installConversationMock = async (
     }
     await route.fulfill({ contentType: 'application/json', json: targetSession, status: 200 })
   })
+
+  return { commandRequests }
 }
 
 test('conversation workspace renders only server-authorized actions and completes takeover, reply, and resolve', async ({
@@ -263,25 +267,30 @@ test('switching conversations isolates reply drafts and clears only the active c
   )
 })
 
-test('stale detail response from a previously selected conversation does not overwrite current conversation', async ({
+test('switching to a delayed conversation hides the old detail and command entry points', async ({
   page,
 }) => {
   if (!(await login(page))) return
-  await installConversationMock(page, { e2eDelayMs: 1200 })
+  const mock = await installConversationMock(page, { secondDelayMs: 1200 })
   await page.goto('/dashboard/conversations')
 
-  // The list auto-selects conversation 1, which has a 1200ms delay.
-  // We immediately switch to conversation 2.
+  // Conversation A must be fully visible before exercising the delayed switch to B.
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await expect(page.getByText('We need a technical panel specification.')).toBeVisible()
+  await expect(page.getByRole('button', { name: '接管会话' })).toBeVisible()
+
   await page.getByRole('button', { name: /#portal-conversation-second/u }).click()
 
-  // Conversation 2 loads and renders
-  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
-  await expect(page.getByText('Second conversation request from visitor.')).toBeVisible()
+  // While B is still loading, the old A detail and all command entry points must be gone.
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toHaveCount(0)
+  await expect(page.getByText('We need a technical panel specification.')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '接管会话' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '发送回复' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '解决会话' })).toHaveCount(0)
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveCount(0)
+  expect(mock.commandRequests).toHaveLength(0)
 
-  // Wait for the delayed response of conversation 1 to arrive
-  await page.waitForTimeout(1600)
-
-  // Assert that conversation 2 remains displayed and was not overwritten by conversation 1
+  // Conversation B eventually loads and renders its own detail.
   await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
   await expect(page.getByText('Second conversation request from visitor.')).toBeVisible()
   await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toHaveCount(0)
