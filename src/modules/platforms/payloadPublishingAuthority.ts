@@ -324,6 +324,9 @@ class PayloadPublicationCAS {
       if (await this.abandonAfterProviderIOStarted(claim)) {
         return { status: 'claim_released' }
       }
+      if (await this.release(claim, false)) {
+        return { status: 'claim_released' }
+      }
     } catch {
       return {
         retryNotBefore: claim.leaseFence.leaseExpiresAt,
@@ -341,7 +344,7 @@ class PayloadPublicationCAS {
       if (row && Number(row.execution_revision) > claim.intent.expectedRevision) {
         return { nextRevision: Number(row.execution_revision), status: 'state_advanced' }
       }
-      if (row && !row.claim_id && row.provider_i_o_started_at) {
+      if (row && !row.claim_id) {
         return { status: 'claim_released' }
       }
       const retryNotBefore = row?.claim_lease_expires_at

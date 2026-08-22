@@ -18,6 +18,7 @@ import type {
   PlatformPublicationLeaseFence,
 } from '@/modules/platforms/publishingAuthority'
 import { createPlatformPublishingService } from '@/modules/platforms/publishingServiceAdapter'
+import { retryPortalJob } from '@/admin-portal/modules/operations/operationsCommands'
 import type { PlatformAccount, User } from '@/payload-types'
 import config from '@/payload.config'
 
@@ -401,7 +402,7 @@ describe.sequential('Task 13 Payload publication authority', () => {
     })
   })
 
-  it.each(['before-insert', 'after-insert', 'dead-duplicate'] as const)(
+  it.each(['before-insert', 'after-insert', 'dead-duplicate', 'expired-final-processing'] as const)(
     'repairs a committed checkpoint after continuation enqueue %s without replaying provider I/O',
     async (failureMode) => {
       const { intent, queue, queuedJob } = await createIntentAndLease({ claimQueueJob: false })
@@ -473,6 +474,15 @@ describe.sequential('Task 13 Payload publication authority', () => {
           `UPDATE jobs SET status = 'dead', dead_at = NOW(), next_run_at = NULL WHERE id = $1`,
           [continuations.rows[0]!.id],
         )
+      } else if (failureMode === 'expired-final-processing') {
+        await pool().query(
+          `UPDATE jobs
+           SET status = 'processing', attempts = 2, max_attempts = 2,
+               owner_token = 'stale-worker', lease_expires_at = NOW() - INTERVAL '5 seconds',
+               next_run_at = NULL
+           WHERE id = $1`,
+          [continuations.rows[0]!.id],
+        )
       }
       await pool().query(
         "UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1",
@@ -480,7 +490,9 @@ describe.sequential('Task 13 Payload publication authority', () => {
       )
 
       await expect(worker.runOnce()).resolves.toBe(
-        failureMode === 'dead-duplicate' ? 'failed' : 'succeeded',
+        failureMode === 'dead-duplicate' || failureMode === 'expired-final-processing'
+          ? 'failed'
+          : 'succeeded',
       )
       expect(publish).toHaveBeenCalledTimes(1)
       expect(getStatus).not.toHaveBeenCalled()
@@ -491,7 +503,9 @@ describe.sequential('Task 13 Payload publication authority', () => {
       expect(continuations.rowCount).toBe(1)
       jobIDs.push(continuations.rows[0]!.id)
       expect(continuations.rows[0]!.status).toBe(
-        failureMode === 'dead-duplicate' ? 'dead' : 'pending',
+        failureMode === 'dead-duplicate' || failureMode === 'expired-final-processing'
+          ? 'dead'
+          : 'pending',
       )
       const source = await pool().query<{ attempts: string; status: string }>(
         'SELECT attempts::text, status FROM jobs WHERE id = $1',
@@ -499,7 +513,10 @@ describe.sequential('Task 13 Payload publication authority', () => {
       )
       expect(source.rows[0]).toMatchObject({
         attempts: '2',
-        status: failureMode === 'dead-duplicate' ? 'dead' : 'succeeded',
+        status:
+          failureMode === 'dead-duplicate' || failureMode === 'expired-final-processing'
+            ? 'dead'
+            : 'succeeded',
       })
     },
   )
@@ -919,6 +936,302 @@ describe.sequential('Task 13 Payload publication authority', () => {
       })
     },
   )
+
+  it.each(['released', 'retained'] as const)(
+    'handles direct status checkpoint commit failure with a %s claim without replaying mutation',
+    async (claimMode) => {
+      const { intent, queue, queuedJob } = await createIntentAndLease({ claimQueueJob: false })
+      await pool().query(
+        `UPDATE jobs
+         SET status = 'dead', dead_at = NOW(), next_run_at = NULL,
+             owner_token = NULL, lease_expires_at = NULL
+         WHERE type = $1 AND id <> $2 AND status IN ('pending', 'failed', 'processing')`,
+        [PLATFORM_PUBLICATION_JOB_TYPE, queuedJob.id],
+      )
+      const publish = vi.fn().mockResolvedValue({
+        externalPublicationId: '129472283584550_111222333',
+        idempotencyKey: intent.snapshot.idempotencyKey,
+        platform: 'facebook' as const,
+        platformAccountId: account.id,
+        status: 'accepted' as const,
+      })
+      const getStatus = vi.fn().mockResolvedValue({
+        externalPublicationId: '129472283584550_111222333',
+        externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/111222333',
+        idempotencyKey: intent.snapshot.idempotencyKey,
+        platform: 'facebook' as const,
+        platformAccountId: account.id,
+        status: 'published' as const,
+      })
+      const payloadAuthority = new PayloadPlatformPublicationAuthority({ payload })
+      let failStatusCommit = true
+      const worker = new JobWorker({
+        handlers: {
+          [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+            createDirectAuthority: () => ({
+              claimPublication: (...args) => payloadAuthority.claimPublication(...args),
+              commitPublication: (...args) => {
+                if (failStatusCommit && args[0].intent.snapshot.status === 'accepted') {
+                  failStatusCommit = false
+                  return Promise.resolve({ reason: 'claim_conflict', status: 'blocked' as const })
+                }
+                return payloadAuthority.commitPublication(...args)
+              },
+              markProviderIOStarted: (...args) => payloadAuthority.markProviderIOStarted(...args),
+              recoverFailedCommit: (...args) =>
+                claimMode === 'released'
+                  ? payloadAuthority.recoverFailedCommit(...args)
+                  : Promise.resolve({
+                      retryNotBefore: args[0].leaseFence.leaseExpiresAt,
+                      status: 'claim_retained' as const,
+                    }),
+              releasePublication: (...args) => payloadAuthority.releasePublication(...args),
+            }),
+            payload,
+            queue,
+            resolveRuntime: () => ({
+              directService: {
+                getCapability: vi.fn(),
+                getStatus,
+                prepareAssistedPublication: vi.fn(),
+                publish,
+              },
+              linkedInTransport: {} as never,
+              metaTransport: {} as never,
+              readLinkedInAssetBytes: vi.fn(),
+            }),
+          }),
+        },
+        queue,
+      })
+
+      // Step 1: initial publish runs and succeeds with accepted (revision 0 -> 1)
+      await expect(worker.runOnce()).resolves.toBe('succeeded')
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(getStatus).not.toHaveBeenCalled()
+
+      const continuationKey = `publication-execute:${intent.publishJobId}:1`
+      const continuation = await pool().query<{ id: number }>(
+        'SELECT id FROM jobs WHERE type = $1 AND idempotency_key = $2 LIMIT 1',
+        [PLATFORM_PUBLICATION_JOB_TYPE, continuationKey],
+      )
+      const continuationJobId = continuation.rows[0]?.id
+      if (!continuationJobId) throw new Error('Expected direct status continuation job')
+      jobIDs.push(continuationJobId)
+
+      // Step 2: run continuation - its status commit will fail
+      await pool().query(
+        "UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+        [continuationJobId],
+      )
+      await expect(worker.runOnce()).resolves.toBe('failed')
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(getStatus).toHaveBeenCalledTimes(1)
+
+      if (claimMode === 'released') {
+        // With claim released, the continuation job can immediately retry on attempt 2 and succeed
+        await pool().query(
+          "UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+          [continuationJobId],
+        )
+        await expect(worker.runOnce()).resolves.toBe('succeeded')
+        expect(publish).toHaveBeenCalledTimes(1)
+        expect(getStatus).toHaveBeenCalledTimes(2)
+        await expect(
+          payload.findByID({
+            collection: 'publish-jobs',
+            depth: 0,
+            id: intent.publishJobId,
+            overrideAccess: true,
+          }),
+        ).resolves.toMatchObject({
+          claimId: null,
+          executionRevision: 2,
+          externalPublicationId: '129472283584550_111222333',
+          status: 'published',
+        })
+      } else {
+        // With claim retained, a status successor was enqueued for when the lease expires
+        const statusSuccessorKey = `publication-status:${intent.publishJobId}:1`
+        const successor = await pool().query<{
+          id: number
+          next_run_at: Date | string
+          status: string
+        }>(
+          'SELECT id, next_run_at, status FROM jobs WHERE type = $1 AND idempotency_key = $2 LIMIT 1',
+          [PLATFORM_PUBLICATION_JOB_TYPE, statusSuccessorKey],
+        )
+        const successorJob = successor.rows[0]
+        if (!successorJob) throw new Error('Expected durable status successor job')
+        jobIDs.push(successorJob.id)
+        expect(successorJob.status).toBe('pending')
+
+        // Continuation attempt 2 fails due to lease conflict and becomes dead
+        await pool().query(
+          "UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+          [continuationJobId],
+        )
+        await expect(worker.runOnce()).resolves.toBe('failed')
+        const continuationState = await pool().query<{ attempts: string; status: string }>(
+          'SELECT attempts::text, status FROM jobs WHERE id = $1',
+          [continuationJobId],
+        )
+        expect(continuationState.rows[0]).toMatchObject({ attempts: '2', status: 'dead' })
+
+        // Now expire the claim on PublishJob and run the status successor
+        await pool().query(
+          "UPDATE publish_jobs SET claim_lease_expires_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+          [intent.publishJobId],
+        )
+        await pool().query(
+          "UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+          [successorJob.id],
+        )
+        await expect(worker.runOnce()).resolves.toBe('succeeded')
+        expect(publish).toHaveBeenCalledTimes(1)
+        expect(getStatus).toHaveBeenCalledTimes(2)
+        await expect(
+          payload.findByID({
+            collection: 'publish-jobs',
+            depth: 0,
+            id: intent.publishJobId,
+            overrideAccess: true,
+          }),
+        ).resolves.toMatchObject({
+          claimId: null,
+          executionRevision: 2,
+          externalPublicationId: '129472283584550_111222333',
+          status: 'published',
+        })
+      }
+    },
+  )
+
+  it('allows manual compensation retry for a dead publication recovery job and finishes without provider replay', async () => {
+    const { intent, queue, queuedJob } = await createIntentAndLease({ claimQueueJob: false })
+    await pool().query(
+      `UPDATE jobs
+       SET status = 'dead', dead_at = NOW(), next_run_at = NULL,
+           owner_token = NULL, lease_expires_at = NULL
+       WHERE type = $1 AND id <> $2 AND status IN ('pending', 'failed', 'processing')`,
+      [PLATFORM_PUBLICATION_JOB_TYPE, queuedJob.id],
+    )
+    const publish = vi.fn().mockResolvedValue({
+      externalPublicationId: '129472283584550_999000111',
+      idempotencyKey: intent.snapshot.idempotencyKey,
+      platform: 'facebook' as const,
+      platformAccountId: account.id,
+      status: 'accepted' as const,
+    })
+    const getStatus = vi.fn()
+    const payloadAuthority = new PayloadPlatformPublicationAuthority({ payload })
+    let blockCommit = true
+    const worker = new JobWorker({
+      handlers: {
+        [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+          createDirectAuthority: () => ({
+            claimPublication: (...args) => payloadAuthority.claimPublication(...args),
+            commitPublication: (...args) => {
+              if (blockCommit) {
+                return Promise.resolve({ reason: 'claim_conflict', status: 'blocked' as const })
+              }
+              return payloadAuthority.commitPublication(...args)
+            },
+            markProviderIOStarted: (...args) => payloadAuthority.markProviderIOStarted(...args),
+            recoverFailedCommit: (...args) => payloadAuthority.recoverFailedCommit(...args),
+            releasePublication: (...args) => payloadAuthority.releasePublication(...args),
+          }),
+          payload,
+          queue,
+          resolveRuntime: () => ({
+            directService: {
+              getCapability: vi.fn(),
+              getStatus,
+              prepareAssistedPublication: vi.fn(),
+              publish,
+            },
+            linkedInTransport: {} as never,
+            metaTransport: {} as never,
+            readLinkedInAssetBytes: vi.fn(),
+          }),
+        }),
+      },
+      queue,
+    })
+
+    // Step 1: source job runs, publish accepted, commit fails -> schedules recovery job
+    await expect(worker.runOnce()).resolves.toBe('failed')
+    expect(publish).toHaveBeenCalledTimes(1)
+    const recoveryKey = `publication-recovery:${intent.publishJobId}:0`
+    const recovery = await pool().query<{ id: number }>(
+      'SELECT id FROM jobs WHERE type = $1 AND idempotency_key = $2 LIMIT 1',
+      [PLATFORM_PUBLICATION_JOB_TYPE, recoveryKey],
+    )
+    const recoveryJobId = recovery.rows[0]?.id
+    if (!recoveryJobId) throw new Error('Expected publication recovery job')
+    jobIDs.push(recoveryJobId)
+
+    // Step 2: exhaust recovery attempts so it becomes dead
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await pool().query(
+        "UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+        [recoveryJobId],
+      )
+      await expect(worker.runOnce()).resolves.toBe('failed')
+    }
+
+    const deadRecovery = await pool().query<{
+      attempts: string
+      status: string
+      updated_at: Date | string
+    }>('SELECT attempts::text, status, updated_at FROM jobs WHERE id = $1', [recoveryJobId])
+    expect(deadRecovery.rows[0]).toMatchObject({ attempts: '2', status: 'dead' })
+
+    // Step 3: Admin uses retryPortalJob to manually retry the dead recovery job
+    blockCommit = false
+    const retryResult = await retryPortalJob({
+      id: recoveryJobId,
+      input: { updatedAt: new Date(deadRecovery.rows[0]!.updated_at).toISOString() },
+      payload,
+      queue,
+      req: { user: { id: admin.id, role: 'admin' } } as unknown as Parameters<
+        typeof retryPortalJob
+      >[0]['req'],
+      user: admin,
+    })
+
+    expect(retryResult).toEqual({
+      action: 'retry-publication-recovery',
+      jobId: recoveryJobId,
+      status: 'pending',
+    })
+
+    // Assert recovery job count is STILL 1 (same job reset, no second job created)
+    const recoveryJobCount = await pool().query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM jobs WHERE type = $1 AND idempotency_key = $2',
+      [PLATFORM_PUBLICATION_JOB_TYPE, recoveryKey],
+    )
+    expect(recoveryJobCount.rows[0]?.count).toBe('1')
+
+    // Step 4: Worker runs the retried recovery job and completes delivery_unknown
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+    expect(publish).toHaveBeenCalledTimes(1) // ZERO replays!
+    expect(getStatus).not.toHaveBeenCalled()
+
+    await expect(
+      payload.findByID({
+        collection: 'publish-jobs',
+        depth: 0,
+        id: intent.publishJobId,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      claimId: null,
+      deliveryUnknownAt: expect.any(String),
+      executionRevision: 1,
+      status: 'delivery_unknown',
+    })
+  })
 
   it('blocks a queued direct publication when only the account authorization revision changes', async () => {
     const suffix = randomUUID()

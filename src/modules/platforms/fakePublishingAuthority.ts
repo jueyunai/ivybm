@@ -199,13 +199,9 @@ export const createFakePlatformPublicationAuthority = ({
         status: 'claim_retained',
       }
     }
-    if (!checked.current.providerIOStarted) {
-      return {
-        retryNotBefore: claim.leaseFence.leaseExpiresAt,
-        status: 'claim_retained',
-      }
+    if (checked.current.providerIOStarted) {
+      recoveryRequired.add(claim.intent.publishJobId)
     }
-    recoveryRequired.add(claim.intent.publishJobId)
     active.delete(claim.intent.publishJobId)
     return { status: 'claim_released' }
   }

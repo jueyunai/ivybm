@@ -355,8 +355,6 @@ export const executeLeaseFencedPublication = async ({
     committed = false
   }
   if (!committed) {
-    if (!isMutation)
-      throw new Error('Platform publication status checkpoint could not be committed')
     return {
       recovery: await recoverFailedCheckpoint(authority, claim),
       status: 'checkpoint_pending',
