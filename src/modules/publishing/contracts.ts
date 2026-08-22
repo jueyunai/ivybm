@@ -80,6 +80,8 @@ export type PlatformCapability = PlatformCapabilityQuery & {
 
 export type PlatformPublishRequest = PlatformCapabilityQuery & {
   assets: PublicationAsset[]
+  /** Worker fence captured when the durable publication intent is created. */
+  expectedAuthorizationRevision?: number
   /** Stable caller command key, scoped to one platform account. */
   idempotencyKey: string
   scheduledFor?: string
@@ -126,6 +128,8 @@ export type PlatformPublishAcceptance =
   | FailedPlatformPublication
 
 export type PlatformPublicationStatusLookup = PlatformPublicationCommand & {
+  /** Worker fence captured when the durable publication intent is created. */
+  expectedAuthorizationRevision?: number
   externalPublicationId?: string
 }
 
@@ -376,9 +380,20 @@ export const normalizePlatformCapabilityQuery = (value: unknown): PlatformCapabi
   }
 }
 
+const normalizeExpectedAuthorizationRevision = (value: unknown): number | undefined => {
+  if (value === undefined) return undefined
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new PublishingContractValidationError('Expected authorization revision is invalid')
+  }
+  return value as number
+}
+
 export const normalizePlatformPublishRequest = (value: unknown): PlatformPublishRequest => {
   const candidate = requireRecord(value, 'Publish request')
   const base = normalizePlatformCapabilityQuery(candidate)
+  const expectedAuthorizationRevision = normalizeExpectedAuthorizationRevision(
+    candidate.expectedAuthorizationRevision,
+  )
   const scheduledFor =
     candidate.scheduledFor === undefined
       ? undefined
@@ -395,6 +410,7 @@ export const normalizePlatformPublishRequest = (value: unknown): PlatformPublish
   return {
     ...base,
     assets: normalizePublicationAssets(candidate.assets),
+    ...(expectedAuthorizationRevision !== undefined ? { expectedAuthorizationRevision } : {}),
     idempotencyKey: normalizePublicationIdempotencyKey(candidate.idempotencyKey),
     ...(scheduledFor ? { scheduledFor } : {}),
     text: normalizePublicationText(candidate.text),
@@ -444,12 +460,16 @@ export const normalizePlatformPublicationStatusLookup = (
 ): PlatformPublicationStatusLookup => {
   const candidate = requireRecord(value, 'Publication status lookup')
   const base = normalizePlatformCapabilityQuery(candidate)
+  const expectedAuthorizationRevision = normalizeExpectedAuthorizationRevision(
+    candidate.expectedAuthorizationRevision,
+  )
   const externalPublicationId =
     candidate.externalPublicationId === undefined
       ? undefined
       : boundedText(candidate.externalPublicationId, 'External publication ID', 240)
   return {
     ...base,
+    ...(expectedAuthorizationRevision !== undefined ? { expectedAuthorizationRevision } : {}),
     idempotencyKey: normalizePublicationIdempotencyKey(candidate.idempotencyKey),
     ...(externalPublicationId ? { externalPublicationId } : {}),
   }

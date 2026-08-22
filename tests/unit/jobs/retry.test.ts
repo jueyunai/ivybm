@@ -58,4 +58,31 @@ describe('job retry policy', () => {
       'Cannot manually retry a succeeded job',
     )
   })
+
+  it('keeps a retry after the lease-aware recovery boundary', () => {
+    const now = new Date('2026-07-20T00:00:00.000Z')
+    const leaseExpiry = new Date('2026-07-20T00:05:00.000Z')
+
+    expect(
+      transitionAfterFailure({
+        attempts: 1,
+        maxAttempts: 2,
+        now,
+        retryNotBefore: leaseExpiry,
+      }),
+    ).toMatchObject({ status: 'failed', nextRunAt: leaseExpiry })
+  })
+
+  it('allows manual retry to preserve a lease-aware next run time', () => {
+    const now = new Date('2026-07-20T00:00:00.000Z')
+    const leaseExpiry = new Date('2026-07-20T00:05:00.000Z')
+
+    expect(
+      manualRetryState({ manualRetryCount: 2, status: 'dead' }, now, leaseExpiry),
+    ).toMatchObject({
+      manualRetryCount: 3,
+      nextRunAt: leaseExpiry,
+      status: 'pending',
+    })
+  })
 })

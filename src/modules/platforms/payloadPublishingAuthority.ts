@@ -24,6 +24,7 @@ import type {
 import type {
   PlatformPublicationAuthorityPort,
   PlatformPublicationClaim,
+  PlatformPublicationCommitRecovery,
   PlatformPublicationCommitResult,
   PlatformPublicationIntent,
   PlatformPublicationLeaseFence,
@@ -42,6 +43,13 @@ type ClaimRow = {
   claim_id: string
   execution_revision: number | string
   fencing_generation: number | string
+  provider_i_o_started_at: Date | string | null
+}
+
+type RecoveryRow = {
+  claim_id: string | null
+  claim_lease_expires_at: Date | string | null
+  execution_revision: number | string
   provider_i_o_started_at: Date | string | null
 }
 
@@ -282,6 +290,74 @@ class PayloadPublicationCAS {
     )
     return result.rowCount === 1
   }
+
+  /**
+   * Drop an execution claim after a failed checkpoint while retaining the
+   * provider I/O marker. The next worker can then reclaim the job in
+   * recovery-only mode without waiting for the old queue lease to expire.
+   */
+  async abandonAfterProviderIOStarted(claim: PublicationClaim): Promise<boolean> {
+    const result = await this.pool.query(
+      `UPDATE publish_jobs
+       SET claim_job_id = NULL, claim_id = NULL, claim_owner_token = NULL,
+           claim_lease_expires_at = NULL, updated_at = $1
+       WHERE id = $2 AND execution_revision = $3 AND claim_id = $4
+         AND fencing_generation = $5 AND claim_job_id = $6
+         AND claim_owner_token = $7 AND claim_lease_expires_at = $8
+         AND provider_i_o_started_at IS NOT NULL`,
+      [
+        this.now().toISOString(),
+        claim.intent.publishJobId,
+        claim.intent.expectedRevision,
+        claim.claimId,
+        claim.fencingGeneration,
+        claim.leaseFence.queueJobId,
+        claim.leaseFence.ownerToken,
+        claim.leaseFence.leaseExpiresAt,
+      ],
+    )
+    return result.rowCount === 1
+  }
+
+  async recoverFailedCommit(claim: PublicationClaim): Promise<PlatformPublicationCommitRecovery> {
+    try {
+      if (await this.abandonAfterProviderIOStarted(claim)) {
+        return { status: 'claim_released' }
+      }
+      if (await this.release(claim, false)) {
+        return { status: 'claim_released' }
+      }
+    } catch {
+      return {
+        retryNotBefore: claim.leaseFence.leaseExpiresAt,
+        status: 'claim_retained',
+      }
+    }
+
+    try {
+      const found = await this.pool.query<RecoveryRow>(
+        `SELECT execution_revision, claim_id, claim_lease_expires_at, provider_i_o_started_at
+         FROM publish_jobs WHERE id = $1 LIMIT 1`,
+        [claim.intent.publishJobId],
+      )
+      const row = found.rows[0]
+      if (row && Number(row.execution_revision) > claim.intent.expectedRevision) {
+        return { nextRevision: Number(row.execution_revision), status: 'state_advanced' }
+      }
+      if (row && !row.claim_id) {
+        return { status: 'claim_released' }
+      }
+      const retryNotBefore = row?.claim_lease_expires_at
+        ? new Date(row.claim_lease_expires_at).toISOString()
+        : claim.leaseFence.leaseExpiresAt
+      return { retryNotBefore, status: 'claim_retained' }
+    } catch {
+      return {
+        retryNotBefore: claim.leaseFence.leaseExpiresAt,
+        status: 'claim_retained',
+      }
+    }
+  }
 }
 
 export class PayloadPlatformPublicationAuthority implements PlatformPublicationAuthorityPort {
@@ -308,14 +384,18 @@ export class PayloadPlatformPublicationAuthority implements PlatformPublicationA
             : { reason: 'claim_conflict' as const, status: 'blocked' as const },
         )
     }
-    return this.cas.commit(claim, {
+    const update = {
       errorCode: transition.lastErrorCode,
       event: eventForDirect(transition),
       externalPublicationId: transition.externalPublicationId,
       externalPublicationUrl: transition.externalPublicationUrl,
       status: transition.status,
       summary: summary(transition.summary, 'Publication state changed.'),
-    })
+    }
+    return this.cas.commit(claim, update)
+  }
+  recoverFailedCommit(claim: PlatformPublicationClaim): Promise<PlatformPublicationCommitRecovery> {
+    return this.cas.recoverFailedCommit(claim)
   }
   async releasePublication(claim: PlatformPublicationClaim): Promise<void> {
     if (!(await this.cas.release(claim))) throw new Error('Publication claim could not be released')

@@ -1,14 +1,20 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Payload, PayloadRequest } from 'payload'
 
-import { getJobCompensation } from '@/modules/jobs/compensation/contracts'
 import {
+  getJobCompensation,
+  parsePublicationRecoveryIdempotencyKey,
+} from '@/modules/jobs/compensation/contracts'
+import {
+  loadSafeJobPageData,
   parseSafeJobQuery,
   toSafeJobSummary,
 } from '@/admin-portal/modules/operations/getSafeJobPage'
-import type { Job } from '@/payload-types'
-import type { User } from '@/payload-types'
-import { retryPortalJob } from '@/admin-portal/modules/operations/operationsCommands'
+import type { Job, User } from '@/payload-types'
+import {
+  OperationsCommandError,
+  retryPortalJob,
+} from '@/admin-portal/modules/operations/operationsCommands'
 
 const job = (overrides: Partial<Job> = {}): Job => ({
   attempts: 5,
@@ -31,12 +37,71 @@ const job = (overrides: Partial<Job> = {}): Job => ({
 })
 
 describe('Portal operations', () => {
-  it('only registers compensation for a terminal knowledge index job', () => {
+  it('only registers compensation for a terminal knowledge index job or publication recovery job', () => {
     expect(getJobCompensation({ status: 'dead', type: 'knowledge.index' })).toMatchObject({
       action: 'retry-knowledge-index',
     })
     expect(getJobCompensation({ status: 'processing', type: 'knowledge.index' })).toBeNull()
     expect(getJobCompensation({ status: 'dead', type: 'publish.external' })).toBeNull()
+
+    // Publication recovery compensation
+    expect(
+      getJobCompensation({
+        idempotencyKey: 'publication-recovery:42:0',
+        status: 'dead',
+        type: 'platform.publication.execute',
+      }),
+    ).toMatchObject({
+      action: 'retry-publication-recovery',
+    })
+    expect(
+      getJobCompensation({
+        idempotencyKey: 'publication-status:42:1',
+        status: 'dead',
+        type: 'platform.publication.execute',
+      }),
+    ).toMatchObject({ action: 'retry-publication-status-recovery' })
+    expect(
+      getJobCompensation({
+        idempotencyKey: 'publication-recovery:42:0',
+        status: 'failed',
+        type: 'platform.publication.execute',
+      }),
+    ).toMatchObject({
+      action: 'retry-publication-recovery',
+    })
+    // Normal execution job is rejected
+    expect(
+      getJobCompensation({
+        idempotencyKey: 'publication-execute:42:0',
+        status: 'dead',
+        type: 'platform.publication.execute',
+      }),
+    ).toBeNull()
+    // Non-terminal publication recovery is rejected
+    expect(
+      getJobCompensation({
+        idempotencyKey: 'publication-recovery:42:0',
+        status: 'processing',
+        type: 'platform.publication.execute',
+      }),
+    ).toBeNull()
+  })
+
+  it('parses publication recovery idempotency keys strictly', () => {
+    expect(parsePublicationRecoveryIdempotencyKey('publication-recovery:42:0')).toEqual({
+      publishJobId: 42,
+      revision: 0,
+    })
+    expect(parsePublicationRecoveryIdempotencyKey('publication-recovery:101:3')).toEqual({
+      publishJobId: 101,
+      revision: 3,
+    })
+    expect(parsePublicationRecoveryIdempotencyKey('publication-execute:42:0')).toBeNull()
+    expect(parsePublicationRecoveryIdempotencyKey('publication-recovery:0:0')).toBeNull()
+    expect(parsePublicationRecoveryIdempotencyKey('publication-recovery:42:-1')).toBeNull()
+    expect(parsePublicationRecoveryIdempotencyKey('publication-recovery:abc:0')).toBeNull()
+    expect(parsePublicationRecoveryIdempotencyKey(null)).toBeNull()
   })
 
   it('maps jobs to a DTO without payload, lease token, or raw error details', () => {
@@ -47,11 +112,60 @@ describe('Portal operations', () => {
     expect(serialized).not.toContain('never-return-this')
     expect(serialized).not.toContain('ownerToken')
     expect(serialized).not.toContain('payload')
+
+    const recoverySummary = toSafeJobSummary(
+      job({
+        id: 99,
+        idempotencyKey: 'publication-recovery:42:1',
+        type: 'platform.publication.execute',
+      }),
+    )
+    expect(recoverySummary.reference).toBe('Publication recovery job #99')
+    expect(recoverySummary.compensation).toEqual({
+      action: 'retry-publication-recovery',
+      label: 'Retry publication recovery',
+    })
+    expect(
+      toSafeJobSummary(
+        job({
+          id: 100,
+          idempotencyKey: 'publication-status:42:1',
+          type: 'platform.publication.execute',
+        }),
+      ).reference,
+    ).toBe('Publication status recovery job #100')
   })
 
   it('bounds operations query parameters', () => {
     expect(parseSafeJobQuery({ page: '3', status: 'dead' })).toEqual({ page: 3, status: 'dead' })
     expect(parseSafeJobQuery({ page: '-1', status: 'outside' })).toEqual({ page: 1, status: 'all' })
+  })
+
+  it('loads Portal job summaries without selecting the stored payload', async () => {
+    const find = vi.fn().mockResolvedValue({
+      docs: [job()],
+      page: 1,
+      totalDocs: 1,
+      totalPages: 1,
+    })
+
+    await expect(
+      loadSafeJobPageData({
+        env: {
+          ADMIN_PORTAL_ENABLED: 'true',
+          ADMIN_PORTAL_OPERATIONS_ENABLED: 'true',
+        } as never,
+        payload: { find } as unknown as Payload,
+        query: { page: 1, status: 'dead' },
+        req: {} as PayloadRequest,
+        role: 'admin',
+      }),
+    ).resolves.toMatchObject({ state: 'available' })
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.not.objectContaining({ payload: expect.anything() }),
+      }),
+    )
   })
 
   it('executes only the registered knowledge compensation with the authenticated admin', async () => {
@@ -92,5 +206,148 @@ describe('Portal operations', () => {
         requestedBy: 3,
       }),
     )
+  })
+
+  it('resets the same publication recovery job without creating a second job or replaying provider I/O', async () => {
+    const req = { user: { id: 3, role: 'admin' } } as unknown as PayloadRequest
+    const user = { collection: 'users', id: 3, role: 'admin' } as User
+    const recoveryJob = job({
+      id: 88,
+      idempotencyKey: 'publication-recovery:42:0',
+      payload: { expectedExecutionRevision: 0, publishJobId: 42 },
+      status: 'dead',
+      type: 'platform.publication.execute',
+    })
+    const publishJobDoc = {
+      executionRevision: 0,
+      id: 42,
+      providerIOStartedAt: '2026-08-22T10:00:00.000Z',
+      status: 'scheduled',
+    }
+
+    const payload = {
+      findByID: vi
+        .fn()
+        .mockImplementation(async ({ collection, id }: { collection: string; id: number }) => {
+          if (collection === 'jobs' && id === 88) return recoveryJob
+          if (collection === 'publish-jobs' && id === 42) return publishJobDoc
+          return null
+        }),
+    } as unknown as Payload
+
+    const retryManually = vi.fn().mockResolvedValue({
+      attempts: 0,
+      id: 88,
+      status: 'pending',
+    })
+    const queue = { retryManually }
+
+    await expect(
+      retryPortalJob({
+        id: 88,
+        input: { updatedAt: '2026-07-30T00:00:00.000Z' },
+        payload,
+        queue,
+        req,
+        user,
+      }),
+    ).resolves.toEqual({
+      action: 'retry-publication-recovery',
+      jobId: 88,
+      status: 'pending',
+    })
+
+    expect(retryManually).toHaveBeenCalledTimes(1)
+    expect(retryManually).toHaveBeenCalledWith(
+      88,
+      { id: 3, role: 'admin' },
+      req,
+      expect.objectContaining({
+        afterRetry: expect.any(Function),
+        beforeRetry: expect.any(Function),
+      }),
+    )
+  })
+
+  it('rejects publication recovery retry on invalid or mismatched conditions', async () => {
+    const req = { user: { id: 3, role: 'admin' } } as unknown as PayloadRequest
+    const user = { collection: 'users', id: 3, role: 'admin' } as User
+    const queue = { retryManually: vi.fn() }
+
+    // 1. Normal publication execute job has no registered compensation
+    const executeJob = job({
+      id: 77,
+      idempotencyKey: 'publication-execute:42:0',
+      payload: { expectedExecutionRevision: 0, publishJobId: 42 },
+      status: 'dead',
+      type: 'platform.publication.execute',
+    })
+    const payloadExecute = {
+      findByID: vi.fn().mockResolvedValue(executeJob),
+    } as unknown as Payload
+    await expect(
+      retryPortalJob({
+        id: 77,
+        input: { updatedAt: '2026-07-30T00:00:00.000Z' },
+        payload: payloadExecute,
+        queue,
+        req,
+        user,
+      }),
+    ).rejects.toThrow(OperationsCommandError)
+
+    // 2. Mismatched payload revision
+    const payloadMismatchJob = job({
+      id: 89,
+      idempotencyKey: 'publication-recovery:42:0',
+      payload: { expectedExecutionRevision: 1, publishJobId: 42 },
+      status: 'dead',
+      type: 'platform.publication.execute',
+    })
+    const payloadMismatch = {
+      findByID: vi.fn().mockResolvedValue(payloadMismatchJob),
+    } as unknown as Payload
+    await expect(
+      retryPortalJob({
+        id: 89,
+        input: { updatedAt: '2026-07-30T00:00:00.000Z' },
+        payload: payloadMismatch,
+        queue,
+        req,
+        user,
+      }),
+    ).rejects.toThrow('The publication recovery payload does not match its idempotency key')
+
+    // 3. Missing providerIOStartedAt marker on PublishJob
+    const recoveryJob = job({
+      id: 90,
+      idempotencyKey: 'publication-recovery:42:0',
+      payload: { expectedExecutionRevision: 0, publishJobId: 42 },
+      status: 'dead',
+      type: 'platform.publication.execute',
+    })
+    const publishJobNoMarker = {
+      executionRevision: 0,
+      id: 42,
+      providerIOStartedAt: null,
+      status: 'scheduled',
+    }
+    const payloadNoMarker = {
+      findByID: vi.fn().mockImplementation(async ({ collection }: { collection: string }) => {
+        if (collection === 'jobs') return recoveryJob
+        if (collection === 'publish-jobs') return publishJobNoMarker
+        return null
+      }),
+    } as unknown as Payload
+    await expect(
+      retryPortalJob({
+        id: 90,
+        input: { updatedAt: '2026-07-30T00:00:00.000Z' },
+        payload: payloadNoMarker,
+        queue,
+        req,
+        user,
+      }),
+    ).rejects.toThrow('The publication job state does not match the recovery requirement')
   })
 })

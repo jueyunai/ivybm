@@ -49,6 +49,11 @@ export type PlatformPublicationCommitResult =
   | { nextRevision: number; status: 'committed' }
   | { reason: PlatformPublicationBlockReason; status: 'blocked' }
 
+export type PlatformPublicationCommitRecovery =
+  | { status: 'claim_released' }
+  | { nextRevision: number; status: 'state_advanced' }
+  | { retryNotBefore: string; status: 'claim_retained' }
+
 /** Persistent CAS boundary shared by single-call Facebook and LinkedIn publication. */
 export interface PlatformPublicationAuthorityPort {
   claimPublication(
@@ -61,12 +66,22 @@ export interface PlatformPublicationAuthorityPort {
     claim: PlatformPublicationClaim,
     transition: PlatformPublishExecutionTransition,
   ): Promise<PlatformPublicationCommitResult>
+  /**
+   * Resolve a failed post-I/O checkpoint without erasing the provider marker.
+   * A retained claim must not be retried before its persisted lease expires.
+   */
+  recoverFailedCommit(claim: PlatformPublicationClaim): Promise<PlatformPublicationCommitRecovery>
   /** Valid only when mutation I/O never crossed its persisted boundary. */
   releasePublication(claim: PlatformPublicationClaim): Promise<void>
 }
 
 export type PlatformPublicationExecutionResult =
   | { reason: PlatformPublicationBlockReason; status: 'blocked' }
+  | {
+      recovery: PlatformPublicationCommitRecovery
+      status: 'checkpoint_pending'
+      transition: PlatformPublishExecutionTransition
+    }
   | { status: 'transitioned'; transition: PlatformPublishExecutionTransition }
 
 const terminal = new Set(['delivery_unknown', 'failed', 'published'])
@@ -95,6 +110,10 @@ const normalizeSnapshot = (input: unknown): PlatformPublishExecutionSnapshot | u
   } catch {
     return undefined
   }
+  const expectedAuthorizationRevision = request.expectedAuthorizationRevision
+  if (!Number.isSafeInteger(expectedAuthorizationRevision) || expectedAuthorizationRevision! < 0) {
+    return undefined
+  }
   const externalPublicationId =
     snapshot.externalPublicationId === undefined
       ? undefined
@@ -102,6 +121,7 @@ const normalizeSnapshot = (input: unknown): PlatformPublishExecutionSnapshot | u
   if (snapshot.externalPublicationId !== undefined && !externalPublicationId) return undefined
   return {
     assets: request.assets,
+    expectedAuthorizationRevision: expectedAuthorizationRevision!,
     ...(externalPublicationId ? { externalPublicationId } : {}),
     idempotencyKey: request.idempotencyKey,
     platform: request.platform,
@@ -157,6 +177,7 @@ const sameSnapshot = (
   right: PlatformPublishExecutionSnapshot,
 ): boolean =>
   left.idempotencyKey === right.idempotencyKey &&
+  left.expectedAuthorizationRevision === right.expectedAuthorizationRevision &&
   left.platform === right.platform &&
   left.platformAccountId === right.platformAccountId &&
   left.externalPublicationId === right.externalPublicationId &&
@@ -213,6 +234,20 @@ const bestEffortRelease = async (
   }
 }
 
+const recoverFailedCheckpoint = async (
+  authority: PlatformPublicationAuthorityPort,
+  claim: PlatformPublicationClaim,
+): Promise<PlatformPublicationCommitRecovery> => {
+  try {
+    return await authority.recoverFailedCommit(claim)
+  } catch {
+    return {
+      retryNotBefore: claim.leaseFence.leaseExpiresAt,
+      status: 'claim_retained',
+    }
+  }
+}
+
 /**
  * Execute one single-call publication or one read-only status lookup behind a
  * persistent Job lease. Instagram's multi-stage media flow uses its stricter
@@ -257,11 +292,19 @@ export const executeLeaseFencedPublication = async ({
     const transition = unknownTransition(
       'A previous provider mutation crossed the send boundary without a persisted result; resend is disabled.',
     )
+    let committed = false
     try {
-      await authority.commitPublication(claim, transition)
+      const commit = await authority.commitPublication(claim, transition)
+      committed = commit.status === 'committed'
     } catch {
-      // The next reclaim remains recovery-only until the terminal state persists.
+      committed = false
     }
+    if (!committed)
+      return {
+        recovery: await recoverFailedCheckpoint(authority, claim),
+        status: 'checkpoint_pending',
+        transition,
+      }
     return { status: 'transitioned', transition }
   }
 
@@ -312,11 +355,11 @@ export const executeLeaseFencedPublication = async ({
     committed = false
   }
   if (!committed) {
-    if (!isMutation)
-      throw new Error('Platform publication status checkpoint could not be committed')
-    transition = unknownTransition(
-      'The provider mutation crossed the fence but its checkpoint could not be committed; resend is disabled.',
-    )
+    return {
+      recovery: await recoverFailedCheckpoint(authority, claim),
+      status: 'checkpoint_pending',
+      transition,
+    }
   }
   if (preIOTransportError && committed) throw preIOTransportError
   return { status: 'transitioned', transition }

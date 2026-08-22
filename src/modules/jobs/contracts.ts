@@ -39,6 +39,7 @@ export type CreateJobInput = {
 export type JobFailure = {
   error: Error
   job: ClaimedJob
+  retryNotBefore?: Date
 }
 
 export type JobRetryActor = {
@@ -78,5 +79,15 @@ export class JobLeaseLostError extends Error {
     super(message)
     this.cause = cause
     this.name = 'JobLeaseLostError'
+  }
+}
+
+export class JobRetryNotBeforeError extends Error {
+  readonly retryNotBefore: Date
+
+  constructor(message: string, retryNotBefore: Date) {
+    super(message)
+    this.name = 'JobRetryNotBeforeError'
+    this.retryNotBefore = retryNotBefore
   }
 }

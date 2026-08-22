@@ -155,6 +155,11 @@ const requireClaimedJob = (job: JobRecord): ClaimedJob => {
 
 const errorMessage = (error: Error): string => error.message.slice(0, 2_000)
 
+export type ManualRetryOptions = {
+  beforeRetry?: (job: Job, req: PayloadRequest) => Promise<Date | undefined>
+  afterRetry?: (job: Job, retried: JobRecord, req: PayloadRequest) => Promise<void>
+}
+
 export class PayloadJobQueue {
   private readonly clock: () => Date
   private readonly leaseMs: number
@@ -390,12 +395,13 @@ export class PayloadJobQueue {
     return mapDatabaseJob(result.rows[0])
   }
 
-  async fail({ error, job }: JobFailure): Promise<JobRecord> {
+  async fail({ error, job, retryNotBefore }: JobFailure): Promise<JobRecord> {
     const now = this.clock()
     const transition = transitionAfterFailure({
       attempts: job.attempts,
       maxAttempts: job.maxAttempts,
       now,
+      retryNotBefore,
       retryOptions: this.retryOptions,
     })
     const result = await this.pool.query<JobDatabaseRow>(
@@ -439,7 +445,12 @@ export class PayloadJobQueue {
     return result.rows[0] ? mapDatabaseJob(result.rows[0]) : null
   }
 
-  async retryManually(id: number, actor: JobRetryActor, req?: PayloadRequest): Promise<JobRecord> {
+  async retryManually(
+    id: number,
+    actor: JobRetryActor,
+    req?: PayloadRequest,
+    options?: ManualRetryOptions,
+  ): Promise<JobRecord> {
     if (actor.role !== 'admin') {
       throw new JobQueueError('forbidden', 'Only administrators may retry failed jobs')
     }
@@ -458,7 +469,8 @@ export class PayloadJobQueue {
         throw new JobQueueError('not_found', `Job ${id} does not exist`)
       }
 
-      const next = manualRetryState(job, this.clock())
+      const nextRunAt = await options?.beforeRetry?.(job, transactionReq)
+      const next = manualRetryState(job, this.clock(), nextRunAt)
       const updated = await this.payload.update({
         collection: 'jobs',
         data: {
@@ -479,7 +491,9 @@ export class PayloadJobQueue {
         throw new JobQueueError('conflict', `Job ${id} changed before it could be retried`)
       }
 
-      return mapPayloadJob(updated.docs[0])
+      const retried = mapPayloadJob(updated.docs[0])
+      await options?.afterRetry?.(job, retried, transactionReq)
+      return retried
     }
 
     const transactionDatabase = await this.transactionDatabase(req)
