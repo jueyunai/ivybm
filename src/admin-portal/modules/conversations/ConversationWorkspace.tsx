@@ -268,21 +268,46 @@ export function ConversationWorkspace({
   const [detailLoading, setDetailLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [detailError, setDetailError] = useState<string | null>(null)
-  const [command, setCommand] = useState<CommandName | null>(null)
-  const [replyText, setReplyText] = useState('')
+  const [activeCommand, setActiveCommand] = useState<{
+    command: CommandName
+    conversationId: string
+  } | null>(null)
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [feedback, setFeedback] = useState<string | null>(null)
   const listRequest = useRef(0)
   const detailRequest = useRef(0)
+  const listAbortRef = useRef<AbortController | null>(null)
+  const detailAbortRef = useRef<AbortController | null>(null)
+  const selectedIdRef = useRef(selectedId)
   const commandKeys = useRef(new Map<string, string>())
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId
+  }, [selectedId])
+
+  const currentConversationId = selectedId ? String(selectedId) : ''
+  const isSelectedSessionActive = selected !== null && String(selected.id) === currentConversationId
+  const activeSession = isSelectedSessionActive ? selected : null
+  const currentDraft = (currentConversationId && drafts[currentConversationId]) || ''
+  const isCurrentCommandRunning =
+    activeCommand !== null && activeCommand.conversationId === currentConversationId
+  const currentCommandName = isCurrentCommandRunning ? activeCommand.command : null
 
   const loadList = useCallback(async () => {
     if (!enabled) return
+    listAbortRef.current?.abort()
+    const controller = new AbortController()
+    listAbortRef.current = controller
     const requestID = ++listRequest.current
     setListLoading(true)
     setListError(null)
     try {
-      const result = await fetchConversationList({ page, status })
-      if (requestID !== listRequest.current) return
+      const result = await fetchConversationList({
+        page,
+        signal: controller.signal,
+        status,
+      })
+      if (requestID !== listRequest.current || controller.signal.aborted) return
       setList(result)
       setSelection((current) => {
         if (current.routeConversationId !== routeConversationId && routeConversationId) {
@@ -301,26 +326,48 @@ export function ConversationWorkspace({
         }
       })
     } catch (error) {
-      if (requestID !== listRequest.current) return
+      if (requestID !== listRequest.current || controller.signal.aborted) return
       setListError(error instanceof Error ? error.message : copy.failedDescription)
     } finally {
-      if (requestID === listRequest.current) setListLoading(false)
+      if (requestID === listRequest.current && !controller.signal.aborted) {
+        setListLoading(false)
+      }
     }
   }, [copy.failedDescription, enabled, page, routeConversationId, status])
 
   const loadDetail = useCallback(async () => {
     if (!enabled || selectedId === null) {
+      detailAbortRef.current?.abort()
       setSelected(null)
+      setDetailLoading(false)
+      setDetailError(null)
       return
     }
+    detailAbortRef.current?.abort()
+    const controller = new AbortController()
+    detailAbortRef.current = controller
     const requestID = ++detailRequest.current
+    const targetId = String(selectedId)
     setDetailLoading(true)
     setDetailError(null)
     try {
-      const result = await fetchConversationDetail(selectedId)
-      if (requestID === detailRequest.current) setSelected(result)
+      const result = await fetchConversationDetail(selectedId, { signal: controller.signal })
+      if (
+        requestID !== detailRequest.current ||
+        controller.signal.aborted ||
+        String(selectedIdRef.current) !== targetId
+      ) {
+        return
+      }
+      setSelected(result)
     } catch (error) {
-      if (requestID !== detailRequest.current) return
+      if (
+        requestID !== detailRequest.current ||
+        controller.signal.aborted ||
+        String(selectedIdRef.current) !== targetId
+      ) {
+        return
+      }
       setSelected(null)
       setDetailError(
         error instanceof ConversationClientError && error.code === 'forbidden'
@@ -330,9 +377,22 @@ export function ConversationWorkspace({
             : copy.failedDescription,
       )
     } finally {
-      if (requestID === detailRequest.current) setDetailLoading(false)
+      if (
+        requestID === detailRequest.current &&
+        !controller.signal.aborted &&
+        String(selectedIdRef.current) === targetId
+      ) {
+        setDetailLoading(false)
+      }
     }
   }, [copy.failedDescription, copy.forbiddenDescription, enabled, selectedId])
+
+  useEffect(() => {
+    return () => {
+      listAbortRef.current?.abort()
+      detailAbortRef.current?.abort()
+    }
+  }, [])
 
   useEffect(() => {
     const timer = setTimeout(() => void loadList(), 0)
@@ -356,42 +416,53 @@ export function ConversationWorkspace({
   }, [list])
 
   const runCommand = async (nextCommand: CommandName) => {
-    if (!selected || command) return
-    const text = replyText.trim()
+    if (!activeSession || activeCommand) return
+    const targetConversationId = String(activeSession.id)
+    const text = (drafts[targetConversationId] || '').trim()
     if (nextCommand === 'operator-messages' && !text) return
-    const commandSignature = [nextCommand, String(selected.id), text].join(':')
+    const commandSignature = [nextCommand, targetConversationId, text].join(':')
     const stableKey =
       commandKeys.current.get(commandSignature) ??
-      createConversationIdempotencyKey(nextCommand, selected.id)
+      createConversationIdempotencyKey(nextCommand, targetConversationId)
     commandKeys.current.set(commandSignature, stableKey)
-    setCommand(nextCommand)
+    setActiveCommand({ command: nextCommand, conversationId: targetConversationId })
     setFeedback(null)
     try {
       const result = await executeConversationCommand({
         command: nextCommand,
-        id: selected.id,
+        id: targetConversationId,
         idempotencyKey: stableKey,
         ...(nextCommand === 'operator-messages' ? { text } : {}),
       })
-      setSelected(result)
+      if (String(selectedIdRef.current) === targetConversationId) {
+        setSelected(result)
+      }
       commandKeys.current.delete(commandSignature)
-      if (nextCommand === 'operator-messages') setReplyText('')
-      setFeedback(
-        nextCommand === 'take-over'
-          ? copy.takeOver
-          : nextCommand === 'resolve'
-            ? copy.resolve
-            : copy.reply,
-      )
+      if (nextCommand === 'operator-messages') {
+        setDrafts((prev) => ({ ...prev, [targetConversationId]: '' }))
+      }
+      if (String(selectedIdRef.current) === targetConversationId) {
+        setFeedback(
+          nextCommand === 'take-over'
+            ? copy.takeOver
+            : nextCommand === 'resolve'
+              ? copy.resolve
+              : copy.reply,
+        )
+      }
       await loadList()
     } catch (error) {
       if (!(error instanceof ConversationClientError) || !error.retryable) {
         commandKeys.current.delete(commandSignature)
       }
-      setFeedback(error instanceof Error ? error.message : copy.failedDescription)
-      await loadDetail()
+      if (String(selectedIdRef.current) === targetConversationId) {
+        setFeedback(error instanceof Error ? error.message : copy.failedDescription)
+        await loadDetail()
+      }
     } finally {
-      setCommand(null)
+      setActiveCommand((current) =>
+        current?.conversationId === targetConversationId ? null : current,
+      )
     }
   }
 
@@ -579,7 +650,7 @@ export function ConversationWorkspace({
           </Surface>
 
           <Surface as="section" className="portal-conversations__detail">
-            {detailLoading && !selected ? (
+            {detailLoading && !activeSession ? (
               <PortalState description={copy.loading} title={copy.loading} type="loading" />
             ) : detailError ? (
               <PortalState
@@ -588,63 +659,65 @@ export function ConversationWorkspace({
                 title={copy.failedTitle}
                 type="error"
               />
-            ) : selected ? (
+            ) : activeSession ? (
               <>
                 <header className="portal-conversations__detail-heading">
                   <div className="portal-conversations__detail-lead">
                     <div
                       className={cn(
                         'portal-conversations__channel-avatar',
-                        `is-${selected.channel}`,
+                        `is-${activeSession.channel}`,
                       )}
                     >
-                      {renderChannelIcon(selected.channel, 20)}
+                      {renderChannelIcon(activeSession.channel, 20)}
                     </div>
                     <div className="portal-conversations__detail-title-group">
-                      <h3>#{String(selected.id)}</h3>
+                      <h3>#{String(activeSession.id)}</h3>
                       <p className="portal-conversations__detail-sub">
-                        <span>{channelLabel(selected.channel)}</span>
+                        <span>{channelLabel(activeSession.channel)}</span>
                         <span className="portal-conversations__dot">·</span>
-                        <span>{selected.locale.toUpperCase()}</span>
-                        {selected.assignedTo?.name ? (
+                        <span>{activeSession.locale.toUpperCase()}</span>
+                        {activeSession.assignedTo?.name ? (
                           <>
                             <span className="portal-conversations__dot">·</span>
-                            <span>{selected.assignedTo.name}</span>
+                            <span>{activeSession.assignedTo.name}</span>
                           </>
                         ) : null}
                       </p>
                     </div>
                   </div>
                   <StatusBadge
-                    label={copy.status[selected.handoffStatus]}
-                    tone={statusTone[selected.handoffStatus]}
+                    label={copy.status[activeSession.handoffStatus]}
+                    tone={statusTone[activeSession.handoffStatus]}
                   />
                 </header>
                 <dl className="portal-conversations__metadata">
                   <div className="portal-conversations__meta-chip">
                     <dt>{copy.channel}</dt>
                     <dd>
-                      {renderChannelIcon(selected.channel, 13)}
-                      {channelLabel(selected.channel)}
+                      {renderChannelIcon(activeSession.channel, 13)}
+                      {channelLabel(activeSession.channel)}
                     </dd>
                   </div>
                   <div className="portal-conversations__meta-chip">
                     <dt>{copy.locale}</dt>
                     <dd>
                       <IconLanguage aria-hidden="true" size={13} />
-                      {selected.locale === 'ar' ? 'العربية (AR)' : 'English (EN)'}
+                      {activeSession.locale === 'ar' ? 'العربية (AR)' : 'English (EN)'}
                     </dd>
                   </div>
                   <div className="portal-conversations__meta-chip">
                     <dt>{copy.assigned}</dt>
                     <dd>
                       <IconHeadset aria-hidden="true" size={13} />
-                      {selected.assignedTo?.name ?? selected.assignedTo?.id ?? copy.unassigned}
+                      {activeSession.assignedTo?.name ??
+                        activeSession.assignedTo?.id ??
+                        copy.unassigned}
                     </dd>
                   </div>
                   <div className="portal-conversations__meta-chip">
                     <dt>Revision</dt>
-                    <dd>v{selected.revision}</dd>
+                    <dd>v{activeSession.revision}</dd>
                   </div>
                 </dl>
                 {feedback ? (
@@ -653,8 +726,8 @@ export function ConversationWorkspace({
                   </p>
                 ) : null}
                 <section aria-label={copy.messages} className="portal-conversations__timeline">
-                  {selected.messages.length ? (
-                    selected.messages.map((message) => {
+                  {activeSession.messages.length ? (
+                    activeSession.messages.map((message) => {
                       const authorMeta = messageAuthorMeta[locale][message.author]
                       const AuthorIcon = authorMeta.icon
 
@@ -708,40 +781,45 @@ export function ConversationWorkspace({
                   )}
                 </section>
                 <footer className="portal-conversations__composer">
-                  {selected.allowedActions.includes('take_over') ? (
+                  {activeSession.allowedActions.includes('take_over') ? (
                     <div className="portal-conversations__takeover-banner">
                       <div className="portal-conversations__takeover-info">
                         <IconUserCheck className="portal-conversations__takeover-icon" size={18} />
                         <p>{copy.takeOverHint}</p>
                       </div>
                       <Button
-                        disabled={Boolean(command)}
+                        disabled={Boolean(activeCommand)}
                         onClick={() => void runCommand('take-over')}
                         variant="primary"
                       >
                         <IconUserCheck aria-hidden="true" size={16} />
-                        {command === 'take-over' ? copy.sending : copy.takeOver}
+                        {currentCommandName === 'take-over' ? copy.sending : copy.takeOver}
                       </Button>
                     </div>
                   ) : null}
-                  {selected.allowedActions.includes('send_operator_message') ? (
+                  {activeSession.allowedActions.includes('send_operator_message') ? (
                     <div className="portal-conversations__reply">
                       <label className="portal-conversations__reply-field">
                         <span className="portal-sr-only">{copy.reply}</span>
                         <textarea
                           maxLength={5000}
-                          onChange={(event) => setReplyText(event.target.value)}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            if (currentConversationId) {
+                              setDrafts((prev) => ({ ...prev, [currentConversationId]: value }))
+                            }
+                          }}
                           onKeyDown={(event) => {
                             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                               event.preventDefault()
-                              if (replyText.trim() && !command) {
+                              if (currentDraft.trim() && !activeCommand) {
                                 void runCommand('operator-messages')
                               }
                             }
                           }}
                           placeholder={copy.messagePlaceholder}
                           rows={3}
-                          value={replyText}
+                          value={currentDraft}
                         />
                       </label>
                       <div className="portal-conversations__reply-actions">
@@ -749,38 +827,38 @@ export function ConversationWorkspace({
                           {copy.shortcutHint}
                         </span>
                         <div className="portal-conversations__reply-buttons">
-                          {selected.allowedActions.includes('resolve') ? (
+                          {activeSession.allowedActions.includes('resolve') ? (
                             <Button
-                              disabled={Boolean(command)}
+                              disabled={Boolean(activeCommand)}
                               onClick={() => void runCommand('resolve')}
                               size="default"
                               variant="secondary"
                             >
                               <IconCheck aria-hidden="true" size={16} />
-                              {command === 'resolve' ? copy.sending : copy.resolve}
+                              {currentCommandName === 'resolve' ? copy.sending : copy.resolve}
                             </Button>
                           ) : null}
                           <Button
-                            disabled={Boolean(command) || !replyText.trim()}
+                            disabled={Boolean(activeCommand) || !currentDraft.trim()}
                             onClick={() => void runCommand('operator-messages')}
                             size="default"
                             variant="primary"
                           >
                             <IconSend aria-hidden="true" size={16} />
-                            {command === 'operator-messages' ? copy.sending : copy.reply}
+                            {currentCommandName === 'operator-messages' ? copy.sending : copy.reply}
                           </Button>
                         </div>
                       </div>
                     </div>
-                  ) : selected.allowedActions.includes('resolve') ? (
+                  ) : activeSession.allowedActions.includes('resolve') ? (
                     <div className="portal-conversations__standalone-resolve">
                       <Button
-                        disabled={Boolean(command)}
+                        disabled={Boolean(activeCommand)}
                         onClick={() => void runCommand('resolve')}
                         variant="secondary"
                       >
                         <IconCheck aria-hidden="true" size={16} />
-                        {command === 'resolve' ? copy.sending : copy.resolve}
+                        {currentCommandName === 'resolve' ? copy.sending : copy.resolve}
                       </Button>
                     </div>
                   ) : null}
