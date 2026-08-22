@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   enqueuePublicationExecution,
+  enqueuePublicationRecovery,
   parsePlatformPublicationJobPayload,
   PLATFORM_PUBLICATION_JOB_TYPE,
 } from '@/modules/platforms/publicationJobs'
@@ -33,5 +34,26 @@ describe('publication queue jobs', () => {
       },
       undefined,
     )
+  })
+
+  it('creates an independent recovery job scoped to the failed source claim', async () => {
+    const enqueue = vi.fn().mockResolvedValue({ job: { id: 10 }, state: 'created' })
+    const nextRunAt = new Date('2026-08-22T10:00:00.001Z')
+    await expect(
+      enqueuePublicationRecovery({
+        nextRunAt,
+        publishJobId: 42,
+        queue: { enqueue },
+        revision: 7,
+        sourceQueueJobId: 9,
+      }),
+    ).resolves.toMatchObject({ state: 'created' })
+    expect(enqueue).toHaveBeenCalledWith({
+      idempotencyKey: 'publication-recovery:42:7:after:9',
+      maxAttempts: 2,
+      nextRunAt,
+      payload: { expectedExecutionRevision: 7, publishJobId: 42 },
+      type: PLATFORM_PUBLICATION_JOB_TYPE,
+    })
   })
 })

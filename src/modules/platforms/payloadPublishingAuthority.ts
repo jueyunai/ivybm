@@ -24,6 +24,7 @@ import type {
 import type {
   PlatformPublicationAuthorityPort,
   PlatformPublicationClaim,
+  PlatformPublicationCommitRecovery,
   PlatformPublicationCommitResult,
   PlatformPublicationIntent,
   PlatformPublicationLeaseFence,
@@ -42,6 +43,13 @@ type ClaimRow = {
   claim_id: string
   execution_revision: number | string
   fencing_generation: number | string
+  provider_i_o_started_at: Date | string | null
+}
+
+type RecoveryRow = {
+  claim_id: string | null
+  claim_lease_expires_at: Date | string | null
+  execution_revision: number | string
   provider_i_o_started_at: Date | string | null
 }
 
@@ -310,6 +318,43 @@ class PayloadPublicationCAS {
     )
     return result.rowCount === 1
   }
+
+  async recoverFailedCommit(claim: PublicationClaim): Promise<PlatformPublicationCommitRecovery> {
+    try {
+      if (await this.abandonAfterProviderIOStarted(claim)) {
+        return { status: 'claim_released' }
+      }
+    } catch {
+      return {
+        retryNotBefore: claim.leaseFence.leaseExpiresAt,
+        status: 'claim_retained',
+      }
+    }
+
+    try {
+      const found = await this.pool.query<RecoveryRow>(
+        `SELECT execution_revision, claim_id, claim_lease_expires_at, provider_i_o_started_at
+         FROM publish_jobs WHERE id = $1 LIMIT 1`,
+        [claim.intent.publishJobId],
+      )
+      const row = found.rows[0]
+      if (row && Number(row.execution_revision) > claim.intent.expectedRevision) {
+        return { nextRevision: Number(row.execution_revision), status: 'state_advanced' }
+      }
+      if (row && !row.claim_id && row.provider_i_o_started_at) {
+        return { status: 'claim_released' }
+      }
+      const retryNotBefore = row?.claim_lease_expires_at
+        ? new Date(row.claim_lease_expires_at).toISOString()
+        : claim.leaseFence.leaseExpiresAt
+      return { retryNotBefore, status: 'claim_retained' }
+    } catch {
+      return {
+        retryNotBefore: claim.leaseFence.leaseExpiresAt,
+        status: 'claim_retained',
+      }
+    }
+  }
 }
 
 export class PayloadPlatformPublicationAuthority implements PlatformPublicationAuthorityPort {
@@ -328,13 +373,13 @@ export class PayloadPlatformPublicationAuthority implements PlatformPublicationA
     transition: PlatformPublishExecutionTransition,
   ): Promise<PlatformPublicationCommitResult> {
     if (transition.changed === false && transition.retryable === true) {
-      return this.cas.release(claim, true).then(async (released) => {
-        if (released) {
-          return { nextRevision: claim.intent.expectedRevision, status: 'committed' as const }
-        }
-        await this.cas.abandonAfterProviderIOStarted(claim).catch(() => undefined)
-        return { reason: 'claim_conflict' as const, status: 'blocked' as const }
-      })
+      return this.cas
+        .release(claim, true)
+        .then((released) =>
+          released
+            ? { nextRevision: claim.intent.expectedRevision, status: 'committed' as const }
+            : { reason: 'claim_conflict' as const, status: 'blocked' as const },
+        )
     }
     const update = {
       errorCode: transition.lastErrorCode,
@@ -344,18 +389,10 @@ export class PayloadPlatformPublicationAuthority implements PlatformPublicationA
       status: transition.status,
       summary: summary(transition.summary, 'Publication state changed.'),
     }
-    return this.cas
-      .commit(claim, update)
-      .then(async (result) => {
-        if (result.status === 'blocked') {
-          await this.cas.abandonAfterProviderIOStarted(claim).catch(() => undefined)
-        }
-        return result
-      })
-      .catch(async (error) => {
-        await this.cas.abandonAfterProviderIOStarted(claim).catch(() => undefined)
-        throw error
-      })
+    return this.cas.commit(claim, update)
+  }
+  recoverFailedCommit(claim: PlatformPublicationClaim): Promise<PlatformPublicationCommitRecovery> {
+    return this.cas.recoverFailedCommit(claim)
   }
   async releasePublication(claim: PlatformPublicationClaim): Promise<void> {
     if (!(await this.cas.release(claim))) throw new Error('Publication claim could not be released')

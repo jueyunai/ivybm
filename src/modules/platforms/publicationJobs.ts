@@ -26,7 +26,10 @@ import {
   type PublicationWorkerDispatchResult,
   type PublicationWorkerRoute,
 } from './publicationWorkerDispatch'
-import type { PlatformPublicationIntent } from './publishingAuthority'
+import type {
+  PlatformPublicationAuthorityPort,
+  PlatformPublicationIntent,
+} from './publishingAuthority'
 import type { PlatformPublishExecutionSnapshot } from './publishingExecution'
 
 export const PLATFORM_PUBLICATION_JOB_TYPE = 'platform.publication.execute'
@@ -139,6 +142,8 @@ const linkedInImageState = (value: unknown) => {
 const isDirectRoute = (job: PublishJob): boolean =>
   job.executionRoute === 'facebook-photo-single' || job.executionRoute === 'linkedin-text-single'
 
+const terminalStatuses = new Set<PublishJob['status']>(['delivery_unknown', 'failed', 'published'])
+
 const continuationNeeded = (job: PublishJob): boolean =>
   (isDirectRoute(job) && (job.status === 'accepted' || job.status === 'publishing')) ||
   ((job.executionRoute === 'instagram-image-staged' ||
@@ -170,6 +175,27 @@ export const enqueuePublicationExecution = async ({
     req,
   )
 
+export const enqueuePublicationRecovery = async ({
+  nextRunAt,
+  publishJobId,
+  queue,
+  revision,
+  sourceQueueJobId,
+}: {
+  nextRunAt: Date
+  publishJobId: number
+  queue: PublicationJobQueue
+  revision: number
+  sourceQueueJobId: number
+}) =>
+  queue.enqueue({
+    idempotencyKey: `publication-recovery:${publishJobId}:${revision}:after:${sourceQueueJobId}`,
+    maxAttempts: 2,
+    nextRunAt,
+    payload: { expectedExecutionRevision: revision, publishJobId },
+    type: PLATFORM_PUBLICATION_JOB_TYPE,
+  })
+
 const scheduleContinuation = async (
   job: PublishJob,
   queue: PublicationJobQueue,
@@ -196,16 +222,41 @@ const scheduleContinuation = async (
   })
 }
 
+const scheduleRecovery = async (
+  job: PublishJob,
+  claimedJob: ClaimedJob,
+  queue: PublicationJobQueue,
+  now: () => Date,
+): Promise<boolean> => {
+  if (!job.providerIOStartedAt) return false
+  const instant = now()
+  const leaseExpiry = job.claimLeaseExpiresAt ? Date.parse(job.claimLeaseExpiresAt) : Number.NaN
+  const nextRunAt =
+    Number.isFinite(leaseExpiry) && leaseExpiry > instant.getTime()
+      ? new Date(leaseExpiry + 1)
+      : instant
+  await enqueuePublicationRecovery({
+    nextRunAt,
+    publishJobId: job.id,
+    queue,
+    revision: job.executionRevision,
+    sourceQueueJobId: claimedJob.id,
+  })
+  return true
+}
+
 const loadPublishJob = async (payload: Payload, id: number): Promise<PublishJob> =>
   payload.findByID({ collection: 'publish-jobs', depth: 0, id, overrideAccess: true })
 
 const dispatchPersistedPublication = async ({
   claimedJob,
+  createDirectAuthority,
   job,
   payload,
   runtime,
 }: {
   claimedJob: ClaimedJob
+  createDirectAuthority: (payload: Payload) => PlatformPublicationAuthorityPort
   job: PublishJob
   payload: Payload
   runtime: PublicationJobRuntime
@@ -220,7 +271,7 @@ const dispatchPersistedPublication = async ({
       snapshot: directSnapshot(job),
     }
     return dispatchPublicationWorkItem({
-      authority: new PayloadPlatformPublicationAuthority({ payload }),
+      authority: createDirectAuthority(payload),
       intent,
       leaseFence: lease,
       route: selectedRoute,
@@ -271,11 +322,14 @@ const dispatchPersistedPublication = async ({
 
 export const createPlatformPublicationJobHandler =
   ({
+    createDirectAuthority = (authorityPayload) =>
+      new PayloadPlatformPublicationAuthority({ payload: authorityPayload }),
     now = () => new Date(),
     payload,
     queue = new PayloadJobQueue({ payload }),
     resolveRuntime,
   }: {
+    createDirectAuthority?: (payload: Payload) => PlatformPublicationAuthorityPort
     now?: () => Date
     payload: Payload
     queue?: PublicationJobQueue
@@ -293,17 +347,37 @@ export const createPlatformPublicationJobHandler =
     }
     const runtime = await resolveRuntime(route(persisted.executionRoute))
     execution.assertLease()
+    let dispatchError: unknown
     try {
-      await dispatchPersistedPublication({ claimedJob, job: persisted, payload, runtime })
+      await dispatchPersistedPublication({
+        claimedJob,
+        createDirectAuthority,
+        job: persisted,
+        payload,
+        runtime,
+      })
     } catch (error) {
-      persisted = await loadPublishJob(payload, input.publishJobId)
-      if (persisted.executionRevision > input.expectedExecutionRevision) {
-        await scheduleContinuation(persisted, queue, now)
-      }
-      throw error
+      dispatchError = error
     }
     execution.assertLease()
     persisted = await loadPublishJob(payload, input.publishJobId)
-    await scheduleContinuation(persisted, queue, now)
-    execution.assertLease()
+    if (persisted.executionRevision > input.expectedExecutionRevision) {
+      await scheduleContinuation(persisted, queue, now)
+      execution.assertLease()
+      return
+    }
+    if (persisted.executionRevision !== input.expectedExecutionRevision) {
+      throw new PlatformPublicationJobError('Publication execution revision is inconsistent')
+    }
+    if (terminalStatuses.has(persisted.status)) return
+    if (await scheduleRecovery(persisted, claimedJob, queue, now)) {
+      execution.assertLease()
+      throw new PlatformPublicationJobError(
+        'Publication checkpoint is unresolved; durable recovery was scheduled without replaying provider I/O',
+      )
+    }
+    if (dispatchError) throw dispatchError
+    throw new PlatformPublicationJobError(
+      'Publication dispatch did not advance its revision, reach a terminal state, or schedule durable recovery',
+    )
   }

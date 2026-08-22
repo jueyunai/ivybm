@@ -161,46 +161,64 @@ describe('lease-fenced single-call publication', () => {
     })
   })
 
-  it('fails the attempt on commit conflict and recovers without publishing again', async () => {
-    const state = setup()
-    state.authority.failNextCommit()
-    const publish = vi.fn().mockResolvedValue({
-      externalPublicationId: 'provider-post-42',
-      idempotencyKey: 'publish-job-42-facebook',
-      platform: 'facebook',
-      platformAccountId: 7,
-      status: 'accepted',
-    })
-    await expect(
-      executeLeaseFencedPublication({
-        authority: state.authority,
-        intent: state.input,
-        leaseFence: state.fence,
-        service: service({ publish }),
-      }),
-    ).rejects.toThrow('checkpoint could not be committed')
-    expect(publish).toHaveBeenCalledTimes(1)
-    expect(state.authority.getIntent(42)).toMatchObject({
-      expectedRevision: 3,
-      snapshot: { status: 'scheduled' },
-    })
+  it.each([
+    ['blocked', 'success'],
+    ['blocked', 'false'],
+    ['blocked', 'throw'],
+    ['throw', 'success'],
+    ['throw', 'false'],
+    ['throw', 'throw'],
+  ] as const)(
+    'keeps provider replay disabled when commit %s is followed by cleanup %s',
+    async (commitFailure, cleanupFailure) => {
+      const state = setup()
+      state.authority.failNextCommit(commitFailure)
+      if (cleanupFailure !== 'success') state.authority.failNextRecovery(cleanupFailure)
+      const publish = vi.fn().mockResolvedValue({
+        externalPublicationId: 'provider-post-42',
+        idempotencyKey: 'publish-job-42-facebook',
+        platform: 'facebook',
+        platformAccountId: 7,
+        status: 'accepted',
+      })
+      await expect(
+        executeLeaseFencedPublication({
+          authority: state.authority,
+          intent: state.input,
+          leaseFence: state.fence,
+          service: service({ publish }),
+        }),
+      ).resolves.toMatchObject({
+        recovery:
+          cleanupFailure === 'success'
+            ? { status: 'claim_released' }
+            : { retryNotBefore: state.fence.leaseExpiresAt, status: 'claim_retained' },
+        status: 'checkpoint_pending',
+      })
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(state.authority.getIntent(42)).toMatchObject({
+        expectedRevision: 3,
+        snapshot: { status: 'scheduled' },
+      })
 
-    const recoveryLease = lease({ ownerToken: 'worker-b' })
-    state.authority.setJobLease(recoveryLease)
-    await expect(
-      executeLeaseFencedPublication({
-        authority: state.authority,
-        intent: state.input,
-        leaseFence: recoveryLease,
-        service: service({ publish }),
-      }),
-    ).resolves.toMatchObject({ transition: { status: 'delivery_unknown' } })
-    expect(publish).toHaveBeenCalledTimes(1)
-    expect(state.authority.getIntent(42)).toMatchObject({
-      expectedRevision: 4,
-      snapshot: { status: 'delivery_unknown' },
-    })
-  })
+      if (cleanupFailure !== 'success') expect(state.authority.expireClaim(42)).toBe(true)
+      const recoveryLease = lease({ ownerToken: 'worker-b' })
+      state.authority.setJobLease(recoveryLease)
+      await expect(
+        executeLeaseFencedPublication({
+          authority: state.authority,
+          intent: state.input,
+          leaseFence: recoveryLease,
+          service: service({ publish }),
+        }),
+      ).resolves.toMatchObject({ transition: { status: 'delivery_unknown' } })
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(state.authority.getIntent(42)).toMatchObject({
+        expectedRevision: 4,
+        snapshot: { status: 'delivery_unknown' },
+      })
+    },
+  )
 
   it('commits an unchanged snapshot and propagates a proven pre-I/O outage for Job retry', async () => {
     const state = setup()
@@ -220,7 +238,7 @@ describe('lease-fenced single-call publication', () => {
     expect(publish).toHaveBeenCalledTimes(1)
   })
 
-  it('fails when a pre-I/O retry checkpoint cannot be committed', async () => {
+  it('returns an explicit recovery requirement when a pre-I/O cleanup cannot be committed', async () => {
     const state = setup()
     state.authority.failNextCommit()
     const publish = vi.fn().mockRejectedValue(new ProviderPublicationTransportError())
@@ -231,7 +249,10 @@ describe('lease-fenced single-call publication', () => {
         leaseFence: state.fence,
         service: service({ publish }),
       }),
-    ).rejects.toThrow('checkpoint could not be committed')
+    ).resolves.toMatchObject({
+      recovery: { status: 'claim_released' },
+      status: 'checkpoint_pending',
+    })
     expect(publish).toHaveBeenCalledTimes(1)
   })
 

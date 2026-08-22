@@ -463,6 +463,15 @@ describe.sequential('Task 13 Payload publication authority', () => {
       [queuedJob.id],
     )
     expect(firstQueueState.rows[0]).toMatchObject({ attempts: '1', status: 'failed' })
+    const recovery = await pool().query<{ id: number }>(
+      'SELECT id FROM jobs WHERE type = $1 AND idempotency_key = $2 LIMIT 1',
+      [
+        PLATFORM_PUBLICATION_JOB_TYPE,
+        `publication-recovery:${intent.publishJobId}:0:after:${queuedJob.id}`,
+      ],
+    )
+    if (!recovery.rows[0]) throw new Error('Expected durable publication recovery job')
+    jobIDs.push(recovery.rows[0].id)
 
     await expect(worker.runOnce()).resolves.toBe('succeeded')
     expect(publish).toHaveBeenCalledTimes(1)
@@ -489,7 +498,198 @@ describe.sequential('Task 13 Payload publication authority', () => {
     expect(logs.docs).toEqual(
       expect.arrayContaining([expect.objectContaining({ event: 'delivery-unknown' })]),
     )
+    await pool().query(
+      `UPDATE jobs
+       SET status = 'dead', dead_at = NOW(), next_run_at = NULL
+       WHERE id = $1 AND status = 'failed'`,
+      [queuedJob.id],
+    )
   })
+
+  it.each([
+    ['blocked', 'success'],
+    ['blocked', 'false'],
+    ['blocked', 'throw'],
+    ['throw', 'success'],
+    ['throw', 'false'],
+    ['throw', 'throw'],
+  ] as const)(
+    'survives commit %s and cleanup %s until durable recovery completes',
+    async (commitFailure, cleanupFailure) => {
+      const { intent, queue, queuedJob } = await createIntentAndLease({ claimQueueJob: false })
+      const publish = vi.fn().mockResolvedValue({
+        externalPublicationId: '129472283584550_666666666',
+        idempotencyKey: intent.snapshot.idempotencyKey,
+        platform: 'facebook' as const,
+        platformAccountId: account.id,
+        status: 'accepted' as const,
+      })
+      const getStatus = vi.fn()
+      const payloadAuthority = new PayloadPlatformPublicationAuthority({ payload })
+      let failCommit = true
+      let failCleanup = true
+      await pool().query(
+        `UPDATE jobs
+       SET status = 'dead', dead_at = NOW(), next_run_at = NULL,
+           owner_token = NULL, lease_expires_at = NULL
+       WHERE type = $1 AND id <> $2 AND status IN ('pending', 'failed', 'processing')`,
+        [PLATFORM_PUBLICATION_JOB_TYPE, queuedJob.id],
+      )
+      const worker = new JobWorker({
+        handlers: {
+          [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+            createDirectAuthority: () => ({
+              claimPublication: (...args) => payloadAuthority.claimPublication(...args),
+              commitPublication: (...args) => {
+                if (!failCommit) return payloadAuthority.commitPublication(...args)
+                failCommit = false
+                if (commitFailure === 'throw') {
+                  throw new Error('Injected publication checkpoint failure')
+                }
+                return Promise.resolve({ reason: 'claim_conflict', status: 'blocked' })
+              },
+              markProviderIOStarted: (...args) => payloadAuthority.markProviderIOStarted(...args),
+              recoverFailedCommit: (...args) => {
+                if (!failCleanup) return payloadAuthority.recoverFailedCommit(...args)
+                failCleanup = false
+                if (cleanupFailure === 'throw') {
+                  throw new Error('Injected publication cleanup failure')
+                }
+                if (cleanupFailure === 'false') {
+                  return Promise.resolve({
+                    retryNotBefore: args[0].leaseFence.leaseExpiresAt,
+                    status: 'claim_retained',
+                  })
+                }
+                return payloadAuthority.recoverFailedCommit(...args)
+              },
+              releasePublication: (...args) => payloadAuthority.releasePublication(...args),
+            }),
+            payload,
+            queue,
+            resolveRuntime: () => ({
+              directService: {
+                getCapability: vi.fn(),
+                getStatus,
+                prepareAssistedPublication: vi.fn(),
+                publish,
+              },
+              linkedInTransport: {} as never,
+              metaTransport: {} as never,
+              readLinkedInAssetBytes: vi.fn(),
+            }),
+          }),
+        },
+        queue,
+      })
+
+      await expect(worker.runOnce()).resolves.toBe('failed')
+      expect(publish).toHaveBeenCalledTimes(1)
+      const retained = await payload.findByID({
+        collection: 'publish-jobs',
+        depth: 0,
+        id: intent.publishJobId,
+        overrideAccess: true,
+      })
+      expect(retained).toMatchObject({
+        claimId: cleanupFailure === 'success' ? null : expect.any(String),
+        claimLeaseExpiresAt: cleanupFailure === 'success' ? null : expect.any(String),
+        executionRevision: 0,
+        providerIOStartedAt: expect.any(String),
+        status: 'scheduled',
+      })
+
+      const recovery = await pool().query<{
+        id: number
+        next_run_at: Date | string
+        status: string
+      }>(
+        'SELECT id, next_run_at, status FROM jobs WHERE type = $1 AND idempotency_key = $2 LIMIT 1',
+        [
+          PLATFORM_PUBLICATION_JOB_TYPE,
+          `publication-recovery:${intent.publishJobId}:0:after:${queuedJob.id}`,
+        ],
+      )
+      const recoveryJob = recovery.rows[0]
+      if (!recoveryJob) throw new Error('Expected lease-delayed publication recovery job')
+      jobIDs.push(recoveryJob.id)
+      expect(recoveryJob.status).toBe('pending')
+      if (cleanupFailure === 'success') {
+        expect(Number.isFinite(new Date(recoveryJob.next_run_at).getTime())).toBe(true)
+      } else {
+        expect(new Date(recoveryJob.next_run_at).getTime()).toBeGreaterThanOrEqual(
+          Date.parse(retained.claimLeaseExpiresAt!),
+        )
+        await pool().query(
+          "UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+          [queuedJob.id],
+        )
+        await expect(worker.runOnce()).resolves.toBe('failed')
+        expect(publish).toHaveBeenCalledTimes(1)
+        expect(getStatus).not.toHaveBeenCalled()
+        const exhausted = await pool().query<{ attempts: number | string; status: string }>(
+          'SELECT attempts, status FROM jobs WHERE id = $1',
+          [queuedJob.id],
+        )
+        expect(exhausted.rows[0]).toMatchObject({ attempts: '2', status: 'dead' })
+        await pool().query(
+          `UPDATE publish_jobs
+         SET claim_lease_expires_at = NOW() - INTERVAL '1 second'
+         WHERE id = $1`,
+          [intent.publishJobId],
+        )
+      }
+      await pool().query(
+        "UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+        [recoveryJob.id],
+      )
+      await expect(worker.runOnce()).resolves.toBe('succeeded')
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(getStatus).not.toHaveBeenCalled()
+      await expect(
+        payload.findByID({
+          collection: 'publish-jobs',
+          depth: 0,
+          id: intent.publishJobId,
+          overrideAccess: true,
+        }),
+      ).resolves.toMatchObject({
+        claimId: null,
+        deliveryUnknownAt: expect.any(String),
+        executionRevision: 1,
+        status: 'delivery_unknown',
+      })
+      if (cleanupFailure === 'success') {
+        await pool().query(
+          "UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+          [queuedJob.id],
+        )
+        await expect(worker.runOnce()).resolves.toBe('succeeded')
+      }
+      const queueStates = await pool().query<{ id: number; status: string }>(
+        'SELECT id, status FROM jobs WHERE id = ANY($1::int[]) ORDER BY id',
+        [[queuedJob.id, recoveryJob.id]],
+      )
+      expect(queueStates.rows).toEqual(
+        expect.arrayContaining([
+          {
+            id: queuedJob.id,
+            status: cleanupFailure === 'success' ? 'succeeded' : 'dead',
+          },
+          { id: recoveryJob.id, status: 'succeeded' },
+        ]),
+      )
+      const logs = await payload.find({
+        collection: 'publish-logs',
+        depth: 0,
+        overrideAccess: true,
+        where: { publishJob: { equals: intent.publishJobId } },
+      })
+      expect(logs.docs).toEqual(
+        expect.arrayContaining([expect.objectContaining({ event: 'delivery-unknown' })]),
+      )
+    },
+  )
 
   it('blocks a queued direct publication when only the account authorization revision changes', async () => {
     const suffix = randomUUID()
