@@ -26,6 +26,10 @@ export const e2eSuiteManifest = Object.freeze({
     specs: mutationSpecs.filter((spec) => spec.includes('admin-')),
   }),
   chat: Object.freeze({ mode: 'mutation', specs: ['tests/e2e/chat-handoff.spec.ts'] }),
+  cms: Object.freeze({
+    mode: 'mutation',
+    specs: ['tests/e2e/admin-portal-content.spec.ts'],
+  }),
   inquiry: Object.freeze({ mode: 'mutation', specs: ['tests/e2e/inquiry.spec.ts'] }),
   'readonly-visual': Object.freeze({
     mode: 'readonly-external',
