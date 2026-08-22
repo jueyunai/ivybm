@@ -108,6 +108,15 @@ const textGenerationContract = (value: unknown): OpenAICompatibleTextGenerationC
   return value as OpenAICompatibleTextGenerationContract
 }
 
+const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1'])
+
+const allowsMutationE2ELoopback = (url: URL, environment: Environment): boolean =>
+  url.protocol === 'http:' &&
+  loopbackHosts.has(url.hostname.replace(/^\[(.*)\]$/u, '$1')) &&
+  environment.IVYBM_E2E_ALLOW_HTTP_AI_LOOPBACK === 'true' &&
+  environment.IVYBM_E2E_EXTERNAL_SIDE_EFFECTS === 'deny' &&
+  environment.IVYBM_E2E_MODE === 'mutation'
+
 const normalizeRuntimeBaseURL = (value: string, environment: Environment): string => {
   try {
     const url = new URL(value)
@@ -115,7 +124,7 @@ const normalizeRuntimeBaseURL = (value: string, environment: Environment): strin
       environment.NODE_ENV === 'production' || process.env.NODE_ENV === 'production'
     if (
       (url.protocol !== 'https:' && url.protocol !== 'http:') ||
-      (production && url.protocol !== 'https:') ||
+      (production && url.protocol !== 'https:' && !allowsMutationE2ELoopback(url, environment)) ||
       url.username ||
       url.password ||
       url.search ||
