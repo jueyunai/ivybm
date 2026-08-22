@@ -18,7 +18,13 @@ const login = async (page: Page) => {
   return true
 }
 
-const installConversationMock = async (page: Page) => {
+const installConversationMock = async (
+  page: Page,
+  options?: {
+    e2eDelayMs?: number
+    secondDelayMs?: number
+  },
+) => {
   const session = {
     allowedActions: ['take_over'],
     channel: 'website',
@@ -39,60 +45,95 @@ const installConversationMock = async (page: Page) => {
   }
   const alternateSession = {
     ...session,
+    allowedActions: ['take_over'],
+    channel: 'facebook',
     id: 'portal-conversation-second',
+    messages: [
+      {
+        author: 'visitor',
+        content: 'Second conversation request from visitor.',
+        createdAt: '2026-07-30T08:05:00.000Z',
+        id: 'message-inbound-second',
+        status: 'sent',
+      },
+    ],
     requestId: 'request-e2e-second',
   }
 
-  await page.route('**/api/portal/conversations**', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      json: {
-        docs: [
-          {
-            ...session,
-            lastMessageAt: session.messages.at(-1)?.createdAt,
-            messages: undefined,
-          },
-          {
-            ...alternateSession,
-            lastMessageAt: alternateSession.messages.at(-1)?.createdAt,
-            messages: undefined,
-          },
-        ],
-        page: 1,
-        totalDocs: 2,
-        totalPages: 1,
-      },
-      status: 200,
-    })
-  })
+  const sessions: Record<string, typeof session> = {
+    'portal-conversation-e2e': session,
+    'portal-conversation-second': alternateSession,
+  }
 
-  await page.route('**/api/portal/conversations/portal-conversation-e2e**', async (route) => {
-    const request = route.request()
-    const pathname = new URL(request.url()).pathname
-    if (request.method() === 'GET') {
-      await route.fulfill({ contentType: 'application/json', json: session, status: 200 })
+  await page.route('**/api/portal/conversations**', async (route) => {
+    const url = new URL(route.request().url())
+    const pathSegments = url.pathname.split('/').filter(Boolean)
+    if (
+      pathSegments.length === 3 &&
+      pathSegments[0] === 'api' &&
+      pathSegments[1] === 'portal' &&
+      pathSegments[2] === 'conversations'
+    ) {
+      await route.fulfill({
+        contentType: 'application/json',
+        json: {
+          docs: Object.values(sessions).map((s) => ({
+            ...s,
+            lastMessageAt: s.messages.at(-1)?.createdAt,
+            messages: undefined,
+          })),
+          page: 1,
+          totalDocs: Object.keys(sessions).length,
+          totalPages: 1,
+        },
+        status: 200,
+      })
       return
     }
-    const command = pathname.split('/').at(-1)
+
+    const conversationId = decodeURIComponent(pathSegments[3] ?? '')
+    const targetSession = sessions[conversationId]
+    if (!targetSession) {
+      await route.fulfill({
+        contentType: 'application/json',
+        json: { error: { code: 'not_found' } },
+        status: 404,
+      })
+      return
+    }
+
+    const command = pathSegments[4]
+    const request = route.request()
+
+    if (request.method() === 'GET') {
+      if (conversationId === 'portal-conversation-e2e' && options?.e2eDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.e2eDelayMs))
+      }
+      if (conversationId === 'portal-conversation-second' && options?.secondDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.secondDelayMs))
+      }
+      await route.fulfill({ contentType: 'application/json', json: targetSession, status: 200 })
+      return
+    }
+
     if (command === 'take-over') {
-      session.allowedActions = ['send_operator_message', 'resolve']
-      session.handoffStatus = 'human_active'
-      session.revision += 1
+      targetSession.allowedActions = ['send_operator_message', 'resolve']
+      targetSession.handoffStatus = 'human_active'
+      targetSession.revision += 1
     } else if (command === 'operator-messages') {
       const body = request.postDataJSON() as { text?: string }
-      session.messages.push({
+      targetSession.messages.push({
         author: 'operator',
         content: body.text ?? '',
         createdAt: '2026-07-30T08:01:00.000Z',
-        id: `message-operator-${session.revision}`,
+        id: `message-operator-${targetSession.revision}`,
         status: 'sent',
       })
-      session.revision += 1
+      targetSession.revision += 1
     } else if (command === 'resolve') {
-      session.allowedActions = []
-      session.handoffStatus = 'resolved'
-      session.revision += 1
+      targetSession.allowedActions = []
+      targetSession.handoffStatus = 'resolved'
+      targetSession.revision += 1
     } else {
       await route.fulfill({
         contentType: 'application/json',
@@ -101,11 +142,7 @@ const installConversationMock = async (page: Page) => {
       })
       return
     }
-    await route.fulfill({ contentType: 'application/json', json: session, status: 200 })
-  })
-
-  await page.route('**/api/portal/conversations/portal-conversation-second**', async (route) => {
-    await route.fulfill({ contentType: 'application/json', json: alternateSession, status: 200 })
+    await route.fulfill({ contentType: 'application/json', json: targetSession, status: 200 })
   })
 }
 
@@ -170,4 +207,82 @@ test('a consumed conversation deep link does not override a later manual selecti
 
   await page.getByRole('button', { name: '刷新列表' }).click()
   await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+})
+
+test('switching conversations isolates reply drafts and clears only the active conversation draft', async ({
+  page,
+}) => {
+  if (!(await login(page))) return
+  await installConversationMock(page)
+  await page.goto('/dashboard/conversations?conversation=portal-conversation-e2e')
+
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await page.getByRole('button', { name: '接管会话' }).click()
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toBeVisible()
+
+  // Type draft for conversation 1
+  await page.getByPlaceholder('输入给客户的回复…').fill('Draft reply for conversation 1')
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue(
+    'Draft reply for conversation 1',
+  )
+
+  // Switch to conversation 2
+  await page.getByRole('button', { name: /#portal-conversation-second/u }).click()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await page.getByRole('button', { name: '接管会话' }).click()
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toBeVisible()
+
+  // Verify conversation 2 has an empty draft initially
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue('')
+
+  // Type draft for conversation 2
+  await page.getByPlaceholder('输入给客户的回复…').fill('Draft reply for conversation 2')
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue(
+    'Draft reply for conversation 2',
+  )
+
+  // Switch back to conversation 1
+  await page.getByRole('button', { name: /#portal-conversation-e2e/u }).click()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+
+  // Verify draft for conversation 1 was preserved
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue(
+    'Draft reply for conversation 1',
+  )
+
+  // Send reply on conversation 1
+  await page.getByRole('button', { name: '发送回复' }).click()
+  await expect(page.getByText('Draft reply for conversation 1')).toBeVisible()
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue('')
+
+  // Switch back to conversation 2 and verify its draft is still intact
+  await page.getByRole('button', { name: /#portal-conversation-second/u }).click()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue(
+    'Draft reply for conversation 2',
+  )
+})
+
+test('stale detail response from a previously selected conversation does not overwrite current conversation', async ({
+  page,
+}) => {
+  if (!(await login(page))) return
+  await installConversationMock(page, { e2eDelayMs: 1200 })
+  await page.goto('/dashboard/conversations')
+
+  // The list auto-selects conversation 1, which has a 1200ms delay.
+  // We immediately switch to conversation 2.
+  await page.getByRole('button', { name: /#portal-conversation-second/u }).click()
+
+  // Conversation 2 loads and renders
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await expect(page.getByText('Second conversation request from visitor.')).toBeVisible()
+
+  // Wait for the delayed response of conversation 1 to arrive
+  await page.waitForTimeout(1600)
+
+  // Assert that conversation 2 remains displayed and was not overwritten by conversation 1
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await expect(page.getByText('Second conversation request from visitor.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toHaveCount(0)
 })

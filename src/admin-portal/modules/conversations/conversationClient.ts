@@ -88,9 +88,11 @@ export const isChatSessionList = (value: unknown): value is ChatSessionList => {
 
 export const fetchConversationList = async ({
   page = 1,
+  signal,
   status = 'all',
 }: {
   page?: number
+  signal?: AbortSignal
   status?: HandoffStatus | 'all'
 } = {}): Promise<ChatSessionList> => {
   const params = new URLSearchParams({ limit: '20', page: String(page) })
@@ -99,6 +101,7 @@ export const fetchConversationList = async ({
     const response = await fetch(`/api/portal/conversations?${params}`, {
       cache: 'no-store',
       credentials: 'same-origin',
+      signal,
     })
     const body = await readJSON(response)
     if (!response.ok) throw parseError(body)
@@ -108,18 +111,29 @@ export const fetchConversationList = async ({
     return body
   } catch (error) {
     if (error instanceof ConversationClientError) throw error
-    throw new ConversationClientError('network_failure', 'Unable to reach the conversation service', true)
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new ConversationClientError(
+      'network_failure',
+      'Unable to reach the conversation service',
+      true,
+    )
   }
 }
 
 export const fetchConversationDetail = async (
   id: number | string,
+  options?: { signal?: AbortSignal },
 ): Promise<ChatSession> => {
   try {
-    const response = await fetch(`/api/portal/conversations/${encodeURIComponent(String(id))}?view=operator`, {
-      cache: 'no-store',
-      credentials: 'same-origin',
-    })
+    const response = await fetch(
+      `/api/portal/conversations/${encodeURIComponent(String(id))}?view=operator`,
+      {
+        cache: 'no-store',
+        credentials: 'same-origin',
+        signal: options?.signal,
+      },
+    )
     const body = await readJSON(response)
     if (!response.ok) throw parseError(body)
     if (!isChatSession(body)) {
@@ -128,7 +142,13 @@ export const fetchConversationDetail = async (
     return body
   } catch (error) {
     if (error instanceof ConversationClientError) throw error
-    throw new ConversationClientError('network_failure', 'Unable to reach the conversation service', true)
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new ConversationClientError(
+      'network_failure',
+      'Unable to reach the conversation service',
+      true,
+    )
   }
 }
 
@@ -138,11 +158,13 @@ export const executeConversationCommand = async ({
   command,
   id,
   idempotencyKey,
+  signal,
   text,
 }: {
   command: ConversationCommand
   id: number | string
   idempotencyKey: string
+  signal?: AbortSignal
   text?: string
 }): Promise<ChatSession> => {
   const body = command === 'operator-messages' ? { idempotencyKey, text } : { idempotencyKey }
@@ -154,6 +176,7 @@ export const executeConversationCommand = async ({
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
         method: 'POST',
+        signal,
       },
     )
     const value = await readJSON(response)
@@ -164,7 +187,13 @@ export const executeConversationCommand = async ({
     return value
   } catch (error) {
     if (error instanceof ConversationClientError) throw error
-    throw new ConversationClientError('network_failure', 'Unable to reach the conversation service', true)
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new ConversationClientError(
+      'network_failure',
+      'Unable to reach the conversation service',
+      true,
+    )
   }
 }
 
