@@ -263,10 +263,11 @@ export const executeLeaseFencedPublication = async ({
     const transition = unknownTransition(
       'A previous provider mutation crossed the send boundary without a persisted result; resend is disabled.',
     )
-    try {
-      await authority.commitPublication(claim, transition)
-    } catch {
-      // The next reclaim remains recovery-only until the terminal state persists.
+    const commit = await authority.commitPublication(claim, transition)
+    if (commit.status !== 'committed') {
+      throw new Error(
+        'The recovery-only delivery_unknown checkpoint could not be committed; the Job must retry.',
+      )
     }
     return { status: 'transitioned', transition }
   }
@@ -320,8 +321,8 @@ export const executeLeaseFencedPublication = async ({
   if (!committed) {
     if (!isMutation)
       throw new Error('Platform publication status checkpoint could not be committed')
-    transition = unknownTransition(
-      'The provider mutation crossed the fence but its checkpoint could not be committed; resend is disabled.',
+    throw new Error(
+      'The provider mutation crossed the fence but its checkpoint could not be committed; the Job must retry in recovery-only mode.',
     )
   }
   if (preIOTransportError && committed) throw preIOTransportError

@@ -282,6 +282,34 @@ class PayloadPublicationCAS {
     )
     return result.rowCount === 1
   }
+
+  /**
+   * Drop an execution claim after a failed checkpoint while retaining the
+   * provider I/O marker. The next worker can then reclaim the job in
+   * recovery-only mode without waiting for the old queue lease to expire.
+   */
+  async abandonAfterProviderIOStarted(claim: PublicationClaim): Promise<boolean> {
+    const result = await this.pool.query(
+      `UPDATE publish_jobs
+       SET claim_job_id = NULL, claim_id = NULL, claim_owner_token = NULL,
+           claim_lease_expires_at = NULL, updated_at = $1
+       WHERE id = $2 AND execution_revision = $3 AND claim_id = $4
+         AND fencing_generation = $5 AND claim_job_id = $6
+         AND claim_owner_token = $7 AND claim_lease_expires_at = $8
+         AND provider_i_o_started_at IS NOT NULL`,
+      [
+        this.now().toISOString(),
+        claim.intent.publishJobId,
+        claim.intent.expectedRevision,
+        claim.claimId,
+        claim.fencingGeneration,
+        claim.leaseFence.queueJobId,
+        claim.leaseFence.ownerToken,
+        claim.leaseFence.leaseExpiresAt,
+      ],
+    )
+    return result.rowCount === 1
+  }
 }
 
 export class PayloadPlatformPublicationAuthority implements PlatformPublicationAuthorityPort {
@@ -300,22 +328,34 @@ export class PayloadPlatformPublicationAuthority implements PlatformPublicationA
     transition: PlatformPublishExecutionTransition,
   ): Promise<PlatformPublicationCommitResult> {
     if (transition.changed === false && transition.retryable === true) {
-      return this.cas
-        .release(claim, true)
-        .then((released) =>
-          released
-            ? { nextRevision: claim.intent.expectedRevision, status: 'committed' as const }
-            : { reason: 'claim_conflict' as const, status: 'blocked' as const },
-        )
+      return this.cas.release(claim, true).then(async (released) => {
+        if (released) {
+          return { nextRevision: claim.intent.expectedRevision, status: 'committed' as const }
+        }
+        await this.cas.abandonAfterProviderIOStarted(claim).catch(() => undefined)
+        return { reason: 'claim_conflict' as const, status: 'blocked' as const }
+      })
     }
-    return this.cas.commit(claim, {
+    const update = {
       errorCode: transition.lastErrorCode,
       event: eventForDirect(transition),
       externalPublicationId: transition.externalPublicationId,
       externalPublicationUrl: transition.externalPublicationUrl,
       status: transition.status,
       summary: summary(transition.summary, 'Publication state changed.'),
-    })
+    }
+    return this.cas
+      .commit(claim, update)
+      .then(async (result) => {
+        if (result.status === 'blocked') {
+          await this.cas.abandonAfterProviderIOStarted(claim).catch(() => undefined)
+        }
+        return result
+      })
+      .catch(async (error) => {
+        await this.cas.abandonAfterProviderIOStarted(claim).catch(() => undefined)
+        throw error
+      })
   }
   async releasePublication(claim: PlatformPublicationClaim): Promise<void> {
     if (!(await this.cas.release(claim))) throw new Error('Publication claim could not be released')

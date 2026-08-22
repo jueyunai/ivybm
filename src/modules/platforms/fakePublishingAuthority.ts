@@ -144,6 +144,8 @@ export const createFakePlatformPublicationAuthority = ({
     if ('reason' in checked) return { reason: checked.reason, status: 'blocked' }
     if (rejectNextCommit) {
       rejectNextCommit = false
+      if (checked.current.providerIOStarted) recoveryRequired.add(claim.intent.publishJobId)
+      active.delete(claim.intent.publishJobId)
       return { reason: 'claim_conflict', status: 'blocked' }
     }
     const nextRevision = claim.intent.expectedRevision + 1

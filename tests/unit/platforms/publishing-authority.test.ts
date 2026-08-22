@@ -161,7 +161,7 @@ describe('lease-fenced single-call publication', () => {
     })
   })
 
-  it('turns provider success plus commit conflict into delivery unknown', async () => {
+  it('fails the attempt on commit conflict and recovers without publishing again', async () => {
     const state = setup()
     state.authority.failNextCommit()
     const publish = vi.fn().mockResolvedValue({
@@ -178,8 +178,28 @@ describe('lease-fenced single-call publication', () => {
         leaseFence: state.fence,
         service: service({ publish }),
       }),
+    ).rejects.toThrow('checkpoint could not be committed')
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(state.authority.getIntent(42)).toMatchObject({
+      expectedRevision: 3,
+      snapshot: { status: 'scheduled' },
+    })
+
+    const recoveryLease = lease({ ownerToken: 'worker-b' })
+    state.authority.setJobLease(recoveryLease)
+    await expect(
+      executeLeaseFencedPublication({
+        authority: state.authority,
+        intent: state.input,
+        leaseFence: recoveryLease,
+        service: service({ publish }),
+      }),
     ).resolves.toMatchObject({ transition: { status: 'delivery_unknown' } })
     expect(publish).toHaveBeenCalledTimes(1)
+    expect(state.authority.getIntent(42)).toMatchObject({
+      expectedRevision: 4,
+      snapshot: { status: 'delivery_unknown' },
+    })
   })
 
   it('commits an unchanged snapshot and propagates a proven pre-I/O outage for Job retry', async () => {
@@ -200,7 +220,7 @@ describe('lease-fenced single-call publication', () => {
     expect(publish).toHaveBeenCalledTimes(1)
   })
 
-  it('does not retry a pre-I/O outage when the unchanged checkpoint cannot commit', async () => {
+  it('fails when a pre-I/O retry checkpoint cannot be committed', async () => {
     const state = setup()
     state.authority.failNextCommit()
     const publish = vi.fn().mockRejectedValue(new ProviderPublicationTransportError())
@@ -211,7 +231,7 @@ describe('lease-fenced single-call publication', () => {
         leaseFence: state.fence,
         service: service({ publish }),
       }),
-    ).resolves.toMatchObject({ transition: { status: 'delivery_unknown' } })
+    ).rejects.toThrow('checkpoint could not be committed')
     expect(publish).toHaveBeenCalledTimes(1)
   })
 

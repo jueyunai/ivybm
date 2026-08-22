@@ -30,7 +30,7 @@ const publishJobIDs: number[] = []
 
 const pool = () => (payload.db as unknown as PostgresAdapter).pool
 
-const createIntentAndLease = async () => {
+const createIntentAndLease = async ({ claimQueueJob = true }: { claimQueueJob?: boolean } = {}) => {
   const suffix = randomUUID()
   const content = await payload.create({
     collection: 'generated-contents',
@@ -95,19 +95,25 @@ const createIntentAndLease = async () => {
     type: PLATFORM_PUBLICATION_JOB_TYPE,
   })
   jobIDs.push(queued.job.id)
-  const claimed = await queue.claimNext()
-  if (!claimed) throw new Error('Expected publication queue job claim')
+  const claimed = claimQueueJob ? await queue.claimNext() : null
+  if (claimQueueJob && !claimed) throw new Error('Expected publication queue job claim')
   const intent: PlatformPublicationIntent = {
     expectedRevision: 0,
     publishJobId: publishJob.id,
     snapshot,
   }
   const lease: PlatformPublicationLeaseFence = {
-    leaseExpiresAt: claimed.leaseExpiresAt,
-    ownerToken: claimed.ownerToken,
-    queueJobId: claimed.id,
+    leaseExpiresAt: claimed?.leaseExpiresAt ?? new Date(Date.now() + 120_000).toISOString(),
+    ownerToken: claimed?.ownerToken ?? 'unclaimed-test-lease',
+    queueJobId: claimed?.id ?? queued.job.id,
   }
-  return { authority: new PayloadPlatformPublicationAuthority({ payload }), intent, lease }
+  return {
+    authority: new PayloadPlatformPublicationAuthority({ payload }),
+    intent,
+    lease,
+    queue,
+    queuedJob: queued.job,
+  }
 }
 
 describe.sequential('Task 13 Payload publication authority', () => {
@@ -393,6 +399,96 @@ describe.sequential('Task 13 Payload publication authority', () => {
       lastErrorCode: 'delivery_unknown',
       status: 'delivery_unknown',
     })
+  })
+
+  it('fails the attempt after a checkpoint conflict and recovers durably without republishing', async () => {
+    const { intent, queue, queuedJob } = await createIntentAndLease({ claimQueueJob: false })
+    const publish = vi.fn().mockImplementation(async () => {
+      // Make the CAS checkpoint miss its Jobs lease predicate after provider
+      // acceptance. This simulates a concurrent lease/transaction conflict.
+      await pool().query(
+        `UPDATE jobs
+         SET status = 'failed', next_run_at = NOW(), owner_token = NULL, lease_expires_at = NULL
+         WHERE id = $1`,
+        [queuedJob.id],
+      )
+      return {
+        externalPublicationId: '129472283584550_555555555',
+        idempotencyKey: intent.snapshot.idempotencyKey,
+        platform: 'facebook' as const,
+        platformAccountId: account.id,
+        status: 'accepted' as const,
+      }
+    })
+    const getStatus = vi.fn()
+    const resolveRuntime = vi.fn(() => ({
+      directService: {
+        getCapability: vi.fn(),
+        getStatus,
+        prepareAssistedPublication: vi.fn(),
+        publish,
+      },
+      linkedInTransport: {} as never,
+      metaTransport: {} as never,
+      readLinkedInAssetBytes: vi.fn(),
+    }))
+    const worker = new JobWorker({
+      handlers: {
+        [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+          payload,
+          queue,
+          resolveRuntime,
+        }),
+      },
+      queue,
+    })
+
+    await expect(worker.runOnce()).resolves.toBe('failed')
+    expect(publish).toHaveBeenCalledTimes(1)
+    await expect(
+      payload.findByID({
+        collection: 'publish-jobs',
+        depth: 0,
+        id: intent.publishJobId,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      claimId: null,
+      executionRevision: 0,
+      providerIOStartedAt: expect.any(String),
+      status: 'scheduled',
+    })
+    const firstQueueState = await pool().query<{ status: string; attempts: number | string }>(
+      'SELECT status, attempts FROM jobs WHERE id = $1',
+      [queuedJob.id],
+    )
+    expect(firstQueueState.rows[0]).toMatchObject({ attempts: '1', status: 'failed' })
+
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(getStatus).not.toHaveBeenCalled()
+    await expect(
+      payload.findByID({
+        collection: 'publish-jobs',
+        depth: 0,
+        id: intent.publishJobId,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      claimId: null,
+      deliveryUnknownAt: expect.any(String),
+      executionRevision: 1,
+      status: 'delivery_unknown',
+    })
+    const logs = await payload.find({
+      collection: 'publish-logs',
+      depth: 0,
+      overrideAccess: true,
+      where: { publishJob: { equals: intent.publishJobId } },
+    })
+    expect(logs.docs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ event: 'delivery-unknown' })]),
+    )
   })
 
   it('blocks a queued direct publication when only the account authorization revision changes', async () => {
