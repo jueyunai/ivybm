@@ -944,6 +944,37 @@
     font-weight: 700;
   }
 
+  .portal-settings__editor {
+    display: grid;
+    max-width: 760px;
+    gap: 14px;
+  }
+
+  .portal-field__control--textarea {
+    height: auto;
+    min-height: 92px;
+    align-items: stretch;
+    padding-block: 9px;
+  }
+
+  .portal-field__control textarea {
+    width: 100%;
+    min-height: 72px;
+    resize: vertical;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--portal-ink);
+    font: inherit;
+    font-size: 13px;
+  }
+
+  .portal-settings__editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   .portal-segmented {
     display: flex;
     width: fit-content;

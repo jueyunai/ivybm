@@ -9,8 +9,10 @@ import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/u
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 
 import type { PortalSettingsSummary } from './getPortalSettingsSummary'
+import type { PortalSiteSettingsEditor } from './getPortalSettingsSummary'
 import type { PortalAiSettingsSummary } from './getPortalAiSettings'
 import { AiSettingsPanel } from './AiSettingsPanel'
+import { SiteSettingsEditor } from './SiteSettingsEditor'
 
 export interface SettingsHubProps {
   aiReadError?: boolean
@@ -19,6 +21,7 @@ export interface SettingsHubProps {
   pageState?: 'available' | 'module-disabled' | 'portal-disabled'
   readError?: boolean
   summary: PortalSettingsSummary | null
+  siteSettings?: PortalSiteSettingsEditor | null
   user: PortalUser
 }
 
@@ -41,7 +44,16 @@ const statusTone = (
   return 'neutral'
 }
 
-export function SettingsHub({ aiReadError = false, aiSettings, modules, pageState = 'available', readError = false, summary, user }: SettingsHubProps) {
+export function SettingsHub({
+  aiReadError = false,
+  aiSettings,
+  modules,
+  pageState = 'available',
+  readError = false,
+  siteSettings = null,
+  summary,
+  user,
+}: SettingsHubProps) {
   const { locale, reducedMotion, setLocale, setReducedMotion, setTheme, theme } =
     usePortalPreferences()
   const messages = getPortalMessages(locale)
@@ -123,11 +135,13 @@ export function SettingsHub({ aiReadError = false, aiSettings, modules, pageStat
           <div className="portal-settings__field">
             <span>{messages.settings.themeLabel}</span>
             <div aria-label={messages.settings.themeLabel} className="portal-segmented">
-              {([
-                ['light', messages.settings.lightTheme],
-                ['dark', messages.settings.darkTheme],
-                ['system', messages.settings.systemTheme],
-              ] as const).map(([value, label]) => (
+              {(
+                [
+                  ['light', messages.settings.lightTheme],
+                  ['dark', messages.settings.darkTheme],
+                  ['system', messages.settings.systemTheme],
+                ] as const
+              ).map(([value, label]) => (
                 <Button
                   aria-pressed={theme === value}
                   key={value}
@@ -174,6 +188,10 @@ export function SettingsHub({ aiReadError = false, aiSettings, modules, pageStat
           </Surface>
         ) : user.role === 'admin' && aiSettings.access === 'admin' ? (
           <AiSettingsPanel initialSummary={aiSettings} />
+        ) : null}
+
+        {siteSettings && summary?.canUpdate ? (
+          <SiteSettingsEditor initialSettings={siteSettings} />
         ) : null}
 
         <Surface as="section" className="portal-settings__section portal-settings__section--wide">

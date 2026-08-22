@@ -99,9 +99,13 @@ export interface PortalSettingsMessages {
   accountDescription: string
   accountTitle: string
   canUpdateSite: string
+  cancelSiteDetails: string
   chinese: string
+  contactEmail: string
+  contactPhone: string
   darkTheme: string
   description: string
+  editSiteDetails: string
   email: string
   english: string
   eyebrow: string
@@ -120,6 +124,15 @@ export interface PortalSettingsMessages {
   reduceMotionDescription: string
   role: string
   siteDescription: string
+  siteDetailsDescription: string
+  siteDetailsError: string
+  siteDetailsSaved: string
+  siteDetailsTitle: string
+  siteLocaleArabic: string
+  siteLocaleEnglish: string
+  siteLocaleLabel: string
+  saveSiteDetails: string
+  savingSiteDetails: string
   siteName: string
   siteSummaryDescription: string
   siteSummaryTitle: string

@@ -41,6 +41,10 @@ export const e2eSuiteManifest = Object.freeze({
     mode: 'mutation',
     specs: ['tests/e2e/chat-handoff.spec.ts', 'tests/e2e/website-chat-real.spec.ts'],
   }),
+  cms: Object.freeze({
+    mode: 'mutation',
+    specs: ['tests/e2e/admin-portal-content.spec.ts'],
+  }),
   inquiry: Object.freeze({ mode: 'mutation', specs: ['tests/e2e/inquiry.spec.ts'] }),
   visual: Object.freeze({ mode: 'mutation', specs: ['tests/e2e/website-visual.spec.ts'] }),
   'readonly-visual': Object.freeze({
