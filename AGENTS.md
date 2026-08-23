@@ -62,6 +62,12 @@ bash scripts/install-git-hooks.sh
 - production 发布仍由 jueyunai 审批，一期上线验收必须由两人共同确认。
 - `main` 上的紧急修复只能在用户明确授权后使用 `IVYBM_ALLOW_MAIN_PUSH=1` 绕过本地 hook；完成后必须补建 PR 或事故记录。
 
+### 本地验证与证据诚实
+
+- PR 应交付已经稳定的结果；探索、E2E 失败定位和本地联调优先在独立 worktree 完成。每个 checkpoint 选择与本次 diff 直接相关的最小测试层，不强制为每个 checkpoint 新增或重复运行 E2E。
+- 失败后区分测试定位 / 断言问题、环境 blocker 和生产代码缺陷；生产缺陷必须与能证明修复的回归测试一起提交。
+- 缺少真实账号、数据库或受控环境时，记录 blocker 和已有本地 / fixture 证据；不得把未运行、skipped、fake 或 fixture 结果描述为真实平台联调通过。
+
 ## AI 与 CI 门禁
 
 - AI 创建 PR 时，只有本地完整门禁、PR 描述、风险 / 回滚和 Review 边界全部完成，并得到当前任务级明确授权，才可以直接创建 Ready PR。否则必须创建 Draft，并保持 Draft 到真实 Ready 检查点；禁止 Draft 创建后几十秒内立即转 Ready。
