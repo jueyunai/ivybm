@@ -95,6 +95,41 @@ no-op。“最近跟进记录”仍只保留在飞书侧，回写范围另行确
   pending 通知被新 revision 携带时沿用原 notification-event identity，避免重复提醒。
 - 当前 relay 每 30 秒扫描本地 Leads 和 durable Handoffs；一期数据量下可接受。数据量显著
   增长后应改为游标或数据库 outbox，而不是缩短轮询间隔。
+
+## 已有记录的受控重同步
+
+修复字段映射或切换 active mapping **不会自动改写已经成功同步的历史飞书记录**：worker 的普通
+relay 会按 canonical Job key 去重。因此上线前必须先盘点是否存在受影响的历史 Lead。若需要修正，
+使用 server-only 的 `feishu:resync` 工具，逐条或小批量传入明确的本地 Lead ID；它不会扫描全量数据，
+不会发送“新客户”或“高意向”通知，也不会读取或输出飞书 token。
+
+```bash
+# 1. 默认 dry-run，只读取当前 Lead revision，并输出 planHash
+pnpm feishu:resync -- \
+  --lead-id 123 \
+  --lead-id 456 \
+  --plan /tmp/ivybm-feishu-resync.json
+
+# 2. 由管理员人工核对 plan 文件后，使用完全相同的 hash 执行
+pnpm feishu:resync -- \
+  --plan /tmp/ivybm-feishu-resync.json \
+  --execute \
+  --confirm <planHash> \
+  --requested-by <adminUserId>
+```
+
+执行前提和保护：
+
+- 每次最多 50 个明确 Lead ID；没有 `--execute` 时绝不创建 Job。
+- `--confirm` 必须与 dry-run 的完整 `planHash` 一致；Lead 内容、更新时间、active mapping 或 mapping revision
+  在 dry-run 后发生变化时，执行会 fail closed，需重新 dry-run。
+- 每个 Job 使用独立 resync 幂等键，payload 固定 `notificationIntent=none`，只触发 Lead upsert。
+- 创建 Job 和 `feishu.lead.resync:<planHash>` 审计记录在同一事务中；失败整体回滚。
+- 执行后由 worker 处理 Job，管理员核对成功状态和飞书记录；结果未知时停止自动重试并按原远端状态核对流程处理。
+
+该工具是受控运维动作，不属于普通部署步骤；不得把它改造成无确认的全量 backfill，也不得在 PR 或日志中记录 token、
+客户原始资料或完整 provider 响应。
+
 - Lead after-change 与 Job insert 在同一数据库事务中，是状态跃迁事件的权威入口；relay 使用 canonical
   key 负责历史 / 当前快照回填，不从最终状态猜测已经发生过的中间通知事件。
 - 同一 Lead 的多个内容 revision 在 PostgreSQL Lead 行锁事务内校验 revision，并串行执行远端

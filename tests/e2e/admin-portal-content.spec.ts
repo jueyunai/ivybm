@@ -633,3 +633,131 @@ test('CMS-01 publishes localized product, project, and article lifecycles from t
     }
   }
 })
+
+test('CMS-01 syncs localized site identity and contact details to the public website', async ({
+  browser,
+  page,
+}, testInfo) => {
+  test.setTimeout(180_000)
+  await page.setViewportSize({ height: 960, width: 1440 })
+  await login(page)
+  if (!adminEmail || !adminPassword) return
+
+  const suffix = `${Date.now()}-${testInfo.workerIndex}`
+  const updates = {
+    arDescription: `وصف موقع اختبار CMS ${suffix}`,
+    arName: `موقع IVYBM الاختباري ${suffix}`,
+    email: `cms-${suffix}@example.invalid`,
+    enDescription: `CMS public website description ${suffix}`,
+    enName: `IVYBM CMS Site ${suffix}`,
+    phone: `+971500${String(Date.now()).slice(-6)}`,
+  }
+  const payload = await getPayload({
+    config,
+    disableOnInit: true,
+    key: `portal-cms-site-settings-${suffix}`,
+  })
+
+  const original = await payload.findGlobal({
+    depth: 0,
+    fallbackLocale: false,
+    locale: 'en',
+    overrideAccess: true,
+    slug: 'site-settings',
+  })
+
+  try {
+    await page.goto('/dashboard/settings')
+    await expect(page.getByRole('heading', { name: '网站资料' })).toBeVisible()
+    await page.getByRole('button', { name: '编辑网站资料' }).click()
+    await expect(page.getByRole('button', { name: '保存网站资料' })).toBeVisible()
+
+    await page.getByLabel('站点名称', { exact: true }).fill(updates.enName)
+    await page.getByLabel('站点说明', { exact: true }).fill(updates.enDescription)
+    await page.getByLabel('联系邮箱', { exact: true }).fill(updates.email)
+    await page.getByLabel('联系电话', { exact: true }).fill(updates.phone)
+    await page.getByRole('button', { name: '阿语', exact: true }).click()
+    await page.getByLabel('站点名称', { exact: true }).fill(updates.arName)
+    await page.getByLabel('站点说明', { exact: true }).fill(updates.arDescription)
+
+    const [saveResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PATCH' &&
+          response.url().endsWith('/api/portal/settings/site'),
+      ),
+      page.getByRole('button', { name: '保存网站资料' }).click(),
+    ])
+    expect(saveResponse.ok()).toBe(true)
+    await expect(page.getByText('网站资料已保存。')).toBeVisible()
+
+    const secondUpdates = {
+      enDescription: `CMS public website description updated ${suffix}`,
+      enName: `IVYBM CMS Site Updated ${suffix}`,
+    }
+    await page.getByRole('button', { name: '编辑网站资料' }).click()
+    await page.getByRole('button', { name: '英文', exact: true }).click()
+    await page.getByLabel('站点名称', { exact: true }).fill(secondUpdates.enName)
+    await page.getByLabel('站点说明', { exact: true }).fill(secondUpdates.enDescription)
+
+    const [secondSaveResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PATCH' &&
+          response.url().endsWith('/api/portal/settings/site'),
+      ),
+      page.getByRole('button', { name: '保存网站资料' }).click(),
+    ])
+    expect(secondSaveResponse.ok()).toBe(true)
+    const secondSaveBody = (await secondSaveResponse.json()) as {
+      result?: { updatedAt?: string }
+    }
+    expect(secondSaveBody.result?.updatedAt).toEqual(expect.any(String))
+    await expect(page.getByText('网站资料已保存。')).toBeVisible()
+
+    const anonymousContext = await browser.newContext({
+      baseURL: testInfo.project.use.baseURL,
+    })
+    const anonymousPage = await anonymousContext.newPage()
+    try {
+      for (const [locale, expected] of [
+        ['en', { description: secondUpdates.enDescription, name: secondUpdates.enName }],
+        ['ar', { description: updates.arDescription, name: updates.arName }],
+      ] as const) {
+        const response = await anonymousPage.goto(`/${locale}/contact`)
+        expect(response?.ok()).toBe(true)
+        await expect(anonymousPage.locator('html')).toHaveAttribute('lang', locale)
+        await expect(anonymousPage.locator('html')).toHaveAttribute(
+          'dir',
+          locale === 'ar' ? 'rtl' : 'ltr',
+        )
+        await expect(
+          anonymousPage.getByRole('link', { exact: true, name: expected.name }),
+        ).toBeVisible()
+        await expect(anonymousPage.getByText(expected.description, { exact: true })).toBeVisible()
+        await expect(anonymousPage.locator('.site-footer')).toContainText(updates.email)
+        await expect(anonymousPage.locator('.site-footer')).toContainText(updates.phone)
+        await expect(anonymousPage.locator('.site-footer')).toContainText(expected.description)
+        await expect(anonymousPage.locator('head meta[name="description"]')).toHaveAttribute(
+          'content',
+          /.+/,
+        )
+      }
+    } finally {
+      await anonymousContext.close()
+    }
+  } finally {
+    await payload.updateGlobal({
+      context: { disableRevalidate: true },
+      data: {
+        contact: original.contact,
+        siteDescription: original.siteDescription,
+        siteName: original.siteName,
+      },
+      locale: 'en',
+      overrideAccess: true,
+      slug: 'site-settings',
+    })
+    await payload.destroy()
+  }
+})
