@@ -109,10 +109,10 @@ const COPY = {
     assigned: '处理人',
     channel: '渠道',
     citations: '参考知识文档',
-    description: '集中处理官网与各社媒渠道会话；接管、回复与解决均由权威服务端状态机驱动。',
+    description: '集中查看并处理官网及各社媒渠道的客户咨询，支持 AI 自动接待、人工接管与多渠道直接回复。',
     emptyDescription: '当前筛选条件下没有匹配的会话。',
     emptyTitle: '暂无会话',
-    failedDescription: '会话服务读取失败，页面未伪装为空列表。',
+    failedDescription: '会话服务读取失败，请检查网络连接后刷新重试。',
     failedTitle: '统一会话暂时不可用',
     filterLabel: '会话状态',
     forbiddenDescription: '当前账号无权读取此会话，或会话已被重新分配。',
@@ -129,6 +129,7 @@ const COPY = {
     reply: '发送回复',
     resolve: '解决会话',
     retry: '重试',
+    revision: '数据版本',
     selectDescription: '从左侧列表中选择一条会话以查看完整对话与操作。',
     selectTitle: '请选择会话',
     sending: '正在提交…',
@@ -144,6 +145,7 @@ const COPY = {
     title: '统一会话',
     total: '条会话',
     unassigned: '未分配',
+    versionPrefix: '版本 ',
   },
   en: {
     all: 'All statuses',
@@ -151,11 +153,11 @@ const COPY = {
     channel: 'Channel',
     citations: 'Knowledge references',
     description:
-      'Unified inbox for website and social conversations powered by the authoritative server workflow.',
+      'Unified inbox for website and social conversations. Inspect customer messages, take over from AI, and reply directly.',
     emptyDescription: 'No conversations match the current filter.',
     emptyTitle: 'No conversations',
     failedDescription:
-      'The inbox could not be read. The failure is not presented as an empty list.',
+      'The conversation inbox could not be loaded. Please check your connection and retry.',
     failedTitle: 'Conversation inbox unavailable',
     filterLabel: 'Conversation status',
     forbiddenDescription: 'This account cannot read the conversation, or it has been reassigned.',
@@ -172,6 +174,7 @@ const COPY = {
     reply: 'Send reply',
     resolve: 'Resolve conversation',
     retry: 'Retry',
+    revision: 'Revision',
     selectDescription:
       'Select a conversation from the left to inspect its timeline and available actions.',
     selectTitle: 'Select a conversation',
@@ -188,6 +191,7 @@ const COPY = {
     title: 'Unified conversations',
     total: 'conversations',
     unassigned: 'Unassigned',
+    versionPrefix: 'v',
   },
 } as const
 
@@ -220,14 +224,42 @@ const messageAuthorMeta = {
   },
 } as const
 
-const channelLabel = (channel: ChatSessionSummary['channel']): string =>
-  ({
+const channelLabel = (channel: ChatSessionSummary['channel'], locale: 'en' | 'zh' = 'zh'): string => {
+  if (locale === 'en') {
+    return {
+      facebook: 'Facebook',
+      instagram: 'Instagram',
+      tiktok: 'TikTok',
+      website: 'Website',
+      whatsapp: 'WhatsApp',
+    }[channel]
+  }
+  return {
     facebook: 'Facebook',
     instagram: 'Instagram',
     tiktok: 'TikTok',
-    website: 'Website',
+    website: '官方网站',
     whatsapp: 'WhatsApp',
-  })[channel]
+  }[channel]
+}
+
+const formatSessionTitle = (
+  id: string | number,
+  locale: 'en' | 'zh' = 'zh',
+  channel?: ChatSessionSummary['channel'],
+): string => {
+  const value = String(id)
+  const shortId = value.slice(-6)
+  if (channel && channel !== 'website') {
+    return locale === 'zh'
+      ? `${channelLabel(channel, locale)}客户 #${shortId}`
+      : `${channelLabel(channel, locale)} customer #${shortId}`
+  }
+  if (channel === 'website' || value.startsWith('session-')) {
+    return locale === 'zh' ? `官网访客 #${shortId}` : `Website visitor #${shortId}`
+  }
+  return `#${value}`
+}
 
 const renderChannelIcon = (channel: ChatSessionSummary['channel'], size = 16) => {
   switch (channel) {
@@ -695,7 +727,7 @@ export function ConversationWorkspace({
                       <div className="portal-conversations__list-top">
                         <div className="portal-conversations__list-channel-badge">
                           {renderChannelIcon(item.channel, 14)}
-                          <span>{channelLabel(item.channel)}</span>
+                          <span>{channelLabel(item.channel, locale)}</span>
                         </div>
                         <StatusBadge
                           className="portal-conversations__list-badge"
@@ -704,7 +736,7 @@ export function ConversationWorkspace({
                         />
                       </div>
                       <div className="portal-conversations__list-title">
-                        <strong>#{String(item.id)}</strong>
+                        <strong>{formatSessionTitle(item.id, locale, item.channel)}</strong>
                       </div>
                       <div className="portal-conversations__list-footer">
                         <span className="portal-conversations__list-locale">
@@ -777,9 +809,9 @@ export function ConversationWorkspace({
                       {renderChannelIcon(activeSession.channel, 20)}
                     </div>
                     <div className="portal-conversations__detail-title-group">
-                      <h3>#{String(activeSession.id)}</h3>
+                      <h3>{formatSessionTitle(activeSession.id, locale, activeSession.channel)}</h3>
                       <p className="portal-conversations__detail-sub">
-                        <span>{channelLabel(activeSession.channel)}</span>
+                        <span>{channelLabel(activeSession.channel, locale)}</span>
                         <span className="portal-conversations__dot">·</span>
                         <span>{activeSession.locale.toUpperCase()}</span>
                         {activeSession.assignedTo?.name ? (
@@ -801,14 +833,20 @@ export function ConversationWorkspace({
                     <dt>{copy.channel}</dt>
                     <dd>
                       {renderChannelIcon(activeSession.channel, 13)}
-                      {channelLabel(activeSession.channel)}
+                      {channelLabel(activeSession.channel, locale)}
                     </dd>
                   </div>
                   <div className="portal-conversations__meta-chip">
                     <dt>{copy.locale}</dt>
                     <dd>
                       <IconLanguage aria-hidden="true" size={13} />
-                      {activeSession.locale === 'ar' ? 'العربية (AR)' : 'English (EN)'}
+                      {activeSession.locale === 'ar'
+                        ? 'العربية (AR)'
+                        : activeSession.locale === 'en'
+                          ? locale === 'zh'
+                            ? '英语 (EN)'
+                            : 'English (EN)'
+                          : String(activeSession.locale).toUpperCase()}
                     </dd>
                   </div>
                   <div className="portal-conversations__meta-chip">
@@ -821,7 +859,7 @@ export function ConversationWorkspace({
                     </dd>
                   </div>
                   <div className="portal-conversations__meta-chip">
-                    <dt>Revision</dt>
+                    <dt>{copy.revision}</dt>
                     <dd>v{activeSession.revision}</dd>
                   </div>
                 </dl>
@@ -864,7 +902,8 @@ export function ConversationWorkspace({
                               <ul>
                                 {message.citations.map((citation) => (
                                   <li key={`${String(citation.documentId)}:${citation.version}`}>
-                                    {citation.title} · v{citation.version}
+                                    {citation.title} · {copy.versionPrefix}
+                                    {citation.version}
                                   </li>
                                 ))}
                               </ul>

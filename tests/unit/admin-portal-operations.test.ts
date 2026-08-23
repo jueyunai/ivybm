@@ -109,7 +109,7 @@ describe('Portal operations', () => {
     const summary = toSafeJobSummary(job())
     const serialized = JSON.stringify(summary)
 
-    expect(summary.lastErrorSummary).toContain('Failure recorded')
+    expect(summary.lastErrorSummary).toContain('任务执行失败')
     expect(serialized).not.toContain('never-return-this')
     expect(serialized).not.toContain('ownerToken')
     expect(serialized).not.toContain('payload')

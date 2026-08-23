@@ -120,7 +120,7 @@ test('FB-READY-01 and READY-02 expose fail-closed platform truth without availab
     const facebookCard = page.locator('article', {
       has: page.getByRole('heading', { name: /^e2e-fb-page-/ }),
     })
-    await expect(facebookCard.getByText('受控发布 kill switch 当前未启用。')).toBeVisible()
+    await expect(facebookCard.getByText('系统社媒发布总开关当前未开启，请联系管理员开启。')).toBeVisible()
     await expect(facebookCard.getByText('可用')).toHaveCount(0)
   } finally {
     await harness.cleanup()

@@ -74,7 +74,7 @@ describe('Portal platform readiness', () => {
     expect(pageText).toContain('责任人')
     expect(pageText).toContain('管理员')
     expect(pageText).toContain('开发团队')
-    expect(pageText).toContain('受控发布 kill switch 当前未启用。')
+    expect(pageText).toContain('系统社媒发布总开关当前未开启，请联系管理员开启。')
     expect(pageText).toContain('连接')
     expect(pageText).toContain('编辑')
     expect(pageText).toContain('删除')

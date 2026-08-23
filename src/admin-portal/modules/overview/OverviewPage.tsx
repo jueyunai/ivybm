@@ -62,6 +62,39 @@ const formatTimestamp = (value: string, locale: 'en' | 'zh'): string => {
   }).format(date)
 }
 
+const formatReference = (kind: PortalOverviewPriorityKind, reference: string, locale: 'en' | 'zh'): string => {
+  if (kind === 'active-conversation' || kind === 'handoff-request') {
+    if (reference.startsWith('session-')) {
+      const shortId = reference.slice(-6)
+      return locale === 'zh' ? `官网访客 #${shortId}` : `Website Visitor #${shortId}`
+    }
+    return `#${reference}`
+  }
+  if (kind === 'job') {
+    const jobLabelsZh: Record<string, string> = {
+      'feishu.lead.sync': '飞书线索同步',
+      'feishu.handoff.notify': '飞书接管提醒',
+      'platform.conversation.deliver': '社媒消息发送',
+      'platform.event.dispatch': '社媒事件分发',
+      'knowledge.ingest': '知识库文档解析',
+      'knowledge.index': '知识库向量索引',
+      'publish.job': '社媒内容发布',
+    }
+    const jobLabelsEn: Record<string, string> = {
+      'feishu.lead.sync': 'Feishu Lead Sync',
+      'feishu.handoff.notify': 'Feishu Handoff Notice',
+      'platform.conversation.deliver': 'Social Message Delivery',
+      'platform.event.dispatch': 'Social Event Dispatch',
+      'knowledge.ingest': 'Knowledge Document Parsing',
+      'knowledge.index': 'Knowledge Vector Indexing',
+      'publish.job': 'Social Content Publishing',
+    }
+    const map = locale === 'zh' ? jobLabelsZh : jobLabelsEn
+    return map[reference.toLowerCase()] ?? reference
+  }
+  return reference
+}
+
 function PriorityItem({ item, locale }: { item: PortalOverviewPriorityItem; locale: 'en' | 'zh' }) {
   const messages = getPortalMessages(locale).overview
   const kind = messages.priorityKinds[item.kind]
@@ -74,7 +107,7 @@ function PriorityItem({ item, locale }: { item: PortalOverviewPriorityItem; loca
     <li className="portal-overview__priority-item">
       <StatusBadge label={kind.label} tone={priorityTone[item.kind]} />
       <div className="portal-overview__priority-copy">
-        <strong>{item.reference}</strong>
+        <strong>{formatReference(item.kind, item.reference, locale)}</strong>
         <span>{kind.description}</span>
       </div>
       <div className="portal-overview__priority-meta">
