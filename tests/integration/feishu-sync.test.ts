@@ -17,6 +17,7 @@ import {
   FEISHU_LEAD_SYNC_FAILURE_JOB_TYPE,
   FEISHU_LEAD_SYNC_JOB_TYPE,
 } from '@/modules/feishu/jobs'
+import { createFeishuLeadResyncPlan, executeFeishuLeadResync } from '@/modules/feishu/resync'
 import type { FeishuClientPort } from '@/modules/feishu/contracts'
 import config from '@/payload.config'
 
@@ -38,6 +39,8 @@ const fieldMappings = [
   { localField: 'country' as const, required: false, targetField: 'Country' },
   { localField: 'source' as const, required: true, targetField: 'Source' },
   { localField: 'intentLevel' as const, required: true, targetField: 'Intent' },
+  { localField: 'productNeed' as const, targetField: 'Product Need' },
+  { localField: 'projectStage' as const, targetField: 'Project Stage' },
   { localField: 'email' as const, targetField: 'Email' },
   { localField: 'sourceURL' as const, targetField: 'Source URL' },
   { localField: 'originalInquiry' as const, targetField: 'Original Inquiry' },
@@ -265,13 +268,17 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
         idempotencyKey: randomUUID(),
         intentLevel: 'a',
         interest: 'Aluminum facade panels',
+        hasDrawings: true,
         locale: 'en',
         message: 'Please review our drawings and quotation requirements.',
         name: 'Buyer Name',
+        projectStage: 'tender',
+        quantitySquareMeters: 3200,
         requestId: randomUUID(),
         source: sourceID,
         sourceURL: 'https://ivybm.example.invalid/en/products',
         status: 'qualified',
+        timeline: 'within_3_months',
       },
       overrideAccess: true,
     })
@@ -630,6 +637,86 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     expect(sendText).not.toHaveBeenCalled()
   })
 
+  it('creates an audited, explicit-ID resync job without notification side effects', async () => {
+    const plan = await createFeishuLeadResyncPlan({ leadIds: [leadID], payload })
+    expect(plan.leadIds).toEqual([leadID])
+    expect(plan.planHash).toMatch(/^[a-f0-9]{64}$/u)
+
+    const admin = await payload.create({
+      collection: 'users',
+      context,
+      data: {
+        email: `task11-resync-${runID}@example.invalid`,
+        password: 'task11-resync-password',
+        role: 'admin',
+      },
+      overrideAccess: true,
+    })
+    retryAdminID = admin.id
+
+    const result = await executeFeishuLeadResync({
+      payload,
+      plan,
+      requestedBy: admin.id,
+    })
+    expect(result).toMatchObject({ created: 1, duplicate: 0, planHash: plan.planHash })
+    const job = result.jobs[0]
+    if (!job) throw new Error('Expected explicit resync job')
+    const createdJob = await payload.findByID({
+      collection: 'jobs',
+      depth: 0,
+      id: job.id,
+      overrideAccess: true,
+    })
+    expect(createdJob.type).toBe(FEISHU_LEAD_SYNC_JOB_TYPE)
+    expect(jobPayload(createdJob.payload)).toMatchObject({
+      entityId: leadID,
+      notificationIntent: 'none',
+    })
+
+    const audit = await payload.find({
+      collection: 'audit-logs',
+      limit: 10,
+      overrideAccess: true,
+      where: {
+        and: [
+          { actor: { equals: admin.id } },
+          { documentId: { equals: String(leadID) } },
+          { resource: { equals: `feishu.lead.resync:${plan.planHash}` } },
+        ],
+      },
+    })
+    expect(audit.totalDocs).toBe(1)
+
+    const duplicate = await executeFeishuLeadResync({
+      payload,
+      plan,
+      requestedBy: admin.id,
+    })
+    expect(duplicate).toMatchObject({ created: 0, duplicate: 1, planHash: plan.planHash })
+    const duplicateAudit = await payload.find({
+      collection: 'audit-logs',
+      limit: 10,
+      overrideAccess: true,
+      where: { resource: { equals: `feishu.lead.resync:${plan.planHash}` } },
+    })
+    expect(duplicateAudit.totalDocs).toBe(1)
+  })
+
+  it('rejects a resync plan when the Lead changes after dry-run', async () => {
+    const plan = await createFeishuLeadResyncPlan({ leadIds: [leadID], payload })
+    await payload.update({
+      collection: 'leads',
+      context,
+      data: { message: 'Changed after the dry-run plan.' },
+      id: leadID,
+      overrideAccess: true,
+    })
+    await expect(
+      executeFeishuLeadResync({ payload, plan, requestedBy: retryAdminID || 1 }),
+    ).rejects.toThrow('plan changed')
+  })
+
   it('uses the Dashboard predicate for high-intent lead notifications', async () => {
     const cases = [
       { high: true, status: 'new' as const },
@@ -738,7 +825,9 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     })
 
     expect(upsertRecord).toHaveBeenCalledWith(
-      expect.objectContaining({ fields: expect.not.objectContaining({ Country: expect.anything() }) }),
+      expect.objectContaining({
+        fields: expect.not.objectContaining({ Country: expect.anything() }),
+      }),
     )
     expect(
       (sendText.mock.calls as unknown as Array<[SendTextInput]>)
@@ -1102,7 +1191,16 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     expect(upsertRecord).toHaveBeenCalledTimes(1)
     expect(upsertRecord).toHaveBeenCalledWith(
       expect.objectContaining({
-        fields: expect.objectContaining({ Customer: 'Acme Facades', Intent: 'A' }),
+        fields: expect.objectContaining({
+          Country: 'United Arab Emirates',
+          Customer: 'Acme Facades',
+          Intent: 'A',
+          'Original Inquiry': expect.stringMatching(
+            /Project stage: tender[\s\S]*Quantity \(sqm\): 3200[\s\S]*Drawings available: Yes[\s\S]*Purchase timeline: within_3_months/u,
+          ),
+          'Product Need': 'Aluminum facade panels',
+          'Project Stage': 'tender',
+        }),
         localLeadId: String(leadID),
       }),
     )
