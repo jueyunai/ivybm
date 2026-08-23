@@ -18,7 +18,20 @@ const login = async (page: Page) => {
   return true
 }
 
-const installConversationMock = async (page: Page) => {
+const installConversationMock = async (
+  page: Page,
+  options?: {
+    e2eDelayMs?: number
+    e2eCommandGate?: Promise<void>
+    malformedFirstOperatorMessageResponse?: boolean
+    secondDelayMs?: number
+  },
+) => {
+  const commandRequests: Array<{
+    command: string
+    conversationId: string
+    idempotencyKey?: string
+  }> = []
   const session = {
     allowedActions: ['take_over'],
     channel: 'website',
@@ -39,60 +52,113 @@ const installConversationMock = async (page: Page) => {
   }
   const alternateSession = {
     ...session,
+    allowedActions: ['take_over'],
+    channel: 'facebook',
     id: 'portal-conversation-second',
+    messages: [
+      {
+        author: 'visitor',
+        content: 'Second conversation request from visitor.',
+        createdAt: '2026-07-30T08:05:00.000Z',
+        id: 'message-inbound-second',
+        status: 'sent',
+      },
+    ],
     requestId: 'request-e2e-second',
   }
 
-  await page.route('**/api/portal/conversations**', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      json: {
-        docs: [
-          {
-            ...session,
-            lastMessageAt: session.messages.at(-1)?.createdAt,
-            messages: undefined,
-          },
-          {
-            ...alternateSession,
-            lastMessageAt: alternateSession.messages.at(-1)?.createdAt,
-            messages: undefined,
-          },
-        ],
-        page: 1,
-        totalDocs: 2,
-        totalPages: 1,
-      },
-      status: 200,
-    })
-  })
+  const sessions: Record<string, typeof session> = {
+    'portal-conversation-e2e': session,
+    'portal-conversation-second': alternateSession,
+  }
+  let malformedOperatorMessageResponseSent = false
 
-  await page.route('**/api/portal/conversations/portal-conversation-e2e**', async (route) => {
-    const request = route.request()
-    const pathname = new URL(request.url()).pathname
-    if (request.method() === 'GET') {
-      await route.fulfill({ contentType: 'application/json', json: session, status: 200 })
+  await page.route('**/api/portal/conversations**', async (route) => {
+    const url = new URL(route.request().url())
+    const pathSegments = url.pathname.split('/').filter(Boolean)
+    if (
+      pathSegments.length === 3 &&
+      pathSegments[0] === 'api' &&
+      pathSegments[1] === 'portal' &&
+      pathSegments[2] === 'conversations'
+    ) {
+      await route.fulfill({
+        contentType: 'application/json',
+        json: {
+          docs: Object.values(sessions).map((s) => ({
+            ...s,
+            lastMessageAt: s.messages.at(-1)?.createdAt,
+            messages: undefined,
+          })),
+          page: 1,
+          totalDocs: Object.keys(sessions).length,
+          totalPages: 1,
+        },
+        status: 200,
+      })
       return
     }
-    const command = pathname.split('/').at(-1)
+
+    const conversationId = decodeURIComponent(pathSegments[3] ?? '')
+    const targetSession = sessions[conversationId]
+    if (!targetSession) {
+      await route.fulfill({
+        contentType: 'application/json',
+        json: { error: { code: 'not_found' } },
+        status: 404,
+      })
+      return
+    }
+
+    const command = pathSegments[4]
+    const request = route.request()
+
+    if (request.method() === 'GET') {
+      if (conversationId === 'portal-conversation-e2e' && options?.e2eDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.e2eDelayMs))
+      }
+      if (conversationId === 'portal-conversation-second' && options?.secondDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.secondDelayMs))
+      }
+      await route.fulfill({ contentType: 'application/json', json: targetSession, status: 200 })
+      return
+    }
+
+    const commandBody = request.postDataJSON() as { idempotencyKey?: string; text?: string }
+    commandRequests.push({
+      command,
+      conversationId,
+      idempotencyKey: commandBody.idempotencyKey,
+    })
+    if (
+      command === 'operator-messages' &&
+      options?.malformedFirstOperatorMessageResponse &&
+      !malformedOperatorMessageResponseSent
+    ) {
+      malformedOperatorMessageResponseSent = true
+      await route.fulfill({ body: '{', contentType: 'application/json', status: 200 })
+      return
+    }
+    if (conversationId === 'portal-conversation-e2e' && options?.e2eCommandGate) {
+      await options.e2eCommandGate
+    }
     if (command === 'take-over') {
-      session.allowedActions = ['send_operator_message', 'resolve']
-      session.handoffStatus = 'human_active'
-      session.revision += 1
+      targetSession.allowedActions = ['send_operator_message', 'resolve']
+      targetSession.handoffStatus = 'human_active'
+      targetSession.revision += 1
     } else if (command === 'operator-messages') {
-      const body = request.postDataJSON() as { text?: string }
-      session.messages.push({
+      targetSession.messages.push({
         author: 'operator',
-        content: body.text ?? '',
+        content: commandBody.text ?? '',
         createdAt: '2026-07-30T08:01:00.000Z',
-        id: `message-operator-${session.revision}`,
+        id: `message-operator-${targetSession.revision}`,
         status: 'sent',
       })
-      session.revision += 1
+      targetSession.revision += 1
     } else if (command === 'resolve') {
-      session.allowedActions = []
-      session.handoffStatus = 'resolved'
-      session.revision += 1
+      targetSession.allowedActions = []
+      targetSession.handoffStatus = 'resolved'
+      targetSession.revision += 1
     } else {
       await route.fulfill({
         contentType: 'application/json',
@@ -101,12 +167,10 @@ const installConversationMock = async (page: Page) => {
       })
       return
     }
-    await route.fulfill({ contentType: 'application/json', json: session, status: 200 })
+    await route.fulfill({ contentType: 'application/json', json: targetSession, status: 200 })
   })
 
-  await page.route('**/api/portal/conversations/portal-conversation-second**', async (route) => {
-    await route.fulfill({ contentType: 'application/json', json: alternateSession, status: 200 })
-  })
+  return { commandRequests }
 }
 
 test('conversation workspace renders only server-authorized actions and completes takeover, reply, and resolve', async ({
@@ -170,4 +234,170 @@ test('a consumed conversation deep link does not override a later manual selecti
 
   await page.getByRole('button', { name: '刷新列表' }).click()
   await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+})
+
+test('switching conversations isolates reply drafts and clears only the active conversation draft', async ({
+  page,
+}) => {
+  if (!(await login(page))) return
+  await installConversationMock(page)
+  await page.goto('/dashboard/conversations?conversation=portal-conversation-e2e')
+
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await page.getByRole('button', { name: '接管会话' }).click()
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toBeVisible()
+
+  // Type draft for conversation 1
+  await page.getByPlaceholder('输入给客户的回复…').fill('Draft reply for conversation 1')
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue(
+    'Draft reply for conversation 1',
+  )
+
+  // Switch to conversation 2
+  await page.getByRole('button', { name: /#portal-conversation-second/u }).click()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await page.getByRole('button', { name: '接管会话' }).click()
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toBeVisible()
+
+  // Verify conversation 2 has an empty draft initially
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue('')
+
+  // Type draft for conversation 2
+  await page.getByPlaceholder('输入给客户的回复…').fill('Draft reply for conversation 2')
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue(
+    'Draft reply for conversation 2',
+  )
+
+  // Switch back to conversation 1
+  await page.getByRole('button', { name: /#portal-conversation-e2e/u }).click()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+
+  // Verify draft for conversation 1 was preserved
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue(
+    'Draft reply for conversation 1',
+  )
+
+  // Send reply on conversation 1
+  await page.getByRole('button', { name: '发送回复' }).click()
+  await expect(page.getByText('Draft reply for conversation 1')).toBeVisible()
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue('')
+
+  // Switch back to conversation 2 and verify its draft is still intact
+  await page.getByRole('button', { name: /#portal-conversation-second/u }).click()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue(
+    'Draft reply for conversation 2',
+  )
+})
+
+test('switching to a delayed conversation hides the old detail and command entry points', async ({
+  page,
+}) => {
+  if (!(await login(page))) return
+  const mock = await installConversationMock(page, { secondDelayMs: 1200 })
+  await page.goto('/dashboard/conversations')
+
+  // Conversation A must be fully visible before exercising the delayed switch to B.
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await expect(page.getByText('We need a technical panel specification.')).toBeVisible()
+  await expect(page.getByRole('button', { name: '接管会话' })).toBeVisible()
+
+  await page.getByRole('button', { name: /#portal-conversation-second/u }).click()
+
+  // While B is still loading, the old A detail and all command entry points must be gone.
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toHaveCount(0)
+  await expect(page.getByText('We need a technical panel specification.')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '接管会话' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '发送回复' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '解决会话' })).toHaveCount(0)
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveCount(0)
+  expect(mock.commandRequests).toHaveLength(0)
+
+  // Conversation B eventually loads and renders its own detail.
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await expect(page.getByText('Second conversation request from visitor.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toHaveCount(0)
+})
+
+test('a pending command only disables its own conversation', async ({ page }) => {
+  if (!(await login(page))) return
+  let releaseFirstCommand: () => void = () => {}
+  const firstCommandGate = new Promise<void>((resolve) => {
+    releaseFirstCommand = resolve
+  })
+  const mock = await installConversationMock(page, { e2eCommandGate: firstCommandGate })
+  await page.goto('/dashboard/conversations')
+
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await page.getByRole('button', { name: '接管会话' }).click()
+  await expect.poll(() => mock.commandRequests.length).toBe(1)
+
+  await page.getByRole('button', { name: /#portal-conversation-second/u }).click()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '接管会话' })).toBeEnabled()
+  await page.getByRole('button', { name: '接管会话' }).click()
+
+  await expect.poll(() => mock.commandRequests.length).toBe(2)
+  await expect(page.getByRole('button', { name: '发送回复' })).toBeVisible()
+  expect(mock.commandRequests.map(({ conversationId }) => conversationId)).toEqual([
+    'portal-conversation-e2e',
+    'portal-conversation-second',
+  ])
+  expect(mock.commandRequests[0]?.idempotencyKey).toMatch(
+    /^portal:take-over:portal-conversation-e2e:/u,
+  )
+  expect(mock.commandRequests[1]?.idempotencyKey).toMatch(
+    /^portal:take-over:portal-conversation-second:/u,
+  )
+  expect(mock.commandRequests[0]?.idempotencyKey).not.toBe(mock.commandRequests[1]?.idempotencyKey)
+
+  releaseFirstCommand()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '发送回复' })).toBeVisible()
+})
+
+test('keeps a newer command result after switching away and back to the same conversation', async ({
+  page,
+}) => {
+  if (!(await login(page))) return
+  let releaseCommand: () => void = () => {}
+  const commandGate = new Promise<void>((resolve) => {
+    releaseCommand = resolve
+  })
+  await installConversationMock(page, { e2eCommandGate: commandGate })
+  await page.goto('/dashboard/conversations?conversation=portal-conversation-e2e')
+
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await page.getByRole('button', { name: '接管会话' }).click()
+  await expect(page.getByRole('button', { name: '正在提交…' })).toBeDisabled()
+
+  await page.getByRole('button', { name: /#portal-conversation-second/u }).click()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await page.getByRole('button', { name: /#portal-conversation-e2e/u }).click()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await expect(page.getByText('v1')).toBeVisible()
+
+  releaseCommand()
+  await expect(page.getByText('v2')).toBeVisible()
+  await expect(page.getByRole('button', { name: '发送回复' })).toBeVisible()
+})
+
+test('reuses the same idempotency key after a malformed successful reply response', async ({
+  page,
+}) => {
+  if (!(await login(page))) return
+  const mock = await installConversationMock(page, {
+    malformedFirstOperatorMessageResponse: true,
+  })
+  await page.goto('/dashboard/conversations?conversation=portal-conversation-e2e')
+
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await page.getByRole('button', { name: '接管会话' }).click()
+  await page.getByPlaceholder('输入给客户的回复…').fill('retry with the same key')
+  await page.getByRole('button', { name: '发送回复' }).click()
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue('retry with the same key')
+
+  await page.getByRole('button', { name: '发送回复' }).click()
+  await expect.poll(() => mock.commandRequests.length).toBe(3)
+  expect(mock.commandRequests[1]?.idempotencyKey).toBe(mock.commandRequests[2]?.idempotencyKey)
 })
