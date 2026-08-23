@@ -244,8 +244,12 @@ describe.sequential('Task 13 Payload publication authority', () => {
     await pool().query('DELETE FROM publish_logs WHERE publish_job_id = ANY($1::int[])', [
       publishJobIDs,
     ])
+    await pool().query(
+      `DELETE FROM jobs
+       WHERE id = ANY($1::int[]) OR payload->>'publishJobId' = ANY($2::text[])`,
+      [jobIDs, publishJobIDs.map(String)],
+    )
     await pool().query('DELETE FROM publish_jobs WHERE id = ANY($1::int[])', [publishJobIDs])
-    await pool().query('DELETE FROM jobs WHERE id = ANY($1::int[])', [jobIDs])
     await pool().query('DELETE FROM generated_contents WHERE id = ANY($1::int[])', [contentIDs])
     await payload.delete({ collection: 'platform-accounts', id: account.id, overrideAccess: true })
     await payload.delete({
@@ -302,6 +306,24 @@ describe.sequential('Task 13 Payload publication authority', () => {
         summary: 'Provider accepted the publication command.',
       }),
     ])
+    const obligation = await pool().query<{
+      attempts: string
+      id: number
+      payload: Record<string, unknown>
+      status: string
+    }>(
+      `SELECT id, attempts::text, payload, status FROM jobs
+       WHERE type = $1 AND idempotency_key = $2`,
+      [PLATFORM_PUBLICATION_JOB_TYPE, `publication-status:${intent.publishJobId}:1`],
+    )
+    expect(obligation.rows).toEqual([
+      expect.objectContaining({
+        attempts: '0',
+        payload: { expectedExecutionRevision: 1, publishJobId: intent.publishJobId },
+        status: 'pending',
+      }),
+    ])
+    jobIDs.push(obligation.rows[0]!.id)
   })
 
   it('rejects a forged queue lease without mutating the publication row', async () => {
@@ -849,6 +871,293 @@ describe.sequential('Task 13 Payload publication authority', () => {
         overrideAccess: true,
       }),
     ).resolves.toMatchObject({ executionRevision: 2, status: 'published' })
+  })
+
+  it('rolls back a nonterminal checkpoint when its atomic status obligation insert fails', async () => {
+    const { intent, queue, queuedJob } = await createIntentAndLease({ claimQueueJob: false })
+    await pool().query(
+      `UPDATE jobs
+       SET status = 'dead', dead_at = NOW(), next_run_at = NULL,
+           owner_token = NULL, lease_expires_at = NULL
+       WHERE type = $1 AND id <> $2 AND status IN ('pending', 'failed', 'processing')`,
+      [PLATFORM_PUBLICATION_JOB_TYPE, queuedJob.id],
+    )
+    await pool().query(
+      `UPDATE jobs SET attempts = max_attempts - 1, next_run_at = NOW() - INTERVAL '1 second'
+       WHERE id = $1`,
+      [queuedJob.id],
+    )
+    const statusKey = `publication-status:${intent.publishJobId}:1`
+    const triggerSuffix = randomUUID().replaceAll('-', '')
+    const triggerName = `pr94_reject_status_obligation_${triggerSuffix}`
+    const functionName = `pr94_reject_status_obligation_fn_${triggerSuffix}`
+    await pool().query(`
+      CREATE FUNCTION "${functionName}"() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        RAISE EXCEPTION 'Injected atomic status obligation INSERT failure';
+      END
+      $$;
+    `)
+    await pool().query(`
+      CREATE TRIGGER "${triggerName}"
+      BEFORE INSERT ON jobs
+      FOR EACH ROW
+      WHEN (
+        NEW.type = '${PLATFORM_PUBLICATION_JOB_TYPE}'
+        AND NEW.idempotency_key = '${statusKey}'
+      )
+      EXECUTE FUNCTION "${functionName}"();
+    `)
+    const publish = vi.fn().mockResolvedValue({
+      externalPublicationId: '129472283584550_939393939',
+      idempotencyKey: intent.snapshot.idempotencyKey,
+      platform: 'facebook' as const,
+      platformAccountId: account.id,
+      status: 'accepted' as const,
+    })
+    const getStatus = vi.fn()
+    const worker = new JobWorker({
+      handlers: {
+        [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+          payload,
+          queue,
+          resolveRuntime: () => ({
+            directService: {
+              getCapability: vi.fn(),
+              getStatus,
+              prepareAssistedPublication: vi.fn(),
+              publish,
+            },
+            linkedInTransport: {} as never,
+            metaTransport: {} as never,
+            readLinkedInAssetBytes: vi.fn(),
+          }),
+        }),
+      },
+      queue,
+    })
+
+    try {
+      await expect(worker.runOnce()).resolves.toBe('failed')
+    } finally {
+      await pool().query(`DROP TRIGGER IF EXISTS "${triggerName}" ON jobs`)
+      await pool().query(`DROP FUNCTION IF EXISTS "${functionName}"()`)
+    }
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(getStatus).not.toHaveBeenCalled()
+
+    const source = await pool().query<{ attempts: string; status: string }>(
+      'SELECT attempts::text, status FROM jobs WHERE id = $1',
+      [queuedJob.id],
+    )
+    expect(source.rows[0]).toMatchObject({ attempts: '2', status: 'dead' })
+    const storedAfterRollback = await payload.findByID({
+      collection: 'publish-jobs',
+      depth: 0,
+      id: intent.publishJobId,
+      overrideAccess: true,
+    })
+    expect(storedAfterRollback).toMatchObject({
+      claimId: null,
+      executionRevision: 0,
+      providerIOStartedAt: expect.any(String),
+      status: 'scheduled',
+    })
+    const rolledBackArtifacts = await pool().query<{
+      accepted_logs: string
+      status_jobs: string
+    }>(
+      `SELECT
+         (SELECT COUNT(*)::text FROM publish_logs
+          WHERE publish_job_id = $1 AND event = 'accepted') AS accepted_logs,
+         (SELECT COUNT(*)::text FROM jobs
+          WHERE type = $2 AND idempotency_key = $3) AS status_jobs`,
+      [intent.publishJobId, PLATFORM_PUBLICATION_JOB_TYPE, statusKey],
+    )
+    expect(rolledBackArtifacts.rows[0]).toEqual({ accepted_logs: '0', status_jobs: '0' })
+
+    const recoveryKey = `publication-recovery:${intent.publishJobId}:0`
+    const recovery = await pool().query<{ id: number; status: string }>(
+      'SELECT id, status FROM jobs WHERE type = $1 AND idempotency_key = $2',
+      [PLATFORM_PUBLICATION_JOB_TYPE, recoveryKey],
+    )
+    expect(recovery.rows).toHaveLength(1)
+    expect(recovery.rows[0]).toMatchObject({ status: 'pending' })
+    const recoveryJobId = recovery.rows[0]!.id
+    jobIDs.push(recoveryJobId)
+    await pool().query("UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1", [
+      recoveryJobId,
+    ])
+
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(getStatus).not.toHaveBeenCalled()
+    await expect(
+      payload.findByID({
+        collection: 'publish-jobs',
+        depth: 0,
+        id: intent.publishJobId,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      executionRevision: 1,
+      providerIOStartedAt: null,
+      status: 'delivery_unknown',
+    })
+    const recoveryCount = await pool().query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM jobs WHERE type = $1 AND idempotency_key = $2',
+      [PLATFORM_PUBLICATION_JOB_TYPE, recoveryKey],
+    )
+    expect(recoveryCount.rows[0]?.count).toBe('1')
+  })
+
+  it('keeps the atomic status obligation when checkpoint commit acknowledgement is unknown', async () => {
+    const { intent, queue, queuedJob } = await createIntentAndLease({ claimQueueJob: false })
+    await pool().query(
+      `UPDATE jobs
+       SET status = 'dead', dead_at = NOW(), next_run_at = NULL,
+           owner_token = NULL, lease_expires_at = NULL
+       WHERE type = $1 AND id <> $2 AND status IN ('pending', 'failed', 'processing')`,
+      [PLATFORM_PUBLICATION_JOB_TYPE, queuedJob.id],
+    )
+    await pool().query(
+      `UPDATE jobs SET attempts = max_attempts - 1, next_run_at = NOW() - INTERVAL '1 second'
+       WHERE id = $1`,
+      [queuedJob.id],
+    )
+    const continuationKey = `publication-execute:${intent.publishJobId}:1`
+    const enqueue = vi.fn(async (...args: Parameters<PayloadJobQueue['enqueue']>) => {
+      if (args[0].idempotencyKey === continuationKey) {
+        throw new Error('Injected continuation INSERT failure after unknown commit acknowledgement')
+      }
+      return queue.enqueue(...args)
+    })
+    const publish = vi.fn().mockResolvedValue({
+      externalPublicationId: '129472283584550_949494949',
+      idempotencyKey: intent.snapshot.idempotencyKey,
+      platform: 'facebook' as const,
+      platformAccountId: account.id,
+      status: 'accepted' as const,
+    })
+    const getStatus = vi.fn().mockResolvedValue({
+      externalPublicationId: '129472283584550_949494949',
+      externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/949494949',
+      idempotencyKey: intent.snapshot.idempotencyKey,
+      platform: 'facebook' as const,
+      platformAccountId: account.id,
+      status: 'published' as const,
+    })
+    const worker = new JobWorker({
+      handlers: {
+        [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+          payload,
+          queue: { enqueue, ensureRunnable: queue.ensureRunnable.bind(queue) },
+          resolveRuntime: () => ({
+            directService: {
+              getCapability: vi.fn(),
+              getStatus,
+              prepareAssistedPublication: vi.fn(),
+              publish,
+            },
+            linkedInTransport: {} as never,
+            metaTransport: {} as never,
+            readLinkedInAssetBytes: vi.fn(),
+          }),
+        }),
+      },
+      queue,
+    })
+    const databasePool = pool()
+    const client = await databasePool.connect()
+    const originalConnect = databasePool.connect.bind(databasePool)
+    let restoreClientQuery: () => void = () => undefined
+    const originalQuery = client.query.bind(client) as unknown as (
+      query: unknown,
+      values?: readonly unknown[],
+    ) => Promise<unknown>
+    const querySpy = vi.spyOn(client, 'query')
+    const originalRelease = client.release.bind(client)
+    restoreClientQuery = () => querySpy.mockRestore()
+    querySpy.mockImplementation((async (query: unknown, values?: readonly unknown[]) => {
+      const result = await originalQuery(query, values)
+      if (query === 'COMMIT') {
+        throw new Error('Injected checkpoint COMMIT acknowledgement failure')
+      }
+      return result
+    }) as typeof client.query)
+    client.release = ((error?: Error | boolean) => {
+      querySpy.mockRestore()
+      originalRelease(error)
+    }) as typeof client.release
+    const connectSpy = vi.spyOn(databasePool, 'connect')
+    connectSpy.mockImplementation(((callback?: unknown) => {
+      if (typeof callback === 'function') return originalConnect(callback as never)
+      return Promise.resolve(client)
+    }) as typeof databasePool.connect)
+
+    try {
+      await expect(worker.runOnce()).resolves.toBe('failed')
+    } finally {
+      restoreClientQuery()
+      connectSpy.mockRestore()
+    }
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(getStatus).not.toHaveBeenCalled()
+
+    const source = await pool().query<{ attempts: string; status: string }>(
+      'SELECT attempts::text, status FROM jobs WHERE id = $1',
+      [queuedJob.id],
+    )
+    expect(source.rows[0]).toMatchObject({ attempts: '2', status: 'dead' })
+    await expect(
+      payload.findByID({
+        collection: 'publish-jobs',
+        depth: 0,
+        id: intent.publishJobId,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      executionRevision: 1,
+      providerIOStartedAt: null,
+      status: 'accepted',
+    })
+    const continuation = await pool().query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM jobs WHERE type = $1 AND idempotency_key = $2',
+      [PLATFORM_PUBLICATION_JOB_TYPE, continuationKey],
+    )
+    expect(continuation.rows[0]?.count).toBe('0')
+
+    const statusKey = `publication-status:${intent.publishJobId}:1`
+    const status = await pool().query<{ attempts: string; id: number; status: string }>(
+      `SELECT id, attempts::text, status FROM jobs
+       WHERE type = $1 AND idempotency_key = $2`,
+      [PLATFORM_PUBLICATION_JOB_TYPE, statusKey],
+    )
+    expect(status.rows).toHaveLength(1)
+    expect(status.rows[0]).toMatchObject({ attempts: '0', status: 'pending' })
+    const statusJobId = status.rows[0]!.id
+    jobIDs.push(statusJobId)
+    await pool().query("UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1", [
+      statusJobId,
+    ])
+
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+    expect(getStatus).toHaveBeenCalledTimes(1)
+    expect(publish).toHaveBeenCalledTimes(1)
+    await expect(
+      payload.findByID({
+        collection: 'publish-jobs',
+        depth: 0,
+        id: intent.publishJobId,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ executionRevision: 2, status: 'published' })
+    const statusCount = await pool().query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM jobs WHERE type = $1 AND idempotency_key = $2',
+      [PLATFORM_PUBLICATION_JOB_TYPE, statusKey],
+    )
+    expect(statusCount.rows[0]?.count).toBe('1')
   })
 
   it('fails the attempt after a checkpoint conflict and recovers durably without republishing', async () => {

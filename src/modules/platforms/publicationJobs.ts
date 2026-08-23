@@ -29,6 +29,10 @@ import {
   PayloadPlatformPublicationAuthority,
 } from './payloadPublishingAuthority'
 import {
+  PLATFORM_PUBLICATION_JOB_TYPE,
+  publicationStatusJobIdentity,
+} from './publicationJobIdentity'
+import {
   dispatchPublicationWorkItem,
   type PublicationWorkerDispatchResult,
   type PublicationWorkerRoute,
@@ -39,7 +43,7 @@ import type {
 } from './publishingAuthority'
 import type { PlatformPublishExecutionSnapshot } from './publishingExecution'
 
-export const PLATFORM_PUBLICATION_JOB_TYPE = 'platform.publication.execute'
+export { PLATFORM_PUBLICATION_JOB_TYPE } from './publicationJobIdentity'
 
 export type PlatformPublicationJobPayload = {
   expectedExecutionRevision: number
@@ -225,20 +229,16 @@ export const enqueuePublicationStatusSuccessor = async ({
   queue.ensureRunnable
     ? queue.ensureRunnable(
         {
-          idempotencyKey: `publication-status:${publishJobId}:${revision}`,
+          ...publicationStatusJobIdentity(publishJobId, revision),
           maxAttempts: 2,
           nextRunAt,
-          payload: { expectedExecutionRevision: revision, publishJobId },
-          type: PLATFORM_PUBLICATION_JOB_TYPE,
         },
         { rearmSucceeded: true },
       )
     : queue.enqueue({
-        idempotencyKey: `publication-status:${publishJobId}:${revision}`,
+        ...publicationStatusJobIdentity(publishJobId, revision),
         maxAttempts: 2,
         nextRunAt,
-        payload: { expectedExecutionRevision: revision, publishJobId },
-        type: PLATFORM_PUBLICATION_JOB_TYPE,
       })
 
 export const isPublicationStatusRecoveryKey = (
@@ -336,7 +336,6 @@ const scheduleContinuation = async (
   job: PublishJob,
   queue: PublicationJobQueue,
   now: () => Date,
-  sourceJob: Pick<ClaimedJob, 'attempts' | 'maxAttempts'>,
 ): Promise<void> => {
   if (!continuationNeeded(job)) return
   const stage = isDirectRoute(job)
@@ -352,19 +351,6 @@ const scheduleContinuation = async (
       ? new Date(now().getTime() + 2_000)
       : undefined
   const instant = now()
-
-  // The checkpoint and its execution continuation are separate durable writes.
-  // On the final source attempt, persist a read-only obligation first so an
-  // INSERT failure cannot leave accepted/publishing with no recovery entry.
-  if (sourceJob.attempts >= sourceJob.maxAttempts) {
-    const watchdog = await enqueuePublicationStatusSuccessor({
-      nextRunAt: statusSuccessorNextRunAt(job, instant, 2_000),
-      publishJobId: job.id,
-      queue,
-      revision: job.executionRevision,
-    })
-    assertRunnableSuccessor(watchdog.job, 'status-successor', instant)
-  }
 
   const queued = await enqueuePublicationExecution({
     nextRunAt,
@@ -431,7 +417,6 @@ const reconcileDurableOutcome = async ({
   job,
   now,
   queue,
-  sourceJob,
 }: {
   currentIdempotencyKey?: string | null
   dispatchError?: unknown
@@ -439,7 +424,6 @@ const reconcileDurableOutcome = async ({
   job: PublishJob
   now: () => Date
   queue: PublicationJobQueue
-  sourceJob: Pick<ClaimedJob, 'attempts' | 'maxAttempts'>
 }): Promise<void> => {
   if (job.executionRevision < expectedExecutionRevision) {
     throw new PlatformPublicationJobError('Publication execution revision is inconsistent')
@@ -468,7 +452,7 @@ const reconcileDurableOutcome = async ({
     )
   }
   if (obligation === 'continuation') {
-    await scheduleContinuation(job, queue, now, sourceJob)
+    await scheduleContinuation(job, queue, now)
     return
   }
   if (obligation === 'status-successor') {
@@ -602,7 +586,6 @@ export const createPlatformPublicationJobHandler =
         job: persisted,
         now,
         queue,
-        sourceJob: claimedJob,
       })
       execution.assertLease()
       return
@@ -630,7 +613,6 @@ export const createPlatformPublicationJobHandler =
       job: persisted,
       now,
       queue,
-      sourceJob: claimedJob,
     })
     execution.assertLease()
   }
