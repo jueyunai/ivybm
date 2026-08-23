@@ -48,14 +48,14 @@ describe('Portal platform readiness', () => {
                       implementation: 'implemented',
                       missing: [],
                       productionRequirements: [],
-                      status: 'available',
+                      status: 'ready-for-controlled-test',
                     },
                     {
                       capability: 'publishing',
                       implementation: 'implemented',
-                      missing: ['publishing_disabled'],
+                      missing: [],
                       productionRequirements: [],
-                      status: 'action-required',
+                      status: 'ready-for-controlled-test',
                     },
                   ],
                   connection: { missing: [], status: 'ready-for-controlled-test' },
@@ -70,11 +70,11 @@ describe('Portal platform readiness', () => {
 
     expect(screen.getByRole('heading', { name: '平台账号' })).toBeTruthy()
     const pageText = container.textContent ?? ''
-    expect(pageText).toContain('可用')
+    expect(pageText).toContain('已授权（待测试）')
     expect(pageText).toContain('责任人')
     expect(pageText).toContain('管理员')
-    expect(pageText).toContain('开发团队')
-    expect(pageText).toContain('系统社媒发布总开关当前未开启，请联系管理员开启。')
+    expect(pageText).toContain('请在 AI 内容工作台发布一条测试贴文，以验证该账号连接。')
+    expect(pageText).toContain('请向已连接账号发送一条测试消息，以验证入站消息能力。')
     expect(pageText).toContain('连接')
     expect(pageText).toContain('编辑')
     expect(pageText).toContain('删除')

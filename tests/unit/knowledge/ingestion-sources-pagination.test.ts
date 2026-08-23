@@ -16,6 +16,7 @@ const req = { user: { id: 7, role: 'operator' } } as unknown as PayloadRequest
 
 const source = (id: number, title: string) => ({
   detectedLanguage: 'en',
+  errorCode: null,
   errorSummary: null,
   filename: `source-${id}.pdf`,
   filesize: 1024,
@@ -109,5 +110,39 @@ describe('knowledge source pagination', () => {
     expect(await screen.findByText('Source 51')).toBeTruthy()
     expect(screen.getByText(/页码 3\/3/)).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith('/api/portal/knowledge/sources?page=3', { cache: 'no-store' })
+  })
+
+  it('localizes persisted ingestion errors instead of rendering the stored language', async () => {
+    window.localStorage.setItem(
+      'ivybm.portal.preferences',
+      JSON.stringify({ locale: 'en', reducedMotion: false, theme: 'light' }),
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        Response.json({
+          pagination: { hasNextPage: false, page: 1, pageSize: 25, totalDocs: 1, totalPages: 1 },
+          sources: [
+            {
+              ...source(9, 'Broken PDF'),
+              errorCode: 'invalid-pdf',
+              errorSummary: 'PDF 文件格式无效或损坏',
+              processingStatus: 'failed',
+            },
+          ],
+        }),
+      ),
+    )
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(KnowledgeSourcePanel, { role: 'operator' }),
+      ),
+    )
+
+    expect(await screen.findByText('The PDF file is invalid or damaged.')).toBeTruthy()
+    expect(screen.queryByText('PDF 文件格式无效或损坏')).toBeNull()
   })
 })

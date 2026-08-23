@@ -9,6 +9,7 @@ import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPrefe
 
 type Source = {
   detectedLanguage: null | string
+  errorCode: null | string
   errorSummary: null | string
   filename: string
   filesize: number
@@ -167,6 +168,11 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
   const fileSizeLabel = (bytes: number) =>
     bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB` : '—'
 
+  const errorLabel = (source: Source): string | null => {
+    if (!source.errorSummary) return null
+    return messages.errorSummaries[source.errorCode ?? ''] ?? messages.errorSummaries.unknown
+  }
+
   const changePage = (page: number) => {
     setDetail(null)
     void refresh(page)
@@ -195,7 +201,7 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
             <div><strong>{source.sourceTitle}</strong><span><a href={`/api/portal/knowledge/sources/${source.id}/file`} rel="noreferrer" target="_blank">{source.filename}</a> · v{source.sourceVersion} · {source.detectedLanguage?.toUpperCase() ?? '—'} · {fileSizeLabel(source.filesize)} · {stageLabel(source.processingStage)} · {messages.imageCount}: {source.imageCount}</span></div>
             <StatusBadge label={statusLabel(source.processingStatus)} tone={source.processingStatus === 'failed' ? 'danger' : source.processingStatus === 'needs_review' ? 'warning' : source.processingStatus === 'processing' ? 'info' : 'neutral'} />
             <Button onClick={() => void openDetails(source)} size="compact" variant="ghost">{messages.outputDrafts}</Button>
-            {source.errorSummary ? <p role="alert">{source.errorSummary}</p> : null}
+            {errorLabel(source) ? <p role="alert">{errorLabel(source)}</p> : null}
             {source.processingStatus === 'needs_review' ? <span>{messages.outputDrafts}: {messages.english} / {messages.arabic}</span> : null}
             {source.processingStatus === 'failed' && role === 'admin' ? <Button disabled={busy} onClick={() => void retry(source)} size="compact" variant="secondary">{messages.retry}</Button> : null}
             {source.processingStatus === 'failed' && role !== 'admin' ? <small>{messages.adminRetry}</small> : null}

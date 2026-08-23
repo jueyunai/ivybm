@@ -7,6 +7,7 @@ import {
   parsePublicationRecoveryIdempotencyKey,
 } from '@/modules/jobs/compensation/contracts'
 import {
+  formatJobTypeLabel,
   loadSafeJobPageData,
   parseSafeJobQuery,
   toSafeJobSummary,
@@ -109,7 +110,7 @@ describe('Portal operations', () => {
     const summary = toSafeJobSummary(job())
     const serialized = JSON.stringify(summary)
 
-    expect(summary.lastErrorSummary).toContain('任务执行失败')
+    expect(summary.lastErrorSummary).toContain('automatic retries stopped')
     expect(serialized).not.toContain('never-return-this')
     expect(serialized).not.toContain('ownerToken')
     expect(serialized).not.toContain('payload')
@@ -135,6 +136,35 @@ describe('Portal operations', () => {
         }),
       ).reference,
     ).toBe('Publication status recovery job #100')
+  })
+
+  it('only exposes status-accurate safe error summaries', () => {
+    expect(
+      toSafeJobSummary(
+        job({
+          attempts: 2,
+          deadAt: null,
+          maxAttempts: 5,
+          nextRunAt: '2026-07-30T01:00:00.000Z',
+          status: 'failed',
+        }),
+      ).lastErrorSummary,
+    ).toContain('automatic retry is scheduled')
+    expect(toSafeJobSummary(job({ attempts: 5, status: 'dead' })).lastErrorSummary).toContain(
+      'automatic retries stopped',
+    )
+    for (const status of ['pending', 'processing', 'succeeded'] as const) {
+      expect(toSafeJobSummary(job({ status })).lastErrorSummary).toBeNull()
+    }
+    expect(toSafeJobSummary(job({ attempts: 5, status: 'failed' })).lastErrorSummary).toBeNull()
+    expect(toSafeJobSummary(job({ attempts: 0, status: 'dead' })).lastErrorSummary).toBeNull()
+    expect(toSafeJobSummary(job({ lastError: '   ' })).lastErrorSummary).toBeNull()
+  })
+
+  it('does not expose unknown job type codes in the operations UI', () => {
+    expect(formatJobTypeLabel('SOME.INTERNAL.EVENT', 'zh')).toBe('后台任务')
+    expect(formatJobTypeLabel('SOME.INTERNAL.EVENT', 'en')).toBe('Background task')
+    expect(formatJobTypeLabel('feishu.handoff.notify', 'zh')).toBe('飞书接管提醒通知')
   })
 
   it('bounds operations query parameters', () => {

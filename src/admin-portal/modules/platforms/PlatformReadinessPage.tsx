@@ -189,11 +189,13 @@ const messages = {
         'Ask the account owner to provide the external account identifier.',
       'request-platform-approval':
         'Submit or follow up on the platform approval required for this capability.',
-      'run-controlled-test': 'Run the controlled test, record its result, then reassess readiness.',
+      'run-controlled-test': 'Complete the relevant capability connectivity test, record its result, then reassess account status.',
       'wait-for-official-schema':
         'Wait for the official TikTok DM schema before planning integration work.',
     },
     readyForTest: 'Ready for controlled test',
+    publishingTest: 'Publish a test post from the AI content workspace to verify this account connection.',
+    messagingTest: 'Send a test message to the connected account to verify inbound messaging.',
     refresh: 'Refresh',
     saveFailed: 'Save failed.',
     title: 'Platform accounts',
@@ -325,10 +327,12 @@ const messages = {
       'monitor-available-capability': '请持续监控已验证能力，并在出现问题时通过异常中心处理。',
       'provide-external-account': '请让账号所有者提供外部账号标识。',
       'request-platform-approval': '请提交或跟进该能力所需的平台审核。',
-      'run-controlled-test': '请在 AI 内容工作台发布一条测试贴文以验证账号连通性。',
+      'run-controlled-test': '请完成对应能力的连通性测试并记录结果，然后重新评估账号状态。',
       'wait-for-official-schema': '请等待 TikTok 官方私信接口就绪后再计划集成。',
     },
     readyForTest: '已授权（待测试）',
+    publishingTest: '请在 AI 内容工作台发布一条测试贴文，以验证该账号连接。',
+    messagingTest: '请向已连接账号发送一条测试消息，以验证入站消息能力。',
     refresh: '刷新',
     saveFailed: '保存失败。',
     title: '平台账号',
@@ -367,10 +371,12 @@ const readableCapability = (value: PlatformAccountCapability, copy: PlatformCopy
       : 'Publishing'
 
 function ReadinessAction({
+  capability,
   copy,
   missing,
   status,
 }: {
+  capability?: PlatformAccountCapability
   copy: PlatformCopy
   missing: readonly PlatformReadinessRequirement[]
   status: PlatformReadinessStatus
@@ -385,7 +391,13 @@ function ReadinessAction({
       </div>
       <div>
         <dt>{copy.actionTitle}</dt>
-        <dd>{copy.steps[action.code as PlatformReadinessActionCode]}</dd>
+        <dd>
+          {action.code === 'run-controlled-test' && capability === 'publishing'
+            ? copy.publishingTest
+            : action.code === 'run-controlled-test' && capability === 'messaging-inbound'
+              ? copy.messagingTest
+              : copy.steps[action.code as PlatformReadinessActionCode]}
+        </dd>
       </div>
     </dl>
   )
@@ -484,7 +496,12 @@ function AccountReadiness({
                   .join(' ')}
               </p>
             ) : null}
-            <ReadinessAction copy={copy} missing={capability.missing} status={capability.status} />
+            <ReadinessAction
+              capability={capability.capability}
+              copy={copy}
+              missing={capability.missing}
+              status={capability.status}
+            />
           </div>
         ))}
       </div>

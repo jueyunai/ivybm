@@ -384,6 +384,7 @@ export interface PortalKnowledgeMessages {
     archived: string
     chooseFile: string
     english: string
+    errorSummaries: Record<string, string>
     failed: string
     file: string
     imageCount: string

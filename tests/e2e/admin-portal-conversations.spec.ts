@@ -184,7 +184,7 @@ test('conversation workspace renders only server-authorized actions and complete
   await expect(page.getByRole('heading', { level: 2, name: '统一会话' })).toBeVisible()
   await expect(page.locator('.portal-page__eyebrow')).toHaveCount(0)
   await expect(page.locator('.portal-header__heading')).toBeVisible()
-  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '官网访客 #on-e2e' })).toBeVisible()
   await expect(page.getByRole('button', { name: '接管会话' })).toBeVisible()
   await expect(page.getByRole('button', { name: '发送回复' })).toHaveCount(0)
 
@@ -228,12 +228,24 @@ test('a consumed conversation deep link does not override a later manual selecti
   await installConversationMock(page)
   await page.goto('/dashboard/conversations?conversation=portal-conversation-e2e')
 
-  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
-  await page.getByRole('button', { name: /#portal-conversation-second/u }).click()
-  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '官网访客 #on-e2e' })).toBeVisible()
+  await page.getByRole('button', { name: /官网访客 #second/u }).click()
+  await expect(page.getByRole('heading', { name: '官网访客 #second' })).toBeVisible()
 
   await page.getByRole('button', { name: '刷新列表' }).click()
-  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '官网访客 #second' })).toBeVisible()
+})
+
+test('client-side conversation query changes select the requested conversation', async ({ page }) => {
+  if (!(await login(page))) return
+  await installConversationMock(page)
+  await page.goto('/dashboard/conversations')
+  await expect(page.getByRole('heading', { name: '官网访客 #on-e2e' })).toBeVisible()
+
+  await page.evaluate(() => {
+    window.history.pushState({}, '', '/dashboard/conversations?conversation=portal-conversation-second')
+  })
+  await expect(page.getByRole('heading', { name: '官网访客 #second' })).toBeVisible()
 })
 
 test('switching conversations isolates reply drafts and clears only the active conversation draft', async ({

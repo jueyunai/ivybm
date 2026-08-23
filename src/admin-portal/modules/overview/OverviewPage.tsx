@@ -66,7 +66,7 @@ const formatReference = (kind: PortalOverviewPriorityKind, reference: string, lo
   if (kind === 'active-conversation' || kind === 'handoff-request') {
     if (reference.startsWith('session-')) {
       const shortId = reference.slice(-6)
-      return locale === 'zh' ? `官网访客 #${shortId}` : `Website Visitor #${shortId}`
+      return locale === 'zh' ? `客户会话 #${shortId}` : `Customer conversation #${shortId}`
     }
     return `#${reference}`
   }

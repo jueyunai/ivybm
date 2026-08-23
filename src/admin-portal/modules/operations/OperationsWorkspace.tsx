@@ -18,7 +18,10 @@ const messages = {
     cancel: 'Cancel',
     empty: 'No jobs match this view.',
     error: 'The operation could not be completed.',
+    errorRetrying: 'The task failed and automatic retry is scheduled.',
+    errorStopped: 'The task failed and automatic retries stopped. Check configuration before retrying manually.',
     failed: 'Failed',
+    dead: 'Stopped retrying',
     filter: 'Filter',
     forbidden: 'Only administrators can view job operations.',
     nextRun: 'Next run',
@@ -28,10 +31,10 @@ const messages = {
     refresh: 'Refresh',
     retry: 'Retry task',
     retryConfirm: 'Confirm retry',
-    retryHelp: 'Retry failed background jobs (e.g. lead sync, message delivery, document parsing).',
+    retryHelp: 'Review background jobs such as lead sync, message delivery, and document parsing.',
     success: 'Task retry queued successfully.',
     succeeded: 'Succeeded',
-    title: 'Exceptions & compensation',
+    title: 'Background jobs',
     unavailable: 'The operations queue could not be loaded.',
     updated: 'Updated',
   },
@@ -41,7 +44,10 @@ const messages = {
     cancel: '取消',
     empty: '当前筛选没有任务。',
     error: '本次操作未能完成。',
+    errorRetrying: '任务执行失败，系统将自动重试。',
+    errorStopped: '任务执行失败，已停止自动重试。请排查相关配置后手动重试。',
     failed: '失败',
+    dead: '已停止重试',
     filter: '筛选',
     forbidden: '只有管理员可以查看任务异常。',
     nextRun: '下次执行',
@@ -51,10 +57,10 @@ const messages = {
     refresh: '刷新',
     retry: '重试任务',
     retryConfirm: '确认重试',
-    retryHelp: '支持对失败的后台任务（如线索同步、消息发送、文档处理）进行安全重试。',
+    retryHelp: '查看线索同步、消息发送、文档处理等后台任务，并处理失败任务。',
     success: '已提交任务重试。',
     succeeded: '成功',
-    title: '异常与补偿',
+    title: '后台任务',
     unavailable: '异常任务暂时无法读取。',
     updated: '更新时间',
   },
@@ -72,7 +78,23 @@ const statusTone = (status: SafeJobSummary['status']) =>
         : 'warning' as const
 
 const labelForStatus = (status: SafeJobSummary['status'], copy: OperationsCopy): string =>
-  status === 'succeeded' ? copy.succeeded : status === 'processing' ? copy.processing : status === 'pending' ? copy.pending : copy.failed
+  status === 'succeeded'
+    ? copy.succeeded
+    : status === 'processing'
+      ? copy.processing
+      : status === 'pending'
+        ? copy.pending
+        : status === 'dead'
+          ? copy.dead
+          : copy.failed
+
+const errorLabelForStatus = (status: SafeJobSummary['status'], copy: OperationsCopy): string =>
+  status === 'dead'
+    ? copy.errorStopped
+    : copy.errorRetrying
+
+const formatJobReference = (item: SafeJobSummary, locale: 'en' | 'zh'): string =>
+  locale === 'zh' ? `任务 #${item.id}` : `Task #${item.id}`
 
 const hrefFor = (query: SafeJobQuery, status: string) => {
   const params = new URLSearchParams()
@@ -110,7 +132,7 @@ function JobCard({ copy, item, locale, onDone }: { copy: OperationsCopy; item: S
   return (
     <article className="portal-operations__job">
       <header>
-        <div><p>{formatJobTypeLabel(item.type, locale)}</p><h3>{item.reference}</h3></div>
+        <div><p>{formatJobTypeLabel(item.type, locale)}</p><h3>{formatJobReference(item, locale)}</h3></div>
         <StatusBadge label={labelForStatus(item.status, copy)} tone={statusTone(item.status)} />
       </header>
       <dl>
@@ -118,7 +140,7 @@ function JobCard({ copy, item, locale, onDone }: { copy: OperationsCopy; item: S
         <div><dt>{copy.nextRun}</dt><dd>{item.nextRunAt ? new Date(item.nextRunAt).toLocaleString() : '—'}</dd></div>
         <div><dt>{copy.updated}</dt><dd>{new Date(item.updatedAt).toLocaleString()}</dd></div>
       </dl>
-      {item.lastErrorSummary ? <p className="portal-operations__error-summary">{item.lastErrorSummary}</p> : null}
+      {item.lastErrorSummary ? <p className="portal-operations__error-summary">{errorLabelForStatus(item.status, copy)}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
       {item.compensation ? (
         <footer>
@@ -151,7 +173,7 @@ export function OperationsWorkspace({ pageState, summary }: { pageState: SafeJob
       </header>
       {feedback ? <p className="portal-operations__feedback" role="status">{feedback}</p> : null}
       <Surface as="section" className="portal-operations__filters">
-        <form action="/dashboard/operations" method="get"><label><span>{copy.filter}</span><select defaultValue={summary.query.status} name="status"><option value="all">{copy.all}</option><option value="pending">{copy.pending}</option><option value="processing">{copy.processing}</option><option value="succeeded">{copy.succeeded}</option><option value="failed">{copy.failed}</option><option value="dead">{copy.failed}</option></select></label><Button type="submit">{copy.filter}</Button></form>
+        <form action="/dashboard/operations" method="get"><label><span>{copy.filter}</span><select defaultValue={summary.query.status} name="status"><option value="all">{copy.all}</option><option value="pending">{copy.pending}</option><option value="processing">{copy.processing}</option><option value="succeeded">{copy.succeeded}</option><option value="failed">{copy.failed}</option><option value="dead">{copy.dead}</option></select></label><Button type="submit">{copy.filter}</Button></form>
       </Surface>
       {summary.items.length ? <section className="portal-operations__grid">{summary.items.map((item) => <JobCard copy={copy} item={item} key={item.id} locale={locale} onDone={onDone} />)}</section> : <Surface as="section"><PortalState description={copy.empty} title={copy.empty} type="empty" /></Surface>}
       {summary.pagination.totalPages > 1 ? <nav className="portal-operations__pagination"><Button asChild disabled={summary.pagination.page <= 1} size="compact" variant="secondary"><Link href={hrefFor({ ...summary.query, page: summary.pagination.page - 1 }, summary.query.status)}>‹</Link></Button><span>{summary.pagination.page} / {summary.pagination.totalPages}</span><Button asChild disabled={summary.pagination.page >= summary.pagination.totalPages} size="compact" variant="secondary"><Link href={hrefFor({ ...summary.query, page: summary.pagination.page + 1 }, summary.query.status)}>›</Link></Button></nav> : null}

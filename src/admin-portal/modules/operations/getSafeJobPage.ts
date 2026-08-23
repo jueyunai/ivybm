@@ -91,7 +91,7 @@ export const formatJobTypeLabel = (type: string, locale: 'en' | 'zh' = 'zh'): st
     },
     zh: {
       'feishu.connection.provision': '飞书连接配置',
-      'feishu.handoff.notify': '飞书接管提醒',
+      'feishu.handoff.notify': '飞书接管提醒通知',
       'feishu.lead.followup.reminder': '飞书线索跟进提醒',
       'feishu.lead.sync': '飞书线索同步',
       'feishu.lead.sync.failure.notify': '飞书同步失败提醒',
