@@ -268,10 +268,7 @@ export function ConversationWorkspace({
   const [detailLoading, setDetailLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
   const [detailError, setDetailError] = useState<string | null>(null)
-  const [activeCommand, setActiveCommand] = useState<{
-    command: CommandName
-    conversationId: string
-  } | null>(null)
+  const [activeCommands, setActiveCommands] = useState<Record<string, CommandName>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [listRefreshGeneration, setListRefreshGeneration] = useState(0)
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -280,9 +277,13 @@ export function ConversationWorkspace({
   const listAbortRef = useRef<AbortController | null>(null)
   const detailAbortRef = useRef<AbortController | null>(null)
   const selectedIdRef = useRef(selectedId)
+  const selectionEpochRef = useRef(0)
   const commandKeys = useRef(new Map<string, string>())
 
   useEffect(() => {
+    if (String(selectedIdRef.current) !== String(selectedId)) {
+      selectionEpochRef.current += 1
+    }
     selectedIdRef.current = selectedId
   }, [selectedId])
 
@@ -290,9 +291,33 @@ export function ConversationWorkspace({
   const isSelectedSessionActive = selected !== null && String(selected.id) === currentConversationId
   const activeSession = isSelectedSessionActive ? selected : null
   const currentDraft = (currentConversationId && drafts[currentConversationId]) || ''
-  const isCurrentCommandRunning =
-    activeCommand !== null && activeCommand.conversationId === currentConversationId
-  const currentCommandName = isCurrentCommandRunning ? activeCommand.command : null
+  const currentCommandName = activeCommands[currentConversationId] ?? null
+  const isCurrentCommandRunning = currentCommandName !== null
+
+  const isCurrentSelection = useCallback(
+    (targetConversationId: string, targetSelectionEpoch: number) =>
+      String(selectedIdRef.current) === targetConversationId &&
+      selectionEpochRef.current === targetSelectionEpoch,
+    [],
+  )
+
+  const commitSelectedSession = useCallback(
+    (result: ChatSession, targetConversationId: string, targetSelectionEpoch: number) => {
+      if (!isCurrentSelection(targetConversationId, targetSelectionEpoch)) return
+      setSelected((current) => {
+        if (!isCurrentSelection(targetConversationId, targetSelectionEpoch)) return current
+        if (
+          current &&
+          String(current.id) === targetConversationId &&
+          current.revision > result.revision
+        ) {
+          return current
+        }
+        return result
+      })
+    },
+    [isCurrentSelection],
+  )
 
   const loadList = useCallback(async () => {
     if (!enabled) return
@@ -349,6 +374,7 @@ export function ConversationWorkspace({
     detailAbortRef.current = controller
     const requestID = ++detailRequest.current
     const targetId = String(selectedId)
+    const targetSelectionEpoch = selectionEpochRef.current
     setDetailLoading(true)
     setDetailError(null)
     try {
@@ -356,16 +382,16 @@ export function ConversationWorkspace({
       if (
         requestID !== detailRequest.current ||
         controller.signal.aborted ||
-        String(selectedIdRef.current) !== targetId
+        !isCurrentSelection(targetId, targetSelectionEpoch)
       ) {
         return
       }
-      setSelected(result)
+      commitSelectedSession(result, targetId, targetSelectionEpoch)
     } catch (error) {
       if (
         requestID !== detailRequest.current ||
         controller.signal.aborted ||
-        String(selectedIdRef.current) !== targetId
+        !isCurrentSelection(targetId, targetSelectionEpoch)
       ) {
         return
       }
@@ -381,12 +407,19 @@ export function ConversationWorkspace({
       if (
         requestID === detailRequest.current &&
         !controller.signal.aborted &&
-        String(selectedIdRef.current) === targetId
+        isCurrentSelection(targetId, targetSelectionEpoch)
       ) {
         setDetailLoading(false)
       }
     }
-  }, [copy.failedDescription, copy.forbiddenDescription, enabled, selectedId])
+  }, [
+    commitSelectedSession,
+    copy.failedDescription,
+    copy.forbiddenDescription,
+    enabled,
+    isCurrentSelection,
+    selectedId,
+  ])
 
   useEffect(() => {
     return () => {
@@ -417,8 +450,10 @@ export function ConversationWorkspace({
   }, [list])
 
   const runCommand = async (nextCommand: CommandName) => {
-    if (!activeSession || activeCommand) return
+    if (!activeSession) return
     const targetConversationId = String(activeSession.id)
+    if (activeCommands[targetConversationId]) return
+    const targetSelectionEpoch = selectionEpochRef.current
     const draftSnapshot = drafts[targetConversationId] || ''
     const text = draftSnapshot.trim()
     if (nextCommand === 'operator-messages' && !text) return
@@ -427,7 +462,7 @@ export function ConversationWorkspace({
       commandKeys.current.get(commandSignature) ??
       createConversationIdempotencyKey(nextCommand, targetConversationId)
     commandKeys.current.set(commandSignature, stableKey)
-    setActiveCommand({ command: nextCommand, conversationId: targetConversationId })
+    setActiveCommands((current) => ({ ...current, [targetConversationId]: nextCommand }))
     setFeedback(null)
     try {
       const result = await executeConversationCommand({
@@ -436,9 +471,7 @@ export function ConversationWorkspace({
         idempotencyKey: stableKey,
         ...(nextCommand === 'operator-messages' ? { text } : {}),
       })
-      if (String(selectedIdRef.current) === targetConversationId) {
-        setSelected(result)
-      }
+      commitSelectedSession(result, targetConversationId, targetSelectionEpoch)
       commandKeys.current.delete(commandSignature)
       if (nextCommand === 'operator-messages') {
         setDrafts((prev) =>
@@ -447,7 +480,7 @@ export function ConversationWorkspace({
             : prev,
         )
       }
-      if (String(selectedIdRef.current) === targetConversationId) {
+      if (isCurrentSelection(targetConversationId, targetSelectionEpoch)) {
         setFeedback(
           nextCommand === 'take-over'
             ? copy.takeOver
@@ -461,14 +494,17 @@ export function ConversationWorkspace({
       if (!(error instanceof ConversationClientError) || !error.retryable) {
         commandKeys.current.delete(commandSignature)
       }
-      if (String(selectedIdRef.current) === targetConversationId) {
+      if (isCurrentSelection(targetConversationId, targetSelectionEpoch)) {
         setFeedback(error instanceof Error ? error.message : copy.failedDescription)
         await loadDetail()
       }
     } finally {
-      setActiveCommand((current) =>
-        current?.conversationId === targetConversationId ? null : current,
-      )
+      setActiveCommands((current) => {
+        if (current[targetConversationId] !== nextCommand) return current
+        const next = { ...current }
+        delete next[targetConversationId]
+        return next
+      })
     }
   }
 
@@ -794,7 +830,7 @@ export function ConversationWorkspace({
                         <p>{copy.takeOverHint}</p>
                       </div>
                       <Button
-                        disabled={Boolean(activeCommand)}
+                        disabled={isCurrentCommandRunning}
                         onClick={() => void runCommand('take-over')}
                         variant="primary"
                       >
@@ -818,7 +854,7 @@ export function ConversationWorkspace({
                           onKeyDown={(event) => {
                             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                               event.preventDefault()
-                              if (currentDraft.trim() && !activeCommand) {
+                              if (currentDraft.trim() && !isCurrentCommandRunning) {
                                 void runCommand('operator-messages')
                               }
                             }
@@ -835,7 +871,7 @@ export function ConversationWorkspace({
                         <div className="portal-conversations__reply-buttons">
                           {activeSession.allowedActions.includes('resolve') ? (
                             <Button
-                              disabled={Boolean(activeCommand)}
+                              disabled={isCurrentCommandRunning}
                               onClick={() => void runCommand('resolve')}
                               size="default"
                               variant="secondary"
@@ -845,7 +881,7 @@ export function ConversationWorkspace({
                             </Button>
                           ) : null}
                           <Button
-                            disabled={Boolean(activeCommand) || !currentDraft.trim()}
+                            disabled={isCurrentCommandRunning || !currentDraft.trim()}
                             onClick={() => void runCommand('operator-messages')}
                             size="default"
                             variant="primary"
@@ -859,7 +895,7 @@ export function ConversationWorkspace({
                   ) : activeSession.allowedActions.includes('resolve') ? (
                     <div className="portal-conversations__standalone-resolve">
                       <Button
-                        disabled={Boolean(activeCommand)}
+                        disabled={isCurrentCommandRunning}
                         onClick={() => void runCommand('resolve')}
                         variant="secondary"
                       >

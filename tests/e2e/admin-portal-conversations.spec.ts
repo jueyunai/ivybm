@@ -22,10 +22,15 @@ const installConversationMock = async (
   page: Page,
   options?: {
     e2eDelayMs?: number
+    e2eCommandGate?: Promise<void>
     secondDelayMs?: number
   },
 ) => {
-  const commandRequests: string[] = []
+  const commandRequests: Array<{
+    command: string
+    conversationId: string
+    idempotencyKey?: string
+  }> = []
   const session = {
     allowedActions: ['take_over'],
     channel: 'website',
@@ -117,16 +122,23 @@ const installConversationMock = async (
       return
     }
 
-    commandRequests.push(`${request.method()} ${request.url()}`)
+    const commandBody = request.postDataJSON() as { idempotencyKey?: string; text?: string }
+    commandRequests.push({
+      command,
+      conversationId,
+      idempotencyKey: commandBody.idempotencyKey,
+    })
+    if (conversationId === 'portal-conversation-e2e' && options?.e2eCommandGate) {
+      await options.e2eCommandGate
+    }
     if (command === 'take-over') {
       targetSession.allowedActions = ['send_operator_message', 'resolve']
       targetSession.handoffStatus = 'human_active'
       targetSession.revision += 1
     } else if (command === 'operator-messages') {
-      const body = request.postDataJSON() as { text?: string }
       targetSession.messages.push({
         author: 'operator',
-        content: body.text ?? '',
+        content: commandBody.text ?? '',
         createdAt: '2026-07-30T08:01:00.000Z',
         id: `message-operator-${targetSession.revision}`,
         status: 'sent',
@@ -294,4 +306,41 @@ test('switching to a delayed conversation hides the old detail and command entry
   await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
   await expect(page.getByText('Second conversation request from visitor.')).toBeVisible()
   await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toHaveCount(0)
+})
+
+test('a pending command only disables its own conversation', async ({ page }) => {
+  if (!(await login(page))) return
+  let releaseFirstCommand: () => void = () => {}
+  const firstCommandGate = new Promise<void>((resolve) => {
+    releaseFirstCommand = resolve
+  })
+  const mock = await installConversationMock(page, { e2eCommandGate: firstCommandGate })
+  await page.goto('/dashboard/conversations')
+
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await page.getByRole('button', { name: '接管会话' }).click()
+  await expect.poll(() => mock.commandRequests.length).toBe(1)
+
+  await page.getByRole('button', { name: /#portal-conversation-second/u }).click()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '接管会话' })).toBeEnabled()
+  await page.getByRole('button', { name: '接管会话' }).click()
+
+  await expect.poll(() => mock.commandRequests.length).toBe(2)
+  await expect(page.getByRole('button', { name: '发送回复' })).toBeVisible()
+  expect(mock.commandRequests.map(({ conversationId }) => conversationId)).toEqual([
+    'portal-conversation-e2e',
+    'portal-conversation-second',
+  ])
+  expect(mock.commandRequests[0]?.idempotencyKey).toMatch(
+    /^portal:take-over:portal-conversation-e2e:/u,
+  )
+  expect(mock.commandRequests[1]?.idempotencyKey).toMatch(
+    /^portal:take-over:portal-conversation-second:/u,
+  )
+  expect(mock.commandRequests[0]?.idempotencyKey).not.toBe(mock.commandRequests[1]?.idempotencyKey)
+
+  releaseFirstCommand()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '发送回复' })).toBeVisible()
 })

@@ -591,4 +591,208 @@ describe('Portal conversations module', () => {
     expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
     expect(screen.getByText('Second visitor message')).toBeDefined()
   })
+
+  it('keeps a newer same-conversation revision after switching away and back', async () => {
+    let resolveCommand: (value: Response) => void = () => {}
+    const commandPromise = new Promise<Response>((resolve) => {
+      resolveCommand = resolve
+    })
+    let conv1DetailRequests = 0
+    const authoritativeSession: ChatSession = {
+      ...session1,
+      allowedActions: [],
+      handoffStatus: 'resolved',
+      messages: [
+        ...session1.messages,
+        {
+          author: 'system',
+          content: 'Authoritative revision 3',
+          createdAt: '2026-08-01T10:15:00.000Z',
+          id: 'm-authoritative-3',
+          status: 'sent',
+        },
+      ],
+      revision: 3,
+    }
+
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      const urlStr = String(url)
+      if (
+        urlStr.startsWith('/api/portal/conversations?') ||
+        urlStr === '/api/portal/conversations'
+      ) {
+        return Promise.resolve(
+          jsonResponse({
+            docs: [
+              { ...session1, lastMessageAt: session1.messages[0]?.createdAt, messages: undefined },
+              { ...session2, lastMessageAt: session2.messages[0]?.createdAt, messages: undefined },
+            ],
+            page: 1,
+            totalDocs: 2,
+            totalPages: 1,
+          }),
+        )
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-1/operator-messages')) {
+        return commandPromise
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-1')) {
+        conv1DetailRequests += 1
+        return Promise.resolve(
+          jsonResponse(conv1DetailRequests === 1 ? session1 : authoritativeSession),
+        )
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-2')) {
+        return Promise.resolve(jsonResponse(session2))
+      }
+      return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWorkspace('conv-1')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined()
+    })
+    fireEvent.change(screen.getByPlaceholderText('输入给客户的回复…'), {
+      target: { value: 'Delayed revision 2 reply' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '发送回复' }))
+
+    fireEvent.click(screen.getByRole('button', { name: /#conv-2/u }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /#conv-1/u }))
+    await waitFor(() => {
+      expect(screen.getByText('Authoritative revision 3')).toBeDefined()
+      expect(screen.getByText('v3')).toBeDefined()
+    })
+
+    await act(async () => {
+      resolveCommand(
+        jsonResponse({
+          ...session1,
+          messages: [
+            ...session1.messages,
+            {
+              author: 'operator',
+              content: 'Delayed revision 2 reply',
+              createdAt: '2026-08-01T10:10:00.000Z',
+              id: 'm-stale-2',
+              status: 'sent',
+            },
+          ],
+          revision: 2,
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Authoritative revision 3')).toBeDefined()
+      expect(screen.getByText('v3')).toBeDefined()
+    })
+    expect(screen.queryByText('Delayed revision 2 reply')).toBeNull()
+    expect(screen.queryByRole('button', { name: '发送回复' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '解决会话' })).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('keeps command busy state isolated per conversation', async () => {
+    let resolveConv1Command: (value: Response) => void = () => {}
+    const conv1CommandPromise = new Promise<Response>((resolve) => {
+      resolveConv1Command = resolve
+    })
+    const commandRequests: Array<{
+      body: { idempotencyKey?: string }
+      url: string
+    }> = []
+
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const urlStr = String(url)
+      if (
+        urlStr.startsWith('/api/portal/conversations?') ||
+        urlStr === '/api/portal/conversations'
+      ) {
+        return Promise.resolve(
+          jsonResponse({
+            docs: [
+              { ...session1, lastMessageAt: session1.messages[0]?.createdAt, messages: undefined },
+              { ...session2, lastMessageAt: session2.messages[0]?.createdAt, messages: undefined },
+            ],
+            page: 1,
+            totalDocs: 2,
+            totalPages: 1,
+          }),
+        )
+      }
+      if (urlStr.includes('/resolve')) {
+        commandRequests.push({
+          body: JSON.parse(String(init?.body)) as { idempotencyKey?: string },
+          url: urlStr,
+        })
+        if (urlStr.includes('/conv-1/')) return conv1CommandPromise
+        if (urlStr.includes('/conv-2/')) {
+          return Promise.resolve(
+            jsonResponse({
+              ...session2,
+              allowedActions: [],
+              handoffStatus: 'resolved',
+              revision: 2,
+            }),
+          )
+        }
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-1')) {
+        return Promise.resolve(jsonResponse(session1))
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-2')) {
+        return Promise.resolve(jsonResponse(session2))
+      }
+      return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWorkspace('conv-1')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined()
+    })
+    fireEvent.click(screen.getByRole('button', { name: '解决会话' }))
+    await waitFor(() => expect(commandRequests).toHaveLength(1))
+
+    fireEvent.click(screen.getByRole('button', { name: /#conv-2/u }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+    })
+    const conv2Resolve = screen.getByRole('button', { name: '解决会话' })
+    expect((conv2Resolve as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(conv2Resolve)
+
+    await waitFor(() => {
+      expect(commandRequests).toHaveLength(2)
+      expect(screen.getAllByText('已解决').length).toBeGreaterThan(0)
+    })
+    expect(commandRequests.map(({ url }) => url)).toEqual([
+      '/api/portal/conversations/conv-1/resolve',
+      '/api/portal/conversations/conv-2/resolve',
+    ])
+    expect(commandRequests[0]?.body.idempotencyKey).toMatch(/^portal:resolve:conv-1:/u)
+    expect(commandRequests[1]?.body.idempotencyKey).toMatch(/^portal:resolve:conv-2:/u)
+    expect(commandRequests[0]?.body.idempotencyKey).not.toBe(
+      commandRequests[1]?.body.idempotencyKey,
+    )
+
+    await act(async () => {
+      resolveConv1Command(
+        jsonResponse({
+          ...session1,
+          allowedActions: [],
+          handoffStatus: 'resolved',
+          revision: 2,
+        }),
+      )
+    })
+  })
 })
