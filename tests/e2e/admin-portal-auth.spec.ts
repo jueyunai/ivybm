@@ -17,10 +17,10 @@ test('unauthenticated Portal requests preserve a safe return target', async ({ p
   await page.goto('/dashboard')
 
   await expect(page).toHaveURL(/\/dashboard\/login\?returnTo=%2Fdashboard$/)
-  await expect(page.getByRole('heading', { name: '登录后台' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎登录 IVYBM' })).toBeVisible()
 
   await page.goto('/dashboard/login?returnTo=https%3A%2F%2Fevil.example%2Fdashboard')
-  await expect(page.getByRole('heading', { name: '登录后台' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎登录 IVYBM' })).toBeVisible()
 
   await fillPortalLogin(page, 'invalid@example.invalid', 'invalid-password-123')
   await page.getByRole('button', { name: '登录后台' }).click()

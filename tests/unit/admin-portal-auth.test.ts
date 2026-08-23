@@ -44,6 +44,19 @@ describe('Portal authentication adapters', () => {
     }
   })
 
+  it('propagates Payload authentication infrastructure failures', async () => {
+    const failure = new Error('database unavailable')
+
+    await expect(
+      getPortalSession({
+        getPayloadInstance: async () => {
+          throw failure
+        },
+        requestHeaders: new Headers(),
+      }),
+    ).rejects.toBe(failure)
+  })
+
   it('redirects an unauthenticated request to the safe Portal login target', async () => {
     const redirectTo = vi.fn((path: string): never => {
       throw new Error(path)
