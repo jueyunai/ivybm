@@ -3,7 +3,7 @@
 @import 'tailwindcss/theme.css' layer(theme) prefix(portal);
 @import 'tailwindcss/utilities.css' layer(utilities) prefix(portal);
 @import './tokens.css';
-@import './login-showcase.css';
+@import './login-showcase.css' layer(components);
 
 @source "../../**/*.{ts,tsx}";
 @source "../../../app/(dashboard)/**/*.{ts,tsx}";

@@ -18,7 +18,7 @@ export function PortalLoginShowcase({ returnTo, fetcher }: PortalLoginShowcasePr
   const scenarios = [
     {
       country: '🇸🇦 沙特阿拉伯 (利雅得)',
-      client: 'Al-Futtaim Engineering LLC',
+      client: '示例买家 A',
       rawMsg:
         '“Urgent inquiry: Looking for 6063-T5 anodized architectural aluminum profiles for a 24-story facade project in Riyadh. Need 50 tons, ASTM E84 Class A certification required.”',
       specs: ['6063-T5 阳极氧化铝', '50 吨', 'ASTM E84 防火 A 级', '预计货期 25 天'],
@@ -28,7 +28,7 @@ export function PortalLoginShowcase({ returnTo, fetcher }: PortalLoginShowcasePr
     },
     {
       country: '🇩🇪 德国 (汉堡)',
-      client: 'BauModern Fassadentechnik GmbH',
+      client: '示例买家 B',
       rawMsg:
         '“Wir suchen hochwertige thermisch getrennte Aluminium-Profilsysteme für ein Wohnprojekt. Budget ca. 180.000 EUR. Bitte um technisches Datenblatt.”',
       specs: ['三玻两腔断桥铝系统', '预算 €180,000', 'EN 13830 欧标', '索取技术规格书'],
@@ -38,7 +38,7 @@ export function PortalLoginShowcase({ returnTo, fetcher }: PortalLoginShowcasePr
     },
     {
       country: '🇺🇸 美国 (洛杉矶)',
-      client: 'Pacific Coast Interior Projects',
+      client: '示例买家 C',
       rawMsg:
         '“Hello, we are remodeling a commercial office complex and need flame-retardant decorative acoustic aluminum panels. Requesting samples & CIF Los Angeles quote.”',
       specs: ['阻燃吸音装饰铝板', '样品册寄送', 'CIF 美西港口', '商业工装定制'],
@@ -161,6 +161,7 @@ export function PortalLoginShowcase({ returnTo, fetcher }: PortalLoginShowcasePr
                     key={idx}
                     className={`scenario-pill-btn ${pipelineScenario === idx ? 'is-active' : ''}`}
                     onClick={() => setPipelineScenario(idx)}
+                    aria-pressed={pipelineScenario === idx}
                     type="button"
                   >
                     {sc.country}

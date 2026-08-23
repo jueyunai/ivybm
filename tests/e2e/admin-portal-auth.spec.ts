@@ -29,6 +29,31 @@ test('unauthenticated Portal requests preserve a safe return target', async ({ p
   expect(page.url()).not.toContain('invalid%40example.invalid')
 })
 
+test('Portal login keeps the primary action reachable on narrow and zoomed viewports', async ({
+  page,
+}) => {
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/dashboard/login')
+
+    const submit = page.getByRole('button', { name: '登录后台' })
+    await expect(submit).toBeVisible()
+    await expect(submit).toBeInViewport()
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/dashboard/login')
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '2'
+  })
+
+  await expect(page.getByRole('button', { name: '登录后台' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '登录后台' })).toBeInViewport()
+})
+
 test('Portal login exposes stable locked, unavailable, and network failure states', async ({
   page,
 }) => {

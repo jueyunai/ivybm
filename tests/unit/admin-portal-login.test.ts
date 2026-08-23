@@ -105,5 +105,14 @@ describe('Portal login', () => {
     const firstStep = screen.getByRole('button', { name: /STEP 01/ })
     expect(firstStep.getAttribute('aria-pressed')).toBe('true')
     expect(firstStep.getAttribute('type')).toBe('button')
+
+    const scenarioButtons = screen.getAllByRole('button', { name: /沙特阿拉伯|德国|美国/ })
+    expect(scenarioButtons[0].getAttribute('aria-pressed')).toBe('true')
+    expect(scenarioButtons[1].getAttribute('aria-pressed')).toBe('false')
+
+    fireEvent.click(scenarioButtons[1])
+    expect(scenarioButtons[0].getAttribute('aria-pressed')).toBe('false')
+    expect(scenarioButtons[1].getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText(/示例买家 B/)).toBeTruthy()
   })
 })

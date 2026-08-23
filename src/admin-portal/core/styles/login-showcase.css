@@ -3,7 +3,7 @@
    ========================================================================== */
 
 /* Top Interactive Switcher Toolbar */
-.showcase-switcher-bar {
+.login-showcase-page .showcase-switcher-bar {
   position: fixed;
   top: 16px;
   left: 50%;
@@ -28,7 +28,7 @@
   overflow-x: auto;
 }
 
-.showcase-switcher-label {
+.login-showcase-page .showcase-switcher-label {
   font-size: 11px;
   font-weight: 700;
   color: #94a3b8;
@@ -42,7 +42,7 @@
   flex-shrink: 0;
 }
 
-.showcase-switcher-btn {
+.login-showcase-page .showcase-switcher-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -59,12 +59,12 @@
   user-select: none;
 }
 
-.showcase-switcher-btn:hover {
+.login-showcase-page .showcase-switcher-btn:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.1);
 }
 
-.showcase-switcher-btn.is-active {
+.login-showcase-page .showcase-switcher-btn.is-active {
   color: #ffffff;
   background: #3130c0;
   border-color: rgba(255, 255, 255, 0.25);
@@ -98,7 +98,7 @@
   font-family: var(--portal-font-ui, system-ui, -apple-system, sans-serif);
 }
 
-.login-showcase-container {
+.login-showcase-page .login-showcase-container {
   width: 100%;
   max-width: 1380px;
   margin: auto;
@@ -110,27 +110,27 @@
 }
 
 /* Brand Header with New Logo */
-.brand-header-wrap {
+.login-showcase-page .brand-header-wrap {
   display: flex;
   align-items: center;
   gap: 16px;
   margin-bottom: 20px;
 }
 
-.brand-logo-img {
+.login-showcase-page .brand-logo-img {
   height: 38px;
   width: auto;
   object-fit: contain;
   display: block;
 }
 
-.brand-badge-divider {
+.login-showcase-page .brand-badge-divider {
   width: 1px;
   height: 24px;
   background: #cbd5e1;
 }
 
-.brand-system-tag {
+.login-showcase-page .brand-system-tag {
   font-size: 12px;
   font-weight: 700;
   color: #3130c0;
@@ -140,7 +140,7 @@
   gap: 6px;
 }
 
-.hero-heading {
+.login-showcase-page .hero-heading {
   font-size: clamp(26px, 3.2vw, 36px);
   font-weight: 800;
   line-height: 1.25;
@@ -149,11 +149,11 @@
   margin: 0 0 12px;
 }
 
-.hero-heading-gradient {
+.login-showcase-page .hero-heading-gradient {
   color: #3130c0;
 }
 
-.hero-desc {
+.login-showcase-page .hero-desc {
   font-size: 14px;
   line-height: 1.65;
   color: #475569;
@@ -161,7 +161,7 @@
   margin: 0 0 24px;
 }
 
-.showcase-disclaimer {
+.login-showcase-page .showcase-disclaimer {
   margin: 0 0 14px;
   padding: 8px 10px;
   border: 1px solid #fde68a;
@@ -173,7 +173,7 @@
 }
 
 /* Common Showcase Board */
-.showcase-board {
+.login-showcase-page .showcase-board {
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 12px;
@@ -182,7 +182,7 @@
   transition: all 0.3s ease;
 }
 
-.board-header {
+.login-showcase-page .board-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -191,27 +191,27 @@
   border-bottom: 1px solid #e2e8f0;
 }
 
-.board-dots {
+.login-showcase-page .board-dots {
   display: flex;
   gap: 6px;
 }
 
-.board-dot {
+.login-showcase-page .board-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
 }
-.board-dot.red {
+.login-showcase-page .board-dot.red {
   background: #ef4444;
 }
-.board-dot.yellow {
+.login-showcase-page .board-dot.yellow {
   background: #f59e0b;
 }
-.board-dot.green {
+.login-showcase-page .board-dot.green {
   background: #10b981;
 }
 
-.board-title-tag {
+.login-showcase-page .board-title-tag {
   font-size: 11px;
   font-family: var(--portal-font-data, monospace);
   color: #3130c0;
@@ -221,7 +221,7 @@
   gap: 6px;
 }
 
-.live-pulse {
+.login-showcase-page .live-pulse {
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -242,21 +242,21 @@
   }
 }
 
-.board-content {
+.login-showcase-page .board-content {
   padding: 20px;
 }
 
 /* ==========================================================================
    INTERACTION 1: PIPELINE SANDBOX (实时获客流水线 · 节点交互沙盒)
    ========================================================================== */
-.pipeline-steps-bar {
+.login-showcase-page .pipeline-steps-bar {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   margin-bottom: 16px;
 }
 
-.pipeline-step-item {
+.login-showcase-page .pipeline-step-item {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
@@ -271,35 +271,35 @@
   gap: 2px;
 }
 
-.pipeline-step-item:hover {
+.login-showcase-page .pipeline-step-item:hover {
   background: #f1f5f9;
   border-color: #cbd5e1;
 }
 
-.pipeline-step-item.is-active {
+.login-showcase-page .pipeline-step-item.is-active {
   background: #e1e0ff;
   border-color: #3130c0;
   box-shadow: 0 2px 8px rgba(49, 48, 192, 0.15);
 }
 
-.pipeline-step-num {
+.login-showcase-page .pipeline-step-num {
   font-size: 10px;
   font-weight: 700;
   color: #64748b;
   font-family: var(--portal-font-data, monospace);
 }
-.pipeline-step-item.is-active .pipeline-step-num {
+.login-showcase-page .pipeline-step-item.is-active .pipeline-step-num {
   color: #3130c0;
 }
 
-.pipeline-step-title {
+.login-showcase-page .pipeline-step-title {
   font-size: 12px;
   font-weight: 700;
   color: #0f172a;
 }
 
 /* Sandbox Body */
-.pipeline-sandbox-body {
+.login-showcase-page .pipeline-sandbox-body {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-top: 3px solid #3130c0;
@@ -307,13 +307,13 @@
   padding: 16px;
 }
 
-.scenario-pill-group {
+.login-showcase-page .scenario-pill-group {
   display: flex;
   gap: 6px;
   margin-bottom: 14px;
 }
 
-.scenario-pill-btn {
+.login-showcase-page .scenario-pill-btn {
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 9999px;
@@ -325,26 +325,26 @@
   transition: all 0.15s ease;
 }
 
-.scenario-pill-btn:hover {
+.login-showcase-page .scenario-pill-btn:hover {
   border-color: #3130c0;
   color: #3130c0;
 }
 
-.scenario-pill-btn.is-active {
+.login-showcase-page .scenario-pill-btn.is-active {
   background: #3130c0;
   border-color: #3130c0;
   color: #ffffff;
   box-shadow: 0 2px 6px rgba(49, 48, 192, 0.25);
 }
 
-.sandbox-stage-grid {
+.login-showcase-page .sandbox-stage-grid {
   display: grid;
   grid-template-columns: 1.1fr 1.2fr 1fr;
   gap: 12px;
   align-items: stretch;
 }
 
-.sandbox-panel {
+.login-showcase-page .sandbox-panel {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
@@ -354,7 +354,7 @@
   justify-content: space-between;
 }
 
-.sandbox-panel-head {
+.login-showcase-page .sandbox-panel-head {
   font-size: 11px;
   font-weight: 700;
   color: #64748b;
@@ -364,20 +364,20 @@
   margin-bottom: 8px;
 }
 
-.sandbox-panel-main {
+.login-showcase-page .sandbox-panel-main {
   font-size: 12px;
   line-height: 1.5;
   color: #1e293b;
 }
 
-.sandbox-tag-list {
+.login-showcase-page .sandbox-tag-list {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 8px;
 }
 
-.sandbox-chip {
+.login-showcase-page .sandbox-chip {
   background: #e1e0ff;
   color: #3130c0;
   font-size: 10px;
@@ -389,13 +389,13 @@
 /* ==========================================================================
    INTERACTION 2: DUAL-TRACK LIVE CHAT & HANDOFF (双轨实盘对谈舱)
    ========================================================================== */
-.chat-channel-bar {
+.login-showcase-page .chat-channel-bar {
   display: flex;
   gap: 6px;
   margin-bottom: 14px;
 }
 
-.chat-channel-btn {
+.login-showcase-page .chat-channel-btn {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
@@ -410,19 +410,19 @@
   transition: all 0.2s ease;
 }
 
-.chat-channel-btn:hover {
+.login-showcase-page .chat-channel-btn:hover {
   background: #f1f5f9;
   color: #0f172a;
 }
 
-.chat-channel-btn.is-active {
+.login-showcase-page .chat-channel-btn.is-active {
   background: #e1e0ff;
   border-color: #3130c0;
   color: #3130c0;
   font-weight: 700;
 }
 
-.chat-dialog-stream {
+.login-showcase-page .chat-dialog-stream {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-top: 3px solid #3130c0;
@@ -434,22 +434,22 @@
   min-height: 200px;
 }
 
-.chat-msg-row {
+.login-showcase-page .chat-msg-row {
   display: flex;
   gap: 10px;
   align-items: flex-start;
 }
 
-.chat-msg-row.buyer {
+.login-showcase-page .chat-msg-row.buyer {
   justify-content: flex-start;
 }
 
-.chat-msg-row.ai,
-.chat-msg-row.human {
+.login-showcase-page .chat-msg-row.ai,
+.login-showcase-page .chat-msg-row.human {
   justify-content: flex-start;
 }
 
-.chat-avatar {
+.login-showcase-page .chat-avatar {
   width: 28px;
   height: 28px;
   border-radius: 6px;
@@ -461,22 +461,22 @@
   flex-shrink: 0;
 }
 
-.chat-avatar.buyer {
+.login-showcase-page .chat-avatar.buyer {
   background: #e2e8f0;
   color: #334155;
 }
 
-.chat-avatar.ai {
+.login-showcase-page .chat-avatar.ai {
   background: #3130c0;
   color: #ffffff;
 }
 
-.chat-avatar.human {
+.login-showcase-page .chat-avatar.human {
   background: #15803d;
   color: #ffffff;
 }
 
-.chat-bubble {
+.login-showcase-page .chat-bubble {
   max-width: 82%;
   padding: 8px 12px;
   border-radius: 8px;
@@ -484,25 +484,25 @@
   line-height: 1.5;
 }
 
-.chat-bubble.buyer {
+.login-showcase-page .chat-bubble.buyer {
   background: #ffffff;
   border: 1px solid #cbd5e1;
   color: #1e293b;
 }
 
-.chat-bubble.ai {
+.login-showcase-page .chat-bubble.ai {
   background: #eef2ff;
   border: 1px solid #c7d2fe;
   color: #3130c0;
 }
 
-.chat-bubble.human {
+.login-showcase-page .chat-bubble.human {
   background: #dcfce7;
   border: 1px solid #bbf7d0;
   color: #15803d;
 }
 
-.handoff-alert-bar {
+.login-showcase-page .handoff-alert-bar {
   background: #fef3c7;
   border: 1px solid #fde68a;
   border-radius: 6px;
@@ -513,7 +513,7 @@
   gap: 12px;
 }
 
-.handoff-alert-text {
+.login-showcase-page .handoff-alert-text {
   font-size: 11px;
   font-weight: 700;
   color: #92400e;
@@ -522,7 +522,7 @@
   gap: 6px;
 }
 
-.handoff-action-btn {
+.login-showcase-page .handoff-action-btn {
   background: #d97706;
   color: #ffffff;
   border: none;
@@ -534,21 +534,21 @@
   transition: all 0.15s ease;
 }
 
-.handoff-action-btn:hover {
+.login-showcase-page .handoff-action-btn:hover {
   background: #b45309;
 }
 
 /* ==========================================================================
    INTERACTION 3: SOCIAL STUDIO & 3-PLATFORM DISPATCH (社媒矩阵图文直发工坊)
    ========================================================================== */
-.social-studio-grid {
+.login-showcase-page .social-studio-grid {
   display: grid;
   grid-template-columns: 1.15fr 1.25fr;
   gap: 16px;
   align-items: stretch;
 }
 
-.social-editor-panel {
+.login-showcase-page .social-editor-panel {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-top: 3px solid #3130c0;
@@ -559,13 +559,13 @@
   justify-content: space-between;
 }
 
-.social-prompt-select {
+.login-showcase-page .social-prompt-select {
   display: flex;
   gap: 6px;
   margin-bottom: 10px;
 }
 
-.social-prompt-btn {
+.login-showcase-page .social-prompt-btn {
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
@@ -576,14 +576,14 @@
   cursor: pointer;
 }
 
-.social-prompt-btn.is-active {
+.login-showcase-page .social-prompt-btn.is-active {
   background: #e1e0ff;
   border-color: #3130c0;
   color: #3130c0;
   font-weight: 700;
 }
 
-.social-preview-textarea {
+.login-showcase-page .social-preview-textarea {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
@@ -594,7 +594,7 @@
   min-height: 100px;
 }
 
-.social-dispatch-panel {
+.login-showcase-page .social-dispatch-panel {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -604,13 +604,13 @@
   justify-content: space-between;
 }
 
-.platform-status-list {
+.login-showcase-page .platform-status-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.platform-status-row {
+.login-showcase-page .platform-status-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -620,7 +620,7 @@
   padding: 8px 10px;
 }
 
-.platform-info-tag {
+.login-showcase-page .platform-info-tag {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -629,24 +629,24 @@
   color: #1e293b;
 }
 
-.platform-badge {
+.login-showcase-page .platform-badge {
   font-size: 10px;
   font-weight: 700;
   padding: 2px 6px;
   border-radius: 4px;
 }
 
-.platform-badge.ready {
+.login-showcase-page .platform-badge.ready {
   background: #e0e7ff;
   color: #3730a3;
 }
 
-.platform-badge.published {
+.login-showcase-page .platform-badge.published {
   background: #def7ec;
   color: #03543f;
 }
 
-.dispatch-trigger-btn {
+.login-showcase-page .dispatch-trigger-btn {
   margin-top: 12px;
   background: #3130c0;
   color: #ffffff;
@@ -664,20 +664,20 @@
   transition: all 0.2s ease;
 }
 
-.dispatch-trigger-btn:hover {
+.login-showcase-page .dispatch-trigger-btn:hover {
   background: #252494;
 }
 
 /* ==========================================================================
    INTERACTION 4: INTERACTIVE BENTO MATRIX (全景态势大盘 · 互动 Bento 矩阵)
    ========================================================================== */
-.bento-quad-grid {
+.login-showcase-page .bento-quad-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
 }
 
-.bento-interactive-card {
+.login-showcase-page .bento-interactive-card {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -688,27 +688,27 @@
   overflow: hidden;
 }
 
-.bento-interactive-card:hover {
+.login-showcase-page .bento-interactive-card:hover {
   background: #ffffff;
   border-color: #3130c0;
   box-shadow: 0 8px 20px rgba(49, 48, 192, 0.08);
 }
 
-.bento-interactive-card.is-active {
+.login-showcase-page .bento-interactive-card.is-active {
   background: #ffffff;
   border-color: #3130c0;
   border-top: 3px solid #3130c0;
   box-shadow: 0 8px 24px rgba(49, 48, 192, 0.12);
 }
 
-.bento-card-head {
+.login-showcase-page .bento-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
 }
 
-.bento-card-title {
+.login-showcase-page .bento-card-title {
   font-size: 12px;
   font-weight: 700;
   color: #0f172a;
@@ -717,7 +717,7 @@
   gap: 6px;
 }
 
-.bento-card-stat {
+.login-showcase-page .bento-card-stat {
   font-size: 20px;
   font-weight: 800;
   color: #3130c0;
@@ -725,14 +725,14 @@
   margin-bottom: 4px;
 }
 
-.bento-card-desc {
+.login-showcase-page .bento-card-desc {
   font-size: 11px;
   color: #64748b;
   line-height: 1.45;
 }
 
 /* Right Login Card (Refined B-3) */
-.login-card {
+.login-showcase-page .login-card {
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-top: 3px solid #3130c0;
@@ -743,52 +743,52 @@
     0 0 0 1px rgba(15, 23, 42, 0.03);
 }
 
-.login-card-title {
+.login-showcase-page .login-card-title {
   font-size: 22px;
   font-weight: 800;
   color: #0f172a;
   margin: 0 0 6px;
 }
 
-.login-card-desc {
+.login-showcase-page .login-card-desc {
   font-size: 12px;
   color: #64748b;
   margin: 0 0 24px;
 }
 
-.portal-field__label {
+.login-showcase-page .portal-field__label {
   color: #334155;
   font-size: 11px;
   font-weight: 700;
 }
 
-.portal-field__control {
+.login-showcase-page .portal-field__control {
   background: #f8fafc;
   border: 1px solid #cbd5e1;
   color: #0f172a;
   border-radius: 6px;
 }
 
-.portal-field__control input {
+.login-showcase-page .portal-field__control input {
   color: #0f172a;
 }
 
-.portal-field__control input::placeholder {
+.login-showcase-page .portal-field__control input::placeholder {
   color: #94a3b8;
 }
 
-.portal-field__control:focus-within {
+.login-showcase-page .portal-field__control:focus-within {
   border-color: #3130c0;
   box-shadow: 0 0 0 2px rgba(49, 48, 192, 0.15);
   background: #ffffff;
 }
 
-.portal-login-form__meta {
+.login-showcase-page .portal-login-form__meta {
   color: #64748b;
   font-size: 11px;
 }
 
-.portal-login-form button[type='submit'] {
+.login-showcase-page .portal-login-form button[type='submit'] {
   background: #3130c0;
   color: #ffffff;
   font-weight: 700;
@@ -797,11 +797,11 @@
   box-shadow: 0 4px 14px rgba(49, 48, 192, 0.3);
 }
 
-.portal-login-form button[type='submit']:hover {
+.login-showcase-page .portal-login-form button[type='submit']:hover {
   background: #252494;
 }
 
-.portal-login-form__security {
+.login-showcase-page .portal-login-form__security {
   color: #64748b;
   font-size: 11px;
   text-align: center;
@@ -812,15 +812,22 @@
    Responsive Rules & Footer
    ========================================================================== */
 @media (max-width: 1080px) {
-  .login-showcase-container {
+  .login-showcase-page .login-showcase-container {
     grid-template-columns: 1fr;
     gap: 32px;
   }
-  .showcase-switcher-bar {
+  .login-showcase-page .showcase-switcher-bar {
     position: static;
     transform: none;
     margin: 0 auto 24px;
     width: fit-content;
+  }
+  .login-showcase-page .showcase-right-pane {
+    order: -1;
+    width: 100%;
+  }
+  .login-showcase-page .showcase-left-pane {
+    order: 1;
   }
   .login-showcase-page {
     padding-top: 24px;
@@ -828,21 +835,21 @@
 }
 
 @media (max-width: 640px) {
-  .sandbox-stage-grid {
+  .login-showcase-page .sandbox-stage-grid {
     grid-template-columns: 1fr !important;
   }
-  .social-studio-grid {
+  .login-showcase-page .social-studio-grid {
     grid-template-columns: 1fr !important;
   }
-  .bento-quad-grid {
+  .login-showcase-page .bento-quad-grid {
     grid-template-columns: 1fr !important;
   }
-  .pipeline-steps-bar {
+  .login-showcase-page .pipeline-steps-bar {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 }
 
-.showcase-footer {
+.login-showcase-page .showcase-footer {
   text-align: center;
   font-size: 11px;
   color: #64748b;
