@@ -745,6 +745,112 @@ describe.sequential('Task 13 Payload publication authority', () => {
     expect(publish).toHaveBeenCalledTimes(1)
   })
 
+  it('persists a status obligation before a final-attempt continuation insert can fail', async () => {
+    const { intent, queue, queuedJob } = await createIntentAndLease({ claimQueueJob: false })
+    await pool().query(
+      `UPDATE jobs
+       SET status = 'dead', dead_at = NOW(), next_run_at = NULL,
+           owner_token = NULL, lease_expires_at = NULL
+       WHERE type = $1 AND id <> $2 AND status IN ('pending', 'failed', 'processing')`,
+      [PLATFORM_PUBLICATION_JOB_TYPE, queuedJob.id],
+    )
+    const continuationKey = `publication-execute:${intent.publishJobId}:1`
+    const enqueue = vi.fn(async (...args: Parameters<PayloadJobQueue['enqueue']>) => {
+      const [input] = args
+      if (input.idempotencyKey === continuationKey) {
+        throw new Error('Injected final-attempt continuation INSERT failure')
+      }
+      return queue.enqueue(...args)
+    })
+    const publish = vi.fn().mockResolvedValue({
+      externalPublicationId: '129472283584550_929292929',
+      idempotencyKey: intent.snapshot.idempotencyKey,
+      platform: 'facebook' as const,
+      platformAccountId: account.id,
+      status: 'accepted' as const,
+    })
+    const getStatus = vi.fn().mockResolvedValue({
+      externalPublicationId: '129472283584550_929292929',
+      externalPublicationUrl: 'https://www.facebook.com/129472283584550/posts/929292929',
+      idempotencyKey: intent.snapshot.idempotencyKey,
+      platform: 'facebook' as const,
+      platformAccountId: account.id,
+      status: 'published' as const,
+    })
+    const worker = new JobWorker({
+      handlers: {
+        [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+          payload,
+          queue: { enqueue, ensureRunnable: queue.ensureRunnable.bind(queue) },
+          resolveRuntime: () => ({
+            directService: {
+              getCapability: vi.fn(),
+              getStatus,
+              prepareAssistedPublication: vi.fn(),
+              publish,
+            },
+            linkedInTransport: {} as never,
+            metaTransport: {} as never,
+            readLinkedInAssetBytes: vi.fn(),
+          }),
+        }),
+      },
+      queue,
+    })
+
+    await expect(worker.runOnce()).resolves.toBe('failed')
+    expect(publish).toHaveBeenCalledTimes(1)
+    await pool().query("UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1", [
+      queuedJob.id,
+    ])
+
+    await expect(worker.runOnce()).resolves.toBe('failed')
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(getStatus).not.toHaveBeenCalled()
+
+    const source = await pool().query<{ attempts: string; status: string }>(
+      'SELECT attempts::text, status FROM jobs WHERE id = $1',
+      [queuedJob.id],
+    )
+    expect(source.rows[0]).toMatchObject({ attempts: '2', status: 'dead' })
+    const continuation = await pool().query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM jobs WHERE type = $1 AND idempotency_key = $2',
+      [PLATFORM_PUBLICATION_JOB_TYPE, continuationKey],
+    )
+    expect(continuation.rows[0]?.count).toBe('0')
+
+    const statusKey = `publication-status:${intent.publishJobId}:1`
+    const status = await pool().query<{
+      attempts: string
+      id: number
+      next_run_at: Date | string
+      status: string
+    }>(
+      'SELECT id, attempts::text, next_run_at, status FROM jobs WHERE type = $1 AND idempotency_key = $2',
+      [PLATFORM_PUBLICATION_JOB_TYPE, statusKey],
+    )
+    expect(status.rows).toHaveLength(1)
+    expect(status.rows[0]).toMatchObject({ attempts: '0', status: 'pending' })
+    expect(new Date(status.rows[0]!.next_run_at).getTime()).toBeGreaterThan(Date.now())
+    jobIDs.push(status.rows[0]!.id)
+
+    await pool().query("UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1", [
+      status.rows[0]!.id,
+    ])
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+    expect(getStatus).toHaveBeenCalledTimes(1)
+    expect(publish).toHaveBeenCalledTimes(1)
+
+    await expect(
+      payload.findByID({
+        collection: 'publish-jobs',
+        depth: 0,
+        id: intent.publishJobId,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({ executionRevision: 2, status: 'published' })
+  })
+
   it('fails the attempt after a checkpoint conflict and recovers durably without republishing', async () => {
     const { intent, queue, queuedJob } = await createIntentAndLease({ claimQueueJob: false })
     await pool().query(

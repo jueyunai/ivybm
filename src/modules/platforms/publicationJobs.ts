@@ -300,6 +300,17 @@ const finalAttemptLeaseExpiry = (job: JobRecord, now: Date): Date | null => {
   return Number.isFinite(leaseExpiry) && leaseExpiry > now.getTime() ? new Date(leaseExpiry) : null
 }
 
+const statusSuccessorNextRunAt = (
+  job: Pick<PublishJob, 'claimLeaseExpiresAt'>,
+  instant: Date,
+  fallbackDelayMs = 0,
+) => {
+  const leaseExpiry = job.claimLeaseExpiresAt ? Date.parse(job.claimLeaseExpiresAt) : Number.NaN
+  return Number.isFinite(leaseExpiry) && leaseExpiry > instant.getTime()
+    ? new Date(leaseExpiry + 1)
+    : new Date(instant.getTime() + fallbackDelayMs)
+}
+
 export const assertRunnableSuccessor = (
   job: JobRecord,
   kind: 'continuation' | 'recovery' | 'status-successor',
@@ -325,6 +336,7 @@ const scheduleContinuation = async (
   job: PublishJob,
   queue: PublicationJobQueue,
   now: () => Date,
+  sourceJob: Pick<ClaimedJob, 'attempts' | 'maxAttempts'>,
 ): Promise<void> => {
   if (!continuationNeeded(job)) return
   const stage = isDirectRoute(job)
@@ -339,13 +351,27 @@ const scheduleContinuation = async (
     stage === 'container_created' || stage === 'direct-status'
       ? new Date(now().getTime() + 2_000)
       : undefined
+  const instant = now()
+
+  // The checkpoint and its execution continuation are separate durable writes.
+  // On the final source attempt, persist a read-only obligation first so an
+  // INSERT failure cannot leave accepted/publishing with no recovery entry.
+  if (sourceJob.attempts >= sourceJob.maxAttempts) {
+    const watchdog = await enqueuePublicationStatusSuccessor({
+      nextRunAt: statusSuccessorNextRunAt(job, instant, 2_000),
+      publishJobId: job.id,
+      queue,
+      revision: job.executionRevision,
+    })
+    assertRunnableSuccessor(watchdog.job, 'status-successor', instant)
+  }
+
   const queued = await enqueuePublicationExecution({
     nextRunAt,
     publishJobId: job.id,
     queue,
     revision: job.executionRevision,
   })
-  const instant = now()
   if (isRunnableSuccessor(queued.job, instant)) return
   const finalLeaseExpiry = finalAttemptLeaseExpiry(queued.job, instant)
   const watchdog = await enqueuePublicationStatusSuccessor({
@@ -386,13 +412,8 @@ const scheduleStatusSuccessor = async (
   now: () => Date,
 ): Promise<void> => {
   const instant = now()
-  const leaseExpiry = job.claimLeaseExpiresAt ? Date.parse(job.claimLeaseExpiresAt) : Number.NaN
-  const nextRunAt =
-    Number.isFinite(leaseExpiry) && leaseExpiry > instant.getTime()
-      ? new Date(leaseExpiry + 1)
-      : instant
   const queued = await enqueuePublicationStatusSuccessor({
-    nextRunAt,
+    nextRunAt: statusSuccessorNextRunAt(job, instant),
     publishJobId: job.id,
     queue,
     revision: job.executionRevision,
@@ -410,6 +431,7 @@ const reconcileDurableOutcome = async ({
   job,
   now,
   queue,
+  sourceJob,
 }: {
   currentIdempotencyKey?: string | null
   dispatchError?: unknown
@@ -417,6 +439,7 @@ const reconcileDurableOutcome = async ({
   job: PublishJob
   now: () => Date
   queue: PublicationJobQueue
+  sourceJob: Pick<ClaimedJob, 'attempts' | 'maxAttempts'>
 }): Promise<void> => {
   if (job.executionRevision < expectedExecutionRevision) {
     throw new PlatformPublicationJobError('Publication execution revision is inconsistent')
@@ -445,7 +468,7 @@ const reconcileDurableOutcome = async ({
     )
   }
   if (obligation === 'continuation') {
-    await scheduleContinuation(job, queue, now)
+    await scheduleContinuation(job, queue, now, sourceJob)
     return
   }
   if (obligation === 'status-successor') {
@@ -579,6 +602,7 @@ export const createPlatformPublicationJobHandler =
         job: persisted,
         now,
         queue,
+        sourceJob: claimedJob,
       })
       execution.assertLease()
       return
@@ -606,6 +630,7 @@ export const createPlatformPublicationJobHandler =
       job: persisted,
       now,
       queue,
+      sourceJob: claimedJob,
     })
     execution.assertLease()
   }
