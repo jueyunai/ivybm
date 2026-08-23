@@ -6,6 +6,7 @@ import {
   enqueuePublicationExecution,
   enqueuePublicationRecovery,
   enqueuePublicationStatusSuccessor,
+  assertRunnableSuccessor,
   isPublicationRecoveryKey,
   isPublicationStatusRecoveryKey,
   isRunnableSuccessor,
@@ -308,6 +309,29 @@ describe('publication queue jobs', () => {
           now,
         ),
       ).toBe(false)
+    })
+
+    it('accepts a dead status successor only when the narrow compensation key is present', () => {
+      expect(() =>
+        assertRunnableSuccessor(
+          makeJob({
+            idempotencyKey: 'publication-status:42:1',
+            status: 'dead',
+          }),
+          'status-successor',
+          now,
+        ),
+      ).not.toThrow()
+      expect(() =>
+        assertRunnableSuccessor(
+          makeJob({
+            idempotencyKey: 'publication-execute:42:1',
+            status: 'dead',
+          }),
+          'continuation',
+          now,
+        ),
+      ).toThrow('manual recovery is required')
     })
   })
 })

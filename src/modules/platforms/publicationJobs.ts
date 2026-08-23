@@ -1,6 +1,7 @@
 import type { Payload, PayloadRequest } from 'payload'
 
-import { PayloadJobQueue } from '@/modules/jobs/claim'
+import { PayloadJobQueue, type EnsureRunnableJobOptions } from '@/modules/jobs/claim'
+import { getJobCompensation } from '@/modules/jobs/compensation/contracts'
 import {
   JobRetryNotBeforeError,
   type ClaimedJob,
@@ -52,7 +53,12 @@ export class PlatformPublicationJobError extends Error {
   }
 }
 
-type PublicationJobQueue = Pick<PayloadJobQueue, 'enqueue'>
+type PublicationJobQueue = Pick<PayloadJobQueue, 'enqueue'> & {
+  ensureRunnable?: (
+    input: Parameters<PayloadJobQueue['enqueue']>[0],
+    options?: EnsureRunnableJobOptions,
+  ) => ReturnType<PayloadJobQueue['enqueue']>
+}
 
 export type PublicationJobRuntime = {
   directService: PublishingService
@@ -216,13 +222,24 @@ export const enqueuePublicationStatusSuccessor = async ({
   queue: PublicationJobQueue
   revision: number
 }) =>
-  queue.enqueue({
-    idempotencyKey: `publication-status:${publishJobId}:${revision}`,
-    maxAttempts: 2,
-    nextRunAt,
-    payload: { expectedExecutionRevision: revision, publishJobId },
-    type: PLATFORM_PUBLICATION_JOB_TYPE,
-  })
+  queue.ensureRunnable
+    ? queue.ensureRunnable(
+        {
+          idempotencyKey: `publication-status:${publishJobId}:${revision}`,
+          maxAttempts: 2,
+          nextRunAt,
+          payload: { expectedExecutionRevision: revision, publishJobId },
+          type: PLATFORM_PUBLICATION_JOB_TYPE,
+        },
+        { rearmSucceeded: true },
+      )
+    : queue.enqueue({
+        idempotencyKey: `publication-status:${publishJobId}:${revision}`,
+        maxAttempts: 2,
+        nextRunAt,
+        payload: { expectedExecutionRevision: revision, publishJobId },
+        type: PLATFORM_PUBLICATION_JOB_TYPE,
+      })
 
 export const isPublicationStatusRecoveryKey = (
   key: string | null | undefined,
@@ -289,6 +306,16 @@ export const assertRunnableSuccessor = (
   now: Date = new Date(),
 ): void => {
   if (isRunnableSuccessor(job, now)) return
+  if (
+    kind === 'status-successor' &&
+    getJobCompensation({
+      idempotencyKey: job.idempotencyKey,
+      status: job.status,
+      type: job.type,
+    })
+  ) {
+    return
+  }
   throw new PlatformPublicationJobError(
     `Publication ${kind} job ${job.id} is ${job.status}; manual recovery is required`,
   )
@@ -321,17 +348,13 @@ const scheduleContinuation = async (
   const instant = now()
   if (isRunnableSuccessor(queued.job, instant)) return
   const finalLeaseExpiry = finalAttemptLeaseExpiry(queued.job, instant)
-  if (finalLeaseExpiry) {
-    const watchdog = await enqueuePublicationStatusSuccessor({
-      nextRunAt: new Date(finalLeaseExpiry.getTime() + 1),
-      publishJobId: job.id,
-      queue,
-      revision: job.executionRevision,
-    })
-    assertRunnableSuccessor(watchdog.job, 'status-successor', instant)
-    return
-  }
-  assertRunnableSuccessor(queued.job, 'continuation', instant)
+  const watchdog = await enqueuePublicationStatusSuccessor({
+    nextRunAt: finalLeaseExpiry ? new Date(finalLeaseExpiry.getTime() + 1) : instant,
+    publishJobId: job.id,
+    queue,
+    revision: job.executionRevision,
+  })
+  assertRunnableSuccessor(watchdog.job, 'status-successor', instant)
 }
 
 const scheduleRecovery = async (
