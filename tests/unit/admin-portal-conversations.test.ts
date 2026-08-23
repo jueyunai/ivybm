@@ -3,7 +3,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
-import { ConversationWorkspace } from '@/admin-portal/modules/conversations/ConversationWorkspace'
+import {
+  ConversationWorkspace,
+  mergeConversationSnapshots,
+} from '@/admin-portal/modules/conversations/ConversationWorkspace'
 import { CONVERSATIONS_MODULE } from '@/admin-portal/modules/conversations/manifest'
 import {
   ConversationClientError,
@@ -373,6 +376,145 @@ describe('Portal conversations module', () => {
       },
       url: '/api/portal/conversations/conv-1/operator-messages',
     })
+  })
+
+  it('keeps the original idempotency key after a successful command response cannot be parsed', async () => {
+    let commandAttempts = 0
+    const commandRequests: Array<{ idempotencyKey?: string; text?: string }> = []
+    const sentSession: ChatSession = {
+      ...session1,
+      messages: [
+        ...session1.messages,
+        {
+          author: 'operator',
+          content: 'same key retry',
+          createdAt: '2026-08-01T10:10:00.000Z',
+          id: 'm-same-key',
+          status: 'sent',
+        },
+      ],
+      revision: session1.revision + 1,
+    }
+
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const urlStr = String(url)
+      if (
+        urlStr.startsWith('/api/portal/conversations?') ||
+        urlStr === '/api/portal/conversations'
+      ) {
+        return Promise.resolve(
+          jsonResponse({
+            docs: [
+              { ...session1, lastMessageAt: session1.messages[0]?.createdAt, messages: undefined },
+            ],
+            page: 1,
+            totalDocs: 1,
+            totalPages: 1,
+          }),
+        )
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-1/operator-messages')) {
+        commandAttempts += 1
+        commandRequests.push(
+          JSON.parse(String(init?.body)) as { idempotencyKey?: string; text?: string },
+        )
+        return commandAttempts === 1
+          ? Promise.resolve(new Response('{', { status: 200 }))
+          : Promise.resolve(jsonResponse(sentSession))
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-1')) {
+        return Promise.resolve(jsonResponse(session1))
+      }
+      return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWorkspace('conv-1')
+    await waitFor(() => expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined())
+
+    const textarea = screen.getByPlaceholderText('输入给客户的回复…') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'same key retry' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送回复' }))
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('invalid JSON'))
+    expect(textarea.value).toBe('same key retry')
+
+    fireEvent.click(screen.getByRole('button', { name: '发送回复' }))
+    await waitFor(() => expect(commandAttempts).toBe(2))
+    expect(commandRequests[0]?.idempotencyKey).toBe(commandRequests[1]?.idempotencyKey)
+    expect(commandRequests[0]?.text).toBe(commandRequests[1]?.text)
+  })
+
+  it('does not show a command result for conversation A after list refresh selects conversation B', async () => {
+    let resolveCommand: (value: Response) => void = () => {}
+    const commandPromise = new Promise<Response>((resolve) => {
+      resolveCommand = resolve
+    })
+    let listRequests = 0
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      const urlStr = String(url)
+      if (
+        urlStr.startsWith('/api/portal/conversations?') ||
+        urlStr === '/api/portal/conversations'
+      ) {
+        listRequests += 1
+        const docs = listRequests > 1 ? [session2] : [session1, session2]
+        return Promise.resolve(
+          jsonResponse({
+            docs: docs.map((session) => ({
+              ...session,
+              lastMessageAt: session.messages[0]?.createdAt,
+              messages: undefined,
+            })),
+            page: 1,
+            totalDocs: docs.length,
+            totalPages: 1,
+          }),
+        )
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-1/resolve')) return commandPromise
+      if (urlStr.includes('/api/portal/conversations/conv-1'))
+        return Promise.resolve(jsonResponse(session1))
+      if (urlStr.includes('/api/portal/conversations/conv-2'))
+        return Promise.resolve(jsonResponse(session2))
+      return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWorkspace('conv-1')
+    await waitFor(() => expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined())
+    fireEvent.click(screen.getByRole('button', { name: '解决会话' }))
+
+    await act(async () => {
+      resolveCommand(
+        jsonResponse({
+          ...session1,
+          allowedActions: [],
+          handoffStatus: 'resolved',
+          revision: session1.revision + 1,
+        }),
+      )
+    })
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined())
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('merges same-revision message delivery status without regressing sent to pending', () => {
+    const pending: ChatSession = {
+      ...session1,
+      messages: [{ ...session1.messages[0], id: 'delivery-1', status: 'pending' }],
+    }
+    const sent: ChatSession = {
+      ...pending,
+      messages: [{ ...pending.messages[0], status: 'sent' }],
+    }
+    const stalePending: ChatSession = {
+      ...sent,
+      messages: [{ ...sent.messages[0], status: 'pending' }],
+    }
+
+    expect(mergeConversationSnapshots(pending, sent).messages[0]?.status).toBe('sent')
+    expect(mergeConversationSnapshots(sent, stalePending).messages[0]?.status).toBe('sent')
   })
 
   it('refreshes using the current filter after an older command completes', async () => {

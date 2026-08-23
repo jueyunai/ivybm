@@ -31,6 +31,7 @@ import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPrefe
 import { Button, PortalState, StatusBadge, Surface, cn } from '@/admin-portal/core/ui'
 import type {
   ChatMessage,
+  ChatMessageStatus,
   ChatSession,
   ChatSessionList,
   ChatSessionSummary,
@@ -50,6 +51,56 @@ type CommandName = 'operator-messages' | 'resolve' | 'take-over'
 type ConversationSelection = {
   routeConversationId: string | null
   selectedId: number | string | null
+}
+type ConversationFeedback = {
+  conversationId: string
+  message: string
+  selectionEpoch: number
+}
+
+const messageStatusRank: Record<ChatMessageStatus, number> = {
+  pending: 0,
+  failed: 1,
+  sent: 2,
+}
+
+const mergeMessages = (current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] => {
+  const currentById = new Map(current.map((message) => [String(message.id), message]))
+  const seen = new Set<string>()
+  const merged = incoming.map((message) => {
+    const key = String(message.id)
+    const previous = currentById.get(key)
+    seen.add(key)
+    if (!previous) return message
+    if (messageStatusRank[previous.status] > messageStatusRank[message.status]) return previous
+    if (
+      messageStatusRank[previous.status] === messageStatusRank[message.status] &&
+      previous.errorCode &&
+      !message.errorCode
+    ) {
+      return previous
+    }
+    return message
+  })
+  return [...merged, ...current.filter((message) => !seen.has(String(message.id)))]
+}
+
+/**
+ * Merge a response without allowing an older snapshot to undo a newer one.
+ * Conversation revision orders domain state; message status is merged
+ * separately because asynchronous platform delivery can change it without
+ * incrementing the conversation revision.
+ */
+export const mergeConversationSnapshots = (
+  current: ChatSession | null,
+  incoming: ChatSession,
+): ChatSession => {
+  if (!current || String(current.id) !== String(incoming.id)) return incoming
+  if (current.revision > incoming.revision) return current
+  if (current.revision === incoming.revision) {
+    return { ...current, messages: mergeMessages(current.messages, incoming.messages) }
+  }
+  return { ...incoming, messages: mergeMessages(current.messages, incoming.messages) }
 }
 
 const COPY = {
@@ -271,18 +322,20 @@ export function ConversationWorkspace({
   const [activeCommands, setActiveCommands] = useState<Record<string, CommandName>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [listRefreshGeneration, setListRefreshGeneration] = useState(0)
-  const [feedback, setFeedback] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<ConversationFeedback | null>(null)
   const listRequest = useRef(0)
   const detailRequest = useRef(0)
   const listAbortRef = useRef<AbortController | null>(null)
   const detailAbortRef = useRef<AbortController | null>(null)
   const selectedIdRef = useRef(selectedId)
   const selectionEpochRef = useRef(0)
+  const [selectionEpoch, setSelectionEpoch] = useState(0)
   const commandKeys = useRef(new Map<string, string>())
 
   useEffect(() => {
     if (String(selectedIdRef.current) !== String(selectedId)) {
       selectionEpochRef.current += 1
+      setSelectionEpoch(selectionEpochRef.current)
     }
     selectedIdRef.current = selectedId
   }, [selectedId])
@@ -300,20 +353,23 @@ export function ConversationWorkspace({
       selectionEpochRef.current === targetSelectionEpoch,
     [],
   )
+  const currentFeedback =
+    feedback &&
+    feedback.conversationId === currentConversationId &&
+    feedback.selectionEpoch === selectionEpoch
+      ? feedback.message
+      : null
 
   const commitSelectedSession = useCallback(
     (result: ChatSession, targetConversationId: string, targetSelectionEpoch: number) => {
-      if (!isCurrentSelection(targetConversationId, targetSelectionEpoch)) return
+      if (String(selectedIdRef.current) !== targetConversationId) return
       setSelected((current) => {
-        if (!isCurrentSelection(targetConversationId, targetSelectionEpoch)) return current
-        if (
-          current &&
-          String(current.id) === targetConversationId &&
-          current.revision > result.revision
-        ) {
-          return current
+        if (String(selectedIdRef.current) !== targetConversationId) return current
+        if (!isCurrentSelection(targetConversationId, targetSelectionEpoch)) {
+          if (current && result.revision < current.revision) return current
+          return mergeConversationSnapshots(current, result)
         }
-        return result
+        return mergeConversationSnapshots(current, result)
       })
     },
     [isCurrentSelection],
@@ -481,21 +537,28 @@ export function ConversationWorkspace({
         )
       }
       if (isCurrentSelection(targetConversationId, targetSelectionEpoch)) {
-        setFeedback(
-          nextCommand === 'take-over'
-            ? copy.takeOver
-            : nextCommand === 'resolve'
-              ? copy.resolve
-              : copy.reply,
-        )
+        setFeedback({
+          conversationId: targetConversationId,
+          message:
+            nextCommand === 'take-over'
+              ? copy.takeOver
+              : nextCommand === 'resolve'
+                ? copy.resolve
+                : copy.reply,
+          selectionEpoch: targetSelectionEpoch,
+        })
       }
       setListRefreshGeneration((current) => current + 1)
     } catch (error) {
-      if (!(error instanceof ConversationClientError) || !error.retryable) {
+      if (error instanceof ConversationClientError && error.safeToRotateIdempotencyKey) {
         commandKeys.current.delete(commandSignature)
       }
       if (isCurrentSelection(targetConversationId, targetSelectionEpoch)) {
-        setFeedback(error instanceof Error ? error.message : copy.failedDescription)
+        setFeedback({
+          conversationId: targetConversationId,
+          message: error instanceof Error ? error.message : copy.failedDescription,
+          selectionEpoch: targetSelectionEpoch,
+        })
         await loadDetail()
       }
     } finally {
@@ -762,9 +825,9 @@ export function ConversationWorkspace({
                     <dd>v{activeSession.revision}</dd>
                   </div>
                 </dl>
-                {feedback ? (
+                {currentFeedback ? (
                   <p className="portal-conversations__feedback" role="status">
-                    {feedback}
+                    {currentFeedback}
                   </p>
                 ) : null}
                 <section aria-label={copy.messages} className="portal-conversations__timeline">

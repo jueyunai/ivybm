@@ -15,16 +15,20 @@ const HANDOFF_STATUS_SET = new Set<HandoffStatus>([
 export class ConversationClientError extends Error {
   readonly code: ChatErrorCode | 'invalid_response' | 'network_failure'
   readonly retryable: boolean
+  /** The server must explicitly prove that no command side effect was accepted before rotating a key. */
+  readonly safeToRotateIdempotencyKey: boolean
 
   constructor(
     code: ChatErrorCode | 'invalid_response' | 'network_failure',
     message: string,
     retryable = false,
+    safeToRotateIdempotencyKey = false,
   ) {
     super(message)
     this.name = 'ConversationClientError'
     this.code = code
     this.retryable = retryable
+    this.safeToRotateIdempotencyKey = safeToRotateIdempotencyKey
   }
 }
 
@@ -44,6 +48,7 @@ const parseError = (value: unknown): ConversationClientError => {
     code as ConversationClientError['code'],
     message,
     value.error.retryable === true,
+    value.error.safeToRotateIdempotencyKey === true,
   )
 }
 

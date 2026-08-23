@@ -23,6 +23,7 @@ const installConversationMock = async (
   options?: {
     e2eDelayMs?: number
     e2eCommandGate?: Promise<void>
+    malformedFirstOperatorMessageResponse?: boolean
     secondDelayMs?: number
   },
 ) => {
@@ -70,6 +71,7 @@ const installConversationMock = async (
     'portal-conversation-e2e': session,
     'portal-conversation-second': alternateSession,
   }
+  let malformedOperatorMessageResponseSent = false
 
   await page.route('**/api/portal/conversations**', async (route) => {
     const url = new URL(route.request().url())
@@ -128,6 +130,15 @@ const installConversationMock = async (
       conversationId,
       idempotencyKey: commandBody.idempotencyKey,
     })
+    if (
+      command === 'operator-messages' &&
+      options?.malformedFirstOperatorMessageResponse &&
+      !malformedOperatorMessageResponseSent
+    ) {
+      malformedOperatorMessageResponseSent = true
+      await route.fulfill({ body: '{', contentType: 'application/json', status: 200 })
+      return
+    }
     if (conversationId === 'portal-conversation-e2e' && options?.e2eCommandGate) {
       await options.e2eCommandGate
     }
@@ -343,4 +354,50 @@ test('a pending command only disables its own conversation', async ({ page }) =>
   releaseFirstCommand()
   await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
   await expect(page.getByRole('button', { name: '发送回复' })).toBeVisible()
+})
+
+test('keeps a newer command result after switching away and back to the same conversation', async ({
+  page,
+}) => {
+  if (!(await login(page))) return
+  let releaseCommand: () => void = () => {}
+  const commandGate = new Promise<void>((resolve) => {
+    releaseCommand = resolve
+  })
+  await installConversationMock(page, { e2eCommandGate: commandGate })
+  await page.goto('/dashboard/conversations?conversation=portal-conversation-e2e')
+
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await page.getByRole('button', { name: '接管会话' }).click()
+  await expect(page.getByRole('button', { name: '正在提交…' })).toBeDisabled()
+
+  await page.getByRole('button', { name: /#portal-conversation-second/u }).click()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-second' })).toBeVisible()
+  await page.getByRole('button', { name: /#portal-conversation-e2e/u }).click()
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await expect(page.getByText('v1')).toBeVisible()
+
+  releaseCommand()
+  await expect(page.getByText('v2')).toBeVisible()
+  await expect(page.getByRole('button', { name: '发送回复' })).toBeVisible()
+})
+
+test('reuses the same idempotency key after a malformed successful reply response', async ({
+  page,
+}) => {
+  if (!(await login(page))) return
+  const mock = await installConversationMock(page, {
+    malformedFirstOperatorMessageResponse: true,
+  })
+  await page.goto('/dashboard/conversations?conversation=portal-conversation-e2e')
+
+  await expect(page.getByRole('heading', { name: '#portal-conversation-e2e' })).toBeVisible()
+  await page.getByRole('button', { name: '接管会话' }).click()
+  await page.getByPlaceholder('输入给客户的回复…').fill('retry with the same key')
+  await page.getByRole('button', { name: '发送回复' }).click()
+  await expect(page.getByPlaceholder('输入给客户的回复…')).toHaveValue('retry with the same key')
+
+  await page.getByRole('button', { name: '发送回复' }).click()
+  await expect.poll(() => mock.commandRequests.length).toBe(3)
+  expect(mock.commandRequests[1]?.idempotencyKey).toBe(mock.commandRequests[2]?.idempotencyKey)
 })
