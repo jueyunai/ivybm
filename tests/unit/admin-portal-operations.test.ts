@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Payload, PayloadRequest } from 'payload'
 
+import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import {
   getJobCompensation,
   parsePublicationRecoveryIdempotencyKey,
@@ -233,6 +234,7 @@ describe('Portal operations', () => {
           if (collection === 'publish-jobs' && id === 42) return publishJobDoc
           return null
         }),
+      create: vi.fn().mockResolvedValue({ id: 101 }),
     } as unknown as Payload
 
     const retryManually = vi.fn().mockResolvedValue({
@@ -265,6 +267,73 @@ describe('Portal operations', () => {
       expect.objectContaining({
         afterRetry: expect.any(Function),
         beforeRetry: expect.any(Function),
+      }),
+    )
+
+    const retryOptions = retryManually.mock.calls[0]?.[3]
+    await retryOptions?.afterRetry?.(recoveryJob, { id: 88, status: 'pending' } as never, req)
+    expect(payload.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'publish-logs',
+        context: contentStudioInternalWriteContext,
+        overrideAccess: true,
+      }),
+    )
+  })
+
+  it('writes the status recovery audit through the Content Studio write context', async () => {
+    const req = { user: { id: 3, role: 'admin' } } as unknown as PayloadRequest
+    const user = { collection: 'users', id: 3, role: 'admin' } as User
+    const statusJob = job({
+      id: 89,
+      idempotencyKey: 'publication-status:42:0',
+      payload: { expectedExecutionRevision: 0, publishJobId: 42 },
+      status: 'dead',
+      type: 'platform.publication.execute',
+    })
+    const publishJobDoc = {
+      executionRevision: 0,
+      id: 42,
+      providerIOStartedAt: null,
+      status: 'accepted',
+      claimLeaseExpiresAt: null,
+    }
+    const payload = {
+      findByID: vi.fn().mockImplementation(async ({ collection }: { collection: string }) => {
+        if (collection === 'jobs') return statusJob
+        if (collection === 'publish-jobs') return publishJobDoc
+        return null
+      }),
+      create: vi.fn().mockResolvedValue({ id: 102 }),
+    } as unknown as Payload
+    const retryManually = vi.fn().mockResolvedValue({
+      attempts: 0,
+      id: 89,
+      status: 'pending',
+    })
+
+    await expect(
+      retryPortalJob({
+        id: 89,
+        input: { updatedAt: '2026-07-30T00:00:00.000Z' },
+        payload,
+        queue: { retryManually },
+        req,
+        user,
+      }),
+    ).resolves.toEqual({
+      action: 'retry-publication-status-recovery',
+      jobId: 89,
+      status: 'pending',
+    })
+
+    const retryOptions = retryManually.mock.calls[0]?.[3]
+    await retryOptions?.afterRetry?.(statusJob, { id: 89, status: 'pending' } as never, req)
+    expect(payload.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'publish-logs',
+        context: contentStudioInternalWriteContext,
+        overrideAccess: true,
       }),
     )
   })

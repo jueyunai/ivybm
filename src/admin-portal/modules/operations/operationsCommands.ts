@@ -1,5 +1,6 @@
 import type { Payload, PayloadRequest } from 'payload'
 
+import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import {
   getJobCompensation,
   parsePublicationRecoveryIdempotencyKey,
@@ -191,6 +192,7 @@ export const retryPortalJob = async ({
       afterRetry: async (_currentJob, _retried, transactionReq) => {
         await payload.create({
           collection: 'publish-logs',
+          context: contentStudioInternalWriteContext,
           data: {
             actor: user.id,
             event: 'status-updated',
@@ -293,6 +295,7 @@ export const retryPortalJob = async ({
       afterRetry: async (_currentJob, _retried, transactionReq) => {
         await payload.create({
           collection: 'publish-logs',
+          context: contentStudioInternalWriteContext,
           data: {
             actor: user.id,
             event: 'status-updated',
