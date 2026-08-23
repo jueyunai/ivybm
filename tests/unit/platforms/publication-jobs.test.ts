@@ -6,6 +6,7 @@ import {
   enqueuePublicationExecution,
   enqueuePublicationRecovery,
   enqueuePublicationStatusSuccessor,
+  isPublicationRecoveryKey,
   isPublicationStatusRecoveryKey,
   isRunnableSuccessor,
   parsePlatformPublicationJobPayload,
@@ -33,6 +34,12 @@ const makeJob = (overrides: Partial<JobRecord> = {}): JobRecord => ({
 })
 
 describe('publication queue jobs', () => {
+  it('recognizes the bounded publication recovery identity', () => {
+    expect(isPublicationRecoveryKey('publication-recovery:42:1', 42, 1)).toBe(true)
+    expect(isPublicationRecoveryKey('publication-recovery:42:2', 42, 1)).toBe(false)
+    expect(isPublicationRecoveryKey('publication-execute:42:1', 42, 1)).toBe(false)
+  })
+
   it('recognizes the bounded status recovery identity', () => {
     expect(isPublicationStatusRecoveryKey('publication-status:42:1', 42, 1)).toBe(true)
     expect(isPublicationStatusRecoveryKey('publication-status:42:2', 42, 1)).toBe(false)
@@ -258,7 +265,7 @@ describe('publication queue jobs', () => {
       ).toBe(true)
     })
 
-    it('accepts processing job on final attempt when lease is unexpired', () => {
+    it('rejects processing job on final attempt even when lease is unexpired', () => {
       expect(
         isRunnableSuccessor(
           makeJob({
@@ -270,7 +277,7 @@ describe('publication queue jobs', () => {
           }),
           now,
         ),
-      ).toBe(true)
+      ).toBe(false)
     })
 
     it('rejects processing job on final attempt when lease is expired (matches claimNext dead transition)', () => {

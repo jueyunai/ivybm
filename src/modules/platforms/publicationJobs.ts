@@ -230,6 +230,12 @@ export const isPublicationStatusRecoveryKey = (
   revision: number,
 ): boolean => key === `publication-status:${publishJobId}:${revision}`
 
+export const isPublicationRecoveryKey = (
+  key: string | null | undefined,
+  publishJobId: number,
+  revision: number,
+): boolean => key === `publication-recovery:${publishJobId}:${revision}`
+
 export const enqueuePublicationRecovery = async ({
   nextRunAt,
   publishJobId,
@@ -249,13 +255,12 @@ export const enqueuePublicationRecovery = async ({
     type: PLATFORM_PUBLICATION_JOB_TYPE,
   })
 
-export const isRunnableSuccessor = (job: JobRecord, now: Date = new Date()): boolean => {
+export const isRunnableSuccessor = (job: JobRecord, _now: Date = new Date()): boolean => {
   if (job.status === 'processing') {
     if (!job.ownerToken || !job.leaseExpiresAt) return false
     const leaseExpiry = Date.parse(job.leaseExpiresAt)
     if (!Number.isFinite(leaseExpiry)) return false
-    if (job.attempts < job.maxAttempts) return true
-    return leaseExpiry > now.getTime()
+    return job.attempts < job.maxAttempts
   }
   return (
     (job.status === 'pending' || job.status === 'failed') &&
@@ -263,6 +268,19 @@ export const isRunnableSuccessor = (job: JobRecord, now: Date = new Date()): boo
     Boolean(job.nextRunAt) &&
     Number.isFinite(Date.parse(job.nextRunAt!))
   )
+}
+
+const finalAttemptLeaseExpiry = (job: JobRecord, now: Date): Date | null => {
+  if (
+    job.status !== 'processing' ||
+    job.attempts < job.maxAttempts ||
+    !job.ownerToken ||
+    !job.leaseExpiresAt
+  ) {
+    return null
+  }
+  const leaseExpiry = Date.parse(job.leaseExpiresAt)
+  return Number.isFinite(leaseExpiry) && leaseExpiry > now.getTime() ? new Date(leaseExpiry) : null
 }
 
 export const assertRunnableSuccessor = (
@@ -300,7 +318,20 @@ const scheduleContinuation = async (
     queue,
     revision: job.executionRevision,
   })
-  assertRunnableSuccessor(queued.job, 'continuation', now())
+  const instant = now()
+  if (isRunnableSuccessor(queued.job, instant)) return
+  const finalLeaseExpiry = finalAttemptLeaseExpiry(queued.job, instant)
+  if (finalLeaseExpiry) {
+    const watchdog = await enqueuePublicationStatusSuccessor({
+      nextRunAt: new Date(finalLeaseExpiry.getTime() + 1),
+      publishJobId: job.id,
+      queue,
+      revision: job.executionRevision,
+    })
+    assertRunnableSuccessor(watchdog.job, 'status-successor', instant)
+    return
+  }
+  assertRunnableSuccessor(queued.job, 'continuation', instant)
 }
 
 const scheduleRecovery = async (
@@ -370,6 +401,21 @@ const reconcileDurableOutcome = async ({
   const obligation = classifyPublicationQueueObligation(job, expectedExecutionRevision, now())
   if (obligation === 'complete') return
   if (obligation === 'recovery') {
+    if (isPublicationRecoveryKey(currentIdempotencyKey, job.id, job.executionRevision)) {
+      const leaseExpiry = job.claimLeaseExpiresAt ? Date.parse(job.claimLeaseExpiresAt) : Number.NaN
+      if (Number.isFinite(leaseExpiry) && leaseExpiry > now().getTime()) {
+        throw new JobRetryNotBeforeError(
+          dispatchError instanceof Error
+            ? dispatchError.message
+            : 'Publication recovery checkpoint is unresolved; waiting for the retained claim lease to expire.',
+          new Date(leaseExpiry + 1),
+        )
+      }
+      if (dispatchError) throw dispatchError
+      throw new PlatformPublicationJobError(
+        'Publication recovery checkpoint is unresolved; the bounded recovery job must be retried or manually compensated.',
+      )
+    }
     await scheduleRecovery(job, queue, now)
     throw new PlatformPublicationJobError(
       'Publication checkpoint is unresolved; durable recovery was scheduled without replaying provider I/O',

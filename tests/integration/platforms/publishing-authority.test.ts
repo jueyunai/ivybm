@@ -7,7 +7,11 @@ import { getPayload, type Payload } from 'payload'
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import { JobWorker } from '@/modules/jobs/worker'
-import { PayloadPlatformPublicationAuthority } from '@/modules/platforms/payloadPublishingAuthority'
+import {
+  PayloadInstagramPublishingAuthority,
+  PayloadLinkedInImagePublishingAuthority,
+  PayloadPlatformPublicationAuthority,
+} from '@/modules/platforms/payloadPublishingAuthority'
 import { PayloadPublishingAccountResolver } from '@/modules/platforms/publishingAccountResolver'
 import {
   createPlatformPublicationJobHandler,
@@ -115,6 +119,85 @@ const createIntentAndLease = async ({ claimQueueJob = true }: { claimQueueJob?: 
     queue,
     queuedJob: queued.job,
   }
+}
+
+const createStagedJobAndQueue = async (
+  executionRoute: 'instagram-image-staged' | 'linkedin-image-staged',
+) => {
+  const suffix = randomUUID()
+  const platform = executionRoute === 'instagram-image-staged' ? 'instagram' : 'linkedin'
+  const content = await payload.create({
+    collection: 'generated-contents',
+    context: contentStudioInternalWriteContext,
+    data: {
+      body: `${platform} staged publication`,
+      contentLocale: 'en',
+      contentType: 'post',
+      createdBy: admin.id,
+      creationFingerprint: 'c'.repeat(64),
+      idempotencyKey: `publishing-authority-${platform}-content:${suffix}`,
+      platform,
+      status: 'approved',
+      title: `${platform} staged publication fixture`,
+    },
+    overrideAccess: true,
+  })
+  contentIDs.push(content.id)
+  const idempotencyKey = `publish:v1:${suffix.replaceAll('-', '')}:${platform}`
+  const providerCheckpoint =
+    executionRoute === 'instagram-image-staged'
+      ? {
+          accountExternalId: '1789000012345678',
+          authorizationRevision: account.authorizationRevision,
+          caption: 'Instagram staged publication',
+          imageUrl: 'https://media.example.invalid/instagram-stage.jpg',
+          stage: 'scheduled',
+        }
+      : {
+          asset: {
+            byteLength: 4,
+            contentType: 'image/png',
+            id: `linkedin-asset-${suffix}`,
+            sha256: 'd'.repeat(64),
+          },
+          checkpoint: {
+            author: { kind: 'organization', organizationId: '971937765923229' },
+            authorizationRevision: account.authorizationRevision,
+            commentary: 'LinkedIn staged publication',
+            stage: 'scheduled',
+          },
+        }
+  const publishJob = await payload.create({
+    collection: 'publish-jobs',
+    context: contentStudioInternalWriteContext,
+    data: {
+      authorizationRevision: account.authorizationRevision,
+      content: content.id,
+      createdBy: admin.id,
+      executionRevision: 0,
+      executionRoute,
+      fencingGeneration: 0,
+      idempotencyKey,
+      mode: 'automatic',
+      platform,
+      platformAccount: account.id,
+      providerCheckpoint,
+      requestFingerprint: 'e'.repeat(64),
+      scheduledFor: new Date().toISOString(),
+      status: 'scheduled',
+    },
+    overrideAccess: true,
+  })
+  publishJobIDs.push(publishJob.id)
+  const queue = new PayloadJobQueue({ payload })
+  const queued = await queue.enqueue({
+    idempotencyKey: `publication-execute:${publishJob.id}:0`,
+    maxAttempts: 2,
+    payload: { expectedExecutionRevision: 0, publishJobId: publishJob.id },
+    type: PLATFORM_PUBLICATION_JOB_TYPE,
+  })
+  jobIDs.push(queued.job.id)
+  return { publishJob, queue, queuedJob: queued.job }
 }
 
 describe.sequential('Task 13 Payload publication authority', () => {
@@ -520,6 +603,114 @@ describe.sequential('Task 13 Payload publication authority', () => {
       })
     },
   )
+
+  it('persists a watchdog before trusting an active final-attempt continuation', async () => {
+    const { intent, queue, queuedJob } = await createIntentAndLease({ claimQueueJob: false })
+    await pool().query(
+      `UPDATE jobs
+       SET status = 'dead', dead_at = NOW(), next_run_at = NULL,
+           owner_token = NULL, lease_expires_at = NULL
+       WHERE type = $1 AND id <> $2 AND status IN ('pending', 'failed', 'processing')`,
+      [PLATFORM_PUBLICATION_JOB_TYPE, queuedJob.id],
+    )
+    const continuationKey = `publication-execute:${intent.publishJobId}:1`
+    let rejectContinuation = true
+    const enqueue = vi.fn(async (...args: Parameters<PayloadJobQueue['enqueue']>) => {
+      const [input, req] = args
+      if (rejectContinuation && input.idempotencyKey === continuationKey) {
+        rejectContinuation = false
+        await queue.enqueue(input, req)
+        throw new Error('Injected continuation acknowledgement failure')
+      }
+      return queue.enqueue(input, req)
+    })
+    const publish = vi.fn().mockResolvedValue({
+      externalPublicationId: '129472283584550_919191919',
+      idempotencyKey: intent.snapshot.idempotencyKey,
+      platform: 'facebook' as const,
+      platformAccountId: account.id,
+      status: 'accepted' as const,
+    })
+    const getStatus = vi.fn()
+    const worker = new JobWorker({
+      handlers: {
+        [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+          payload,
+          queue: { enqueue },
+          resolveRuntime: () => ({
+            directService: {
+              getCapability: vi.fn(),
+              getStatus,
+              prepareAssistedPublication: vi.fn(),
+              publish,
+            },
+            linkedInTransport: {} as never,
+            metaTransport: {} as never,
+            readLinkedInAssetBytes: vi.fn(),
+          }),
+        }),
+      },
+      queue,
+    })
+
+    await expect(worker.runOnce()).resolves.toBe('failed')
+    expect(publish).toHaveBeenCalledTimes(1)
+    const continuation = await pool().query<{ id: number }>(
+      'SELECT id FROM jobs WHERE type = $1 AND idempotency_key = $2 LIMIT 1',
+      [PLATFORM_PUBLICATION_JOB_TYPE, continuationKey],
+    )
+    const continuationJobId = continuation.rows[0]?.id
+    if (!continuationJobId) throw new Error('Expected direct continuation job')
+    jobIDs.push(continuationJobId)
+    const continuationLease = new Date(Date.now() + 120_000)
+    await pool().query(
+      `UPDATE jobs
+       SET status = 'processing', attempts = max_attempts,
+           owner_token = 'final-attempt-worker', lease_expires_at = $1,
+           next_run_at = NULL
+       WHERE id = $2`,
+      [continuationLease.toISOString(), continuationJobId],
+    )
+    await pool().query("UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1", [
+      queuedJob.id,
+    ])
+
+    await expect(worker.runOnce()).resolves.toBe('succeeded')
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(getStatus).not.toHaveBeenCalled()
+    const watchdogKey = `publication-status:${intent.publishJobId}:1`
+    const watchdog = await pool().query<{
+      id: number
+      next_run_at: Date | string
+      status: string
+    }>('SELECT id, next_run_at, status FROM jobs WHERE type = $1 AND idempotency_key = $2', [
+      PLATFORM_PUBLICATION_JOB_TYPE,
+      watchdogKey,
+    ])
+    expect(watchdog.rows).toHaveLength(1)
+    expect(watchdog.rows[0]).toMatchObject({ status: 'pending' })
+    expect(new Date(watchdog.rows[0]!.next_run_at).getTime()).toBeGreaterThan(
+      continuationLease.getTime(),
+    )
+    const watchdogJobId = watchdog.rows[0]!.id
+    jobIDs.push(watchdogJobId)
+
+    await pool().query(
+      "UPDATE jobs SET lease_expires_at = NOW() - INTERVAL '1 second' WHERE id = $1",
+      [continuationJobId],
+    )
+    await pool().query("UPDATE jobs SET next_run_at = NOW() - INTERVAL '1 second' WHERE id = $1", [
+      watchdogJobId,
+    ])
+    const claimedWatchdog = await queue.claimNext([PLATFORM_PUBLICATION_JOB_TYPE])
+    expect(claimedWatchdog?.id).toBe(watchdogJobId)
+    const crashedContinuation = await pool().query<{ status: string }>(
+      'SELECT status FROM jobs WHERE id = $1',
+      [continuationJobId],
+    )
+    expect(crashedContinuation.rows[0]?.status).toBe('dead')
+    expect(publish).toHaveBeenCalledTimes(1)
+  })
 
   it('fails the attempt after a checkpoint conflict and recovers durably without republishing', async () => {
     const { intent, queue, queuedJob } = await createIntentAndLease({ claimQueueJob: false })
@@ -934,6 +1125,142 @@ describe.sequential('Task 13 Payload publication authority', () => {
         providerIOStartedAt: expect.any(String),
         status: 'scheduled',
       })
+    },
+  )
+
+  it.each(['instagram-image-staged', 'linkedin-image-staged'] as const)(
+    'bounds retained %s checkpoint recovery without replaying provider mutation',
+    async (executionRoute) => {
+      const { publishJob, queue, queuedJob } = await createStagedJobAndQueue(executionRoute)
+      await pool().query(
+        `UPDATE jobs
+         SET status = 'dead', dead_at = NOW(), next_run_at = NULL,
+             owner_token = NULL, lease_expires_at = NULL
+         WHERE type = $1 AND id <> $2 AND status IN ('pending', 'failed', 'processing')`,
+        [PLATFORM_PUBLICATION_JOB_TYPE, queuedJob.id],
+      )
+      const createInstagramMedia = vi.fn().mockResolvedValue({ creationId: 'ig-container-1' })
+      const initializeImageUpload = vi.fn().mockResolvedValue({
+        imageUrn: 'urn:li:image:staged_1',
+        sealedUpload: `v1.${'a'.repeat(16)}.${'b'.repeat(22)}.${'c'.repeat(24)}`,
+        uploadUrlExpiresAt: 1_900_000_000_000,
+      })
+      let restoreCommit: () => void
+      if (executionRoute === 'instagram-image-staged') {
+        const commit = vi
+          .spyOn(PayloadInstagramPublishingAuthority.prototype, 'commitStage')
+          .mockResolvedValue({ reason: 'claim_conflict', status: 'blocked' })
+        restoreCommit = () => commit.mockRestore()
+      } else {
+        const commit = vi
+          .spyOn(PayloadLinkedInImagePublishingAuthority.prototype, 'commitStage')
+          .mockResolvedValue({ reason: 'claim_conflict', status: 'blocked' })
+        restoreCommit = () => commit.mockRestore()
+      }
+      const worker = new JobWorker({
+        handlers: {
+          [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+            payload,
+            queue,
+            resolveRuntime: () => ({
+              directService: {
+                getCapability: vi.fn(),
+                getStatus: vi.fn(),
+                prepareAssistedPublication: vi.fn(),
+                publish: vi.fn(),
+              },
+              linkedInTransport: {
+                getPostStatus: vi.fn(),
+                initializeImageUpload,
+                publishImagePost: vi.fn(),
+                publishTextPost: vi.fn(),
+                uploadImage: vi.fn(),
+              },
+              metaTransport: {
+                createInstagramMedia,
+                getFacebookPagePostPermalink: vi.fn(),
+                getInstagramContainerStatus: vi.fn(),
+                getInstagramMediaPermalink: vi.fn(),
+                publishFacebookPagePhoto: vi.fn(),
+                publishInstagramMedia: vi.fn(),
+              },
+              readLinkedInAssetBytes: vi.fn(),
+            }),
+          }),
+        },
+        queue,
+      })
+
+      try {
+        await expect(worker.runOnce()).resolves.toBe('failed')
+        expect(createInstagramMedia).toHaveBeenCalledTimes(
+          executionRoute === 'instagram-image-staged' ? 1 : 0,
+        )
+        expect(initializeImageUpload).toHaveBeenCalledTimes(
+          executionRoute === 'linkedin-image-staged' ? 1 : 0,
+        )
+        const recoveryKey = `publication-recovery:${publishJob.id}:0`
+        const recovery = await pool().query<{ id: number }>(
+          'SELECT id FROM jobs WHERE type = $1 AND idempotency_key = $2 LIMIT 1',
+          [PLATFORM_PUBLICATION_JOB_TYPE, recoveryKey],
+        )
+        const recoveryJobId = recovery.rows[0]?.id
+        if (!recoveryJobId) throw new Error('Expected staged publication recovery job')
+        jobIDs.push(recoveryJobId)
+
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          await pool().query(
+            `UPDATE publish_jobs
+             SET claim_lease_expires_at = NOW() - INTERVAL '1 second'
+             WHERE id = $1`,
+            [publishJob.id],
+          )
+          await pool().query(
+            `UPDATE jobs
+             SET next_run_at = CASE WHEN id = $1 THEN NOW() - INTERVAL '1 second'
+                                    ELSE NOW() + INTERVAL '1 hour' END
+             WHERE id = ANY($2::int[])`,
+            [recoveryJobId, [recoveryJobId, queuedJob.id]],
+          )
+          await expect(worker.runOnce()).resolves.toBe('failed')
+        }
+
+        const exhausted = await pool().query<{
+          attempts: string
+          last_error: string | null
+          status: string
+        }>('SELECT attempts::text, last_error, status FROM jobs WHERE id = $1', [recoveryJobId])
+        expect(exhausted.rows[0]).toMatchObject({
+          attempts: '2',
+          last_error: expect.stringContaining('checkpoint is unresolved'),
+          status: 'dead',
+        })
+        const recoveryCount = await pool().query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM jobs WHERE type = $1 AND idempotency_key = $2',
+          [PLATFORM_PUBLICATION_JOB_TYPE, recoveryKey],
+        )
+        expect(recoveryCount.rows[0]?.count).toBe('1')
+        expect(createInstagramMedia).toHaveBeenCalledTimes(
+          executionRoute === 'instagram-image-staged' ? 1 : 0,
+        )
+        expect(initializeImageUpload).toHaveBeenCalledTimes(
+          executionRoute === 'linkedin-image-staged' ? 1 : 0,
+        )
+        await expect(
+          payload.findByID({
+            collection: 'publish-jobs',
+            depth: 0,
+            id: publishJob.id,
+            overrideAccess: true,
+          }),
+        ).resolves.toMatchObject({
+          executionRevision: 0,
+          providerIOStartedAt: expect.any(String),
+          status: 'scheduled',
+        })
+      } finally {
+        restoreCommit()
+      }
     },
   )
 
