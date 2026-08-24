@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PortalLoginForm } from '@/admin-portal/core/auth/PortalLoginForm'
+import { PortalLoginShowcase } from '@/admin-portal/core/auth/PortalLoginShowcase'
 import { requestPortalLogin } from '@/admin-portal/core/auth/requestPortalLogin'
 
 const navigation = vi.hoisted(() => ({
@@ -95,5 +96,23 @@ describe('Portal login', () => {
     expect((screen.getByRole('button', { name: '登录后台' }) as HTMLButtonElement).disabled).toBe(
       false,
     )
+  })
+
+  it('labels showcase data as synthetic and exposes keyboard-accessible pipeline controls', () => {
+    render(React.createElement(PortalLoginShowcase, { returnTo: '/dashboard' }))
+
+    expect(screen.getByText(/虚构演示数据/)).toBeTruthy()
+    const firstStep = screen.getByRole('button', { name: /STEP 01/ })
+    expect(firstStep.getAttribute('aria-pressed')).toBe('true')
+    expect(firstStep.getAttribute('type')).toBe('button')
+
+    const scenarioButtons = screen.getAllByRole('button', { name: /沙特阿拉伯|德国|美国/ })
+    expect(scenarioButtons[0].getAttribute('aria-pressed')).toBe('true')
+    expect(scenarioButtons[1].getAttribute('aria-pressed')).toBe('false')
+
+    fireEvent.click(scenarioButtons[1])
+    expect(scenarioButtons[0].getAttribute('aria-pressed')).toBe('false')
+    expect(scenarioButtons[1].getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText(/示例买家 B/)).toBeTruthy()
   })
 })

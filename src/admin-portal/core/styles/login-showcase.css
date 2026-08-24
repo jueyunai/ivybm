@@ -1,0 +1,421 @@
+/* ==========================================================================
+   IVYBM Login Showcase - B-3 Twilight Base with Novel Interactive Paradigms
+   ========================================================================== */
+
+/* Base Wrapper for Showcase Page (B-3 Base Theme) */
+.login-showcase-page {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+  padding: 76px 36px 28px;
+  position: relative;
+  overflow-x: hidden;
+  background-color: #f8fafc;
+  background-image:
+    radial-gradient(circle at 10% 12%, rgba(49, 48, 192, 0.07) 0%, transparent 40%),
+    radial-gradient(circle at 90% 85%, rgba(99, 102, 241, 0.05) 0%, transparent 40%),
+    linear-gradient(to right, #e2e8f0 1px, transparent 1px),
+    linear-gradient(to bottom, #e2e8f0 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    24px 24px,
+    24px 24px;
+  color: #0f172a;
+  font-family: var(--portal-font-ui, system-ui, -apple-system, sans-serif);
+}
+
+.login-showcase-page .login-showcase-container {
+  width: 100%;
+  max-width: 1380px;
+  margin: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.48fr) minmax(360px, 420px);
+  gap: 48px;
+  align-items: center;
+  flex: 1;
+}
+
+/* Brand Header with New Logo */
+.login-showcase-page .brand-header-wrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.login-showcase-page .brand-logo-img {
+  height: 38px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.login-showcase-page .brand-badge-divider {
+  width: 1px;
+  height: 24px;
+  background: #cbd5e1;
+}
+
+.login-showcase-page .brand-system-tag {
+  font-size: 12px;
+  font-weight: 700;
+  color: #3130c0;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.login-showcase-page .hero-heading {
+  font-size: clamp(26px, 3.2vw, 36px);
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.5px;
+  color: #0f172a;
+  margin: 0 0 12px;
+}
+
+.login-showcase-page .hero-heading-gradient {
+  color: #3130c0;
+}
+
+.login-showcase-page .hero-desc {
+  font-size: 14px;
+  line-height: 1.65;
+  color: #475569;
+  max-width: 680px;
+  margin: 0 0 24px;
+}
+
+.login-showcase-page .showcase-disclaimer {
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Common Showcase Board */
+.login-showcase-page .showcase-board {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px -5px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.login-showcase-page .board-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.login-showcase-page .board-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.login-showcase-page .board-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.login-showcase-page .board-dot.red {
+  background: #ef4444;
+}
+.login-showcase-page .board-dot.yellow {
+  background: #f59e0b;
+}
+.login-showcase-page .board-dot.green {
+  background: #10b981;
+}
+
+.login-showcase-page .board-title-tag {
+  font-size: 11px;
+  font-family: var(--portal-font-data, monospace);
+  color: #3130c0;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.login-showcase-page .live-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: pulse-glow 2s infinite;
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+}
+
+.login-showcase-page .board-content {
+  padding: 20px;
+}
+
+/* ==========================================================================
+   INTERACTION 1: PIPELINE SANDBOX (实时获客流水线 · 节点交互沙盒)
+   ========================================================================== */
+.login-showcase-page .pipeline-steps-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.login-showcase-page .pipeline-step-item {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.login-showcase-page .pipeline-step-item:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.login-showcase-page .pipeline-step-item.is-active {
+  background: #e1e0ff;
+  border-color: #3130c0;
+  box-shadow: 0 2px 8px rgba(49, 48, 192, 0.15);
+}
+
+.login-showcase-page .pipeline-step-num {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  font-family: var(--portal-font-data, monospace);
+}
+.login-showcase-page .pipeline-step-item.is-active .pipeline-step-num {
+  color: #3130c0;
+}
+
+.login-showcase-page .pipeline-step-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.login-showcase-page .scenario-pill-group {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.login-showcase-page .scenario-pill-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.login-showcase-page .scenario-pill-btn:hover {
+  border-color: #3130c0;
+  color: #3130c0;
+}
+
+.login-showcase-page .scenario-pill-btn.is-active {
+  background: #3130c0;
+  border-color: #3130c0;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(49, 48, 192, 0.25);
+}
+
+.login-showcase-page .sandbox-stage-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1.2fr 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.login-showcase-page .sandbox-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.login-showcase-page .sandbox-panel-head {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.login-showcase-page .sandbox-panel-main {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #1e293b;
+}
+
+.login-showcase-page .sandbox-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.login-showcase-page .sandbox-chip {
+  background: #e1e0ff;
+  color: #3130c0;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Right Login Card (Refined B-3) */
+.login-showcase-page .login-card {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-top: 3px solid #3130c0;
+  border-radius: 12px;
+  padding: 32px 28px;
+  box-shadow:
+    0 16px 36px -5px rgba(15, 23, 42, 0.08),
+    0 0 0 1px rgba(15, 23, 42, 0.03);
+}
+
+.login-showcase-page .login-card-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 6px;
+}
+
+.login-showcase-page .login-card-desc {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0 0 24px;
+}
+
+.login-showcase-page .portal-field__label {
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.login-showcase-page .portal-field__control {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+  border-radius: 6px;
+}
+
+.login-showcase-page .portal-field__control input {
+  color: #0f172a;
+}
+
+.login-showcase-page .portal-field__control input::placeholder {
+  color: #94a3b8;
+}
+
+.login-showcase-page .portal-field__control:focus-within {
+  border-color: #3130c0;
+  box-shadow: 0 0 0 2px rgba(49, 48, 192, 0.15);
+  background: #ffffff;
+}
+
+.login-showcase-page .portal-login-form button[type='submit'] {
+  background: #3130c0;
+  color: #ffffff;
+  font-weight: 700;
+  border-radius: 6px;
+  height: 42px;
+  box-shadow: 0 4px 14px rgba(49, 48, 192, 0.3);
+}
+
+.login-showcase-page .portal-login-form button[type='submit']:hover {
+  background: #252494;
+}
+
+/* ==========================================================================
+   Responsive Rules & Footer
+   ========================================================================== */
+@media (max-width: 1080px) {
+  .login-showcase-page .login-showcase-container {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  .login-showcase-page .showcase-right-pane {
+    order: -1;
+    width: 100%;
+  }
+  .login-showcase-page .showcase-left-pane {
+    order: 1;
+  }
+  .login-showcase-page {
+    padding-top: 24px;
+  }
+}
+
+@media (max-width: 640px) {
+  .login-showcase-page .sandbox-stage-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .login-showcase-page .pipeline-steps-bar {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .login-showcase-page .scenario-pill-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .login-showcase-page .scenario-pill-btn {
+    max-width: 100%;
+    white-space: normal;
+    text-align: left;
+  }
+}
+
+.login-showcase-page .showcase-footer {
+  text-align: center;
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 36px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}

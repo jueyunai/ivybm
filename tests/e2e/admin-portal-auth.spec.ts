@@ -17,16 +17,73 @@ test('unauthenticated Portal requests preserve a safe return target', async ({ p
   await page.goto('/dashboard')
 
   await expect(page).toHaveURL(/\/dashboard\/login\?returnTo=%2Fdashboard$/)
-  await expect(page.getByRole('heading', { name: '登录后台' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎登录 IVYBM' })).toBeVisible()
 
   await page.goto('/dashboard/login?returnTo=https%3A%2F%2Fevil.example%2Fdashboard')
-  await expect(page.getByRole('heading', { name: '登录后台' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎登录 IVYBM' })).toBeVisible()
 
   await fillPortalLogin(page, 'invalid@example.invalid', 'invalid-password-123')
   await page.getByRole('button', { name: '登录后台' }).click()
   await expect(page.locator('.portal-login-form__error')).toContainText('邮箱或密码不正确')
   expect(page.url()).not.toContain('password')
   expect(page.url()).not.toContain('invalid%40example.invalid')
+})
+
+test('Portal login keeps the primary action reachable on narrow and zoomed viewports', async ({
+  page,
+}) => {
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/dashboard/login')
+
+    const submit = page.getByRole('button', { name: '登录后台' })
+    await expect(submit).toBeVisible()
+    await expect(submit).toBeInViewport()
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/dashboard/login')
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '2'
+  })
+
+  await expect(page.getByRole('button', { name: '登录后台' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '登录后台' })).toBeInViewport()
+})
+
+test('Portal login keeps every scenario control reachable at narrow and zoomed viewports', async ({
+  page,
+}) => {
+  for (const { viewport, zoom } of [
+    { viewport: { width: 320, height: 568 }, zoom: 1 },
+    { viewport: { width: 390, height: 844 }, zoom: 2 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/dashboard/login')
+    if (zoom !== 1) {
+      await page.evaluate((value) => {
+        document.documentElement.style.zoom = String(value)
+      }, zoom)
+    }
+
+    const scenarioGroup = page.locator('.scenario-pill-group')
+    await scenarioGroup.scrollIntoViewIfNeeded()
+
+    for (const country of ['沙特阿拉伯', '德国', '美国']) {
+      const button = page.getByRole('button', { name: new RegExp(country) })
+      await expect(button).toBeVisible()
+      await expect(button).toBeInViewport({ ratio: 1 })
+    }
+
+    await expect(page.getByText(/买家原始接入 \(示例买家 A\)/)).toBeVisible()
+    const unitedStates = page.getByRole('button', { name: /美国/ })
+    await unitedStates.click()
+    await expect(unitedStates).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByText(/买家原始接入 \(示例买家 C\)/)).toBeVisible()
+  }
 })
 
 test('Portal login exposes stable locked, unavailable, and network failure states', async ({

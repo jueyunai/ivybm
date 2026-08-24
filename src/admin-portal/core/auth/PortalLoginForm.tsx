@@ -71,10 +71,6 @@ export function PortalLoginForm({
           <input autoComplete="current-password" minLength={12} name="password" required type="password" />
         </span>
       </label>
-      <div className="portal-login-form__meta">
-        <span>至少 12 位</span>
-        <span>会话 2 小时</span>
-      </div>
       {error ? (
         <p className="portal-login-form__error" role="alert">
           {error}
@@ -83,7 +79,6 @@ export function PortalLoginForm({
       <Button aria-busy={pending ? 'true' : undefined} disabled={pending} type="submit">
         {pending ? '正在登录…' : '登录后台'}
       </Button>
-      <p className="portal-login-form__security">登录失败限流 · 安全 Cookie · 受控账号</p>
     </form>
   )
 }
