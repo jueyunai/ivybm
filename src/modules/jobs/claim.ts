@@ -79,6 +79,10 @@ export type PayloadJobQueueOptions = {
   retryOptions?: RetryOptions
 }
 
+export type EnsureRunnableJobOptions = {
+  rearmSucceeded?: boolean
+}
+
 const toDateString = (value: Date | string | null): string | null => {
   if (value === null) return null
   const date = value instanceof Date ? value : new Date(value)
@@ -154,6 +158,11 @@ const requireClaimedJob = (job: JobRecord): ClaimedJob => {
 }
 
 const errorMessage = (error: Error): string => error.message.slice(0, 2_000)
+
+export type ManualRetryOptions = {
+  beforeRetry?: (job: Job, req: PayloadRequest) => Promise<Date | undefined>
+  afterRetry?: (job: Job, retried: JobRecord, req: PayloadRequest) => Promise<void>
+}
 
 export class PayloadJobQueue {
   private readonly clock: () => Date
@@ -291,6 +300,65 @@ export class PayloadJobQueue {
     return { job: mapDatabaseJob(existing.rows[0]), state: 'duplicate' }
   }
 
+  /**
+   * Create or repair a revision-scoped successor without trusting the
+   * requested schedule over the row that won the idempotency race. This is
+   * intentionally narrow: failed/pending rows keep their attempt budget and
+   * only move later, while an anomalous succeeded status-only row may be
+   * rearmed because status reconciliation is read-only and idempotent.
+   */
+  async ensureRunnable(
+    input: CreateJobInput,
+    options: EnsureRunnableJobOptions = {},
+  ): Promise<{ job: JobRecord; state: 'created' | 'duplicate' }> {
+    const queued = await this.enqueue(input)
+    const idempotencyKey = input.idempotencyKey
+    if (!idempotencyKey) return queued
+
+    const now = this.clock().toISOString()
+    const nextRunAt = (input.nextRunAt ?? this.clock()).toISOString()
+    const rearmSucceeded = options.rearmSucceeded === true
+    const repaired = await this.pool.query<JobDatabaseRow>(
+      `UPDATE jobs
+       SET
+         status = CASE WHEN $4::boolean AND status = 'succeeded' THEN 'pending' ELSE status END,
+         attempts = CASE WHEN $4::boolean AND status = 'succeeded' THEN 0 ELSE attempts END,
+         completed_at = CASE WHEN $4::boolean AND status = 'succeeded' THEN NULL ELSE completed_at END,
+         dead_at = CASE WHEN $4::boolean AND status = 'succeeded' THEN NULL ELSE dead_at END,
+         last_error = CASE WHEN $4::boolean AND status = 'succeeded' THEN NULL ELSE last_error END,
+         next_run_at = CASE
+           WHEN $4::boolean AND status = 'succeeded' THEN $2
+           ELSE GREATEST(COALESCE(next_run_at, $2), $2)
+         END,
+         updated_at = $1
+       WHERE type = $5 AND idempotency_key = $3
+         AND (
+           (status IN ('pending', 'failed') AND attempts < max_attempts)
+           OR ($4::boolean AND status = 'succeeded')
+         )
+       RETURNING ${selectedJobColumns}`,
+      [now, nextRunAt, idempotencyKey, rearmSucceeded, input.type],
+    )
+    if (repaired.rows[0]) {
+      return { job: mapDatabaseJob(repaired.rows[0]), state: queued.state }
+    }
+
+    // The row may be processing, dead, or otherwise outside the narrow repair
+    // envelope. Return the actual persisted row so callers can require a
+    // registered manual compensation path instead of assuming it is runnable.
+    const existing = await this.pool.query<JobDatabaseRow>(
+      `SELECT ${selectedJobColumns}
+       FROM jobs
+       WHERE type = $1 AND idempotency_key = $2
+       LIMIT 1`,
+      [input.type, idempotencyKey],
+    )
+    if (!existing.rows[0]) {
+      throw new JobQueueError('conflict', 'Idempotent job was not found after successor repair')
+    }
+    return { job: mapDatabaseJob(existing.rows[0]), state: 'duplicate' }
+  }
+
   async claimNext(allowedTypes?: readonly string[]): Promise<ClaimedJob | null> {
     const normalizedTypes = allowedTypes
       ? [...new Set(allowedTypes.map((type) => type.trim()).filter(Boolean))]
@@ -390,12 +458,13 @@ export class PayloadJobQueue {
     return mapDatabaseJob(result.rows[0])
   }
 
-  async fail({ error, job }: JobFailure): Promise<JobRecord> {
+  async fail({ error, job, retryNotBefore }: JobFailure): Promise<JobRecord> {
     const now = this.clock()
     const transition = transitionAfterFailure({
       attempts: job.attempts,
       maxAttempts: job.maxAttempts,
       now,
+      retryNotBefore,
       retryOptions: this.retryOptions,
     })
     const result = await this.pool.query<JobDatabaseRow>(
@@ -439,7 +508,12 @@ export class PayloadJobQueue {
     return result.rows[0] ? mapDatabaseJob(result.rows[0]) : null
   }
 
-  async retryManually(id: number, actor: JobRetryActor, req?: PayloadRequest): Promise<JobRecord> {
+  async retryManually(
+    id: number,
+    actor: JobRetryActor,
+    req?: PayloadRequest,
+    options?: ManualRetryOptions,
+  ): Promise<JobRecord> {
     if (actor.role !== 'admin') {
       throw new JobQueueError('forbidden', 'Only administrators may retry failed jobs')
     }
@@ -458,7 +532,8 @@ export class PayloadJobQueue {
         throw new JobQueueError('not_found', `Job ${id} does not exist`)
       }
 
-      const next = manualRetryState(job, this.clock())
+      const nextRunAt = await options?.beforeRetry?.(job, transactionReq)
+      const next = manualRetryState(job, this.clock(), nextRunAt)
       const updated = await this.payload.update({
         collection: 'jobs',
         data: {
@@ -479,7 +554,9 @@ export class PayloadJobQueue {
         throw new JobQueueError('conflict', `Job ${id} changed before it could be retried`)
       }
 
-      return mapPayloadJob(updated.docs[0])
+      const retried = mapPayloadJob(updated.docs[0])
+      await options?.afterRetry?.(job, retried, transactionReq)
+      return retried
     }
 
     const transactionDatabase = await this.transactionDatabase(req)

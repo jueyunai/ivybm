@@ -1,6 +1,7 @@
 import {
   JobLeaseLostError,
   JobQueueError,
+  JobRetryNotBeforeError,
   type ClaimedJob,
   type JobHandler,
   type JobQueue,
@@ -112,6 +113,9 @@ export class JobWorker {
         await this.queue.fail({
           error: error instanceof Error ? error : new Error(String(error)),
           job,
+          ...(error instanceof JobRetryNotBeforeError
+            ? { retryNotBefore: error.retryNotBefore }
+            : {}),
         })
       } catch (failureError) {
         if (failureError instanceof JobQueueError && failureError.code === 'conflict') {

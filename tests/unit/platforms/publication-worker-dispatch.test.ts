@@ -32,6 +32,7 @@ const directIntent = (
   publishJobId: 42,
   snapshot: {
     assets,
+    expectedAuthorizationRevision: 4,
     idempotencyKey: `publish-${platform}-42`,
     platform,
     platformAccountId: platform === 'facebook' ? 7 : 9,

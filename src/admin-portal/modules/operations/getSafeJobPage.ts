@@ -1,7 +1,12 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
 import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
-import { getJobCompensation, type JobCompensationAction } from '@/modules/jobs/compensation/contracts'
+import {
+  getJobCompensation,
+  parsePublicationRecoveryIdempotencyKey,
+  parsePublicationStatusRecoveryIdempotencyKey,
+  type JobCompensationAction,
+} from '@/modules/jobs/compensation/contracts'
 import type { JobStatus } from '@/modules/jobs/contracts'
 import type { Job } from '@/payload-types'
 
@@ -74,7 +79,11 @@ const safeErrorSummary = (value: string | null | undefined): string | null =>
   value ? 'Failure recorded. Follow the registered runbook before retrying.' : null
 
 export const toSafeJobSummary = (job: Job): SafeJobSummary => {
-  const compensation = getJobCompensation({ status: job.status, type: job.type })
+  const compensation = getJobCompensation({
+    idempotencyKey: job.idempotencyKey,
+    status: job.status,
+    type: job.type,
+  })
 
   return {
     attempts: job.attempts,
@@ -83,7 +92,16 @@ export const toSafeJobSummary = (job: Job): SafeJobSummary => {
     lastErrorSummary: safeErrorSummary(job.lastError),
     maxAttempts: job.maxAttempts,
     nextRunAt: job.nextRunAt ?? null,
-    reference: job.type === 'knowledge.index' ? `Knowledge index job #${job.id}` : `Internal job #${job.id}`,
+    reference:
+      job.type === 'knowledge.index'
+        ? `Knowledge index job #${job.id}`
+        : job.type === 'platform.publication.execute' &&
+            parsePublicationRecoveryIdempotencyKey(job.idempotencyKey)
+          ? `Publication recovery job #${job.id}`
+          : job.type === 'platform.publication.execute' &&
+              parsePublicationStatusRecoveryIdempotencyKey(job.idempotencyKey)
+            ? `Publication status recovery job #${job.id}`
+            : `Internal job #${job.id}`,
     status: job.status,
     type: job.type,
     updatedAt: job.updatedAt,
@@ -120,6 +138,7 @@ export const loadSafeJobPageData = async ({
       req,
       select: {
         attempts: true,
+        idempotencyKey: true,
         lastError: true,
         maxAttempts: true,
         nextRunAt: true,
