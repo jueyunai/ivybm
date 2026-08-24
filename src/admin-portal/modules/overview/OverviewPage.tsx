@@ -14,9 +14,9 @@ import Link from 'next/link'
 
 import type { PortalUser } from '@/admin-portal/core/auth/types'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
+import { formatJobTypeLabel } from '@/admin-portal/core/jobLabels'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
-import { formatJobTypeLabel } from '@/admin-portal/modules/operations/getSafeJobPage'
 
 import type {
   PortalOverviewPriorityItem,

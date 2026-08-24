@@ -2,21 +2,21 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Payload, PayloadRequest } from 'payload'
 
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
+import { formatJobTypeLabel } from '@/admin-portal/core/jobLabels'
 import {
-  getJobCompensation,
-  parsePublicationRecoveryIdempotencyKey,
-} from '@/modules/jobs/compensation/contracts'
-import {
-  formatJobTypeLabel,
   loadSafeJobPageData,
   parseSafeJobQuery,
   toSafeJobSummary,
 } from '@/admin-portal/modules/operations/getSafeJobPage'
-import type { Job, User } from '@/payload-types'
 import {
   OperationsCommandError,
   retryPortalJob,
 } from '@/admin-portal/modules/operations/operationsCommands'
+import {
+  getJobCompensation,
+  parsePublicationRecoveryIdempotencyKey,
+} from '@/modules/jobs/compensation/contracts'
+import type { Job, User } from '@/payload-types'
 
 const job = (overrides: Partial<Job> = {}): Job => ({
   attempts: 5,

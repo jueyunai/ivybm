@@ -6,10 +6,11 @@ import { IconRefresh, IconRotateClockwise } from '@tabler/icons-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
+import { formatJobTypeLabel } from '@/admin-portal/core/jobLabels'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
 
-import { formatJobTypeLabel, type SafeJobPageData, type SafeJobQuery, type SafeJobSummary } from './getSafeJobPage'
+import type { SafeJobPageData, SafeJobQuery, SafeJobSummary } from './getSafeJobPage'
 
 const messages = {
   en: {
