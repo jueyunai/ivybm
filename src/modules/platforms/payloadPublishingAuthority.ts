@@ -24,12 +24,18 @@ import type {
 import type {
   PlatformPublicationAuthorityPort,
   PlatformPublicationClaim,
+  PlatformPublicationCommitRecovery,
   PlatformPublicationCommitResult,
   PlatformPublicationIntent,
   PlatformPublicationLeaseFence,
   PlatformPublicationMarkResult,
 } from './publishingAuthority'
 import type { PlatformPublishExecutionTransition } from './publishingExecution'
+import {
+  PLATFORM_PUBLICATION_JOB_TYPE,
+  PUBLICATION_STATUS_OBLIGATION_DELAY_MS,
+  publicationStatusJobIdentity,
+} from './publicationJobIdentity'
 
 type PublicationIntent =
   InstagramPublishingIntent | LinkedInImagePublishingIntent | PlatformPublicationIntent
@@ -45,7 +51,23 @@ type ClaimRow = {
   provider_i_o_started_at: Date | string | null
 }
 
+type RecoveryRow = {
+  claim_id: string | null
+  claim_lease_expires_at: Date | string | null
+  execution_revision: number | string
+  provider_i_o_started_at: Date | string | null
+}
+
 type MutationResult = { rowCount?: number | null; rows?: unknown[] }
+
+type StatusObligationRow = {
+  attempts: number | string
+  lease_expires_at: Date | string | null
+  max_attempts: number | string
+  next_run_at: Date | string | null
+  owner_token: string | null
+  status: string
+}
 
 const relationID = (value: number | string): number | undefined => {
   const number = typeof value === 'number' ? value : Number(value)
@@ -73,6 +95,18 @@ const statusForStage = (stage: string) => {
   if (stage === 'failed') return 'failed'
   if (stage === 'delivery_unknown') return 'delivery_unknown'
   return 'publishing'
+}
+
+const isDurableStatusObligation = (row: StatusObligationRow): boolean => {
+  if (row.status === 'dead') return true
+  if (row.status === 'processing') {
+    return Boolean(row.owner_token) && Number.isFinite(Date.parse(String(row.lease_expires_at)))
+  }
+  return (
+    (row.status === 'pending' || row.status === 'failed') &&
+    Number(row.attempts) < Number(row.max_attempts) &&
+    Number.isFinite(Date.parse(String(row.next_run_at)))
+  )
 }
 
 class PayloadPublicationCAS {
@@ -251,6 +285,83 @@ class PayloadPublicationCAS {
          VALUES ($1, $2, $3, $4, $4)`,
         [claim.intent.publishJobId, update.event, update.summary, instant],
       )
+      if (update.status === 'accepted' || update.status === 'publishing') {
+        const obligation = publicationStatusJobIdentity(claim.intent.publishJobId, nextRevision)
+        const nextRunAt = new Date(
+          Date.parse(instant) + PUBLICATION_STATUS_OBLIGATION_DELAY_MS,
+        ).toISOString()
+        const statusObligation = await client.query<StatusObligationRow>(
+          `INSERT INTO jobs (
+             type, idempotency_key, payload, status, attempts, max_attempts, next_run_at,
+             manual_retry_count, updated_at, created_at
+           ) VALUES ($1, $2, $3::jsonb, 'pending', 0, 2, $4, 0, $5, $5)
+           ON CONFLICT (type, idempotency_key) DO UPDATE
+           SET
+             status = CASE
+               WHEN jobs.status = 'succeeded' THEN 'pending'::enum_jobs_status
+               WHEN jobs.status IN ('pending', 'failed') AND jobs.attempts >= 2
+                 THEN 'dead'::enum_jobs_status
+               ELSE jobs.status
+             END,
+             attempts = CASE WHEN jobs.status = 'succeeded' THEN 0 ELSE jobs.attempts END,
+             max_attempts = CASE
+               WHEN jobs.status IN ('pending', 'failed', 'succeeded') THEN 2
+               ELSE jobs.max_attempts
+             END,
+             next_run_at = CASE
+               WHEN jobs.status = 'succeeded' THEN EXCLUDED.next_run_at
+               WHEN jobs.status IN ('pending', 'failed') AND jobs.attempts < 2
+                 THEN GREATEST(COALESCE(jobs.next_run_at, EXCLUDED.next_run_at), EXCLUDED.next_run_at)
+               WHEN jobs.status IN ('pending', 'failed') THEN NULL
+               ELSE jobs.next_run_at
+             END,
+             lease_expires_at = CASE
+               WHEN jobs.status = 'succeeded'
+                 OR (jobs.status IN ('pending', 'failed') AND jobs.attempts >= 2)
+                 THEN NULL
+               ELSE jobs.lease_expires_at
+             END,
+             owner_token = CASE
+               WHEN jobs.status = 'succeeded'
+                 OR (jobs.status IN ('pending', 'failed') AND jobs.attempts >= 2)
+                 THEN NULL
+               ELSE jobs.owner_token
+             END,
+             completed_at = CASE
+               WHEN jobs.status = 'succeeded' THEN NULL
+               ELSE jobs.completed_at
+             END,
+             dead_at = CASE
+               WHEN jobs.status = 'succeeded' THEN NULL
+               WHEN jobs.status IN ('pending', 'failed') AND jobs.attempts >= 2
+                 THEN COALESCE(jobs.dead_at, EXCLUDED.updated_at)
+               ELSE jobs.dead_at
+             END,
+             last_error = CASE
+               WHEN jobs.status = 'succeeded' THEN NULL
+               WHEN jobs.status IN ('pending', 'failed') AND jobs.attempts >= 2
+                 THEN COALESCE(jobs.last_error, 'Status obligation exhausted before checkpoint commit')
+               ELSE jobs.last_error
+             END,
+             updated_at = CASE
+               WHEN jobs.status IN ('pending', 'failed', 'succeeded') THEN EXCLUDED.updated_at
+               ELSE jobs.updated_at
+             END
+           WHERE jobs.payload = EXCLUDED.payload
+           RETURNING status, attempts, max_attempts, next_run_at, lease_expires_at, owner_token`,
+          [
+            PLATFORM_PUBLICATION_JOB_TYPE,
+            obligation.idempotencyKey,
+            JSON.stringify(obligation.payload),
+            nextRunAt,
+            instant,
+          ],
+        )
+        const obligationRow = statusObligation.rows[0]
+        if (!obligationRow || !isDurableStatusObligation(obligationRow)) {
+          throw new Error('Publication status obligation is missing or invalid')
+        }
+      }
       await client.query('COMMIT')
       return { nextRevision, status: 'committed' }
     } catch (error) {
@@ -282,6 +393,74 @@ class PayloadPublicationCAS {
     )
     return result.rowCount === 1
   }
+
+  /**
+   * Drop an execution claim after a failed checkpoint while retaining the
+   * provider I/O marker. The next worker can then reclaim the job in
+   * recovery-only mode without waiting for the old queue lease to expire.
+   */
+  async abandonAfterProviderIOStarted(claim: PublicationClaim): Promise<boolean> {
+    const result = await this.pool.query(
+      `UPDATE publish_jobs
+       SET claim_job_id = NULL, claim_id = NULL, claim_owner_token = NULL,
+           claim_lease_expires_at = NULL, updated_at = $1
+       WHERE id = $2 AND execution_revision = $3 AND claim_id = $4
+         AND fencing_generation = $5 AND claim_job_id = $6
+         AND claim_owner_token = $7 AND claim_lease_expires_at = $8
+         AND provider_i_o_started_at IS NOT NULL`,
+      [
+        this.now().toISOString(),
+        claim.intent.publishJobId,
+        claim.intent.expectedRevision,
+        claim.claimId,
+        claim.fencingGeneration,
+        claim.leaseFence.queueJobId,
+        claim.leaseFence.ownerToken,
+        claim.leaseFence.leaseExpiresAt,
+      ],
+    )
+    return result.rowCount === 1
+  }
+
+  async recoverFailedCommit(claim: PublicationClaim): Promise<PlatformPublicationCommitRecovery> {
+    try {
+      if (await this.abandonAfterProviderIOStarted(claim)) {
+        return { status: 'claim_released' }
+      }
+      if (await this.release(claim, false)) {
+        return { status: 'claim_released' }
+      }
+    } catch {
+      return {
+        retryNotBefore: claim.leaseFence.leaseExpiresAt,
+        status: 'claim_retained',
+      }
+    }
+
+    try {
+      const found = await this.pool.query<RecoveryRow>(
+        `SELECT execution_revision, claim_id, claim_lease_expires_at, provider_i_o_started_at
+         FROM publish_jobs WHERE id = $1 LIMIT 1`,
+        [claim.intent.publishJobId],
+      )
+      const row = found.rows[0]
+      if (row && Number(row.execution_revision) > claim.intent.expectedRevision) {
+        return { nextRevision: Number(row.execution_revision), status: 'state_advanced' }
+      }
+      if (row && !row.claim_id) {
+        return { status: 'claim_released' }
+      }
+      const retryNotBefore = row?.claim_lease_expires_at
+        ? new Date(row.claim_lease_expires_at).toISOString()
+        : claim.leaseFence.leaseExpiresAt
+      return { retryNotBefore, status: 'claim_retained' }
+    } catch {
+      return {
+        retryNotBefore: claim.leaseFence.leaseExpiresAt,
+        status: 'claim_retained',
+      }
+    }
+  }
 }
 
 export class PayloadPlatformPublicationAuthority implements PlatformPublicationAuthorityPort {
@@ -308,14 +487,18 @@ export class PayloadPlatformPublicationAuthority implements PlatformPublicationA
             : { reason: 'claim_conflict' as const, status: 'blocked' as const },
         )
     }
-    return this.cas.commit(claim, {
+    const update = {
       errorCode: transition.lastErrorCode,
       event: eventForDirect(transition),
       externalPublicationId: transition.externalPublicationId,
       externalPublicationUrl: transition.externalPublicationUrl,
       status: transition.status,
       summary: summary(transition.summary, 'Publication state changed.'),
-    })
+    }
+    return this.cas.commit(claim, update)
+  }
+  recoverFailedCommit(claim: PlatformPublicationClaim): Promise<PlatformPublicationCommitRecovery> {
+    return this.cas.recoverFailedCommit(claim)
   }
   async releasePublication(claim: PlatformPublicationClaim): Promise<void> {
     if (!(await this.cas.release(claim))) throw new Error('Publication claim could not be released')

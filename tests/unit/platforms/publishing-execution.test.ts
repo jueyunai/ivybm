@@ -17,6 +17,7 @@ const snapshot = (
       sourceUrl: 'https://cdn.example.invalid/facade.jpg',
     },
   ],
+  expectedAuthorizationRevision: 4,
   idempotencyKey: 'publish:job:42:facebook',
   platform: 'facebook',
   platformAccountId: 7,
@@ -39,6 +40,18 @@ const service = ({
 })
 
 describe('platform publication execution state machine', () => {
+  it('rejects a worker snapshot without an authorization revision before provider I/O', async () => {
+    const publish = vi.fn()
+
+    await expect(
+      executePlatformPublication({
+        service: service({ publish }),
+        snapshot: snapshot({ expectedAuthorizationRevision: undefined }),
+      }),
+    ).rejects.toThrow('authorization revision is required')
+    expect(publish).not.toHaveBeenCalled()
+  })
+
   it('sends one scheduled command with the persisted account-scoped idempotency key', async () => {
     const publish = vi.fn().mockResolvedValue({
       externalPublicationId: 'provider-post-42',
@@ -63,6 +76,7 @@ describe('platform publication execution state machine', () => {
     })
     expect(publish).toHaveBeenCalledWith(
       expect.objectContaining({
+        expectedAuthorizationRevision: 4,
         idempotencyKey: 'publish:job:42:facebook',
         platform: 'facebook',
         platformAccountId: 7,
@@ -243,6 +257,7 @@ describe('platform publication execution state machine', () => {
       ).resolves.toMatchObject({ status: 'published' })
       expect(getStatus).toHaveBeenCalledWith(
         expect.objectContaining({
+          expectedAuthorizationRevision: 4,
           externalPublicationId: 'provider-post-42',
           idempotencyKey: 'publish:job:42:facebook',
         }),

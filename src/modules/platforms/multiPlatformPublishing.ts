@@ -17,7 +17,7 @@ import {
 } from './publishingExecution'
 export type MultiPlatformPublishTarget = Omit<
   PlatformPublishRequest,
-  'idempotencyKey' | 'scheduledFor'
+  'expectedAuthorizationRevision' | 'idempotencyKey' | 'scheduledFor'
 >
 
 export type MultiPlatformPublishCommand = {

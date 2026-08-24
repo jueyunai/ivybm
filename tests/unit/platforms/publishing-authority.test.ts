@@ -21,6 +21,7 @@ const snapshot = (
       sourceUrl: 'https://cdn.example.invalid/facade.jpg',
     },
   ],
+  expectedAuthorizationRevision: 4,
   idempotencyKey: 'publish-job-42-facebook',
   platform: 'facebook',
   platformAccountId: 7,
@@ -160,26 +161,165 @@ describe('lease-fenced single-call publication', () => {
     })
   })
 
-  it('turns provider success plus commit conflict into delivery unknown', async () => {
-    const state = setup()
-    state.authority.failNextCommit()
-    const publish = vi.fn().mockResolvedValue({
-      externalPublicationId: 'provider-post-42',
-      idempotencyKey: 'publish-job-42-facebook',
-      platform: 'facebook',
-      platformAccountId: 7,
-      status: 'accepted',
-    })
-    await expect(
-      executeLeaseFencedPublication({
-        authority: state.authority,
-        intent: state.input,
-        leaseFence: state.fence,
-        service: service({ publish }),
-      }),
-    ).resolves.toMatchObject({ transition: { status: 'delivery_unknown' } })
-    expect(publish).toHaveBeenCalledTimes(1)
-  })
+  it.each([
+    ['blocked', 'success'],
+    ['blocked', 'false'],
+    ['blocked', 'throw'],
+    ['throw', 'success'],
+    ['throw', 'false'],
+    ['throw', 'throw'],
+  ] as const)(
+    'keeps provider replay disabled when commit %s is followed by cleanup %s',
+    async (commitFailure, cleanupFailure) => {
+      const state = setup()
+      state.authority.failNextCommit(commitFailure)
+      if (cleanupFailure !== 'success') state.authority.failNextRecovery(cleanupFailure)
+      const publish = vi.fn().mockResolvedValue({
+        externalPublicationId: 'provider-post-42',
+        idempotencyKey: 'publish-job-42-facebook',
+        platform: 'facebook',
+        platformAccountId: 7,
+        status: 'accepted',
+      })
+      await expect(
+        executeLeaseFencedPublication({
+          authority: state.authority,
+          intent: state.input,
+          leaseFence: state.fence,
+          service: service({ publish }),
+        }),
+      ).resolves.toMatchObject({
+        recovery:
+          cleanupFailure === 'success'
+            ? { status: 'claim_released' }
+            : { retryNotBefore: state.fence.leaseExpiresAt, status: 'claim_retained' },
+        status: 'checkpoint_pending',
+      })
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(state.authority.getIntent(42)).toMatchObject({
+        expectedRevision: 3,
+        snapshot: { status: 'scheduled' },
+      })
+
+      if (cleanupFailure !== 'success') expect(state.authority.expireClaim(42)).toBe(true)
+      const recoveryLease = lease({ ownerToken: 'worker-b' })
+      state.authority.setJobLease(recoveryLease)
+      await expect(
+        executeLeaseFencedPublication({
+          authority: state.authority,
+          intent: state.input,
+          leaseFence: recoveryLease,
+          service: service({ publish }),
+        }),
+      ).resolves.toMatchObject({ transition: { status: 'delivery_unknown' } })
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(state.authority.getIntent(42)).toMatchObject({
+        expectedRevision: 4,
+        snapshot: { status: 'delivery_unknown' },
+      })
+    },
+  )
+
+  it.each([
+    ['blocked', 'success'],
+    ['blocked', 'false'],
+    ['blocked', 'throw'],
+    ['throw', 'success'],
+    ['throw', 'false'],
+    ['throw', 'throw'],
+  ] as const)(
+    'keeps provider status query retryable without replaying mutation when status commit %s is followed by cleanup %s',
+    async (commitFailure, cleanupFailure) => {
+      const statusInput = intent({
+        expectedRevision: 4,
+        snapshot: snapshot({
+          externalPublicationId: 'provider-post-42',
+          status: 'accepted',
+        }),
+      })
+      const state = setup(statusInput)
+      state.authority.failNextCommit(commitFailure)
+      if (cleanupFailure !== 'success') state.authority.failNextRecovery(cleanupFailure)
+      const publish = vi.fn()
+      const getStatus = vi.fn().mockResolvedValue({
+        externalPublicationId: 'provider-post-42',
+        idempotencyKey: 'publish-job-42-facebook',
+        platform: 'facebook',
+        platformAccountId: 7,
+        status: 'published',
+      })
+
+      await expect(
+        executeLeaseFencedPublication({
+          authority: state.authority,
+          intent: state.input,
+          leaseFence: state.fence,
+          service: service({ getStatus, publish }),
+        }),
+      ).resolves.toMatchObject({
+        recovery:
+          cleanupFailure === 'success'
+            ? { status: 'claim_released' }
+            : { retryNotBefore: state.fence.leaseExpiresAt, status: 'claim_retained' },
+        status: 'checkpoint_pending',
+      })
+      expect(publish).not.toHaveBeenCalled()
+      expect(getStatus).toHaveBeenCalledTimes(1)
+      expect(state.authority.getIntent(42)).toMatchObject({
+        expectedRevision: 4,
+        snapshot: { externalPublicationId: 'provider-post-42', status: 'accepted' },
+      })
+
+      if (cleanupFailure === 'success') {
+        await expect(
+          executeLeaseFencedPublication({
+            authority: state.authority,
+            intent: state.input,
+            leaseFence: state.fence,
+            service: service({ getStatus, publish }),
+          }),
+        ).resolves.toMatchObject({
+          status: 'transitioned',
+          transition: { status: 'published' },
+        })
+        expect(publish).not.toHaveBeenCalled()
+        expect(getStatus).toHaveBeenCalledTimes(2)
+        expect(state.authority.getIntent(42)).toMatchObject({
+          expectedRevision: 5,
+          snapshot: { status: 'published' },
+        })
+      } else {
+        const sameLeaseRetry = await executeLeaseFencedPublication({
+          authority: state.authority,
+          intent: state.input,
+          leaseFence: state.fence,
+          service: service({ getStatus, publish }),
+        })
+        expect(sameLeaseRetry.status).toBe('blocked')
+
+        expect(state.authority.expireClaim(42)).toBe(true)
+        const retryLease = lease({ ownerToken: 'worker-b' })
+        state.authority.setJobLease(retryLease)
+        await expect(
+          executeLeaseFencedPublication({
+            authority: state.authority,
+            intent: state.input,
+            leaseFence: retryLease,
+            service: service({ getStatus, publish }),
+          }),
+        ).resolves.toMatchObject({
+          status: 'transitioned',
+          transition: { status: 'published' },
+        })
+        expect(publish).not.toHaveBeenCalled()
+        expect(getStatus).toHaveBeenCalledTimes(2)
+        expect(state.authority.getIntent(42)).toMatchObject({
+          expectedRevision: 5,
+          snapshot: { status: 'published' },
+        })
+      }
+    },
+  )
 
   it('commits an unchanged snapshot and propagates a proven pre-I/O outage for Job retry', async () => {
     const state = setup()
@@ -199,7 +339,7 @@ describe('lease-fenced single-call publication', () => {
     expect(publish).toHaveBeenCalledTimes(1)
   })
 
-  it('does not retry a pre-I/O outage when the unchanged checkpoint cannot commit', async () => {
+  it('returns an explicit recovery requirement when a pre-I/O cleanup cannot be committed', async () => {
     const state = setup()
     state.authority.failNextCommit()
     const publish = vi.fn().mockRejectedValue(new ProviderPublicationTransportError())
@@ -210,7 +350,10 @@ describe('lease-fenced single-call publication', () => {
         leaseFence: state.fence,
         service: service({ publish }),
       }),
-    ).resolves.toMatchObject({ transition: { status: 'delivery_unknown' } })
+    ).resolves.toMatchObject({
+      recovery: { status: 'claim_released' },
+      status: 'checkpoint_pending',
+    })
     expect(publish).toHaveBeenCalledTimes(1)
   })
 
@@ -218,6 +361,10 @@ describe('lease-fenced single-call publication', () => {
     ['job', intent({ publishJobId: 43 })],
     ['revision', intent({ expectedRevision: 4 })],
     ['platform account', intent({ snapshot: snapshot({ platformAccountId: 8 }) })],
+    [
+      'authorization revision',
+      intent({ snapshot: snapshot({ expectedAuthorizationRevision: 5 }) }),
+    ],
     ['command key', intent({ snapshot: snapshot({ idempotencyKey: 'other-key' }) })],
   ])('blocks a mismatched %s before publish', async (_label, mismatched) => {
     const state = setup()
@@ -246,6 +393,7 @@ describe('lease-fenced single-call publication', () => {
     ],
     ['blank text', { text: '   ' }],
     ['invalid scheduled time', { scheduledFor: 'not-a-date' }],
+    ['missing authorization revision', { expectedAuthorizationRevision: undefined }],
   ])(
     'rejects malformed authority %s before claiming or provider I/O',
     async (_label, malformed) => {

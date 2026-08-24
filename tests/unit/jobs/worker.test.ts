@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ClaimedJob, JobQueue, JobRecord } from '@/modules/jobs/contracts'
-import { JobQueueError } from '@/modules/jobs/contracts'
+import { JobQueueError, JobRetryNotBeforeError } from '@/modules/jobs/contracts'
 import { JobWorker } from '@/modules/jobs/worker'
 
 const claimedJob = (): ClaimedJob => ({
@@ -137,5 +137,23 @@ describe('JobWorker lease heartbeat', () => {
 
     await expect(worker.runOnce()).resolves.toBe('failed')
     expect(queue.fail).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes a lease-aware retry boundary from the handler to the queue', async () => {
+    const job = claimedJob()
+    const queue = queueFor(job)
+    const retryNotBefore = new Date('2026-07-21T00:05:00.001Z')
+    const error = new JobRetryNotBeforeError('Wait for the retained claim lease', retryNotBefore)
+    const worker = new JobWorker({
+      handlers: {
+        'test.job': async () => {
+          throw error
+        },
+      },
+      queue,
+    })
+
+    await expect(worker.runOnce()).resolves.toBe('failed')
+    expect(queue.fail).toHaveBeenCalledWith({ error, job, retryNotBefore })
   })
 })
