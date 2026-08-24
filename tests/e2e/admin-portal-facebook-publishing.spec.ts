@@ -8,20 +8,16 @@ import { FacebookE2EHarness, type FacebookPublishingFixture } from './admin-port
 
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
+if (!adminEmail?.trim() || !adminPassword?.trim()) {
+  throw new Error('Facebook publishing E2E requires launcher-validated administrator credentials')
+}
 
-const login = async (page: Page): Promise<boolean> => {
-  test.skip(
-    !adminEmail || !adminPassword,
-    'Requires local non-production administrator credentials.',
-  )
-  if (!adminEmail || !adminPassword) return false
-
+const login = async (page: Page): Promise<void> => {
   await page.goto('/dashboard/login?returnTo=%2Fdashboard%2Fcontent-studio')
   await page.getByRole('textbox', { name: '邮箱' }).fill(adminEmail)
   await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
   await page.getByRole('button', { name: '登录后台' }).click()
   await expect(page).toHaveURL(/\/dashboard\/content-studio$/)
-  return true
 }
 
 test.describe.serial('FB-PUB-01 Facebook Page publication closure', () => {
@@ -45,7 +41,7 @@ test.describe.serial('FB-PUB-01 Facebook Page publication closure', () => {
   }) => {
     test.setTimeout(180_000)
     if (!harness || !fixture) throw new Error('Facebook publishing E2E harness is unavailable')
-    if (!(await login(page))) return
+    await login(page)
     await page.goto('/dashboard/content-studio')
 
     const suffix = randomUUID().replaceAll('-', '').slice(0, 12)

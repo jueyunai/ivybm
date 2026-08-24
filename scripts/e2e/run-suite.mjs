@@ -110,6 +110,20 @@ if (publishingOptIn) {
     )
   }
 }
+const requiresFacebookAdminCredentials = plan.specs.some(
+  (spec) =>
+    spec.endsWith('/admin-portal-facebook-messenger.spec.ts') ||
+    spec.endsWith('/admin-portal-facebook-publishing.spec.ts'),
+)
+if (requiresFacebookAdminCredentials) {
+  const adminEmail = (process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL)?.trim()
+  const adminPassword = (process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD)?.trim()
+  if (!adminEmail || !adminPassword) {
+    throw new Error(
+      'Selected Facebook E2E closure requires non-production E2E_ADMIN_EMAIL/E2E_ADMIN_PASSWORD or SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD',
+    )
+  }
+}
 const externalBaseURL = process.env.BASE_URL?.trim()
 if (plan.mode === 'mutation' && externalBaseURL) {
   throw new Error('Mutation E2E suites cannot use BASE_URL; use the launcher-owned server')

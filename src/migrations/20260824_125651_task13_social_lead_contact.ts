@@ -30,7 +30,9 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
   await db.execute(sql`
     DO $$
     BEGIN
-      IF EXISTS (SELECT 1 FROM "leads" WHERE "email" IS NULL) THEN
+      IF EXISTS (
+        SELECT 1 FROM "leads" WHERE NULLIF(BTRIM("email"), '') IS NULL
+      ) THEN
         RAISE EXCEPTION 'Cannot restore required Lead email while email-less Leads exist';
       END IF;
     END $$;

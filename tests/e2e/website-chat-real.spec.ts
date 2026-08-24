@@ -189,6 +189,8 @@ test('WEB-CHAT-02 fails closed to one recoverable handoff for knowledge, AI, and
   page,
 }) => {
   const harness = await WebsiteChatE2EHarness.create()
+  await harness.createFeishuMapping()
+  const recoveryHandoffIDs: number[] = []
   const openFreshSession = async (): Promise<{
     input: ReturnType<Page['getByLabel']>
     sessionID: string
@@ -252,6 +254,16 @@ test('WEB-CHAT-02 fails closed to one recoverable handoff for knowledge, AI, and
     expect(state.handoffs).toEqual([
       expect.objectContaining({ reason: expectedReason, source: 'ai_policy', status: 'requested' }),
     ])
+    recoveryHandoffIDs.push(state.handoffs[0].id)
+    expect(await harness.countFeishuHandoffJobs(recoveryHandoffIDs)).toBe(0)
+    expect(await harness.relayFeishuJobs()).toMatchObject({
+      enabled: true,
+      handoffs: { created: 0, duplicate: 0 },
+    })
+    expect(await harness.countFeishuHandoffJobs(recoveryHandoffIDs)).toBe(0)
+    await expect(harness.runUntilIdle()).resolves.toEqual(['idle'])
+    expect(harness.feishuMessages).toHaveLength(0)
+    expect(harness.feishuUpserts).toHaveLength(0)
   }
 
   try {
@@ -272,7 +284,6 @@ test('WEB-CHAT-02 fails closed to one recoverable handoff for knowledge, AI, and
       message: 'Can you guarantee the final price, exact delivery date, and certification?',
     })
     expect(await harness.countAiUsage()).toBe(usageBeforeRisk)
-    expect(await harness.relayFeishuJobs()).toMatchObject({ enabled: false })
     expect(harness.feishuMessages).toHaveLength(0)
     expect(harness.feishuUpserts).toHaveLength(0)
   } finally {

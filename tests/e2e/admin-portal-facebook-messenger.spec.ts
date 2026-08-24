@@ -8,6 +8,9 @@ import { createSignedFacebookMessage, FacebookE2EHarness } from './admin-portal-
 
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
+if (!adminEmail?.trim() || !adminPassword?.trim()) {
+  throw new Error('Facebook Messenger E2E requires launcher-validated administrator credentials')
+}
 
 test.describe.serial('FB-IN-01 Facebook Messenger durable closure', () => {
   let harness: FacebookE2EHarness | undefined
@@ -94,11 +97,6 @@ test.describe.serial('FB-IN-01 Facebook Messenger durable closure', () => {
     request,
   }) => {
     if (!harness) throw new Error('Facebook E2E harness is unavailable')
-    test.skip(
-      !adminEmail || !adminPassword,
-      'Requires local non-production administrator credentials.',
-    )
-    if (!adminEmail || !adminPassword) return
     await harness.createFeishuMapping()
     const suffix = randomUUID().replaceAll('-', '')
     const senderExternalId = `765${suffix.replace(/\D/gu, '').padEnd(20, '6').slice(0, 12)}`
@@ -196,11 +194,6 @@ test.describe.serial('FB-IN-01 Facebook Messenger durable closure', () => {
     request,
   }) => {
     if (!harness) throw new Error('Facebook E2E harness is unavailable')
-    test.skip(
-      !adminEmail || !adminPassword,
-      'Requires local non-production administrator credentials.',
-    )
-    if (!adminEmail || !adminPassword) return
     await harness.createFeishuMapping()
     const suffix = randomUUID().replaceAll('-', '')
     const senderExternalId = `876${suffix.replace(/\D/gu, '').padEnd(20, '5').slice(0, 12)}`

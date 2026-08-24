@@ -282,6 +282,16 @@ export class WebsiteChatE2EHarness {
     return enqueuePendingFeishuJobs({ payload: this.payload })
   }
 
+  async countFeishuHandoffJobs(handoffIDs: number[]): Promise<number> {
+    if (handoffIDs.length === 0) return 0
+    const result = await this.pool.query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM jobs
+       WHERE type = $1 AND payload->>'entityId' = ANY($2::text[])`,
+      [FEISHU_HANDOFF_NOTIFY_JOB_TYPE, handoffIDs.map(String)],
+    )
+    return result.rows[0]?.count ?? 0
+  }
+
   async runUntilIdle(maximumJobs = 8): Promise<Array<'failed' | 'idle' | 'succeeded'>> {
     const outcomes: Array<'failed' | 'idle' | 'succeeded'> = []
     for (let index = 0; index <= maximumJobs; index += 1) {
