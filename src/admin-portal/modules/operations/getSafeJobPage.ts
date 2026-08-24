@@ -75,8 +75,26 @@ export const parseSafeJobQuery = (
   }
 }
 
-const safeErrorSummary = (value: string | null | undefined): string | null =>
-  value ? 'Failure recorded. Follow the registered runbook before retrying.' : null
+const safeErrorSummary = (
+  job: Pick<Job, 'attempts' | 'lastError' | 'maxAttempts' | 'status'>,
+): string | null => {
+  if (typeof job.lastError !== 'string' || !job.lastError.trim()) return null
+  if (
+    !Number.isSafeInteger(job.attempts) ||
+    !Number.isSafeInteger(job.maxAttempts) ||
+    job.attempts < 0 ||
+    job.maxAttempts < 1
+  ) {
+    return null
+  }
+  if (job.status === 'failed' && job.attempts < job.maxAttempts) {
+    return 'Task failed; automatic retry is scheduled.'
+  }
+  if (job.status === 'dead' && job.attempts >= job.maxAttempts) {
+    return 'Task failed; automatic retries stopped. Check configuration before retrying manually.'
+  }
+  return null
+}
 
 export const toSafeJobSummary = (job: Job): SafeJobSummary => {
   const compensation = getJobCompensation({
@@ -89,7 +107,7 @@ export const toSafeJobSummary = (job: Job): SafeJobSummary => {
     attempts: job.attempts,
     compensation: compensation ? { action: compensation.action, label: compensation.label } : null,
     id: job.id,
-    lastErrorSummary: safeErrorSummary(job.lastError),
+    lastErrorSummary: safeErrorSummary(job),
     maxAttempts: job.maxAttempts,
     nextRunAt: job.nextRunAt ?? null,
     reference:

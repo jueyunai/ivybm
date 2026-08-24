@@ -1,5 +1,6 @@
 'use client'
 
+import { KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS } from '@/modules/knowledge/limits'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useRouter } from 'next/navigation'
@@ -15,7 +16,6 @@ import {
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, StatusBadge } from '@/admin-portal/core/ui'
-import { KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS } from '@/modules/knowledge/limits'
 
 import type { KnowledgeDocumentSummary, KnowledgeSourceType } from './getKnowledgePage'
 import type { KnowledgeEditorOption, KnowledgeEditorRecord } from './knowledgeCommands'
@@ -72,7 +72,16 @@ const copy = {
   },
 } as const
 
-const sourceLabels: Record<KnowledgeSourceType, string> = {
+const sourceLabelsZh: Record<KnowledgeSourceType, string> = {
+  faq: '常见问答 (FAQ)',
+  'product-manual': '产品手册',
+  'technical-specification': '技术规范',
+  'sales-script': '销售话术',
+  'project-case': '项目案例',
+  other: '其他',
+}
+
+const sourceLabelsEn: Record<KnowledgeSourceType, string> = {
   faq: 'FAQ',
   'product-manual': 'Product manual',
   'technical-specification': 'Technical specification',
@@ -128,6 +137,7 @@ export function KnowledgeEditor({
   const router = useRouter()
   const { locale: portalLocale } = usePortalPreferences()
   const text = copy[portalLocale]
+  const sourceLabels = portalLocale === 'zh' ? sourceLabelsZh : sourceLabelsEn
   const [form, setForm] = useState<EditorForm>(emptyForm)
   const createCommand = usePortalCommandKey('portal-knowledge')
   const [options, setOptions] = useState<EditorOptions>(EMPTY_OPTIONS)
@@ -202,7 +212,9 @@ export function KnowledgeEditor({
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key':
-            mode === 'create' && createKey ? createKey : `portal-knowledge:${crypto.randomUUID()}`,
+            mode === 'create' && createKey
+              ? createKey
+              : `portal-knowledge:${crypto.randomUUID()}`,
         },
         method: mode === 'edit' ? 'PATCH' : 'POST',
       })

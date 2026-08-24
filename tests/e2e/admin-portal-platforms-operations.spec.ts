@@ -34,7 +34,7 @@ test('admin can inspect platform readiness and operation compensation without a 
     path: testInfo.outputPath('portal-platforms-desktop.png'),
   })
   await page.goto('/dashboard/operations')
-  await expect(page.getByRole('heading', { level: 2, name: '异常与补偿' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: '后台任务' })).toBeVisible()
   await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440)
   await page.screenshot({
@@ -120,7 +120,7 @@ test('FB-READY-01 and READY-02 expose fail-closed platform truth without availab
     const facebookCard = page.locator('article', {
       has: page.getByRole('heading', { name: /^e2e-fb-page-/ }),
     })
-    await expect(facebookCard.getByText('受控发布 kill switch 当前未启用。')).toBeVisible()
+    await expect(facebookCard.getByText('系统社媒发布总开关当前未开启，请联系管理员开启。')).toBeVisible()
     await expect(facebookCard.getByText('可用')).toHaveCount(0)
   } finally {
     await harness.cleanup()
@@ -138,7 +138,7 @@ test('mobile platform readiness and operations stay within 390px', async ({ page
     path: testInfo.outputPath('portal-platforms-mobile.png'),
   })
   await page.goto('/dashboard/operations')
-  await expect(page.getByRole('heading', { level: 2, name: '异常与补偿' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: '后台任务' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
   await page.screenshot({
     fullPage: true,

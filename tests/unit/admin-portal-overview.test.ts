@@ -40,6 +40,48 @@ describe('Portal overview read model', () => {
     expect(screen.queryByText('今日运营要务')).toBeNull()
   })
 
+  it('renders current and unknown job types without exposing internal event codes', () => {
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(OverviewPage, {
+          query: { queue: 'all' },
+          summary: {
+            dependencies: [],
+            priorityItems: [
+              {
+                id: 30,
+                kind: 'job',
+                reference: 'platform.publication.execute',
+                status: 'dead',
+                updatedAt: '2026-07-30T10:00:00.000Z',
+              },
+              {
+                id: 31,
+                kind: 'job',
+                reference: 'SOME.INTERNAL.EVENT',
+                status: 'failed',
+                updatedAt: '2026-07-30T09:00:00.000Z',
+              },
+            ],
+            queues: {
+              activeConversations: 0,
+              failedJobs: 2,
+              handoffRequested: 0,
+              newQualifiedLeads: 0,
+            },
+          },
+          user: { email: 'admin@example.invalid', id: 1, role: 'admin' },
+        }),
+      ),
+    )
+
+    expect(screen.getByText('社媒内容发布')).toBeTruthy()
+    expect(screen.getByText('后台任务')).toBeTruthy()
+    expect(screen.queryByText('SOME.INTERNAL.EVENT')).toBeNull()
+  })
+
   it('normalizes reproducible queue filters without placing UI links in the read model', () => {
     expect(parsePortalOverviewQuery({ queue: 'handoff-requested' })).toEqual({
       queue: 'handoff-requested',

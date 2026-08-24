@@ -189,11 +189,13 @@ const messages = {
         'Ask the account owner to provide the external account identifier.',
       'request-platform-approval':
         'Submit or follow up on the platform approval required for this capability.',
-      'run-controlled-test': 'Run the controlled test, record its result, then reassess readiness.',
+      'run-controlled-test': 'Complete the relevant capability connectivity test, record its result, then reassess account status.',
       'wait-for-official-schema':
         'Wait for the official TikTok DM schema before planning integration work.',
     },
     readyForTest: 'Ready for controlled test',
+    publishingTest: 'Publish a test post from the AI content workspace to verify this account connection.',
+    messagingTest: 'Send a test message to the connected account to verify inbound messaging.',
     refresh: 'Refresh',
     saveFailed: 'Save failed.',
     title: 'Platform accounts',
@@ -228,7 +230,7 @@ const messages = {
     delete: '删除',
     deleteAccount: '删除账号',
     deleteFailed: '删除失败，请刷新页面后重试。',
-    description: '在本页管理平台账号、完成 OAuth 授权并查看 readiness，无需进入受限维护后台。',
+    description: '管理 Facebook、Instagram、LinkedIn 等第三方社媒账号的连接授权与发布可用状态。',
     disconnect: '断开授权',
     disconnectFailed: '断开授权失败。',
     disconnecting: '正在断开…',
@@ -237,7 +239,7 @@ const messages = {
     empty: '还没有配置平台账号。',
     externalAccountId: '外部账号 ID',
     externalAccountIdHelp: '提供商标识（Page ID、专业账号 ID、成员 ID 或组织 ID）。',
-    forbidden: '只有管理员可以查看平台 readiness。',
+    forbidden: '只有管理员可以查看平台连接状态。',
     missing: '仍需满足',
     moduleDisabled: '当前环境未启用平台状态模块。',
     name: '显示名称',
@@ -286,14 +288,14 @@ const messages = {
       authorization: '需要完成平台授权流程。',
       credential_decryption: '当前环境无法验证已配置的凭据。',
       external_account_id: '需要提供外部账号 ID。',
-      instagram_app_secret: '需要通过受限维护流程配置 Instagram 应用密钥。',
-      meta_account_allowlist: '需要将该账号加入 Meta Webhook allowlist。',
-      meta_app_secret: '需要通过受限维护流程配置 Meta 应用密钥。',
-      meta_verify_token: '需要通过受限维护流程配置 Meta 验证令牌。',
-      official_tiktok_dm_schema: 'TikTok 私信尚无可支持的官方 schema。',
-      publishing_job_adapter: '发布任务 adapter 尚未实现。',
-      publishing_disabled: '受控发布 kill switch 当前未启用。',
-      publishing_runtime_configuration: '服务端发布运行时配置尚未完整。',
+      instagram_app_secret: '需要联系技术团队在服务器配置 Instagram 应用密钥。',
+      meta_account_allowlist: '需要将该账号加入 Meta Webhook 允许列表。',
+      meta_app_secret: '需要联系技术团队在服务器配置 Meta 应用密钥。',
+      meta_verify_token: '需要联系技术团队在服务器配置 Meta 验证令牌。',
+      official_tiktok_dm_schema: 'TikTok 官方私信接口暂未开放对接。',
+      publishing_job_adapter: '该平台的发布接口正在对接中。',
+      publishing_disabled: '系统社媒发布总开关当前未开启，请联系管理员开启。',
+      publishing_runtime_configuration: '服务端发布服务配置尚未完整。',
       refresh_token: '访问令牌过期后需要刷新令牌。',
       refresh_token_decryption: '当前环境无法验证已配置的刷新令牌。',
       tiktok_dm_api_eligibility: '该 TikTok 账号尚不具备私信 API 资格。',
@@ -318,21 +320,23 @@ const messages = {
     steps: {
       'complete-authorization': '请完成该账号的平台授权流程。',
       'complete-tiktok-eligibility': '请确认账号和地区具备 TikTok 私信 API 资格。',
-      'configure-credentials': '请通过受限维护流程配置或轮换凭据。',
-      'configure-meta-webhook': '请配置 Meta Webhook 密钥、验证令牌和账号 allowlist。',
-      'configure-publishing-runtime': '请先通过受限维护流程补齐发布运行时配置，再进行受控测试。',
-      'implement-publishing-adapter': '请先完成发布任务 adapter 的实现与验证，再启用此能力。',
+      'configure-credentials': '请联系技术团队在服务器配置或轮换凭据。',
+      'configure-meta-webhook': '请配置 Meta Webhook 密钥、验证令牌和账号白名单。',
+      'configure-publishing-runtime': '请联系技术团队配置发布服务环境变量。',
+      'implement-publishing-adapter': '请先完成发布接口对接与验证，再启用此能力。',
       'monitor-available-capability': '请持续监控已验证能力，并在出现问题时通过异常中心处理。',
       'provide-external-account': '请让账号所有者提供外部账号标识。',
       'request-platform-approval': '请提交或跟进该能力所需的平台审核。',
-      'run-controlled-test': '请执行受控测试并记录结果，然后重新评估 readiness。',
-      'wait-for-official-schema': '请等待 TikTok 私信官方 schema 就绪后再计划集成。',
+      'run-controlled-test': '请完成对应能力的连通性测试并记录结果，然后重新评估账号状态。',
+      'wait-for-official-schema': '请等待 TikTok 官方私信接口就绪后再计划集成。',
     },
-    readyForTest: '可进行受控测试',
+    readyForTest: '已授权（待测试）',
+    publishingTest: '请在 AI 内容工作台发布一条测试贴文，以验证该账号连接。',
+    messagingTest: '请向已连接账号发送一条测试消息，以验证入站消息能力。',
     refresh: '刷新',
     saveFailed: '保存失败。',
     title: '平台账号',
-    unavailable: '平台 readiness 暂时无法读取。',
+    unavailable: '平台账号状态暂时无法读取。',
   },
 } as const
 
@@ -367,10 +371,12 @@ const readableCapability = (value: PlatformAccountCapability, copy: PlatformCopy
       : 'Publishing'
 
 function ReadinessAction({
+  capability,
   copy,
   missing,
   status,
 }: {
+  capability?: PlatformAccountCapability
   copy: PlatformCopy
   missing: readonly PlatformReadinessRequirement[]
   status: PlatformReadinessStatus
@@ -385,7 +391,13 @@ function ReadinessAction({
       </div>
       <div>
         <dt>{copy.actionTitle}</dt>
-        <dd>{copy.steps[action.code as PlatformReadinessActionCode]}</dd>
+        <dd>
+          {action.code === 'run-controlled-test' && capability === 'publishing'
+            ? copy.publishingTest
+            : action.code === 'run-controlled-test' && capability === 'messaging-inbound'
+              ? copy.messagingTest
+              : copy.steps[action.code as PlatformReadinessActionCode]}
+        </dd>
       </div>
     </dl>
   )
@@ -484,7 +496,12 @@ function AccountReadiness({
                   .join(' ')}
               </p>
             ) : null}
-            <ReadinessAction copy={copy} missing={capability.missing} status={capability.status} />
+            <ReadinessAction
+              capability={capability.capability}
+              copy={copy}
+              missing={capability.missing}
+              status={capability.status}
+            />
           </div>
         ))}
       </div>

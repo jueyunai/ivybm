@@ -9,6 +9,7 @@ import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPrefe
 
 type Source = {
   detectedLanguage: null | string
+  errorCode: null | string
   errorSummary: null | string
   filename: string
   filesize: number
@@ -167,6 +168,11 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
   const fileSizeLabel = (bytes: number) =>
     bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB` : '—'
 
+  const errorLabel = (source: Source): string | null => {
+    if (!source.errorCode && !source.errorSummary) return null
+    return messages.errorSummaries[source.errorCode ?? ''] ?? messages.errorSummaries.unknown
+  }
+
   const changePage = (page: number) => {
     setDetail(null)
     void refresh(page)
@@ -183,8 +189,8 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
       <form className="portal-knowledge__ingestion-form" onSubmit={submit}>
         <label><span>{messages.sourceTitle}</span><input maxLength={500} name="sourceTitle" required /></label>
         <label><span>{messages.sourceVersion}</span><input maxLength={100} name="sourceVersion" required /></label>
-        <label><span>{messages.sourceType}</span><select defaultValue="other" name="sourceType"><option value="faq">FAQ</option><option value="product-manual">Product manual</option><option value="technical-specification">Technical specification</option><option value="sales-script">Sales script</option><option value="project-case">Project case</option><option value="other">Other</option></select></label>
-        <label><span>{messages.originalLanguage}</span><select defaultValue="auto" name="originalLanguage"><option value="auto">Auto</option><option value="en">{messages.english}</option><option value="ar">{messages.arabic}</option><option value="zh">中文</option></select></label>
+        <label><span>{messages.sourceType}</span><select defaultValue="other" name="sourceType"><option value="faq">{locale === 'zh' ? '常见问答 (FAQ)' : 'FAQ'}</option><option value="product-manual">{locale === 'zh' ? '产品手册' : 'Product manual'}</option><option value="technical-specification">{locale === 'zh' ? '技术规范' : 'Technical specification'}</option><option value="sales-script">{locale === 'zh' ? '销售话术' : 'Sales script'}</option><option value="project-case">{locale === 'zh' ? '项目案例' : 'Project case'}</option><option value="other">{locale === 'zh' ? '其他' : 'Other'}</option></select></label>
+        <label><span>{messages.originalLanguage}</span><select defaultValue="auto" name="originalLanguage"><option value="auto">{locale === 'zh' ? '自动识别' : 'Auto'}</option><option value="en">{messages.english}</option><option value="ar">{messages.arabic}</option><option value="zh">中文</option></select></label>
         <label><span>{messages.file}</span><input accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" name="file" required type="file" /></label>
         <Button disabled={busy} type="submit">{busy ? messages.processing : messages.submit}</Button>
       </form>
@@ -195,7 +201,7 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
             <div><strong>{source.sourceTitle}</strong><span><a href={`/api/portal/knowledge/sources/${source.id}/file`} rel="noreferrer" target="_blank">{source.filename}</a> · v{source.sourceVersion} · {source.detectedLanguage?.toUpperCase() ?? '—'} · {fileSizeLabel(source.filesize)} · {stageLabel(source.processingStage)} · {messages.imageCount}: {source.imageCount}</span></div>
             <StatusBadge label={statusLabel(source.processingStatus)} tone={source.processingStatus === 'failed' ? 'danger' : source.processingStatus === 'needs_review' ? 'warning' : source.processingStatus === 'processing' ? 'info' : 'neutral'} />
             <Button onClick={() => void openDetails(source)} size="compact" variant="ghost">{messages.outputDrafts}</Button>
-            {source.errorSummary ? <p role="alert">{source.errorSummary}</p> : null}
+            {errorLabel(source) ? <p role="alert">{errorLabel(source)}</p> : null}
             {source.processingStatus === 'needs_review' ? <span>{messages.outputDrafts}: {messages.english} / {messages.arabic}</span> : null}
             {source.processingStatus === 'failed' && role === 'admin' ? <Button disabled={busy} onClick={() => void retry(source)} size="compact" variant="secondary">{messages.retry}</Button> : null}
             {source.processingStatus === 'failed' && role !== 'admin' ? <small>{messages.adminRetry}</small> : null}

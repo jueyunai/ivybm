@@ -2,20 +2,21 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Payload, PayloadRequest } from 'payload'
 
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
-import {
-  getJobCompensation,
-  parsePublicationRecoveryIdempotencyKey,
-} from '@/modules/jobs/compensation/contracts'
+import { formatJobTypeLabel } from '@/admin-portal/core/jobLabels'
 import {
   loadSafeJobPageData,
   parseSafeJobQuery,
   toSafeJobSummary,
 } from '@/admin-portal/modules/operations/getSafeJobPage'
-import type { Job, User } from '@/payload-types'
 import {
   OperationsCommandError,
   retryPortalJob,
 } from '@/admin-portal/modules/operations/operationsCommands'
+import {
+  getJobCompensation,
+  parsePublicationRecoveryIdempotencyKey,
+} from '@/modules/jobs/compensation/contracts'
+import type { Job, User } from '@/payload-types'
 
 const job = (overrides: Partial<Job> = {}): Job => ({
   attempts: 5,
@@ -109,7 +110,7 @@ describe('Portal operations', () => {
     const summary = toSafeJobSummary(job())
     const serialized = JSON.stringify(summary)
 
-    expect(summary.lastErrorSummary).toContain('Failure recorded')
+    expect(summary.lastErrorSummary).toContain('automatic retries stopped')
     expect(serialized).not.toContain('never-return-this')
     expect(serialized).not.toContain('ownerToken')
     expect(serialized).not.toContain('payload')
@@ -135,6 +136,35 @@ describe('Portal operations', () => {
         }),
       ).reference,
     ).toBe('Publication status recovery job #100')
+  })
+
+  it('only exposes status-accurate safe error summaries', () => {
+    expect(
+      toSafeJobSummary(
+        job({
+          attempts: 2,
+          deadAt: null,
+          maxAttempts: 5,
+          nextRunAt: '2026-07-30T01:00:00.000Z',
+          status: 'failed',
+        }),
+      ).lastErrorSummary,
+    ).toContain('automatic retry is scheduled')
+    expect(toSafeJobSummary(job({ attempts: 5, status: 'dead' })).lastErrorSummary).toContain(
+      'automatic retries stopped',
+    )
+    for (const status of ['pending', 'processing', 'succeeded'] as const) {
+      expect(toSafeJobSummary(job({ status })).lastErrorSummary).toBeNull()
+    }
+    expect(toSafeJobSummary(job({ attempts: 5, status: 'failed' })).lastErrorSummary).toBeNull()
+    expect(toSafeJobSummary(job({ attempts: 0, status: 'dead' })).lastErrorSummary).toBeNull()
+    expect(toSafeJobSummary(job({ lastError: '   ' })).lastErrorSummary).toBeNull()
+  })
+
+  it('does not expose unknown job type codes in the operations UI', () => {
+    expect(formatJobTypeLabel('SOME.INTERNAL.EVENT', 'zh')).toBe('后台任务')
+    expect(formatJobTypeLabel('SOME.INTERNAL.EVENT', 'en')).toBe('Background task')
+    expect(formatJobTypeLabel('feishu.handoff.notify', 'zh')).toBe('飞书接管提醒通知')
   })
 
   it('bounds operations query parameters', () => {

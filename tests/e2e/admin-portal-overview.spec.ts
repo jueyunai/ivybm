@@ -29,8 +29,8 @@ test('admin overview renders real queues and dependency-gated work without inter
   await expect(page.getByRole('heading', { level: 3, name: '待接管会话' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 3, name: '人工服务中' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 3, name: '新增 A 类线索' })).toBeVisible()
-  await expect(page.getByRole('heading', { level: 3, name: '失败 / Dead 任务' })).toBeVisible()
-  await expect(page.getByText('DEPENDENCY-GATED')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 3, name: '执行失败任务' })).toBeVisible()
+  await expect(page.getByText('功能接入中')).toBeVisible()
   await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
   await expect(page.locator('.portal-overview__queue-card')).toHaveCount(4)
   await expect(page.getByRole('link', { name: /待接管会话/ })).toHaveAttribute(

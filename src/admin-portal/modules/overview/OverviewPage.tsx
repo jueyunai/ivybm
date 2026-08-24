@@ -14,6 +14,7 @@ import Link from 'next/link'
 
 import type { PortalUser } from '@/admin-portal/core/auth/types'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
+import { formatJobTypeLabel } from '@/admin-portal/core/jobLabels'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
 
@@ -62,6 +63,15 @@ const formatTimestamp = (value: string, locale: 'en' | 'zh'): string => {
   }).format(date)
 }
 
+const formatReference = (kind: PortalOverviewPriorityKind, reference: string, locale: 'en' | 'zh'): string => {
+  if (kind === 'active-conversation' || kind === 'handoff-request') {
+    const shortId = reference.slice(-6)
+    return locale === 'zh' ? `客户会话 #${shortId}` : `Customer conversation #${shortId}`
+  }
+  if (kind === 'job') return formatJobTypeLabel(reference, locale)
+  return reference
+}
+
 function PriorityItem({ item, locale }: { item: PortalOverviewPriorityItem; locale: 'en' | 'zh' }) {
   const messages = getPortalMessages(locale).overview
   const kind = messages.priorityKinds[item.kind]
@@ -74,7 +84,7 @@ function PriorityItem({ item, locale }: { item: PortalOverviewPriorityItem; loca
     <li className="portal-overview__priority-item">
       <StatusBadge label={kind.label} tone={priorityTone[item.kind]} />
       <div className="portal-overview__priority-copy">
-        <strong>{item.reference}</strong>
+        <strong>{formatReference(item.kind, item.reference, locale)}</strong>
         <span>{kind.description}</span>
       </div>
       <div className="portal-overview__priority-meta">

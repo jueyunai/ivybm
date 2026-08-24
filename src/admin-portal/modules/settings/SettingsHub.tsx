@@ -244,7 +244,7 @@ export function SettingsHub({
                 <div>
                   <strong>{messages.modules[portalModule.labelKey]}</strong>
                   <span>
-                    {messages.settings.moduleOwner}: {portalModule.owner}
+                    {messages.settings.moduleOwner}: {portalModule.owner === "jueyunai" ? (locale === "zh" ? "系统核心组" : "Core System") : portalModule.owner === "xuemusi" ? (locale === "zh" ? "AI 与渠道组" : "AI & Channels") : portalModule.owner}
                   </span>
                 </div>
                 <p>

@@ -230,7 +230,7 @@ describe('Portal conversations module', () => {
     renderWorkspace('conv-1')
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: '官网访客 #conv-1' })).toBeDefined()
     })
 
     const textarea = screen.getByPlaceholderText('输入给客户的回复…') as HTMLTextAreaElement
@@ -240,11 +240,11 @@ describe('Portal conversations module', () => {
     expect(textarea.value).toBe('Draft for conversation 1')
 
     // Switch to conv-2
-    const conv2Button = screen.getByRole('button', { name: /#conv-2/u })
+    const conv2Button = screen.getByRole('button', { name: /Facebook客户 #conv-2/u })
     fireEvent.click(conv2Button)
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: 'Facebook客户 #conv-2' })).toBeDefined()
     })
 
     const textarea2 = screen.getByPlaceholderText('输入给客户的回复…') as HTMLTextAreaElement
@@ -254,11 +254,11 @@ describe('Portal conversations module', () => {
     expect(textarea2.value).toBe('Draft for conversation 2')
 
     // Switch back to conv-1
-    const conv1Button = screen.getByRole('button', { name: /#conv-1/u })
+    const conv1Button = screen.getByRole('button', { name: /官网访客 #conv-1/u })
     fireEvent.click(conv1Button)
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: '官网访客 #conv-1' })).toBeDefined()
     })
 
     const textarea1Restored = screen.getByPlaceholderText(
@@ -275,10 +275,10 @@ describe('Portal conversations module', () => {
     })
 
     // Switch back to conv-2 and verify its draft was preserved
-    fireEvent.click(screen.getByRole('button', { name: /#conv-2/u }))
+    fireEvent.click(screen.getByRole('button', { name: /Facebook客户 #conv-2/u }))
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: 'Facebook客户 #conv-2' })).toBeDefined()
     })
 
     const textarea2Preserved = screen.getByPlaceholderText(
@@ -335,7 +335,7 @@ describe('Portal conversations module', () => {
     renderWorkspace('conv-1')
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: '官网访客 #conv-1' })).toBeDefined()
     })
 
     const textarea = screen.getByPlaceholderText('输入给客户的回复…') as HTMLTextAreaElement
@@ -430,7 +430,7 @@ describe('Portal conversations module', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     renderWorkspace('conv-1')
-    await waitFor(() => expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined())
+    await waitFor(() => expect(screen.getByRole('heading', { name: '官网访客 #conv-1' })).toBeDefined())
 
     const textarea = screen.getByPlaceholderText('输入给客户的回复…') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: 'same key retry' } })
@@ -481,7 +481,7 @@ describe('Portal conversations module', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     renderWorkspace('conv-1')
-    await waitFor(() => expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined())
+    await waitFor(() => expect(screen.getByRole('heading', { name: '官网访客 #conv-1' })).toBeDefined())
     fireEvent.click(screen.getByRole('button', { name: '解决会话' }))
 
     await act(async () => {
@@ -495,7 +495,7 @@ describe('Portal conversations module', () => {
       )
     })
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Facebook客户 #conv-2' })).toBeDefined())
     expect(screen.queryByRole('status')).toBeNull()
   })
 
@@ -565,14 +565,14 @@ describe('Portal conversations module', () => {
     renderWorkspace('conv-1')
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: '官网访客 #conv-1' })).toBeDefined()
     })
     fireEvent.click(screen.getByRole('button', { name: '解决会话' }))
 
     const listRequestCountBeforeFilter = listUrls.length
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'resolved' } })
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: 'Facebook客户 #conv-2' })).toBeDefined()
       expect(screen.getAllByText('已解决').length).toBeGreaterThan(0)
     })
     const listRequestCountBeforeCommandCompletion = listUrls.length
@@ -598,8 +598,8 @@ describe('Portal conversations module', () => {
         (url) => new URL(`http://localhost${url}`).searchParams.get('status') === 'resolved',
       ),
     ).toBe(true)
-    expect(screen.queryByRole('heading', { name: '#conv-1' })).toBeNull()
-    expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+    expect(screen.queryByRole('heading', { name: '官网访客 #conv-1' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Facebook客户 #conv-2' })).toBeDefined()
   })
 
   it('prevents stale conversation detail response from mutating active session or leaking actions', async () => {
@@ -643,13 +643,13 @@ describe('Portal conversations module', () => {
 
     // Rapidly switch to conv-2
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /#conv-2/u })).toBeDefined()
+      expect(screen.getByRole('button', { name: /Facebook客户 #conv-2/u })).toBeDefined()
     })
-    fireEvent.click(screen.getByRole('button', { name: /#conv-2/u }))
+    fireEvent.click(screen.getByRole('button', { name: /Facebook客户 #conv-2/u }))
 
     // conv-2 loads and completes
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: 'Facebook客户 #conv-2' })).toBeDefined()
       expect(screen.getByText('Second visitor message')).toBeDefined()
     })
 
@@ -659,7 +659,7 @@ describe('Portal conversations module', () => {
     })
 
     // Ensure conv-2 is still visible and was NOT overwritten by conv-1
-    expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Facebook客户 #conv-2' })).toBeDefined()
     expect(screen.queryByText('First visitor message')).toBeNull()
   })
 
@@ -703,7 +703,7 @@ describe('Portal conversations module', () => {
     renderWorkspace('conv-1')
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: '官网访客 #conv-1' })).toBeDefined()
     })
 
     // Trigger resolve command on conv-1
@@ -711,10 +711,10 @@ describe('Portal conversations module', () => {
     fireEvent.click(resolveButton)
 
     // Switch to conv-2 while conv-1 resolve is in-flight
-    fireEvent.click(screen.getByRole('button', { name: /#conv-2/u }))
+    fireEvent.click(screen.getByRole('button', { name: /Facebook客户 #conv-2/u }))
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: 'Facebook客户 #conv-2' })).toBeDefined()
     })
 
     // Now resolve the conv-1 command
@@ -730,7 +730,7 @@ describe('Portal conversations module', () => {
     })
 
     // Ensure conv-2 remains active and its UI is not replaced by conv-1
-    expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Facebook客户 #conv-2' })).toBeDefined()
     expect(screen.getByText('Second visitor message')).toBeDefined()
   })
 
@@ -794,19 +794,19 @@ describe('Portal conversations module', () => {
     renderWorkspace('conv-1')
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: '官网访客 #conv-1' })).toBeDefined()
     })
     fireEvent.change(screen.getByPlaceholderText('输入给客户的回复…'), {
       target: { value: 'Delayed revision 2 reply' },
     })
     fireEvent.click(screen.getByRole('button', { name: '发送回复' }))
 
-    fireEvent.click(screen.getByRole('button', { name: /#conv-2/u }))
+    fireEvent.click(screen.getByRole('button', { name: /Facebook客户 #conv-2/u }))
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: 'Facebook客户 #conv-2' })).toBeDefined()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /#conv-1/u }))
+    fireEvent.click(screen.getByRole('button', { name: /官网访客 #conv-1/u }))
     await waitFor(() => {
       expect(screen.getByText('Authoritative revision 3')).toBeDefined()
       expect(screen.getByText('v3')).toBeDefined()
@@ -899,14 +899,14 @@ describe('Portal conversations module', () => {
     renderWorkspace('conv-1')
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-1' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: '官网访客 #conv-1' })).toBeDefined()
     })
     fireEvent.click(screen.getByRole('button', { name: '解决会话' }))
     await waitFor(() => expect(commandRequests).toHaveLength(1))
 
-    fireEvent.click(screen.getByRole('button', { name: /#conv-2/u }))
+    fireEvent.click(screen.getByRole('button', { name: /Facebook客户 #conv-2/u }))
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '#conv-2' })).toBeDefined()
+      expect(screen.getByRole('heading', { name: 'Facebook客户 #conv-2' })).toBeDefined()
     })
     const conv2Resolve = screen.getByRole('button', { name: '解决会话' })
     expect((conv2Resolve as HTMLButtonElement).disabled).toBe(false)
