@@ -34,7 +34,7 @@ export const Leads: CollectionConfig = {
       'createdAt',
     ],
     group: 'Lead Management',
-    useAsTitle: 'email',
+    useAsTitle: 'name',
   },
   fields: [
     {
@@ -149,12 +149,59 @@ export const Leads: CollectionConfig = {
       name: 'email',
       type: 'email',
       index: true,
-      required: true,
     },
     {
       name: 'phone',
       type: 'text',
       maxLength: 32,
+    },
+    {
+      name: 'messagingPlatform',
+      type: 'select',
+      access: {
+        update: immutableAfterCreate,
+      },
+      admin: {
+        description: 'Server-verified social messaging channel used to contact this Lead.',
+        readOnly: true,
+      },
+      options: ['facebook-messenger', 'instagram', 'tiktok'],
+    },
+    {
+      name: 'messagingAccountExternalId',
+      type: 'text',
+      access: {
+        update: immutableAfterCreate,
+      },
+      admin: {
+        description: 'Provider account or Page identifier. This is not a credential.',
+        readOnly: true,
+      },
+      maxLength: 200,
+    },
+    {
+      name: 'messagingSenderExternalId',
+      type: 'text',
+      access: {
+        update: immutableAfterCreate,
+      },
+      admin: {
+        description: 'Provider-scoped sender identifier. This is not a credential.',
+        readOnly: true,
+      },
+      maxLength: 200,
+    },
+    {
+      name: 'messagingThreadExternalId',
+      type: 'text',
+      access: {
+        update: immutableAfterCreate,
+      },
+      admin: {
+        description: 'Stable provider thread identifier. This is not a credential.',
+        readOnly: true,
+      },
+      maxLength: 400,
     },
     {
       name: 'interest',

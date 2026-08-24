@@ -13,7 +13,7 @@ export const DEFAULT_FEISHU_FIELD_MAPPINGS = [
   { localField: 'projectStage', targetField: '项目阶段' },
   { localField: 'intentLevel', targetField: 'AI 意向等级' },
   { localField: 'owner', targetField: '负责人' },
-  { localField: 'email', required: true, targetField: '邮箱' },
+  { localField: 'email', required: false, targetField: '邮箱' },
   { localField: 'phone', targetField: '电话' },
   { localField: 'nextFollowUpAt', targetField: '下次跟进时间' },
   { localField: 'originalInquiry', required: true, targetField: '原始咨询' },

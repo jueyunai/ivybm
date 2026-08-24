@@ -87,12 +87,16 @@ export const feishuLeadSyncRevision = (value: unknown): string => {
         budget: lead.budget ?? null,
         company: lead.company ?? null,
         country: lead.country ?? null,
-        email: lead.email,
+        email: lead.email ?? null,
         id: lead.id,
         hasDrawings: lead.hasDrawings ?? null,
         intentLevel: lead.intentLevel,
         interest: lead.interest ?? null,
         message: lead.message,
+        messagingAccountExternalId: lead.messagingAccountExternalId ?? null,
+        messagingPlatform: lead.messagingPlatform ?? null,
+        messagingSenderExternalId: lead.messagingSenderExternalId ?? null,
+        messagingThreadExternalId: lead.messagingThreadExternalId ?? null,
         name: lead.name,
         nextFollowUpAt: lead.nextFollowUpAt ?? null,
         phone: lead.phone ?? null,
@@ -207,6 +211,28 @@ const relationshipLabel = (value: unknown): number | string | Record<string, unk
   throw new FeishuConfigurationError('Feishu relationship value is invalid')
 }
 
+const messagingIdentity = (lead: Record<string, unknown>): Partial<LeadForFeishu> => {
+  const platform = optionalString(lead.messagingPlatform)
+  const account = optionalString(lead.messagingAccountExternalId)
+  const sender = optionalString(lead.messagingSenderExternalId)
+  const thread = optionalString(lead.messagingThreadExternalId)
+  if (!platform && !account && !sender && !thread) return {}
+  if (
+    (platform !== 'facebook-messenger' && platform !== 'instagram' && platform !== 'tiktok') ||
+    !account ||
+    !sender ||
+    !thread
+  ) {
+    throw new FeishuConfigurationError('Lead messaging contact identity is incomplete')
+  }
+  return {
+    messagingAccountExternalId: account,
+    messagingPlatform: platform,
+    messagingSenderExternalId: sender,
+    messagingThreadExternalId: thread,
+  }
+}
+
 const leadForFeishu = (value: unknown): LeadForFeishu => {
   const lead = record(value)
   if (!lead) throw new FeishuConfigurationError('Lead document is invalid')
@@ -225,12 +251,13 @@ const leadForFeishu = (value: unknown): LeadForFeishu => {
     budget: typeof lead.budget === 'string' ? lead.budget : null,
     company: typeof lead.company === 'string' ? lead.company : null,
     country: optionalString(lead.country) ?? null,
-    email: requiredString(lead.email, 'lead email'),
+    email: optionalString(lead.email) ?? null,
     id: id(lead.id, 'lead id'),
     hasDrawings: typeof lead.hasDrawings === 'boolean' ? lead.hasDrawings : null,
     intentLevel: intentLevel as LeadForFeishu['intentLevel'],
     interest: typeof lead.interest === 'string' ? lead.interest : null,
     message: requiredString(lead.message, 'lead message'),
+    ...messagingIdentity(lead),
     name: requiredString(lead.name, 'lead name'),
     nextFollowUpAt: typeof lead.nextFollowUpAt === 'string' ? lead.nextFollowUpAt : null,
     phone: typeof lead.phone === 'string' ? lead.phone : null,

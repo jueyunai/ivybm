@@ -99,6 +99,17 @@ if (isFullRequest && !process.env.BASE_URL?.trim()) {
 }
 
 const plan = resolveE2ESuitePlan(requestedSuites)
+const publishingOptIn = requestedSuites.includes('facebook-publishing')
+if (publishingOptIn) {
+  if (process.env.CI) {
+    throw new Error('facebook-publishing is a local-only E2E checkpoint and cannot run in CI')
+  }
+  if (process.env.ADMIN_PORTAL_PUBLISHING_ENABLED !== 'true') {
+    throw new Error(
+      'facebook-publishing requires ADMIN_PORTAL_PUBLISHING_ENABLED=true in the local environment',
+    )
+  }
+}
 const externalBaseURL = process.env.BASE_URL?.trim()
 if (plan.mode === 'mutation' && externalBaseURL) {
   throw new Error('Mutation E2E suites cannot use BASE_URL; use the launcher-owned server')

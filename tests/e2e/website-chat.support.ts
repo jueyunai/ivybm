@@ -32,7 +32,7 @@ type ChatFixtureState = {
     qualificationRoundCount: number
   }
   handoffs: Array<{ id: number; reason: string; source: string; status: string }>
-  leads: Array<{ company?: string | null; email: string; id: number; intentLevel: string }>
+  leads: Array<{ company?: string | null; email?: string | null; id: number; intentLevel: string }>
   messages: Array<{ author: string; content: string; id: number; status: string }>
 }
 

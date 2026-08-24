@@ -5,6 +5,7 @@ import {
   type HandoffForFeishu,
   type LeadForFeishu,
 } from './contracts'
+import { formatLeadContact } from './leadContact'
 
 export const formatHandoffNotification = (handoff: HandoffForFeishu): string =>
   [
@@ -51,7 +52,7 @@ export const formatHighIntentLeadNotification = (lead: LeadForFeishu): string =>
     `客户：${lead.company || lead.name}`,
     `国家/地区：${lead.country || '待确认'}`,
     `需求：${lead.interest || '待确认'}`,
-    `联系方式：${lead.email}${lead.phone ? ` / ${lead.phone}` : ''}`,
+    `联系方式：${formatLeadContact(lead)}`,
   ].join('\n')
 
 export const formatNewLeadNotification = (lead: LeadForFeishu): string =>
@@ -60,7 +61,7 @@ export const formatNewLeadNotification = (lead: LeadForFeishu): string =>
     `客户：${lead.company || lead.name}`,
     `国家/地区：${lead.country || '待确认'}`,
     `来源：${typeof lead.source === 'object' ? lead.source.label || lead.source.key || lead.source.id : lead.source}`,
-    `联系方式：${lead.email}${lead.phone ? ` / ${lead.phone}` : ''}`,
+    `联系方式：${formatLeadContact(lead)}`,
   ].join('\n')
 
 export const formatFollowUpDueNotification = (lead: LeadForFeishu, dueAt: string): string =>
@@ -68,7 +69,7 @@ export const formatFollowUpDueNotification = (lead: LeadForFeishu, dueAt: string
     '客户跟进已到期',
     `客户：${lead.company || lead.name}`,
     `到期时间：${dueAt}`,
-    `联系方式：${lead.email}${lead.phone ? ` / ${lead.phone}` : ''}`,
+    `联系方式：${formatLeadContact(lead)}`,
   ].join('\n')
 
 export const formatLeadSyncFailureNotification = (

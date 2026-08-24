@@ -8,11 +8,13 @@ const evaluation = ({
   email = 'buyer@example.invalid',
   handoffReason,
   level,
+  phone,
 }: {
   country?: string
   email?: string
   handoffReason?: string
   level: 'a' | 'b' | 'c'
+  phone?: string
 }): ConversationLeadEvaluation => ({
   ...(handoffReason ? { handoffReason } : {}),
   score: {
@@ -22,8 +24,15 @@ const evaluation = ({
     reasons: [],
     score: level === 'a' ? 70 : level === 'b' ? 40 : 0,
   },
-  signals: { contact: { email }, country },
+  signals: { contact: { email, phone }, country },
 })
+
+const facebookContact = {
+  channel: 'facebook' as const,
+  externalAccountId: 'page-123',
+  externalSenderId: 'sender-456',
+  externalThreadId: 'page-123:sender-456',
+}
 
 describe('Payload conversation Lead gate', () => {
   it('creates Leads for A intent or completed qualification with a sustainable contact', () => {
@@ -37,6 +46,12 @@ describe('Payload conversation Lead gate', () => {
       ),
     ).toBe(true)
     expect(shouldCreateConversationLead(evaluation({ country: '', level: 'a' }))).toBe(true)
+    expect(
+      shouldCreateConversationLead(evaluation({ email: '', level: 'a', phone: '+97150' })),
+    ).toBe(true)
+    expect(
+      shouldCreateConversationLead(evaluation({ email: '', level: 'a' }), facebookContact),
+    ).toBe(true)
   })
 
   it('does not treat every handoff as a Lead or invent a missing contact', () => {
@@ -47,6 +62,12 @@ describe('Payload conversation Lead gate', () => {
       shouldCreateConversationLead(
         evaluation({ email: '', handoffReason: 'qualification_complete', level: 'b' }),
       ),
+    ).toBe(false)
+    expect(
+      shouldCreateConversationLead(evaluation({ email: '', level: 'a' }), {
+        ...facebookContact,
+        externalThreadId: null,
+      }),
     ).toBe(false)
   })
 })

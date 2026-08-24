@@ -810,7 +810,7 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     )
     if (!job) throw new Error('Expected country-pending lead sync job')
     const sendText = vi.fn(async () => ({ messageId: randomUUID() }))
-    const upsertRecord: FeishuClientPort['upsertRecord'] = vi.fn(async () => ({
+    const upsertRecord = vi.fn(async () => ({
       recordId: randomUUID(),
       state: 'created' as const,
     }))
@@ -834,6 +834,81 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
         .map(([input]) => input.text)
         .join('\n'),
     ).toContain('待确认')
+  })
+
+  it('syncs and notifies an email-less social Lead through its verified messaging identity', async () => {
+    const lead = await payload.create({
+      collection: 'leads',
+      context,
+      data: {
+        company: 'Messenger Facade Buyer',
+        country: 'United Arab Emirates',
+        email: null,
+        idempotencyKey: randomUUID(),
+        intentLevel: 'a',
+        locale: 'en',
+        message: 'Please quote our facade project through Messenger.',
+        messagingAccountExternalId: 'page-feishu-02',
+        messagingPlatform: 'facebook-messenger',
+        messagingSenderExternalId: 'sender-feishu-02',
+        messagingThreadExternalId: 'page-feishu-02:sender-feishu-02',
+        name: 'Messenger Facade Buyer',
+        phone: null,
+        requestId: randomUUID(),
+        source: sourceID,
+        status: 'new',
+      },
+      overrideAccess: true,
+    })
+    extraLeadIDs.push(lead.id)
+    const jobs = await payload.find({
+      collection: 'jobs',
+      limit: 100,
+      overrideAccess: true,
+      where: { type: { equals: FEISHU_LEAD_SYNC_JOB_TYPE } },
+    })
+    const job = jobs.docs.find(
+      (candidate) =>
+        jobPayload(candidate.payload).entityId === lead.id &&
+        jobPayload(candidate.payload).entityRevision === feishuLeadSyncRevision(lead),
+    )
+    if (!job) throw new Error('Expected email-less social Lead sync job')
+    const sendText = vi.fn(async () => ({ messageId: randomUUID() }))
+    const upsertRecord = vi.fn(async () => ({
+      recordId: randomUUID(),
+      state: 'created' as const,
+    }))
+
+    await createFeishuLeadSyncJobHandler({
+      client: () => ({ sendText, upsertRecord }),
+      payload,
+    })(await claimedJob(job.id), {
+      assertLease: vi.fn(),
+      renewLease: vi.fn(),
+      signal: new AbortController().signal,
+    })
+
+    expect(upsertRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fields: expect.objectContaining({
+          Source: expect.stringContaining(
+            'Facebook Messenger · Account page-feishu-02 · Sender sender-feishu-02 · Thread page-feishu-02:sender-feishu-02',
+          ),
+        }),
+      }),
+    )
+    const upsert = (
+      upsertRecord.mock.calls as unknown as Array<[Parameters<FeishuClientPort['upsertRecord']>[0]]>
+    )[0]?.[0]
+    expect(upsert?.fields).not.toHaveProperty('Email')
+    const notifications = (sendText.mock.calls as unknown as Array<[SendTextInput]>)
+      .map(([input]) => input.text)
+      .join('\n')
+    expect(notifications).toContain('新客户线索')
+    expect(notifications).toContain('高意向客户')
+    expect(notifications).toContain('Facebook Messenger')
+    expect(notifications).toContain('sender-feishu-02')
+    expect(notifications).not.toContain('@example.invalid')
   })
 
   it('delivers a new high-intent event when a lead returns to a prior content revision', async () => {

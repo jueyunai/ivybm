@@ -6,6 +6,7 @@ import {
   type FeishuMappingConfig,
   type LeadForFeishu,
 } from './contracts'
+import { formatMessagingContactIdentity } from './leadContact'
 
 const REQUIRED_FIELDS = [
   'localLeadId',
@@ -65,7 +66,7 @@ const originalInquiry = (lead: LeadForFeishu): string => {
 const leadValues = (lead: LeadForFeishu): Record<FeishuLeadField, FeishuFieldValue> => ({
   country: lead.country?.trim() ?? '',
   customerName: (lead.company || lead.name).trim(),
-  email: lead.email.trim(),
+  email: lead.email?.trim() ?? '',
   intentLevel: lead.intentLevel.toUpperCase(),
   localLeadId: String(lead.id),
   nextFollowUpAt: followUpTimestamp(lead.nextFollowUpAt),
@@ -74,7 +75,9 @@ const leadValues = (lead: LeadForFeishu): Record<FeishuLeadField, FeishuFieldVal
   phone: lead.phone?.trim() ?? '',
   productNeed: lead.interest?.trim() ?? '',
   projectStage: lead.projectStage?.trim() ?? '',
-  source: relationshipLabel(lead.source),
+  source: [relationshipLabel(lead.source), formatMessagingContactIdentity(lead)]
+    .filter(Boolean)
+    .join(' · '),
   sourceURL: lead.sourceURL?.trim() ?? '',
 })
 

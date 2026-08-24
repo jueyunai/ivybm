@@ -17,13 +17,17 @@ export type LeadSummaryItem = {
   budget: null | string
   company: null | string
   country: null | string
-  email: string
+  email: null | string
   hasDrawings: boolean | null
   id: number | string
   interest: null | string
   intentLevel: 'a' | 'b' | 'c' | 'unscored'
   locale: 'ar' | 'en'
   message: string
+  messagingAccountExternalId: null | string
+  messagingPlatform: 'facebook-messenger' | 'instagram' | 'tiktok' | null
+  messagingSenderExternalId: null | string
+  messagingThreadExternalId: null | string
   name: string
   phone: null | string
   procurementPlan: null | string
@@ -76,7 +80,7 @@ const booleanOrNull = (value: unknown): boolean | null => typeof value === 'bool
 
 const buildWhere = (query: LeadQuery): Where => {
   const clauses: Where[] = []
-  if (query.q) clauses.push({ or: [{ name: { contains: query.q } }, { company: { contains: query.q } }, { email: { contains: query.q } }, { country: { contains: query.q } }] })
+  if (query.q) clauses.push({ or: [{ name: { contains: query.q } }, { company: { contains: query.q } }, { email: { contains: query.q } }, { country: { contains: query.q } }, { messagingSenderExternalId: { contains: query.q } }] })
   if (query.status !== 'all') clauses.push({ status: { equals: query.status } })
   if (query.intent !== 'all') clauses.push({ intentLevel: { equals: query.intent } })
   return clauses.length === 0 ? {} : clauses.length === 1 ? clauses[0] : { and: clauses }
@@ -103,7 +107,7 @@ export const loadLeadsPageData = async ({ env, payload, query, req, role }: {
   try {
     const leads = await payload.find({
       collection: 'leads', depth: 0, limit: 20, overrideAccess: false, page: query.page, req,
-      select: { assignedTo: true, budget: true, company: true, country: true, email: true, hasDrawings: true, interest: true, intentLevel: true, locale: true, message: true, name: true, phone: true, procurementPlan: true, projectStage: true, quantitySquareMeters: true, source: true, status: true, timeline: true, updatedAt: true },
+      select: { assignedTo: true, budget: true, company: true, country: true, email: true, hasDrawings: true, interest: true, intentLevel: true, locale: true, message: true, messagingAccountExternalId: true, messagingPlatform: true, messagingSenderExternalId: true, messagingThreadExternalId: true, name: true, phone: true, procurementPlan: true, projectStage: true, quantitySquareMeters: true, source: true, status: true, timeline: true, updatedAt: true },
       sort: '-updatedAt', where: buildWhere(query),
     })
     const ids = leads.docs.map(({ id }) => id)
@@ -128,9 +132,9 @@ export const loadLeadsPageData = async ({ env, payload, query, req, role }: {
       state: 'available',
       summary: {
         items: leads.docs.map((lead) => ({
-          assignedTo: asID(lead.assignedTo), budget: stringOrNull(lead.budget), company: stringOrNull(lead.company), country: stringOrNull(lead.country), email: String(lead.email), hasDrawings: booleanOrNull(lead.hasDrawings), id: lead.id,
+          assignedTo: asID(lead.assignedTo), budget: stringOrNull(lead.budget), company: stringOrNull(lead.company), country: stringOrNull(lead.country), email: stringOrNull(lead.email), hasDrawings: booleanOrNull(lead.hasDrawings), id: lead.id,
           interest: stringOrNull(lead.interest), intentLevel: lead.intentLevel as LeadSummaryItem['intentLevel'], locale: lead.locale as LeadSummaryItem['locale'],
-          message: String(lead.message), name: String(lead.name), phone: stringOrNull(lead.phone), procurementPlan: stringOrNull(lead.procurementPlan), projectStage: stringOrNull(lead.projectStage), quantitySquareMeters: numberOrNull(lead.quantitySquareMeters), relatedConversations: byLead.get(String(lead.id)) ?? [],
+          message: String(lead.message), messagingAccountExternalId: stringOrNull(lead.messagingAccountExternalId), messagingPlatform: stringOrNull(lead.messagingPlatform) as LeadSummaryItem['messagingPlatform'], messagingSenderExternalId: stringOrNull(lead.messagingSenderExternalId), messagingThreadExternalId: stringOrNull(lead.messagingThreadExternalId), name: String(lead.name), phone: stringOrNull(lead.phone), procurementPlan: stringOrNull(lead.procurementPlan), projectStage: stringOrNull(lead.projectStage), quantitySquareMeters: numberOrNull(lead.quantitySquareMeters), relatedConversations: byLead.get(String(lead.id)) ?? [],
           source: asID(lead.source) ?? 0, status: lead.status as LeadSummaryItem['status'], timeline: stringOrNull(lead.timeline), updatedAt: lead.updatedAt,
         })),
         options: { sources: sources.docs.map((source) => ({ id: source.id, label: source.name })), users: users.docs.map((user) => ({ id: user.id, label: user.email })) },
