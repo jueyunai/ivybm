@@ -169,7 +169,7 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
     bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB` : '—'
 
   const errorLabel = (source: Source): string | null => {
-    if (!source.errorSummary) return null
+    if (!source.errorCode && !source.errorSummary) return null
     return messages.errorSummaries[source.errorCode ?? ''] ?? messages.errorSummaries.unknown
   }
 

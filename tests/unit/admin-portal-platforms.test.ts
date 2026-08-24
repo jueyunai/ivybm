@@ -18,7 +18,7 @@ afterEach(() => {
 })
 
 describe('Portal platform readiness', () => {
-  it('shows credential-free responsibility and next action for every readiness state', () => {
+  it('shows credential-free capability-specific instructions before controlled testing', () => {
     const { container } = render(
       React.createElement(
         PortalPreferencesProvider,

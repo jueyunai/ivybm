@@ -185,7 +185,9 @@ test.describe.serial('FB-IN-01 Facebook Messenger durable closure', () => {
       new RegExp(`/dashboard/conversations\\?conversation=${state.conversation.publicId}$`),
     )
     await expect(
-      page.getByRole('heading', { name: `#${state.conversation.publicId}` }),
+      page.getByRole('heading', {
+        name: `Facebook客户 #${state.conversation.publicId.slice(-6)}`,
+      }),
     ).toBeVisible()
     await page.getByRole('button', { name: '接管会话' }).click()
     await expect(page.getByRole('button', { name: '发送回复' })).toBeVisible()

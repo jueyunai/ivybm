@@ -106,7 +106,7 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
     await page.getByRole('button', { name: '新建草稿' }).click()
     const editor = page.locator('.portal-content-studio__form').first()
     await expect(editor.getByRole('heading', { name: '新建草稿' })).toBeVisible()
-    await editor.getByLabel('工作标题').fill(title)
+    await editor.getByLabel('草稿标题').fill(title)
     await editor.getByLabel('平台').selectOption('linkedin')
     await editor.getByLabel('语言').selectOption('en')
     await editor.getByLabel('内容格式').selectOption('post')
@@ -120,7 +120,7 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
     await knowledgeOption.check()
     await editor.getByRole('button', { name: '添加事实' }).click()
     await editor
-      .getByPlaceholder('事实主张')
+      .getByPlaceholder('关键事实 / 论据')
       .fill('Anodized aluminum is available for project facades.')
     await editor.getByRole('combobox', { name: '来源' }).selectOption(sourceURL)
 
@@ -143,8 +143,8 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
     await expect(item).toBeVisible()
     await item.click()
     await page.getByRole('button', { name: '编辑' }).click()
-    await expect(editor.getByLabel('工作标题')).toHaveValue(title)
-    await editor.getByLabel('工作标题').fill(updatedTitle)
+    await expect(editor.getByLabel('草稿标题')).toHaveValue(title)
+    await editor.getByLabel('草稿标题').fill(updatedTitle)
     const [updateResponse] = await Promise.all([
       page.waitForResponse(
         (response) =>
@@ -165,7 +165,7 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
     await reviewButton.click()
     await page.getByLabel('事实可追溯').check()
     await page.getByLabel('技术表述已核对').check()
-    await page.getByLabel('未作价格、交期、MOQ、认证或付款承诺').check()
+    await page.getByLabel('未作价格、交期、起订量 (MOQ)、认证或付款承诺').check()
     await page.getByLabel('平台格式已核对').check()
     await page.getByLabel('阿语已校对或不适用').check()
     await page.getByRole('button', { exact: true, name: '批准' }).click()
@@ -221,7 +221,7 @@ test('Content Studio deletes an unreviewed draft through the Portal command', as
   try {
     await page.getByRole('button', { name: '新建草稿' }).click()
     const editor = page.locator('.portal-content-studio__form').first()
-    await editor.getByLabel('工作标题').fill(title)
+    await editor.getByLabel('草稿标题').fill(title)
     await editor.getByLabel('文案内容').fill('Disposable draft for the Portal delete flow.')
 
     const [createResponse] = await Promise.all([
@@ -264,7 +264,7 @@ test('Content Studio generates, previews, and adopts an image through protected 
   try {
     await page.getByRole('button', { name: '新建草稿' }).click()
     const editor = page.locator('.portal-content-studio__form').first()
-    await editor.getByLabel('工作标题').fill(title)
+    await editor.getByLabel('草稿标题').fill(title)
     await editor.getByLabel('文案内容').fill('Draft for the controlled image adoption flow.')
     const [createResponse] = await Promise.all([
       page.waitForResponse(
