@@ -28,6 +28,7 @@ import type {
 } from './contracts'
 import { ChatServiceError } from './contracts'
 import { allowedActionsFor, type ChatSessionViewer, type HandoffCommand } from './handoffState'
+import { isWebsiteSilentRecoveryHandoff } from './recoveryPolicy'
 import type {
   ConversationCommandClaim,
   ConversationLeadEvaluation,
@@ -90,7 +91,16 @@ const leadMessagingIdentity = (
 export const shouldCreateConversationLead = (
   evaluation?: ConversationLeadEvaluation,
   contact?: ConversationLeadContact,
+  handoffReason?: string,
 ): boolean => {
+  if (
+    isWebsiteSilentRecoveryHandoff(
+      contact?.channel,
+      handoffReason ?? evaluation?.handoffReason,
+    )
+  ) {
+    return false
+  }
   const qualifiedForLead =
     evaluation?.score.level === 'a' || evaluation?.handoffReason === 'qualification_complete'
   const sustainableContact =
@@ -353,8 +363,9 @@ export class PayloadConversationRepository implements ConversationRepository {
   private shouldCreateLead(
     evaluation: ConversationLeadEvaluation | undefined,
     conversation: Conversation,
+    handoffReason: string | undefined,
   ): boolean {
-    return shouldCreateConversationLead(evaluation, conversation)
+    return shouldCreateConversationLead(evaluation, conversation, handoffReason)
   }
 
   private async persistLead(
@@ -731,7 +742,11 @@ export class PayloadConversationRepository implements ConversationRepository {
     return this.transaction(async (req) => {
       const conversation = await this.findConversation(session.id, req)
       if (!conversation) throw new ChatServiceError('not_found', 'Chat session not found')
-      const needsLead = this.shouldCreateLead(mutation.leadEvaluation, conversation)
+      const needsLead = this.shouldCreateLead(
+        mutation.leadEvaluation,
+        conversation,
+        mutation.handoff?.reason,
+      )
       // Payload's declarative update is not enough to serialize two independent commands
       // that read the same session before either writes. Lock the row on this request's
       // existing transaction, then validate the version while the lock is held.

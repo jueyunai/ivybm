@@ -35,14 +35,14 @@ const scenarios: Scenario[] = [
   {
     email: 'e2e-chat-ar@example.invalid',
     expectedCompany: 'E2E Arabia LLC',
-    expectedHandoffReason: 'high_risk_topic',
+    expectedHandoffReason: 'high_intent',
     inputLabel: 'اسأل عن الألواح أو مشروعك…',
     launcher: 'اسأل مساعد المشروع',
     locale: 'ar',
     messages: [
       'نحتاج aluminum panels لمشروع في الإمارات العربية المتحدة.',
       'اسم الشركة: E2E Arabia LLC، المشروع في مرحلة تصميم ونحتاج 300 م².',
-      'لدينا رسومات. الميزانية: 100000 دولار وخطة الشراء معتمدة. الشراء خلال 3 أشهر. البريد e2e-chat-ar@example.invalid.',
+      'لدينا رسومات. الميزانية: 100000 دولار وخطة الشراء جاهزة. الشراء خلال 3 أشهر. البريد e2e-chat-ar@example.invalid.',
     ],
     send: 'إرسال',
   },
@@ -190,7 +190,6 @@ test('WEB-CHAT-02 fails closed to one recoverable handoff for knowledge, AI, and
 }) => {
   const harness = await WebsiteChatE2EHarness.create()
   await harness.createFeishuMapping()
-  const recoveryHandoffIDs: number[] = []
   const openFreshSession = async (): Promise<{
     input: ReturnType<Page['getByLabel']>
     sessionID: string
@@ -218,9 +217,11 @@ test('WEB-CHAT-02 fails closed to one recoverable handoff for knowledge, AI, and
   }
 
   const sendAndReplay = async ({
+    expectedIntentLevel,
     expectedReason,
     message,
   }: {
+    expectedIntentLevel?: 'a' | 'b' | 'c'
     expectedReason: string
     message: string
   }): Promise<void> => {
@@ -248,19 +249,21 @@ test('WEB-CHAT-02 fails closed to one recoverable handoff for knowledge, AI, and
     expect(replay.status()).toBe(200)
 
     const state = await harness.readSessionState(sessionID)
+    if (expectedIntentLevel) {
+      expect(state.conversation.intentLevel).toBe(expectedIntentLevel)
+    }
     expect(state.messages.filter(({ author }) => author === 'visitor')).toHaveLength(1)
     expect(state.messages.filter(({ author }) => author === 'ai')).toHaveLength(0)
     expect(state.leads).toHaveLength(0)
     expect(state.handoffs).toEqual([
       expect.objectContaining({ reason: expectedReason, source: 'ai_policy', status: 'requested' }),
     ])
-    recoveryHandoffIDs.push(state.handoffs[0].id)
-    expect(await harness.countFeishuHandoffJobs(recoveryHandoffIDs)).toBe(0)
+    expect(await harness.countFeishuJobs()).toBe(0)
     expect(await harness.relayFeishuJobs()).toMatchObject({
       enabled: true,
       handoffs: { created: 0, duplicate: 0 },
     })
-    expect(await harness.countFeishuHandoffJobs(recoveryHandoffIDs)).toBe(0)
+    expect(await harness.countFeishuJobs()).toBe(0)
     await expect(harness.runUntilIdle()).resolves.toEqual(['idle'])
     expect(harness.feishuMessages).toHaveLength(0)
     expect(harness.feishuUpserts).toHaveLength(0)
@@ -280,8 +283,10 @@ test('WEB-CHAT-02 fails closed to one recoverable handoff for knowledge, AI, and
 
     const usageBeforeRisk = await harness.countAiUsage()
     await sendAndReplay({
+      expectedIntentLevel: 'a',
       expectedReason: 'high_risk_topic',
-      message: 'Can you guarantee the final price, exact delivery date, and certification?',
+      message:
+        'Company: Recovery Facades LLC. We need aluminum panels for a 300 m2 procurement project in the UAE, have drawings, a USD 100000 budget and an approved purchase plan, and will buy in 3 months. Email recovery-risk@example.invalid. Can you guarantee the final price, delivery date, and certification?',
     })
     expect(await harness.countAiUsage()).toBe(usageBeforeRisk)
     expect(harness.feishuMessages).toHaveLength(0)

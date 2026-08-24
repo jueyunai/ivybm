@@ -14,6 +14,7 @@ import {
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import type { JobHandler } from '@/modules/jobs/contracts'
 import { isHighIntentLead } from '@/modules/leads/highIntent'
+import { isWebsiteSilentRecoveryHandoff } from '@/modules/conversations/recoveryPolicy'
 
 import { createFeishuClientForMapping } from './connectionClient'
 import { findActiveFeishuMapping } from './config'
@@ -38,20 +39,10 @@ export const FEISHU_HANDOFF_NOTIFY_JOB_TYPE = 'feishu.handoff.notify'
 export const FEISHU_FOLLOW_UP_REMINDER_JOB_TYPE = 'feishu.lead.followup.reminder'
 export const FEISHU_LEAD_SYNC_FAILURE_JOB_TYPE = 'feishu.lead.sync.failure.notify'
 
-const FEISHU_SILENT_RECOVERY_HANDOFF_REASONS = new Set([
-  'ai_service_unavailable',
-  'reviewed_knowledge_unavailable',
-])
-
 const shouldSilenceFeishuHandoff = (value: unknown): boolean => {
   const handoff = record(value)
-  const reason = String(handoff?.reason).trim()
-  if (FEISHU_SILENT_RECOVERY_HANDOFF_REASONS.has(reason)) return true
-  if (reason !== 'high_risk_topic') return false
-
-  // A high-risk fallback without a qualified Lead is recoverable in the Portal and
-  // must not page Feishu. A qualified high-risk Lead still needs the normal sales notice.
-  return !record(handoff?.conversation)?.lead
+  const conversation = record(handoff?.conversation)
+  return isWebsiteSilentRecoveryHandoff(conversation?.channel, handoff?.reason)
 }
 
 type FeishuJobPayload = {

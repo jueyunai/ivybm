@@ -25,6 +25,7 @@ let payload: Payload
 let mappingID: number
 let leadID: number
 let handoffID: number
+let recoveryHandoffID: number
 let sourceID: number
 let visitorID: number
 let conversationID: number
@@ -89,6 +90,13 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     })
     if (handoffID)
       await payload.delete({ collection: 'handoffs', context, id: handoffID, overrideAccess: true })
+    if (recoveryHandoffID)
+      await payload.delete({
+        collection: 'handoffs',
+        context,
+        id: recoveryHandoffID,
+        overrideAccess: true,
+      })
     if (conversationID)
       await payload.delete({
         collection: 'conversations',
@@ -1227,6 +1235,37 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
           jobPayload(job.payload).entityId === handoffID,
       ),
     ).toHaveLength(1)
+  })
+
+  it('keeps a website recovery handoff silent even when the conversation already has a Lead', async () => {
+    const recoveryHandoff = await payload.create({
+      collection: 'handoffs',
+      context,
+      data: {
+        conversation: conversationID,
+        domainEventId: randomUUID(),
+        idempotencyKey: randomUUID(),
+        publicId: `recovery-handoff-${runID}`,
+        reason: 'high_risk_topic',
+        requestedAt: '2026-07-29T00:05:00.000Z',
+        source: 'ai_policy',
+        status: 'requested',
+      },
+      overrideAccess: true,
+    })
+    recoveryHandoffID = recoveryHandoff.id
+
+    await enqueuePendingFeishuJobs({ payload })
+    await enqueuePendingFeishuJobs({ payload })
+    const jobs = await payload.find({
+      collection: 'jobs',
+      limit: 100,
+      overrideAccess: true,
+      where: { type: { equals: FEISHU_HANDOFF_NOTIFY_JOB_TYPE } },
+    })
+    expect(
+      jobs.docs.filter((job) => jobPayload(job.payload).entityId === recoveryHandoffID),
+    ).toHaveLength(0)
   })
 
   it('executes lead upsert and handoff notification through the server-only client port', async () => {

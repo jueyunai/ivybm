@@ -282,12 +282,12 @@ export class WebsiteChatE2EHarness {
     return enqueuePendingFeishuJobs({ payload: this.payload })
   }
 
-  async countFeishuHandoffJobs(handoffIDs: number[]): Promise<number> {
-    if (handoffIDs.length === 0) return 0
+  async countFeishuJobs(): Promise<number> {
+    if (this.mappingIDs.length === 0) return 0
     const result = await this.pool.query<{ count: number }>(
       `SELECT COUNT(*)::int AS count FROM jobs
-       WHERE type = $1 AND payload->>'entityId' = ANY($2::text[])`,
-      [FEISHU_HANDOFF_NOTIFY_JOB_TYPE, handoffIDs.map(String)],
+       WHERE type LIKE 'feishu.%' AND payload->>'mappingId' = ANY($1::text[])`,
+      [this.mappingIDs.map(String)],
     )
     return result.rows[0]?.count ?? 0
   }
