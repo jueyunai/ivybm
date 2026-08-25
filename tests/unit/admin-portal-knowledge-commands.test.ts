@@ -241,7 +241,61 @@ describe('Portal knowledge commands', () => {
     )
   })
 
-  it('runs AI debug through the injected gateway and returns only safe output', async () => {
+  it('runs AI debug through previewKnowledge and returns citations and prompt metadata', async () => {
+    const previewKnowledge = vi.fn().mockResolvedValue({
+      citations: [
+        { documentId: 10, title: 'Aluminum Specs', url: 'https://example.invalid', version: '1.0' },
+      ],
+      content: 'Aluminum double-curved panel answer',
+      model: 'gpt-4o',
+      outcome: 'answer',
+      promptVersion: 3,
+      tokenUsage: { inputTokens: 12, outputTokens: 20, totalTokens: 32 },
+    })
+
+    const result = await runKnowledgeAiDebug({
+      input: { locale: 'en', prompt: 'Tell me about curved panels' },
+      payload: {} as Payload,
+      previewKnowledge: previewKnowledge as never,
+    })
+
+    expect(result).toMatchObject({
+      citations: [
+        { documentId: 10, title: 'Aluminum Specs', url: 'https://example.invalid', version: '1.0' },
+      ],
+      model: 'gpt-4o',
+      outcome: 'answer',
+      promptVersion: 3,
+      text: 'Aluminum double-curved panel answer',
+      usage: { inputTokens: 12, outputTokens: 20, totalTokens: 32 },
+    })
+    expect(previewKnowledge).toHaveBeenCalledWith({
+      locale: 'en',
+      payload: expect.anything(),
+      query: 'Tell me about curved panels',
+    })
+  })
+
+  it('handles handoff outcome from previewKnowledge gracefully', async () => {
+    const previewKnowledge = vi.fn().mockResolvedValue({
+      outcome: 'handoff',
+      reason: 'risk_detected',
+    })
+
+    const result = await runKnowledgeAiDebug({
+      input: { prompt: 'Competitor pricing' },
+      payload: {} as Payload,
+      previewKnowledge: previewKnowledge as never,
+    })
+
+    expect(result).toMatchObject({
+      outcome: 'handoff',
+      reason: 'risk_detected',
+      text: 'risk_detected',
+    })
+  })
+
+  it('runs AI debug through the fallback gateway when preview is unavailable', async () => {
     const generateText = vi.fn().mockResolvedValue({
       cost: { currency: 'USD', estimated: 0.001 },
       model: 'private-model',
@@ -255,6 +309,7 @@ describe('Portal knowledge commands', () => {
     const result = await runKnowledgeAiDebug({
       input: { prompt: 'Test reviewed knowledge' },
       payload: {} as Payload,
+      previewKnowledge: vi.fn().mockRejectedValue(new Error('no db')),
       resolveGateway: resolveGateway as never,
     })
     expect(result).toMatchObject({

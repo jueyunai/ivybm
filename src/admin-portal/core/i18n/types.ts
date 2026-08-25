@@ -95,6 +95,7 @@ export interface PortalSettingsMessages {
     >
     customerChat: string
     knowledgeIndex: string
+    knowledgeTranslation: string
   }
   accountDescription: string
   accountTitle: string

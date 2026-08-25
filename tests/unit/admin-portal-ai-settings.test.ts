@@ -115,6 +115,7 @@ describe('Portal AI settings read model', () => {
       { key: 'customer-chat', reason: 'route', status: 'action-required' },
       { key: 'content-studio', reason: null, status: 'configured-pending-verification' },
       { key: 'knowledge-index', reason: 'route', status: 'action-required' },
+      { key: 'knowledge-translation', reason: 'route', status: 'action-required' },
     ])
   })
 

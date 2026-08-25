@@ -53,7 +53,8 @@ export interface PortalAiUsageRouteSummary {
   usageKey: string
 }
 
-export type PortalAiReadinessKey = 'content-studio' | 'customer-chat' | 'knowledge-index'
+export type PortalAiReadinessKey =
+  'content-studio' | 'customer-chat' | 'knowledge-index' | 'knowledge-translation'
 
 export interface PortalAiReadinessSummary {
   key: PortalAiReadinessKey
@@ -259,6 +260,15 @@ export const buildPortalAiReadiness = ({
     routes,
     usageKey: AI_USAGE_KEYS.contentImageGeneration,
   })
+  const translationReason = routeReadiness({
+    capability: 'text',
+    encryptionKeyConfigured,
+    profiles,
+    providers,
+    readableProviderIDs,
+    routes,
+    usageKey: AI_USAGE_KEYS.knowledgeTranslation,
+  })
   const item = (
     key: PortalAiReadinessKey,
     reason: PortalAiReadinessReason | null,
@@ -276,6 +286,7 @@ export const buildPortalAiReadiness = ({
     item('customer-chat', textReason ?? embeddingReason),
     item('content-studio', textReason ?? imageReason, true),
     item('knowledge-index', embeddingReason),
+    item('knowledge-translation', translationReason),
   ]
 }
 

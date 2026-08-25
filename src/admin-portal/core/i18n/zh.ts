@@ -214,7 +214,8 @@ export const PORTAL_ZH = {
     arabic: '阿语',
     credentialsNeverShown: '仅展示模型可用状态；API 密钥等敏感信息已受保护且不在前端显示。',
     customerVisible: '客户可见',
-    description: '管理 AI 客服与内容生成所依据的业务知识。文档经审核通过并完成索引后，将正式供 AI 调用。',
+    description:
+      '管理 AI 客服与内容生成所依据的业务知识。文档经审核通过并完成索引后，将正式供 AI 调用。',
     documentColumn: '文档',
     documentCount: '份文档',
     documentListTitle: '文档列表',
@@ -279,8 +280,7 @@ export const PORTAL_ZH = {
     },
     readErrorDescription: '知识库读取失败，请稍后刷新重试。',
     readErrorTitle: '知识库暂时不可用',
-    recoveryDescription:
-      '原文档仍然保留。管理员确认模型服务正常后，可选择失败文档重新提交索引。',
+    recoveryDescription: '原文档仍然保留。管理员确认模型服务正常后，可选择失败文档重新提交索引。',
     recoveryTitle: '索引失败 · 可重新提交',
     resetFilters: '清除筛选',
     reviewColumn: '审核',
@@ -417,6 +417,7 @@ export const PORTAL_ZH = {
       encryptionKeyMissing: '服务器尚未配置凭据加密密钥，暂无法保存 API Key，请联系技术管理员。',
       error: 'AI 配置操作失败，请检查输入后重试。',
       knowledgeIndex: '知识索引',
+      knowledgeTranslation: '知识翻译',
       maxOutputTokens: '最大输出 Token',
       model: '模型 ID',
       modelName: '模型名称',

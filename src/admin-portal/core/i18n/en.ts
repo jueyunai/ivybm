@@ -460,6 +460,7 @@ export const PORTAL_EN = {
         'AI_CONFIG_ENCRYPTION_KEY is not configured on the server, so API keys cannot be saved.',
       error: 'The AI configuration command failed. Check the input and try again.',
       knowledgeIndex: 'Knowledge indexing',
+      knowledgeTranslation: 'Knowledge translation',
       maxOutputTokens: 'Maximum output tokens',
       model: 'Model ID',
       modelName: 'Model name',

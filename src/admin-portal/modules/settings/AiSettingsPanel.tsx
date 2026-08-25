@@ -117,6 +117,7 @@ export function AiSettingsPanel({ initialSummary }: { initialSummary: PortalAiSe
     'content-studio': messages.contentStudio,
     'customer-chat': messages.customerChat,
     'knowledge-index': messages.knowledgeIndex,
+    'knowledge-translation': messages.knowledgeTranslation,
   } as const
 
   return (

@@ -2,28 +2,38 @@
 
 import { useState } from 'react'
 
-import { IconPlayerPlay, IconTerminal2 } from '@tabler/icons-react'
+import { IconPlayerPlay, IconSparkles, IconTerminal2 } from '@tabler/icons-react'
 
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button } from '@/admin-portal/core/ui'
 
+import type { KnowledgeAiDebugResult } from './knowledgeAiDebugCommand'
+
 const copy = {
   en: {
+    citations: 'Cited knowledge:',
     error: 'AI debug is currently unavailable.',
+    handoff: 'Handoff triggered',
     input: 'Debug prompt',
+    promptVersion: 'Prompt',
     result: 'Safe result',
     run: 'Run debug',
     running: 'Running...',
     title: 'AI debug',
+    tokens: 'Tokens',
   },
   zh: {
+    citations: '命中与引用知识：',
     error: 'AI 调试当前不可用。',
+    handoff: '已触发转人工',
     input: '调试输入',
+    promptVersion: 'Prompt 版本',
     result: '安全结果',
     run: '运行调试',
     running: '运行中…',
     title: 'AI 调试',
+    tokens: 'Token 消耗',
   },
 } as const
 
@@ -31,6 +41,7 @@ export function KnowledgeAiDebug() {
   const { locale } = usePortalPreferences()
   const text = copy[locale]
   const [prompt, setPrompt] = useState('')
+  const [debugResult, setDebugResult] = useState<KnowledgeAiDebugResult | null>(null)
   const [result, setResult] = useState('')
   const [error, setError] = useState('')
   const [running, setRunning] = useState(false)
@@ -40,6 +51,7 @@ export function KnowledgeAiDebug() {
     setRunning(true)
     setError('')
     setResult('')
+    setDebugResult(null)
     try {
       const fingerprint = JSON.stringify({ prompt })
       const idempotencyKey = commandKey.key(fingerprint)
@@ -53,14 +65,16 @@ export function KnowledgeAiDebug() {
       })
       const body = (await response.json()) as {
         error?: { message?: unknown }
-        result?: { text?: unknown; usage?: { totalTokens?: unknown } }
+        result?: KnowledgeAiDebugResult
       }
       commandKey.receivedResponse(idempotencyKey)
       if (!response.ok) {
         throw new Error(typeof body.error?.message === 'string' ? body.error.message : text.error)
       }
-      const output = typeof body.result?.text === 'string' ? body.result.text : ''
-      const totalTokens = body.result?.usage?.totalTokens
+      const data = body.result
+      setDebugResult(data ?? null)
+      const output = typeof data?.text === 'string' ? data.text : ''
+      const totalTokens = data?.usage?.totalTokens
       setResult(typeof totalTokens === 'number' ? `${output}\n\nTokens: ${totalTokens}` : output)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : text.error)
@@ -74,6 +88,16 @@ export function KnowledgeAiDebug() {
       <header>
         <IconTerminal2 aria-hidden="true" size={16} />
         <strong>{text.title}</strong>
+        {debugResult?.promptVersion ? (
+          <span style={{ fontSize: '10px', marginLeft: 'auto', opacity: 0.8 }}>
+            <IconSparkles
+              aria-hidden="true"
+              size={12}
+              style={{ display: 'inline', marginRight: '2px', verticalAlign: '-1px' }}
+            />
+            {text.promptVersion} v{debugResult.promptVersion}
+          </span>
+        ) : null}
       </header>
       <label>
         <span>{text.input}</span>
@@ -102,6 +126,18 @@ export function KnowledgeAiDebug() {
         <div className="portal-knowledge-ai-debug__result">
           <span>{text.result}</span>
           <pre>{result}</pre>
+          {debugResult?.citations && debugResult.citations.length > 0 ? (
+            <div style={{ color: 'var(--portal-muted)', fontSize: '10px', marginTop: '6px' }}>
+              <strong>{text.citations}</strong>
+              <ul style={{ listStyleType: 'disc', margin: '4px 0 0 0', paddingLeft: '16px' }}>
+                {debugResult.citations.map((c, i) => (
+                  <li key={i}>
+                    {c.title} (v{c.version})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>
