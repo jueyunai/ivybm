@@ -231,7 +231,7 @@ describe.sequential('Task 9 conversation persistence', () => {
     const highIntent = await visitorService.sendMessage({
       idempotencyKey: `message-${suffix}`,
       sessionId: session.id,
-      text: `I am from UAE. My company is Facade Engineering LLC. We have a tender for 3,200 sqm aluminum facade panels within 3 months. Drawings are ready. Our budget is USD 450000 and the purchase plan is within 3 months. Contact buyer-${suffix}@example.invalid or +971 50 000 0000. What price, lead time, and certification can you guarantee?`,
+      text: `I am from UAE. My company is Facade Engineering LLC. We have a tender for 3,200 sqm aluminum facade panels within 3 months. Drawings are ready. Our budget is USD 450000 and the purchase plan is within 3 months. Contact buyer-${suffix}@example.invalid or +971 50 000 0000. Please arrange a sales follow-up.`,
     })
     expect(highIntent.handoffStatus).toBe('handoff_requested')
     expect(highIntent.messages.filter(({ author }) => author === 'ai')).toHaveLength(0)
@@ -298,7 +298,7 @@ describe.sequential('Task 9 conversation persistence', () => {
       where: { conversation: { equals: persistedActive.id } },
     })
     expect(activeHandoffs.docs).toHaveLength(1)
-    expect(activeHandoffs.docs[0]).toMatchObject({ reason: 'high_risk_topic', source: 'ai_policy' })
+    expect(activeHandoffs.docs[0]).toMatchObject({ reason: 'high_intent', source: 'ai_policy' })
     const handoffAssignee = activeHandoffs.docs[0].assignedTo
     expect(typeof handoffAssignee === 'number' ? handoffAssignee : handoffAssignee?.id).toBe(assignedID)
     expect(activeHandoffs.docs[0]).toMatchObject({ status: 'active' })
