@@ -25,6 +25,7 @@ PAYLOAD_SECRET=operation-test-payload-secret-at-least-32-characters
 NEXT_PUBLIC_SERVER_URL=https://ivybm.com
 APP_PORT=3000
 TRUST_PROXY_HEADERS=true
+CLOUDFLARE_CACHE_PURGE_ENABLED=false
 ADMIN_PORTAL_ENABLED=true
 ADMIN_PORTAL_SETTINGS_ENABLED=true
 ADMIN_PORTAL_OVERVIEW_ENABLED=true
@@ -63,6 +64,9 @@ const runPreflight = (environment: string, overrides: Record<string, string | un
       'NEXT_PUBLIC_SERVER_URL',
       'APP_PORT',
       'TRUST_PROXY_HEADERS',
+      'CLOUDFLARE_CACHE_PURGE_ENABLED',
+      'CLOUDFLARE_ZONE_ID',
+      'CLOUDFLARE_API_TOKEN',
       'ADMIN_PORTAL_ENABLED',
       'ADMIN_PORTAL_SETTINGS_ENABLED',
       'ADMIN_PORTAL_OVERVIEW_ENABLED',
@@ -76,13 +80,41 @@ const runPreflight = (environment: string, overrides: Record<string, string | un
       'ADMIN_PORTAL_OPERATIONS_ENABLED',
       'ADMIN_PORTAL_PUBLISHING_ENABLED',
       'AI_CONFIG_ENCRYPTION_KEY',
+      'PLATFORM_CREDENTIAL_ENCRYPTION_KEY',
+      'AI_PROVIDER_BASE_URL',
+      'AI_PROVIDER_API_KEY',
+      'AI_TEXT_MODEL',
+      'AI_EMBEDDING_MODEL',
+      'AI_EMBEDDING_DIMENSIONS',
+      'AI_TEXT_TIMEOUT_MS',
+      'AI_EMBEDDING_TIMEOUT_MS',
+      'AI_REASONING_ENABLED',
+      'AI_REASONING_EFFORT',
+      'META_WEBHOOK_APP_SECRET',
+      'META_WEBHOOK_VERIFY_TOKEN',
+      'META_WEBHOOK_ALLOWED_ACCOUNT_IDS',
+      'META_APP_ID',
+      'META_LOGIN_CONFIG_ID',
+      'META_OAUTH_REDIRECT_URI',
+      'INSTAGRAM_APP_ID',
+      'INSTAGRAM_APP_SECRET',
+      'INSTAGRAM_OAUTH_REDIRECT_URI',
       'LINKEDIN_API_VERSION',
       'LINKEDIN_APP_ID',
       'LINKEDIN_APP_SECRET',
       'LINKEDIN_OAUTH_REDIRECT_URI',
       'LINKEDIN_UPLOAD_ALLOWED_ORIGINS',
       'LINKEDIN_UPLOAD_TICKET_KEY',
+      'FEISHU_APP_ID',
+      'FEISHU_APP_SECRET',
+      'FEISHU_OAUTH_REDIRECT_URI',
+      'FEISHU_CREDENTIAL_ENCRYPTION_KEY',
       'FEISHU_QR_REGISTRATION_ENABLED',
+      'FEISHU_RELAY_INTERVAL_MS',
+      'FEISHU_OAUTH_RECOVERY_INTERVAL_MS',
+      'WORKER_HEARTBEAT_INTERVAL_MS',
+      'WORKER_JOB_HEARTBEAT_INTERVAL_MS',
+      'WORKER_POLL_INTERVAL_MS',
     ]) {
       delete childEnvironment[key]
     }
@@ -108,6 +140,44 @@ describe('production environment preflight', () => {
       'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
     )
     expect(result.stdout).not.toContain('operation-test-postgres-password')
+  })
+
+  it('validates Cloudflare purge configuration without printing the token', () => {
+    const invalidSwitch = runPreflight(
+      productionEnvironment.replace(
+        'CLOUDFLARE_CACHE_PURGE_ENABLED=false',
+        'CLOUDFLARE_CACHE_PURGE_ENABLED=maybe',
+      ),
+    )
+    const missingCredentials = runPreflight(
+      productionEnvironment.replace(
+        'CLOUDFLARE_CACHE_PURGE_ENABLED=false',
+        'CLOUDFLARE_CACHE_PURGE_ENABLED=true',
+      ),
+    )
+    const invalidToken = runPreflight(`${productionEnvironment.replace(
+      'CLOUDFLARE_CACHE_PURGE_ENABLED=false',
+      'CLOUDFLARE_CACHE_PURGE_ENABLED=true',
+    )}CLOUDFLARE_ZONE_ID=${'9'.repeat(32)}
+CLOUDFLARE_API_TOKEN=too-short
+`)
+    const token = 'operation-test-cloudflare-token-000000000000000000'
+    const enabled = runPreflight(`${productionEnvironment.replace(
+      'CLOUDFLARE_CACHE_PURGE_ENABLED=false',
+      'CLOUDFLARE_CACHE_PURGE_ENABLED=true',
+    )}CLOUDFLARE_ZONE_ID=${'9'.repeat(32)}
+CLOUDFLARE_API_TOKEN=${token}
+`)
+
+    expect(invalidSwitch.status).not.toBe(0)
+    expect(invalidSwitch.stderr).toContain('CLOUDFLARE_CACHE_PURGE_ENABLED')
+    expect(missingCredentials.status).not.toBe(0)
+    expect(missingCredentials.stderr).toContain('CLOUDFLARE_ZONE_ID')
+    expect(invalidToken.status).not.toBe(0)
+    expect(invalidToken.stderr).toContain('CLOUDFLARE_API_TOKEN')
+    expect(enabled.status).toBe(0)
+    expect(enabled.stdout).not.toContain(token)
+    expect(enabled.stderr).not.toContain(token)
   })
 
   it('rejects a mutable or malformed image digest', () => {
