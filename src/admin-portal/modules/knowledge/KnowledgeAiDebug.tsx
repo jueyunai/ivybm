@@ -15,7 +15,15 @@ const copy = {
     citations: 'Cited knowledge:',
     error: 'AI debug is currently unavailable.',
     handoff: 'Handoff triggered',
+    handoffReason: {
+      high_risk_topic: 'The request requires human review.',
+      qualification_incomplete: 'The request needs more qualification details.',
+      reviewed_knowledge_unavailable: 'Reviewed knowledge is unavailable.',
+    },
     input: 'Debug prompt',
+    knowledgeLanguage: 'Knowledge language',
+    localeArabic: 'Arabic',
+    localeEnglish: 'English',
     promptVersion: 'Prompt',
     result: 'Safe result',
     run: 'Run debug',
@@ -27,7 +35,15 @@ const copy = {
     citations: '命中与引用知识：',
     error: 'AI 调试当前不可用。',
     handoff: '已触发转人工',
+    handoffReason: {
+      high_risk_topic: '该请求需要人工审核。',
+      qualification_incomplete: '该请求仍需补充资格信息。',
+      reviewed_knowledge_unavailable: '暂无可用的已审核知识。',
+    },
     input: '调试输入',
+    knowledgeLanguage: '知识语言',
+    localeArabic: '阿拉伯语',
+    localeEnglish: '英语',
     promptVersion: 'Prompt 版本',
     result: '安全结果',
     run: '运行调试',
@@ -41,6 +57,7 @@ export function KnowledgeAiDebug() {
   const { locale } = usePortalPreferences()
   const text = copy[locale]
   const [prompt, setPrompt] = useState('')
+  const [knowledgeLocale, setKnowledgeLocale] = useState<'ar' | 'en'>('en')
   const [debugResult, setDebugResult] = useState<KnowledgeAiDebugResult | null>(null)
   const [result, setResult] = useState('')
   const [error, setError] = useState('')
@@ -53,10 +70,10 @@ export function KnowledgeAiDebug() {
     setResult('')
     setDebugResult(null)
     try {
-      const fingerprint = JSON.stringify({ prompt })
+      const fingerprint = JSON.stringify({ locale: knowledgeLocale, prompt })
       const idempotencyKey = commandKey.key(fingerprint)
       const response = await fetch('/api/portal/knowledge/ai-debug', {
-        body: JSON.stringify({ prompt }),
+        body: fingerprint,
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key': idempotencyKey,
@@ -73,9 +90,12 @@ export function KnowledgeAiDebug() {
       }
       const data = body.result
       setDebugResult(data ?? null)
+      if (data?.outcome === 'handoff') return
       const output = typeof data?.text === 'string' ? data.text : ''
       const totalTokens = data?.usage?.totalTokens
-      setResult(typeof totalTokens === 'number' ? `${output}\n\nTokens: ${totalTokens}` : output)
+      setResult(
+        typeof totalTokens === 'number' ? `${output}\n\n${text.tokens}: ${totalTokens}` : output,
+      )
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : text.error)
     } finally {
@@ -100,6 +120,16 @@ export function KnowledgeAiDebug() {
         ) : null}
       </header>
       <label>
+        <span>{text.knowledgeLanguage}</span>
+        <select
+          onChange={(event) => setKnowledgeLocale(event.target.value === 'ar' ? 'ar' : 'en')}
+          value={knowledgeLocale}
+        >
+          <option value="en">{text.localeEnglish}</option>
+          <option value="ar">{text.localeArabic}</option>
+        </select>
+      </label>
+      <label>
         <span>{text.input}</span>
         <textarea
           maxLength={4000}
@@ -121,6 +151,15 @@ export function KnowledgeAiDebug() {
         <p className="is-error" role="alert">
           {error}
         </p>
+      ) : null}
+      {debugResult?.outcome === 'handoff' ? (
+        <div className="portal-knowledge-ai-debug__result" role="status">
+          <span>{text.handoff}</span>
+          <p>
+            {text.handoffReason[debugResult.reason as keyof (typeof text)['handoffReason']] ??
+              text.handoff}
+          </p>
+        </div>
       ) : null}
       {result ? (
         <div className="portal-knowledge-ai-debug__result">

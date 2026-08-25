@@ -185,6 +185,67 @@ describe('Portal create command keys', () => {
     expect(secondKey).not.toBe(firstKey)
   })
 
+  it('sends the selected knowledge locale and includes it in the AI debug key', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        result: {
+          outcome: 'answer',
+          text: 'grounded answer',
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        },
+      }),
+    )
+    vi.stubGlobal('fetch', request)
+    render(
+      React.createElement(PortalPreferencesProvider, null, React.createElement(KnowledgeAiDebug)),
+    )
+
+    fireEvent.change(screen.getByLabelText('调试输入'), { target: { value: 'same prompt' } })
+    fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1))
+    fireEvent.change(screen.getByLabelText('知识语言'), { target: { value: 'ar' } })
+    fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+
+    expect(JSON.parse(String(request.mock.calls[0]?.[1]?.body))).toEqual({
+      locale: 'en',
+      prompt: 'same prompt',
+    })
+    expect(JSON.parse(String(request.mock.calls[1]?.[1]?.body))).toEqual({
+      locale: 'ar',
+      prompt: 'same prompt',
+    })
+    expect(headerValue(request.mock.calls[1]?.[1], 'Idempotency-Key')).not.toBe(
+      headerValue(request.mock.calls[0]?.[1], 'Idempotency-Key'),
+    )
+  })
+
+  it('renders a localized handoff state without presenting it as a safe answer', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse({
+          result: {
+            outcome: 'handoff',
+            reason: 'high_risk_topic',
+            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          },
+        }),
+      ),
+    )
+    render(
+      React.createElement(PortalPreferencesProvider, null, React.createElement(KnowledgeAiDebug)),
+    )
+
+    fireEvent.change(screen.getByLabelText('调试输入'), { target: { value: 'pricing guarantee' } })
+    fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
+
+    expect(await screen.findByText('已触发转人工')).toBeTruthy()
+    expect(screen.getByText('该请求需要人工审核。')).toBeTruthy()
+    expect(screen.queryByText('安全结果')).toBeNull()
+    expect(screen.queryByText('high_risk_topic')).toBeNull()
+  })
+
   it('reuses the media upload key after an interrupted response body', async () => {
     const request = vi
       .fn<typeof fetch>()

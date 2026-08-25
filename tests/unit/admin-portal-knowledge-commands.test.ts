@@ -291,34 +291,18 @@ describe('Portal knowledge commands', () => {
     expect(result).toMatchObject({
       outcome: 'handoff',
       reason: 'risk_detected',
-      text: 'risk_detected',
     })
+    expect(result).not.toHaveProperty('text')
   })
 
-  it('runs AI debug through the fallback gateway when preview is unavailable', async () => {
-    const generateText = vi.fn().mockResolvedValue({
-      cost: { currency: 'USD', estimated: 0.001 },
-      model: 'private-model',
-      provider: 'private-provider',
-      requestId: 'private-request-id',
-      text: 'Safe answer',
-      usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 },
-    })
-    const resolveGateway = vi.fn().mockResolvedValue({ generateText })
-
-    const result = await runKnowledgeAiDebug({
-      input: { prompt: 'Test reviewed knowledge' },
-      payload: {} as Payload,
-      previewKnowledge: vi.fn().mockRejectedValue(new Error('no db')),
-      resolveGateway: resolveGateway as never,
-    })
-    expect(result).toMatchObject({
-      text: 'Safe answer',
-      usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 },
-    })
-    expect(JSON.stringify(result)).not.toMatch(/private-model|private-provider|private-request-id/)
-    expect(resolveGateway).toHaveBeenCalledWith(
-      expect.objectContaining({ routes: [{ operation: 'text', usageKey: 'chat.reply' }] }),
-    )
+  it('surfaces preview failures instead of disguising them as ungrounded answers', async () => {
+    const failure = new Error('knowledge database unavailable')
+    await expect(
+      runKnowledgeAiDebug({
+        input: { prompt: 'Test reviewed knowledge' },
+        payload: {} as Payload,
+        previewKnowledge: vi.fn().mockRejectedValue(failure),
+      }),
+    ).rejects.toBe(failure)
   })
 })

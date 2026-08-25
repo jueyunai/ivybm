@@ -1,11 +1,9 @@
 import type { Payload } from 'payload'
 
-import { AI_USAGE_KEYS, resolveAiGateway } from '@/modules/ai/registry'
 import { previewKnowledgeAnswer, type KnowledgePreviewResult } from '@/modules/knowledge/preview'
 
 import { KnowledgeCommandError } from './knowledgeCommands'
 
-type ResolveGateway = typeof resolveAiGateway
 type PreviewKnowledge = (options: {
   locale: 'ar' | 'en'
   payload: Payload
@@ -23,10 +21,10 @@ export interface KnowledgeAiDebugResult {
   citations?: KnowledgeAiDebugCitation[]
   durationMs: number
   model?: string
-  outcome?: 'answer' | 'handoff'
+  outcome: 'answer' | 'handoff'
   promptVersion?: number
   reason?: string
-  text: string
+  text?: string
   usage: {
     inputTokens: number
     outputTokens: number
@@ -39,13 +37,11 @@ export async function runKnowledgeAiDebug({
   onProviderDispatch,
   payload,
   previewKnowledge = previewKnowledgeAnswer,
-  resolveGateway = resolveAiGateway,
 }: {
   input: unknown
   onProviderDispatch?: () => void
   payload: Payload
   previewKnowledge?: PreviewKnowledge
-  resolveGateway?: ResolveGateway
 }): Promise<KnowledgeAiDebugResult> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw new KnowledgeCommandError('knowledge-ai-invalid-input', 'A JSON object is required', 400)
@@ -65,57 +61,35 @@ export async function runKnowledgeAiDebug({
 
   const startedAt = Date.now()
 
-  try {
-    const preview = await previewKnowledge({
-      locale,
-      payload,
-      query: prompt,
-    })
-    onProviderDispatch?.()
-    if (preview.outcome === 'answer') {
-      return {
-        citations: preview.citations,
-        durationMs: Date.now() - startedAt,
-        model: preview.model,
-        outcome: 'answer',
-        promptVersion: preview.promptVersion,
-        text: preview.content,
-        usage: {
-          inputTokens: preview.tokenUsage.inputTokens,
-          outputTokens: preview.tokenUsage.outputTokens ?? 0,
-          totalTokens: preview.tokenUsage.totalTokens,
-        },
-      }
-    }
+  const preview = await previewKnowledge({
+    locale,
+    payload,
+    query: prompt,
+  })
+  onProviderDispatch?.()
+  if (preview.outcome === 'answer') {
     return {
+      citations: preview.citations,
       durationMs: Date.now() - startedAt,
-      outcome: 'handoff',
-      reason: preview.reason,
-      text: preview.reason,
+      model: preview.model,
+      outcome: 'answer',
+      promptVersion: preview.promptVersion,
+      text: preview.content,
       usage: {
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
+        inputTokens: preview.tokenUsage.inputTokens,
+        outputTokens: preview.tokenUsage.outputTokens ?? 0,
+        totalTokens: preview.tokenUsage.totalTokens,
       },
     }
-  } catch {
-    const gateway = await resolveGateway({
-      payload,
-      routes: [{ operation: 'text', usageKey: AI_USAGE_KEYS.chatReply }],
-    })
-    const result = await gateway.generateText({
-      input: prompt,
-      maxOutputTokens: 800,
-      onDispatch: onProviderDispatch,
-    })
-    return {
-      durationMs: Date.now() - startedAt,
-      text: result.text,
-      usage: {
-        inputTokens: result.usage.inputTokens,
-        outputTokens: result.usage.outputTokens ?? 0,
-        totalTokens: result.usage.totalTokens,
-      },
-    }
+  }
+  return {
+    durationMs: Date.now() - startedAt,
+    outcome: 'handoff',
+    reason: preview.reason,
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    },
   }
 }
