@@ -141,7 +141,9 @@ describe('CI workflow policy', () => {
     expect(playwrightConfig).toContain(
       "snapshotPathTemplate: '{testDir}/{testFilePath}-snapshots/{platform}/{arg}-{projectName}{ext}'",
     )
-    expect(playwrightConfig).toContain('NEXT_PUBLIC_SERVER_URL: context.baseURL')
+    expect(playwrightConfig).toContain(
+      'NEXT_PUBLIC_SERVER_URL: process.env.NEXT_PUBLIC_SERVER_URL ?? context.baseURL',
+    )
     expect(playwrightConfig).toContain('reuseExistingServer: false')
     expect(playwrightConfig).toContain('readE2ELaunchContext()')
     expect(packageJSON).toContain('node scripts/e2e/run-suite.mjs')
