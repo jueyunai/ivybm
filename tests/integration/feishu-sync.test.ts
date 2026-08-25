@@ -5,6 +5,7 @@ import { getPayload, type Payload } from 'payload'
 
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import type { ClaimedJob } from '@/modules/jobs/contracts'
+import { findActiveFeishuMapping } from '@/modules/feishu/config'
 import {
   createFeishuFollowUpReminderJobHandler,
   createFeishuHandoffNotifyJobHandler,
@@ -810,7 +811,7 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     )
     if (!job) throw new Error('Expected country-pending lead sync job')
     const sendText = vi.fn(async () => ({ messageId: randomUUID() }))
-    const upsertRecord: FeishuClientPort['upsertRecord'] = vi.fn(async () => ({
+    const upsertRecord = vi.fn(async () => ({
       recordId: randomUUID(),
       state: 'created' as const,
     }))
@@ -834,6 +835,81 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
         .map(([input]) => input.text)
         .join('\n'),
     ).toContain('待确认')
+  })
+
+  it('syncs and notifies an email-less social Lead through its verified messaging identity', async () => {
+    const lead = await payload.create({
+      collection: 'leads',
+      context,
+      data: {
+        company: 'Messenger Facade Buyer',
+        country: 'United Arab Emirates',
+        email: null,
+        idempotencyKey: randomUUID(),
+        intentLevel: 'a',
+        locale: 'en',
+        message: 'Please quote our facade project through Messenger.',
+        messagingAccountExternalId: 'page-feishu-02',
+        messagingPlatform: 'facebook-messenger',
+        messagingSenderExternalId: 'sender-feishu-02',
+        messagingThreadExternalId: 'page-feishu-02:sender-feishu-02',
+        name: 'Messenger Facade Buyer',
+        phone: null,
+        requestId: randomUUID(),
+        source: sourceID,
+        status: 'new',
+      },
+      overrideAccess: true,
+    })
+    extraLeadIDs.push(lead.id)
+    const jobs = await payload.find({
+      collection: 'jobs',
+      limit: 100,
+      overrideAccess: true,
+      where: { type: { equals: FEISHU_LEAD_SYNC_JOB_TYPE } },
+    })
+    const job = jobs.docs.find(
+      (candidate) =>
+        jobPayload(candidate.payload).entityId === lead.id &&
+        jobPayload(candidate.payload).entityRevision === feishuLeadSyncRevision(lead),
+    )
+    if (!job) throw new Error('Expected email-less social Lead sync job')
+    const sendText = vi.fn(async () => ({ messageId: randomUUID() }))
+    const upsertRecord = vi.fn(async () => ({
+      recordId: randomUUID(),
+      state: 'created' as const,
+    }))
+
+    await createFeishuLeadSyncJobHandler({
+      client: () => ({ sendText, upsertRecord }),
+      payload,
+    })(await claimedJob(job.id), {
+      assertLease: vi.fn(),
+      renewLease: vi.fn(),
+      signal: new AbortController().signal,
+    })
+
+    expect(upsertRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fields: expect.objectContaining({
+          Source: expect.stringContaining(
+            'Facebook Messenger · Account page-feishu-02 · Sender sender-feishu-02 · Thread page-feishu-02:sender-feishu-02',
+          ),
+        }),
+      }),
+    )
+    const upsert = (
+      upsertRecord.mock.calls as unknown as Array<[Parameters<FeishuClientPort['upsertRecord']>[0]]>
+    )[0]?.[0]
+    expect(upsert?.fields).not.toHaveProperty('Email')
+    const notifications = (sendText.mock.calls as unknown as Array<[SendTextInput]>)
+      .map(([input]) => input.text)
+      .join('\n')
+    expect(notifications).toContain('新客户线索')
+    expect(notifications).toContain('高意向客户')
+    expect(notifications).toContain('Facebook Messenger')
+    expect(notifications).toContain('sender-feishu-02')
+    expect(notifications).not.toContain('@example.invalid')
   })
 
   it('delivers a new high-intent event when a lead returns to a prior content revision', async () => {
@@ -1090,7 +1166,7 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
         domainEventId: randomUUID(),
         idempotencyKey: randomUUID(),
         publicId: `handoff-${runID}`,
-        reason: 'High intent customer requested a human quotation.',
+        reason: 'high_intent',
         requestedAt: '2026-07-29T00:00:00.000Z',
         source: 'ai_policy',
         status: 'requested',
@@ -1152,6 +1228,178 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
           jobPayload(job.payload).entityId === handoffID,
       ),
     ).toHaveLength(1)
+  })
+
+  it('fails closed pre-existing website recovery jobs at execution and preserves normal website and social notifications', async () => {
+    const mapping = await findActiveFeishuMapping(payload)
+    if (!mapping) throw new Error('Expected an active Feishu mapping')
+    const queue = new PayloadJobQueue({ payload })
+    const sendText = vi.fn(async () => ({ messageId: randomUUID() }))
+    const upsertRecord = vi.fn(async () => ({
+      recordId: randomUUID(),
+      state: 'updated' as const,
+    }))
+    const client = vi.fn(async () => ({ sendText, upsertRecord }))
+    const handler = createFeishuHandoffNotifyJobHandler({ client, payload })
+    const execution = {
+      assertLease: vi.fn(),
+      renewLease: vi.fn(),
+      signal: new AbortController().signal,
+    }
+    const extraHandoffIDs: number[] = []
+    const extraJobIDs: number[] = []
+    let socialConversationID: number | undefined
+    let socialVisitorID: number | undefined
+
+    const createHandoffJob = async ({
+      channelConversationID,
+      reason,
+    }: {
+      channelConversationID: number
+      reason: string
+    }): Promise<number> => {
+      const suffix = randomUUID()
+      const handoff = await payload.create({
+        collection: 'handoffs',
+        context,
+        data: {
+          conversation: channelConversationID,
+          domainEventId: suffix,
+          idempotencyKey: suffix,
+          publicId: `handler-handoff-${suffix}`,
+          reason,
+          requestedAt: '2026-07-29T00:05:00.000Z',
+          source: 'ai_policy',
+          status: 'requested',
+        },
+        overrideAccess: true,
+      })
+      extraHandoffIDs.push(handoff.id)
+      const queued = await queue.enqueue({
+        idempotencyKey: `handler-job-${suffix}`,
+        payload: {
+          entityId: handoff.id,
+          mappingId: mapping.id,
+          mappingRevision: mapping.revision,
+        },
+        type: FEISHU_HANDOFF_NOTIFY_JOB_TYPE,
+      })
+      extraJobIDs.push(queued.job.id)
+      return queued.job.id
+    }
+
+    try {
+      const normalJobs = await payload.find({
+        collection: 'jobs',
+        limit: 100,
+        overrideAccess: true,
+        where: { type: { equals: FEISHU_HANDOFF_NOTIFY_JOB_TYPE } },
+      })
+      const highIntentJob = normalJobs.docs.find(
+        (job) => jobPayload(job.payload).entityId === handoffID,
+      )
+      if (!highIntentJob) throw new Error('Expected the normal website high-intent job')
+      await handler(await claimedJob(highIntentJob.id), execution)
+
+      const qualificationJobID = await createHandoffJob({
+        channelConversationID: conversationID,
+        reason: 'qualification_complete',
+      })
+      await handler(await claimedJob(qualificationJobID), execution)
+      expect(sendText).toHaveBeenCalledTimes(2)
+      expect(client).toHaveBeenCalledTimes(2)
+
+      for (const reason of [
+        'ai_service_unavailable',
+        'high_risk_topic',
+        'reviewed_knowledge_unavailable',
+      ]) {
+        const recoveryJobID = await createHandoffJob({
+          channelConversationID: conversationID,
+          reason,
+        })
+        await handler(await claimedJob(recoveryJobID), execution)
+        await handler(await claimedJob(recoveryJobID), execution)
+      }
+      expect(sendText).toHaveBeenCalledTimes(2)
+      expect(upsertRecord).not.toHaveBeenCalled()
+      expect(client).toHaveBeenCalledTimes(2)
+
+      const socialVisitor = await payload.create({
+        collection: 'visitor-sessions',
+        context,
+        data: {
+          channel: 'facebook',
+          expiresAt: '2026-08-05T00:00:00.000Z',
+          idempotencyKey: randomUUID(),
+          lastSeenAt: '2026-07-29T00:00:00.000Z',
+          locale: 'en',
+          publicId: `handler-social-visitor-${runID}`,
+          sessionTokenHash: `handler-social-hash-${runID}`,
+        },
+        overrideAccess: true,
+      })
+      socialVisitorID = socialVisitor.id
+      const socialConversation = await payload.create({
+        collection: 'conversations',
+        context,
+        data: {
+          channel: 'facebook',
+          externalAccountId: 'handler-page-fixture',
+          externalSenderId: 'handler-sender-fixture',
+          externalThreadId: 'handler-page-fixture:handler-sender-fixture',
+          handoffStatus: 'handoff_requested',
+          intentLevel: 'a',
+          locale: 'en',
+          publicId: `handler-social-conversation-${runID}`,
+          requestId: randomUUID(),
+          revision: 1,
+          visitorSession: socialVisitor.id,
+        },
+        overrideAccess: true,
+      })
+      socialConversationID = socialConversation.id
+      const socialJobID = await createHandoffJob({
+        channelConversationID: socialConversation.id,
+        reason: 'high_risk_topic',
+      })
+      await handler(await claimedJob(socialJobID), execution)
+      expect(sendText).toHaveBeenCalledTimes(3)
+      expect(client).toHaveBeenCalledTimes(3)
+    } finally {
+      if (extraJobIDs.length > 0) {
+        await payload.delete({
+          collection: 'jobs',
+          context,
+          overrideAccess: true,
+          where: { id: { in: extraJobIDs } },
+        })
+      }
+      if (extraHandoffIDs.length > 0) {
+        await payload.delete({
+          collection: 'handoffs',
+          context,
+          overrideAccess: true,
+          where: { id: { in: extraHandoffIDs } },
+        })
+      }
+      if (socialConversationID) {
+        await payload.delete({
+          collection: 'conversations',
+          context,
+          id: socialConversationID,
+          overrideAccess: true,
+        })
+      }
+      if (socialVisitorID) {
+        await payload.delete({
+          collection: 'visitor-sessions',
+          context,
+          id: socialVisitorID,
+          overrideAccess: true,
+        })
+      }
+    }
   })
 
   it('executes lead upsert and handoff notification through the server-only client port', async () => {

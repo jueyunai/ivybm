@@ -60,12 +60,16 @@ export type LeadForFeishu = {
   budget?: string | null
   company?: string | null
   country?: string | null
-  email: string
+  email?: string | null
   id: number | string
   hasDrawings?: boolean | null
   intentLevel: 'a' | 'b' | 'c' | 'unscored'
   interest?: string | null
   message: string
+  messagingAccountExternalId?: string | null
+  messagingPlatform?: 'facebook-messenger' | 'instagram' | 'tiktok' | null
+  messagingSenderExternalId?: string | null
+  messagingThreadExternalId?: string | null
   name: string
   nextFollowUpAt?: string | null
   phone?: string | null

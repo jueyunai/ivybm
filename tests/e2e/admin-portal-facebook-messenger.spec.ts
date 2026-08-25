@@ -8,6 +8,9 @@ import { createSignedFacebookMessage, FacebookE2EHarness } from './admin-portal-
 
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
+if (!adminEmail?.trim() || !adminPassword?.trim()) {
+  throw new Error('Facebook Messenger E2E requires launcher-validated administrator credentials')
+}
 
 test.describe.serial('FB-IN-01 Facebook Messenger durable closure', () => {
   let harness: FacebookE2EHarness | undefined
@@ -89,6 +92,93 @@ test.describe.serial('FB-IN-01 Facebook Messenger durable closure', () => {
     })
   })
 
+  test('email-less Messenger visitor becomes one Lead and one Feishu record by social identity', async ({
+    page,
+    request,
+  }) => {
+    if (!harness) throw new Error('Facebook E2E harness is unavailable')
+    await harness.createFeishuMapping()
+    const suffix = randomUUID().replaceAll('-', '')
+    const senderExternalId = `765${suffix.replace(/\D/gu, '').padEnd(20, '6').slice(0, 12)}`
+    const firstMessageId = `mid-social-first-${suffix}`
+    harness.trackMessage({ messageId: firstMessageId, senderExternalId })
+    const first = createSignedFacebookMessage({
+      messageId: firstMessageId,
+      senderExternalId,
+      text: 'We need aluminum facade panels for a new project.',
+    })
+    const firstResponse = await request.post('/api/webhooks/meta', {
+      data: first.body,
+      headers: first.headers,
+    })
+    expect(firstResponse.status()).toBe(200)
+    await expect(harness.runUntilIdle()).resolves.toEqual(['succeeded', 'succeeded', 'idle'])
+
+    const secondMessageId = `mid-social-qualified-${suffix}`
+    harness.trackMessage({ messageId: secondMessageId, senderExternalId })
+    const second = createSignedFacebookMessage({
+      messageId: secondMessageId,
+      senderExternalId,
+      text: 'I am from UAE. My company is E2E Social Facade LLC. We have a tender for 3,200 sqm aluminum facade panels within 3 months. Drawings are ready. Our budget is USD 450000 and the purchase plan is within 3 months. Please continue through Messenger.',
+    })
+    const secondResponse = await request.post('/api/webhooks/meta', {
+      data: second.body,
+      headers: second.headers,
+    })
+    expect(secondResponse.status()).toBe(200)
+    await expect(secondResponse.json()).resolves.toEqual({ accepted: 1, duplicates: 0, total: 1 })
+    await expect(harness.runNext()).resolves.toBe('succeeded')
+    await expect(harness.relayFeishuJobs()).resolves.toMatchObject({
+      enabled: true,
+      handoffs: { created: 1 },
+    })
+    await expect(harness.runUntilIdle()).resolves.toEqual(['succeeded', 'succeeded', 'idle'])
+
+    const state = await harness.readHighIntentState(senderExternalId)
+    expect(state.leads).toEqual([
+      expect.objectContaining({
+        company: 'E2E Social Facade LLC',
+        email: null,
+        intentLevel: 'a',
+        messagingAccountExternalId: E2E_META_PAGE_ID,
+        messagingPlatform: 'facebook-messenger',
+        messagingSenderExternalId: senderExternalId,
+        messagingThreadExternalId: `${E2E_META_PAGE_ID}:${senderExternalId}`,
+      }),
+    ])
+    expect(harness.feishuUpserts).toHaveLength(1)
+    expect(harness.feishuUpserts[0]?.fields).not.toHaveProperty('Email')
+    expect(harness.feishuUpserts[0]?.fields.Source).toContain('Facebook Messenger')
+    expect(harness.feishuUpserts[0]?.fields.Source).toContain(senderExternalId)
+    expect(harness.feishuMessages.map(({ text }) => text).join('\n')).toContain(senderExternalId)
+
+    const replayResponse = await request.post('/api/webhooks/meta', {
+      data: second.body,
+      headers: second.headers,
+    })
+    expect(replayResponse.status()).toBe(200)
+    await expect(replayResponse.json()).resolves.toEqual({ accepted: 0, duplicates: 1, total: 1 })
+    await expect(harness.runUntilIdle()).resolves.toEqual(['idle'])
+    expect((await harness.readHighIntentState(senderExternalId)).leads).toHaveLength(1)
+    expect(harness.feishuUpserts).toHaveLength(1)
+
+    const leadsPath = `/dashboard/leads?q=${encodeURIComponent(senderExternalId)}`
+    await page.goto(`/dashboard/login?returnTo=${encodeURIComponent(leadsPath)}`)
+    await page.getByRole('textbox', { name: '邮箱' }).fill(adminEmail)
+    await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
+    await page.getByRole('button', { name: '登录后台' }).click()
+    await expect(page).toHaveURL(new RegExp(`/dashboard/leads\\?q=${senderExternalId}$`))
+    const detail = page.locator('.portal-leads__detail')
+    await expect(detail.getByRole('heading', { name: 'E2E Social Facade LLC' })).toBeVisible()
+    await expect(detail.getByText('社媒联系身份', { exact: true })).toBeVisible()
+    await expect(
+      detail.getByText(
+        `Facebook Messenger · Account ${E2E_META_PAGE_ID} · Sender ${senderExternalId} · Thread ${E2E_META_PAGE_ID}:${senderExternalId}`,
+        { exact: true },
+      ),
+    ).toBeVisible()
+  })
+
   test('cleanup preserves jobs and audits whose numeric IDs belong to another resource', async () => {
     if (!harness) throw new Error('Facebook E2E harness is unavailable')
     const sentinels = await harness.createCleanupCollisionSentinels()
@@ -104,11 +194,6 @@ test.describe.serial('FB-IN-01 Facebook Messenger durable closure', () => {
     request,
   }) => {
     if (!harness) throw new Error('Facebook E2E harness is unavailable')
-    test.skip(
-      !adminEmail || !adminPassword,
-      'Requires local non-production administrator credentials.',
-    )
-    if (!adminEmail || !adminPassword) return
     await harness.createFeishuMapping()
     const suffix = randomUUID().replaceAll('-', '')
     const senderExternalId = `876${suffix.replace(/\D/gu, '').padEnd(20, '5').slice(0, 12)}`

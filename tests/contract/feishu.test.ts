@@ -94,6 +94,44 @@ describe('Feishu CRM contract', () => {
     })
   })
 
+  it('syncs an email-less social Lead with its verified messaging identity', async () => {
+    const socialLead: LeadForFeishu = {
+      ...lead,
+      email: null,
+      messagingAccountExternalId: 'page-123',
+      messagingPlatform: 'facebook-messenger',
+      messagingSenderExternalId: 'sender-456',
+      messagingThreadExternalId: 'page-123:sender-456',
+      phone: null,
+    }
+
+    const mapped = mapLead({ lead: socialLead, mapping })
+    expect(mapped.fields).not.toHaveProperty('Email')
+    expect(mapped.fields.Source).toBe(
+      'Website chat · Facebook Messenger · Account page-123 · Sender sender-456 · Thread page-123:sender-456',
+    )
+    expect(feishuLeadSyncRevision(socialLead)).not.toBe(
+      feishuLeadSyncRevision({ ...socialLead, messagingSenderExternalId: 'sender-789' }),
+    )
+
+    const sendText = vi.fn(async () => ({ messageId: messageSuccess.data.message_id }))
+    await notifyNewLead({
+      client: {
+        sendText,
+        upsertRecord: vi.fn(async () => ({ recordId: 'unused', state: 'created' as const })),
+      },
+      eventRevision: 'social-lead-fixture',
+      lead: socialLead,
+      mapping,
+    })
+    const notification = String(
+      (sendText.mock.calls as unknown as Array<[{ text: string }]>)[0]?.[0].text,
+    )
+    expect(notification).toContain('Facebook Messenger')
+    expect(notification).toContain('sender-456')
+    expect(notification).not.toContain('@example.invalid')
+  })
+
   it('includes structured qualification details in the synced inquiry', () => {
     const qualifiedLead: LeadForFeishu = {
       ...lead,

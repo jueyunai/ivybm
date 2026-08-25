@@ -14,6 +14,7 @@ import {
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import type { JobHandler } from '@/modules/jobs/contracts'
 import { isHighIntentLead } from '@/modules/leads/highIntent'
+import { isWebsiteSilentRecoveryHandoff } from '@/modules/conversations/recoveryPolicy'
 
 import { createFeishuClientForMapping } from './connectionClient'
 import { findActiveFeishuMapping } from './config'
@@ -37,6 +38,12 @@ export const FEISHU_LEAD_SYNC_JOB_TYPE = 'feishu.lead.sync'
 export const FEISHU_HANDOFF_NOTIFY_JOB_TYPE = 'feishu.handoff.notify'
 export const FEISHU_FOLLOW_UP_REMINDER_JOB_TYPE = 'feishu.lead.followup.reminder'
 export const FEISHU_LEAD_SYNC_FAILURE_JOB_TYPE = 'feishu.lead.sync.failure.notify'
+
+const shouldSilenceFeishuHandoff = (value: unknown): boolean => {
+  const handoff = record(value)
+  const conversation = record(handoff?.conversation)
+  return isWebsiteSilentRecoveryHandoff(conversation?.channel, handoff?.reason)
+}
 
 type FeishuJobPayload = {
   entityId: number | string
@@ -87,12 +94,16 @@ export const feishuLeadSyncRevision = (value: unknown): string => {
         budget: lead.budget ?? null,
         company: lead.company ?? null,
         country: lead.country ?? null,
-        email: lead.email,
+        email: lead.email ?? null,
         id: lead.id,
         hasDrawings: lead.hasDrawings ?? null,
         intentLevel: lead.intentLevel,
         interest: lead.interest ?? null,
         message: lead.message,
+        messagingAccountExternalId: lead.messagingAccountExternalId ?? null,
+        messagingPlatform: lead.messagingPlatform ?? null,
+        messagingSenderExternalId: lead.messagingSenderExternalId ?? null,
+        messagingThreadExternalId: lead.messagingThreadExternalId ?? null,
         name: lead.name,
         nextFollowUpAt: lead.nextFollowUpAt ?? null,
         phone: lead.phone ?? null,
@@ -207,6 +218,28 @@ const relationshipLabel = (value: unknown): number | string | Record<string, unk
   throw new FeishuConfigurationError('Feishu relationship value is invalid')
 }
 
+const messagingIdentity = (lead: Record<string, unknown>): Partial<LeadForFeishu> => {
+  const platform = optionalString(lead.messagingPlatform)
+  const account = optionalString(lead.messagingAccountExternalId)
+  const sender = optionalString(lead.messagingSenderExternalId)
+  const thread = optionalString(lead.messagingThreadExternalId)
+  if (!platform && !account && !sender && !thread) return {}
+  if (
+    (platform !== 'facebook-messenger' && platform !== 'instagram' && platform !== 'tiktok') ||
+    !account ||
+    !sender ||
+    !thread
+  ) {
+    throw new FeishuConfigurationError('Lead messaging contact identity is incomplete')
+  }
+  return {
+    messagingAccountExternalId: account,
+    messagingPlatform: platform,
+    messagingSenderExternalId: sender,
+    messagingThreadExternalId: thread,
+  }
+}
+
 const leadForFeishu = (value: unknown): LeadForFeishu => {
   const lead = record(value)
   if (!lead) throw new FeishuConfigurationError('Lead document is invalid')
@@ -225,12 +258,13 @@ const leadForFeishu = (value: unknown): LeadForFeishu => {
     budget: typeof lead.budget === 'string' ? lead.budget : null,
     company: typeof lead.company === 'string' ? lead.company : null,
     country: optionalString(lead.country) ?? null,
-    email: requiredString(lead.email, 'lead email'),
+    email: optionalString(lead.email) ?? null,
     id: id(lead.id, 'lead id'),
     hasDrawings: typeof lead.hasDrawings === 'boolean' ? lead.hasDrawings : null,
     intentLevel: intentLevel as LeadForFeishu['intentLevel'],
     interest: typeof lead.interest === 'string' ? lead.interest : null,
     message: requiredString(lead.message, 'lead message'),
+    ...messagingIdentity(lead),
     name: requiredString(lead.name, 'lead name'),
     nextFollowUpAt: typeof lead.nextFollowUpAt === 'string' ? lead.nextFollowUpAt : null,
     phone: typeof lead.phone === 'string' ? lead.phone : null,
@@ -670,14 +704,14 @@ export const createFeishuHandoffNotifyJobHandler =
     const input = parseFeishuJobPayload(job.payload)
     const mapping = await currentMapping({ ...input, payload })
     if (!mapping) return
-    const handoff = handoffForFeishu(
-      await payload.findByID({
-        collection: 'handoffs',
-        depth: 1,
-        id: input.entityId,
-        overrideAccess: true,
-      }),
-    )
+    const document = await payload.findByID({
+      collection: 'handoffs',
+      depth: 1,
+      id: input.entityId,
+      overrideAccess: true,
+    })
+    if (shouldSilenceFeishuHandoff(document)) return
+    const handoff = handoffForFeishu(document)
     execution.assertLease()
     await notifyHandoff({
       client: await client(mapping),
@@ -846,13 +880,14 @@ export const enqueuePendingFeishuJobs = async ({
   while (true) {
     const handoffs = await payload.find({
       collection: 'handoffs',
-      depth: 0,
+      depth: 1,
       limit: 100,
       overrideAccess: true,
       page,
       sort: 'id',
     })
     for (const handoff of handoffs.docs) {
+      if (shouldSilenceFeishuHandoff(handoff)) continue
       const domainEventId = requiredString(handoff.domainEventId, 'handoff domainEventId')
       const enqueued = await queue.enqueue({
         idempotencyKey: `${mapping.key}:handoff:${domainEventId}`,

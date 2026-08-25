@@ -1,4 +1,4 @@
-import type { CollectionConfig } from 'payload'
+import { ValidationError, type CollectionBeforeValidateHook, type CollectionConfig } from 'payload'
 
 import {
   adminFieldAccess,
@@ -13,6 +13,56 @@ import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/wri
 import { enqueueFeishuLeadChange } from '../modules/feishu/jobs'
 
 const immutableAfterCreate = () => false
+const serverVerifiedIdentityAccess = {
+  create: immutableAfterCreate,
+  update: immutableAfterCreate,
+}
+
+const nonBlankString = (value: unknown): boolean =>
+  typeof value === 'string' && value.trim().length > 0
+
+const validateLeadContact: CollectionBeforeValidateHook = ({ data, originalDoc }) => {
+  if (!data) return data
+
+  const lead = { ...(originalDoc ?? {}), ...data }
+  const messagingIdentity = [
+    lead.messagingPlatform,
+    lead.messagingAccountExternalId,
+    lead.messagingSenderExternalId,
+    lead.messagingThreadExternalId,
+  ]
+  const hasAnyMessagingIdentity = messagingIdentity.some(
+    (value) => value !== null && value !== undefined,
+  )
+  const hasCompleteMessagingIdentity = messagingIdentity.every(nonBlankString)
+
+  if (hasAnyMessagingIdentity && !hasCompleteMessagingIdentity) {
+    throw new ValidationError({
+      collection: 'leads',
+      errors: [
+        {
+          message:
+            'Messaging contact identity must include non-empty platform, account, sender, and thread values',
+          path: 'messagingPlatform',
+        },
+      ],
+    })
+  }
+
+  if (!nonBlankString(lead.email) && !nonBlankString(lead.phone) && !hasCompleteMessagingIdentity) {
+    throw new ValidationError({
+      collection: 'leads',
+      errors: [
+        {
+          message: 'Lead requires an email, phone, or complete server-verified messaging identity',
+          path: 'email',
+        },
+      ],
+    })
+  }
+
+  return data
+}
 
 export const Leads: CollectionConfig = {
   slug: 'leads',
@@ -34,7 +84,7 @@ export const Leads: CollectionConfig = {
       'createdAt',
     ],
     group: 'Lead Management',
-    useAsTitle: 'email',
+    useAsTitle: 'name',
   },
   fields: [
     {
@@ -149,12 +199,51 @@ export const Leads: CollectionConfig = {
       name: 'email',
       type: 'email',
       index: true,
-      required: true,
     },
     {
       name: 'phone',
       type: 'text',
       maxLength: 32,
+    },
+    {
+      name: 'messagingPlatform',
+      type: 'select',
+      access: serverVerifiedIdentityAccess,
+      admin: {
+        description: 'Server-verified social messaging channel used to contact this Lead.',
+        readOnly: true,
+      },
+      options: ['facebook-messenger', 'instagram', 'tiktok'],
+    },
+    {
+      name: 'messagingAccountExternalId',
+      type: 'text',
+      access: serverVerifiedIdentityAccess,
+      admin: {
+        description: 'Provider account or Page identifier. This is not a credential.',
+        readOnly: true,
+      },
+      maxLength: 200,
+    },
+    {
+      name: 'messagingSenderExternalId',
+      type: 'text',
+      access: serverVerifiedIdentityAccess,
+      admin: {
+        description: 'Provider-scoped sender identifier. This is not a credential.',
+        readOnly: true,
+      },
+      maxLength: 200,
+    },
+    {
+      name: 'messagingThreadExternalId',
+      type: 'text',
+      access: serverVerifiedIdentityAccess,
+      admin: {
+        description: 'Stable provider thread identifier. This is not a credential.',
+        readOnly: true,
+      },
+      maxLength: 400,
     },
     {
       name: 'interest',
@@ -199,5 +288,6 @@ export const Leads: CollectionConfig = {
   hooks: {
     afterChange: [writeAuditLogAfterChange, enqueueFeishuLeadChange],
     afterDelete: [writeAuditLogAfterDelete],
+    beforeValidate: [validateLeadContact],
   },
 }

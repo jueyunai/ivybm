@@ -19,6 +19,29 @@ const directPlaywright = (arguments_: string[]) => {
   })
 }
 
+const suiteLauncherWithoutAdminCredentials = (suite: string) => {
+  const environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    ADMIN_PORTAL_PUBLISHING_ENABLED: 'true',
+    DOTENV_CONFIG_PATH: '/dev/null',
+  }
+  for (const key of [
+    'CI',
+    'E2E_ADMIN_EMAIL',
+    'E2E_ADMIN_PASSWORD',
+    'SEED_ADMIN_EMAIL',
+    'SEED_ADMIN_PASSWORD',
+  ]) {
+    delete environment[key]
+  }
+  return spawnSync(process.execPath, ['scripts/e2e/run-suite.mjs', suite], {
+    cwd: projectRoot,
+    encoding: 'utf8',
+    env: environment,
+    timeout: 20_000,
+  })
+}
+
 describe('E2E launcher process boundary', () => {
   it('rejects the reviewed option-value bypass before collecting tests', () => {
     const result = directPlaywright([
@@ -42,4 +65,17 @@ describe('E2E launcher process boundary', () => {
     expect(result.status).not.toBe(0)
     expect(`${result.stdout}${result.stderr}`).toContain('must be started by the suite launcher')
   }, 30_000)
+
+  it.each(['facebook-publishing', 'admin'])(
+    'fails %s before Playwright when administrator credentials are absent',
+    (suite) => {
+      const result = suiteLauncherWithoutAdminCredentials(suite)
+      const output = `${result.stdout}${result.stderr}`
+      expect(result.status).not.toBe(0)
+      expect(output).toContain('Selected Facebook E2E closure requires non-production')
+      expect(output).not.toMatch(/\d+ skipped/u)
+      expect(output).not.toMatch(/\d+ passed/u)
+    },
+    30_000,
+  )
 })

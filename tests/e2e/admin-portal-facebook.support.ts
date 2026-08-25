@@ -1,6 +1,7 @@
 import { createHmac, randomUUID } from 'node:crypto'
 
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
+import sharp from 'sharp'
 import { getPayload, type Payload } from 'payload'
 
 import config from '@/payload.config'
@@ -19,11 +20,19 @@ import {
 } from '@/modules/feishu/jobs'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import { JobWorker } from '@/modules/jobs/worker'
+import {
+  normalizePlatformPublishRequest,
+  type PlatformPublishRequest,
+} from '@/modules/publishing/contracts'
 import { createPlatformConversationDeliveryService } from '@/modules/platforms/conversationDelivery'
 import {
   createPlatformConversationDeliveryJobHandler,
   PLATFORM_CONVERSATION_DELIVERY_JOB_TYPE,
 } from '@/modules/platforms/conversationDeliveryJobs'
+import {
+  createPlatformPublicationJobHandler,
+  PLATFORM_PUBLICATION_JOB_TYPE,
+} from '@/modules/platforms/publicationJobs'
 import {
   createPlatformEventJobHandler,
   PLATFORM_EVENT_JOB_TYPE,
@@ -36,6 +45,14 @@ import { PayloadPlatformConversationPort } from '@/modules/platforms/payloadConv
 import { PayloadPlatformConversationDeliveryAuthority } from '@/modules/platforms/payloadConversationDeliveryAuthority'
 import { PayloadPlatformMessagingAccountAuthorizer } from '@/modules/platforms/payloadMessagingAccountAuthorizer'
 import { platformEventKeyV2 } from '@/modules/platforms/types'
+import { PayloadPublishingAccountResolver } from '@/modules/platforms/publishingAccountResolver'
+import { createPlatformPublishingService } from '@/modules/platforms/publishingServiceAdapter'
+import type { LinkedInPublishingTransport } from '@/modules/platforms/linkedin/publishingOutbound'
+import type {
+  FacebookPagePhotoPublishInput,
+  FacebookPagePostPermalinkInput,
+  MetaPublishingTransport,
+} from '@/modules/platforms/meta/publishingOutbound'
 
 import { E2E_META_APP_SECRET, E2E_META_PAGE_ID } from './admin-portal-facebook.constants'
 import { assertMutationSpecLaunch } from './launch-context'
@@ -72,9 +89,13 @@ type FacebookHighIntentState = FacebookConversationState & {
   handoffs: Array<{ id: number; reason: string; source: string; status: string }>
   leads: Array<{
     company?: string | null
-    email: string
+    email?: string | null
     id: number
     intentLevel: string
+    messagingAccountExternalId?: string | null
+    messagingPlatform?: 'facebook-messenger' | 'instagram' | 'tiktok' | null
+    messagingSenderExternalId?: string | null
+    messagingThreadExternalId?: string | null
     projectStage?: string | null
     quantitySquareMeters?: number | null
   }>
@@ -83,6 +104,25 @@ type FacebookHighIntentState = FacebookConversationState & {
 type CleanupSentinels = {
   auditIDs: number[]
   jobIDs: number[]
+}
+
+export type FacebookPublishingFixture = {
+  knowledgeSourceURL: string
+  mediaID: number
+  mediaLabel: string
+}
+
+export type FacebookPublishingState = {
+  jobs: Array<{ id: number; idempotencyKey?: string | null; status: string; type: string }>
+  logs: Array<{ event: string; id: number; summary?: string | null }>
+  publishJobs: Array<{
+    authorizationRevision: number
+    externalPublicationId?: string | null
+    externalPublicationUrl?: string | null
+    id: number
+    requestSnapshot: PlatformPublishRequest
+    status: string
+  }>
 }
 
 const relationshipID = (value: Relationship): number =>
@@ -143,11 +183,16 @@ export class FacebookE2EHarness {
   readonly feishuUpserts: FeishuUpsertRecordInput[]
   readonly outbound: FakePlatformConversationOutboundPort
   readonly payload: Payload
+  readonly publishingPhotoRequests: FacebookPagePhotoPublishInput[]
+  readonly publishingPermalinkRequests: FacebookPagePostPermalinkInput[]
   private readonly accountIDs: number[] = []
+  private readonly contentIDs: number[] = []
   private readonly eventKeys: string[] = []
   private readonly externalThreadIDs: string[] = []
+  private readonly knowledgeDocumentIDs: number[] = []
   private readonly leadRequestIDs: string[] = []
   private readonly mappingIDs: number[] = []
+  private readonly mediaIDs: number[] = []
   private readonly cleanupSentinels: CleanupSentinels = { auditIDs: [], jobIDs: [] }
   private readonly queue: PayloadJobQueue
   private readonly worker: JobWorker
@@ -158,18 +203,61 @@ export class FacebookE2EHarness {
     feishuUpserts,
     outbound,
     payload,
+    publishingPermalinkRequests,
+    publishingPhotoRequests,
   }: {
     feishuClient: FeishuClientPort
     feishuMessages: FeishuSendTextInput[]
     feishuUpserts: FeishuUpsertRecordInput[]
     outbound: FakePlatformConversationOutboundPort
     payload: Payload
+    publishingPermalinkRequests: FacebookPagePostPermalinkInput[]
+    publishingPhotoRequests: FacebookPagePhotoPublishInput[]
   }) {
     this.feishuMessages = feishuMessages
     this.feishuUpserts = feishuUpserts
     this.outbound = outbound
     this.payload = payload
+    this.publishingPermalinkRequests = publishingPermalinkRequests
+    this.publishingPhotoRequests = publishingPhotoRequests
     this.queue = new PayloadJobQueue({ payload })
+    const accountResolver = new PayloadPublishingAccountResolver({ payload })
+    const linkedInTransport = {} as LinkedInPublishingTransport
+    const metaTransport: MetaPublishingTransport = {
+      createInstagramMedia: async () => {
+        throw new Error('Instagram is not part of the Facebook publishing E2E')
+      },
+      getFacebookPagePostPermalink: async (input) => {
+        publishingPermalinkRequests.push(structuredClone(input))
+        if (publishingPermalinkRequests.length === 1) {
+          throw new Error('E2E permalink is not available until the continuation status check')
+        }
+        return {
+          permalinkUrl: `https://www.facebook.com/${input.postId}/posts/e2e-published`,
+        }
+      },
+      getInstagramContainerStatus: async () => {
+        throw new Error('Instagram is not part of the Facebook publishing E2E')
+      },
+      getInstagramMediaPermalink: async () => {
+        throw new Error('Instagram is not part of the Facebook publishing E2E')
+      },
+      publishFacebookPagePhoto: async (input) => {
+        publishingPhotoRequests.push(structuredClone(input))
+        return {
+          photoId: '7654321',
+          postId: `${E2E_META_PAGE_ID}_7654321`,
+        }
+      },
+      publishInstagramMedia: async () => {
+        throw new Error('Instagram is not part of the Facebook publishing E2E')
+      },
+    }
+    const directService = createPlatformPublishingService({
+      accountResolver,
+      linkedInTransport,
+      metaTransport,
+    })
     this.worker = new JobWorker({
       handlers: {
         [FEISHU_HANDOFF_NOTIFY_JOB_TYPE]: createFeishuHandoffNotifyJobHandler({
@@ -194,6 +282,16 @@ export class FacebookE2EHarness {
             responder: deterministicResponder,
           }),
         }),
+        [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+          payload,
+          queue: this.queue,
+          resolveRuntime: () => ({
+            directService,
+            linkedInTransport,
+            metaTransport,
+            readLinkedInAssetBytes: async () => null,
+          }),
+        }),
       },
       heartbeatIntervalMs: 1_000,
       queue: this.queue,
@@ -209,6 +307,8 @@ export class FacebookE2EHarness {
     })
     const feishuMessages: FeishuSendTextInput[] = []
     const feishuUpserts: FeishuUpsertRecordInput[] = []
+    const publishingPermalinkRequests: FacebookPagePostPermalinkInput[] = []
+    const publishingPhotoRequests: FacebookPagePhotoPublishInput[] = []
     const feishuClient: FeishuClientPort = {
       async sendText(input) {
         feishuMessages.push(structuredClone(input))
@@ -225,6 +325,8 @@ export class FacebookE2EHarness {
       feishuUpserts,
       outbound: createFakePlatformConversationOutboundPort(),
       payload,
+      publishingPermalinkRequests,
+      publishingPhotoRequests,
     })
   }
 
@@ -261,6 +363,103 @@ export class FacebookE2EHarness {
       overrideAccess: true,
     })
     this.accountIDs.push(account.id)
+  }
+
+  async createFacebookPublishingAccount(): Promise<number> {
+    const account = await this.payload.create({
+      collection: 'platform-accounts',
+      context: { skipAudit: true },
+      data: {
+        accountKind: 'facebook-page',
+        authorizationRevision: 0,
+        authorization: {
+          accessToken: `e2e-meta-publishing-token-${randomUUID()}`,
+          accessTokenConfigured: false,
+          appId: 'e2e-meta-app',
+          clearAccessToken: false,
+          clearRefreshToken: false,
+          expiresAt: null,
+          refreshToken: null,
+          refreshTokenConfigured: false,
+          scopes: [{ scope: 'pages_manage_posts' }],
+          state: 'connected',
+        },
+        capabilities: { messagingInbound: 'approved', publishing: 'approved' },
+        connectionKey: null,
+        externalAccountId: E2E_META_PAGE_ID,
+        name: `e2e-fb-publishing-${randomUUID().slice(0, 8)}`,
+        notes: null,
+        platformFamily: 'meta',
+      },
+      overrideAccess: true,
+    })
+    this.accountIDs.push(account.id)
+    return account.id
+  }
+
+  async createFacebookPublishingFixture(): Promise<FacebookPublishingFixture> {
+    const suffix = randomUUID()
+    const knowledgeSourceURL = `https://example.invalid/e2e-facebook-publishing/${suffix}`
+    const knowledgeDocument = await this.payload.create({
+      collection: 'knowledge-documents',
+      context: { skipAudit: true },
+      data: {
+        content: 'Controlled facade publication guidance for the Facebook E2E.',
+        customerVisible: false,
+        indexStatus: 'pending',
+        locale: 'en',
+        reviewStatus: 'reviewed',
+        sourceTitle: `E2E Facebook publishing source ${suffix.slice(0, 8)}`,
+        sourceType: 'technical-specification',
+        sourceURL: knowledgeSourceURL,
+        sourceVersion: '1.0',
+      },
+      overrideAccess: true,
+    })
+    this.knowledgeDocumentIDs.push(knowledgeDocument.id)
+    await this.payload.update({
+      collection: 'knowledge-documents',
+      context: { skipAudit: true },
+      data: {
+        embeddingModel: 'e2e-facebook-publishing-model',
+        embeddingSpace: 'b'.repeat(64),
+        indexStatus: 'ready',
+        indexedAt: new Date().toISOString(),
+      },
+      id: knowledgeDocument.id,
+      overrideAccess: true,
+    })
+    const image = await sharp({
+      create: { background: '#1c2f46', channels: 3, height: 600, width: 800 },
+    })
+      .jpeg({ quality: 85 })
+      .toBuffer()
+    const media = await this.payload.create({
+      collection: 'media',
+      context: { skipAudit: true },
+      data: {
+        alt: `E2E Facebook publishing image ${suffix.slice(0, 8)}`,
+        isPublic: true,
+        source: 'IVYBM controlled Facebook publishing E2E fixture',
+      },
+      file: {
+        data: image,
+        mimetype: 'image/jpeg',
+        name: `e2e-facebook-publishing-${suffix}.jpg`,
+        size: image.length,
+      },
+      overrideAccess: true,
+    })
+    this.mediaIDs.push(Number(media.id))
+    return {
+      knowledgeSourceURL,
+      mediaID: Number(media.id),
+      mediaLabel: String(media.alt),
+    }
+  }
+
+  trackContent(contentID: number): void {
+    this.contentIDs.push(contentID)
   }
 
   async createBlockedPlatformAccount({
@@ -366,6 +565,83 @@ export class FacebookE2EHarness {
 
   async runNext(): Promise<'failed' | 'idle' | 'succeeded'> {
     return this.worker.runOnce()
+  }
+
+  async runPublicationUntilIdle(): Promise<void> {
+    const initialOutcome = await this.runNext()
+    if (initialOutcome !== 'succeeded') {
+      throw new Error(`Facebook publication E2E initial worker outcome was ${initialOutcome}`)
+    }
+    await this.pool.query(
+      `UPDATE jobs
+       SET next_run_at = now(), updated_at = now()
+       WHERE type = $1
+         AND status IN ('pending', 'failed')
+         AND payload->>'publishJobId' IN (
+           SELECT id::text FROM publish_jobs WHERE content_id = ANY($2::int[])
+         )`,
+      [PLATFORM_PUBLICATION_JOB_TYPE, this.contentIDs],
+    )
+    await this.runUntilIdle(4)
+  }
+
+  async readPublishingState(contentID: number): Promise<FacebookPublishingState> {
+    const publishJobs = await this.payload.find({
+      collection: 'publish-jobs',
+      depth: 0,
+      limit: 10,
+      overrideAccess: true,
+      pagination: false,
+      sort: 'id',
+      where: { content: { equals: contentID } },
+    })
+    const publishJobIDs = publishJobs.docs.map((job) => Number(job.id))
+    const logs = publishJobIDs.length
+      ? await this.payload.find({
+          collection: 'publish-logs',
+          depth: 0,
+          limit: 100,
+          overrideAccess: true,
+          pagination: false,
+          sort: 'id',
+          where: { publishJob: { in: publishJobIDs } },
+        })
+      : { docs: [] }
+    const jobs = publishJobIDs.length
+      ? await this.pool.query<{
+          id: number
+          idempotency_key: string | null
+          status: string
+          type: string
+        }>(
+          `SELECT id, idempotency_key, status, type
+           FROM jobs
+           WHERE type = $1 AND payload->>'publishJobId' = ANY($2::text[])
+           ORDER BY id`,
+          [PLATFORM_PUBLICATION_JOB_TYPE, publishJobIDs.map(String)],
+        )
+      : { rows: [] }
+    return {
+      jobs: jobs.rows.map((job) => ({
+        id: job.id,
+        idempotencyKey: job.idempotency_key,
+        status: job.status,
+        type: job.type,
+      })),
+      logs: logs.docs.map((log) => ({
+        event: String(log.event),
+        id: Number(log.id),
+        summary: log.summary,
+      })),
+      publishJobs: publishJobs.docs.map((job) => ({
+        authorizationRevision: Number(job.authorizationRevision),
+        externalPublicationId: job.externalPublicationId,
+        externalPublicationUrl: job.externalPublicationUrl,
+        id: Number(job.id),
+        requestSnapshot: normalizePlatformPublishRequest(job.requestSnapshot),
+        status: String(job.status),
+      })),
+    }
   }
 
   async relayFeishuJobs() {
@@ -474,6 +750,10 @@ export class FacebookE2EHarness {
         email: lead.email,
         id: lead.id,
         intentLevel: lead.intentLevel,
+        messagingAccountExternalId: lead.messagingAccountExternalId,
+        messagingPlatform: lead.messagingPlatform,
+        messagingSenderExternalId: lead.messagingSenderExternalId,
+        messagingThreadExternalId: lead.messagingThreadExternalId,
         projectStage: lead.projectStage,
         quantitySquareMeters: lead.quantitySquareMeters,
       })),
@@ -671,11 +951,42 @@ export class FacebookE2EHarness {
                 ],
               )
             : { rows: [] }
+        const publicationJobs =
+          this.contentIDs.length > 0
+            ? await client.query<{ id: number }>(
+                'SELECT id FROM publish_jobs WHERE content_id = ANY($1::int[])',
+                [this.contentIDs],
+              )
+            : { rows: [] }
+        const publicationJobIDs = publicationJobs.rows.map(({ id }) => id)
+        const publicationLogs =
+          publicationJobIDs.length > 0
+            ? await client.query<{ id: number }>(
+                'SELECT id FROM publish_logs WHERE publish_job_id = ANY($1::int[])',
+                [publicationJobIDs],
+              )
+            : { rows: [] }
+        const publicationQueueJobs =
+          publicationJobIDs.length > 0
+            ? await client.query<{ id: number }>(
+                `SELECT id FROM jobs
+                 WHERE type = $1 AND payload->>'publishJobId' = ANY($2::text[])`,
+                [PLATFORM_PUBLICATION_JOB_TYPE, publicationJobIDs.map(String)],
+              )
+            : { rows: [] }
+        const contentReviews =
+          this.contentIDs.length > 0
+            ? await client.query<{ id: number }>(
+                'SELECT id FROM content_reviews WHERE content_id = ANY($1::int[])',
+                [this.contentIDs],
+              )
+            : { rows: [] }
         const jobIDs = [
           ...new Set([
             ...intents.rows.map(({ queue_job_id }) => queue_job_id),
             ...eventJobs.rows.map(({ id }) => id),
             ...feishuJobs.rows.map(({ id }) => id),
+            ...publicationQueueJobs.rows.map(({ id }) => id),
           ]),
         ]
         const auditTargets: Array<[resource: string, ids: number[]]> = [
@@ -688,6 +999,10 @@ export class FacebookE2EHarness {
           ['conversation-delivery-intents', intents.rows.map(({ id }) => id)],
           ['jobs', jobIDs],
           ['messages', messageIDs],
+          ['generated-contents', this.contentIDs],
+          ['content-reviews', contentReviews.rows.map(({ id }) => id)],
+          ['publish-jobs', publicationJobIDs],
+          ['publish-logs', publicationLogs.rows.map(({ id }) => id)],
         ]
 
         for (const [resource, ids] of auditTargets) {
@@ -720,6 +1035,22 @@ export class FacebookE2EHarness {
         }
         if (jobIDs.length > 0) {
           await client.query('DELETE FROM jobs WHERE id = ANY($1::int[])', [jobIDs])
+        }
+        if (publicationJobIDs.length > 0) {
+          await client.query('DELETE FROM publish_logs WHERE publish_job_id = ANY($1::int[])', [
+            publicationJobIDs,
+          ])
+          await client.query('DELETE FROM publish_jobs WHERE id = ANY($1::int[])', [
+            publicationJobIDs,
+          ])
+        }
+        if (this.contentIDs.length > 0) {
+          await client.query('DELETE FROM content_reviews WHERE content_id = ANY($1::int[])', [
+            this.contentIDs,
+          ])
+          await client.query('DELETE FROM generated_contents WHERE id = ANY($1::int[])', [
+            this.contentIDs,
+          ])
         }
         if (visitorIDs.length > 0) {
           await client.query('DELETE FROM visitor_sessions WHERE id = ANY($1::int[])', [visitorIDs])
@@ -777,6 +1108,21 @@ export class FacebookE2EHarness {
         client.release()
       }
     } finally {
+      for (const id of this.mediaIDs) {
+        await this.payload
+          .delete({ collection: 'media', context: { skipAudit: true }, id, overrideAccess: true })
+          .catch(() => undefined)
+      }
+      for (const id of this.knowledgeDocumentIDs) {
+        await this.payload
+          .delete({
+            collection: 'knowledge-documents',
+            context: { skipAudit: true },
+            id,
+            overrideAccess: true,
+          })
+          .catch(() => undefined)
+      }
       await this.payload.destroy()
     }
 

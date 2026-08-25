@@ -28,6 +28,7 @@ import type {
 } from './contracts'
 import { ChatServiceError } from './contracts'
 import { allowedActionsFor, type ChatSessionViewer, type HandoffCommand } from './handoffState'
+import { isWebsiteSilentRecoveryHandoff } from './recoveryPolicy'
 import type {
   ConversationCommandClaim,
   ConversationLeadEvaluation,
@@ -47,10 +48,66 @@ type PayloadConversationRepositoryOptions = {
   sessionTokenHash?: string
 }
 
-export const shouldCreateConversationLead = (evaluation?: ConversationLeadEvaluation): boolean => {
+type ConversationLeadContact = Pick<
+  Conversation,
+  'channel' | 'externalAccountId' | 'externalSenderId' | 'externalThreadId'
+>
+
+type LeadMessagingIdentity = {
+  messagingAccountExternalId: string
+  messagingPlatform: 'facebook-messenger' | 'instagram' | 'tiktok'
+  messagingSenderExternalId: string
+  messagingThreadExternalId: string
+}
+
+const leadMessagingIdentity = (
+  contact?: ConversationLeadContact,
+): LeadMessagingIdentity | undefined => {
+  const messagingPlatform =
+    contact?.channel === 'facebook'
+      ? 'facebook-messenger'
+      : contact?.channel === 'instagram' || contact?.channel === 'tiktok'
+        ? contact.channel
+        : undefined
+  const messagingAccountExternalId = contact?.externalAccountId?.trim()
+  const messagingSenderExternalId = contact?.externalSenderId?.trim()
+  const messagingThreadExternalId = contact?.externalThreadId?.trim()
+  if (
+    !messagingPlatform ||
+    !messagingAccountExternalId ||
+    !messagingSenderExternalId ||
+    !messagingThreadExternalId
+  ) {
+    return undefined
+  }
+  return {
+    messagingAccountExternalId,
+    messagingPlatform,
+    messagingSenderExternalId,
+    messagingThreadExternalId,
+  }
+}
+
+export const shouldCreateConversationLead = (
+  evaluation?: ConversationLeadEvaluation,
+  contact?: ConversationLeadContact,
+  handoffReason?: string,
+): boolean => {
+  if (
+    isWebsiteSilentRecoveryHandoff(
+      contact?.channel,
+      handoffReason ?? evaluation?.handoffReason,
+    )
+  ) {
+    return false
+  }
   const qualifiedForLead =
     evaluation?.score.level === 'a' || evaluation?.handoffReason === 'qualification_complete'
-  return Boolean(qualifiedForLead && evaluation.signals.contact.email?.trim())
+  const sustainableContact =
+    evaluation?.signals.contact.email?.trim() ||
+    evaluation?.signals.contact.phone?.trim() ||
+    leadMessagingIdentity(contact)
+  return Boolean(qualifiedForLead && sustainableContact)
 }
 
 const relationshipID = (value: number | { id: number } | null | undefined): number | undefined =>
@@ -303,8 +360,12 @@ export class PayloadConversationRepository implements ConversationRepository {
     return source.docs[0]
   }
 
-  private shouldCreateLead(evaluation?: ConversationLeadEvaluation): boolean {
-    return shouldCreateConversationLead(evaluation)
+  private shouldCreateLead(
+    evaluation: ConversationLeadEvaluation | undefined,
+    conversation: Conversation,
+    handoffReason: string | undefined,
+  ): boolean {
+    return shouldCreateConversationLead(evaluation, conversation, handoffReason)
   }
 
   private async persistLead(
@@ -329,14 +390,27 @@ export class PayloadConversationRepository implements ConversationRepository {
       .join('\n')
     const transcript = truncateLeadTranscript(visitorMessages)
     const email = evaluation.signals.contact.email?.trim()
+    const phone = evaluation.signals.contact.phone?.trim()
+    const messagingIdentity = leadMessagingIdentity(conversation)
     const country = evaluation.signals.country?.trim()
-    if (!email) {
+    if (!email && !phone && !messagingIdentity) {
       throw new ChatServiceError('internal_error', 'High-intent lead data is incomplete')
     }
+    const fallbackName = messagingIdentity
+      ? `${
+          messagingIdentity.messagingPlatform === 'facebook-messenger'
+            ? 'Facebook Messenger'
+            : messagingIdentity.messagingPlatform === 'instagram'
+              ? 'Instagram'
+              : 'TikTok'
+        } visitor #${messagingIdentity.messagingSenderExternalId.slice(-6)}`
+      : email
+        ? email.split('@')[0]
+        : `Phone contact #${(phone ?? '').slice(-4)}`
     const data = {
       company: evaluation.signals.company,
       country: country || null,
-      email,
+      email: email || null,
       idempotencyKey,
       intentLevel: evaluation.score.level,
       budget: evaluation.signals.budget,
@@ -348,8 +422,9 @@ export class PayloadConversationRepository implements ConversationRepository {
       interest: evaluation.signals.productInterest,
       locale: session.locale,
       message: transcript,
-      name: evaluation.signals.company || email.split('@')[0],
-      phone: evaluation.signals.contact.phone,
+      ...(messagingIdentity ?? {}),
+      name: evaluation.signals.company || fallbackName,
+      phone: phone || null,
       requestId: `chat-${session.requestId}`,
       source: source.id,
       status: 'new' as const,
@@ -664,10 +739,14 @@ export class PayloadConversationRepository implements ConversationRepository {
     mutation: ConversationMutation,
     claim: ConversationCommandClaim,
   ): Promise<ChatSession> {
-    const needsLead = this.shouldCreateLead(mutation.leadEvaluation)
     return this.transaction(async (req) => {
       const conversation = await this.findConversation(session.id, req)
       if (!conversation) throw new ChatServiceError('not_found', 'Chat session not found')
+      const needsLead = this.shouldCreateLead(
+        mutation.leadEvaluation,
+        conversation,
+        mutation.handoff?.reason,
+      )
       // Payload's declarative update is not enough to serialize two independent commands
       // that read the same session before either writes. Lock the row on this request's
       // existing transaction, then validate the version while the lock is held.

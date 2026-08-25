@@ -1144,8 +1144,24 @@ export interface Lead {
   name: string
   company?: string | null
   country?: string | null
-  email: string
+  email?: string | null
   phone?: string | null
+  /**
+   * Server-verified social messaging channel used to contact this Lead.
+   */
+  messagingPlatform?: ('facebook-messenger' | 'instagram' | 'tiktok') | null
+  /**
+   * Provider account or Page identifier. This is not a credential.
+   */
+  messagingAccountExternalId?: string | null
+  /**
+   * Provider-scoped sender identifier. This is not a credential.
+   */
+  messagingSenderExternalId?: string | null
+  /**
+   * Stable provider thread identifier. This is not a credential.
+   */
+  messagingThreadExternalId?: string | null
   interest?: string | null
   budget?: string | null
   procurementPlan?: string | null
@@ -2356,6 +2372,10 @@ export interface LeadsSelect<T extends boolean = true> {
   country?: T
   email?: T
   phone?: T
+  messagingPlatform?: T
+  messagingAccountExternalId?: T
+  messagingSenderExternalId?: T
+  messagingThreadExternalId?: T
   interest?: T
   budget?: T
   procurementPlan?: T

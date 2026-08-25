@@ -83,18 +83,27 @@ const createData = async ({ input, payload, req }: { input: RecordValue; payload
   if (!statuses.has(status)) throw new LeadCommandError('leads-invalid-status', 'Unsupported lead status', 400)
   if (!intentLevels.has(intentLevel)) throw new LeadCommandError('leads-invalid-intent', 'Unsupported intent level', 400)
   const assignedTo = await validateAssignee(payload, req, optionalID(input, 'assignedToId'))
+  const email = string(input, 'email', false, 254) || null
+  const phone = string(input, 'phone', false, 32) || null
+  if (!email && !phone) {
+    throw new LeadCommandError(
+      'leads-contact-required',
+      'An email address or phone number is required for a manually created Lead',
+      400,
+    )
+  }
   return {
     assignedTo,
     company: string(input, 'company', false, 160) || null,
     country: string(input, 'country', false, 120) || null,
-    email: string(input, 'email', true, 254),
+    email,
     idempotencyKey,
     interest: string(input, 'interest', false, 160) || null,
     intentLevel,
     locale,
     message: string(input, 'message', true, 5_000),
     name: string(input, 'name', true, 120),
-    phone: string(input, 'phone', false, 32) || null,
+    phone,
     requestId: `portal-lead:${idempotencyKey}`,
     source: await validateSource(payload, req, sourceID),
     status,
@@ -125,7 +134,7 @@ const updateData = async ({
 }) => {
   const data: RecordValue = {}
   for (const [key, max] of [['name', 120], ['company', 160], ['country', 120], ['email', 254], ['phone', 32], ['interest', 160], ['message', 5_000]] as const) {
-    if (key in input) data[key] = string(input, key, key === 'name' || key === 'email' || key === 'message', max) || null
+    if (key in input) data[key] = string(input, key, key === 'name' || key === 'message', max) || null
   }
   if ('status' in input) {
     const status = string(input, 'status') as LeadStatus
@@ -157,6 +166,20 @@ const updateData = async ({
     } else {
       data.assignedTo = await validateAssignee(payload, req, assignedTo)
     }
+  }
+  const nextEmail = 'email' in data ? data.email : current.email
+  const nextPhone = 'phone' in data ? data.phone : current.phone
+  const hasMessagingIdentity =
+    typeof current.messagingPlatform === 'string' &&
+    typeof current.messagingAccountExternalId === 'string' &&
+    typeof current.messagingSenderExternalId === 'string' &&
+    typeof current.messagingThreadExternalId === 'string'
+  if (!nextEmail && !nextPhone && !hasMessagingIdentity) {
+    throw new LeadCommandError(
+      'leads-contact-required',
+      'A Lead must keep an email address, phone number, or verified messaging identity',
+      400,
+    )
   }
   return data
 }

@@ -85,7 +85,12 @@ describe('Portal lead commands', () => {
 
   it('persists a cleared Lead country as null', async () => {
     const payload = {
-      findByID: vi.fn().mockResolvedValue({ country: 'UAE', id: 48, updatedAt: '2026-07-30T09:00:00.000Z' }),
+      findByID: vi.fn().mockResolvedValue({
+        country: 'UAE',
+        email: 'lead@example.test',
+        id: 48,
+        updatedAt: '2026-07-30T09:00:00.000Z',
+      }),
       update: vi.fn().mockResolvedValue({ id: 48, updatedAt: '2026-07-30T09:01:00.000Z' }),
     } as any
 
@@ -97,6 +102,27 @@ describe('Portal lead commands', () => {
       role: 'admin',
     })
     expect(payload.update).toHaveBeenCalledWith(expect.objectContaining({ data: { country: null } }))
+  })
+
+  it('rejects clearing the final Lead contact method', async () => {
+    const payload = {
+      findByID: vi.fn().mockResolvedValue({
+        email: 'lead@example.test',
+        id: 48,
+        phone: null,
+        updatedAt: '2026-07-30T09:00:00.000Z',
+      }),
+      update: vi.fn(),
+    } as any
+
+    await expect(updatePortalLead({
+      id: 48,
+      input: { email: '', updatedAt: '2026-07-30T09:00:00.000Z' },
+      payload,
+      req,
+      role: 'admin',
+    })).rejects.toMatchObject({ code: 'leads-contact-required', status: 400 })
+    expect(payload.update).not.toHaveBeenCalled()
   })
 
   it('maps an unconfirmed Lead country to null in the Portal read model', async () => {
@@ -124,7 +150,13 @@ describe('Portal lead commands', () => {
       findByID: vi.fn().mockImplementation(({ id }: { id: number }) => {
         if (id === 4) return { id: 4, isActive: true }
         if (id === 9) return { id: 9 }
-        return { assignedTo: 9, id: 48, source: 4, updatedAt: '2026-07-30T09:00:00.000Z' }
+        return {
+          assignedTo: 9,
+          email: 'lead@example.test',
+          id: 48,
+          source: 4,
+          updatedAt: '2026-07-30T09:00:00.000Z',
+        }
       }),
       update: vi.fn().mockResolvedValue({ id: 48, updatedAt: '2026-07-30T09:01:00.000Z' }),
     } as any

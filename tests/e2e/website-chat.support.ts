@@ -32,7 +32,7 @@ type ChatFixtureState = {
     qualificationRoundCount: number
   }
   handoffs: Array<{ id: number; reason: string; source: string; status: string }>
-  leads: Array<{ company?: string | null; email: string; id: number; intentLevel: string }>
+  leads: Array<{ company?: string | null; email?: string | null; id: number; intentLevel: string }>
   messages: Array<{ author: string; content: string; id: number; status: string }>
 }
 
@@ -280,6 +280,16 @@ export class WebsiteChatE2EHarness {
 
   async relayFeishuJobs() {
     return enqueuePendingFeishuJobs({ payload: this.payload })
+  }
+
+  async countFeishuJobs(): Promise<number> {
+    if (this.mappingIDs.length === 0) return 0
+    const result = await this.pool.query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM jobs
+       WHERE type LIKE 'feishu.%' AND payload->>'mappingId' = ANY($1::text[])`,
+      [this.mappingIDs.map(String)],
+    )
+    return result.rows[0]?.count ?? 0
   }
 
   async runUntilIdle(maximumJobs = 8): Promise<Array<'failed' | 'idle' | 'succeeded'>> {

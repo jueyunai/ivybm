@@ -35,14 +35,14 @@ const scenarios: Scenario[] = [
   {
     email: 'e2e-chat-ar@example.invalid',
     expectedCompany: 'E2E Arabia LLC',
-    expectedHandoffReason: 'high_risk_topic',
+    expectedHandoffReason: 'high_intent',
     inputLabel: 'اسأل عن الألواح أو مشروعك…',
     launcher: 'اسأل مساعد المشروع',
     locale: 'ar',
     messages: [
       'نحتاج aluminum panels لمشروع في الإمارات العربية المتحدة.',
       'اسم الشركة: E2E Arabia LLC، المشروع في مرحلة تصميم ونحتاج 300 م².',
-      'لدينا رسومات. الميزانية: 100000 دولار وخطة الشراء معتمدة. الشراء خلال 3 أشهر. البريد e2e-chat-ar@example.invalid.',
+      'لدينا رسومات. الميزانية: 100000 دولار وخطة الشراء جاهزة. الشراء خلال 3 أشهر. البريد e2e-chat-ar@example.invalid.',
     ],
     send: 'إرسال',
   },
@@ -156,7 +156,9 @@ test('WEB-CHAT-01 closes EN and AR website AI qualification, Lead, handoff, Port
 
     for (const [index, sessionID] of sessionIDs.entries()) {
       await page.goto(`/dashboard/conversations?conversation=${encodeURIComponent(sessionID)}`)
-      await expect(page.getByRole('heading', { name: `#${sessionID}` })).toBeVisible()
+      await expect(
+        page.getByRole('heading', { name: `官网访客 #${sessionID.slice(-6)}` }),
+      ).toBeVisible()
       await page.getByRole('button', { name: '接管会话' }).click()
       const operatorReply = `E2E operator response ${scenarios[index]?.locale}`
       await page.getByPlaceholder('输入给客户的回复…').fill(operatorReply)
@@ -178,6 +180,117 @@ test('WEB-CHAT-01 closes EN and AR website AI qualification, Lead, handoff, Port
         page.locator('.portal-leads__detail').getByText(scenario.email, { exact: true }),
       ).toBeVisible()
     }
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('WEB-CHAT-02 fails closed to one recoverable handoff for knowledge, AI, and risk paths', async ({
+  page,
+}) => {
+  const harness = await WebsiteChatE2EHarness.create()
+  await harness.createFeishuMapping()
+  const openFreshSession = async (): Promise<{
+    input: ReturnType<Page['getByLabel']>
+    sessionID: string
+    widget: ReturnType<Page['getByTestId']>
+  }> => {
+    await page.goto('/en')
+    await page.evaluate(() => window.sessionStorage.clear())
+    await page.reload()
+    const started = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/chat/sessions',
+    )
+    const widget = page.getByTestId('chat-widget')
+    await widget.getByRole('button', { name: 'Ask our project assistant' }).click()
+    const startResponse = await started
+    expect(startResponse.status()).toBe(201)
+    const session = (await startResponse.json()) as { id: string }
+    harness.trackSession(session.id)
+    return {
+      input: widget.getByLabel('Ask about panels, drawings, finishes, or your project…'),
+      sessionID: session.id,
+      widget,
+    }
+  }
+
+  const sendAndReplay = async ({
+    expectedIntentLevel,
+    expectedReason,
+    message,
+  }: {
+    expectedIntentLevel?: 'a' | 'b' | 'c'
+    expectedReason: string
+    message: string
+  }): Promise<void> => {
+    const { input, sessionID, widget } = await openFreshSession()
+    await input.fill(message)
+    const commandRequest = page.waitForRequest(
+      (request) =>
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname === `/api/chat/sessions/${sessionID}/messages`,
+    )
+    const commandResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === `/api/chat/sessions/${sessionID}/messages`,
+    )
+    await widget.getByRole('button', { name: 'Send' }).click()
+    const [originalRequest, originalResponse] = await Promise.all([commandRequest, commandResponse])
+    expect(originalResponse.status()).toBe(200)
+    await expect(widget.getByTestId('chat-handoff-pending')).toBeVisible()
+    await expect(input).toBeDisabled()
+
+    const command = originalRequest.postDataJSON() as Record<string, unknown> | null
+    if (!command) throw new Error('Expected website chat command body')
+    const replay = await page.request.post(originalRequest.url(), { data: command })
+    expect(replay.status()).toBe(200)
+
+    const state = await harness.readSessionState(sessionID)
+    if (expectedIntentLevel) {
+      expect(state.conversation.intentLevel).toBe(expectedIntentLevel)
+    }
+    expect(state.messages.filter(({ author }) => author === 'visitor')).toHaveLength(1)
+    expect(state.messages.filter(({ author }) => author === 'ai')).toHaveLength(0)
+    expect(state.leads).toHaveLength(0)
+    expect(state.handoffs).toEqual([
+      expect.objectContaining({ reason: expectedReason, source: 'ai_policy', status: 'requested' }),
+    ])
+    expect(await harness.countFeishuJobs()).toBe(0)
+    expect(await harness.relayFeishuJobs()).toMatchObject({
+      enabled: true,
+      handoffs: { created: 0, duplicate: 0 },
+    })
+    expect(await harness.countFeishuJobs()).toBe(0)
+    await expect(harness.runUntilIdle()).resolves.toEqual(['idle'])
+    expect(harness.feishuMessages).toHaveLength(0)
+    expect(harness.feishuUpserts).toHaveLength(0)
+  }
+
+  try {
+    await sendAndReplay({
+      expectedReason: 'reviewed_knowledge_unavailable',
+      message: 'Which aluminum panel options suit a facade project?',
+    })
+
+    await harness.createKnowledgeFixtures()
+    await sendAndReplay({
+      expectedReason: 'ai_service_unavailable',
+      message: 'Show reviewed aluminum panel options [E2E_AI_UNAVAILABLE].',
+    })
+
+    const usageBeforeRisk = await harness.countAiUsage()
+    await sendAndReplay({
+      expectedIntentLevel: 'a',
+      expectedReason: 'high_risk_topic',
+      message:
+        'Company: Recovery Facades LLC. We need aluminum panels for a 300 m2 procurement project in the UAE, have drawings, a USD 100000 budget and an approved purchase plan, and will buy in 3 months. Email recovery-risk@example.invalid. Can you guarantee the final price, delivery date, and certification?',
+    })
+    expect(await harness.countAiUsage()).toBe(usageBeforeRisk)
+    expect(harness.feishuMessages).toHaveLength(0)
+    expect(harness.feishuUpserts).toHaveLength(0)
   } finally {
     await harness.cleanup()
   }

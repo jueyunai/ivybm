@@ -61,6 +61,12 @@ const server = createServer(async (request, response) => {
 
     if (request.method === 'POST' && request.url === '/v1/responses') {
       const input = typeof body.input === 'string' ? body.input : ''
+      if (input.includes('[E2E_AI_UNAVAILABLE]')) {
+        respond(response, 503, {
+          error: { message: 'deterministic E2E provider outage', type: 'service_unavailable' },
+        })
+        return
+      }
       const arabic = /[\u0600-\u06ff]/u.test(input)
       respond(response, 200, {
         model: body.model,
