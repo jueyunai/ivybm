@@ -12,6 +12,7 @@ export const LINKEDIN_IMAGE_PUBLISHING_STAGES = [
   'scheduled',
   'image_initialized',
   'image_uploaded',
+  'post_created',
   'published',
   'failed',
   'delivery_unknown',
@@ -94,7 +95,15 @@ export type LinkedInImagePublishingTransition = {
   changed: boolean
   checkpoint: LinkedInImagePublishingCheckpoint
   errorCode?: string
-  event?: 'blocked' | 'failed' | 'image-initialized' | 'image-uploaded' | 'published' | 'unknown'
+  event?:
+    | 'blocked'
+    | 'failed'
+    | 'image-initialized'
+    | 'image-uploaded'
+    | 'post-created'
+    | 'published'
+    | 'publishing'
+    | 'unknown'
   retryable?: boolean
   summary?: string
 }
@@ -248,6 +257,12 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
   if (
     checkpoint.stage === 'image_uploaded' &&
     (!imageUrn || uploadTicket !== undefined || postUrn !== undefined || postUrl !== undefined)
+  ) {
+    return undefined
+  }
+  if (
+    checkpoint.stage === 'post_created' &&
+    (!imageUrn || uploadTicket !== undefined || !postUrn || postUrl !== undefined)
   ) {
     return undefined
   }
@@ -528,6 +543,7 @@ const runStage = async ({
       throw new ProviderPublicationResultUnknownError('LinkedIn post result is unknown')
     }
     let postUrl: string | undefined
+    let isPublished = false
     try {
       const status = await transport.getPostStatus({
         authorization: {
@@ -537,20 +553,65 @@ const runStage = async ({
         author: checkpoint.author,
         postUrn: result.postUrn,
       })
-      if (status.lifecycleState === 'PUBLISHED') postUrl = status.externalPublicationUrl
+      if (status.lifecycleState === 'PUBLISHED') {
+        postUrl = status.externalPublicationUrl ?? linkedInPostPermalink(result.postUrn)
+        isPublished = true
+      }
     } catch {
-      // The publish mutation is confirmed. Preserve the post URN without inventing a URL.
+      // The publish mutation is confirmed. Status check can proceed on next execution.
+    }
+    if (isPublished) {
+      return {
+        changed: true,
+        checkpoint: {
+          ...checkpoint,
+          postUrn: result.postUrn,
+          ...(postUrl ? { postUrl } : {}),
+          stage: 'published',
+        },
+        event: 'published',
+        summary: 'LinkedIn confirmed the image post.',
+      }
     }
     return {
       changed: true,
       checkpoint: {
         ...checkpoint,
         postUrn: result.postUrn,
-        ...(postUrl ? { postUrl } : {}),
-        stage: 'published',
+        stage: 'post_created',
       },
-      event: 'published',
-      summary: 'LinkedIn confirmed the image post.',
+      event: 'post-created',
+      summary: 'LinkedIn created the image post and is processing it.',
+    }
+  }
+  if (checkpoint.stage === 'post_created') {
+    if (!checkpoint.postUrn) throw new ProviderPublicationConfirmedError('invalid_request', false)
+    const status = await transport.getPostStatus({
+      authorization: {
+        authorizationRevision: checkpoint.authorizationRevision,
+        platformAccountId,
+      },
+      author: checkpoint.author,
+      postUrn: checkpoint.postUrn,
+    })
+    if (status.lifecycleState === 'PUBLISHED') {
+      const postUrl = status.externalPublicationUrl ?? linkedInPostPermalink(checkpoint.postUrn)
+      return {
+        changed: true,
+        checkpoint: {
+          ...checkpoint,
+          postUrl,
+          stage: 'published',
+        },
+        event: 'published',
+        summary: 'LinkedIn confirmed the image post.',
+      }
+    }
+    return {
+      changed: false,
+      checkpoint,
+      event: 'publishing',
+      summary: 'LinkedIn image post is still processing.',
     }
   }
   return unknown(checkpoint, 'LinkedIn image publishing checkpoint is unsupported.')

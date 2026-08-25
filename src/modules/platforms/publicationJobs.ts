@@ -347,7 +347,7 @@ const scheduleContinuation = async (
         ).stage
       : record(job.providerCheckpoint, 'providerCheckpoint').stage
   const nextRunAt =
-    stage === 'container_created' || stage === 'direct-status'
+    stage === 'container_created' || stage === 'post_created' || stage === 'direct-status'
       ? new Date(now().getTime() + 2_000)
       : undefined
   const instant = now()

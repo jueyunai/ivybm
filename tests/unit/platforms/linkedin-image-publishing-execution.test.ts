@@ -247,6 +247,7 @@ describe('LinkedIn staged image publication', () => {
         postUrl: 'https://www.linkedin.com/feed/update/urn:li:share:123456789/',
         stage: 'published',
       },
+      event: 'published',
     })
     expect(publishImagePost).toHaveBeenCalledTimes(1)
     expect(adapter.getPostStatus).toHaveBeenCalledWith({
@@ -256,6 +257,132 @@ describe('LinkedIn staged image publication', () => {
     })
     expect(adapter.initializeImageUpload).not.toHaveBeenCalled()
     expect(adapter.uploadImage).not.toHaveBeenCalled()
+  })
+
+  it.each(['PROCESSING', 'DRAFT'] as const)(
+    'transitions to post_created and defers publication when initial post status is %s',
+    async (lifecycleState) => {
+      const input = intent({
+        checkpoint: checkpoint({ imageUrn: ticket.imageUrn, stage: 'image_uploaded' }),
+      })
+      const state = setup(input)
+      const publishImagePost = vi.fn().mockResolvedValue({ postUrn: 'urn:li:share:123456789' })
+      const getPostStatus = vi.fn().mockResolvedValue({ lifecycleState })
+      const adapter = transport({ getPostStatus, publishImagePost })
+      await expect(
+        executeLinkedInImagePublishingStage({
+          authority: state.authority,
+          intent: input,
+          leaseFence: state.fence,
+          transport: adapter,
+        }),
+      ).resolves.toMatchObject({
+        checkpoint: {
+          imageUrn: ticket.imageUrn,
+          postUrn: 'urn:li:share:123456789',
+          stage: 'post_created',
+        },
+        event: 'post-created',
+      })
+      expect(publishImagePost).toHaveBeenCalledTimes(1)
+      expect(getPostStatus).toHaveBeenCalledTimes(1)
+      expect(state.authority.getIntent(42)?.checkpoint).toMatchObject({
+        postUrn: 'urn:li:share:123456789',
+        stage: 'post_created',
+      })
+    },
+  )
+
+  it('preserves postUrn at post_created if getPostStatus fails immediately after publishImagePost', async () => {
+    const input = intent({
+      checkpoint: checkpoint({ imageUrn: ticket.imageUrn, stage: 'image_uploaded' }),
+    })
+    const state = setup(input)
+    const publishImagePost = vi.fn().mockResolvedValue({ postUrn: 'urn:li:share:123456789' })
+    const getPostStatus = vi.fn().mockRejectedValue(new ProviderPublicationTransportError())
+    const adapter = transport({ getPostStatus, publishImagePost })
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: adapter,
+      }),
+    ).resolves.toMatchObject({
+      checkpoint: {
+        postUrn: 'urn:li:share:123456789',
+        stage: 'post_created',
+      },
+      event: 'post-created',
+    })
+    expect(publishImagePost).toHaveBeenCalledTimes(1)
+  })
+
+  it('polls post_created checkpoint and remains in publishing while PROCESSING', async () => {
+    const input = intent({
+      checkpoint: checkpoint({
+        imageUrn: ticket.imageUrn,
+        postUrn: 'urn:li:share:123456789',
+        stage: 'post_created',
+      }),
+    })
+    const state = setup(input)
+    const getPostStatus = vi.fn().mockResolvedValue({ lifecycleState: 'PROCESSING' })
+    const adapter = transport({ getPostStatus })
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: adapter,
+      }),
+    ).resolves.toMatchObject({
+      changed: false,
+      checkpoint: {
+        postUrn: 'urn:li:share:123456789',
+        stage: 'post_created',
+      },
+      event: 'publishing',
+    })
+    expect(adapter.publishImagePost).not.toHaveBeenCalled()
+    expect(getPostStatus).toHaveBeenCalledWith({
+      authorization: { authorizationRevision: 4, platformAccountId: 19 },
+      author: { kind: 'organization', organizationId: '971937765923229' },
+      postUrn: 'urn:li:share:123456789',
+    })
+  })
+
+  it('completes publication from post_created when status becomes PUBLISHED', async () => {
+    const input = intent({
+      checkpoint: checkpoint({
+        imageUrn: ticket.imageUrn,
+        postUrn: 'urn:li:share:123456789',
+        stage: 'post_created',
+      }),
+    })
+    const state = setup(input)
+    const getPostStatus = vi.fn().mockResolvedValue({
+      externalPublicationUrl: 'https://www.linkedin.com/feed/update/urn:li:share:123456789/',
+      lifecycleState: 'PUBLISHED',
+    })
+    const adapter = transport({ getPostStatus })
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: adapter,
+      }),
+    ).resolves.toMatchObject({
+      changed: true,
+      checkpoint: {
+        postUrn: 'urn:li:share:123456789',
+        postUrl: 'https://www.linkedin.com/feed/update/urn:li:share:123456789/',
+        stage: 'published',
+      },
+      event: 'published',
+    })
+    expect(adapter.publishImagePost).not.toHaveBeenCalled()
   })
 
   it('allows only one concurrent worker per stage', async () => {
