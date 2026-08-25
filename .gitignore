@@ -51,6 +51,7 @@ playwright-report/
 test-results/
 blob-report/
 playwright/.cache/
+artifacts/live-smoke/
 # 本地视觉回归截图与生成输出
 output/
 *.tmp
