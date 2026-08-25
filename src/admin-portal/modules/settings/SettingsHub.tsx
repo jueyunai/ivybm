@@ -11,8 +11,11 @@ import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPrefe
 import type { PortalSettingsSummary } from './getPortalSettingsSummary'
 import type { PortalSiteSettingsEditor } from './getPortalSettingsSummary'
 import type { PortalAiSettingsSummary } from './getPortalAiSettings'
+import type { PortalTeamMemberDTO } from './userSettingsContracts'
 import { AiSettingsPanel } from './AiSettingsPanel'
+import { ChangePasswordPanel } from './ChangePasswordPanel'
 import { SiteSettingsEditor } from './SiteSettingsEditor'
+import { TeamMembersPanel } from './TeamMembersPanel'
 
 export interface SettingsHubProps {
   aiReadError?: boolean
@@ -20,8 +23,10 @@ export interface SettingsHubProps {
   modules: readonly ResolvedPortalModule[]
   pageState?: 'available' | 'module-disabled' | 'portal-disabled'
   readError?: boolean
-  summary: PortalSettingsSummary | null
   siteSettings?: PortalSiteSettingsEditor | null
+  summary: PortalSettingsSummary | null
+  teamManagementEnabled?: boolean
+  teamMembers?: PortalTeamMemberDTO[]
   user: PortalUser
 }
 
@@ -52,6 +57,8 @@ export function SettingsHub({
   readError = false,
   siteSettings = null,
   summary,
+  teamManagementEnabled = false,
+  teamMembers = [],
   user,
 }: SettingsHubProps) {
   const { locale, reducedMotion, setLocale, setReducedMotion, setTheme, theme } =
@@ -97,6 +104,7 @@ export function SettingsHub({
               <dd>{roleLabel(user.role, locale)}</dd>
             </div>
           </dl>
+          <ChangePasswordPanel />
         </Surface>
 
         <Surface as="section" className="portal-settings__section">
@@ -168,6 +176,10 @@ export function SettingsHub({
             </span>
           </label>
         </Surface>
+
+        {user.role === 'admin' && teamManagementEnabled ? (
+          <TeamMembersPanel currentUserId={user.id} initialMembers={teamMembers} />
+        ) : null}
 
         {user.role === 'admin' && aiReadError ? (
           <Surface
@@ -244,7 +256,7 @@ export function SettingsHub({
                 <div>
                   <strong>{messages.modules[portalModule.labelKey]}</strong>
                   <span>
-                    {messages.settings.moduleOwner}: {portalModule.owner === "jueyunai" ? (locale === "zh" ? "系统核心组" : "Core System") : portalModule.owner === "xuemusi" ? (locale === "zh" ? "AI 与渠道组" : "AI & Channels") : portalModule.owner}
+                    {messages.settings.moduleOwner}: {portalModule.owner === 'jueyunai' ? (locale === 'zh' ? '系统核心组' : 'Core System') : portalModule.owner === 'xuemusi' ? (locale === 'zh' ? 'AI 与渠道组' : 'AI & Channels') : portalModule.owner}
                   </span>
                 </div>
                 <p>
