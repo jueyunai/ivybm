@@ -586,14 +586,28 @@ const runStage = async ({
   }
   if (checkpoint.stage === 'post_created') {
     if (!checkpoint.postUrn) throw new ProviderPublicationConfirmedError('invalid_request', false)
-    const status = await transport.getPostStatus({
-      authorization: {
-        authorizationRevision: checkpoint.authorizationRevision,
-        platformAccountId,
-      },
-      author: checkpoint.author,
-      postUrn: checkpoint.postUrn,
-    })
+    let status: Awaited<ReturnType<LinkedInPublishingTransport['getPostStatus']>>
+    try {
+      status = await transport.getPostStatus({
+        authorization: {
+          authorizationRevision: checkpoint.authorizationRevision,
+          platformAccountId,
+        },
+        author: checkpoint.author,
+        postUrn: checkpoint.postUrn,
+      })
+    } catch (error) {
+      if (error instanceof ProviderPublicationTransportError) {
+        return {
+          changed: false,
+          checkpoint,
+          event: 'publishing',
+          retryable: true,
+          summary: 'LinkedIn post status is temporarily unavailable.',
+        }
+      }
+      throw error
+    }
     if (status.lifecycleState === 'PUBLISHED') {
       const postUrl = status.externalPublicationUrl ?? linkedInPostPermalink(checkpoint.postUrn)
       return {
@@ -658,7 +672,9 @@ export const executeLinkedInImagePublishingStage = async ({
     return blocked(intent.checkpoint, 'intent_mismatch')
   }
 
-  if (claim.mode === 'recover') {
+  const recoveringReadOnlyStatus =
+    claim.mode === 'recover' && claim.intent.checkpoint.stage === 'post_created'
+  if (claim.mode === 'recover' && !recoveringReadOnlyStatus) {
     const transition = unknown(
       claim.intent.checkpoint,
       'A previous LinkedIn image stage crossed provider I/O without a persisted result; replay is disabled.',
@@ -671,19 +687,21 @@ export const executeLinkedInImagePublishingStage = async ({
     return transition
   }
 
-  let mark: LinkedInImagePublishingMarkResult
-  try {
-    mark = await authority.markProviderIOStarted(claim)
-  } catch {
-    mark = { reason: 'claim_conflict', status: 'blocked' }
-  }
-  if (mark.status === 'blocked') {
+  if (!recoveringReadOnlyStatus) {
+    let mark: LinkedInImagePublishingMarkResult
     try {
-      await authority.releaseStage(claim)
+      mark = await authority.markProviderIOStarted(claim)
     } catch {
-      // I/O never started, so a fresh claim is safe.
+      mark = { reason: 'claim_conflict', status: 'blocked' }
     }
-    return blocked(intent.checkpoint, mark.reason)
+    if (mark.status === 'blocked') {
+      try {
+        await authority.releaseStage(claim)
+      } catch {
+        // I/O never started, so a fresh claim is safe.
+      }
+      return blocked(intent.checkpoint, mark.reason)
+    }
   }
 
   let transition: LinkedInImagePublishingTransition

@@ -352,6 +352,85 @@ describe('LinkedIn staged image publication', () => {
     })
   })
 
+  it('keeps polling post_created after a temporary status transport failure', async () => {
+    const input = intent({
+      checkpoint: checkpoint({
+        imageUrn: ticket.imageUrn,
+        postUrn: 'urn:li:share:123456789',
+        stage: 'post_created',
+      }),
+    })
+    const state = setup(input)
+    const publishImagePost = vi.fn()
+    const unavailable = transport({
+      getPostStatus: vi.fn().mockRejectedValue(new ProviderPublicationTransportError()),
+      publishImagePost,
+    })
+
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: unavailable,
+      }),
+    ).resolves.toMatchObject({
+      changed: false,
+      checkpoint: {
+        postUrn: 'urn:li:share:123456789',
+        stage: 'post_created',
+      },
+      event: 'publishing',
+      retryable: true,
+    })
+
+    const retryIntent = state.authority.getIntent(42)
+    if (!retryIntent) throw new Error('Expected the retryable LinkedIn checkpoint')
+    const retryFence = lease({ ownerToken: 'worker-b', queueJobId: 143 })
+    state.authority.setJobLease(retryFence)
+    const published = transport({
+      getPostStatus: vi.fn().mockResolvedValue({ lifecycleState: 'PUBLISHED' }),
+      publishImagePost,
+    })
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: retryIntent,
+        leaseFence: retryFence,
+        transport: published,
+      }),
+    ).resolves.toMatchObject({ checkpoint: { stage: 'published' }, event: 'published' })
+    expect(publishImagePost).not.toHaveBeenCalled()
+  })
+
+  it('reclaims an interrupted post_created status poll without marking delivery unknown', async () => {
+    const input = intent({
+      checkpoint: checkpoint({
+        imageUrn: ticket.imageUrn,
+        postUrn: 'urn:li:share:123456789',
+        stage: 'post_created',
+      }),
+    })
+    const state = setup(input)
+    const claimed = await state.authority.claimStage(input, state.fence)
+    if (claimed.status !== 'claimed') throw new Error('Expected the status poll claim')
+    await state.authority.markProviderIOStarted(claimed.claim)
+    state.authority.expireClaim(42)
+
+    const retryFence = lease({ ownerToken: 'worker-b', queueJobId: 143 })
+    state.authority.setJobLease(retryFence)
+    const publishImagePost = vi.fn()
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: retryFence,
+        transport: transport({ publishImagePost }),
+      }),
+    ).resolves.toMatchObject({ checkpoint: { stage: 'published' }, event: 'published' })
+    expect(publishImagePost).not.toHaveBeenCalled()
+  })
+
   it('completes publication from post_created when status becomes PUBLISHED', async () => {
     const input = intent({
       checkpoint: checkpoint({
