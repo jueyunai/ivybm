@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomUUID } from 'node:crypto'
 
 import { sql, type PostgresAdapter } from '@payloadcms/db-postgres'
 import {
@@ -36,6 +36,7 @@ const TARGET_TABLES = {
   products: 'products',
   projects: 'projects',
   downloads: 'downloads',
+  users: 'users',
 } as const
 
 export type PortalCommandTarget = {
@@ -73,6 +74,31 @@ export const portalCommandFingerprint = (value: unknown): string =>
   createHash('sha256')
     .update(JSON.stringify(canonicalize(value)))
     .digest('hex')
+
+
+export const portalPasswordCommandFingerprint = ({
+  nonSensitivePayload,
+  secret = process.env.PAYLOAD_SECRET ?? 'ivybm-command-receipt-hmac-secret-fallback',
+  sensitiveInputs,
+}: {
+  nonSensitivePayload: unknown
+  secret?: string
+  sensitiveInputs: readonly string[]
+}): string => {
+  const hmac = createHmac('sha256', secret)
+  for (const input of sensitiveInputs) {
+    hmac.update(typeof input === 'string' ? input : String(input))
+    hmac.update('\0')
+  }
+  const sensitiveDigest = hmac.digest('hex')
+  return portalCommandFingerprint({
+    canonical: canonicalize(nonSensitivePayload),
+    hmac: sensitiveDigest,
+  })
+}
+
+export const getDatabaseForRequest = async (payload: Payload, req: PayloadRequest) =>
+  databaseForRequest(payload, req)
 
 export const requirePortalIdempotencyKey = (request: Request): string => {
   const key = request.headers.get('Idempotency-Key')?.trim() ?? ''
