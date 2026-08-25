@@ -14,6 +14,7 @@ import type {
   LinkedInPublishingTransport,
 } from '@/modules/platforms/linkedin/publishingOutbound'
 import {
+  ProviderPublicationConfirmedError,
   ProviderPublicationResultUnknownError,
   ProviderPublicationTransportError,
 } from '@/modules/platforms/publishingResult'
@@ -318,6 +319,62 @@ describe('LinkedIn staged image publication', () => {
     expect(publishImagePost).toHaveBeenCalledTimes(1)
   })
 
+  it.each([
+    {
+      error: new ProviderPublicationConfirmedError('permission_required', false),
+      errorCode: 'permission_required',
+      event: 'failed',
+      stage: 'failed',
+    },
+    {
+      error: new ProviderPublicationConfirmedError('rate_limited', true, 30),
+      errorCode: 'rate_limited',
+      event: 'failed',
+      stage: 'failed',
+    },
+    {
+      error: new ProviderPublicationResultUnknownError('status result unknown'),
+      errorCode: 'delivery_unknown',
+      event: 'unknown',
+      stage: 'delivery_unknown',
+    },
+    {
+      error: new Error('unexpected status failure'),
+      errorCode: 'delivery_unknown',
+      event: 'unknown',
+      stage: 'delivery_unknown',
+    },
+  ] as const)(
+    'keeps the confirmed postUrn and stops automatic polling for an initial $errorCode status failure',
+    async ({ error, errorCode, event, stage }) => {
+      const input = intent({
+        checkpoint: checkpoint({ imageUrn: ticket.imageUrn, stage: 'image_uploaded' }),
+      })
+      const state = setup(input)
+      const publishImagePost = vi.fn().mockResolvedValue({ postUrn: 'urn:li:share:123456789' })
+      await expect(
+        executeLinkedInImagePublishingStage({
+          authority: state.authority,
+          intent: input,
+          leaseFence: state.fence,
+          transport: transport({
+            getPostStatus: vi.fn().mockRejectedValue(error),
+            publishImagePost,
+          }),
+        }),
+      ).resolves.toMatchObject({
+        checkpoint: { postUrn: 'urn:li:share:123456789', stage },
+        errorCode,
+        event,
+      })
+      expect(publishImagePost).toHaveBeenCalledTimes(1)
+      expect(state.authority.getIntent(42)?.checkpoint).toMatchObject({
+        postUrn: 'urn:li:share:123456789',
+        stage,
+      })
+    },
+  )
+
   it('polls post_created checkpoint and remains in publishing while PROCESSING', async () => {
     const input = intent({
       checkpoint: checkpoint({
@@ -430,6 +487,56 @@ describe('LinkedIn staged image publication', () => {
     ).resolves.toMatchObject({ checkpoint: { stage: 'published' }, event: 'published' })
     expect(publishImagePost).not.toHaveBeenCalled()
   })
+
+  it.each([
+    {
+      error: new ProviderPublicationConfirmedError('permission_required', false),
+      errorCode: 'permission_required',
+      event: 'failed',
+      stage: 'failed',
+    },
+    {
+      error: new ProviderPublicationResultUnknownError('status result unknown'),
+      errorCode: 'delivery_unknown',
+      event: 'unknown',
+      stage: 'delivery_unknown',
+    },
+    {
+      error: new Error('unexpected status failure'),
+      errorCode: 'delivery_unknown',
+      event: 'unknown',
+      stage: 'delivery_unknown',
+    },
+  ] as const)(
+    'keeps postUrn and stops automatic polling for a later $errorCode status failure',
+    async ({ error, errorCode, event, stage }) => {
+      const input = intent({
+        checkpoint: checkpoint({
+          imageUrn: ticket.imageUrn,
+          postUrn: 'urn:li:share:123456789',
+          stage: 'post_created',
+        }),
+      })
+      const state = setup(input)
+      const publishImagePost = vi.fn()
+      await expect(
+        executeLinkedInImagePublishingStage({
+          authority: state.authority,
+          intent: input,
+          leaseFence: state.fence,
+          transport: transport({
+            getPostStatus: vi.fn().mockRejectedValue(error),
+            publishImagePost,
+          }),
+        }),
+      ).resolves.toMatchObject({
+        checkpoint: { postUrn: 'urn:li:share:123456789', stage },
+        errorCode,
+        event,
+      })
+      expect(publishImagePost).not.toHaveBeenCalled()
+    },
+  )
 
   it('completes publication from post_created when status becomes PUBLISHED', async () => {
     const input = intent({

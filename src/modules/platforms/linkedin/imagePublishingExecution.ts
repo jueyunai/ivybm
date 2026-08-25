@@ -450,6 +450,27 @@ const blocked = (
   retryable: reason === 'busy' || reason === 'claim_conflict' || reason === 'lease_conflict',
 })
 
+const statusQueryFailure = (
+  checkpoint: LinkedInImagePublishingCheckpoint,
+  error: unknown,
+  changed: boolean,
+): LinkedInImagePublishingTransition => {
+  if (error instanceof ProviderPublicationTransportError) {
+    return {
+      changed,
+      checkpoint,
+      event: changed ? 'post-created' : 'publishing',
+      retryable: true,
+      summary: 'LinkedIn post status is temporarily unavailable.',
+    }
+  }
+  if (error instanceof ProviderPublicationConfirmedError) return failed(checkpoint, error)
+  return unknown(
+    checkpoint,
+    'LinkedIn post status could not be confirmed; automatic polling is stopped.',
+  )
+}
+
 const assertAssetBytes = (asset: LinkedInImageAssetIdentity, bytes: Uint8Array): void => {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength !== asset.byteLength) {
     throw new ProviderPublicationConfirmedError('invalid_request', false)
@@ -542,6 +563,11 @@ const runStage = async ({
     ) {
       throw new ProviderPublicationResultUnknownError('LinkedIn post result is unknown')
     }
+    const postCreatedCheckpoint: LinkedInImagePublishingCheckpoint = {
+      ...checkpoint,
+      postUrn: result.postUrn,
+      stage: 'post_created',
+    }
     let postUrl: string | undefined
     let isPublished = false
     try {
@@ -557,8 +583,8 @@ const runStage = async ({
         postUrl = status.externalPublicationUrl ?? linkedInPostPermalink(result.postUrn)
         isPublished = true
       }
-    } catch {
-      // The publish mutation is confirmed. Status check can proceed on next execution.
+    } catch (error) {
+      return statusQueryFailure(postCreatedCheckpoint, error, true)
     }
     if (isPublished) {
       return {
@@ -575,11 +601,7 @@ const runStage = async ({
     }
     return {
       changed: true,
-      checkpoint: {
-        ...checkpoint,
-        postUrn: result.postUrn,
-        stage: 'post_created',
-      },
+      checkpoint: postCreatedCheckpoint,
       event: 'post-created',
       summary: 'LinkedIn created the image post and is processing it.',
     }
@@ -597,16 +619,7 @@ const runStage = async ({
         postUrn: checkpoint.postUrn,
       })
     } catch (error) {
-      if (error instanceof ProviderPublicationTransportError) {
-        return {
-          changed: false,
-          checkpoint,
-          event: 'publishing',
-          retryable: true,
-          summary: 'LinkedIn post status is temporarily unavailable.',
-        }
-      }
-      throw error
+      return statusQueryFailure(checkpoint, error, false)
     }
     if (status.lifecycleState === 'PUBLISHED') {
       const postUrl = status.externalPublicationUrl ?? linkedInPostPermalink(checkpoint.postUrn)
