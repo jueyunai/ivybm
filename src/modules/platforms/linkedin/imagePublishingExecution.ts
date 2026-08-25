@@ -12,12 +12,15 @@ export const LINKEDIN_IMAGE_PUBLISHING_STAGES = [
   'scheduled',
   'image_initialized',
   'image_uploaded',
+  'post_created',
   'published',
   'failed',
   'delivery_unknown',
 ] as const
 
 export type LinkedInImagePublishingStage = (typeof LINKEDIN_IMAGE_PUBLISHING_STAGES)[number]
+
+export const LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS = 300
 
 export type LinkedInImageAssetIdentity = {
   byteLength: number
@@ -35,6 +38,7 @@ export type LinkedInImagePublishingCheckpoint = {
   postUrn?: string
   postUrl?: string
   stage: LinkedInImagePublishingStage
+  statusPollAttempts?: number
   uploadTicket?: LinkedInImageUploadTicket
 }
 
@@ -94,7 +98,15 @@ export type LinkedInImagePublishingTransition = {
   changed: boolean
   checkpoint: LinkedInImagePublishingCheckpoint
   errorCode?: string
-  event?: 'blocked' | 'failed' | 'image-initialized' | 'image-uploaded' | 'published' | 'unknown'
+  event?:
+    | 'blocked'
+    | 'failed'
+    | 'image-initialized'
+    | 'image-uploaded'
+    | 'post-created'
+    | 'published'
+    | 'publishing'
+    | 'unknown'
   retryable?: boolean
   summary?: string
 }
@@ -207,6 +219,13 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
     checkpoint.postUrn === undefined ? undefined : boundedString(checkpoint.postUrn, 256)
   const postUrl =
     checkpoint.postUrl === undefined ? undefined : boundedString(checkpoint.postUrl, 2_000)
+  const statusPollAttempts =
+    typeof checkpoint.statusPollAttempts === 'number' &&
+    Number.isSafeInteger(checkpoint.statusPollAttempts) &&
+    checkpoint.statusPollAttempts >= 1 &&
+    checkpoint.statusPollAttempts <= LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS
+      ? checkpoint.statusPollAttempts
+      : undefined
   const uploadTicket =
     checkpoint.uploadTicket === undefined ? undefined : normalizeTicket(checkpoint.uploadTicket)
   if (
@@ -221,6 +240,7 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
       (!postUrn || !/^urn:li:(?:share|ugcPost):\d+$/u.test(postUrn))) ||
     (checkpoint.postUrl !== undefined &&
       (!postUrn || !postUrl || postUrl !== linkedInPostPermalink(postUrn))) ||
+    (checkpoint.statusPollAttempts !== undefined && statusPollAttempts === undefined) ||
     (checkpoint.uploadTicket !== undefined && !uploadTicket) ||
     !LINKEDIN_IMAGE_PUBLISHING_STAGES.includes(checkpoint.stage as LinkedInImagePublishingStage)
   ) {
@@ -231,7 +251,8 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
     (imageUrn !== undefined ||
       uploadTicket !== undefined ||
       postUrn !== undefined ||
-      postUrl !== undefined)
+      postUrl !== undefined ||
+      statusPollAttempts !== undefined)
   ) {
     return undefined
   }
@@ -241,13 +262,33 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
       !uploadTicket ||
       uploadTicket.imageUrn !== imageUrn ||
       postUrn !== undefined ||
-      postUrl !== undefined)
+      postUrl !== undefined ||
+      statusPollAttempts !== undefined)
   ) {
     return undefined
   }
   if (
     checkpoint.stage === 'image_uploaded' &&
-    (!imageUrn || uploadTicket !== undefined || postUrn !== undefined || postUrl !== undefined)
+    (!imageUrn ||
+      uploadTicket !== undefined ||
+      postUrn !== undefined ||
+      postUrl !== undefined ||
+      statusPollAttempts !== undefined)
+  ) {
+    return undefined
+  }
+  if (
+    checkpoint.stage === 'post_created' &&
+    (!imageUrn || uploadTicket !== undefined || !postUrn || postUrl !== undefined)
+  ) {
+    return undefined
+  }
+  if (
+    statusPollAttempts !== undefined &&
+    checkpoint.stage !== 'post_created' &&
+    checkpoint.stage !== 'published' &&
+    checkpoint.stage !== 'failed' &&
+    checkpoint.stage !== 'delivery_unknown'
   ) {
     return undefined
   }
@@ -267,6 +308,7 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
     ...(postUrn ? { postUrn } : {}),
     ...(postUrl ? { postUrl } : {}),
     stage: checkpoint.stage as LinkedInImagePublishingStage,
+    ...(statusPollAttempts ? { statusPollAttempts } : {}),
     ...(uploadTicket ? { uploadTicket } : {}),
   }
 }
@@ -366,6 +408,7 @@ const sameCheckpoint = (
   left.postUrn === right.postUrn &&
   left.postUrl === right.postUrl &&
   left.stage === right.stage &&
+  left.statusPollAttempts === right.statusPollAttempts &&
   sameTicket(left.uploadTicket, right.uploadTicket)
 
 export const sameLinkedInImagePublishingIntent = (
@@ -434,6 +477,33 @@ const blocked = (
   event: 'blocked',
   retryable: reason === 'busy' || reason === 'claim_conflict' || reason === 'lease_conflict',
 })
+
+const statusQueryFailure = (
+  checkpoint: LinkedInImagePublishingCheckpoint,
+  error: unknown,
+  event: 'post-created' | 'publishing',
+): LinkedInImagePublishingTransition => {
+  if (error instanceof ProviderPublicationTransportError) {
+    if (checkpoint.statusPollAttempts === LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS) {
+      return unknown(
+        checkpoint,
+        'LinkedIn image status polling reached its safety limit; automatic polling is stopped for manual confirmation.',
+      )
+    }
+    return {
+      changed: true,
+      checkpoint,
+      event,
+      retryable: true,
+      summary: 'LinkedIn post status is temporarily unavailable.',
+    }
+  }
+  if (error instanceof ProviderPublicationConfirmedError) return failed(checkpoint, error)
+  return unknown(
+    checkpoint,
+    'LinkedIn post status could not be confirmed; automatic polling is stopped.',
+  )
+}
 
 const assertAssetBytes = (asset: LinkedInImageAssetIdentity, bytes: Uint8Array): void => {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength !== asset.byteLength) {
@@ -527,7 +597,14 @@ const runStage = async ({
     ) {
       throw new ProviderPublicationResultUnknownError('LinkedIn post result is unknown')
     }
+    const postCreatedCheckpoint: LinkedInImagePublishingCheckpoint = {
+      ...checkpoint,
+      postUrn: result.postUrn,
+      stage: 'post_created',
+      statusPollAttempts: 1,
+    }
     let postUrl: string | undefined
+    let isPublished = false
     try {
       const status = await transport.getPostStatus({
         authorization: {
@@ -537,20 +614,82 @@ const runStage = async ({
         author: checkpoint.author,
         postUrn: result.postUrn,
       })
-      if (status.lifecycleState === 'PUBLISHED') postUrl = status.externalPublicationUrl
-    } catch {
-      // The publish mutation is confirmed. Preserve the post URN without inventing a URL.
+      if (status.lifecycleState === 'PUBLISHED') {
+        postUrl = status.externalPublicationUrl ?? linkedInPostPermalink(result.postUrn)
+        isPublished = true
+      }
+    } catch (error) {
+      return statusQueryFailure(postCreatedCheckpoint, error, 'post-created')
+    }
+    if (isPublished) {
+      return {
+        changed: true,
+        checkpoint: {
+          ...checkpoint,
+          postUrn: result.postUrn,
+          ...(postUrl ? { postUrl } : {}),
+          stage: 'published',
+        },
+        event: 'published',
+        summary: 'LinkedIn confirmed the image post.',
+      }
     }
     return {
       changed: true,
-      checkpoint: {
-        ...checkpoint,
-        postUrn: result.postUrn,
-        ...(postUrl ? { postUrl } : {}),
-        stage: 'published',
-      },
-      event: 'published',
-      summary: 'LinkedIn confirmed the image post.',
+      checkpoint: postCreatedCheckpoint,
+      event: 'post-created',
+      summary: 'LinkedIn created the image post and is processing it.',
+    }
+  }
+  if (checkpoint.stage === 'post_created') {
+    if (!checkpoint.postUrn) throw new ProviderPublicationConfirmedError('invalid_request', false)
+    if (checkpoint.statusPollAttempts === LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS) {
+      return unknown(
+        checkpoint,
+        'LinkedIn image status polling reached its safety limit; automatic polling is stopped for manual confirmation.',
+      )
+    }
+    const polledCheckpoint: LinkedInImagePublishingCheckpoint = {
+      ...checkpoint,
+      statusPollAttempts: (checkpoint.statusPollAttempts ?? 1) + 1,
+    }
+    let status: Awaited<ReturnType<LinkedInPublishingTransport['getPostStatus']>>
+    try {
+      status = await transport.getPostStatus({
+        authorization: {
+          authorizationRevision: checkpoint.authorizationRevision,
+          platformAccountId,
+        },
+        author: checkpoint.author,
+        postUrn: checkpoint.postUrn,
+      })
+    } catch (error) {
+      return statusQueryFailure(polledCheckpoint, error, 'publishing')
+    }
+    if (status.lifecycleState === 'PUBLISHED') {
+      const postUrl = status.externalPublicationUrl ?? linkedInPostPermalink(checkpoint.postUrn)
+      return {
+        changed: true,
+        checkpoint: {
+          ...polledCheckpoint,
+          postUrl,
+          stage: 'published',
+        },
+        event: 'published',
+        summary: 'LinkedIn confirmed the image post.',
+      }
+    }
+    if (polledCheckpoint.statusPollAttempts === LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS) {
+      return unknown(
+        polledCheckpoint,
+        'LinkedIn image status polling reached its safety limit; automatic polling is stopped for manual confirmation.',
+      )
+    }
+    return {
+      changed: true,
+      checkpoint: polledCheckpoint,
+      event: 'publishing',
+      summary: 'LinkedIn image post is still processing.',
     }
   }
   return unknown(checkpoint, 'LinkedIn image publishing checkpoint is unsupported.')
@@ -597,7 +736,9 @@ export const executeLinkedInImagePublishingStage = async ({
     return blocked(intent.checkpoint, 'intent_mismatch')
   }
 
-  if (claim.mode === 'recover') {
+  const recoveringReadOnlyStatus =
+    claim.mode === 'recover' && claim.intent.checkpoint.stage === 'post_created'
+  if (claim.mode === 'recover' && !recoveringReadOnlyStatus) {
     const transition = unknown(
       claim.intent.checkpoint,
       'A previous LinkedIn image stage crossed provider I/O without a persisted result; replay is disabled.',
@@ -610,19 +751,21 @@ export const executeLinkedInImagePublishingStage = async ({
     return transition
   }
 
-  let mark: LinkedInImagePublishingMarkResult
-  try {
-    mark = await authority.markProviderIOStarted(claim)
-  } catch {
-    mark = { reason: 'claim_conflict', status: 'blocked' }
-  }
-  if (mark.status === 'blocked') {
+  if (!recoveringReadOnlyStatus) {
+    let mark: LinkedInImagePublishingMarkResult
     try {
-      await authority.releaseStage(claim)
+      mark = await authority.markProviderIOStarted(claim)
     } catch {
-      // I/O never started, so a fresh claim is safe.
+      mark = { reason: 'claim_conflict', status: 'blocked' }
     }
-    return blocked(intent.checkpoint, mark.reason)
+    if (mark.status === 'blocked') {
+      try {
+        await authority.releaseStage(claim)
+      } catch {
+        // I/O never started, so a fresh claim is safe.
+      }
+      return blocked(intent.checkpoint, mark.reason)
+    }
   }
 
   let transition: LinkedInImagePublishingTransition

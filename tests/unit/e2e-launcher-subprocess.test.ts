@@ -10,7 +10,8 @@ const directPlaywright = (arguments_: string[]) => {
   for (const key of Object.keys(environment)) {
     if (key.startsWith('IVYBM_E2E_')) delete environment[key]
   }
-  return spawnSync('corepack', ['pnpm', 'exec', 'playwright', 'test', ...arguments_], {
+  const pnpmCommand = process.env.npm_execpath || 'pnpm'
+  return spawnSync(pnpmCommand, ['exec', 'playwright', 'test', ...arguments_], {
     cwd: projectRoot,
     encoding: 'utf8',
     env: environment,
