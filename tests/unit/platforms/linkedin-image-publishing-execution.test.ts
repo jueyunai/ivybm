@@ -283,6 +283,7 @@ describe('LinkedIn staged image publication', () => {
           imageUrn: ticket.imageUrn,
           postUrn: 'urn:li:share:123456789',
           stage: 'post_created',
+          statusPollAttempts: 1,
         },
         event: 'post-created',
       })
@@ -499,6 +500,62 @@ describe('LinkedIn staged image publication', () => {
       }),
     ).resolves.toMatchObject({ checkpoint: { stage: 'published' }, event: 'published' })
     expect(publishImagePost).not.toHaveBeenCalled()
+  })
+
+  it('stops after a temporary status failure consumes the final polling attempt', async () => {
+    const input = intent({
+      checkpoint: checkpoint({
+        imageUrn: ticket.imageUrn,
+        postUrn: 'urn:li:share:123456789',
+        stage: 'post_created',
+        statusPollAttempts: LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS - 1,
+      }),
+    })
+    const state = setup(input)
+    const getPostStatus = vi.fn().mockRejectedValue(new ProviderPublicationTransportError())
+
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: transport({ getPostStatus }),
+      }),
+    ).resolves.toMatchObject({
+      checkpoint: {
+        stage: 'delivery_unknown',
+        statusPollAttempts: LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS,
+      },
+      errorCode: 'delivery_unknown',
+      retryable: false,
+    })
+    expect(getPostStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not query the provider when a persisted checkpoint already exhausted polling', async () => {
+    const input = intent({
+      checkpoint: checkpoint({
+        imageUrn: ticket.imageUrn,
+        postUrn: 'urn:li:share:123456789',
+        stage: 'post_created',
+        statusPollAttempts: LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS,
+      }),
+    })
+    const state = setup(input)
+    const getPostStatus = vi.fn()
+
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: transport({ getPostStatus }),
+      }),
+    ).resolves.toMatchObject({
+      checkpoint: { stage: 'delivery_unknown' },
+      errorCode: 'delivery_unknown',
+    })
+    expect(getPostStatus).not.toHaveBeenCalled()
   })
 
   it('reclaims an interrupted post_created status poll without marking delivery unknown', async () => {

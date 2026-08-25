@@ -283,6 +283,15 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
   ) {
     return undefined
   }
+  if (
+    statusPollAttempts !== undefined &&
+    checkpoint.stage !== 'post_created' &&
+    checkpoint.stage !== 'published' &&
+    checkpoint.stage !== 'failed' &&
+    checkpoint.stage !== 'delivery_unknown'
+  ) {
+    return undefined
+  }
   if (checkpoint.stage === 'published' && (!postUrn || !imageUrn)) return undefined
   if (
     (checkpoint.stage === 'failed' || checkpoint.stage === 'delivery_unknown') &&
@@ -634,12 +643,15 @@ const runStage = async ({
   }
   if (checkpoint.stage === 'post_created') {
     if (!checkpoint.postUrn) throw new ProviderPublicationConfirmedError('invalid_request', false)
+    if (checkpoint.statusPollAttempts === LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS) {
+      return unknown(
+        checkpoint,
+        'LinkedIn image status polling reached its safety limit; automatic polling is stopped for manual confirmation.',
+      )
+    }
     const polledCheckpoint: LinkedInImagePublishingCheckpoint = {
       ...checkpoint,
-      statusPollAttempts: Math.min(
-        (checkpoint.statusPollAttempts ?? 1) + 1,
-        LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS,
-      ),
+      statusPollAttempts: (checkpoint.statusPollAttempts ?? 1) + 1,
     }
     let status: Awaited<ReturnType<LinkedInPublishingTransport['getPostStatus']>>
     try {
@@ -659,7 +671,7 @@ const runStage = async ({
       return {
         changed: true,
         checkpoint: {
-          ...checkpoint,
+          ...polledCheckpoint,
           postUrl,
           stage: 'published',
         },
