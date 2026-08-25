@@ -61,6 +61,10 @@ export const e2eSuiteManifest = Object.freeze({
     mode: 'readonly-external',
     specs: ['tests/e2e/website-visual.spec.ts'],
   }),
+  settings: Object.freeze({
+    mode: 'mutation',
+    specs: ['tests/e2e/admin-portal-user-settings.spec.ts'],
+  }),
   website: Object.freeze({ mode: 'mutation', specs: ['tests/e2e/website.spec.ts'] }),
 })
 

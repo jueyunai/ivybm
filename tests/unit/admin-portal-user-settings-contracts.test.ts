@@ -163,4 +163,19 @@ describe('User settings contracts and DTO sanitization', () => {
     expect(fpA1).not.toBe(fpDifferentSecret)
     expect(fpA1).not.toBe(portalCommandFingerprint(passA))
   })
+
+  it('fails closed when the password command HMAC secret is unavailable', () => {
+    expect(() =>
+      portalPasswordCommandFingerprint({
+        nonSensitivePayload: { action: 'change_password' },
+        secret: '',
+        sensitiveInputs: ['SecretPassword123!'],
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: 'portal-command-secret-unavailable',
+        status: 503,
+      }),
+    )
+  })
 })

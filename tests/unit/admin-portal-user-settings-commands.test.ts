@@ -180,7 +180,7 @@ describe('Portal team account and user settings commands', () => {
     ).resolves.toBeUndefined()
   })
 
-  it('prevents self-lock and self-deletion', async () => {
+  it('prevents self-password-reset, self-lock, and self-deletion', async () => {
     const payload = {
       findByID: vi.fn().mockResolvedValue({
         email: 'admin@example.com',
@@ -189,6 +189,25 @@ describe('Portal team account and user settings commands', () => {
         updatedAt: '2026-08-25T00:00:00.000Z',
       }),
     } as unknown as Payload
+
+    await expect(
+      resetMemberPassword({
+        actor: { id: 1, role: 'admin' },
+        id: 1,
+        input: {
+          confirmPassword: 'ReplacementPassword123!',
+          password: 'ReplacementPassword123!',
+          updatedAt: '2026-08-25T00:00:00.000Z',
+        },
+        payload,
+        req: mockReq,
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<UserSettingsCommandError>>({
+        code: 'self-reset-password-forbidden',
+        status: 403,
+      }),
+    )
 
     await expect(
       lockTeamMember({
@@ -401,6 +420,33 @@ describe('Portal team account and user settings commands', () => {
     )
   })
 
+  it('fails closed when password change cannot revoke existing sessions', async () => {
+    const payload = {
+      db: {
+        sessions: {
+          'test-tx-1': {
+            db: { execute: vi.fn().mockRejectedValue(new Error('database unavailable')) },
+          },
+        },
+      },
+      login: vi.fn().mockResolvedValue({ user: { id: 3 } }),
+      update: vi.fn().mockResolvedValue({ id: 3 }),
+    } as unknown as Payload
+
+    await expect(
+      changePersonalPassword({
+        input: {
+          confirmNewPassword: 'BrandNewPassword123!',
+          currentPassword: 'OldPassword123!',
+          newPassword: 'BrandNewPassword123!',
+        },
+        payload,
+        req: mockReq,
+        user: { email: 'self@example.com', id: 3, role: 'sales' },
+      }),
+    ).rejects.toThrow('database unavailable')
+  })
+
   it('locks and unlocks member correctly', async () => {
     const execute = vi.fn()
     const payload = {
@@ -448,8 +494,9 @@ describe('Portal team account and user settings commands', () => {
       collection: 'users',
       data: { lockUntil: MANUAL_LOCK_UNTIL },
       id: 2,
-      overrideAccess: false,
+      overrideAccess: true,
       req: mockReq,
+      showHiddenFields: true,
     })
 
     const unlocked = await unlockTeamMember({
@@ -464,8 +511,9 @@ describe('Portal team account and user settings commands', () => {
       collection: 'users',
       data: { lockUntil: null, loginAttempts: 0 },
       id: 2,
-      overrideAccess: false,
+      overrideAccess: true,
       req: mockReq,
+      showHiddenFields: true,
     })
   })
 })

@@ -219,14 +219,15 @@ describe.sequential('Portal team account and user settings database integration'
     expect(deleted).toEqual({ deletedId: created.id, success: true })
 
     // Verify deletion
-    const verifyDoc = await payload.findByID({
+    const verifyResult = await payload.find({
       collection: 'users',
       depth: 0,
-      id: created.id,
+      limit: 1,
       overrideAccess: true,
       req,
+      where: { id: { equals: created.id } },
     })
-    expect(verifyDoc).toBeNull()
+    expect(verifyResult.totalDocs).toBe(0)
   })
 
   it('allows personal password change and rejects incorrect current password', async () => {
@@ -276,7 +277,7 @@ describe.sequential('Portal team account and user settings database integration'
     expect(loginResult.user?.id).toBe(salesUser.id)
   })
 
-  it('enforces self-protection: cannot self-role-change, self-lock, or self-delete', async () => {
+  it('enforces self-protection: cannot self-role-change, self-reset, self-lock, or self-delete', async () => {
     const req = await createLocalReq({ user: adminA }, payload)
     const currentAdmin = await payload.findByID({
       collection: 'users',
@@ -298,6 +299,25 @@ describe.sequential('Portal team account and user settings database integration'
     ).rejects.toEqual(
       expect.objectContaining<Partial<UserSettingsCommandError>>({
         code: 'self-role-change-forbidden',
+        status: 403,
+      }),
+    )
+
+    await expect(
+      resetMemberPassword({
+        actor: adminA,
+        id: adminA.id,
+        input: {
+          confirmPassword: 'ReplacementAdminPassword123!',
+          password: 'ReplacementAdminPassword123!',
+          updatedAt: currentAdmin.updatedAt,
+        },
+        payload,
+        req,
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<UserSettingsCommandError>>({
+        code: 'self-reset-password-forbidden',
         status: 403,
       }),
     )
@@ -329,6 +349,28 @@ describe.sequential('Portal team account and user settings database integration'
       expect.objectContaining<Partial<UserSettingsCommandError>>({
         code: 'self-delete-forbidden',
         status: 403,
+      }),
+    )
+  })
+
+  it('rejects an update that carries a stale user version', async () => {
+    const req = await createLocalReq({ user: adminA }, payload)
+
+    await expect(
+      updateTeamMember({
+        actor: adminA,
+        id: operatorUser.id,
+        input: {
+          role: 'sales',
+          updatedAt: '2000-01-01T00:00:00.000Z',
+        },
+        payload,
+        req,
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<UserSettingsCommandError>>({
+        code: 'stale-user-version',
+        status: 409,
       }),
     )
   })

@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
@@ -166,6 +166,47 @@ describe('Portal TeamMembersPanel UI', () => {
     expect(screen.queryByRole('heading', { name: '新增团队成员' })).toBeNull()
   })
 
+  it('exposes dialog semantics, closes with Escape, and keeps API errors visible inside the dialog', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ error: { message: '邮箱已存在' } }),
+      ok: false,
+    })
+    globalThis.fetch = fetchMock
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(TeamMembersPanel, {
+          currentUserId: 1,
+          initialMembers: mockMembers,
+        }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /新增成员/ }))
+    expect(screen.getByRole('dialog', { name: '新增团队成员' })).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: '新增团队成员' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /新增成员/ }))
+    fireEvent.change(screen.getByLabelText('登录邮箱'), {
+      target: { value: 'duplicate@example.com' },
+    })
+    fireEvent.change(screen.getByLabelText('初始密码'), {
+      target: { value: 'InitialPassword123!' },
+    })
+    fireEvent.change(screen.getByLabelText('确认初始密码'), {
+      target: { value: 'InitialPassword123!' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      const dialog = screen.getByRole('dialog', { name: '新增团队成员' })
+      expect(dialog.textContent).toContain('邮箱已存在')
+    })
+  })
+
   it('requires typing matching confirmation email before deleting member', async () => {
     render(
       React.createElement(
@@ -193,6 +234,38 @@ describe('Portal TeamMembersPanel UI', () => {
     // Type exact matching email
     fireEvent.change(emailInput, { target: { value: 'operator@example.com' } })
     expect((confirmDeleteBtn as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('removes a member from the list after the delete command succeeds', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ deletedId: 2, success: true }),
+      ok: true,
+    })
+    globalThis.fetch = fetchMock
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(TeamMembersPanel, {
+          currentUserId: 1,
+          initialMembers: mockMembers,
+        }),
+      ),
+    )
+
+    const operatorRow = screen.getByText('operator@example.com').closest('article')
+    expect(operatorRow).toBeTruthy()
+    fireEvent.click(within(operatorRow as HTMLElement).getByRole('button', { name: '删除成员' }))
+    fireEvent.change(screen.getByLabelText('登录邮箱'), {
+      target: { value: 'operator@example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('operator@example.com')).toBeNull()
+      expect(screen.getByText('成员已成功删除。')).toBeTruthy()
+    })
   })
 })
 

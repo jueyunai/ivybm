@@ -78,13 +78,21 @@ export const portalCommandFingerprint = (value: unknown): string =>
 
 export const portalPasswordCommandFingerprint = ({
   nonSensitivePayload,
-  secret = process.env.PAYLOAD_SECRET ?? 'ivybm-command-receipt-hmac-secret-fallback',
+  secret = process.env.PAYLOAD_SECRET,
   sensitiveInputs,
 }: {
   nonSensitivePayload: unknown
   secret?: string
   sensitiveInputs: readonly string[]
 }): string => {
+  if (!secret) {
+    throw new PortalCommandReceiptError(
+      'portal-command-secret-unavailable',
+      'Password command protection is unavailable.',
+      503,
+    )
+  }
+
   const hmac = createHmac('sha256', secret)
   for (const input of sensitiveInputs) {
     hmac.update(typeof input === 'string' ? input : String(input))

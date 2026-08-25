@@ -22,24 +22,20 @@ import {
   type UpdateTeamMemberInput,
 } from './userSettingsContracts'
 
+const isForeignKeyConstraintError = (error: unknown): boolean => {
+  const candidate = error as { cause?: { code?: unknown }; code?: unknown }
+  return candidate?.code === '23503' || candidate?.cause?.code === '23503'
+}
+
 export const revokeUserSessions = async (
   payload: Payload,
   req: PayloadRequest,
   userId: number | string,
 ): Promise<void> => {
-  try {
-    const database = await getDatabaseForRequest(payload, req)
-    if (database && typeof database.execute === 'function') {
-      await database.execute(sql`
-        DELETE FROM "users_sessions" WHERE "_parent_id" = ${userId}
-      `)
-    }
-  } catch (error) {
-    console.warn('Session revocation failed', {
-      error: error instanceof Error ? error.message : String(error),
-      userId,
-    })
-  }
+  const database = await getDatabaseForRequest(payload, req)
+  await database.execute(sql`
+    DELETE FROM "users_sessions" WHERE "_parent_id" = ${userId}
+  `)
 }
 
 export const assertRemainingAvailableAdmin = async ({
@@ -57,6 +53,7 @@ export const assertRemainingAvailableAdmin = async ({
     limit: 50,
     overrideAccess: true,
     req,
+    showHiddenFields: true,
     where: {
       and: [
         { role: { equals: 'admin' } },
@@ -90,7 +87,17 @@ export const assertNoActiveBusinessAssignments = async ({
   req: PayloadRequest
   userId: number | string
 }): Promise<void> => {
-  const [leadsCount, convCount, handoffsCount] = await Promise.all([
+  const [
+    leadsCount,
+    convCount,
+    handoffsCount,
+    feishuRegistrationsCount,
+    pendingPublishJobsCount,
+    generatedContentsCount,
+    contentReviewsCount,
+    publishJobsHistoryCount,
+    commandReceiptsCount,
+  ] = await Promise.all([
     payload.count({
       collection: 'leads',
       overrideAccess: true,
@@ -114,38 +121,7 @@ export const assertNoActiveBusinessAssignments = async ({
         ],
       },
     }),
-  ])
-
-  let feishuMemberCount = 0
-  try {
-    const feishuMappings = await payload.find({
-      collection: 'feishu-mappings',
-      depth: 0,
-      limit: 10,
-      overrideAccess: true,
-      req,
-      where: { status: { equals: 'active' } },
-    })
-    for (const mapping of feishuMappings.docs) {
-      if (Array.isArray(mapping.memberMappings)) {
-        for (const member of mapping.memberMappings) {
-          const mappedId =
-            typeof member.user === 'object' && member.user !== null
-              ? (member.user as { id?: number | string }).id
-              : member.user
-          if (String(mappedId) === String(userId) && member.enabled !== false) {
-            feishuMemberCount += 1
-          }
-        }
-      }
-    }
-  } catch {
-    // If feishu-mappings query fails, continue with other checks
-  }
-
-  let feishuRegistrationsCount = 0
-  try {
-    const regResult = await payload.count({
+    payload.count({
       collection: 'feishu-app-registrations',
       overrideAccess: true,
       req,
@@ -165,28 +141,79 @@ export const assertNoActiveBusinessAssignments = async ({
           },
         ],
       },
-    })
-    feishuRegistrationsCount = regResult.totalDocs
-  } catch {
-    // ignore
-  }
-
-  let pendingPublishJobsCount = 0
-  try {
-    const publishResult = await payload.count({
+    }),
+    payload.count({
       collection: 'publish-jobs',
       overrideAccess: true,
       req,
       where: {
         and: [
           { createdBy: { equals: userId } },
-          { status: { in: ['scheduled', 'accepted', 'publishing', 'retrying'] } },
+          { status: { in: ['scheduled', 'accepted', 'publishing'] } },
         ],
       },
+    }),
+    payload.count({
+      collection: 'generated-contents',
+      overrideAccess: true,
+      req,
+      where: { createdBy: { equals: userId } },
+    }),
+    payload.count({
+      collection: 'content-reviews',
+      overrideAccess: true,
+      req,
+      where: { reviewedBy: { equals: userId } },
+    }),
+    payload.count({
+      collection: 'publish-jobs',
+      overrideAccess: true,
+      req,
+      where: { createdBy: { equals: userId } },
+    }),
+    payload.count({
+      collection: 'portal-command-receipts',
+      overrideAccess: true,
+      req,
+      where: {
+        and: [
+          { actor: { equals: userId } },
+          { status: { equals: 'processing' } },
+        ],
+      },
+    }),
+  ])
+
+  let feishuMemberCount = 0
+  try {
+    const feishuMappings = await payload.find({
+      collection: 'feishu-mappings',
+      depth: 0,
+      limit: 100,
+      overrideAccess: true,
+      req,
+      where: { status: { equals: 'active' } },
     })
-    pendingPublishJobsCount = publishResult.totalDocs
-  } catch {
-    // ignore
+    for (const mapping of feishuMappings.docs) {
+      if (Array.isArray(mapping.memberMappings)) {
+        for (const member of mapping.memberMappings) {
+          const mappedId =
+            typeof member.user === 'object' && member.user !== null
+              ? (member.user as { id?: number | string }).id
+              : member.user
+          if (String(mappedId) === String(userId) && member.enabled !== false) {
+            feishuMemberCount += 1
+          }
+        }
+      }
+    }
+  } catch (error) {
+    throw new UserSettingsCommandError(
+      'user-assignment-check-failed',
+      'Unable to verify Feishu member assignments. Lock the user or try again later.',
+      503,
+      { cause: error instanceof Error ? error.name : 'unknown' },
+    )
   }
 
   const hasAssignments =
@@ -194,25 +221,56 @@ export const assertNoActiveBusinessAssignments = async ({
     convCount.totalDocs > 0 ||
     handoffsCount.totalDocs > 0 ||
     feishuMemberCount > 0 ||
-    feishuRegistrationsCount > 0 ||
-    pendingPublishJobsCount > 0
+    feishuRegistrationsCount.totalDocs > 0 ||
+    pendingPublishJobsCount.totalDocs > 0 ||
+    generatedContentsCount.totalDocs > 0 ||
+    contentReviewsCount.totalDocs > 0 ||
+    publishJobsHistoryCount.totalDocs > 0 ||
+    commandReceiptsCount.totalDocs > 0
 
   if (hasAssignments) {
     const details = {
       conversations: convCount.totalDocs,
-      feishuActiveRegistrations: feishuRegistrationsCount,
+      contentReviews: contentReviewsCount.totalDocs,
+      feishuActiveRegistrations: feishuRegistrationsCount.totalDocs,
       feishuMemberMappings: feishuMemberCount,
+      generatedContents: generatedContentsCount.totalDocs,
       handoffs: handoffsCount.totalDocs,
       leads: leadsCount.totalDocs,
-      pendingPublishJobs: pendingPublishJobsCount,
+      pendingPublishJobs: pendingPublishJobsCount.totalDocs,
+      activePortalCommands: commandReceiptsCount.totalDocs,
+      publishJobs: publishJobsHistoryCount.totalDocs,
     }
     throw new UserSettingsCommandError(
       'user-has-assignments',
-      'Cannot delete user with active business assignments or pending operations. Reassign leads/conversations or lock the user instead.',
+      'Cannot delete a user with active assignments or retained business history. Reassign active work or lock the user instead.',
       409,
       details,
     )
   }
+}
+
+const deleteRetiredCommandReceipts = async ({
+  payload,
+  req,
+  userId,
+}: {
+  payload: Payload
+  req: PayloadRequest
+  userId: number | string
+}): Promise<void> => {
+  await payload.delete({
+    collection: 'portal-command-receipts',
+    context: { skipAudit: true },
+    overrideAccess: true,
+    req,
+    where: {
+      and: [
+        { actor: { equals: userId } },
+        { status: { in: ['completed', 'failed'] } },
+      ],
+    },
+  })
 }
 
 export const getPortalTeamMembers = async ({
@@ -228,6 +286,7 @@ export const getPortalTeamMembers = async ({
     limit: 100,
     overrideAccess: false,
     req,
+    showHiddenFields: true,
     sort: 'createdAt',
   })
 
@@ -323,6 +382,7 @@ export const updateTeamMember = async ({
     id,
     overrideAccess: false,
     req,
+    showHiddenFields: true,
   })
 
   if (!current) {
@@ -382,6 +442,7 @@ export const updateTeamMember = async ({
     id: current.id,
     overrideAccess: false,
     req,
+    showHiddenFields: true,
   })
 
   await revokeUserSessions(payload, req, current.id)
@@ -426,6 +487,7 @@ export const resetMemberPassword = async ({
     id,
     overrideAccess: false,
     req,
+    showHiddenFields: true,
   })
 
   if (!current) {
@@ -440,12 +502,21 @@ export const resetMemberPassword = async ({
     )
   }
 
+  if (String(current.id) === String(actor.id)) {
+    throw new UserSettingsCommandError(
+      'self-reset-password-forbidden',
+      'Use personal password change to update your own password.',
+      403,
+    )
+  }
+
   const updated = await payload.update({
     collection: 'users',
     data: { password } as never,
     id: current.id,
     overrideAccess: false,
     req,
+    showHiddenFields: true,
   })
 
   await revokeUserSessions(payload, req, current.id)
@@ -479,6 +550,7 @@ export const lockTeamMember = async ({
     id,
     overrideAccess: false,
     req,
+    showHiddenFields: true,
   })
 
   if (!current) {
@@ -509,8 +581,9 @@ export const lockTeamMember = async ({
     collection: 'users',
     data: { lockUntil: MANUAL_LOCK_UNTIL } as never,
     id: current.id,
-    overrideAccess: false,
+    overrideAccess: true,
     req,
+    showHiddenFields: true,
   })
 
   await revokeUserSessions(payload, req, current.id)
@@ -544,6 +617,7 @@ export const unlockTeamMember = async ({
     id,
     overrideAccess: false,
     req,
+    showHiddenFields: true,
   })
 
   if (!current) {
@@ -562,8 +636,9 @@ export const unlockTeamMember = async ({
     collection: 'users',
     data: { lockUntil: null, loginAttempts: 0 } as never,
     id: current.id,
-    overrideAccess: false,
+    overrideAccess: true,
     req,
+    showHiddenFields: true,
   })
 
   console.info('portal.team_member.unlocked', {
@@ -596,6 +671,7 @@ export const deleteTeamMember = async ({
     id,
     overrideAccess: false,
     req,
+    showHiddenFields: true,
   })
 
   if (!current) {
@@ -633,13 +709,25 @@ export const deleteTeamMember = async ({
   await assertNoActiveBusinessAssignments({ payload, req, userId: current.id })
 
   await revokeUserSessions(payload, req, current.id)
+  await deleteRetiredCommandReceipts({ payload, req, userId: current.id })
 
-  await payload.delete({
-    collection: 'users',
-    id: current.id,
-    overrideAccess: false,
-    req,
-  })
+  try {
+    await payload.delete({
+      collection: 'users',
+      id: current.id,
+      overrideAccess: false,
+      req,
+    })
+  } catch (error) {
+    if (isForeignKeyConstraintError(error)) {
+      throw new UserSettingsCommandError(
+        'user-has-assignments',
+        'Cannot delete a user with retained business history. Lock the user instead.',
+        409,
+      )
+    }
+    throw error
+  }
 
   console.info('portal.team_member.deleted', {
     actorId: actor.id,

@@ -144,6 +144,7 @@ export interface PortalSettingsMessages {
   memberEmail: string
   memberLockedUntil: string
   memberRole: string
+  memberSaved: string
   memberStatus: string
   moduleOwner: string
   moduleStatusDescription: string

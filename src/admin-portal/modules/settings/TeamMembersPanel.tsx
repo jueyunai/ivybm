@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 
 import {
   IconLock,
@@ -107,14 +107,30 @@ export function TeamMembersPanel({
     setModalMode('delete')
   }
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setModalMode(null)
     setSelectedMember(null)
     setFormEmail('')
     setFormPassword('')
     setFormConfirmPassword('')
     setFormConfirmEmail('')
-  }
+  }, [
+    setFormConfirmEmail,
+    setFormConfirmPassword,
+    setFormEmail,
+    setFormPassword,
+    setModalMode,
+    setSelectedMember,
+  ])
+
+  useEffect(() => {
+    if (!modalMode) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) closeModal()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [busy, closeModal, modalMode])
 
   const handleAddSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -158,7 +174,7 @@ export function TeamMembersPanel({
 
       await refresh()
       closeModal()
-      setFeedback({ message: messages.saveMember + ' ' + messages.siteDetailsSaved, tone: 'success' })
+      setFeedback({ message: messages.memberSaved, tone: 'success' })
     } catch (error) {
       setFeedback({
         message: error instanceof Error ? error.message : messages.teamOperationError,
@@ -209,7 +225,7 @@ export function TeamMembersPanel({
 
       await refresh()
       closeModal()
-      setFeedback({ message: messages.siteDetailsSaved, tone: 'success' })
+      setFeedback({ message: messages.memberSaved, tone: 'success' })
     } catch (error) {
       setFeedback({
         message: error instanceof Error ? error.message : messages.teamOperationError,
@@ -361,7 +377,9 @@ export function TeamMembersPanel({
         throw new Error(result.error?.message || messages.deleteMemberError)
       }
 
-      await refresh()
+      setMembers((currentMembers) =>
+        currentMembers.filter((member) => String(member.id) !== String(selectedMember.id)),
+      )
       closeModal()
       setFeedback({ message: messages.deleteMemberSuccess, tone: 'success' })
     } catch (error) {
@@ -410,6 +428,13 @@ export function TeamMembersPanel({
         }
     }
   }
+
+  const modalFeedback = feedback ? (
+    <StatusBadge
+      label={feedback.message}
+      tone={feedback.tone === 'success' ? 'success' : 'danger'}
+    />
+  ) : null
 
   return (
     <Surface as="section" className="portal-settings__section portal-settings__section--wide portal-team-members">
@@ -527,10 +552,17 @@ export function TeamMembersPanel({
       {/* Modal / Dialog for Add */}
       {modalMode === 'add' ? (
         <div className="portal-modal-backdrop">
-          <Surface as="div" className="portal-modal">
+          <Surface
+            aria-labelledby="portal-team-member-dialog-title"
+            aria-modal="true"
+            as="div"
+            className="portal-modal"
+            role="dialog"
+          >
             <header className="portal-modal__header">
-              <h4>{messages.newMemberTitle}</h4>
+              <h4 id="portal-team-member-dialog-title">{messages.newMemberTitle}</h4>
             </header>
+            {modalFeedback}
             <form className="portal-modal__form" onSubmit={handleAddSubmit}>
               <label className="portal-field">
                 <span className="portal-field__label">{messages.memberEmail}</span>
@@ -607,10 +639,17 @@ export function TeamMembersPanel({
       {/* Modal / Dialog for Edit */}
       {modalMode === 'edit' && selectedMember ? (
         <div className="portal-modal-backdrop">
-          <Surface as="div" className="portal-modal">
+          <Surface
+            aria-labelledby="portal-team-member-dialog-title"
+            aria-modal="true"
+            as="div"
+            className="portal-modal"
+            role="dialog"
+          >
             <header className="portal-modal__header">
-              <h4>{messages.editMemberTitle}</h4>
+              <h4 id="portal-team-member-dialog-title">{messages.editMemberTitle}</h4>
             </header>
+            {modalFeedback}
             <form className="portal-modal__form" onSubmit={handleEditSubmit}>
               <label className="portal-field">
                 <span className="portal-field__label">{messages.memberEmail}</span>
@@ -656,11 +695,18 @@ export function TeamMembersPanel({
       {/* Modal / Dialog for Reset Password */}
       {modalMode === 'reset-password' && selectedMember ? (
         <div className="portal-modal-backdrop">
-          <Surface as="div" className="portal-modal">
+          <Surface
+            aria-labelledby="portal-team-member-dialog-title"
+            aria-modal="true"
+            as="div"
+            className="portal-modal"
+            role="dialog"
+          >
             <header className="portal-modal__header">
-              <h4>{messages.resetPasswordTitle}</h4>
+              <h4 id="portal-team-member-dialog-title">{messages.resetPasswordTitle}</h4>
               <p>{messages.resetPasswordDescription}</p>
             </header>
+            {modalFeedback}
             <form className="portal-modal__form" onSubmit={handleResetPasswordSubmit}>
               <label className="portal-field">
                 <span className="portal-field__label">{messages.newPassword}</span>
@@ -708,11 +754,18 @@ export function TeamMembersPanel({
       {/* Modal / Dialog for Delete */}
       {modalMode === 'delete' && selectedMember ? (
         <div className="portal-modal-backdrop">
-          <Surface as="div" className="portal-modal">
+          <Surface
+            aria-labelledby="portal-team-member-dialog-title"
+            aria-modal="true"
+            as="div"
+            className="portal-modal"
+            role="dialog"
+          >
             <header className="portal-modal__header">
-              <h4>{messages.deleteMemberTitle}</h4>
+              <h4 id="portal-team-member-dialog-title">{messages.deleteMemberTitle}</h4>
               <p>{messages.deleteMemberDescription}</p>
             </header>
+            {modalFeedback}
             <form className="portal-modal__form" onSubmit={handleDeleteSubmit}>
               <div className="portal-modal__prompt">
                 <p>
