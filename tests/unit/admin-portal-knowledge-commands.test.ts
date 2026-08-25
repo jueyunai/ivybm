@@ -305,4 +305,32 @@ describe('Portal knowledge commands', () => {
       }),
     ).rejects.toBe(failure)
   })
+
+  it('forwards the receipt dispatch marker before a preview provider failure', async () => {
+    const failure = new Error('connection closed after request dispatch')
+    const onProviderDispatch = vi.fn()
+    const previewKnowledge = vi.fn(
+      async ({ onProviderDispatch: mark }: { onProviderDispatch?: () => void }) => {
+        mark?.()
+        throw failure
+      },
+    )
+
+    await expect(
+      runKnowledgeAiDebug({
+        input: { prompt: 'Test reviewed knowledge' },
+        onProviderDispatch,
+        payload: {} as Payload,
+        previewKnowledge: previewKnowledge as never,
+      }),
+    ).rejects.toBe(failure)
+
+    expect(onProviderDispatch).toHaveBeenCalledTimes(1)
+    expect(previewKnowledge).toHaveBeenCalledWith({
+      locale: 'en',
+      onProviderDispatch,
+      payload: expect.anything(),
+      query: 'Test reviewed knowledge',
+    })
+  })
 })

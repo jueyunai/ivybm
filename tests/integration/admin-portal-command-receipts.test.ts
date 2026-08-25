@@ -9,6 +9,7 @@ import {
   portalCommandFingerprint,
   PortalCommandReceiptError,
 } from '@/admin-portal/core/commands/portalCommandReceipts'
+import { runKnowledgeAiDebug } from '@/admin-portal/modules/knowledge/knowledgeAiDebugCommand'
 import { updatePortalSiteSettings } from '@/admin-portal/modules/settings/siteSettingsCommands'
 import { createAiGateway, type AiProvider } from '@/modules/ai/gateway'
 import type { User } from '@/payload-types'
@@ -381,6 +382,46 @@ describe.sequential('Portal command receipts', () => {
       expect(providerGenerateImage).toHaveBeenCalledTimes(1)
     },
   )
+
+  it('does not replay knowledge preview after a provider dispatch failure', async () => {
+    const req = await createLocalReq({ user: admin }, payload)
+    const input = { locale: 'en', prompt: 'unknown preview response' }
+    const idempotencyKey = `portal-receipt:${randomUUID()}`
+    const scope = 'portal.knowledge:ai-debug'
+    const previewKnowledge = vi.fn(
+      async ({ onProviderDispatch }: { onProviderDispatch?: () => void }) => {
+        onProviderDispatch?.()
+        throw new Error('connection closed after request dispatch')
+      },
+    )
+    const command = () =>
+      executePortalCommand({
+        atomic: false,
+        fingerprintInput: input,
+        idempotencyKey,
+        operation: async (_transactionReq, execution) =>
+          runKnowledgeAiDebug({
+            input,
+            onProviderDispatch: execution.markExternalDispatch,
+            payload,
+            previewKnowledge: previewKnowledge as never,
+          }),
+        payload,
+        replayPolicy: 'unknown-on-expiry',
+        req,
+        scope,
+      })
+
+    await expect(command()).rejects.toMatchObject({
+      code: 'portal-command-result-unknown',
+      status: 409,
+    })
+    await expect(command()).rejects.toMatchObject({
+      code: 'portal-command-result-unknown',
+      status: 409,
+    })
+    expect(previewKnowledge).toHaveBeenCalledTimes(1)
+  })
 
   it('keeps deterministic pre-dispatch failures retryable under the external policy', async () => {
     const req = await createLocalReq({ user: admin }, payload)

@@ -6,6 +6,7 @@ import { KnowledgeCommandError } from './knowledgeCommands'
 
 type PreviewKnowledge = (options: {
   locale: 'ar' | 'en'
+  onProviderDispatch?: () => void
   payload: Payload
   query: string
 }) => Promise<KnowledgePreviewResult>
@@ -63,10 +64,10 @@ export async function runKnowledgeAiDebug({
 
   const preview = await previewKnowledge({
     locale,
+    ...(onProviderDispatch ? { onProviderDispatch } : {}),
     payload,
     query: prompt,
   })
-  onProviderDispatch?.()
   if (preview.outcome === 'answer') {
     return {
       citations: preview.citations,
