@@ -1,6 +1,6 @@
 # Cloudflare CDN 缓存自动清除方案设计
 
-> **文档状态**：本地实现完成，待创建 Draft PR（分支 `fix/cloudflare-cache-purge`）
+> **文档状态**：实现完成，分支已同步最新 `origin/main` 并推送，进入 Draft PR 评审
 > **创建日期**：2026-08-17
 > **涉及范围**：官网 CDN 边缘缓存同步、Payload CMS 发布 Hook、Cloudflare API 集成、运维与应急控制
 
