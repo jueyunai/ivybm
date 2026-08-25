@@ -14,6 +14,7 @@ const mutationSpecs = [
   'tests/e2e/admin-portal-overview.spec.ts',
   'tests/e2e/admin-portal-platforms-operations.spec.ts',
   'tests/e2e/admin-portal-shell.spec.ts',
+  'tests/e2e/admin-portal-user-settings.spec.ts',
   'tests/e2e/admin-visual.spec.ts',
   'tests/e2e/chat-handoff.spec.ts',
   'tests/e2e/inquiry.spec.ts',
