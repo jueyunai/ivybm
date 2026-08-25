@@ -704,14 +704,14 @@ export const createFeishuHandoffNotifyJobHandler =
     const input = parseFeishuJobPayload(job.payload)
     const mapping = await currentMapping({ ...input, payload })
     if (!mapping) return
-    const handoff = handoffForFeishu(
-      await payload.findByID({
-        collection: 'handoffs',
-        depth: 1,
-        id: input.entityId,
-        overrideAccess: true,
-      }),
-    )
+    const document = await payload.findByID({
+      collection: 'handoffs',
+      depth: 1,
+      id: input.entityId,
+      overrideAccess: true,
+    })
+    if (shouldSilenceFeishuHandoff(document)) return
+    const handoff = handoffForFeishu(document)
     execution.assertLease()
     await notifyHandoff({
       client: await client(mapping),
