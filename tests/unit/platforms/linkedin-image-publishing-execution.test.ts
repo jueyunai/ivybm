@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createFakeLinkedInImagePublishingAuthority } from '@/modules/platforms/linkedin/fakeImagePublishingAuthority'
 import {
   executeLinkedInImagePublishingStage,
+  LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS,
   type LinkedInImagePublishingCheckpoint,
   type LinkedInImagePublishingIntent,
   type LinkedInImagePublishingLeaseFence,
@@ -394,10 +395,11 @@ describe('LinkedIn staged image publication', () => {
         transport: adapter,
       }),
     ).resolves.toMatchObject({
-      changed: false,
+      changed: true,
       checkpoint: {
         postUrn: 'urn:li:share:123456789',
         stage: 'post_created',
+        statusPollAttempts: 2,
       },
       event: 'publishing',
     })
@@ -408,6 +410,44 @@ describe('LinkedIn staged image publication', () => {
       postUrn: 'urn:li:share:123456789',
     })
   })
+
+  it.each(['PROCESSING', 'DRAFT'] as const)(
+    'stops automatic polling as delivery_unknown after bounded %s status attempts',
+    async (lifecycleState) => {
+      const input = intent({
+        checkpoint: checkpoint({
+          imageUrn: ticket.imageUrn,
+          postUrn: 'urn:li:share:123456789',
+          stage: 'post_created',
+          statusPollAttempts: LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS - 1,
+        }),
+      })
+      const state = setup(input)
+      const getPostStatus = vi.fn().mockResolvedValue({ lifecycleState })
+
+      await expect(
+        executeLinkedInImagePublishingStage({
+          authority: state.authority,
+          intent: input,
+          leaseFence: state.fence,
+          transport: transport({ getPostStatus }),
+        }),
+      ).resolves.toMatchObject({
+        changed: true,
+        checkpoint: {
+          postUrn: 'urn:li:share:123456789',
+          stage: 'delivery_unknown',
+          statusPollAttempts: LINKEDIN_IMAGE_STATUS_POLL_MAX_ATTEMPTS,
+        },
+        errorCode: 'delivery_unknown',
+        event: 'unknown',
+        retryable: false,
+        summary: expect.stringContaining('manual confirmation'),
+      })
+      expect(getPostStatus).toHaveBeenCalledTimes(1)
+      expect(state.authority.getIntent(42)?.checkpoint.stage).toBe('delivery_unknown')
+    },
+  )
 
   it('keeps polling post_created after a temporary status transport failure', async () => {
     const input = intent({
@@ -432,10 +472,11 @@ describe('LinkedIn staged image publication', () => {
         transport: unavailable,
       }),
     ).resolves.toMatchObject({
-      changed: false,
+      changed: true,
       checkpoint: {
         postUrn: 'urn:li:share:123456789',
         stage: 'post_created',
+        statusPollAttempts: 2,
       },
       event: 'publishing',
       retryable: true,

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -119,6 +119,12 @@ const createIntentAndLease = async ({ claimQueueJob = true }: { claimQueueJob?: 
 
 const createStagedJobAndQueue = async (
   executionRoute: 'instagram-image-staged' | 'linkedin-image-staged',
+  linkedInAsset?: {
+    byteLength: number
+    contentType: 'image/png'
+    id: string
+    sha256: string
+  },
 ) => {
   const suffix = randomUUID()
   const platform = executionRoute === 'instagram-image-staged' ? 'instagram' : 'linkedin'
@@ -150,7 +156,7 @@ const createStagedJobAndQueue = async (
           stage: 'scheduled',
         }
       : {
-          asset: {
+          asset: linkedInAsset ?? {
             byteLength: 4,
             contentType: 'image/png',
             id: `linkedin-asset-${suffix}`,
@@ -1743,6 +1749,104 @@ describe.sequential('Task 13 Payload publication authority', () => {
       })
     },
   )
+
+  it('preserves the LinkedIn asset envelope across every PostgreSQL CAS stage', async () => {
+    const assetBytes = new Uint8Array([1, 2, 3, 4])
+    const asset = {
+      byteLength: assetBytes.byteLength,
+      contentType: 'image/png' as const,
+      id: `linkedin-asset-${randomUUID()}`,
+      sha256: createHash('sha256').update(assetBytes).digest('hex'),
+    }
+    const { publishJob, queue, queuedJob } = await createStagedJobAndQueue(
+      'linkedin-image-staged',
+      asset,
+    )
+    const initializeImageUpload = vi.fn().mockResolvedValue({
+      imageUrn: 'urn:li:image:staged_multistep',
+      sealedUpload: `v1.${'a'.repeat(16)}.${'b'.repeat(22)}.${'c'.repeat(24)}`,
+      uploadUrlExpiresAt: 1_900_000_000_000,
+    })
+    const uploadImage = vi.fn().mockResolvedValue(undefined)
+    const publishImagePost = vi.fn().mockResolvedValue({ postUrn: 'urn:li:share:987654321' })
+    const getPostStatus = vi
+      .fn()
+      .mockResolvedValueOnce({ lifecycleState: 'PROCESSING' as const })
+      .mockResolvedValueOnce({
+        externalPublicationUrl: 'https://www.linkedin.com/feed/update/urn:li:share:987654321/',
+        lifecycleState: 'PUBLISHED' as const,
+      })
+    const worker = new JobWorker({
+      handlers: {
+        [PLATFORM_PUBLICATION_JOB_TYPE]: createPlatformPublicationJobHandler({
+          payload,
+          queue,
+          resolveRuntime: () => ({
+            directService: {
+              getCapability: vi.fn(),
+              getStatus: vi.fn(),
+              prepareAssistedPublication: vi.fn(),
+              publish: vi.fn(),
+            },
+            linkedInTransport: {
+              getPostStatus,
+              initializeImageUpload,
+              publishImagePost,
+              publishTextPost: vi.fn(),
+              uploadImage,
+            },
+            metaTransport: {} as never,
+            readLinkedInAssetBytes: vi.fn(async () => assetBytes),
+          }),
+        }),
+      },
+      queue,
+    })
+
+    const runRevision = async (revision: number, knownJobId?: number) => {
+      const result = await pool().query<{ id: number }>(
+        'SELECT id FROM jobs WHERE type = $1 AND idempotency_key = $2 LIMIT 1',
+        [PLATFORM_PUBLICATION_JOB_TYPE, `publication-execute:${publishJob.id}:${revision}`],
+      )
+      const jobId = knownJobId ?? result.rows[0]?.id
+      if (!jobId) throw new Error(`Expected LinkedIn stage job for revision ${revision}`)
+      jobIDs.push(jobId)
+      await pool().query(
+        `UPDATE jobs
+         SET next_run_at = CASE WHEN id = $1 THEN NOW() - INTERVAL '1 second'
+                                ELSE NOW() + INTERVAL '1 hour' END
+         WHERE type = $2 AND status IN ('pending', 'failed')`,
+        [jobId, PLATFORM_PUBLICATION_JOB_TYPE],
+      )
+      await expect(worker.runOnce()).resolves.toBe('succeeded')
+    }
+    const expectStage = async (revision: number, stage: string) => {
+      const stored = await payload.findByID({
+        collection: 'publish-jobs',
+        depth: 0,
+        id: publishJob.id,
+        overrideAccess: true,
+      })
+      expect(stored).toMatchObject({
+        executionRevision: revision,
+        providerCheckpoint: { asset, checkpoint: { stage } },
+      })
+    }
+
+    await runRevision(0, queuedJob.id)
+    await expectStage(1, 'image_initialized')
+    await runRevision(1)
+    await expectStage(2, 'image_uploaded')
+    await runRevision(2)
+    await expectStage(3, 'post_created')
+    await runRevision(3)
+    await expectStage(4, 'published')
+
+    expect(initializeImageUpload).toHaveBeenCalledTimes(1)
+    expect(uploadImage).toHaveBeenCalledTimes(1)
+    expect(publishImagePost).toHaveBeenCalledTimes(1)
+    expect(getPostStatus).toHaveBeenCalledTimes(2)
+  })
 
   it.each(['released', 'retained'] as const)(
     'handles direct status checkpoint commit failure with a %s claim without replaying mutation',

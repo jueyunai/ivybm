@@ -567,7 +567,7 @@ export class PayloadLinkedInImagePublishingAuthority implements LinkedInImagePub
     transition: LinkedInImagePublishingTransition,
   ): Promise<LinkedInImagePublishingCommitResult> {
     return this.cas.commit(claim, {
-      checkpoint: transition.checkpoint,
+      checkpoint: { asset: claim.intent.asset, checkpoint: transition.checkpoint },
       errorCode: transition.errorCode,
       event:
         transition.event === 'unknown'
