@@ -1427,6 +1427,20 @@
     padding: 16px 0;
   }
 
+  .portal-team-members__feedback {
+    display: grid;
+    gap: 8px;
+  }
+
+  .portal-team-members__feedback-details {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding-inline-start: 20px;
+    color: var(--portal-ink-2);
+    font-size: 12px;
+  }
+
   /* Modals / Dialogs */
   .portal-modal-backdrop {
     position: fixed;

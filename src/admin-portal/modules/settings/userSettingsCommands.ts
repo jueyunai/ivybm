@@ -1,5 +1,5 @@
 import { sql } from '@payloadcms/db-postgres'
-import type { Payload, PayloadRequest } from 'payload'
+import { ValidationError, type Payload, type PayloadRequest } from 'payload'
 
 import type { User } from '@/payload-types'
 import { getDatabaseForRequest } from '@/admin-portal/core/commands/portalCommandReceipts'
@@ -26,6 +26,22 @@ const isForeignKeyConstraintError = (error: unknown): boolean => {
   const candidate = error as { cause?: { code?: unknown }; code?: unknown }
   return candidate?.code === '23503' || candidate?.cause?.code === '23503'
 }
+
+const isUniqueConstraintError = (error: unknown): boolean => {
+  const candidate = error as { cause?: { code?: unknown }; code?: unknown }
+  if (candidate?.code === '23505' || candidate?.cause?.code === '23505') return true
+
+  return (
+    error instanceof ValidationError &&
+    error.data.collection === 'users' &&
+    error.data.errors.some((fieldError) => {
+      return fieldError.path === 'email' && fieldError.tableName === 'users'
+    })
+  )
+}
+
+const FEISHU_MAPPING_PAGE_SIZE = 100
+const MAX_FEISHU_MAPPING_PAGES = 100
 
 // All commands that can remove an available administrator share this
 // transaction-scoped lock. Target-row locks alone cannot serialize commands
@@ -197,26 +213,41 @@ export const assertNoActiveBusinessAssignments = async ({
 
   let feishuMemberCount = 0
   try {
-    const feishuMappings = await payload.find({
-      collection: 'feishu-mappings',
-      depth: 0,
-      limit: 100,
-      overrideAccess: true,
-      req,
-      where: { status: { equals: 'active' } },
-    })
-    for (const mapping of feishuMappings.docs) {
-      if (Array.isArray(mapping.memberMappings)) {
-        for (const member of mapping.memberMappings) {
-          const mappedId =
-            typeof member.user === 'object' && member.user !== null
-              ? (member.user as { id?: number | string }).id
-              : member.user
-          if (String(mappedId) === String(userId) && member.enabled !== false) {
-            feishuMemberCount += 1
+    let page = 1
+    for (let pagesRead = 0; pagesRead < MAX_FEISHU_MAPPING_PAGES; pagesRead += 1) {
+      const feishuMappings = await payload.find({
+        collection: 'feishu-mappings',
+        depth: 0,
+        limit: FEISHU_MAPPING_PAGE_SIZE,
+        overrideAccess: true,
+        page,
+        req,
+        where: { status: { equals: 'active' } },
+      })
+      for (const mapping of feishuMappings.docs) {
+        if (Array.isArray(mapping.memberMappings)) {
+          for (const member of mapping.memberMappings) {
+            const mappedId =
+              typeof member.user === 'object' && member.user !== null
+                ? (member.user as { id?: number | string }).id
+                : member.user
+            if (String(mappedId) === String(userId) && member.enabled !== false) {
+              feishuMemberCount += 1
+            }
           }
         }
       }
+
+      if (!feishuMappings.hasNextPage) break
+      if (pagesRead === MAX_FEISHU_MAPPING_PAGES - 1) {
+        throw new Error('Feishu mapping pagination exceeded its safety limit.')
+      }
+
+      const nextPage = feishuMappings.nextPage
+      if (typeof nextPage !== 'number' || !Number.isSafeInteger(nextPage) || nextPage <= page) {
+        throw new Error('Feishu mapping pagination returned an invalid next page.')
+      }
+      page = nextPage
     }
   } catch (error) {
     throw new UserSettingsCommandError(
@@ -343,16 +374,28 @@ export const createTeamMember = async ({
     )
   }
 
-  const created = await payload.create({
-    collection: 'users',
-    data: {
-      email,
-      password,
-      role,
-    } as never,
-    overrideAccess: false,
-    req,
-  })
+  let created
+  try {
+    created = await payload.create({
+      collection: 'users',
+      data: {
+        email,
+        password,
+        role,
+      } as never,
+      overrideAccess: false,
+      req,
+    })
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw new UserSettingsCommandError(
+        'email-already-exists',
+        'A user with this email address already exists.',
+        409,
+      )
+    }
+    throw error
+  }
 
   console.info('portal.team_member.created', {
     actorId: actor.id,
@@ -445,14 +488,26 @@ export const updateTeamMember = async ({
   if (email !== undefined) dataToUpdate.email = email
   if (role !== undefined) dataToUpdate.role = role
 
-  const updated = await payload.update({
-    collection: 'users',
-    data: dataToUpdate as never,
-    id: current.id,
-    overrideAccess: false,
-    req,
-    showHiddenFields: true,
-  })
+  let updated
+  try {
+    updated = await payload.update({
+      collection: 'users',
+      data: dataToUpdate as never,
+      id: current.id,
+      overrideAccess: false,
+      req,
+      showHiddenFields: true,
+    })
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw new UserSettingsCommandError(
+        'email-already-exists',
+        'A user with this email address already exists.',
+        409,
+      )
+    }
+    throw error
+  }
 
   await revokeUserSessions(payload, req, current.id)
 

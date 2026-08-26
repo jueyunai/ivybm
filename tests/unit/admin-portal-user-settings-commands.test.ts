@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { Payload, PayloadRequest } from 'payload'
+import { ValidationError, type Payload, type PayloadRequest } from 'payload'
 
 import {
   assertNoActiveBusinessAssignments,
@@ -116,6 +116,37 @@ describe('Portal team account and user settings commands', () => {
     )
   })
 
+  it('maps a concurrent database email conflict to email-already-exists', async () => {
+    const payload = {
+      create: vi.fn().mockRejectedValue(
+        new ValidationError({
+          collection: 'users',
+          errors: [{ message: 'localized unique error', path: 'email', tableName: 'users' }],
+        }),
+      ),
+      find: vi.fn().mockResolvedValue({ totalDocs: 0 }),
+    } as unknown as Payload
+
+    await expect(
+      createTeamMember({
+        actor: { id: 1, role: 'admin' },
+        input: {
+          confirmPassword: 'InitialPassword123!',
+          email: 'raced@example.com',
+          password: 'InitialPassword123!',
+          role: 'sales',
+        },
+        payload,
+        req: mockReq,
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<UserSettingsCommandError>>({
+        code: 'email-already-exists',
+        status: 409,
+      }),
+    )
+  })
+
   it('prevents administrator from changing their own role', async () => {
     const payload = {
       findByID: vi.fn().mockResolvedValue({
@@ -140,6 +171,37 @@ describe('Portal team account and user settings commands', () => {
       expect.objectContaining<Partial<UserSettingsCommandError>>({
         code: 'self-role-change-forbidden',
         status: 403,
+      }),
+    )
+  })
+
+  it('maps a concurrent email update conflict to email-already-exists', async () => {
+    const payload = {
+      find: vi.fn().mockResolvedValue({ totalDocs: 0 }),
+      findByID: vi.fn().mockResolvedValue({
+        email: 'before@example.com',
+        id: 2,
+        role: 'sales',
+        updatedAt: '2026-08-25T00:00:00.000Z',
+      }),
+      update: vi.fn().mockRejectedValue({ code: '23505' }),
+    } as unknown as Payload
+
+    await expect(
+      updateTeamMember({
+        actor: { id: 1, role: 'admin' },
+        id: 2,
+        input: {
+          email: 'raced@example.com',
+          updatedAt: '2026-08-25T00:00:00.000Z',
+        },
+        payload,
+        req: mockReq,
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<UserSettingsCommandError>>({
+        code: 'email-already-exists',
+        status: 409,
       }),
     )
   })
@@ -172,7 +234,12 @@ describe('Portal team account and user settings commands', () => {
     )
 
     // When another active admin exists, it succeeds
-    execute.mockResolvedValue({ rows: [{ id: 1, lock_until: null }, { id: 2, lock_until: null }] })
+    execute.mockResolvedValue({
+      rows: [
+        { id: 1, lock_until: null },
+        { id: 2, lock_until: null },
+      ],
+    })
     await expect(
       assertRemainingAvailableAdmin({ excludingUserId: 1, payload, req: mockReq }),
     ).resolves.toBeUndefined()
@@ -333,6 +400,61 @@ describe('Portal team account and user settings commands', () => {
         status: 409,
       }),
     )
+  })
+
+  it('checks active Feishu member mappings beyond the first 100 records', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      memberMappings: [],
+    }))
+    const find = vi
+      .fn()
+      .mockResolvedValueOnce({ docs: firstPage, hasNextPage: true, nextPage: 2 })
+      .mockResolvedValueOnce({
+        docs: [{ id: 101, memberMappings: [{ enabled: true, user: 5 }] }],
+        hasNextPage: false,
+        nextPage: null,
+      })
+    const payload = {
+      count: vi.fn().mockResolvedValue({ totalDocs: 0 }),
+      find,
+    } as unknown as Payload
+
+    await expect(
+      assertNoActiveBusinessAssignments({ payload, req: mockReq, userId: 5 }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<UserSettingsCommandError>>({
+        code: 'user-has-assignments',
+        details: expect.objectContaining({ feishuMemberMappings: 1 }),
+        status: 409,
+      }),
+    )
+    expect(find).toHaveBeenNthCalledWith(1, expect.objectContaining({ limit: 100, page: 1 }))
+    expect(find).toHaveBeenNthCalledWith(2, expect.objectContaining({ limit: 100, page: 2 }))
+  })
+
+  it('fails closed when Feishu mapping pagination exceeds its safety limit', async () => {
+    const find = vi.fn().mockImplementation(({ page }) =>
+      Promise.resolve({
+        docs: [],
+        hasNextPage: true,
+        nextPage: Number(page) + 1,
+      }),
+    )
+    const payload = {
+      count: vi.fn().mockResolvedValue({ totalDocs: 0 }),
+      find,
+    } as unknown as Payload
+
+    await expect(
+      assertNoActiveBusinessAssignments({ payload, req: mockReq, userId: 5 }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<UserSettingsCommandError>>({
+        code: 'user-assignment-check-failed',
+        status: 503,
+      }),
+    )
+    expect(find).toHaveBeenCalledTimes(100)
   })
 
   it('allows personal password change with valid current password and revokes existing sessions', async () => {

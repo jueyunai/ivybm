@@ -232,6 +232,45 @@ describe.sequential('Portal team account and user settings database integration'
     expect(verifyResult.totalDocs).toBe(0)
   })
 
+  it('allows only one concurrent create for the same normalized email', async () => {
+    const email = `task16-concurrent-email-${randomUUID()}@example.invalid`
+    const [requestA, requestB] = await Promise.all([
+      createLocalReq({ user: adminA }, payload),
+      createLocalReq({ user: adminA }, payload),
+    ])
+    const create = (req: typeof requestA) =>
+      createTeamMember({
+        actor: adminA,
+        input: {
+          confirmPassword: 'ConcurrentPassword123!',
+          email,
+          password: 'ConcurrentPassword123!',
+          role: 'sales',
+        },
+        payload,
+        req,
+      })
+
+    const results = await Promise.allSettled([create(requestA), create(requestB)])
+    const fulfilled = results.filter(
+      (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof create>>> =>
+        result.status === 'fulfilled',
+    )
+    const rejected = results.filter(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    )
+
+    expect(fulfilled).toHaveLength(1)
+    expect(rejected).toHaveLength(1)
+    createdUserIds.push(fulfilled[0].value.id)
+    expect(rejected[0].reason).toEqual(
+      expect.objectContaining<Partial<UserSettingsCommandError>>({
+        code: 'email-already-exists',
+        status: 409,
+      }),
+    )
+  })
+
   it('allows personal password change and rejects incorrect current password', async () => {
     const req = await createLocalReq({ user: salesUser }, payload)
 

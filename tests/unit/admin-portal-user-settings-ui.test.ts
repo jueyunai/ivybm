@@ -170,7 +170,13 @@ describe('Portal TeamMembersPanel UI', () => {
 
   it('exposes dialog semantics, closes with Escape, and keeps API errors visible inside the dialog', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
-      json: () => Promise.resolve({ error: { message: '邮箱已存在' } }),
+      json: () =>
+        Promise.resolve({
+          error: {
+            code: 'email-already-exists',
+            message: 'A user with this email address already exists.',
+          },
+        }),
       ok: false,
     })
     globalThis.fetch = fetchMock
@@ -212,7 +218,125 @@ describe('Portal TeamMembersPanel UI', () => {
 
     await waitFor(() => {
       const dialog = screen.getByRole('dialog', { name: '新增团队成员' })
-      expect(dialog.textContent).toContain('邮箱已存在')
+      expect(dialog.textContent).toContain('该邮箱已被使用，请更换邮箱后重试。')
+      expect(dialog.textContent).not.toContain('A user with this email address already exists.')
+    })
+  })
+
+  it('keeps the idempotency key and refreshes without replaying after an unknown response', async () => {
+    const createdMember: PortalTeamMemberDTO = {
+      createdAt: '2026-08-26T00:00:00.000Z',
+      email: 'unknown-result@example.com',
+      id: 4,
+      lockedUntil: null,
+      role: 'sales',
+      status: 'normal',
+      updatedAt: '2026-08-26T00:00:00.000Z',
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        json: () => Promise.reject(new SyntaxError('HTML response')),
+        ok: true,
+      })
+      .mockResolvedValueOnce({ json: () => Promise.resolve({ members: mockMembers }), ok: true })
+      .mockResolvedValueOnce({ json: () => Promise.resolve({ member: createdMember }), ok: true })
+    globalThis.fetch = fetchMock
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(TeamMembersPanel, {
+          currentUserId: 1,
+          initialMembers: mockMembers,
+        }),
+      ),
+    )
+
+    const submitSameMember = () => {
+      fireEvent.click(screen.getByRole('button', { name: /新增成员/ }))
+      fireEvent.change(screen.getByLabelText('登录邮箱'), {
+        target: { value: createdMember.email },
+      })
+      fireEvent.change(screen.getByLabelText('初始密码'), {
+        target: { value: 'InitialPassword123!' },
+      })
+      fireEvent.change(screen.getByLabelText('确认初始密码'), {
+        target: { value: 'InitialPassword123!' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    }
+
+    submitSameMember()
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/portal/settings/users')
+      expect(screen.queryByRole('dialog', { name: '新增团队成员' })).toBeNull()
+      expect(screen.getByText(/操作结果未知，列表已刷新/)).toBeTruthy()
+    })
+
+    const firstKey = (fetchMock.mock.calls[0]?.[1] as RequestInit).headers as Record<string, string>
+    submitSameMember()
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+      expect(screen.getByText(createdMember.email)).toBeTruthy()
+    })
+    const retriedKey = (fetchMock.mock.calls[2]?.[1] as RequestInit).headers as Record<
+      string,
+      string
+    >
+    expect(retriedKey['Idempotency-Key']).toBe(firstKey['Idempotency-Key'])
+  })
+
+  it('localizes assignment errors and displays only safe positive reference counts', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: () =>
+        Promise.resolve({
+          error: {
+            code: 'user-has-assignments',
+            details: {
+              leads: 2,
+              feishuMemberMappings: 1,
+              publishJobs: 0,
+              unsafeServerValue: '<script>alert(1)</script>',
+            },
+            message: 'Cannot delete a user with retained business history.',
+          },
+        }),
+      ok: false,
+    })
+    globalThis.fetch = fetchMock
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(TeamMembersPanel, {
+          currentUserId: 1,
+          initialMembers: mockMembers,
+        }),
+      ),
+    )
+
+    const operatorRow = screen.getByText('operator@example.com').closest('article')
+    fireEvent.click(within(operatorRow as HTMLElement).getByRole('button', { name: '删除成员' }))
+    fireEvent.change(screen.getByLabelText('登录邮箱'), {
+      target: { value: 'operator@example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
+
+    await waitFor(() => {
+      const dialog = screen.getByRole('dialog', { name: '删除成员' })
+      expect(dialog.textContent).toContain('该成员仍有关联业务或历史记录')
+      expect(dialog.textContent).toContain('线索: 2')
+      expect(dialog.textContent).toContain('飞书成员映射: 1')
+      expect(dialog.textContent).not.toContain('Cannot delete a user')
+      expect(dialog.textContent).not.toContain('unsafeServerValue')
+      expect(dialog.textContent).not.toContain('<script>')
+      expect(dialog.textContent).not.toContain('发布历史: 0')
     })
   })
 

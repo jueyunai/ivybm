@@ -625,6 +625,33 @@ export const PORTAL_EN = {
     teamCommandResultUnknown:
       'The command outcome is unknown. The list was refreshed; verify the current state before trying again.',
     teamOperationError: 'Operation failed. Please check inputs or refresh and try again.',
+    teamErrorMessages: {
+      'email-already-exists': 'That email is already in use. Choose another email and try again.',
+      'last-admin-protected':
+        'This would leave the system without an available administrator. Keep at least one administrator.',
+      'user-has-assignments':
+        'This member still has business assignments or retained history. Reassign the work or lock the account instead.',
+      'self-role-change-forbidden': 'You cannot change your own role from team management.',
+      'self-reset-password-forbidden':
+        'You cannot reset your own password here. Use personal password change instead.',
+      'self-lock-forbidden': 'You cannot lock your own account.',
+      'self-delete-forbidden': 'You cannot delete your own account.',
+      'user-assignment-check-failed':
+        'The member assignments could not be verified, so deletion was stopped. Try again later or lock the account instead.',
+      'invalid-input': 'The submitted values are invalid. Check the form and try again.',
+    },
+    teamAssignmentDetailLabels: {
+      conversations: 'Conversations',
+      contentReviews: 'Content reviews',
+      feishuActiveRegistrations: 'Active Feishu registrations',
+      feishuMemberMappings: 'Feishu member mappings',
+      generatedContents: 'Generated contents',
+      handoffs: 'Human handoffs',
+      leads: 'Leads',
+      pendingPublishJobs: 'Pending publish jobs',
+      activePortalCommands: 'Active portal commands',
+      publishJobs: 'Publish history',
+    },
     themeLabel: 'Display theme',
     title: 'Settings',
     unlockMember: 'Unlock',

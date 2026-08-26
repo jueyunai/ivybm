@@ -200,6 +200,8 @@ export interface PortalSettingsMessages {
   teamMembersReadError: string
   teamCommandResultUnknown: string
   teamOperationError: string
+  teamErrorMessages: Record<string, string>
+  teamAssignmentDetailLabels: Record<string, string>
   themeLabel: string
   title: string
   unlockMember: string

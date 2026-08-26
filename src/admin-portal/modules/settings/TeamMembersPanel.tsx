@@ -43,6 +43,12 @@ type TeamMembersAPIResult = {
   success?: boolean
 }
 
+type TeamMembersFeedback = {
+  message: string
+  tone: 'error' | 'success'
+  details?: Array<{ label: string; value: number }>
+}
+
 class TeamMembersRequestError extends Error {
   constructor(
     readonly code: string,
@@ -58,20 +64,65 @@ const readTeamMembersResponse = async (
   response: Response,
   fallbackMessage: string,
 ): Promise<TeamMembersAPIResult> => {
-  let result: TeamMembersAPIResult
+  let parsed: unknown
   try {
-    result = (await response.json()) as TeamMembersAPIResult
+    parsed = await response.json()
   } catch {
     throw new TeamMembersRequestError('invalid-response', fallbackMessage)
   }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new TeamMembersRequestError('invalid-response', fallbackMessage)
+  }
+
+  const result = parsed as TeamMembersAPIResult
   if (!response.ok) {
+    if (!result.error || typeof result.error.code !== 'string') {
+      throw new TeamMembersRequestError('invalid-response', fallbackMessage)
+    }
     throw new TeamMembersRequestError(
-      result.error?.code ?? 'team-operation-failed',
+      result.error.code,
       result.error?.message ?? fallbackMessage,
       result.error?.details,
     )
   }
   return result
+}
+
+const assignmentDetailKeys = [
+  'conversations',
+  'contentReviews',
+  'feishuActiveRegistrations',
+  'feishuMemberMappings',
+  'generatedContents',
+  'handoffs',
+  'leads',
+  'pendingPublishJobs',
+  'activePortalCommands',
+  'publishJobs',
+] as const
+
+const resolveTeamMembersError = (
+  error: unknown,
+  messages: ReturnType<typeof getPortalMessages>['settings'],
+  fallbackMessage: string,
+): Omit<TeamMembersFeedback, 'tone'> => {
+  if (!(error instanceof TeamMembersRequestError)) {
+    return { message: fallbackMessage }
+  }
+
+  const message = messages.teamErrorMessages[error.code] ?? fallbackMessage
+  const details =
+    error.code === 'user-has-assignments' && error.details && typeof error.details === 'object'
+      ? assignmentDetailKeys.flatMap((key) => {
+          const value = (error.details as Record<string, unknown>)[key]
+          return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+            ? [{ label: messages.teamAssignmentDetailLabels[key] ?? key, value }]
+            : []
+        })
+      : undefined
+
+  return details?.length ? { message, details } : { message }
 }
 
 function TeamMemberDialog({
@@ -151,9 +202,7 @@ export function TeamMembersPanel({
   const [members, setMembers] = useState<PortalTeamMemberDTO[]>(initialMembers)
   const [busy, setBusy] = useState(false)
   const [readError, setReadError] = useState(initialReadError)
-  const [feedback, setFeedback] = useState<{ message: string; tone: 'error' | 'success' } | null>(
-    null,
-  )
+  const [feedback, setFeedback] = useState<TeamMembersFeedback | null>(null)
 
   const [modalMode, setModalMode] = useState<ModalMode>(null)
   const [selectedMember, setSelectedMember] = useState<PortalTeamMemberDTO | null>(null)
@@ -280,12 +329,33 @@ export function TeamMembersPanel({
     response: Response,
     idempotencyKey: string,
     fallbackMessage: string,
+    isKnownResult: (result: TeamMembersAPIResult) => boolean,
   ): Promise<TeamMembersAPIResult> => {
+    let result: TeamMembersAPIResult
     try {
-      return await readTeamMembersResponse(response, fallbackMessage)
-    } finally {
+      result = await readTeamMembersResponse(response, fallbackMessage)
+    } catch (error) {
+      if (!(error instanceof TeamMembersRequestError) || error.code === 'invalid-response') {
+        throw new TeamMembersRequestError(
+          'portal-command-result-unknown',
+          messages.teamCommandResultUnknown,
+        )
+      }
+      // A well-formed error response is a known command outcome and can retire
+      // the idempotency key. Unknown transport/body failures deliberately keep it.
       command.receivedResponse(idempotencyKey)
+      throw error
     }
+
+    if (!isKnownResult(result)) {
+      throw new TeamMembersRequestError(
+        'portal-command-result-unknown',
+        messages.teamCommandResultUnknown,
+      )
+    }
+
+    command.receivedResponse(idempotencyKey)
+    return result
   }
 
   const handleAddSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -325,18 +395,17 @@ export function TeamMembersPanel({
         response,
         idempotencyKey,
         messages.teamOperationError,
+        (candidate) => Boolean(candidate.member),
       )
-      if (!result.member) {
-        throw new TeamMembersRequestError('invalid-response', messages.teamOperationError)
-      }
+      if (!result.member) return
       replaceMember(result.member)
       closeModal()
       setFeedback({ message: messages.memberSaved, tone: 'success' })
     } catch (error) {
       if (!(await recoverFromCommandConflict(error))) {
         setFeedback({
-          message: error instanceof Error ? error.message : messages.teamOperationError,
           tone: 'error',
+          ...resolveTeamMembersError(error, messages, messages.teamOperationError),
         })
       }
     } finally {
@@ -379,18 +448,17 @@ export function TeamMembersPanel({
         response,
         idempotencyKey,
         messages.teamOperationError,
+        (candidate) => Boolean(candidate.member),
       )
-      if (!result.member) {
-        throw new TeamMembersRequestError('invalid-response', messages.teamOperationError)
-      }
+      if (!result.member) return
       replaceMember(result.member)
       closeModal()
       setFeedback({ message: messages.memberSaved, tone: 'success' })
     } catch (error) {
       if (!(await recoverFromCommandConflict(error))) {
         setFeedback({
-          message: error instanceof Error ? error.message : messages.teamOperationError,
           tone: 'error',
+          ...resolveTeamMembersError(error, messages, messages.teamOperationError),
         })
       }
     } finally {
@@ -439,18 +507,17 @@ export function TeamMembersPanel({
         response,
         idempotencyKey,
         messages.teamOperationError,
+        (candidate) => Boolean(candidate.member),
       )
-      if (!result.member) {
-        throw new TeamMembersRequestError('invalid-response', messages.teamOperationError)
-      }
+      if (!result.member) return
       replaceMember(result.member)
       closeModal()
       setFeedback({ message: messages.resetPasswordSuccess, tone: 'success' })
     } catch (error) {
       if (!(await recoverFromCommandConflict(error))) {
         setFeedback({
-          message: error instanceof Error ? error.message : messages.teamOperationError,
           tone: 'error',
+          ...resolveTeamMembersError(error, messages, messages.teamOperationError),
         })
       }
     } finally {
@@ -491,10 +558,9 @@ export function TeamMembersPanel({
         response,
         idempotencyKey,
         messages.teamOperationError,
+        (candidate) => Boolean(candidate.member),
       )
-      if (!result.member) {
-        throw new TeamMembersRequestError('invalid-response', messages.teamOperationError)
-      }
+      if (!result.member) return
       replaceMember(result.member)
       setFeedback({
         message: isLocked ? messages.unlockMemberSuccess : messages.lockMemberSuccess,
@@ -503,8 +569,8 @@ export function TeamMembersPanel({
     } catch (error) {
       if (!(await recoverFromCommandConflict(error))) {
         setFeedback({
-          message: error instanceof Error ? error.message : messages.teamOperationError,
           tone: 'error',
+          ...resolveTeamMembersError(error, messages, messages.teamOperationError),
         })
       }
     } finally {
@@ -541,7 +607,12 @@ export function TeamMembersPanel({
         method: 'DELETE',
       })
 
-      await receiveCommandResponse(response, idempotencyKey, messages.deleteMemberError)
+      await receiveCommandResponse(
+        response,
+        idempotencyKey,
+        messages.deleteMemberError,
+        (candidate) => candidate.success === true,
+      )
 
       setMembers((currentMembers) =>
         currentMembers.filter((member) => String(member.id) !== String(selectedMember.id)),
@@ -551,8 +622,8 @@ export function TeamMembersPanel({
     } catch (error) {
       if (!(await recoverFromCommandConflict(error))) {
         setFeedback({
-          message: error instanceof Error ? error.message : messages.deleteMemberError,
           tone: 'error',
+          ...resolveTeamMembersError(error, messages, messages.deleteMemberError),
         })
       }
     } finally {
@@ -599,12 +670,23 @@ export function TeamMembersPanel({
     }
   }
 
-  const modalFeedback = feedback ? (
-    <StatusBadge
-      label={feedback.message}
-      tone={feedback.tone === 'success' ? 'success' : 'danger'}
-    />
-  ) : null
+  const renderFeedback = (value: TeamMembersFeedback | null) =>
+    value ? (
+      <div className="portal-team-members__feedback">
+        <StatusBadge label={value.message} tone={value.tone === 'success' ? 'success' : 'danger'} />
+        {value.details ? (
+          <ul className="portal-team-members__feedback-details">
+            {value.details.map((detail) => (
+              <li key={detail.label}>
+                {detail.label}: {detail.value}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    ) : null
+
+  const modalFeedback = renderFeedback(feedback)
 
   return (
     <Surface
@@ -630,12 +712,7 @@ export function TeamMembersPanel({
         </Button>
       </div>
 
-      {feedback ? (
-        <StatusBadge
-          label={feedback.message}
-          tone={feedback.tone === 'success' ? 'success' : 'danger'}
-        />
-      ) : null}
+      {renderFeedback(feedback)}
 
       {readError ? (
         <div className="portal-team-members__read-error" role="alert">
