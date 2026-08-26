@@ -20,6 +20,7 @@ fi
 release_environment_keys=(
   IMAGE_TAG RUNTIME_IMAGE RUNTIME_IMAGE_DIGEST WORKER_IMAGE WORKER_IMAGE_DIGEST APP_VERSION
   POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL PAYLOAD_SECRET NEXT_PUBLIC_SERVER_URL APP_PORT
+  CLOUDFLARE_CACHE_PURGE_ENABLED CLOUDFLARE_ZONE_ID CLOUDFLARE_API_TOKEN
   TRUST_PROXY_HEADERS ADMIN_PORTAL_ENABLED ADMIN_PORTAL_SETTINGS_ENABLED ADMIN_PORTAL_OVERVIEW_ENABLED
   ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED ADMIN_PORTAL_MEDIA_ENABLED ADMIN_PORTAL_KNOWLEDGE_ENABLED
   ADMIN_PORTAL_CONVERSATIONS_ENABLED ADMIN_PORTAL_LEADS_ENABLED ADMIN_PORTAL_CONTENT_STUDIO_ENABLED
@@ -101,6 +102,9 @@ postgres_password="$(read_env_value POSTGRES_PASSWORD)"
 database_url="$(read_env_value DATABASE_URL)"
 payload_secret="$(read_env_value PAYLOAD_SECRET)"
 public_url="$(read_env_value NEXT_PUBLIC_SERVER_URL)"
+cloudflare_cache_purge_enabled="$(read_env_value CLOUDFLARE_CACHE_PURGE_ENABLED)"
+cloudflare_zone_id="$(read_optional_env_value CLOUDFLARE_ZONE_ID)"
+cloudflare_api_token="$(read_optional_env_value CLOUDFLARE_API_TOKEN)"
 trust_proxy_headers="$(read_env_value TRUST_PROXY_HEADERS)"
 portal_enabled="$(read_env_value ADMIN_PORTAL_ENABLED)"
 portal_settings_enabled="$(read_env_value ADMIN_PORTAL_SETTINGS_ENABLED)"
@@ -184,6 +188,15 @@ fi
 if [[ "$public_url" != 'https://ivybm.com' ]]; then
   echo 'NEXT_PUBLIC_SERVER_URL must be https://ivybm.com' >&2
   exit 1
+fi
+
+if [[ "$cloudflare_cache_purge_enabled" != 'true' && "$cloudflare_cache_purge_enabled" != 'false' ]]; then
+  echo 'CLOUDFLARE_CACHE_PURGE_ENABLED must be true or false' >&2
+  exit 1
+fi
+if [[ "$cloudflare_cache_purge_enabled" == 'true' ]]; then
+  require_pattern CLOUDFLARE_ZONE_ID "$cloudflare_zone_id" '^[a-fA-F0-9]{32}$'
+  require_pattern CLOUDFLARE_API_TOKEN "$cloudflare_api_token" '^[A-Za-z0-9_-]{40,128}$'
 fi
 
 if [[ "$trust_proxy_headers" != 'true' ]]; then
@@ -460,6 +473,17 @@ if worker_environment.get('ADMIN_PORTAL_PUBLISHING_ENABLED') != publishing_enabl
 if publishing_enabled == 'true':
     if not worker_environment.get('PLATFORM_CREDENTIAL_ENCRYPTION_KEY'):
         raise SystemExit('Compose worker environment is missing PLATFORM_CREDENTIAL_ENCRYPTION_KEY')
+cloudflare_enabled = app_environment.get('CLOUDFLARE_CACHE_PURGE_ENABLED')
+if cloudflare_enabled not in {'true', 'false'}:
+    raise SystemExit('Compose app environment has an invalid CLOUDFLARE_CACHE_PURGE_ENABLED')
+if cloudflare_enabled == 'true':
+    for key in ('CLOUDFLARE_ZONE_ID', 'CLOUDFLARE_API_TOKEN'):
+        if not app_environment.get(key):
+            raise SystemExit(f'Compose app environment is missing {key}')
+for service_name, environment in (('migrate', migrate.get('environment', {})), ('worker', worker_environment)):
+    for key in ('CLOUDFLARE_ZONE_ID', 'CLOUDFLARE_API_TOKEN'):
+        if environment.get(key):
+            raise SystemExit(f'Compose {service_name} environment must not receive {key}')
 linkedin_keys = (
     'LINKEDIN_API_VERSION',
     'LINKEDIN_UPLOAD_ALLOWED_ORIGINS',
