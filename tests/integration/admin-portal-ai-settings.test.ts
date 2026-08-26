@@ -349,6 +349,7 @@ describe.sequential('Portal AI settings', () => {
 
     for (const [resource, id] of [
       ['routes', textRouteID],
+      ['routes', translationRouteID],
       ['routes', embeddingRouteID],
       ['routes', imageRouteID],
       ['profiles', textProfileID],
@@ -378,6 +379,7 @@ describe.sequential('Portal AI settings', () => {
       resource: 'providers',
     })
     textRouteID =
+      translationRouteID =
       embeddingRouteID =
       imageRouteID =
       textProfileID =
