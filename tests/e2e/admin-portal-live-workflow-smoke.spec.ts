@@ -1,6 +1,6 @@
 import './require-mutation-launch'
 import { createServer, type Server } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { access, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, expect, test } from '@playwright/test'
@@ -8,6 +8,15 @@ import { chromium, expect, test } from '@playwright/test'
 import { runLiveWorkflowSmoke } from '../../scripts/smoke/live-workflow-smoke'
 import { verifyFeishuRecord } from '../../scripts/smoke/feishu-verifier'
 import type { SmokeConfig } from '../../scripts/smoke/config'
+import { generateCanaryData } from '../../scripts/smoke/marker'
+
+type SyntheticLead = {
+  company: string
+  email: string
+  message: string
+  name: string
+  status: 'disqualified' | 'new'
+}
 
 test.describe('live-workflow browser runner with synthetic server', () => {
   test.describe.configure({ timeout: 60_000 })
@@ -19,11 +28,16 @@ test.describe('live-workflow browser runner with synthetic server', () => {
     chatMessages: [] as Array<{ author: string; content: string }>,
     conversationResolved: false,
     delayedFeishuSearchMs: 0,
+    denyLeadCleanup: false,
     deliverOperatorReplies: true,
+    duplicatePortalLead: false,
     duplicateFeishuRecord: false,
+    failLeadCleanup: false,
+    feishuSplitFields: false,
     hideFeishuRecord: false,
     inquiryResponseDelayMs: 0,
     inquiries: [] as Array<Record<string, unknown>>,
+    leads: [] as SyntheticLead[],
     omitSessionId: false,
     operatorReplies: [] as string[],
     takenOver: false,
@@ -33,11 +47,16 @@ test.describe('live-workflow browser runner with synthetic server', () => {
     state.chatMessages.length = 0
     state.conversationResolved = false
     state.delayedFeishuSearchMs = 0
+    state.denyLeadCleanup = false
     state.deliverOperatorReplies = true
+    state.duplicatePortalLead = false
     state.duplicateFeishuRecord = false
+    state.failLeadCleanup = false
+    state.feishuSplitFields = false
     state.hideFeishuRecord = false
     state.inquiryResponseDelayMs = 0
     state.inquiries.length = 0
+    state.leads.length = 0
     state.omitSessionId = false
     state.operatorReplies.length = 0
     state.takenOver = false
@@ -58,6 +77,16 @@ test.describe('live-workflow browser runner with synthetic server', () => {
         req.on('end', () => {
           const parsed = JSON.parse(body || '{}') as Record<string, unknown>
           state.inquiries.push(parsed)
+          const lead: SyntheticLead = {
+            company: String(parsed.company ?? ''),
+            email: String(parsed.email ?? ''),
+            message: String(parsed.message ?? ''),
+            name: String(parsed.name ?? ''),
+            status: 'new',
+          }
+          const existingLead = state.leads.findIndex((item) => item.email === lead.email)
+          if (existingLead >= 0) state.leads[existingLead] = lead
+          else state.leads.push(lead)
           const respond = () => {
             res.writeHead(200, { 'Content-Type': 'application/json' })
             res.end(JSON.stringify({ ok: true, requestId: `req-${Date.now()}` }))
@@ -92,6 +121,21 @@ test.describe('live-workflow browser runner with synthetic server', () => {
         req.on('end', () => {
           const parsed = JSON.parse(body || '{}') as { text?: string }
           state.chatMessages.push({ author: 'visitor', content: parsed.text ?? '' })
+          const runId = parsed.text?.match(/\[CANARY ([^\]]+)\]/u)?.[1]
+          if (runId && /@example\.invalid/u.test(parsed.text ?? '')) {
+            const locale = /-ar@example\.invalid/u.test(parsed.text ?? '') ? 'ar' : 'en'
+            const data = generateCanaryData(runId, locale)
+            const lead: SyntheticLead = {
+              company: data.company,
+              email: data.email,
+              message: data.message,
+              name: data.name,
+              status: 'new',
+            }
+            const existingLead = state.leads.findIndex((item) => item.email === lead.email)
+            if (existingLead >= 0) state.leads[existingLead] = lead
+            else state.leads.push(lead)
+          }
           res.writeHead(200, { 'Content-Type': 'application/json' })
           res.end(
             JSON.stringify({
@@ -99,6 +143,26 @@ test.describe('live-workflow browser runner with synthetic server', () => {
               content: 'Reviewed knowledge: Aluminum facade panels.',
             }),
           )
+        })
+        return
+      }
+
+      if (req.method === 'POST' && url.pathname === '/synthetic-lead-update') {
+        let body = ''
+        req.on('data', (chunk) => {
+          body += chunk
+        })
+        req.on('end', () => {
+          if (state.failLeadCleanup) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Synthetic cleanup failed' }))
+            return
+          }
+          const parsed = JSON.parse(body || '{}') as { email?: string }
+          const lead = state.leads.find((item) => item.email === parsed.email)
+          if (lead) lead.status = 'disqualified'
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: true }))
         })
         return
       }
@@ -207,11 +271,43 @@ test.describe('live-workflow browser runner with synthetic server', () => {
 
       // Synthetic Page: Portal Leads
       if (url.pathname === '/dashboard/leads') {
-        const latestInquiry = state.inquiries.at(-1) || {
-          company: 'Canary Facade Test',
-          email: 'canary-test@example.invalid',
-          name: 'Canary Buyer Test',
+        const query = url.searchParams.get('q') ?? ''
+        const matchedLeads = state.leads.filter((lead) => !query || lead.email === query)
+        if (state.duplicatePortalLead && matchedLeads[0]) {
+          matchedLeads.push({ ...matchedLeads[0] })
         }
+        const selected = matchedLeads[0]
+        const listItems = matchedLeads
+          .map(
+            (lead, index) => `<li>
+              <button type="button" class="lead-item-btn" data-index="${index}">
+                <strong>${lead.name}</strong>
+                <span>${lead.company}</span>
+                <span>A 高意向</span>
+              </button>
+            </li>`,
+          )
+          .join('')
+        const detail = selected
+          ? `<div class="portal-leads__detail">
+              <header>
+                <h3>${selected.name}</h3>
+                <span id="lead-status">${selected.status === 'disqualified' ? '不合格' : '新增'}</span>
+                ${state.denyLeadCleanup ? '' : '<button type="button" id="edit-lead" aria-label="编辑线索">编辑</button>'}
+              </header>
+              <p id="detail-email">${selected.email}</p>
+              <p id="detail-company">${selected.company}</p>
+              <p id="detail-locale">EN</p>
+              <p id="detail-message">${selected.message}</p>
+            </div>
+            <section class="portal-leads-editor portal-leads__editor" style="display:none">
+              <label for="lead-status-select">状态</label>
+              <select id="lead-status-select"><option value="new">新增</option><option value="disqualified">不合格</option></select>
+              <button type="button" id="save-lead">保存修改</button>
+              <p id="lead-error" role="alert" style="display:none"></p>
+            </section>
+            <p id="lead-feedback" role="status" style="display:none"></p>`
+          : '<div class="portal-leads__detail"></div>'
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
         res.end(`
           <!DOCTYPE html>
@@ -223,24 +319,33 @@ test.describe('live-workflow browser runner with synthetic server', () => {
             </div>
             <div class="portal-leads__workspace">
               <div class="portal-leads__list">
-                <ul><li>
-                  <button type="button" id="lead-item-btn">
-                    <strong>${latestInquiry.name}</strong>
-                    <span>${latestInquiry.company || ''}</span>
-                    <span>A 高意向</span>
-                  </button>
-                </li></ul>
+                <ul>${listItems}</ul>
               </div>
-              <div class="portal-leads__detail">
-                <h3>${latestInquiry.name}</h3>
-                <p id="detail-email">${latestInquiry.email}</p>
-                <p id="detail-company">${latestInquiry.company || ''}</p>
-                <p id="detail-locale">EN</p>
-              </div>
+              ${detail}
             </div>
             <script>
-              document.getElementById('lead-item-btn').addEventListener('click', () => {
-                document.querySelector('.portal-leads__detail').style.display = 'block';
+              const edit = document.getElementById('edit-lead');
+              if (edit) edit.addEventListener('click', () => {
+                document.querySelector('.portal-leads-editor').style.display = 'block';
+              });
+              const save = document.getElementById('save-lead');
+              if (save) save.addEventListener('click', async () => {
+                const response = await fetch('/synthetic-lead-update', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email: '${selected?.email ?? ''}' })
+                });
+                if (!response.ok) {
+                  const error = document.getElementById('lead-error');
+                  error.innerText = 'Synthetic cleanup failed';
+                  error.style.display = 'block';
+                  return;
+                }
+                document.getElementById('lead-status').innerText = '不合格';
+                document.querySelector('.portal-leads-editor').style.display = 'none';
+                const feedback = document.getElementById('lead-feedback');
+                feedback.innerText = '线索已保存。';
+                feedback.style.display = 'block';
               });
             </script>
           </body>
@@ -375,10 +480,12 @@ test.describe('live-workflow browser runner with synthetic server', () => {
 
       // Synthetic Page: Feishu Public Bitable
       if (url.pathname === '/feishu-public-table') {
-        const latestInquiry = state.inquiries.at(-1) || {
+        const latestInquiry = state.leads.at(-1) || {
           company: 'Canary Facade Test',
           email: 'canary-test@example.invalid',
+          message: '[CANARY test]',
           name: 'Canary Buyer Test',
+          status: 'new' as const,
         }
         const searchControl = state.delayedFeishuSearchMs
           ? `<div id="search-slot"></div><script>
@@ -400,13 +507,17 @@ test.describe('live-workflow browser runner with synthetic server', () => {
             ${
               state.hideFeishuRecord
                 ? ''
-                : `<div class="bitable-grid" role="row">
-                    <div class="cell-name">${latestInquiry.name}</div>
-                    <div class="cell-email">${latestInquiry.email}</div>
-                    <div class="cell-company">${latestInquiry.company || ''}</div>
-                  </div>`
+                : state.feishuSplitFields
+                  ? `<div role="row"><div>${latestInquiry.name}</div></div>
+                     <div role="row"><div>${latestInquiry.email}</div></div>
+                     <div role="row"><div>${latestInquiry.company}</div></div>`
+                  : `<div class="bitable-grid" role="row">
+                      <div class="cell-name">${latestInquiry.name}</div>
+                      <div class="cell-email">${latestInquiry.email}</div>
+                      <div class="cell-company">${latestInquiry.company}</div>
+                    </div>`
             }
-            ${state.duplicateFeishuRecord ? `<div role="row"><div>${latestInquiry.name}</div><div>${latestInquiry.email}</div><div>${latestInquiry.company || ''}</div></div>` : ''}
+            ${state.duplicateFeishuRecord ? `<div role="row"><div>${latestInquiry.name}</div><div>${latestInquiry.email}</div><div>${latestInquiry.company}</div></div>` : ''}
           </body>
           </html>
         `)
@@ -494,6 +605,32 @@ test.describe('live-workflow browser runner with synthetic server', () => {
     }
   })
 
+  test('rejects fields split across different Feishu rows and does not capture a screenshot', async () => {
+    state.feishuSplitFields = true
+    const screenshotPath = join(tempDir, 'feishu-split-fields.png')
+    const browser = await chromium.launch({ headless: true })
+    const page = await browser.newPage()
+    try {
+      const result = await verifyFeishuRecord({
+        company: 'Canary Facade Test',
+        email: 'canary-test@example.invalid',
+        name: 'Canary Buyer Test',
+        page,
+        screenshotPath,
+        tableUrl: `${serverUrl}/feishu-public-table`,
+        timeoutMs: 1_000,
+      })
+      expect(result).toMatchObject({ found: false, status: 'FAIL_FEISHU' })
+      expect(
+        await access(screenshotPath)
+          .then(() => true)
+          .catch(() => false),
+      ).toBe(false)
+    } finally {
+      await browser.close()
+    }
+  })
+
   test('waits for an asynchronously mounted Feishu search control', async () => {
     state.delayedFeishuSearchMs = 100
     state.hideFeishuRecord = true
@@ -558,6 +695,77 @@ test.describe('live-workflow browser runner with synthetic server', () => {
       'inquiry-feishu-en.png',
       'inquiry-portal-lead-en.png',
     ])
+  })
+
+  test('captures Feishu failure evidence and marks the exact Canary Lead disqualified', async () => {
+    state.duplicateFeishuRecord = true
+    const config: SmokeConfig = {
+      evidenceMode: 'compact',
+      feishuTableUrl: `${serverUrl}/feishu-public-table`,
+      headless: true,
+      locales: ['en'],
+      outputDir: tempDir,
+      portalEmail: 'smoke@example.invalid',
+      portalPassword: 'secret-password-123',
+      scenario: 'inquiry',
+      targetUrl: serverUrl,
+      timeoutMs: 10_000,
+    }
+
+    const { report } = await runLiveWorkflowSmoke(config, 'canary-test-feishu-failure')
+    expect(report.overallStatus).toBe('FAIL_FEISHU')
+    expect(report.evidence.some((path) => path.endsWith('inquiry-feishu-failure-en.png'))).toBe(
+      true,
+    )
+    expect(state.leads).toHaveLength(1)
+    expect(state.leads[0]?.status).toBe('disqualified')
+  })
+
+  test('captures Portal failure evidence without accepting duplicate leads', async () => {
+    state.duplicatePortalLead = true
+    const config: SmokeConfig = {
+      evidenceMode: 'compact',
+      feishuTableUrl: `${serverUrl}/feishu-public-table`,
+      headless: true,
+      locales: ['en'],
+      outputDir: tempDir,
+      portalEmail: 'smoke@example.invalid',
+      portalPassword: 'secret-password-123',
+      scenario: 'inquiry',
+      targetUrl: serverUrl,
+      timeoutMs: 5_000,
+    }
+
+    const { report } = await runLiveWorkflowSmoke(config, 'canary-test-portal-failure')
+    expect(report.overallStatus).toBe('FAIL_PORTAL')
+    expect(
+      report.evidence.some((path) => path.endsWith('inquiry-portal-lead-failure-en.png')),
+    ).toBe(true)
+  })
+
+  test('classifies denied and failed Portal Lead cleanup separately', async () => {
+    const baseConfig: SmokeConfig = {
+      evidenceMode: 'compact',
+      feishuTableUrl: `${serverUrl}/feishu-public-table`,
+      headless: true,
+      locales: ['en'],
+      outputDir: tempDir,
+      portalEmail: 'smoke@example.invalid',
+      portalPassword: 'secret-password-123',
+      scenario: 'inquiry',
+      targetUrl: serverUrl,
+      timeoutMs: 5_000,
+    }
+
+    state.denyLeadCleanup = true
+    const denied = await runLiveWorkflowSmoke(baseConfig, 'canary-test-cleanup-denied')
+    expect(denied.report.cleanup.status).toBe('SKIPPED')
+
+    state.denyLeadCleanup = false
+    state.failLeadCleanup = true
+    const failed = await runLiveWorkflowSmoke(baseConfig, 'canary-test-cleanup-failed')
+    expect(failed.report.cleanup.status).toBe('FAILED')
+    expect(failed.report.overallStatus).toBe('CLEANUP_FAILED')
   })
 
   test('fails before any Portal write when the browser response has no session ID', async () => {

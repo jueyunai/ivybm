@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { expect, type BrowserContext, type Page } from '@playwright/test'
 
 import type { SmokeConfig, SmokeLocale } from './config'
+import { captureLocatorEvidence, capturePageEvidence } from './evidence'
 import { verifyFeishuRecord } from './feishu-verifier'
 import { generateCanaryData, type CanaryData } from './marker'
 import { loginToPortal, PortalBlockedError, verifyUniquePortalLead } from './portal'
@@ -52,12 +53,15 @@ export const runChatWorkflow = async ({
   const startTime = Date.now()
   const data: CanaryData = generateCanaryData(runId, locale)
   const captureFullEvidence = config.evidenceMode === 'full'
-  const screenshots: Record<string, string> = {
+  const screenshotPaths = {
     feishu: join(runDir, `chat-feishu-${locale}.png`),
+    feishuFailure: join(runDir, `chat-feishu-failure-${locale}.png`),
     portalConversation: join(runDir, `chat-portal-conversation-${locale}.png`),
+    portalFailure: join(runDir, `chat-portal-failure-${locale}.png`),
     portalLead: join(runDir, `chat-portal-lead-${locale}.png`),
     visitor: join(runDir, `chat-visitor-${locale}.png`),
   }
+  const screenshots: Record<string, string> = {}
 
   let capturedSessionId: string | undefined
   let capturedRequestId: string | undefined
@@ -152,7 +156,9 @@ export const runChatWorkflow = async ({
           await expect(assistantMessage.locator('.chat-message-content > p')).not.toHaveText('')
           await expect(assistantMessage.locator('.chat-citations')).toContainText(reviewedSources)
         } catch (error) {
-          await widget.screenshot({ path: screenshots.visitor }).catch(() => undefined)
+          if (await captureLocatorEvidence({ locator: widget, path: screenshotPaths.visitor })) {
+            screenshots.visitor = screenshotPaths.visitor
+          }
           await visitorPage.close().catch(() => undefined)
           return {
             durationMs: Date.now() - startTime,
@@ -176,13 +182,19 @@ export const runChatWorkflow = async ({
     await expect(chatInput).toBeDisabled({ timeout: 10_000 })
 
     if (captureFullEvidence) {
-      await widget.screenshot({ path: screenshots.visitor })
+      if (await captureLocatorEvidence({ locator: widget, path: screenshotPaths.visitor })) {
+        screenshots.visitor = screenshotPaths.visitor
+      }
     }
   } catch (error) {
-    await visitorPage
-      .getByTestId('chat-widget')
-      .screenshot({ path: screenshots.visitor })
-      .catch(() => undefined)
+    if (
+      await captureLocatorEvidence({
+        locator: visitorPage.getByTestId('chat-widget'),
+        path: screenshotPaths.visitor,
+      })
+    ) {
+      screenshots.visitor = screenshotPaths.visitor
+    }
     await visitorPage.close().catch(() => undefined)
     return {
       durationMs: Date.now() - startTime,
@@ -237,7 +249,14 @@ export const runChatWorkflow = async ({
     await expect(conversationDetail.getByText(data.operatorReply, { exact: true })).toBeVisible({
       timeout: 15_000,
     })
-    await conversationDetail.screenshot({ path: screenshots.portalConversation })
+    if (
+      await captureLocatorEvidence({
+        locator: conversationDetail,
+        path: screenshotPaths.portalConversation,
+      })
+    ) {
+      screenshots.portalConversation = screenshotPaths.portalConversation
+    }
 
     // 3. Verify operator reply arrives at visitor ChatWidget (polling up to 30s)
     onStage?.('website')
@@ -267,13 +286,13 @@ export const runChatWorkflow = async ({
       expectHighIntent: true,
       locale,
       page: portalPage,
-      screenshotPath: screenshots.portalLead,
+      screenshotPath: screenshotPaths.portalLead,
     })
+    screenshots.portalLead = screenshotPaths.portalLead
   } catch (error) {
     if (portalPage) {
-      if (targetConversationConfirmed) {
-        const detail = portalPage.locator('.portal-conversations__detail')
-        await detail.screenshot({ path: screenshots.portalConversation }).catch(() => undefined)
+      if (await capturePageEvidence({ page: portalPage, path: screenshotPaths.portalFailure })) {
+        screenshots.portalFailure = screenshotPaths.portalFailure
       }
       if (targetConversationConfirmed && takeoverCompleted && !conversationResolved) {
         try {
@@ -335,7 +354,7 @@ export const runChatWorkflow = async ({
       email: data.email,
       name: data.name,
       page: feishuPage,
-      screenshotPath: screenshots.feishu,
+      screenshotPath: screenshotPaths.feishu,
       tableUrl: config.feishuTableUrl,
       timeoutMs: 60_000,
     })
@@ -343,10 +362,18 @@ export const runChatWorkflow = async ({
     feishuStatus = feishuResult.status
     if (!feishuResult.found) {
       feishuError = feishuResult.message
+      if (await capturePageEvidence({ page: feishuPage, path: screenshotPaths.feishuFailure })) {
+        screenshots.feishuFailure = screenshotPaths.feishuFailure
+      }
+    } else if (feishuResult.screenshotSaved) {
+      screenshots.feishu = screenshotPaths.feishu
     }
   } catch (error) {
     feishuStatus = 'FAIL_FEISHU'
     feishuError = error instanceof Error ? error.message : String(error)
+    if (await capturePageEvidence({ page: feishuPage, path: screenshotPaths.feishuFailure })) {
+      screenshots.feishuFailure = screenshotPaths.feishuFailure
+    }
   } finally {
     await feishuPage.close().catch(() => undefined)
   }

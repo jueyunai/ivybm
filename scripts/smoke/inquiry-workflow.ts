@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import type { BrowserContext } from '@playwright/test'
 
 import type { SmokeConfig, SmokeLocale } from './config'
+import { capturePageEvidence } from './evidence'
 import { verifyFeishuRecord } from './feishu-verifier'
 import { generateCanaryData, type CanaryData } from './marker'
 import { loginToPortal, PortalBlockedError, verifyUniquePortalLead } from './portal'
@@ -29,11 +30,14 @@ export const runInquiryWorkflow = async ({
   const startTime = Date.now()
   const data: CanaryData = generateCanaryData(runId, locale)
   const captureFullEvidence = config.evidenceMode === 'full'
-  const screenshots: Record<string, string> = {
+  const screenshotPaths = {
     feishu: join(runDir, `inquiry-feishu-${locale}.png`),
+    feishuFailure: join(runDir, `inquiry-feishu-failure-${locale}.png`),
     portalLead: join(runDir, `inquiry-portal-lead-${locale}.png`),
+    portalLeadFailure: join(runDir, `inquiry-portal-lead-failure-${locale}.png`),
     website: join(runDir, `inquiry-website-${locale}.png`),
   }
+  const screenshots: Record<string, string> = {}
 
   let capturedRequestId: string | undefined
 
@@ -85,12 +89,14 @@ export const runInquiryWorkflow = async ({
     }
 
     if (captureFullEvidence) {
-      await visitorPage.screenshot({ fullPage: true, path: screenshots.website })
+      if (await capturePageEvidence({ page: visitorPage, path: screenshotPaths.website })) {
+        screenshots.website = screenshotPaths.website
+      }
     }
   } catch (error) {
-    await visitorPage
-      .screenshot({ fullPage: true, path: screenshots.website })
-      .catch(() => undefined)
+    if (await capturePageEvidence({ page: visitorPage, path: screenshotPaths.website })) {
+      screenshots.website = screenshotPaths.website
+    }
     await visitorPage.close().catch(() => undefined)
     return {
       durationMs: Date.now() - startTime,
@@ -117,9 +123,13 @@ export const runInquiryWorkflow = async ({
       data,
       locale,
       page: portalPage,
-      screenshotPath: screenshots.portalLead,
+      screenshotPath: screenshotPaths.portalLead,
     })
+    screenshots.portalLead = screenshotPaths.portalLead
   } catch (error) {
+    if (await capturePageEvidence({ page: portalPage, path: screenshotPaths.portalLeadFailure })) {
+      screenshots.portalLeadFailure = screenshotPaths.portalLeadFailure
+    }
     await portalPage.close().catch(() => undefined)
     const errText = error instanceof Error ? error.message : String(error)
     return {
@@ -146,7 +156,7 @@ export const runInquiryWorkflow = async ({
       email: data.email,
       name: data.name,
       page: feishuPage,
-      screenshotPath: screenshots.feishu,
+      screenshotPath: screenshotPaths.feishu,
       tableUrl: config.feishuTableUrl,
       timeoutMs: 60_000,
     })
@@ -154,10 +164,18 @@ export const runInquiryWorkflow = async ({
     feishuStatus = feishuResult.status
     if (!feishuResult.found) {
       feishuError = feishuResult.message
+      if (await capturePageEvidence({ page: feishuPage, path: screenshotPaths.feishuFailure })) {
+        screenshots.feishuFailure = screenshotPaths.feishuFailure
+      }
+    } else if (feishuResult.screenshotSaved) {
+      screenshots.feishu = screenshotPaths.feishu
     }
   } catch (error) {
     feishuStatus = 'FAIL_FEISHU'
     feishuError = error instanceof Error ? error.message : String(error)
+    if (await capturePageEvidence({ page: feishuPage, path: screenshotPaths.feishuFailure })) {
+      screenshots.feishuFailure = screenshotPaths.feishuFailure
+    }
   } finally {
     await feishuPage.close().catch(() => undefined)
   }

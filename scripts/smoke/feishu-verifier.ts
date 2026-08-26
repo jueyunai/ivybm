@@ -1,10 +1,12 @@
 import type { Locator, Page } from '@playwright/test'
 
+import { captureLocatorEvidence } from './evidence'
 import type { SmokeStatus } from './report'
 
 export type FeishuVerificationResult = {
   found: boolean
   message?: string
+  screenshotSaved?: boolean
   status: SmokeStatus
 }
 
@@ -22,41 +24,21 @@ const visibleCount = async (locator: Locator): Promise<number> => {
   return count
 }
 
-const screenshotMatchedRecord = async ({
-  locators,
-  page,
-  path,
-}: {
-  locators: Locator[]
-  page: Page
-  path: string
-}): Promise<boolean> => {
-  const boxes = await Promise.all(locators.map((locator) => locator.first().boundingBox()))
-  if (boxes.some((box) => !box)) return false
-
-  const safeBoxes = boxes.filter((box): box is NonNullable<typeof box> => Boolean(box))
-  const left = Math.min(...safeBoxes.map((box) => box.x))
-  const top = Math.min(...safeBoxes.map((box) => box.y))
-  const right = Math.max(...safeBoxes.map((box) => box.x + box.width))
-  const bottom = Math.max(...safeBoxes.map((box) => box.y + box.height))
-  const padding = 12
-  if (bottom - top + padding * 2 > 220) return false
-  const viewport = page.viewportSize()
-  const x = Math.max(0, left - padding)
-  const y = Math.max(0, top - padding)
-  const clip = {
-    height: bottom - top + padding * 2,
-    width: viewport
-      ? Math.min(viewport.width - x, right + padding - x)
-      : right - left + padding * 2,
-    x,
-    y,
+const uniqueVisibleLocator = async (locator: Locator): Promise<Locator | null> => {
+  let match: Locator | null = null
+  for (let index = 0; index < (await locator.count()); index += 1) {
+    const candidate = locator.nth(index)
+    if (!(await candidate.isVisible().catch(() => false))) continue
+    if (match) return null
+    match = candidate
   }
-  if (clip.height <= 0 || clip.width <= 0) return false
-
-  await page.screenshot({ animations: 'disabled', clip, path })
-  return true
+  return match
 }
+
+const recordContainerFor = (emailMatch: Locator): Locator =>
+  emailMatch.locator(
+    'xpath=ancestor-or-self::*[self::tr or @role="row" or @data-row-id or @data-row-index or @data-record-id or @data-record-key or contains(@class, "record-row") or contains(@class, "table-row") or contains(@class, "grid-row")][1]',
+  )
 
 export const verifyFeishuRecord = async ({
   company,
@@ -110,8 +92,6 @@ export const verifyFeishuRecord = async ({
   }
 
   const emailMatches = page.getByText(email, { exact: true })
-  const companyMatches = page.getByText(company, { exact: true })
-  const nameMatches = page.getByText(name, { exact: true })
   const searchInput = page
     .locator('input[type="search"], input[placeholder*="搜索"], input[placeholder*="Search" i]')
     .first()
@@ -121,37 +101,45 @@ export const verifyFeishuRecord = async ({
 
   while (Date.now() - startTime < timeoutMs) {
     searchVisible = await searchInput.isVisible().catch(() => false)
-    const [emailCount, companyCount, nameCount] = await Promise.all([
-      visibleCount(emailMatches),
-      visibleCount(companyMatches),
-      visibleCount(nameMatches),
-    ])
+    const emailCount = await visibleCount(emailMatches)
 
-    if (emailCount > 1 || companyCount > 1 || nameCount > 1) {
+    if (emailCount > 1) {
       return {
         found: false,
-        message: `Feishu search is ambiguous: name=${nameCount}, email=${emailCount}, company=${companyCount}.`,
+        message: `Feishu search is ambiguous: email=${emailCount}.`,
         status: 'FAIL_FEISHU',
       }
     }
 
-    if (emailCount === 1 && companyCount === 1 && nameCount === 1) {
-      if (
-        screenshotPath &&
-        !(await screenshotMatchedRecord({
-          locators: [nameMatches, emailMatches, companyMatches],
-          page,
-          path: screenshotPath,
-        }))
-      ) {
+    if (emailCount === 1) {
+      const emailMatch = await uniqueVisibleLocator(emailMatches)
+      const record = emailMatch ? recordContainerFor(emailMatch) : null
+      const recordVisible = record ? await record.isVisible().catch(() => false) : false
+      if (!record || !recordVisible) {
         return {
           found: false,
-          message:
-            'Feishu record is visible but cannot be captured without including unrelated rows.',
+          message: 'Feishu email is visible but no safe row or record container can be identified.',
           status: 'BLOCKED_FEISHU_UI',
         }
       }
-      return { found: true, status: 'PASS' }
+
+      const [companyCount, nameCount] = await Promise.all([
+        visibleCount(record.getByText(company, { exact: true })),
+        visibleCount(record.getByText(name, { exact: true })),
+      ])
+      if (companyCount === 1 && nameCount === 1) {
+        const screenshotSaved = screenshotPath
+          ? await captureLocatorEvidence({ locator: record, path: screenshotPath })
+          : undefined
+        if (screenshotPath && !screenshotSaved) {
+          return {
+            found: false,
+            message: 'Feishu record is visible but its unique row could not be captured.',
+            status: 'BLOCKED_FEISHU_UI',
+          }
+        }
+        return { found: true, screenshotSaved, status: 'PASS' }
+      }
     }
 
     if (searchVisible && !searchAttempted) {

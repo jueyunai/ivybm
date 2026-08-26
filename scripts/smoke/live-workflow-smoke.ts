@@ -6,7 +6,7 @@ import { runChatWorkflow, type ChatConversationState } from './chat-workflow'
 import { parseSmokeConfig, type SmokeConfig, type SmokeLocale } from './config'
 import { runInquiryWorkflow } from './inquiry-workflow'
 import { generateCanaryData, generateRunId } from './marker'
-import { loginToPortal } from './portal'
+import { loginToPortal, markCanaryLeadDisqualified } from './portal'
 import {
   SmokeReportBuilder,
   type CleanupResult,
@@ -115,6 +115,37 @@ const recoverTimedOutConversation = async ({
   }
 }
 
+const cleanupCanaryLeads = async ({
+  browser,
+  config,
+  runDir,
+  runId,
+}: {
+  browser: Browser
+  config: SmokeConfig
+  runDir: string
+  runId: string
+}): Promise<CleanupResult[]> => {
+  const results: CleanupResult[] = []
+  for (const locale of config.locales) {
+    const context = await browser.newContext({ viewport: { height: 900, width: 1440 } })
+    const page = await context.newPage()
+    try {
+      results.push(
+        await markCanaryLeadDisqualified({
+          config,
+          data: generateCanaryData(runId, locale),
+          page,
+          screenshotPath: join(runDir, `cleanup-lead-${locale}.png`),
+        }),
+      )
+    } finally {
+      await context.close().catch(() => undefined)
+    }
+  }
+  return results
+}
+
 export const runLiveWorkflowSmoke = async (
   config: SmokeConfig,
   customRunId?: string,
@@ -139,6 +170,7 @@ export const runLiveWorkflowSmoke = async (
   let cancelled = false
   const cleanupResults: CleanupResult[] = []
   let executionError: unknown
+  let timedOut = false
 
   try {
     browser = await (dependencies.launchBrowser
@@ -245,6 +277,7 @@ export const runLiveWorkflowSmoke = async (
     } catch (error) {
       if (!(error instanceof SmokeTimeoutError)) throw error
 
+      timedOut = true
       cancelled = true
       const timedOutRun = readActiveRun()
       const timedOutIdentity = timedOutRun ?? readCurrentRun()
@@ -284,7 +317,12 @@ export const runLiveWorkflowSmoke = async (
   } catch (error) {
     executionError = error
   } finally {
-    if (browser) await browser.close().catch(() => undefined)
+    if (browser && !timedOut) {
+      cleanupResults.push(...(await cleanupCanaryLeads({ browser, config, runDir, runId })))
+      await browser.close().catch(() => undefined)
+    } else if (browser) {
+      await browser.close().catch(() => undefined)
+    }
 
     const failedCleanup = cleanupResults.filter((result) => result.status === 'FAILED')
     const successfulCleanup = cleanupResults.filter((result) => result.status === 'SUCCESS')
@@ -293,6 +331,7 @@ export const runLiveWorkflowSmoke = async (
         cleanupResults.flatMap((result) => result.details).length > 0
           ? cleanupResults.flatMap((result) => result.details)
           : ['No page-level cleanup was required.'],
+      screenshots: cleanupResults.flatMap((result) => result.screenshots ?? []),
       status:
         failedCleanup.length > 0 ? 'FAILED' : successfulCleanup.length > 0 ? 'SUCCESS' : 'SKIPPED',
     })

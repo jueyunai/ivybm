@@ -7,6 +7,7 @@ import {
   determineOverallStatus,
   determineScenarioStatus,
   HONEST_RESIDUE_NOTE,
+  maskSmokeIdentifier,
   SmokeReportBuilder,
 } from '../../../scripts/smoke/report'
 
@@ -107,8 +108,12 @@ describe('live-workflow report logic', () => {
       expect(summary).toContain('Overall Status: PASS')
       expect(summary).toContain('[CAN-INQ-01 Inquiry Workflow] Status: PASS')
       expect(summary).toContain('[CAN-CHAT-01 Chat & Handoff Workflow] Status: PASS')
-      expect(summary).toContain('req-en-123')
-      expect(summary).toContain('session-en-789')
+      expect(summary).toContain(maskSmokeIdentifier('req-en-123'))
+      expect(summary).toContain(maskSmokeIdentifier('session-en-789'))
+      expect(summary).not.toContain('req-en-123')
+      expect(summary).not.toContain('session-en-789')
+      expect(JSON.stringify(savedContent)).not.toContain('req-en-123')
+      expect(JSON.stringify(savedContent)).not.toContain('session-en-789')
     } finally {
       await rm(tempDir, { force: true, recursive: true }).catch(() => undefined)
     }

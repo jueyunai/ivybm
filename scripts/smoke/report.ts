@@ -43,6 +43,7 @@ export type ChatRunResult = {
 
 export type CleanupResult = {
   details: string[]
+  screenshots?: string[]
   status: 'FAILED' | 'SKIPPED' | 'SUCCESS'
 }
 
@@ -73,6 +74,18 @@ export type SmokeReport = {
 
 export const HONEST_RESIDUE_NOTE =
   'Production workflow smoke creates immutable conversation records, jobs, audit entries, and non-recallable Feishu notifications. Synthetic records contain [CANARY <runId>] for identification and manual archival.'
+
+export const maskSmokeIdentifier = (value: string): string => `…${value.slice(-6)}`
+
+const maskErrorIdentifiers = (
+  error: string | undefined,
+  identifiers: Array<string | undefined>,
+): string | undefined => {
+  if (!error) return undefined
+  return identifiers.reduce((masked: string, identifier) => {
+    return identifier ? masked.replaceAll(identifier, maskSmokeIdentifier(identifier)) : masked
+  }, error)
+}
 
 export const determineScenarioStatus = (statuses: SmokeStatus[]): SmokeStatus => {
   if (statuses.length === 0) return 'PASS'
@@ -130,21 +143,33 @@ export class SmokeReportBuilder {
   }
 
   addInquiryRun(result: InquiryRunResult): void {
-    this.inquiryRuns.push(result)
-    for (const path of Object.values(result.screenshots)) {
+    const maskedResult = {
+      ...result,
+      error: maskErrorIdentifiers(result.error, [result.requestId]),
+      requestId: result.requestId ? maskSmokeIdentifier(result.requestId) : undefined,
+    }
+    this.inquiryRuns.push(maskedResult)
+    for (const path of Object.values(maskedResult.screenshots)) {
       this.evidenceFiles.push(path)
     }
   }
 
   addChatRun(result: ChatRunResult): void {
-    this.chatRuns.push(result)
-    for (const path of Object.values(result.screenshots)) {
+    const maskedResult = {
+      ...result,
+      error: maskErrorIdentifiers(result.error, [result.requestId, result.sessionId]),
+      requestId: result.requestId ? maskSmokeIdentifier(result.requestId) : undefined,
+      sessionId: result.sessionId ? maskSmokeIdentifier(result.sessionId) : undefined,
+    }
+    this.chatRuns.push(maskedResult)
+    for (const path of Object.values(maskedResult.screenshots)) {
       this.evidenceFiles.push(path)
     }
   }
 
   setCleanup(result: CleanupResult): void {
     this.cleanupResult = result
+    for (const path of result.screenshots ?? []) this.evidenceFiles.push(path)
   }
 
   build(): SmokeReport {
@@ -161,7 +186,11 @@ export class SmokeReportBuilder {
         ? determineScenarioStatus(this.chatRuns.map((r) => r.status))
         : undefined
 
-    const overallStatus = determineOverallStatus(inquiryStatus, chatStatus, this.cleanupResult.status)
+    const overallStatus = determineOverallStatus(
+      inquiryStatus,
+      chatStatus,
+      this.cleanupResult.status,
+    )
 
     const inquiryDurationMs = this.inquiryRuns.reduce((acc, r) => acc + r.durationMs, 0)
     const chatDurationMs = this.chatRuns.reduce((acc, r) => acc + r.durationMs, 0)
@@ -203,7 +232,11 @@ export class SmokeReportBuilder {
   async saveArtifacts(): Promise<string> {
     const existingEvidence: string[] = []
     for (const path of this.evidenceFiles) {
-      if (await access(path).then(() => true).catch(() => false)) {
+      if (
+        await access(path)
+          .then(() => true)
+          .catch(() => false)
+      ) {
         existingEvidence.push(path)
       }
     }
