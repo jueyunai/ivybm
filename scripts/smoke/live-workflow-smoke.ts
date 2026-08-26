@@ -311,13 +311,18 @@ export const runLiveWorkflowSmoke = async (
       } else {
         throw error
       }
+
+      // Let the in-flight workflow observe cancellation and settle before
+      // cleanup starts. Otherwise a delayed inquiry/chat response could create
+      // a canary Lead after cleanup has already scanned the Portal.
+      await execution.catch(() => undefined)
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle)
     }
   } catch (error) {
     executionError = error
   } finally {
-    if (browser && !timedOut) {
+    if (browser && (!executionError || timedOut)) {
       cleanupResults.push(...(await cleanupCanaryLeads({ browser, config, runDir, runId })))
       await browser.close().catch(() => undefined)
     } else if (browser) {

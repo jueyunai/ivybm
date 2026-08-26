@@ -4,6 +4,7 @@ import { access, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, expect, test } from '@playwright/test'
+import sharp from 'sharp'
 
 import { runLiveWorkflowSmoke } from '../../scripts/smoke/live-workflow-smoke'
 import { verifyFeishuRecord } from '../../scripts/smoke/feishu-verifier'
@@ -41,6 +42,8 @@ test.describe('live-workflow browser runner with synthetic server', () => {
     omitSessionId: false,
     operatorReplies: [] as string[],
     takenOver: false,
+    unrelatedFeishuRecord: false,
+    unrelatedPortalLead: false,
   }
 
   test.beforeEach(() => {
@@ -60,6 +63,8 @@ test.describe('live-workflow browser runner with synthetic server', () => {
     state.omitSessionId = false
     state.operatorReplies.length = 0
     state.takenOver = false
+    state.unrelatedFeishuRecord = false
+    state.unrelatedPortalLead = false
   })
 
   test.beforeAll(async () => {
@@ -321,6 +326,7 @@ test.describe('live-workflow browser runner with synthetic server', () => {
               <div class="portal-leads__list">
                 <ul>${listItems}</ul>
               </div>
+              ${state.unrelatedPortalLead ? '<div data-testid="unrelated-customer-row">Unrelated customer@example.invalid</div>' : ''}
               ${detail}
             </div>
             <script>
@@ -517,6 +523,7 @@ test.describe('live-workflow browser runner with synthetic server', () => {
                       <div class="cell-company">${latestInquiry.company}</div>
                     </div>`
             }
+            ${state.unrelatedFeishuRecord ? '<div data-testid="unrelated-customer-row" role="row"><div>Unrelated Customer</div><div>unrelated@example.invalid</div><div>Unrelated Company</div></div>' : ''}
             ${state.duplicateFeishuRecord ? `<div role="row"><div>${latestInquiry.name}</div><div>${latestInquiry.email}</div><div>${latestInquiry.company}</div></div>` : ''}
           </body>
           </html>
@@ -699,6 +706,7 @@ test.describe('live-workflow browser runner with synthetic server', () => {
 
   test('captures Feishu failure evidence and marks the exact Canary Lead disqualified', async () => {
     state.duplicateFeishuRecord = true
+    state.unrelatedFeishuRecord = true
     const config: SmokeConfig = {
       evidenceMode: 'compact',
       feishuTableUrl: `${serverUrl}/feishu-public-table`,
@@ -714,15 +722,20 @@ test.describe('live-workflow browser runner with synthetic server', () => {
 
     const { report } = await runLiveWorkflowSmoke(config, 'canary-test-feishu-failure')
     expect(report.overallStatus).toBe('FAIL_FEISHU')
-    expect(report.evidence.some((path) => path.endsWith('inquiry-feishu-failure-en.png'))).toBe(
-      true,
+    const failureEvidence = report.evidence.find((path) =>
+      path.endsWith('inquiry-feishu-failure-en.png'),
     )
+    expect(failureEvidence).toBeDefined()
+    const failureEvidenceMetadata = await sharp(failureEvidence!).metadata()
+    expect(failureEvidenceMetadata.width).toBeLessThan(1_000)
+    expect(failureEvidenceMetadata.height).toBeLessThan(300)
     expect(state.leads).toHaveLength(1)
     expect(state.leads[0]?.status).toBe('disqualified')
   })
 
-  test('captures Portal failure evidence without accepting duplicate leads', async () => {
+  test('does not capture a full-page Portal failure artifact for duplicate leads', async () => {
     state.duplicatePortalLead = true
+    state.unrelatedPortalLead = true
     const config: SmokeConfig = {
       evidenceMode: 'compact',
       feishuTableUrl: `${serverUrl}/feishu-public-table`,
@@ -740,7 +753,7 @@ test.describe('live-workflow browser runner with synthetic server', () => {
     expect(report.overallStatus).toBe('FAIL_PORTAL')
     expect(
       report.evidence.some((path) => path.endsWith('inquiry-portal-lead-failure-en.png')),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   test('classifies denied and failed Portal Lead cleanup separately', async () => {
@@ -810,5 +823,8 @@ test.describe('live-workflow browser runner with synthetic server', () => {
     expect(Date.now() - startedAt).toBeLessThan(4_000)
     expect(report.scenarios.inquiry?.status).toBe('FAIL_WEBSITE')
     expect(report.scenarios.inquiry?.runs[0]?.error).toMatch(/overall timeout/u)
+    expect(report.cleanup.status).toBe('SUCCESS')
+    expect(state.leads).toHaveLength(1)
+    expect(state.leads[0]?.status).toBe('disqualified')
   })
 })

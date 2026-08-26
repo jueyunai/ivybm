@@ -1,7 +1,7 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 
 import type { SmokeConfig, SmokeLocale } from './config'
-import { capturePageEvidence } from './evidence'
+import { captureSafeFailureEvidence } from './evidence'
 import type { CanaryData } from './marker'
 import type { CleanupResult } from './report'
 
@@ -118,8 +118,12 @@ export const markCanaryLeadDisqualified = async ({
   screenshotPath: string
 }): Promise<CleanupResult> => {
   const screenshots: string[] = []
+  let safeDetail: Locator | undefined
   const captureFailure = async (): Promise<void> => {
-    if (await capturePageEvidence({ page, path: screenshotPath })) screenshots.push(screenshotPath)
+    const candidates = [...(safeDetail ? [safeDetail] : []), page.getByRole('alert')]
+    if (await captureSafeFailureEvidence({ candidates, path: screenshotPath })) {
+      screenshots.push(screenshotPath)
+    }
   }
 
   try {
@@ -168,6 +172,7 @@ export const markCanaryLeadDisqualified = async ({
     const detail = page.locator('.portal-leads__detail').first()
     await expect(detail.getByText(data.email, { exact: true })).toBeVisible()
     await expect(detail.getByText(data.company, { exact: true })).toBeVisible()
+    safeDetail = detail
 
     const disqualified = detail.getByText(/不合格|Disqualified/u, { exact: true }).first()
     if (await disqualified.isVisible().catch(() => false)) {

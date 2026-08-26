@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { expect, type BrowserContext, type Page } from '@playwright/test'
 
 import type { SmokeConfig, SmokeLocale } from './config'
-import { captureLocatorEvidence, capturePageEvidence } from './evidence'
+import { captureLocatorEvidence, captureSafeFailureEvidence } from './evidence'
 import { verifyFeishuRecord } from './feishu-verifier'
 import { generateCanaryData, type CanaryData } from './marker'
 import { loginToPortal, PortalBlockedError, verifyUniquePortalLead } from './portal'
@@ -291,7 +291,18 @@ export const runChatWorkflow = async ({
     screenshots.portalLead = screenshotPaths.portalLead
   } catch (error) {
     if (portalPage) {
-      if (await capturePageEvidence({ page: portalPage, path: screenshotPaths.portalFailure })) {
+      const safeCandidates = [
+        ...(targetConversationConfirmed
+          ? [portalPage.locator('.portal-conversations__detail').first()]
+          : []),
+        portalPage.getByRole('alert'),
+      ]
+      if (
+        await captureSafeFailureEvidence({
+          candidates: safeCandidates,
+          path: screenshotPaths.portalFailure,
+        })
+      ) {
         screenshots.portalFailure = screenshotPaths.portalFailure
       }
       if (targetConversationConfirmed && takeoverCompleted && !conversationResolved) {
@@ -362,7 +373,17 @@ export const runChatWorkflow = async ({
     feishuStatus = feishuResult.status
     if (!feishuResult.found) {
       feishuError = feishuResult.message
-      if (await capturePageEvidence({ page: feishuPage, path: screenshotPaths.feishuFailure })) {
+      if (
+        await captureSafeFailureEvidence({
+          candidates: [
+            feishuPage.locator(
+              'input[type="search"], input[placeholder*="搜索"], input[placeholder*="Search" i]',
+            ),
+            feishuPage.getByRole('alert'),
+          ],
+          path: screenshotPaths.feishuFailure,
+        })
+      ) {
         screenshots.feishuFailure = screenshotPaths.feishuFailure
       }
     } else if (feishuResult.screenshotSaved) {
@@ -371,7 +392,17 @@ export const runChatWorkflow = async ({
   } catch (error) {
     feishuStatus = 'FAIL_FEISHU'
     feishuError = error instanceof Error ? error.message : String(error)
-    if (await capturePageEvidence({ page: feishuPage, path: screenshotPaths.feishuFailure })) {
+    if (
+      await captureSafeFailureEvidence({
+        candidates: [
+          feishuPage.locator(
+            'input[type="search"], input[placeholder*="搜索"], input[placeholder*="Search" i]',
+          ),
+          feishuPage.getByRole('alert'),
+        ],
+        path: screenshotPaths.feishuFailure,
+      })
+    ) {
       screenshots.feishuFailure = screenshotPaths.feishuFailure
     }
   } finally {

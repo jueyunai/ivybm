@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import type { BrowserContext } from '@playwright/test'
 
 import type { SmokeConfig, SmokeLocale } from './config'
-import { capturePageEvidence } from './evidence'
+import { capturePageEvidence, captureSafeFailureEvidence } from './evidence'
 import { verifyFeishuRecord } from './feishu-verifier'
 import { generateCanaryData, type CanaryData } from './marker'
 import { loginToPortal, PortalBlockedError, verifyUniquePortalLead } from './portal'
@@ -94,7 +94,12 @@ export const runInquiryWorkflow = async ({
       }
     }
   } catch (error) {
-    if (await capturePageEvidence({ page: visitorPage, path: screenshotPaths.website })) {
+    if (
+      await captureSafeFailureEvidence({
+        candidates: [visitorPage.getByRole('alert')],
+        path: screenshotPaths.website,
+      })
+    ) {
       screenshots.website = screenshotPaths.website
     }
     await visitorPage.close().catch(() => undefined)
@@ -127,7 +132,12 @@ export const runInquiryWorkflow = async ({
     })
     screenshots.portalLead = screenshotPaths.portalLead
   } catch (error) {
-    if (await capturePageEvidence({ page: portalPage, path: screenshotPaths.portalLeadFailure })) {
+    if (
+      await captureSafeFailureEvidence({
+        candidates: [portalPage.getByRole('alert')],
+        path: screenshotPaths.portalLeadFailure,
+      })
+    ) {
       screenshots.portalLeadFailure = screenshotPaths.portalLeadFailure
     }
     await portalPage.close().catch(() => undefined)
@@ -164,7 +174,17 @@ export const runInquiryWorkflow = async ({
     feishuStatus = feishuResult.status
     if (!feishuResult.found) {
       feishuError = feishuResult.message
-      if (await capturePageEvidence({ page: feishuPage, path: screenshotPaths.feishuFailure })) {
+      if (
+        await captureSafeFailureEvidence({
+          candidates: [
+            feishuPage.locator(
+              'input[type="search"], input[placeholder*="搜索"], input[placeholder*="Search" i]',
+            ),
+            feishuPage.getByRole('alert'),
+          ],
+          path: screenshotPaths.feishuFailure,
+        })
+      ) {
         screenshots.feishuFailure = screenshotPaths.feishuFailure
       }
     } else if (feishuResult.screenshotSaved) {
@@ -173,7 +193,17 @@ export const runInquiryWorkflow = async ({
   } catch (error) {
     feishuStatus = 'FAIL_FEISHU'
     feishuError = error instanceof Error ? error.message : String(error)
-    if (await capturePageEvidence({ page: feishuPage, path: screenshotPaths.feishuFailure })) {
+    if (
+      await captureSafeFailureEvidence({
+        candidates: [
+          feishuPage.locator(
+            'input[type="search"], input[placeholder*="搜索"], input[placeholder*="Search" i]',
+          ),
+          feishuPage.getByRole('alert'),
+        ],
+        path: screenshotPaths.feishuFailure,
+      })
+    ) {
       screenshots.feishuFailure = screenshotPaths.feishuFailure
     }
   } finally {
