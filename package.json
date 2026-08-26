@@ -35,7 +35,8 @@
     "test:operations": "sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; exec vitest run --config ./vitest.operations.config.mts \"$@\"' --",
     "test:unit": "node scripts/ai-eval/validate.mjs && sh -c 'if [ \"$1\" = \"--\" ]; then shift; fi; exec cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts \"$@\"' --",
     "typecheck": "tsc --noEmit",
-    "worker": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=256\" DISABLE_PAYLOAD_HMR=true tsx src/worker.ts"
+    "worker": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=256\" DISABLE_PAYLOAD_HMR=true tsx src/worker.ts",
+    "smoke:live": "cross-env NODE_OPTIONS=--no-deprecation tsx scripts/smoke/live-workflow-smoke.ts"
   },
   "dependencies": {
     "@larksuiteoapi/node-sdk": "^1.72.0",
