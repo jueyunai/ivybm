@@ -3008,6 +3008,7 @@
   .portal-knowledge-editor__field input,
   .portal-knowledge-editor__field textarea,
   .portal-knowledge-editor__field select,
+  .portal-knowledge-ai-debug select,
   .portal-knowledge-ai-debug textarea {
     width: 100%;
     min-width: 0;
@@ -3032,6 +3033,7 @@
   .portal-knowledge-editor__field input:focus,
   .portal-knowledge-editor__field textarea:focus,
   .portal-knowledge-editor__field select:focus,
+  .portal-knowledge-ai-debug select:focus,
   .portal-knowledge-ai-debug textarea:focus {
     border-color: var(--portal-accent);
     box-shadow: 0 0 0 1px var(--portal-accent);

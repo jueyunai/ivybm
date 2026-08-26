@@ -20,6 +20,7 @@ const copy = {
       qualification_incomplete: 'The request needs more qualification details.',
       reviewed_knowledge_unavailable: 'Reviewed knowledge is unavailable.',
     },
+    handoffReasonUnknown: 'A human review is required.',
     input: 'Debug prompt',
     knowledgeLanguage: 'Knowledge language',
     localeArabic: 'Arabic',
@@ -40,6 +41,7 @@ const copy = {
       qualification_incomplete: '该请求仍需补充资格信息。',
       reviewed_knowledge_unavailable: '暂无可用的已审核知识。',
     },
+    handoffReasonUnknown: '该请求需要转交人工处理。',
     input: '调试输入',
     knowledgeLanguage: '知识语言',
     localeArabic: '阿拉伯语',
@@ -63,6 +65,14 @@ export function KnowledgeAiDebug() {
   const [error, setError] = useState('')
   const [running, setRunning] = useState(false)
   const commandKey = usePortalCommandKey('portal-knowledge-ai')
+  const citations = Array.from(
+    new Map(
+      (debugResult?.citations ?? []).map((citation) => [
+        `${String(citation.documentId)}:${citation.version}`,
+        citation,
+      ]),
+    ).values(),
+  )
 
   const run = async () => {
     setRunning(true)
@@ -134,6 +144,7 @@ export function KnowledgeAiDebug() {
         <span>{text.input}</span>
         <textarea
           disabled={running}
+          dir={knowledgeLocale === 'ar' ? 'rtl' : 'ltr'}
           maxLength={4000}
           onChange={(event) => setPrompt(event.target.value)}
           rows={4}
@@ -159,20 +170,20 @@ export function KnowledgeAiDebug() {
           <span>{text.handoff}</span>
           <p>
             {text.handoffReason[debugResult.reason as keyof (typeof text)['handoffReason']] ??
-              text.handoff}
+              text.handoffReasonUnknown}
           </p>
         </div>
       ) : null}
       {result ? (
-        <div className="portal-knowledge-ai-debug__result">
+        <div className="portal-knowledge-ai-debug__result" role="status">
           <span>{text.result}</span>
-          <pre>{result}</pre>
-          {debugResult?.citations && debugResult.citations.length > 0 ? (
+          <pre dir={knowledgeLocale === 'ar' ? 'rtl' : 'ltr'}>{result}</pre>
+          {citations.length > 0 ? (
             <div style={{ color: 'var(--portal-muted)', fontSize: '10px', marginTop: '6px' }}>
               <strong>{text.citations}</strong>
               <ul style={{ listStyleType: 'disc', margin: '4px 0 0 0', paddingLeft: '16px' }}>
-                {debugResult.citations.map((c, i) => (
-                  <li key={i}>
+                {citations.map((c) => (
+                  <li key={`${String(c.documentId)}:${c.version}`}>
                     {c.title} (v{c.version})
                   </li>
                 ))}
