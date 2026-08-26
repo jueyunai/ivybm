@@ -145,7 +145,9 @@ export interface PortalSettingsMessages {
   memberLockedUntil: string
   memberRole: string
   memberSaved: string
+  memberStale: string
   memberStatus: string
+  memberNotFound: string
   moduleOwner: string
   moduleStatusDescription: string
   moduleStatusTitle: string
@@ -166,6 +168,7 @@ export interface PortalSettingsMessages {
   resetPasswordDescription: string
   resetPasswordSuccess: string
   resetPasswordTitle: string
+  retryTeamMembers: string
   role: string
   roleAdminOption: string
   roleOperatorOption: string
@@ -194,6 +197,8 @@ export interface PortalSettingsMessages {
   teamAccountDisabled: string
   teamDescription: string
   teamMembersTitle: string
+  teamMembersReadError: string
+  teamCommandResultUnknown: string
   teamOperationError: string
   themeLabel: string
   title: string

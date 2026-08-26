@@ -519,8 +519,10 @@ export const PORTAL_EN = {
     changePassword: 'Change password',
     changePasswordCancel: 'Cancel',
     changePasswordConfirm: 'Confirm password change',
-    changePasswordDescription: 'Changing your password will revoke all existing sessions. You will be redirected to sign in with your new password.',
-    changePasswordError: 'Failed to change password. Please check your current password and inputs.',
+    changePasswordDescription:
+      'Changing your password will revoke all existing sessions. You will be redirected to sign in with your new password.',
+    changePasswordError:
+      'Failed to change password. Please check your current password and inputs.',
     changePasswordSaved: 'Password changed successfully. Redirecting to login...',
     changePasswordTitle: 'Change password',
     chinese: '中文',
@@ -534,8 +536,10 @@ export const PORTAL_EN = {
     currentPassword: 'Current password',
     darkTheme: 'Dark',
     deleteMember: 'Delete member',
-    deleteMemberDescription: 'Only new accounts without assignments or retained business history can be deleted. Lock established accounts instead.',
-    deleteMemberError: 'Failed to delete member. The member may have active business assignments or be the last administrator.',
+    deleteMemberDescription:
+      'Only new accounts without assignments or retained business history can be deleted. Lock established accounts instead.',
+    deleteMemberError:
+      'Failed to delete member. The member may have active business assignments or be the last administrator.',
     deleteMemberSuccess: 'Member deleted successfully.',
     deleteMemberTitle: 'Delete member',
     deletingMember: 'Deleting...',
@@ -550,7 +554,8 @@ export const PORTAL_EN = {
     languageLabel: 'Interface language',
     lightTheme: 'Light',
     lockMember: 'Lock',
-    lockMemberConfirm: 'Are you sure you want to lock this account? All active sessions will be revoked and login will be blocked.',
+    lockMemberConfirm:
+      'Are you sure you want to lock this account? All active sessions will be revoked and login will be blocked.',
     lockMemberSuccess: 'Member account locked.',
     lockMemberTitle: 'Lock member account',
     memberActions: 'Actions',
@@ -559,7 +564,10 @@ export const PORTAL_EN = {
     memberLockedUntil: 'Locked until',
     memberRole: 'Role',
     memberSaved: 'Member details saved.',
+    memberStale:
+      'This member was changed by another administrator. The list was refreshed; review it before trying again.',
     memberStatus: 'Status',
+    memberNotFound: 'This member no longer exists. The list was refreshed.',
     moduleOwner: 'Owner',
     moduleStatusDescription: 'Status comes from the static module contract and server flags.',
     moduleStatusTitle: 'Module status',
@@ -577,9 +585,11 @@ export const PORTAL_EN = {
     reduceMotion: 'Reduce motion',
     reduceMotionDescription: 'Disable non-essential transitions and looping animation.',
     resetPassword: 'Reset password',
-    resetPasswordDescription: 'Resetting a member password immediately revokes all active sessions for this account.',
+    resetPasswordDescription:
+      'Resetting a member password immediately revokes all active sessions for this account.',
     resetPasswordSuccess: 'Password reset successfully.',
     resetPasswordTitle: 'Reset member password',
+    retryTeamMembers: 'Reload member list',
     role: 'Role',
     roleAdminOption: 'Administrator (Admin)',
     roleOperatorOption: 'Operator',
@@ -610,11 +620,16 @@ export const PORTAL_EN = {
     teamAccountDisabled: 'Team account management is currently disabled.',
     teamDescription: 'Manage team member accounts, role permissions, and access status.',
     teamMembersTitle: 'Team members',
+    teamMembersReadError:
+      'The member list could not be loaded, so current account state cannot be confirmed. Reload the list.',
+    teamCommandResultUnknown:
+      'The command outcome is unknown. The list was refreshed; verify the current state before trying again.',
     teamOperationError: 'Operation failed. Please check inputs or refresh and try again.',
     themeLabel: 'Display theme',
     title: 'Settings',
     unlockMember: 'Unlock',
-    unlockMemberConfirm: 'Are you sure you want to unlock this account? This will reset failed login attempts.',
+    unlockMemberConfirm:
+      'Are you sure you want to unlock this account? This will reset failed login attempts.',
     unlockMemberSuccess: 'Member account unlocked.',
     unlockMemberTitle: 'Unlock member account',
   },

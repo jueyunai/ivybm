@@ -27,6 +27,25 @@ const isForeignKeyConstraintError = (error: unknown): boolean => {
   return candidate?.code === '23503' || candidate?.cause?.code === '23503'
 }
 
+// All commands that can remove an available administrator share this
+// transaction-scoped lock. Target-row locks alone cannot serialize commands
+// that operate on two different administrator rows.
+const lockAvailableAdminInvariant = async (
+  payload: Payload,
+  req: PayloadRequest,
+): Promise<void> => {
+  const transactionID = await req.transactionID
+  if (!transactionID) {
+    throw new UserSettingsCommandError(
+      'last-admin-transaction-required',
+      'Administrator safety checks require an active database transaction.',
+      500,
+    )
+  }
+  const database = await getDatabaseForRequest(payload, req)
+  await database.execute(sql`SELECT pg_advisory_xact_lock(49565942, 16)`)
+}
+
 export const revokeUserSessions = async (
   payload: Payload,
   req: PayloadRequest,
@@ -47,26 +66,30 @@ export const assertRemainingAvailableAdmin = async ({
   payload: Payload
   req: PayloadRequest
 }): Promise<void> => {
-  const adminsResult = await payload.find({
-    collection: 'users',
-    depth: 0,
-    limit: 50,
-    overrideAccess: true,
-    req,
-    showHiddenFields: true,
-    where: {
-      and: [
-        { role: { equals: 'admin' } },
-        { id: { not_equals: excludingUserId } },
-      ],
-    },
-  })
+  await lockAvailableAdminInvariant(payload, req)
+
+  // Read the current administrator rows through the same transaction
+  // connection as the advisory lock. Payload's collection query may reuse a
+  // snapshot that was created before another command released the invariant
+  // lock; this SQL query runs after the advisory wait and observes the latest
+  // committed row versions. The advisory lock is deliberately the sole
+  // cross-target serializer here, avoiding a lock-order deadlock with the
+  // generic command target-row lock acquired before the operation callback.
+  const database = await getDatabaseForRequest(payload, req)
+  const adminsResult = await database.execute(sql`
+    SELECT "id", "lock_until"
+    FROM "users"
+    WHERE "role" = 'admin'
+    ORDER BY "id"
+  `)
 
   const now = Date.now()
-  const availableAdmins = adminsResult.docs.filter((admin) => {
-    if (!admin.lockUntil) return true
-    const lockDate = new Date(admin.lockUntil).getTime()
-    return lockDate <= now
+  const availableAdmins = adminsResult.rows.filter((row) => {
+    const admin = row as { id?: number | string; lock_until?: string | Date | null }
+    if (String(admin.id) === String(excludingUserId)) return false
+    if (!admin.lock_until) return true
+    const lockDate = new Date(admin.lock_until).getTime()
+    return Number.isFinite(lockDate) && lockDate <= now
   })
 
   if (availableAdmins.length === 0) {
@@ -115,10 +138,7 @@ export const assertNoActiveBusinessAssignments = async ({
       overrideAccess: true,
       req,
       where: {
-        and: [
-          { assignedTo: { equals: userId } },
-          { status: { in: ['requested', 'active'] } },
-        ],
+        and: [{ assignedTo: { equals: userId } }, { status: { in: ['requested', 'active'] } }],
       },
     }),
     payload.count({
@@ -130,13 +150,7 @@ export const assertNoActiveBusinessAssignments = async ({
           { requestedBy: { equals: userId } },
           {
             status: {
-              in: [
-                'pending',
-                'registering',
-                'qr_ready',
-                'configuring',
-                'authorization_ready',
-              ],
+              in: ['pending', 'registering', 'qr_ready', 'configuring', 'authorization_ready'],
             },
           },
         ],
@@ -176,10 +190,7 @@ export const assertNoActiveBusinessAssignments = async ({
       overrideAccess: true,
       req,
       where: {
-        and: [
-          { actor: { equals: userId } },
-          { status: { equals: 'processing' } },
-        ],
+        and: [{ actor: { equals: userId } }, { status: { equals: 'processing' } }],
       },
     }),
   ])
@@ -265,10 +276,7 @@ const deleteRetiredCommandReceipts = async ({
     overrideAccess: true,
     req,
     where: {
-      and: [
-        { actor: { equals: userId } },
-        { status: { in: ['completed', 'failed'] } },
-      ],
+      and: [{ actor: { equals: userId } }, { status: { in: ['completed', 'failed'] } }],
     },
   })
 }
@@ -373,7 +381,11 @@ export const updateTeamMember = async ({
   const role = input.role !== undefined ? validateRole(input.role) : undefined
 
   if (email === undefined && role === undefined) {
-    throw new UserSettingsCommandError('invalid-input', 'At least email or role must be provided.', 400)
+    throw new UserSettingsCommandError(
+      'invalid-input',
+      'At least email or role must be provided.',
+      400,
+    )
   }
 
   const current = await payload.findByID({
@@ -417,10 +429,7 @@ export const updateTeamMember = async ({
       overrideAccess: true,
       req,
       where: {
-        and: [
-          { email: { equals: email } },
-          { id: { not_equals: current.id } },
-        ],
+        and: [{ email: { equals: email } }, { id: { not_equals: current.id } }],
       },
     })
     if (existing.totalDocs > 0) {

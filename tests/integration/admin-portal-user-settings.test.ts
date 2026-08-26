@@ -5,6 +5,7 @@ import { createLocalReq, getPayload, type Payload } from 'payload'
 
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
+import { executePortalCommand } from '@/admin-portal/core/commands/portalCommandReceipts'
 import {
   changePersonalPassword,
   createTeamMember,
@@ -16,6 +17,7 @@ import {
   updateTeamMember,
 } from '@/admin-portal/modules/settings/userSettingsCommands'
 import {
+  MANUAL_LOCK_UNTIL,
   UserSettingsCommandError,
 } from '@/admin-portal/modules/settings/userSettingsContracts'
 
@@ -373,6 +375,187 @@ describe.sequential('Portal team account and user settings database integration'
         status: 409,
       }),
     )
+  })
+
+  it('serializes concurrent last-admin lock, demotion, and deletion commands', async () => {
+    for (const operationName of ['lock', 'demote', 'delete'] as const) {
+      const racePayload = await getPayload({
+        config,
+        disableOnInit: true,
+        key: `portal-user-settings-race-${operationName}`,
+      })
+      const raceUserIds: Array<number | string> = []
+      const baselineAdminLocks = new Map<number | string, string | null>()
+      try {
+        // Isolate this invariant test from seed/admin fixtures that may exist
+        // in the shared integration database. The commands must prove that a
+        // race over exactly two available administrators leaves one survivor.
+        const existingAdmins = await racePayload.find({
+          collection: 'users',
+          depth: 0,
+          limit: 100,
+          overrideAccess: true,
+          showHiddenFields: true,
+          where: { role: { equals: 'admin' } },
+        })
+        for (const existingAdmin of existingAdmins.docs) {
+          baselineAdminLocks.set(existingAdmin.id, existingAdmin.lockUntil ?? null)
+          await racePayload.update({
+            collection: 'users',
+            context: { skipAudit: true },
+            data: { lockUntil: MANUAL_LOCK_UNTIL } as never,
+            id: existingAdmin.id,
+            overrideAccess: true,
+            showHiddenFields: true,
+          })
+        }
+
+        const suffix = randomUUID()
+        const raceAdminA = await racePayload.create({
+          collection: 'users',
+          context: { skipAudit: true },
+          data: {
+            email: `task16-race-a-${operationName}-${suffix}@example.invalid`,
+            password: 'AdminPassword123!',
+            role: 'admin',
+          },
+          overrideAccess: true,
+        })
+        const raceAdminB = await racePayload.create({
+          collection: 'users',
+          context: { skipAudit: true },
+          data: {
+            email: `task16-race-b-${operationName}-${suffix}@example.invalid`,
+            password: 'AdminPassword123!',
+            role: 'admin',
+          },
+          overrideAccess: true,
+        })
+        raceUserIds.push(raceAdminA.id, raceAdminB.id)
+
+        const requestA = await createLocalReq({ user: raceAdminA }, racePayload)
+        const requestB = await createLocalReq({ user: raceAdminB }, racePayload)
+        const inputFor = (user: User) => ({
+          email:
+            operationName === 'demote'
+              ? `task16-demoted-${String(user.id)}-${suffix}@example.invalid`
+              : undefined,
+          role: operationName === 'demote' ? ('operator' as const) : undefined,
+          updatedAt: user.updatedAt,
+        })
+        const commandFor = (target: User, actor: User, req: typeof requestA) =>
+          executePortalCommand({
+            fingerprintInput: { action: `task16-concurrent-${operationName}`, target: target.id },
+            idempotencyKey: `task16-${operationName}-${randomUUID()}`,
+            operation: async (transactionReq) => {
+              if (operationName === 'lock') {
+                return lockTeamMember({
+                  actor: { id: actor.id, role: 'admin' },
+                  id: target.id,
+                  input: { updatedAt: target.updatedAt },
+                  payload: racePayload,
+                  req: transactionReq,
+                })
+              }
+              if (operationName === 'demote') {
+                return updateTeamMember({
+                  actor: { id: actor.id, role: 'admin' },
+                  id: target.id,
+                  input: inputFor(target),
+                  payload: racePayload,
+                  req: transactionReq,
+                })
+              }
+              return deleteTeamMember({
+                actor: { id: actor.id, role: 'admin' },
+                id: target.id,
+                input: { confirmEmail: target.email, updatedAt: target.updatedAt },
+                payload: racePayload,
+                req: transactionReq,
+              })
+            },
+            payload: racePayload,
+            req,
+            scope: `task16:concurrent-last-admin-${operationName}`,
+            target: { collection: 'users', id: Number(target.id) },
+          })
+
+        const [resultA, resultB] = await Promise.allSettled([
+          commandFor(raceAdminA, raceAdminB, requestB),
+          commandFor(raceAdminB, raceAdminA, requestA),
+        ])
+        expect([resultA, resultB].filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+        expect([resultA, resultB].filter((result) => result.status === 'rejected')).toHaveLength(1)
+
+        const currentUsers = await Promise.all(
+          raceUserIds.map((id) =>
+            racePayload
+              .findByID({
+                collection: 'users',
+                depth: 0,
+                id,
+                overrideAccess: true,
+                showHiddenFields: true,
+              })
+              .catch(() => null),
+          ),
+        )
+        const availableAdmins = currentUsers.filter(
+          (user) =>
+            user?.role === 'admin' &&
+            (!user.lockUntil || new Date(user.lockUntil).getTime() <= Date.now()),
+        )
+        expect(availableAdmins).toHaveLength(1)
+
+        if (operationName === 'lock') {
+          const lockedUser = currentUsers.find((user) => user?.lockUntil)
+          if (!lockedUser) throw new Error('Expected one locked admin')
+          const actor = currentUsers.find((user) => String(user?.id) !== String(lockedUser.id))
+          if (!actor) throw new Error('Expected an available admin')
+          await unlockTeamMember({
+            actor: { id: actor.id, role: 'admin' },
+            id: lockedUser.id,
+            input: { updatedAt: lockedUser.updatedAt },
+            payload: racePayload,
+            req: await createLocalReq({ user: actor }, racePayload),
+          })
+        }
+      } finally {
+        await racePayload.destroy()
+        if (raceUserIds.length || baselineAdminLocks.size) {
+          const cleanupPayload = await getPayload({
+            config,
+            disableOnInit: true,
+            key: `portal-user-settings-race-cleanup-${operationName}`,
+          })
+          if (raceUserIds.length) {
+            await cleanupPayload.delete({
+              collection: 'portal-command-receipts',
+              context: { skipAudit: true },
+              overrideAccess: true,
+              where: { actor: { in: raceUserIds } },
+            })
+            await cleanupPayload.delete({
+              collection: 'users',
+              context: { skipAudit: true },
+              overrideAccess: true,
+              where: { id: { in: raceUserIds } },
+            })
+          }
+          for (const [adminId, lockUntil] of baselineAdminLocks) {
+            await cleanupPayload.update({
+              collection: 'users',
+              context: { skipAudit: true },
+              data: { lockUntil } as never,
+              id: adminId,
+              overrideAccess: true,
+              showHiddenFields: true,
+            })
+          }
+          await cleanupPayload.destroy()
+        }
+      }
+    }
   })
 
   it('prevents deleting a member with assigned leads or conversations', async () => {

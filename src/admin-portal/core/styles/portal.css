@@ -1419,6 +1419,14 @@
     text-align: center;
   }
 
+  .portal-team-members__read-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 0;
+  }
+
   /* Modals / Dialogs */
   .portal-modal-backdrop {
     position: fixed;
@@ -1481,7 +1489,6 @@
     gap: 8px;
     margin-top: 8px;
   }
-
 
   .portal-overview {
     display: grid;
@@ -3757,7 +3764,9 @@
   .portal-conversations__metric-card.is-active {
     border-color: var(--portal-accent);
     background: var(--portal-surface);
-    box-shadow: 0 0 0 1px var(--portal-accent), 0 2px 8px rgb(79 70 229 / 10%);
+    box-shadow:
+      0 0 0 1px var(--portal-accent),
+      0 2px 8px rgb(79 70 229 / 10%);
   }
 
   .portal-conversations__metric-header {
@@ -4048,28 +4057,28 @@
   }
 
   .portal-conversations__channel-avatar.is-facebook {
-    background: #1877F2;
-    color: #FFFFFF;
+    background: #1877f2;
+    color: #ffffff;
   }
 
   .portal-conversations__channel-avatar.is-instagram {
-    background: linear-gradient(45deg, #F58529, #DD2A7B, #8134AF);
-    color: #FFFFFF;
+    background: linear-gradient(45deg, #f58529, #dd2a7b, #8134af);
+    color: #ffffff;
   }
 
   .portal-conversations__channel-avatar.is-tiktok {
     background: #000000;
-    color: #FFFFFF;
+    color: #ffffff;
   }
 
   .portal-conversations__channel-avatar.is-whatsapp {
-    background: #25D366;
-    color: #FFFFFF;
+    background: #25d366;
+    color: #ffffff;
   }
 
   .portal-conversations__channel-avatar.is-website {
     background: var(--portal-accent);
-    color: #FFFFFF;
+    color: #ffffff;
   }
 
   .portal-conversations__detail-title-group {
@@ -4182,8 +4191,8 @@
 
   .portal-conversations__bubble.is-ai {
     align-self: flex-start;
-    border-color: #D4D0F8;
-    background: #FAF9FF;
+    border-color: #d4d0f8;
+    background: #faf9ff;
   }
 
   .portal-conversations__bubble.is-operator {
@@ -4226,18 +4235,18 @@
   }
 
   .portal-conversations__bubble.is-ai .portal-conversations__author-avatar {
-    background: #EBE8FD;
+    background: #ebe8fd;
     color: var(--portal-accent);
   }
 
   .portal-conversations__bubble.is-operator .portal-conversations__author-avatar {
     background: var(--portal-accent);
-    color: #FFFFFF;
+    color: #ffffff;
   }
 
   .portal-conversations__bubble.is-system .portal-conversations__author-avatar {
     background: var(--portal-warning);
-    color: #FFFFFF;
+    color: #ffffff;
   }
 
   .portal-conversations__bubble-author strong {
@@ -4315,9 +4324,9 @@
     justify-content: space-between;
     gap: 12px;
     padding: 10px 14px;
-    border: 1px solid #D4D0F8;
+    border: 1px solid #d4d0f8;
     border-radius: var(--portal-radius-card);
-    background: #FAF9FF;
+    background: #faf9ff;
   }
 
   .portal-conversations__takeover-info {
@@ -5544,7 +5553,6 @@
     justify-content: flex-start;
     flex-wrap: wrap;
   }
-
 
   .portal-overview__intro {
     align-items: flex-start;

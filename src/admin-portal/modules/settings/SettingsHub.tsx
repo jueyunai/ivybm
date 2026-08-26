@@ -27,6 +27,7 @@ export interface SettingsHubProps {
   summary: PortalSettingsSummary | null
   teamManagementEnabled?: boolean
   teamMembers?: PortalTeamMemberDTO[]
+  teamMembersReadError?: boolean
   user: PortalUser
 }
 
@@ -59,6 +60,7 @@ export function SettingsHub({
   summary,
   teamManagementEnabled = false,
   teamMembers = [],
+  teamMembersReadError = false,
   user,
 }: SettingsHubProps) {
   const { locale, reducedMotion, setLocale, setReducedMotion, setTheme, theme } =
@@ -178,7 +180,11 @@ export function SettingsHub({
         </Surface>
 
         {user.role === 'admin' && teamManagementEnabled ? (
-          <TeamMembersPanel currentUserId={user.id} initialMembers={teamMembers} />
+          <TeamMembersPanel
+            currentUserId={user.id}
+            initialMembers={teamMembers}
+            initialReadError={teamMembersReadError}
+          />
         ) : null}
 
         {user.role === 'admin' && aiReadError ? (
@@ -256,7 +262,16 @@ export function SettingsHub({
                 <div>
                   <strong>{messages.modules[portalModule.labelKey]}</strong>
                   <span>
-                    {messages.settings.moduleOwner}: {portalModule.owner === 'jueyunai' ? (locale === 'zh' ? '系统核心组' : 'Core System') : portalModule.owner === 'xuemusi' ? (locale === 'zh' ? 'AI 与渠道组' : 'AI & Channels') : portalModule.owner}
+                    {messages.settings.moduleOwner}:{' '}
+                    {portalModule.owner === 'jueyunai'
+                      ? locale === 'zh'
+                        ? '系统核心组'
+                        : 'Core System'
+                      : portalModule.owner === 'xuemusi'
+                        ? locale === 'zh'
+                          ? 'AI 与渠道组'
+                          : 'AI & Channels'
+                        : portalModule.owner}
                   </span>
                 </div>
                 <p>

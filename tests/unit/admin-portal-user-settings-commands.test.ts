@@ -145,15 +145,15 @@ describe('Portal team account and user settings commands', () => {
   })
 
   it('protects the last remaining available administrator from demotion, locking, or deletion', async () => {
+    const execute = vi.fn().mockResolvedValue({ rows: [] })
     const payload = {
       db: {
         sessions: {
           'test-tx-1': {
-            db: { execute: vi.fn() },
+            db: { execute },
           },
         },
       },
-      find: vi.fn().mockResolvedValue({ docs: [] }), // No other admins found
       findByID: vi.fn().mockResolvedValue({
         email: 'lastadmin@example.com',
         id: 1,
@@ -172,9 +172,7 @@ describe('Portal team account and user settings commands', () => {
     )
 
     // When another active admin exists, it succeeds
-    payload.find = vi.fn().mockResolvedValue({
-      docs: [{ id: 2, lockUntil: null, role: 'admin' }],
-    })
+    execute.mockResolvedValue({ rows: [{ id: 1, lock_until: null }, { id: 2, lock_until: null }] })
     await expect(
       assertRemainingAvailableAdmin({ excludingUserId: 1, payload, req: mockReq }),
     ).resolves.toBeUndefined()

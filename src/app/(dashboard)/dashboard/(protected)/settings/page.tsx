@@ -44,6 +44,7 @@ export default async function PortalSettingsPage() {
   }
   let readError = false
   let aiReadError = false
+  let teamMembersReadError = false
   let summary: PortalSettingsSummary | null = null
   let siteSettings: PortalSiteSettingsEditor | null = null
   let aiSettings: PortalAiSettingsSummary = portalAiSettingsAdminOnly()
@@ -73,6 +74,7 @@ export default async function PortalSettingsPage() {
         try {
           teamMembers = await getPortalTeamMembers({ payload, req })
         } catch (error) {
+          teamMembersReadError = true
           console.error('Portal settings read_failed', {
             error: error instanceof Error ? error.name : 'UnknownError',
             module: 'settings',
@@ -84,6 +86,7 @@ export default async function PortalSettingsPage() {
   } catch (error) {
     readError = true
     aiReadError = user.role === 'admin'
+    teamMembersReadError = user.role === 'admin' && teamManagementEnabled
     console.error('Portal settings read_failed', {
       error: error instanceof Error ? error.name : 'UnknownError',
       module: 'settings',
@@ -102,6 +105,7 @@ export default async function PortalSettingsPage() {
       siteSettings={siteSettings}
       teamManagementEnabled={teamManagementEnabled}
       teamMembers={teamMembers}
+      teamMembersReadError={teamMembersReadError}
       user={user}
     />
   )

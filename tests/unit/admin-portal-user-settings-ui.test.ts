@@ -159,7 +159,9 @@ describe('Portal TeamMembersPanel UI', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /新增成员/ }))
+    const trigger = screen.getByRole('button', { name: /新增成员/ })
+    trigger.focus()
+    fireEvent.click(trigger)
     expect(screen.getByRole('heading', { name: '新增团队成员' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
@@ -184,10 +186,17 @@ describe('Portal TeamMembersPanel UI', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /新增成员/ }))
+    const trigger = screen.getByRole('button', { name: /新增成员/ })
+    trigger.focus()
+    fireEvent.click(trigger)
     expect(screen.getByRole('dialog', { name: '新增团队成员' })).toBeTruthy()
-    fireEvent.keyDown(window, { key: 'Escape' })
+    const dialog = screen.getByRole('dialog', { name: '新增团队成员' })
+    expect(document.activeElement).toBe(screen.getByLabelText('登录邮箱'))
+    fireEvent.keyDown(dialog, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: '新增团队成员' })).toBeNull()
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: /新增成员/ }))
+    })
 
     fireEvent.click(screen.getByRole('button', { name: /新增成员/ }))
     fireEvent.change(screen.getByLabelText('登录邮箱'), {
@@ -204,6 +213,78 @@ describe('Portal TeamMembersPanel UI', () => {
     await waitFor(() => {
       const dialog = screen.getByRole('dialog', { name: '新增团队成员' })
       expect(dialog.textContent).toContain('邮箱已存在')
+    })
+  })
+
+  it('refreshes after stale errors and requires a fresh confirmation instead of replaying', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            error: { code: 'stale-user-version', message: 'stale user' },
+          }),
+        ok: false,
+      })
+      .mockResolvedValueOnce({
+        json: () => Promise.resolve({ members: mockMembers }),
+        ok: true,
+      })
+    globalThis.fetch = fetchMock
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(TeamMembersPanel, {
+          currentUserId: 1,
+          initialMembers: mockMembers,
+        }),
+      ),
+    )
+
+    const operatorRow = screen.getByText('operator@example.com').closest('article')
+    fireEvent.click(within(operatorRow as HTMLElement).getByRole('button', { name: '编辑' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/portal/settings/users')
+      expect(screen.queryByRole('dialog', { name: '编辑成员信息' })).toBeNull()
+      expect(
+        screen.getByText('该成员已被其他管理员修改，列表已刷新，请重新确认后操作。'),
+      ).toBeTruthy()
+    })
+  })
+
+  it('shows an explicit read error and recovers only after a successful reload', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ members: mockMembers }),
+      ok: true,
+    })
+    globalThis.fetch = fetchMock
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(TeamMembersPanel, {
+          currentUserId: 1,
+          initialMembers: [],
+          initialReadError: true,
+        }),
+      ),
+    )
+
+    expect(screen.getByRole('alert').textContent).toContain('成员列表加载失败')
+    expect((screen.getByRole('button', { name: '新增成员' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '重新加载成员列表' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(screen.getByText('operator@example.com')).toBeTruthy()
     })
   })
 

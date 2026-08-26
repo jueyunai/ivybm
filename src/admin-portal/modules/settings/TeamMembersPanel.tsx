@@ -1,6 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
+import {
+  useCallback,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 
 import {
   IconLock,
@@ -16,21 +25,124 @@ import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, StatusBadge, Surface } from '@/admin-portal/core/ui'
 
-import type {
-  PortalTeamMemberDTO,
-  PortalTeamMemberRole,
-} from './userSettingsContracts'
+import type { PortalTeamMemberDTO, PortalTeamMemberRole } from './userSettingsContracts'
 
 export interface TeamMembersPanelProps {
   currentUserId: number | string
   initialMembers?: PortalTeamMemberDTO[]
+  initialReadError?: boolean
 }
 
 type ModalMode = 'add' | 'delete' | 'edit' | 'reset-password' | null
 
+type TeamMembersAPIResult = {
+  deletedId?: number | string
+  error?: { code?: string; details?: unknown; message?: string }
+  member?: PortalTeamMemberDTO
+  members?: PortalTeamMemberDTO[]
+  success?: boolean
+}
+
+class TeamMembersRequestError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly details?: unknown,
+  ) {
+    super(message)
+    this.name = 'TeamMembersRequestError'
+  }
+}
+
+const readTeamMembersResponse = async (
+  response: Response,
+  fallbackMessage: string,
+): Promise<TeamMembersAPIResult> => {
+  let result: TeamMembersAPIResult
+  try {
+    result = (await response.json()) as TeamMembersAPIResult
+  } catch {
+    throw new TeamMembersRequestError('invalid-response', fallbackMessage)
+  }
+  if (!response.ok) {
+    throw new TeamMembersRequestError(
+      result.error?.code ?? 'team-operation-failed',
+      result.error?.message ?? fallbackMessage,
+      result.error?.details,
+    )
+  }
+  return result
+}
+
+function TeamMemberDialog({
+  busy,
+  children,
+  description,
+  onClose,
+  open,
+  returnFocusRef,
+  title,
+}: {
+  busy: boolean
+  children: ReactNode
+  description?: string
+  onClose: () => void
+  open: boolean
+  returnFocusRef: RefObject<HTMLElement | null>
+  title: string
+}) {
+  const contentRef = useRef<HTMLDivElement>(null)
+  const descriptionId = useId()
+
+  return (
+    <Dialog.Root
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !busy) onClose()
+      }}
+      open={open}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className="portal-modal-backdrop" />
+        <Dialog.Content
+          aria-describedby={description ? descriptionId : undefined}
+          className="portal-surface portal-modal"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            returnFocusRef.current?.focus()
+            setTimeout(() => returnFocusRef.current?.focus(), 0)
+          }}
+          onEscapeKeyDown={(event) => {
+            if (busy) event.preventDefault()
+          }}
+          onInteractOutside={(event) => event.preventDefault()}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            const firstField = contentRef.current?.querySelector<HTMLElement>(
+              '[data-dialog-initial-focus], input:not([disabled]), select:not([disabled]), button:not([disabled])',
+            )
+            firstField?.focus()
+          }}
+          ref={contentRef}
+        >
+          <header className="portal-modal__header">
+            <Dialog.Title asChild>
+              <h4>{title}</h4>
+            </Dialog.Title>
+            {description ? (
+              <Dialog.Description id={descriptionId}>{description}</Dialog.Description>
+            ) : null}
+          </header>
+          {children}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
+}
+
 export function TeamMembersPanel({
   currentUserId,
   initialMembers = [],
+  initialReadError = false,
 }: TeamMembersPanelProps) {
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).settings
@@ -38,12 +150,14 @@ export function TeamMembersPanel({
 
   const [members, setMembers] = useState<PortalTeamMemberDTO[]>(initialMembers)
   const [busy, setBusy] = useState(false)
+  const [readError, setReadError] = useState(initialReadError)
   const [feedback, setFeedback] = useState<{ message: string; tone: 'error' | 'success' } | null>(
     null,
   )
 
   const [modalMode, setModalMode] = useState<ModalMode>(null)
   const [selectedMember, setSelectedMember] = useState<PortalTeamMemberDTO | null>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
 
   // Form states
   const [formEmail, setFormEmail] = useState('')
@@ -52,29 +166,27 @@ export function TeamMembersPanel({
   const [formConfirmPassword, setFormConfirmPassword] = useState('')
   const [formConfirmEmail, setFormConfirmEmail] = useState('')
 
-  const refresh = async () => {
-    try {
-      const response = await fetch('/api/portal/settings/users', {
-        cache: 'no-store',
-        credentials: 'same-origin',
-      })
-      const data = (await response.json()) as {
-        error?: { message?: string }
-        members?: PortalTeamMemberDTO[]
-      }
-      if (!response.ok) throw new Error(data.error?.message || messages.teamOperationError)
-      if (Array.isArray(data.members)) {
-        setMembers(data.members)
-      }
-    } catch (error) {
-      setFeedback({
-        message: error instanceof Error ? error.message : messages.teamOperationError,
-        tone: 'error',
-      })
+  const refresh = useCallback(async (): Promise<PortalTeamMemberDTO[]> => {
+    const response = await fetch('/api/portal/settings/users', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    })
+    const result = await readTeamMembersResponse(response, messages.teamMembersReadError)
+    if (!Array.isArray(result.members)) {
+      throw new TeamMembersRequestError('invalid-response', messages.teamMembersReadError)
     }
+    setMembers(result.members)
+    setReadError(false)
+    return result.members
+  }, [messages.teamMembersReadError])
+
+  const rememberTrigger = () => {
+    returnFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
   }
 
   const openAddModal = () => {
+    rememberTrigger()
     setSelectedMember(null)
     setFormEmail('')
     setFormRole('sales')
@@ -85,6 +197,7 @@ export function TeamMembersPanel({
   }
 
   const openEditModal = (member: PortalTeamMemberDTO) => {
+    rememberTrigger()
     setSelectedMember(member)
     setFormEmail(member.email)
     setFormRole(member.role)
@@ -93,6 +206,7 @@ export function TeamMembersPanel({
   }
 
   const openResetPasswordModal = (member: PortalTeamMemberDTO) => {
+    rememberTrigger()
     setSelectedMember(member)
     setFormPassword('')
     setFormConfirmPassword('')
@@ -101,6 +215,7 @@ export function TeamMembersPanel({
   }
 
   const openDeleteModal = (member: PortalTeamMemberDTO) => {
+    rememberTrigger()
     setSelectedMember(member)
     setFormConfirmEmail('')
     setFeedback(null)
@@ -108,29 +223,70 @@ export function TeamMembersPanel({
   }
 
   const closeModal = useCallback(() => {
+    const trigger = returnFocusRef.current
     setModalMode(null)
     setSelectedMember(null)
     setFormEmail('')
     setFormPassword('')
     setFormConfirmPassword('')
     setFormConfirmEmail('')
-  }, [
-    setFormConfirmEmail,
-    setFormConfirmPassword,
-    setFormEmail,
-    setFormPassword,
-    setModalMode,
-    setSelectedMember,
-  ])
+    trigger?.focus()
+  }, [])
 
-  useEffect(() => {
-    if (!modalMode) return
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !busy) closeModal()
+  const replaceMember = (member: PortalTeamMemberDTO) => {
+    setMembers((currentMembers) => {
+      const remaining = currentMembers.filter((current) => String(current.id) !== String(member.id))
+      return [...remaining, member].sort((left, right) =>
+        left.createdAt.localeCompare(right.createdAt),
+      )
+    })
+    setReadError(false)
+  }
+
+  const recoverFromCommandConflict = async (error: unknown): Promise<boolean> => {
+    if (!(error instanceof TeamMembersRequestError)) return false
+    const message = {
+      'portal-command-result-unknown': messages.teamCommandResultUnknown,
+      'stale-user-version': messages.memberStale,
+      'user-not-found': messages.memberNotFound,
+    }[error.code]
+    if (!message) return false
+
+    closeModal()
+    try {
+      await refresh()
+      setFeedback({ message, tone: 'error' })
+    } catch {
+      setReadError(true)
+      setFeedback({ message: messages.teamMembersReadError, tone: 'error' })
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [busy, closeModal, modalMode])
+    return true
+  }
+
+  const retryMemberRead = async () => {
+    setBusy(true)
+    setFeedback(null)
+    try {
+      await refresh()
+    } catch {
+      setReadError(true)
+      setFeedback({ message: messages.teamMembersReadError, tone: 'error' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const receiveCommandResponse = async (
+    response: Response,
+    idempotencyKey: string,
+    fallbackMessage: string,
+  ): Promise<TeamMembersAPIResult> => {
+    try {
+      return await readTeamMembersResponse(response, fallbackMessage)
+    } finally {
+      command.receivedResponse(idempotencyKey)
+    }
+  }
 
   const handleAddSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -165,21 +321,24 @@ export function TeamMembersPanel({
         method: 'POST',
       })
 
-      const result = (await response.json()) as { error?: { message?: string } }
-      command.receivedResponse(idempotencyKey)
-
-      if (!response.ok) {
-        throw new Error(result.error?.message || messages.teamOperationError)
+      const result = await receiveCommandResponse(
+        response,
+        idempotencyKey,
+        messages.teamOperationError,
+      )
+      if (!result.member) {
+        throw new TeamMembersRequestError('invalid-response', messages.teamOperationError)
       }
-
-      await refresh()
+      replaceMember(result.member)
       closeModal()
       setFeedback({ message: messages.memberSaved, tone: 'success' })
     } catch (error) {
-      setFeedback({
-        message: error instanceof Error ? error.message : messages.teamOperationError,
-        tone: 'error',
-      })
+      if (!(await recoverFromCommandConflict(error))) {
+        setFeedback({
+          message: error instanceof Error ? error.message : messages.teamOperationError,
+          tone: 'error',
+        })
+      }
     } finally {
       setBusy(false)
     }
@@ -216,21 +375,24 @@ export function TeamMembersPanel({
         method: 'PATCH',
       })
 
-      const result = (await response.json()) as { error?: { message?: string } }
-      command.receivedResponse(idempotencyKey)
-
-      if (!response.ok) {
-        throw new Error(result.error?.message || messages.teamOperationError)
+      const result = await receiveCommandResponse(
+        response,
+        idempotencyKey,
+        messages.teamOperationError,
+      )
+      if (!result.member) {
+        throw new TeamMembersRequestError('invalid-response', messages.teamOperationError)
       }
-
-      await refresh()
+      replaceMember(result.member)
       closeModal()
       setFeedback({ message: messages.memberSaved, tone: 'success' })
     } catch (error) {
-      setFeedback({
-        message: error instanceof Error ? error.message : messages.teamOperationError,
-        tone: 'error',
-      })
+      if (!(await recoverFromCommandConflict(error))) {
+        setFeedback({
+          message: error instanceof Error ? error.message : messages.teamOperationError,
+          tone: 'error',
+        })
+      }
     } finally {
       setBusy(false)
     }
@@ -256,35 +418,41 @@ export function TeamMembersPanel({
     )
 
     try {
-      const response = await fetch(`/api/portal/settings/users/${selectedMember.id}/reset-password`, {
-        body: JSON.stringify({
-          confirmPassword: formConfirmPassword,
-          password: formPassword,
-          updatedAt: selectedMember.updatedAt,
-        }),
-        credentials: 'same-origin',
-        headers: {
-          'content-type': 'application/json',
-          'Idempotency-Key': idempotencyKey,
+      const response = await fetch(
+        `/api/portal/settings/users/${selectedMember.id}/reset-password`,
+        {
+          body: JSON.stringify({
+            confirmPassword: formConfirmPassword,
+            password: formPassword,
+            updatedAt: selectedMember.updatedAt,
+          }),
+          credentials: 'same-origin',
+          headers: {
+            'content-type': 'application/json',
+            'Idempotency-Key': idempotencyKey,
+          },
+          method: 'POST',
         },
-        method: 'POST',
-      })
+      )
 
-      const result = (await response.json()) as { error?: { message?: string } }
-      command.receivedResponse(idempotencyKey)
-
-      if (!response.ok) {
-        throw new Error(result.error?.message || messages.teamOperationError)
+      const result = await receiveCommandResponse(
+        response,
+        idempotencyKey,
+        messages.teamOperationError,
+      )
+      if (!result.member) {
+        throw new TeamMembersRequestError('invalid-response', messages.teamOperationError)
       }
-
-      await refresh()
+      replaceMember(result.member)
       closeModal()
       setFeedback({ message: messages.resetPasswordSuccess, tone: 'success' })
     } catch (error) {
-      setFeedback({
-        message: error instanceof Error ? error.message : messages.teamOperationError,
-        tone: 'error',
-      })
+      if (!(await recoverFromCommandConflict(error))) {
+        setFeedback({
+          message: error instanceof Error ? error.message : messages.teamOperationError,
+          tone: 'error',
+        })
+      }
     } finally {
       setBusy(false)
     }
@@ -319,23 +487,26 @@ export function TeamMembersPanel({
         method: 'POST',
       })
 
-      const result = (await response.json()) as { error?: { message?: string } }
-      command.receivedResponse(idempotencyKey)
-
-      if (!response.ok) {
-        throw new Error(result.error?.message || messages.teamOperationError)
+      const result = await receiveCommandResponse(
+        response,
+        idempotencyKey,
+        messages.teamOperationError,
+      )
+      if (!result.member) {
+        throw new TeamMembersRequestError('invalid-response', messages.teamOperationError)
       }
-
-      await refresh()
+      replaceMember(result.member)
       setFeedback({
         message: isLocked ? messages.unlockMemberSuccess : messages.lockMemberSuccess,
         tone: 'success',
       })
     } catch (error) {
-      setFeedback({
-        message: error instanceof Error ? error.message : messages.teamOperationError,
-        tone: 'error',
-      })
+      if (!(await recoverFromCommandConflict(error))) {
+        setFeedback({
+          message: error instanceof Error ? error.message : messages.teamOperationError,
+          tone: 'error',
+        })
+      }
     } finally {
       setBusy(false)
     }
@@ -370,12 +541,7 @@ export function TeamMembersPanel({
         method: 'DELETE',
       })
 
-      const result = (await response.json()) as { error?: { message?: string } }
-      command.receivedResponse(idempotencyKey)
-
-      if (!response.ok) {
-        throw new Error(result.error?.message || messages.deleteMemberError)
-      }
+      await receiveCommandResponse(response, idempotencyKey, messages.deleteMemberError)
 
       setMembers((currentMembers) =>
         currentMembers.filter((member) => String(member.id) !== String(selectedMember.id)),
@@ -383,10 +549,12 @@ export function TeamMembersPanel({
       closeModal()
       setFeedback({ message: messages.deleteMemberSuccess, tone: 'success' })
     } catch (error) {
-      setFeedback({
-        message: error instanceof Error ? error.message : messages.deleteMemberError,
-        tone: 'error',
-      })
+      if (!(await recoverFromCommandConflict(error))) {
+        setFeedback({
+          message: error instanceof Error ? error.message : messages.deleteMemberError,
+          tone: 'error',
+        })
+      }
     } finally {
       setBusy(false)
     }
@@ -410,7 +578,9 @@ export function TeamMembersPanel({
       case 'security_locked':
         return {
           label: messages.statusSecurityLocked,
-          sub: lockedUntil ? `${messages.memberLockedUntil}: ${new Date(lockedUntil).toLocaleTimeString()}` : null,
+          sub: lockedUntil
+            ? `${messages.memberLockedUntil}: ${new Date(lockedUntil).toLocaleTimeString()}`
+            : null,
           tone: 'warning' as const,
         }
       case 'manually_locked':
@@ -437,7 +607,10 @@ export function TeamMembersPanel({
   ) : null
 
   return (
-    <Surface as="section" className="portal-settings__section portal-settings__section--wide portal-team-members">
+    <Surface
+      as="section"
+      className="portal-settings__section portal-settings__section--wide portal-team-members"
+    >
       <div className="portal-settings__section-heading">
         <span aria-hidden="true" className="portal-settings__section-icon">
           <IconUsers size={20} stroke={1.8} />
@@ -446,7 +619,12 @@ export function TeamMembersPanel({
           <h3>{messages.teamMembersTitle}</h3>
           <p>{messages.teamDescription}</p>
         </div>
-        <Button onClick={openAddModal} size="compact" variant="primary">
+        <Button
+          disabled={busy || readError}
+          onClick={openAddModal}
+          size="compact"
+          variant="primary"
+        >
           <IconPlus size={16} stroke={1.8} />
           {messages.addMember}
         </Button>
@@ -459,351 +637,370 @@ export function TeamMembersPanel({
         />
       ) : null}
 
-      <div className="portal-team-members__list">
-        {members.length === 0 ? (
-          <div className="portal-team-members__empty">{messages.noTeamMembers}</div>
-        ) : (
-          members.map((member) => {
-            const isSelf = String(member.id) === String(currentUserId)
-            const statusInfo = statusLabel(member.status, member.lockedUntil)
-            const isLocked = member.status === 'manually_locked' || member.status === 'security_locked'
+      {readError ? (
+        <div className="portal-team-members__read-error" role="alert">
+          <StatusBadge label={messages.teamMembersReadError} tone="danger" />
+          <Button disabled={busy} onClick={retryMemberRead} size="compact" variant="ghost">
+            {messages.retryTeamMembers}
+          </Button>
+        </div>
+      ) : (
+        <div className="portal-team-members__list">
+          {members.length === 0 ? (
+            <div className="portal-team-members__empty">{messages.noTeamMembers}</div>
+          ) : (
+            members.map((member) => {
+              const isSelf = String(member.id) === String(currentUserId)
+              const statusInfo = statusLabel(member.status, member.lockedUntil)
+              const isLocked =
+                member.status === 'manually_locked' || member.status === 'security_locked'
 
-            return (
-              <article className="portal-team-members__item" key={member.id}>
-                <div className="portal-team-members__info">
-                  <div className="portal-team-members__email-row">
-                    <strong>{member.email}</strong>
-                    {isSelf ? <span className="portal-team-members__self-tag">({messages.selfLabel})</span> : null}
+              return (
+                <article className="portal-team-members__item" key={member.id}>
+                  <div className="portal-team-members__info">
+                    <div className="portal-team-members__email-row">
+                      <strong>{member.email}</strong>
+                      {isSelf ? (
+                        <span className="portal-team-members__self-tag">
+                          ({messages.selfLabel})
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="portal-team-members__meta">
+                      <span>
+                        {messages.memberRole}: {roleLabel(member.role)}
+                      </span>
+                      <span>·</span>
+                      <span>
+                        {messages.memberCreatedAt}:{' '}
+                        {new Date(member.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
                   </div>
-                  <div className="portal-team-members__meta">
-                    <span>{messages.memberRole}: {roleLabel(member.role)}</span>
-                    <span>·</span>
-                    <span>{messages.memberCreatedAt}: {new Date(member.createdAt).toLocaleDateString()}</span>
+
+                  <div className="portal-team-members__status">
+                    <StatusBadge label={statusInfo.label} tone={statusInfo.tone} />
+                    {statusInfo.sub ? <small>{statusInfo.sub}</small> : null}
                   </div>
-                </div>
 
-                <div className="portal-team-members__status">
-                  <StatusBadge label={statusInfo.label} tone={statusInfo.tone} />
-                  {statusInfo.sub ? <small>{statusInfo.sub}</small> : null}
-                </div>
-
-                <div className="portal-team-members__actions">
-                  {!isSelf ? (
-                    <>
-                      <Button
-                        disabled={busy}
-                        onClick={() => openEditModal(member)}
-                        size="compact"
-                        title={messages.editMember}
-                        variant="ghost"
-                      >
-                        <IconPencil size={15} stroke={1.8} />
-                        {messages.editMember}
-                      </Button>
-                      <Button
-                        disabled={busy}
-                        onClick={() => openResetPasswordModal(member)}
-                        size="compact"
-                        title={messages.resetPassword}
-                        variant="ghost"
-                      >
-                        {messages.resetPassword}
-                      </Button>
-                      <Button
-                        disabled={busy}
-                        onClick={() => handleLockToggle(member)}
-                        size="compact"
-                        title={isLocked ? messages.unlockMember : messages.lockMember}
-                        variant="ghost"
-                      >
-                        {isLocked ? (
-                          <>
-                            <IconLockOpen size={15} stroke={1.8} />
-                            {messages.unlockMember}
-                          </>
-                        ) : (
-                          <>
-                            <IconLock size={15} stroke={1.8} />
-                            {messages.lockMember}
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        disabled={busy}
-                        onClick={() => openDeleteModal(member)}
-                        size="compact"
-                        title={messages.deleteMember}
-                        variant="danger"
-                      >
-                        <IconTrash size={15} stroke={1.8} />
-                        {messages.deleteMember}
-                      </Button>
-                    </>
-                  ) : (
-                    <span className="portal-team-members__self-label">{messages.selfLabel}</span>
-                  )}
-                </div>
-              </article>
-            )
-          })
-        )}
-      </div>
-
-      {/* Modal / Dialog for Add */}
-      {modalMode === 'add' ? (
-        <div className="portal-modal-backdrop">
-          <Surface
-            aria-labelledby="portal-team-member-dialog-title"
-            aria-modal="true"
-            as="div"
-            className="portal-modal"
-            role="dialog"
-          >
-            <header className="portal-modal__header">
-              <h4 id="portal-team-member-dialog-title">{messages.newMemberTitle}</h4>
-            </header>
-            {modalFeedback}
-            <form className="portal-modal__form" onSubmit={handleAddSubmit}>
-              <label className="portal-field">
-                <span className="portal-field__label">{messages.memberEmail}</span>
-                <span className="portal-field__control">
-                  <input
-                    aria-label={messages.memberEmail}
-                    autoComplete="off"
-                    onChange={(event) => setFormEmail(event.target.value)}
-                    required
-                    type="email"
-                    value={formEmail}
-                  />
-                </span>
-              </label>
-
-              <label className="portal-field">
-                <span className="portal-field__label">{messages.memberRole}</span>
-                <span className="portal-field__control">
-                  <select
-                    aria-label={messages.memberRole}
-                    onChange={(event) => setFormRole(event.target.value as PortalTeamMemberRole)}
-                    value={formRole}
-                  >
-                    <option value="sales">{messages.roleSalesOption}</option>
-                    <option value="operator">{messages.roleOperatorOption}</option>
-                    <option value="admin">{messages.roleAdminOption}</option>
-                  </select>
-                </span>
-              </label>
-
-              <label className="portal-field">
-                <span className="portal-field__label">{messages.initialPassword}</span>
-                <span className="portal-field__control">
-                  <input
-                    aria-label={messages.initialPassword}
-                    maxLength={128}
-                    minLength={12}
-                    onChange={(event) => setFormPassword(event.target.value)}
-                    required
-                    type="password"
-                    value={formPassword}
-                  />
-                </span>
-              </label>
-
-              <label className="portal-field">
-                <span className="portal-field__label">{messages.confirmInitialPassword}</span>
-                <span className="portal-field__control">
-                  <input
-                    aria-label={messages.confirmInitialPassword}
-                    maxLength={128}
-                    minLength={12}
-                    onChange={(event) => setFormConfirmPassword(event.target.value)}
-                    required
-                    type="password"
-                    value={formConfirmPassword}
-                  />
-                </span>
-              </label>
-
-              <div className="portal-modal__actions">
-                <Button disabled={busy} onClick={closeModal} size="compact" type="button" variant="ghost">
-                  {messages.cancelMember}
-                </Button>
-                <Button disabled={busy} size="compact" type="submit" variant="primary">
-                  {busy ? messages.savingMember : messages.saveMember}
-                </Button>
-              </div>
-            </form>
-          </Surface>
+                  <div className="portal-team-members__actions">
+                    {!isSelf ? (
+                      <>
+                        <Button
+                          disabled={busy}
+                          onClick={() => openEditModal(member)}
+                          size="compact"
+                          title={messages.editMember}
+                          variant="ghost"
+                        >
+                          <IconPencil size={15} stroke={1.8} />
+                          {messages.editMember}
+                        </Button>
+                        <Button
+                          disabled={busy}
+                          onClick={() => openResetPasswordModal(member)}
+                          size="compact"
+                          title={messages.resetPassword}
+                          variant="ghost"
+                        >
+                          {messages.resetPassword}
+                        </Button>
+                        <Button
+                          disabled={busy}
+                          onClick={() => handleLockToggle(member)}
+                          size="compact"
+                          title={isLocked ? messages.unlockMember : messages.lockMember}
+                          variant="ghost"
+                        >
+                          {isLocked ? (
+                            <>
+                              <IconLockOpen size={15} stroke={1.8} />
+                              {messages.unlockMember}
+                            </>
+                          ) : (
+                            <>
+                              <IconLock size={15} stroke={1.8} />
+                              {messages.lockMember}
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          disabled={busy}
+                          onClick={() => openDeleteModal(member)}
+                          size="compact"
+                          title={messages.deleteMember}
+                          variant="danger"
+                        >
+                          <IconTrash size={15} stroke={1.8} />
+                          {messages.deleteMember}
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="portal-team-members__self-label">{messages.selfLabel}</span>
+                    )}
+                  </div>
+                </article>
+              )
+            })
+          )}
         </div>
-      ) : null}
+      )}
 
-      {/* Modal / Dialog for Edit */}
-      {modalMode === 'edit' && selectedMember ? (
-        <div className="portal-modal-backdrop">
-          <Surface
-            aria-labelledby="portal-team-member-dialog-title"
-            aria-modal="true"
-            as="div"
-            className="portal-modal"
-            role="dialog"
-          >
-            <header className="portal-modal__header">
-              <h4 id="portal-team-member-dialog-title">{messages.editMemberTitle}</h4>
-            </header>
-            {modalFeedback}
-            <form className="portal-modal__form" onSubmit={handleEditSubmit}>
-              <label className="portal-field">
-                <span className="portal-field__label">{messages.memberEmail}</span>
-                <span className="portal-field__control">
-                  <input
-                    aria-label={messages.memberEmail}
-                    onChange={(event) => setFormEmail(event.target.value)}
-                    required
-                    type="email"
-                    value={formEmail}
-                  />
-                </span>
-              </label>
+      <TeamMemberDialog
+        busy={busy}
+        onClose={closeModal}
+        open={modalMode === 'add'}
+        returnFocusRef={returnFocusRef}
+        title={messages.newMemberTitle}
+      >
+        {modalFeedback}
+        <form className="portal-modal__form" onSubmit={handleAddSubmit}>
+          <label className="portal-field">
+            <span className="portal-field__label">{messages.memberEmail}</span>
+            <span className="portal-field__control">
+              <input
+                aria-label={messages.memberEmail}
+                autoComplete="off"
+                data-dialog-initial-focus
+                onChange={(event) => setFormEmail(event.target.value)}
+                required
+                type="email"
+                value={formEmail}
+              />
+            </span>
+          </label>
 
-              <label className="portal-field">
-                <span className="portal-field__label">{messages.memberRole}</span>
-                <span className="portal-field__control">
-                  <select
-                    aria-label={messages.memberRole}
-                    onChange={(event) => setFormRole(event.target.value as PortalTeamMemberRole)}
-                    value={formRole}
-                  >
-                    <option value="sales">{messages.roleSalesOption}</option>
-                    <option value="operator">{messages.roleOperatorOption}</option>
-                    <option value="admin">{messages.roleAdminOption}</option>
-                  </select>
-                </span>
-              </label>
+          <label className="portal-field">
+            <span className="portal-field__label">{messages.memberRole}</span>
+            <span className="portal-field__control">
+              <select
+                aria-label={messages.memberRole}
+                onChange={(event) => setFormRole(event.target.value as PortalTeamMemberRole)}
+                value={formRole}
+              >
+                <option value="sales">{messages.roleSalesOption}</option>
+                <option value="operator">{messages.roleOperatorOption}</option>
+                <option value="admin">{messages.roleAdminOption}</option>
+              </select>
+            </span>
+          </label>
 
-              <div className="portal-modal__actions">
-                <Button disabled={busy} onClick={closeModal} size="compact" type="button" variant="ghost">
-                  {messages.cancelMember}
-                </Button>
-                <Button disabled={busy} size="compact" type="submit" variant="primary">
-                  {busy ? messages.savingMember : messages.saveMember}
-                </Button>
-              </div>
-            </form>
-          </Surface>
-        </div>
-      ) : null}
+          <label className="portal-field">
+            <span className="portal-field__label">{messages.initialPassword}</span>
+            <span className="portal-field__control">
+              <input
+                aria-label={messages.initialPassword}
+                maxLength={128}
+                minLength={12}
+                onChange={(event) => setFormPassword(event.target.value)}
+                required
+                type="password"
+                value={formPassword}
+              />
+            </span>
+          </label>
 
-      {/* Modal / Dialog for Reset Password */}
-      {modalMode === 'reset-password' && selectedMember ? (
-        <div className="portal-modal-backdrop">
-          <Surface
-            aria-labelledby="portal-team-member-dialog-title"
-            aria-modal="true"
-            as="div"
-            className="portal-modal"
-            role="dialog"
-          >
-            <header className="portal-modal__header">
-              <h4 id="portal-team-member-dialog-title">{messages.resetPasswordTitle}</h4>
-              <p>{messages.resetPasswordDescription}</p>
-            </header>
-            {modalFeedback}
-            <form className="portal-modal__form" onSubmit={handleResetPasswordSubmit}>
-              <label className="portal-field">
-                <span className="portal-field__label">{messages.newPassword}</span>
-                <span className="portal-field__control">
-                  <input
-                    aria-label={messages.newPassword}
-                    maxLength={128}
-                    minLength={12}
-                    onChange={(event) => setFormPassword(event.target.value)}
-                    required
-                    type="password"
-                    value={formPassword}
-                  />
-                </span>
-              </label>
+          <label className="portal-field">
+            <span className="portal-field__label">{messages.confirmInitialPassword}</span>
+            <span className="portal-field__control">
+              <input
+                aria-label={messages.confirmInitialPassword}
+                maxLength={128}
+                minLength={12}
+                onChange={(event) => setFormConfirmPassword(event.target.value)}
+                required
+                type="password"
+                value={formConfirmPassword}
+              />
+            </span>
+          </label>
 
-              <label className="portal-field">
-                <span className="portal-field__label">{messages.confirmResetPassword}</span>
-                <span className="portal-field__control">
-                  <input
-                    aria-label={messages.confirmResetPassword}
-                    maxLength={128}
-                    minLength={12}
-                    onChange={(event) => setFormConfirmPassword(event.target.value)}
-                    required
-                    type="password"
-                    value={formConfirmPassword}
-                  />
-                </span>
-              </label>
+          <div className="portal-modal__actions">
+            <Button
+              disabled={busy}
+              onClick={closeModal}
+              size="compact"
+              type="button"
+              variant="ghost"
+            >
+              {messages.cancelMember}
+            </Button>
+            <Button disabled={busy} size="compact" type="submit" variant="primary">
+              {busy ? messages.savingMember : messages.saveMember}
+            </Button>
+          </div>
+        </form>
+      </TeamMemberDialog>
 
-              <div className="portal-modal__actions">
-                <Button disabled={busy} onClick={closeModal} size="compact" type="button" variant="ghost">
-                  {messages.cancelMember}
-                </Button>
-                <Button disabled={busy} size="compact" type="submit" variant="primary">
-                  {busy ? messages.savingPassword : messages.resetPassword}
-                </Button>
-              </div>
-            </form>
-          </Surface>
-        </div>
-      ) : null}
+      <TeamMemberDialog
+        busy={busy}
+        onClose={closeModal}
+        open={modalMode === 'edit'}
+        returnFocusRef={returnFocusRef}
+        title={messages.editMemberTitle}
+      >
+        {modalFeedback}
+        <form className="portal-modal__form" onSubmit={handleEditSubmit}>
+          <label className="portal-field">
+            <span className="portal-field__label">{messages.memberEmail}</span>
+            <span className="portal-field__control">
+              <input
+                aria-label={messages.memberEmail}
+                data-dialog-initial-focus
+                onChange={(event) => setFormEmail(event.target.value)}
+                required
+                type="email"
+                value={formEmail}
+              />
+            </span>
+          </label>
 
-      {/* Modal / Dialog for Delete */}
-      {modalMode === 'delete' && selectedMember ? (
-        <div className="portal-modal-backdrop">
-          <Surface
-            aria-labelledby="portal-team-member-dialog-title"
-            aria-modal="true"
-            as="div"
-            className="portal-modal"
-            role="dialog"
-          >
-            <header className="portal-modal__header">
-              <h4 id="portal-team-member-dialog-title">{messages.deleteMemberTitle}</h4>
-              <p>{messages.deleteMemberDescription}</p>
-            </header>
-            {modalFeedback}
-            <form className="portal-modal__form" onSubmit={handleDeleteSubmit}>
-              <div className="portal-modal__prompt">
-                <p>
-                  {messages.confirmEmailPrompt} <strong>{selectedMember.email}</strong>
-                </p>
-              </div>
-              <label className="portal-field">
-                <span className="portal-field__label">{messages.memberEmail}</span>
-                <span className="portal-field__control">
-                  <input
-                    aria-label={messages.memberEmail}
-                    autoComplete="off"
-                    onChange={(event) => setFormConfirmEmail(event.target.value)}
-                    placeholder={selectedMember.email}
-                    required
-                    type="email"
-                    value={formConfirmEmail}
-                  />
-                </span>
-              </label>
+          <label className="portal-field">
+            <span className="portal-field__label">{messages.memberRole}</span>
+            <span className="portal-field__control">
+              <select
+                aria-label={messages.memberRole}
+                onChange={(event) => setFormRole(event.target.value as PortalTeamMemberRole)}
+                value={formRole}
+              >
+                <option value="sales">{messages.roleSalesOption}</option>
+                <option value="operator">{messages.roleOperatorOption}</option>
+                <option value="admin">{messages.roleAdminOption}</option>
+              </select>
+            </span>
+          </label>
 
-              <div className="portal-modal__actions">
-                <Button disabled={busy} onClick={closeModal} size="compact" type="button" variant="ghost">
-                  {messages.cancelMember}
-                </Button>
-                <Button
-                  disabled={busy || formConfirmEmail.trim().toLowerCase() !== selectedMember.email.toLowerCase()}
-                  size="compact"
-                  type="submit"
-                  variant="danger"
-                >
-                  {busy ? messages.deletingMember : messages.confirmDeleteMember}
-                </Button>
-              </div>
-            </form>
-          </Surface>
-        </div>
-      ) : null}
+          <div className="portal-modal__actions">
+            <Button
+              disabled={busy}
+              onClick={closeModal}
+              size="compact"
+              type="button"
+              variant="ghost"
+            >
+              {messages.cancelMember}
+            </Button>
+            <Button disabled={busy} size="compact" type="submit" variant="primary">
+              {busy ? messages.savingMember : messages.saveMember}
+            </Button>
+          </div>
+        </form>
+      </TeamMemberDialog>
+
+      <TeamMemberDialog
+        busy={busy}
+        description={messages.resetPasswordDescription}
+        onClose={closeModal}
+        open={modalMode === 'reset-password'}
+        returnFocusRef={returnFocusRef}
+        title={messages.resetPasswordTitle}
+      >
+        {modalFeedback}
+        <form className="portal-modal__form" onSubmit={handleResetPasswordSubmit}>
+          <label className="portal-field">
+            <span className="portal-field__label">{messages.newPassword}</span>
+            <span className="portal-field__control">
+              <input
+                aria-label={messages.newPassword}
+                data-dialog-initial-focus
+                maxLength={128}
+                minLength={12}
+                onChange={(event) => setFormPassword(event.target.value)}
+                required
+                type="password"
+                value={formPassword}
+              />
+            </span>
+          </label>
+
+          <label className="portal-field">
+            <span className="portal-field__label">{messages.confirmResetPassword}</span>
+            <span className="portal-field__control">
+              <input
+                aria-label={messages.confirmResetPassword}
+                maxLength={128}
+                minLength={12}
+                onChange={(event) => setFormConfirmPassword(event.target.value)}
+                required
+                type="password"
+                value={formConfirmPassword}
+              />
+            </span>
+          </label>
+
+          <div className="portal-modal__actions">
+            <Button
+              disabled={busy}
+              onClick={closeModal}
+              size="compact"
+              type="button"
+              variant="ghost"
+            >
+              {messages.cancelMember}
+            </Button>
+            <Button disabled={busy} size="compact" type="submit" variant="primary">
+              {busy ? messages.savingPassword : messages.resetPassword}
+            </Button>
+          </div>
+        </form>
+      </TeamMemberDialog>
+
+      <TeamMemberDialog
+        busy={busy}
+        description={messages.deleteMemberDescription}
+        onClose={closeModal}
+        open={modalMode === 'delete'}
+        returnFocusRef={returnFocusRef}
+        title={messages.deleteMemberTitle}
+      >
+        {modalFeedback}
+        <form className="portal-modal__form" onSubmit={handleDeleteSubmit}>
+          <div className="portal-modal__prompt">
+            <p>
+              {messages.confirmEmailPrompt} <strong>{selectedMember?.email ?? ''}</strong>
+            </p>
+          </div>
+          <label className="portal-field">
+            <span className="portal-field__label">{messages.memberEmail}</span>
+            <span className="portal-field__control">
+              <input
+                aria-label={messages.memberEmail}
+                autoComplete="off"
+                data-dialog-initial-focus
+                onChange={(event) => setFormConfirmEmail(event.target.value)}
+                placeholder={selectedMember?.email}
+                required
+                type="email"
+                value={formConfirmEmail}
+              />
+            </span>
+          </label>
+
+          <div className="portal-modal__actions">
+            <Button
+              disabled={busy}
+              onClick={closeModal}
+              size="compact"
+              type="button"
+              variant="ghost"
+            >
+              {messages.cancelMember}
+            </Button>
+            <Button
+              disabled={
+                busy ||
+                !selectedMember ||
+                formConfirmEmail.trim().toLowerCase() !== selectedMember.email.toLowerCase()
+              }
+              size="compact"
+              type="submit"
+              variant="danger"
+            >
+              {busy ? messages.deletingMember : messages.confirmDeleteMember}
+            </Button>
+          </div>
+        </form>
+      </TeamMemberDialog>
     </Surface>
   )
 }
