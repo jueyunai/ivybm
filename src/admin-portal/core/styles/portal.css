@@ -1120,7 +1120,7 @@
 
   .portal-ai-settings__readiness {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
 
@@ -3039,6 +3039,12 @@
     box-shadow: 0 0 0 1px var(--portal-accent);
   }
 
+  .portal-knowledge-ai-debug select:disabled,
+  .portal-knowledge-ai-debug textarea:disabled {
+    cursor: not-allowed;
+    opacity: 0.52;
+  }
+
   .portal-knowledge-editor__checkbox,
   .portal-knowledge-editor__actions {
     display: flex;
@@ -3111,6 +3117,12 @@
     font-size: 9px;
   }
 
+  .portal-knowledge-ai-debug__result p {
+    margin: 0;
+    color: var(--portal-ink-2);
+    font-size: 10px;
+  }
+
   .portal-knowledge-ai-debug__result pre {
     max-height: 180px;
     padding: 8px;
@@ -3121,6 +3133,18 @@
     font-family: var(--portal-font-data);
     font-size: 9px;
     white-space: pre-wrap;
+  }
+
+  .portal-knowledge-ai-debug__citations {
+    margin-block-start: 6px;
+    color: var(--portal-muted);
+    font-size: 10px;
+  }
+
+  .portal-knowledge-ai-debug__citations ul {
+    margin: 4px 0 0;
+    padding-inline-start: 16px;
+    list-style-type: disc;
   }
 
   .portal-knowledge__metrics {

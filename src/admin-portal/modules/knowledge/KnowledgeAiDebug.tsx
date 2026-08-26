@@ -179,9 +179,12 @@ export function KnowledgeAiDebug() {
           <span>{text.result}</span>
           <pre dir={knowledgeLocale === 'ar' ? 'rtl' : 'ltr'}>{result}</pre>
           {citations.length > 0 ? (
-            <div style={{ color: 'var(--portal-muted)', fontSize: '10px', marginTop: '6px' }}>
+            <div
+              className="portal-knowledge-ai-debug__citations"
+              dir={knowledgeLocale === 'ar' ? 'rtl' : 'ltr'}
+            >
               <strong>{text.citations}</strong>
-              <ul style={{ listStyleType: 'disc', margin: '4px 0 0 0', paddingLeft: '16px' }}>
+              <ul>
                 {citations.map((c) => (
                   <li key={`${String(c.documentId)}:${c.version}`}>
                     {c.title} (v{c.version})

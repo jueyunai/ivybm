@@ -278,6 +278,10 @@ describe('Portal create command keys', () => {
 
     const answer = await screen.findByText(/إجابة موثقة/)
     expect(answer.getAttribute('dir')).toBe('rtl')
+    const citation = screen.getByText('دليل المنتج (v2)')
+    expect(citation.closest('.portal-knowledge-ai-debug__citations')?.getAttribute('dir')).toBe(
+      'rtl',
+    )
     expect(screen.getAllByText('دليل المنتج (v2)')).toHaveLength(1)
     expect(answer.closest('[role="status"]')).toBeTruthy()
   })
