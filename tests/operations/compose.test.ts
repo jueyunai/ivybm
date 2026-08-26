@@ -43,6 +43,9 @@ const requiredEnvironment = {
   ADMIN_PORTAL_PUBLISHING_ENABLED: 'false',
   APP_PORT: '3000',
   APP_VERSION: 'operation-test',
+  CLOUDFLARE_API_TOKEN: 'operation-test-cloudflare-token-000000000000000000',
+  CLOUDFLARE_CACHE_PURGE_ENABLED: 'true',
+  CLOUDFLARE_ZONE_ID: '9'.repeat(32),
   DATABASE_URL: 'postgres://operation:operation@db:5432/ivybm',
   FEISHU_APP_ID: 'cli-operation-test',
   FEISHU_APP_SECRET: 'operation-test-feishu-secret',
@@ -84,7 +87,18 @@ const requiredEnvironment = {
 const getProductionComposeConfig = (): ComposeConfig => {
   const result = spawnSync(
     'docker',
-    ['compose', '-f', 'compose.yaml', '-f', 'compose.prod.yaml', 'config', '--format', 'json'],
+    [
+      'compose',
+      '--env-file',
+      '/dev/null',
+      '-f',
+      'compose.yaml',
+      '-f',
+      'compose.prod.yaml',
+      'config',
+      '--format',
+      'json',
+    ],
     {
       cwd: projectRoot,
       encoding: 'utf8',
@@ -102,7 +116,7 @@ const getProductionComposeConfig = (): ComposeConfig => {
 const getLocalComposeConfig = (): ComposeConfig => {
   const result = spawnSync(
     'docker',
-    ['compose', '-f', 'compose.yaml', 'config', '--format', 'json'],
+    ['compose', '--env-file', '/dev/null', '-f', 'compose.yaml', 'config', '--format', 'json'],
     {
       cwd: projectRoot,
       encoding: 'utf8',
@@ -134,7 +148,18 @@ const getLocalComposeConfig = (): ComposeConfig => {
 const getStagingComposeConfig = (): ComposeConfig => {
   const result = spawnSync(
     'docker',
-    ['compose', '-f', 'compose.yaml', '-f', 'compose.staging.yaml', 'config', '--format', 'json'],
+    [
+      'compose',
+      '--env-file',
+      '/dev/null',
+      '-f',
+      'compose.yaml',
+      '-f',
+      'compose.staging.yaml',
+      'config',
+      '--format',
+      'json',
+    ],
     {
       cwd: projectRoot,
       encoding: 'utf8',
@@ -210,7 +235,18 @@ describe('production Compose configuration', () => {
 
     const result = spawnSync(
       'docker',
-      ['compose', '-f', 'compose.yaml', '-f', 'compose.prod.yaml', 'config', '--format', 'json'],
+      [
+        'compose',
+        '--env-file',
+        '/dev/null',
+        '-f',
+        'compose.yaml',
+        '-f',
+        'compose.prod.yaml',
+        'config',
+        '--format',
+        'json',
+      ],
       {
         cwd: projectRoot,
         encoding: 'utf8',
@@ -374,6 +410,23 @@ describe('production Compose configuration', () => {
       expect(config.services.worker.environment).not.toHaveProperty('INSTAGRAM_APP_SECRET')
       expect(config.services.migrate.environment).not.toHaveProperty('LINKEDIN_APP_ID')
       expect(config.services.worker.environment).not.toHaveProperty('LINKEDIN_APP_SECRET')
+    }
+  })
+
+  it('passes Cloudflare purge credentials only to the app in production and staging', () => {
+    for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
+      expect(config.services.app.environment).toMatchObject({
+        CLOUDFLARE_API_TOKEN: 'operation-test-cloudflare-token-000000000000000000',
+        CLOUDFLARE_CACHE_PURGE_ENABLED: 'true',
+        CLOUDFLARE_ZONE_ID: '9'.repeat(32),
+      })
+      for (const service of ['migrate', 'worker']) {
+        expect(config.services[service]?.environment).not.toHaveProperty(
+          'CLOUDFLARE_CACHE_PURGE_ENABLED',
+        )
+        expect(config.services[service]?.environment).not.toHaveProperty('CLOUDFLARE_API_TOKEN')
+        expect(config.services[service]?.environment).not.toHaveProperty('CLOUDFLARE_ZONE_ID')
+      }
     }
   })
 

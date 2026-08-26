@@ -6,6 +6,8 @@ import type {
   PayloadRequest,
 } from 'payload'
 
+import { purgeCloudflareEverything, purgeCloudflareUrls } from '@/lib/cloudflare'
+
 const PUBLIC_LOCALES = ['en', 'ar'] as const
 
 type PublicCollectionSlug =
@@ -99,6 +101,15 @@ const uniquePageTargets = (...pathGroups: string[][]): RevalidationTarget[] =>
 const localizedLayoutTargets = (root = ''): RevalidationTarget[] =>
   PUBLIC_LOCALES.map((locale) => ({ path: `/${locale}${root}`, type: 'layout' as const }))
 
+const purgeCloudflarePaths = (paths: string[], req: PayloadRequest): void => {
+  if (paths.length === 0) return
+  void purgeCloudflareUrls(paths, { logger: req.payload.logger })
+}
+
+const purgeCloudflareZone = (req: PayloadRequest): void => {
+  void purgeCloudflareEverything({ logger: req.payload.logger })
+}
+
 export const revalidateContentAfterChange: CollectionAfterChangeHook = ({
   collection,
   context,
@@ -127,7 +138,10 @@ export const revalidateContentAfterChange: CollectionAfterChangeHook = ({
         }))
       : []
 
-  revalidateSafely([...uniquePageTargets(currentPaths, previousPaths), ...categoryDetails], req)
+  const publicPaths = [...new Set([...currentPaths, ...previousPaths])]
+
+  revalidateSafely([...uniquePageTargets(publicPaths), ...categoryDetails], req)
+  purgeCloudflarePaths(publicPaths, req)
 
   return doc
 }
@@ -157,6 +171,7 @@ export const revalidateContentAfterDelete: CollectionAfterDeleteHook = ({
       [...uniquePageTargets(localizedPaths(collectionSlug, doc)), ...categoryDetails],
       req,
     )
+    purgeCloudflarePaths(localizedPaths(collectionSlug, doc), req)
   }
 
   return doc
@@ -168,6 +183,7 @@ export const revalidateSiteSettingsAfterChange: GlobalAfterChangeHook = ({ conte
   }
 
   revalidateSafely(localizedLayoutTargets(), req)
+  purgeCloudflareZone(req)
 
   return doc
 }
