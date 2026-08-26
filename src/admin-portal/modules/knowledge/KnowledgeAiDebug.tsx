@@ -122,6 +122,7 @@ export function KnowledgeAiDebug() {
       <label>
         <span>{text.knowledgeLanguage}</span>
         <select
+          disabled={running}
           onChange={(event) => setKnowledgeLocale(event.target.value === 'ar' ? 'ar' : 'en')}
           value={knowledgeLocale}
         >
@@ -132,6 +133,7 @@ export function KnowledgeAiDebug() {
       <label>
         <span>{text.input}</span>
         <textarea
+          disabled={running}
           maxLength={4000}
           onChange={(event) => setPrompt(event.target.value)}
           rows={4}
