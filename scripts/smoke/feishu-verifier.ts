@@ -11,7 +11,13 @@ export type FeishuVerificationResult = {
 const visibleCount = async (locator: Locator): Promise<number> => {
   let count = 0
   for (let index = 0; index < (await locator.count()); index += 1) {
-    if (await locator.nth(index).isVisible().catch(() => false)) count += 1
+    if (
+      await locator
+        .nth(index)
+        .isVisible()
+        .catch(() => false)
+    )
+      count += 1
   }
   return count
 }
@@ -70,7 +76,10 @@ export const verifyFeishuRecord = async ({
   timeoutMs?: number
 }): Promise<FeishuVerificationResult> => {
   try {
-    await page.goto(tableUrl, { timeout: Math.min(30_000, timeoutMs), waitUntil: 'domcontentloaded' })
+    await page.goto(tableUrl, {
+      timeout: Math.min(30_000, timeoutMs),
+      waitUntil: 'domcontentloaded',
+    })
   } catch (error) {
     return {
       found: false,
@@ -106,11 +115,12 @@ export const verifyFeishuRecord = async ({
   const searchInput = page
     .locator('input[type="search"], input[placeholder*="搜索"], input[placeholder*="Search" i]')
     .first()
-  const searchVisible = await searchInput.isVisible().catch(() => false)
+  let searchVisible = false
   let searchAttempted = false
   const startTime = Date.now()
 
   while (Date.now() - startTime < timeoutMs) {
+    searchVisible = await searchInput.isVisible().catch(() => false)
     const [emailCount, companyCount, nameCount] = await Promise.all([
       visibleCount(emailMatches),
       visibleCount(companyMatches),
@@ -136,7 +146,8 @@ export const verifyFeishuRecord = async ({
       ) {
         return {
           found: false,
-          message: 'Feishu record is visible but cannot be captured without including unrelated rows.',
+          message:
+            'Feishu record is visible but cannot be captured without including unrelated rows.',
           status: 'BLOCKED_FEISHU_UI',
         }
       }
@@ -154,7 +165,8 @@ export const verifyFeishuRecord = async ({
   if (!searchVisible) {
     return {
       found: false,
-      message: 'Feishu public table is visible but has no usable search control for safe unique-record verification.',
+      message:
+        'Feishu public table is visible but has no usable search control for safe unique-record verification.',
       status: 'BLOCKED_FEISHU_UI',
     }
   }

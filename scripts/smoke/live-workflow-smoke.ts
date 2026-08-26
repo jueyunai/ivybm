@@ -1,16 +1,8 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import {
-  chromium,
-  expect,
-  type Browser,
-  type BrowserContext,
-} from '@playwright/test'
+import { chromium, expect, type Browser, type BrowserContext } from '@playwright/test'
 
-import {
-  runChatWorkflow,
-  type ChatConversationState,
-} from './chat-workflow'
+import { runChatWorkflow, type ChatConversationState } from './chat-workflow'
 import { parseSmokeConfig, type SmokeConfig, type SmokeLocale } from './config'
 import { runInquiryWorkflow } from './inquiry-workflow'
 import { generateCanaryData, generateRunId } from './marker'
@@ -31,6 +23,10 @@ type ActiveRun = ChatConversationState & {
 }
 
 type CurrentRun = ChatConversationState & Omit<ActiveRun, 'contexts'>
+
+type SmokeRunnerDependencies = {
+  launchBrowser?: (headless: boolean) => Promise<Browser>
+}
 
 class SmokeTimeoutError extends Error {
   constructor(timeoutMs: number) {
@@ -70,7 +66,10 @@ const recoverTimedOutConversation = async ({
     !active.takeoverAttempted ||
     active.resolved
   ) {
-    return { details: ['No confirmed taken-over canary conversation required timeout recovery.'], status: 'SKIPPED' }
+    return {
+      details: ['No confirmed taken-over canary conversation required timeout recovery.'],
+      status: 'SKIPPED',
+    }
   }
 
   const context = await browser.newContext({ viewport: { height: 900, width: 1440 } })
@@ -87,14 +86,23 @@ const recoverTimedOutConversation = async ({
       detail.getByRole('heading', { name: `官网访客 #${active.sessionId.slice(-6)}` }),
     ).toBeVisible({ timeout: 10_000 })
     await expect(detail.getByText(data.chatMessages[0], { exact: true })).toBeVisible()
-    if (await detail.getByText('已解决').first().isVisible().catch(() => false)) {
+    if (
+      await detail
+        .getByText('已解决')
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
       return { details: ['Timed-out canary conversation was already resolved.'], status: 'SUCCESS' }
     }
     const resolve = detail.getByRole('button', { name: '解决会话' })
     await expect(resolve).toBeEnabled({ timeout: 10_000 })
     await resolve.click()
     await expect(detail.getByText('已解决').first()).toBeVisible({ timeout: 10_000 })
-    return { details: ['Resolved the exact confirmed canary conversation after timeout.'], status: 'SUCCESS' }
+    return {
+      details: ['Resolved the exact confirmed canary conversation after timeout.'],
+      status: 'SUCCESS',
+    }
   } catch (error) {
     return {
       details: [
@@ -110,6 +118,7 @@ const recoverTimedOutConversation = async ({
 export const runLiveWorkflowSmoke = async (
   config: SmokeConfig,
   customRunId?: string,
+  dependencies: SmokeRunnerDependencies = {},
 ): Promise<{ report: SmokeReport; reportPath: string }> => {
   const runId = customRunId ?? generateRunId()
   const runDir = join(config.outputDir, runId)
@@ -129,9 +138,12 @@ export const runLiveWorkflowSmoke = async (
   const readCurrentRun = (): CurrentRun | null => currentRun
   let cancelled = false
   const cleanupResults: CleanupResult[] = []
+  let executionError: unknown
 
   try {
-    browser = await chromium.launch({ headless: config.headless })
+    browser = await (dependencies.launchBrowser
+      ? dependencies.launchBrowser(config.headless)
+      : chromium.launch({ headless: config.headless }))
 
     const execute = async (): Promise<void> => {
       if (!browser) return
@@ -222,7 +234,10 @@ export const runLiveWorkflowSmoke = async (
     void execution.catch(() => undefined)
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<never>((_, reject) => {
-      timeoutHandle = setTimeout(() => reject(new SmokeTimeoutError(config.timeoutMs)), config.timeoutMs)
+      timeoutHandle = setTimeout(
+        () => reject(new SmokeTimeoutError(config.timeoutMs)),
+        config.timeoutMs,
+      )
     })
 
     try {
@@ -261,16 +276,13 @@ export const runLiveWorkflowSmoke = async (
           })
         }
       } else {
-        cleanupResults.push({ details: [error.message], status: 'FAILED' })
+        throw error
       }
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle)
     }
   } catch (error) {
-    cleanupResults.push({
-      details: [`Execution error: ${error instanceof Error ? error.message : String(error)}`],
-      status: 'FAILED',
-    })
+    executionError = error
   } finally {
     if (browser) await browser.close().catch(() => undefined)
 
@@ -281,9 +293,12 @@ export const runLiveWorkflowSmoke = async (
         cleanupResults.flatMap((result) => result.details).length > 0
           ? cleanupResults.flatMap((result) => result.details)
           : ['No page-level cleanup was required.'],
-      status: failedCleanup.length > 0 ? 'FAILED' : successfulCleanup.length > 0 ? 'SUCCESS' : 'SKIPPED',
+      status:
+        failedCleanup.length > 0 ? 'FAILED' : successfulCleanup.length > 0 ? 'SUCCESS' : 'SKIPPED',
     })
   }
+
+  if (executionError) throw executionError
 
   const reportPath = await reportBuilder.saveArtifacts()
   console.log(reportBuilder.formatSummary())
@@ -298,7 +313,9 @@ const main = async () => {
     const { report } = await runLiveWorkflowSmoke(config)
     if (report.overallStatus !== 'PASS') process.exit(1)
   } catch (error) {
-    console.error(`Live workflow smoke failed to start: ${error instanceof Error ? error.message : String(error)}`)
+    console.error(
+      `Live workflow smoke failed to start: ${error instanceof Error ? error.message : String(error)}`,
+    )
     process.exit(1)
   }
 }

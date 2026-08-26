@@ -51,6 +51,7 @@ export const runChatWorkflow = async ({
 }): Promise<ChatRunResult> => {
   const startTime = Date.now()
   const data: CanaryData = generateCanaryData(runId, locale)
+  const captureFullEvidence = config.evidenceMode === 'full'
   const screenshots: Record<string, string> = {
     feishu: join(runDir, `chat-feishu-${locale}.png`),
     portalConversation: join(runDir, `chat-portal-conversation-${locale}.png`),
@@ -103,13 +104,23 @@ export const runChatWorkflow = async ({
     capturedSessionId = startedBody.id === undefined ? undefined : String(startedBody.id)
     capturedRequestId = startedBody.requestId
     if (!capturedSessionId) {
-      throw new Error('Chat session response did not include a session ID; refusing any Portal write.')
+      throw new Error(
+        'Chat session response did not include a session ID; refusing any Portal write.',
+      )
     }
     onConversationState?.({ sessionId: capturedSessionId })
-    await widget.getByRole('dialog', { name: dialogName }).waitFor({ state: 'visible', timeout: 15_000 })
+    await widget
+      .getByRole('dialog', { name: dialogName })
+      .waitFor({ state: 'visible', timeout: 15_000 })
 
-    const chatInput = widget.getByLabel(inputPlaceholder).or(widget.locator('textarea, input[type="text"]')).first()
-    const sendBtn = widget.getByRole('button', { name: sendBtnName }).or(widget.locator('button[type="submit"]')).first()
+    const chatInput = widget
+      .getByLabel(inputPlaceholder)
+      .or(widget.locator('textarea, input[type="text"]'))
+      .first()
+    const sendBtn = widget
+      .getByRole('button', { name: sendBtnName })
+      .or(widget.locator('button[type="submit"]'))
+      .first()
 
     // 3 rounds of qualification
     const assistantMessages = widget.locator('[data-author="assistant"]')
@@ -164,9 +175,14 @@ export const runChatWorkflow = async ({
     await handoffPending.first().waitFor({ state: 'visible', timeout: 20_000 })
     await expect(chatInput).toBeDisabled({ timeout: 10_000 })
 
-    await widget.screenshot({ path: screenshots.visitor })
+    if (captureFullEvidence) {
+      await widget.screenshot({ path: screenshots.visitor })
+    }
   } catch (error) {
-    await visitorPage.getByTestId('chat-widget').screenshot({ path: screenshots.visitor }).catch(() => undefined)
+    await visitorPage
+      .getByTestId('chat-widget')
+      .screenshot({ path: screenshots.visitor })
+      .catch(() => undefined)
     await visitorPage.close().catch(() => undefined)
     return {
       durationMs: Date.now() - startTime,
@@ -199,9 +215,7 @@ export const runChatWorkflow = async ({
         name: `官网访客 #${capturedSessionId.slice(-6)}`,
       }),
     ).toBeVisible({ timeout: 20_000 })
-    await expect(
-      conversationDetail.getByText(data.chatMessages[0], { exact: true }),
-    ).toBeVisible()
+    await expect(conversationDetail.getByText(data.chatMessages[0], { exact: true })).toBeVisible()
     targetConversationConfirmed = true
     onConversationState?.({ targetConfirmed: true })
 
@@ -271,7 +285,10 @@ export const runChatWorkflow = async ({
           await expect(
             portalPage.locator('.portal-conversations__detail').getByText('已解决').first(),
           ).toBeVisible({ timeout: 5_000 })
-          cleanup = { details: ['Resolved the confirmed canary conversation after failure.'], status: 'SUCCESS' }
+          cleanup = {
+            details: ['Resolved the confirmed canary conversation after failure.'],
+            status: 'SUCCESS',
+          }
           onConversationState?.({ resolved: true })
         } catch (cleanupError) {
           cleanup = {
@@ -337,12 +354,11 @@ export const runChatWorkflow = async ({
   return {
     conversationResolved,
     durationMs: Date.now() - startTime,
-    error:
-      !operatorReplyReceived
-        ? 'Operator reply was not visible in the original Visitor browser within 30s.'
-        : !conversationResolved
-          ? 'Portal conversation was not confirmed as resolved.'
-          : feishuError,
+    error: !operatorReplyReceived
+      ? 'Operator reply was not visible in the original Visitor browser within 30s.'
+      : !conversationResolved
+        ? 'Portal conversation was not confirmed as resolved.'
+        : feishuError,
     feishuFound,
     locale,
     operatorReplyReceived,

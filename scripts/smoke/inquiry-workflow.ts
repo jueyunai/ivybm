@@ -28,6 +28,7 @@ export const runInquiryWorkflow = async ({
 }): Promise<InquiryRunResult> => {
   const startTime = Date.now()
   const data: CanaryData = generateCanaryData(runId, locale)
+  const captureFullEvidence = config.evidenceMode === 'full'
   const screenshots: Record<string, string> = {
     feishu: join(runDir, `inquiry-feishu-${locale}.png`),
     portalLead: join(runDir, `inquiry-portal-lead-${locale}.png`),
@@ -83,9 +84,13 @@ export const runInquiryWorkflow = async ({
       }
     }
 
-    await visitorPage.screenshot({ fullPage: true, path: screenshots.website })
+    if (captureFullEvidence) {
+      await visitorPage.screenshot({ fullPage: true, path: screenshots.website })
+    }
   } catch (error) {
-    await visitorPage.screenshot({ fullPage: true, path: screenshots.website }).catch(() => undefined)
+    await visitorPage
+      .screenshot({ fullPage: true, path: screenshots.website })
+      .catch(() => undefined)
     await visitorPage.close().catch(() => undefined)
     return {
       durationMs: Date.now() - startTime,
