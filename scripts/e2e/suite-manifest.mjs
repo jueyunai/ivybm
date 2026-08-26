@@ -10,6 +10,7 @@ const mutationSpecs = [
   'tests/e2e/admin-portal-facebook-messenger.spec.ts',
   'tests/e2e/admin-portal-knowledge.spec.ts',
   'tests/e2e/admin-portal-leads.spec.ts',
+  'tests/e2e/admin-portal-live-workflow-smoke.spec.ts',
   'tests/e2e/admin-portal-media.spec.ts',
   'tests/e2e/admin-portal-overview.spec.ts',
   'tests/e2e/admin-portal-platforms-operations.spec.ts',

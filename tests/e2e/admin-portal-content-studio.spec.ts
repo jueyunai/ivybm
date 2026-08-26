@@ -62,6 +62,23 @@ const createReviewedSource = async (suffix: string) => {
   return sourceURL
 }
 
+const readPublishingSideEffectCounts = async (suffix: string) => {
+  const payload = await getPayload({
+    config,
+    disableOnInit: true,
+    key: `portal-content-studio-e2e-counts-${suffix}`,
+  })
+  try {
+    const [jobs, publishJobs] = await Promise.all([
+      payload.count({ collection: 'jobs', overrideAccess: true }),
+      payload.count({ collection: 'publish-jobs', overrideAccess: true }),
+    ])
+    return { jobs: jobs.totalDocs, publishJobs: publishJobs.totalDocs }
+  } finally {
+    await payload.destroy()
+  }
+}
+
 test('Content Studio creates, edits, reviews, and schedules a draft through Portal commands', async ({
   page,
 }, testInfo) => {
@@ -171,6 +188,23 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
     await page.getByRole('button', { exact: true, name: '批准' }).click()
     await expect(page.getByText('审核结果已保存')).toBeVisible()
     await expect(page.getByRole('button', { name: '创建内部排期' })).toBeVisible()
+
+    const immediatePublish = page.getByRole('button', { name: '立即发布' })
+    await expect(immediatePublish).toBeDisabled()
+    const beforeDisabledPublish = await readPublishingSideEffectCounts(`${suffix}-before`)
+    const disabledPublishResponse = await page.request.post(
+      `/api/portal/content-studio/${String(contentID)}`,
+      {
+        data: { action: 'publish-now' },
+        headers: { 'Idempotency-Key': `portal-content-studio:disabled:${suffix}` },
+      },
+    )
+    expect(disabledPublishResponse.status()).toBe(503)
+    await expect(disabledPublishResponse.json()).resolves.toMatchObject({
+      error: { code: 'content-studio-publishing-disabled' },
+    })
+    const afterDisabledPublish = await readPublishingSideEffectCounts(`${suffix}-after`)
+    expect(afterDisabledPublish).toEqual(beforeDisabledPublish)
 
     await page.getByRole('button', { name: '创建内部排期' }).click()
     const schedule = page.locator('.portal-content-studio__form').first()
