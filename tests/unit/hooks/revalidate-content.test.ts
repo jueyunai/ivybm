@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { revalidatePathMock } = vi.hoisted(() => ({
-  revalidatePathMock: vi.fn(),
+const { purgeCloudflareEverythingMock, purgeCloudflareUrlsMock, revalidatePathMock } = vi.hoisted(
+  () => ({
+    purgeCloudflareEverythingMock: vi.fn().mockResolvedValue({ status: 'succeeded' }),
+    purgeCloudflareUrlsMock: vi.fn().mockResolvedValue({ status: 'succeeded' }),
+    revalidatePathMock: vi.fn(),
+  }),
+)
+
+vi.mock('@/lib/cloudflare', () => ({
+  purgeCloudflareEverything: purgeCloudflareEverythingMock,
+  purgeCloudflareUrls: purgeCloudflareUrlsMock,
 }))
 
 vi.mock('next/cache', () => ({
@@ -26,6 +35,8 @@ const req = {
 describe('content cache revalidation', () => {
   beforeEach(() => {
     revalidatePathMock.mockReset()
+    purgeCloudflareEverythingMock.mockClear()
+    purgeCloudflareUrlsMock.mockClear()
     req.payload.logger.warn.mockReset()
   })
 
@@ -45,6 +56,15 @@ describe('content cache revalidation', () => {
       ['/ar/products'],
       ['/ar/products/perforated-panel'],
     ])
+    expect(purgeCloudflareUrlsMock).toHaveBeenCalledWith(
+      [
+        '/en/products',
+        '/en/products/perforated-panel',
+        '/ar/products',
+        '/ar/products/perforated-panel',
+      ],
+      { logger: req.payload.logger },
+    )
   })
 
   it.each([
@@ -79,6 +99,15 @@ describe('content cache revalidation', () => {
       ['/ar/projects'],
       ['/ar/projects/airport-facade'],
     ])
+    expect(purgeCloudflareUrlsMock).toHaveBeenCalledWith(
+      [
+        '/en/projects',
+        '/en/projects/airport-facade',
+        '/ar/projects',
+        '/ar/projects/airport-facade',
+      ],
+      { logger: req.payload.logger },
+    )
   })
 
   it('revalidates the previous public path when content is unpublished or renamed', async () => {
@@ -97,6 +126,10 @@ describe('content cache revalidation', () => {
       ['/ar/news'],
       ['/ar/news/old-guide'],
     ])
+    expect(purgeCloudflareUrlsMock).toHaveBeenCalledWith(
+      ['/en/news', '/en/news/old-guide', '/ar/news', '/ar/news/old-guide'],
+      { logger: req.payload.logger },
+    )
   })
 
   it('does not invalidate public pages for a draft-only change', async () => {
@@ -110,6 +143,7 @@ describe('content cache revalidation', () => {
     } as never)
 
     expect(revalidatePathMock).not.toHaveBeenCalled()
+    expect(purgeCloudflareUrlsMock).not.toHaveBeenCalled()
   })
 
   it('revalidates public paths after deletion', async () => {
@@ -126,6 +160,15 @@ describe('content cache revalidation', () => {
       ['/ar/projects'],
       ['/ar/projects/airport-facade'],
     ])
+    expect(purgeCloudflareUrlsMock).toHaveBeenCalledWith(
+      [
+        '/en/projects',
+        '/en/projects/airport-facade',
+        '/ar/projects',
+        '/ar/projects/airport-facade',
+      ],
+      { logger: req.payload.logger },
+    )
   })
 
   it('ignores inactive downloads that were never public', async () => {
@@ -139,6 +182,8 @@ describe('content cache revalidation', () => {
     } as never)
 
     expect(revalidatePathMock).not.toHaveBeenCalled()
+    expect(purgeCloudflareUrlsMock).not.toHaveBeenCalled()
+    expect(purgeCloudflareEverythingMock).not.toHaveBeenCalled()
   })
 
   it('can disable revalidation for seed and maintenance operations', async () => {
@@ -152,6 +197,8 @@ describe('content cache revalidation', () => {
     } as never)
 
     expect(revalidatePathMock).not.toHaveBeenCalled()
+    expect(purgeCloudflareUrlsMock).not.toHaveBeenCalled()
+    expect(purgeCloudflareEverythingMock).not.toHaveBeenCalled()
   })
 
   it('invalidates both locale layouts when site settings change', async () => {
@@ -161,6 +208,8 @@ describe('content cache revalidation', () => {
       ['/en', 'layout'],
       ['/ar', 'layout'],
     ])
+    expect(purgeCloudflareEverythingMock).toHaveBeenCalledWith({ logger: req.payload.logger })
+    expect(purgeCloudflareUrlsMock).not.toHaveBeenCalled()
   })
 
   it('invalidates product detail patterns when a category changes', async () => {
@@ -179,6 +228,9 @@ describe('content cache revalidation', () => {
       ['/en/products/[slug]', 'page'],
       ['/ar/products/[slug]', 'page'],
     ])
+    expect(purgeCloudflareUrlsMock).toHaveBeenCalledWith(['/en/products', '/ar/products'], {
+      logger: req.payload.logger,
+    })
   })
 
   it('invalidates locale layouts only when a public media asset changes', async () => {
@@ -200,5 +252,7 @@ describe('content cache revalidation', () => {
       ['/en', 'layout'],
       ['/ar', 'layout'],
     ])
+    expect(purgeCloudflareEverythingMock).not.toHaveBeenCalled()
+    expect(purgeCloudflareUrlsMock).not.toHaveBeenCalled()
   })
 })
