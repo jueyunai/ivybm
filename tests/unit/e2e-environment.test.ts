@@ -44,6 +44,7 @@ describe('E2E child environment', () => {
     expect(environment.AI_PROVIDER_API_KEY).toBe(environment.IVYBM_E2E_LAUNCH_TOKEN)
     expect(environment.AI_PROVIDER_BASE_URL).toBe('http://127.0.0.1:31002/v1')
     expect(environment.IVYBM_E2E_ALLOW_HTTP_AI_LOOPBACK).toBe('true')
+    expect(environment.IVYBM_RUNTIME_SERVER_URL).toBe('http://127.0.0.1:31001')
     expect(environment.PLAYWRIGHT_HTML_OPEN).toBe('never')
     expect(() => assertE2EEnvironmentDoesNotExposeProviderCredentials(environment)).not.toThrow()
   })

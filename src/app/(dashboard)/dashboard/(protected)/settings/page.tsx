@@ -9,6 +9,9 @@ import {
   type PortalSettingsSummary,
   type PortalSiteSettingsEditor,
 } from '@/admin-portal/modules/settings/getPortalSettingsSummary'
+import { getPortalTeamMembers } from '@/admin-portal/modules/settings/userSettingsCommands'
+import type { PortalTeamMemberDTO } from '@/admin-portal/modules/settings/userSettingsContracts'
+import { isTeamManagementEnabled } from '@/admin-portal/modules/settings/userSettingsRoute'
 import { SettingsHub } from '@/admin-portal/modules/settings/SettingsHub'
 import { SETTINGS_MODULE } from '@/admin-portal/modules/settings/manifest'
 import type { User } from '@/payload-types'
@@ -41,9 +44,12 @@ export default async function PortalSettingsPage() {
   }
   let readError = false
   let aiReadError = false
+  let teamMembersReadError = false
   let summary: PortalSettingsSummary | null = null
   let siteSettings: PortalSiteSettingsEditor | null = null
   let aiSettings: PortalAiSettingsSummary = portalAiSettingsAdminOnly()
+  let teamMembers: PortalTeamMemberDTO[] = []
+  const teamManagementEnabled = isTeamManagementEnabled(process.env)
 
   try {
     const payload = await getPayload({ config })
@@ -63,10 +69,24 @@ export default async function PortalSettingsPage() {
           query: 'ai-settings-summary',
         })
       }
+
+      if (teamManagementEnabled) {
+        try {
+          teamMembers = await getPortalTeamMembers({ payload, req })
+        } catch (error) {
+          teamMembersReadError = true
+          console.error('Portal settings read_failed', {
+            error: error instanceof Error ? error.name : 'UnknownError',
+            module: 'settings',
+            query: 'team-members',
+          })
+        }
+      }
     }
   } catch (error) {
     readError = true
     aiReadError = user.role === 'admin'
+    teamMembersReadError = user.role === 'admin' && teamManagementEnabled
     console.error('Portal settings read_failed', {
       error: error instanceof Error ? error.name : 'UnknownError',
       module: 'settings',
@@ -83,6 +103,9 @@ export default async function PortalSettingsPage() {
       readError={readError}
       summary={summary}
       siteSettings={siteSettings}
+      teamManagementEnabled={teamManagementEnabled}
+      teamMembers={teamMembers}
+      teamMembersReadError={teamMembersReadError}
       user={user}
     />
   )

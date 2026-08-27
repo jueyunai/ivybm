@@ -234,6 +234,7 @@ jobs:
       ADMIN_PORTAL_PLATFORMS_ENABLED: true
       ADMIN_PORTAL_PUBLISHING_ENABLED: false
       ADMIN_PORTAL_SETTINGS_ENABLED: true
+      ADMIN_PORTAL_TEAM_MANAGEMENT_ENABLED: true
       ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED: true
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ivybm_ci
       PAYLOAD_SECRET: ci-build-only-secret-at-least-32-characters

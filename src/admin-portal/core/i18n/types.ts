@@ -98,31 +98,87 @@ export interface PortalSettingsMessages {
   }
   accountDescription: string
   accountTitle: string
+  addMember: string
   canUpdateSite: string
+  cancelMember: string
   cancelSiteDetails: string
+  changePassword: string
+  changePasswordCancel: string
+  changePasswordConfirm: string
+  changePasswordDescription: string
+  changePasswordError: string
+  changePasswordSaved: string
+  changePasswordTitle: string
   chinese: string
+  confirmDeleteMember: string
+  confirmEmailPrompt: string
+  confirmInitialPassword: string
+  confirmNewPassword: string
+  confirmResetPassword: string
   contactEmail: string
   contactPhone: string
+  currentPassword: string
   darkTheme: string
+  deleteMember: string
+  deleteMemberDescription: string
+  deleteMemberError: string
+  deleteMemberSuccess: string
+  deleteMemberTitle: string
+  deletingMember: string
   description: string
+  editMember: string
+  editMemberTitle: string
   editSiteDetails: string
   email: string
   english: string
   eyebrow: string
+  initialPassword: string
   languageLabel: string
   lightTheme: string
+  lockMember: string
+  lockMemberConfirm: string
+  lockMemberSuccess: string
+  lockMemberTitle: string
+  memberActions: string
+  memberCreatedAt: string
+  memberEmail: string
+  memberLockedUntil: string
+  memberRole: string
+  memberSaved: string
+  memberStale: string
+  memberStatus: string
+  memberNotFound: string
   moduleOwner: string
   moduleStatusDescription: string
   moduleStatusTitle: string
+  newMemberTitle: string
+  newPassword: string
   nextStep: string
   noSiteDescription: string
+  noTeamMembers: string
+  passwordLengthHint: string
+  passwordMismatch: string
+  permission: string
   preferencesDescription: string
   preferencesTitle: string
-  permission: string
   readOnly: string
   reduceMotion: string
   reduceMotionDescription: string
+  resetPassword: string
+  resetPasswordDescription: string
+  resetPasswordSuccess: string
+  resetPasswordTitle: string
+  retryTeamMembers: string
   role: string
+  roleAdminOption: string
+  roleOperatorOption: string
+  roleSalesOption: string
+  saveMember: string
+  saveSiteDetails: string
+  savingMember: string
+  savingPassword: string
+  savingSiteDetails: string
+  selfLabel: string
   siteDescription: string
   siteDetailsDescription: string
   siteDetailsError: string
@@ -131,14 +187,27 @@ export interface PortalSettingsMessages {
   siteLocaleArabic: string
   siteLocaleEnglish: string
   siteLocaleLabel: string
-  saveSiteDetails: string
-  savingSiteDetails: string
   siteName: string
   siteSummaryDescription: string
   siteSummaryTitle: string
+  statusManuallyLocked: string
+  statusNormal: string
+  statusSecurityLocked: string
   systemTheme: string
+  teamAccountDisabled: string
+  teamDescription: string
+  teamMembersTitle: string
+  teamMembersReadError: string
+  teamCommandResultUnknown: string
+  teamOperationError: string
+  teamErrorMessages: Record<string, string>
+  teamAssignmentDetailLabels: Record<string, string>
   themeLabel: string
   title: string
+  unlockMember: string
+  unlockMemberConfirm: string
+  unlockMemberSuccess: string
+  unlockMemberTitle: string
 }
 
 export interface PortalOverviewMessages {

@@ -15,6 +15,7 @@ const mutationSpecs = [
   'tests/e2e/admin-portal-overview.spec.ts',
   'tests/e2e/admin-portal-platforms-operations.spec.ts',
   'tests/e2e/admin-portal-shell.spec.ts',
+  'tests/e2e/admin-portal-user-settings.spec.ts',
   'tests/e2e/admin-visual.spec.ts',
   'tests/e2e/chat-handoff.spec.ts',
   'tests/e2e/inquiry.spec.ts',
@@ -60,6 +61,10 @@ export const e2eSuiteManifest = Object.freeze({
   'readonly-visual': Object.freeze({
     mode: 'readonly-external',
     specs: ['tests/e2e/website-visual.spec.ts'],
+  }),
+  settings: Object.freeze({
+    mode: 'mutation',
+    specs: ['tests/e2e/admin-portal-user-settings.spec.ts'],
   }),
   website: Object.freeze({ mode: 'mutation', specs: ['tests/e2e/website.spec.ts'] }),
 })

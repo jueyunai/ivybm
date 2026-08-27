@@ -56,6 +56,7 @@ export default defineConfig({
             AI_CONFIG_ENCRYPTION_KEY: 'e'.repeat(64),
             HOSTNAME: '127.0.0.1',
             IVYBM_E2E_ALLOW_HTTP_LOOPBACK: 'true',
+            IVYBM_RUNTIME_SERVER_URL: context.baseURL,
             META_WEBHOOK_ALLOWED_ACCOUNT_IDS: E2E_META_PAGE_ID,
             META_WEBHOOK_APP_SECRET: E2E_META_APP_SECRET,
             META_WEBHOOK_VERIFY_TOKEN: E2E_META_VERIFY_TOKEN,
