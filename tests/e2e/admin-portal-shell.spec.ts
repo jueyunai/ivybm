@@ -28,7 +28,7 @@ test('desktop Portal Shell exposes role-safe business navigation and settings', 
   await expect(page.getByRole('navigation', { name: '运营门户导航' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 2, name: '基础设置' })).toBeVisible()
   await expect(page.getByRole('link', { name: '基础设置' })).toHaveAttribute('aria-current', 'page')
-  await expect(page.getByText(adminEmail)).toBeVisible()
+  await expect(page.locator('#account').getByText(adminEmail, { exact: true })).toBeVisible()
   await expect(page.locator('.portal-sidebar')).toHaveCSS('width', '260px')
   await page.screenshot({
     fullPage: true,

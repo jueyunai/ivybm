@@ -28,6 +28,7 @@ TRUST_PROXY_HEADERS=true
 CLOUDFLARE_CACHE_PURGE_ENABLED=false
 ADMIN_PORTAL_ENABLED=true
 ADMIN_PORTAL_SETTINGS_ENABLED=true
+ADMIN_PORTAL_TEAM_MANAGEMENT_ENABLED=false
 ADMIN_PORTAL_OVERVIEW_ENABLED=true
 ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED=true
 ADMIN_PORTAL_MEDIA_ENABLED=true
@@ -69,6 +70,7 @@ const runPreflight = (environment: string, overrides: Record<string, string | un
       'CLOUDFLARE_API_TOKEN',
       'ADMIN_PORTAL_ENABLED',
       'ADMIN_PORTAL_SETTINGS_ENABLED',
+      'ADMIN_PORTAL_TEAM_MANAGEMENT_ENABLED',
       'ADMIN_PORTAL_OVERVIEW_ENABLED',
       'ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED',
       'ADMIN_PORTAL_MEDIA_ENABLED',
@@ -283,14 +285,22 @@ LINKEDIN_UPLOAD_TICKET_KEY=${'e'.repeat(64)}
         'ADMIN_PORTAL_MEDIA_ENABLED=maybe',
       ),
     )
+    const invalidTeamManagement = runPreflight(
+      productionEnvironment.replace(
+        'ADMIN_PORTAL_TEAM_MANAGEMENT_ENABLED=false',
+        'ADMIN_PORTAL_TEAM_MANAGEMENT_ENABLED=maybe',
+      ),
+    )
     const shellOverride = runPreflight(productionEnvironment, {
-      ADMIN_PORTAL_PUBLISHING_ENABLED: 'true',
+      ADMIN_PORTAL_TEAM_MANAGEMENT_ENABLED: 'true',
     })
 
     expect(missingModule.status).not.toBe(0)
     expect(missingModule.stderr).toContain('ADMIN_PORTAL_MEDIA_ENABLED')
     expect(invalidModule.status).not.toBe(0)
     expect(invalidModule.stderr).toContain('ADMIN_PORTAL_MEDIA_ENABLED')
+    expect(invalidTeamManagement.status).not.toBe(0)
+    expect(invalidTeamManagement.stderr).toContain('ADMIN_PORTAL_TEAM_MANAGEMENT_ENABLED')
     expect(shellOverride.status).not.toBe(0)
     expect(shellOverride.stderr).toContain('caller environment')
   })
