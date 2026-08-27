@@ -197,6 +197,7 @@ export type AiGatewayGenerateImageInput = Omit<ProviderGenerateImageInput, 'mode
 }
 export type AiGatewayEmbedInput = Omit<ProviderEmbedInput, 'model'> & {
   model?: string
+  onDispatch?: () => void
 }
 
 export type AiGatewayEmbedResult = ProviderEmbedResult & {
@@ -418,21 +419,24 @@ export const createAiGateway = (options: GatewayOptions) => ({
     const startedAt = Date.now()
 
     try {
-      const configuredDimensions = operation?.dimensions ?? input.dimensions
+      const { onDispatch, signal: externalSignal, ...providerInput } = input
+      const configuredDimensions = operation?.dimensions ?? providerInput.dimensions
       const result = await withTimeout(
         operation?.timeoutMs ?? options.timeouts?.embedMs ?? 15_000,
-        (signal) =>
-          provider.embed({
-            ...input,
+        (signal) => {
+          onDispatch?.()
+          return provider.embed({
+            ...providerInput,
             dimensions: configuredDimensions,
-            input: input.input,
+            input: providerInput.input,
             model,
             signal,
-          }),
-        input.signal,
+          })
+        },
+        externalSignal,
       )
       validateUsage(result.usage)
-      validateEmbeddings(result.embeddings, input.input.length)
+      validateEmbeddings(result.embeddings, providerInput.input.length)
       const dimensions = result.embeddings[0].length
       if (result.model !== model) {
         throw new AiGatewayError(

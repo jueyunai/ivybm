@@ -10,7 +10,12 @@ import { retrieveKnowledgeForQuery } from './retrieve'
 
 export type KnowledgePreviewResult =
   | {
-      citations: Array<{ documentId: number | string; title: string; url?: string; version: string }>
+      citations: Array<{
+        documentId: number | string
+        title: string
+        url?: string
+        version: string
+      }>
       content: string
       estimatedCostUSD?: number | null
       model: string
@@ -36,10 +41,12 @@ const previewSession = (locale: ChatLocale): ChatSession => ({
 
 export const previewKnowledgeAnswer = async ({
   locale,
+  onProviderDispatch,
   payload,
   query,
 }: {
   locale: ChatLocale
+  onProviderDispatch?: () => void
   payload: Payload
   query: string
 }): Promise<KnowledgePreviewResult> => {
@@ -55,7 +62,8 @@ export const previewKnowledgeAnswer = async ({
     return gatewayPromise
   }
   const responder = createKnowledgeConversationResponder({
-    generateText: async (input) => (await getGateway()).generateText(input),
+    generateText: async (input) =>
+      (await getGateway()).generateText({ ...input, onDispatch: onProviderDispatch }),
     getPrompt: async (promptLocale) => {
       const result = await payload.find({
         collection: 'prompt-templates',
@@ -79,6 +87,7 @@ export const previewKnowledgeAnswer = async ({
         gateway: await getGateway(),
         locale: retrievalLocale,
         minScore: 0.2,
+        onDispatch: onProviderDispatch,
         pool: (payload.db as unknown as PostgresAdapter).pool,
         query: retrievalQuery,
       }),

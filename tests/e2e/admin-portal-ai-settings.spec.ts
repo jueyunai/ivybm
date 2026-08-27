@@ -149,13 +149,29 @@ test('admin configures shared AI providers, models, and routes without exposing 
     created.push(await readCreatedItem(embeddingRouteResponse, 'routes'))
     await expect(page.getByText('knowledge.embedding')).toBeVisible()
 
-    for (const label of ['AI 客服', '内容工作台', '知识索引']) {
-      await expect(page.locator('.portal-ai-settings__readiness article').filter({ hasText: label }))
-        .toContainText('已启用')
+    await page.getByRole('button', { name: '新建路由' }).click()
+    const translationRouteForm = page.locator('form').filter({ hasText: '新建路由' })
+    await translationRouteForm.getByLabel('用途键').selectOption('knowledge.translation')
+    await translationRouteForm
+      .getByLabel('模型配置')
+      .selectOption({ label: `${textProfileName} · portal-text-model` })
+    const [translationRouteResponse] = await Promise.all([
+      waitForCreate(page, 'routes'),
+      translationRouteForm.getByRole('button', { name: '保存' }).click(),
+    ])
+    created.push(await readCreatedItem(translationRouteResponse, 'routes'))
+    await expect(page.getByText('knowledge.translation')).toBeVisible()
+
+    for (const label of ['AI 客服', '内容工作台', '知识索引', '知识翻译']) {
+      await expect(
+        page.locator('.portal-ai-settings__readiness article').filter({ hasText: label }),
+      ).toContainText('已启用')
     }
 
     await page.getByRole('button', { name: '供应商', exact: true }).click()
-    const providerRow = page.locator('.portal-ai-settings__list article').filter({ hasText: providerName })
+    const providerRow = page
+      .locator('.portal-ai-settings__list article')
+      .filter({ hasText: providerName })
     await providerRow.getByRole('button', { name: '编辑' }).click()
     const editProviderForm = page.locator('form').filter({ hasText: '编辑' })
     await expect(editProviderForm.getByLabel('API Key')).toHaveValue('')
@@ -179,7 +195,9 @@ test('admin configures shared AI providers, models, and routes without exposing 
     expect(safeSummary.ok(), safeSummaryBody).toBe(true)
     expect(safeSummaryBody).not.toContain(apiKey)
     expect(safeSummaryBody).not.toContain('v1:')
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      1440,
+    )
 
     await page.screenshot({
       fullPage: true,
@@ -190,14 +208,16 @@ test('admin configures shared AI providers, models, and routes without exposing 
   }
 })
 
-test('mobile AI configuration remains readable without horizontal overflow', async ({ page }, testInfo) => {
+test('mobile AI configuration remains readable without horizontal overflow', async ({
+  page,
+}, testInfo) => {
   await page.setViewportSize({ height: 844, width: 390 })
   if (!(await login(page))) return
 
   await expect(page.getByRole('heading', { level: 2, name: '基础设置' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'AI 模型配置' })).toBeVisible()
   await expect(page.locator('.portal-ai-settings__workspace')).toBeVisible()
-  await expect(page.locator('.portal-ai-settings__readiness article')).toHaveCount(3)
+  await expect(page.locator('.portal-ai-settings__readiness article')).toHaveCount(4)
   await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 

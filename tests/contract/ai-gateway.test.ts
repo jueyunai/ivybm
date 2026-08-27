@@ -57,6 +57,34 @@ describe('AI gateway contract', () => {
     expect(invalidDispatch).not.toHaveBeenCalled()
   })
 
+  it('marks embedding dispatch only when the provider call is about to start', async () => {
+    const onDispatch = vi.fn()
+    const embed = vi.fn(async () => {
+      throw new Error('connection closed after embedding dispatch')
+    })
+    const gateway = createAiGateway({
+      models: { embedding: 'fake-embedding' },
+      provider: { ...fakeProvider, embed },
+    })
+
+    await expect(gateway.embed({ input: ['dispatch boundary'], onDispatch })).rejects.toMatchObject(
+      { code: 'provider_error' },
+    )
+    expect(onDispatch).toHaveBeenCalledTimes(1)
+    expect(onDispatch.mock.invocationCallOrder[0]).toBeLessThan(
+      embed.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    )
+
+    const invalidDispatch = vi.fn()
+    await expect(
+      createAiGateway({}).embed({
+        input: ['missing configuration'],
+        onDispatch: invalidDispatch,
+      }),
+    ).rejects.toMatchObject({ code: 'provider_unavailable' })
+    expect(invalidDispatch).not.toHaveBeenCalled()
+  })
+
   it('normalizes generation, embedding, token usage and estimated cost', async () => {
     const onUsage = vi.fn()
     const gateway = createAiGateway({

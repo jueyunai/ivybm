@@ -22,6 +22,7 @@ type RetrieveKnowledgeForQueryInput = Omit<
   'embedding' | 'embeddingSpace' | 'model'
 > & {
   gateway: KnowledgeEmbeddingGateway
+  onDispatch?: () => void
   query: string
 }
 
@@ -133,6 +134,7 @@ export const retrieveKnowledge = async ({
 
 export const retrieveKnowledgeForQuery = async ({
   gateway,
+  onDispatch,
   query,
   ...options
 }: RetrieveKnowledgeForQueryInput): Promise<RetrievedKnowledge[]> => {
@@ -140,7 +142,7 @@ export const retrieveKnowledgeForQuery = async ({
     throw new Error('Knowledge retrieval query is required')
   }
 
-  const embedded = await gateway.embed({ input: [query] })
+  const embedded = await gateway.embed({ input: [query], onDispatch })
   const embedding = embedded.embeddings[0]
   const embeddingSpace = embedded.embeddingSpace
   if (!embeddingSpace?.trim()) {

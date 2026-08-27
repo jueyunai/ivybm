@@ -241,29 +241,96 @@ describe('Portal knowledge commands', () => {
     )
   })
 
-  it('runs AI debug through the injected gateway and returns only safe output', async () => {
-    const generateText = vi.fn().mockResolvedValue({
-      cost: { currency: 'USD', estimated: 0.001 },
-      model: 'private-model',
-      provider: 'private-provider',
-      requestId: 'private-request-id',
-      text: 'Safe answer',
-      usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 },
+  it('runs AI debug through previewKnowledge and returns citations and prompt metadata', async () => {
+    const previewKnowledge = vi.fn().mockResolvedValue({
+      citations: [
+        { documentId: 10, title: 'Aluminum Specs', url: 'https://example.invalid', version: '1.0' },
+      ],
+      content: 'Aluminum double-curved panel answer',
+      model: 'gpt-4o',
+      outcome: 'answer',
+      promptVersion: 3,
+      tokenUsage: { inputTokens: 12, outputTokens: 20, totalTokens: 32 },
     })
-    const resolveGateway = vi.fn().mockResolvedValue({ generateText })
 
     const result = await runKnowledgeAiDebug({
-      input: { prompt: 'Test reviewed knowledge' },
+      input: { locale: 'en', prompt: 'Tell me about curved panels' },
       payload: {} as Payload,
-      resolveGateway: resolveGateway as never,
+      previewKnowledge: previewKnowledge as never,
     })
+
     expect(result).toMatchObject({
-      text: 'Safe answer',
-      usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 },
+      citations: [
+        { documentId: 10, title: 'Aluminum Specs', url: 'https://example.invalid', version: '1.0' },
+      ],
+      model: 'gpt-4o',
+      outcome: 'answer',
+      promptVersion: 3,
+      text: 'Aluminum double-curved panel answer',
+      usage: { inputTokens: 12, outputTokens: 20, totalTokens: 32 },
     })
-    expect(JSON.stringify(result)).not.toMatch(/private-model|private-provider|private-request-id/)
-    expect(resolveGateway).toHaveBeenCalledWith(
-      expect.objectContaining({ routes: [{ operation: 'text', usageKey: 'chat.reply' }] }),
+    expect(previewKnowledge).toHaveBeenCalledWith({
+      locale: 'en',
+      payload: expect.anything(),
+      query: 'Tell me about curved panels',
+    })
+  })
+
+  it('handles handoff outcome from previewKnowledge gracefully', async () => {
+    const previewKnowledge = vi.fn().mockResolvedValue({
+      outcome: 'handoff',
+      reason: 'risk_detected',
+    })
+
+    const result = await runKnowledgeAiDebug({
+      input: { prompt: 'Competitor pricing' },
+      payload: {} as Payload,
+      previewKnowledge: previewKnowledge as never,
+    })
+
+    expect(result).toMatchObject({
+      outcome: 'handoff',
+      reason: 'risk_detected',
+    })
+    expect(result).not.toHaveProperty('text')
+  })
+
+  it('surfaces preview failures instead of disguising them as ungrounded answers', async () => {
+    const failure = new Error('knowledge database unavailable')
+    await expect(
+      runKnowledgeAiDebug({
+        input: { prompt: 'Test reviewed knowledge' },
+        payload: {} as Payload,
+        previewKnowledge: vi.fn().mockRejectedValue(failure),
+      }),
+    ).rejects.toBe(failure)
+  })
+
+  it('forwards the receipt dispatch marker before a preview provider failure', async () => {
+    const failure = new Error('connection closed after request dispatch')
+    const onProviderDispatch = vi.fn()
+    const previewKnowledge = vi.fn(
+      async ({ onProviderDispatch: mark }: { onProviderDispatch?: () => void }) => {
+        mark?.()
+        throw failure
+      },
     )
+
+    await expect(
+      runKnowledgeAiDebug({
+        input: { prompt: 'Test reviewed knowledge' },
+        onProviderDispatch,
+        payload: {} as Payload,
+        previewKnowledge: previewKnowledge as never,
+      }),
+    ).rejects.toBe(failure)
+
+    expect(onProviderDispatch).toHaveBeenCalledTimes(1)
+    expect(previewKnowledge).toHaveBeenCalledWith({
+      locale: 'en',
+      onProviderDispatch,
+      payload: expect.anything(),
+      query: 'Test reviewed knowledge',
+    })
   })
 })

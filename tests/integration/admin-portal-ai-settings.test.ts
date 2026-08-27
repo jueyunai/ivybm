@@ -20,6 +20,7 @@ let textProfileID = 0
 let embeddingProfileID = 0
 let imageProfileID = 0
 let textRouteID = 0
+let translationRouteID = 0
 let embeddingRouteID = 0
 let imageRouteID = 0
 let originalEncryptionKey: string | undefined
@@ -54,6 +55,7 @@ describe.sequential('Portal AI settings', () => {
       if (!payload) return
       for (const [collection, id] of [
         ['ai-usage-routes', textRouteID],
+        ['ai-usage-routes', translationRouteID],
         ['ai-usage-routes', embeddingRouteID],
         ['ai-usage-routes', imageRouteID],
         ['ai-model-profiles', textProfileID],
@@ -201,6 +203,18 @@ describe.sequential('Portal AI settings', () => {
       resource: 'routes',
     })
     textRouteID = textRoute.item.id
+    const translationRoute = await createPortalAiResource({
+      input: {
+        enabled: true,
+        operation: 'text',
+        profileID: textProfileID,
+        usageKey: 'knowledge.translation',
+      },
+      payload,
+      req,
+      resource: 'routes',
+    })
+    translationRouteID = translationRoute.item.id
     const embeddingRoute = await createPortalAiResource({
       input: {
         enabled: true,
@@ -231,6 +245,7 @@ describe.sequential('Portal AI settings', () => {
       { key: 'customer-chat', reason: null, status: 'ready' },
       { key: 'content-studio', reason: null, status: 'configured-pending-verification' },
       { key: 'knowledge-index', reason: null, status: 'ready' },
+      { key: 'knowledge-translation', reason: null, status: 'ready' },
     ])
     expect(JSON.stringify(summary)).not.toContain(providerInput.apiKey)
 
@@ -241,6 +256,7 @@ describe.sequential('Portal AI settings', () => {
         { key: 'customer-chat', reason: 'credential', status: 'action-required' },
         { key: 'content-studio', reason: 'credential', status: 'action-required' },
         { key: 'knowledge-index', reason: 'credential', status: 'action-required' },
+        { key: 'knowledge-translation', reason: 'credential', status: 'action-required' },
       ])
       expect(JSON.stringify(unreadableSummary)).not.toContain(stored.apiKey)
     } finally {
@@ -333,6 +349,7 @@ describe.sequential('Portal AI settings', () => {
 
     for (const [resource, id] of [
       ['routes', textRouteID],
+      ['routes', translationRouteID],
       ['routes', embeddingRouteID],
       ['routes', imageRouteID],
       ['profiles', textProfileID],
@@ -362,6 +379,7 @@ describe.sequential('Portal AI settings', () => {
       resource: 'providers',
     })
     textRouteID =
+      translationRouteID =
       embeddingRouteID =
       imageRouteID =
       textProfileID =

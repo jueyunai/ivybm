@@ -185,6 +185,158 @@ describe('Portal create command keys', () => {
     expect(secondKey).not.toBe(firstKey)
   })
 
+  it('sends the selected knowledge locale and includes it in the AI debug key', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        result: {
+          outcome: 'answer',
+          text: 'grounded answer',
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        },
+      }),
+    )
+    vi.stubGlobal('fetch', request)
+    render(
+      React.createElement(PortalPreferencesProvider, null, React.createElement(KnowledgeAiDebug)),
+    )
+
+    fireEvent.change(screen.getByLabelText('调试输入'), { target: { value: 'same prompt' } })
+    fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1))
+    fireEvent.change(screen.getByLabelText('知识语言'), { target: { value: 'ar' } })
+    fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+
+    expect(JSON.parse(String(request.mock.calls[0]?.[1]?.body))).toEqual({
+      locale: 'en',
+      prompt: 'same prompt',
+    })
+    expect(JSON.parse(String(request.mock.calls[1]?.[1]?.body))).toEqual({
+      locale: 'ar',
+      prompt: 'same prompt',
+    })
+    expect(headerValue(request.mock.calls[1]?.[1], 'Idempotency-Key')).not.toBe(
+      headerValue(request.mock.calls[0]?.[1], 'Idempotency-Key'),
+    )
+  })
+
+  it('locks the AI debug inputs while a request is pending and restores them afterward', async () => {
+    let resolveRequest!: (response: Response) => void
+    const request = vi.fn<typeof fetch>().mockReturnValueOnce(
+      new Promise<Response>((resolve) => {
+        resolveRequest = resolve
+      }),
+    )
+    vi.stubGlobal('fetch', request)
+    render(
+      React.createElement(PortalPreferencesProvider, null, React.createElement(KnowledgeAiDebug)),
+    )
+
+    const language = screen.getByLabelText('知识语言')
+    const input = screen.getByLabelText('调试输入')
+    fireEvent.change(input, { target: { value: 'pending prompt' } })
+    fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1))
+    expect(language.hasAttribute('disabled')).toBe(true)
+    expect(input.hasAttribute('disabled')).toBe(true)
+
+    await act(async () => {
+      resolveRequest(jsonResponse({ result: { text: 'completed', usage: { totalTokens: 1 } } }))
+    })
+    await screen.findByText(/completed/)
+    expect(language.hasAttribute('disabled')).toBe(false)
+    expect(input.hasAttribute('disabled')).toBe(false)
+  })
+
+  it('renders Arabic debug content RTL and deduplicates document citations', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse({
+          result: {
+            citations: [
+              { documentId: 7, title: 'دليل المنتج', version: '2' },
+              { documentId: 7, title: 'دليل المنتج', version: '2' },
+            ],
+            outcome: 'answer',
+            text: 'إجابة موثقة',
+            usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          },
+        }),
+      ),
+    )
+    render(
+      React.createElement(PortalPreferencesProvider, null, React.createElement(KnowledgeAiDebug)),
+    )
+
+    const input = screen.getByLabelText('调试输入')
+    fireEvent.change(screen.getByLabelText('知识语言'), { target: { value: 'ar' } })
+    fireEvent.change(input, { target: { value: 'اختبار' } })
+    expect(input.getAttribute('dir')).toBe('rtl')
+    fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
+
+    const answer = await screen.findByText(/إجابة موثقة/)
+    expect(answer.getAttribute('dir')).toBe('rtl')
+    const citation = screen.getByText('دليل المنتج (v2)')
+    expect(citation.closest('.portal-knowledge-ai-debug__citations')?.getAttribute('dir')).toBe(
+      'rtl',
+    )
+    expect(screen.getAllByText('دليل المنتج (v2)')).toHaveLength(1)
+    expect(answer.closest('[role="status"]')).toBeTruthy()
+  })
+
+  it('renders a localized handoff state without presenting it as a safe answer', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse({
+          result: {
+            outcome: 'handoff',
+            reason: 'high_risk_topic',
+            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          },
+        }),
+      ),
+    )
+    render(
+      React.createElement(PortalPreferencesProvider, null, React.createElement(KnowledgeAiDebug)),
+    )
+
+    fireEvent.change(screen.getByLabelText('调试输入'), { target: { value: 'pricing guarantee' } })
+    fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
+
+    expect(await screen.findByText('已触发转人工')).toBeTruthy()
+    expect(screen.getByText('该请求需要人工审核。')).toBeTruthy()
+    expect(screen.queryByText('安全结果')).toBeNull()
+    expect(screen.queryByText('high_risk_topic')).toBeNull()
+  })
+
+  it('renders a distinct generic explanation for an unknown handoff reason', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse({
+          result: {
+            outcome: 'handoff',
+            reason: 'provider_policy_changed',
+            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          },
+        }),
+      ),
+    )
+    render(
+      React.createElement(PortalPreferencesProvider, null, React.createElement(KnowledgeAiDebug)),
+    )
+
+    fireEvent.change(screen.getByLabelText('调试输入'), { target: { value: 'unknown policy' } })
+    fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
+
+    expect(await screen.findByText('该请求需要转交人工处理。')).toBeTruthy()
+    expect(screen.getAllByText('已触发转人工')).toHaveLength(1)
+    expect(screen.queryByText('provider_policy_changed')).toBeNull()
+  })
+
   it('reuses the media upload key after an interrupted response body', async () => {
     const request = vi
       .fn<typeof fetch>()

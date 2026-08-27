@@ -417,6 +417,7 @@ export const PORTAL_ZH = {
       encryptionKeyMissing: '服务器尚未配置凭据加密密钥，暂无法保存 API Key，请联系技术管理员。',
       error: 'AI 配置操作失败，请检查输入后重试。',
       knowledgeIndex: '知识索引',
+      knowledgeTranslation: '知识翻译',
       maxOutputTokens: '最大输出 Token',
       model: '模型 ID',
       modelName: '模型名称',
