@@ -19,7 +19,11 @@ export const isTeamManagementEnabled = (env: Partial<NodeJS.ProcessEnv> = proces
   env.ADMIN_PORTAL_TEAM_MANAGEMENT_ENABLED === 'true'
 
 const expectedPortalOrigin = (request: Request): string | undefined => {
-  const configured = process.env.NEXT_PUBLIC_SERVER_URL?.trim()
+  // `NEXT_PUBLIC_*` values are embedded into the Next.js bundle at build time.
+  // The E2E launcher starts that bundle on a dynamically allocated port, so a
+  // server-only runtime value must take precedence for request-origin checks.
+  const configured =
+    process.env.IVYBM_RUNTIME_SERVER_URL?.trim() || process.env.NEXT_PUBLIC_SERVER_URL?.trim()
   if (configured) {
     try {
       const url = new URL(configured)

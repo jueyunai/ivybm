@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
 import {
@@ -16,6 +16,10 @@ describe('Portal user settings route utilities and authorization', () => {
     process.env = { ...originalEnv }
   })
 
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   it('checks team management feature flag', () => {
     expect(isTeamManagementEnabled({ ADMIN_PORTAL_TEAM_MANAGEMENT_ENABLED: 'true' })).toBe(true)
     expect(isTeamManagementEnabled({ ADMIN_PORTAL_TEAM_MANAGEMENT_ENABLED: 'false' })).toBe(false)
@@ -23,6 +27,9 @@ describe('Portal user settings route utilities and authorization', () => {
   })
 
   it('validates same-origin requests in dev/test vs production', () => {
+    delete process.env.IVYBM_RUNTIME_SERVER_URL
+    delete process.env.NEXT_PUBLIC_SERVER_URL
+
     const devReq = new NextRequest('http://localhost:3000/api/portal/settings/users', {
       headers: { origin: 'http://localhost:3000' },
     })
@@ -32,6 +39,39 @@ describe('Portal user settings route utilities and authorization', () => {
       headers: { origin: 'https://attacker.invalid' },
     })
     expect(isSameOriginRequest(foreignReq)).toBe(false)
+  })
+
+  it('uses the runtime server origin when the production bundle has a stale public origin', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    process.env.NEXT_PUBLIC_SERVER_URL = 'http://localhost:3000'
+    process.env.IVYBM_RUNTIME_SERVER_URL = 'http://localhost:43729'
+
+    const runtimeReq = new NextRequest('http://localhost:43729/api/portal/settings/users', {
+      headers: {
+        origin: 'http://localhost:43729',
+      },
+    })
+    expect(isSameOriginRequest(runtimeReq)).toBe(true)
+
+    const foreignReq = new NextRequest('http://localhost:43729/api/portal/settings/users', {
+      headers: {
+        origin: 'https://attacker.invalid',
+      },
+    })
+    expect(isSameOriginRequest(foreignReq)).toBe(false)
+  })
+
+  it('falls back to the configured public origin when no runtime origin is supplied', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    process.env.NEXT_PUBLIC_SERVER_URL = 'https://ivybm.com'
+    delete process.env.IVYBM_RUNTIME_SERVER_URL
+
+    const productionReq = new NextRequest('http://app:3000/api/portal/settings/users', {
+      headers: {
+        origin: 'https://ivybm.com',
+      },
+    })
+    expect(isSameOriginRequest(productionReq)).toBe(true)
   })
 
   it('formats error responses with proper status and error code', () => {

@@ -128,6 +128,7 @@ export const createE2EEnvironment = ({
     IVYBM_E2E_RUN_ID: runID,
     IVYBM_E2E_SPEC_PATHS_JSON: JSON.stringify(specPaths),
     IVYBM_E2E_WORKER_MODE: mode === 'mutation' ? 'harness-only' : '',
+    IVYBM_RUNTIME_SERVER_URL: baseURL || '',
     NEXT_PUBLIC_SERVER_URL: publishingOptIn ? 'https://e2e-publication.invalid' : baseURL || '',
     PAYLOAD_SECRET: 'e2e-build-only-secret-at-least-32-characters',
     PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'b'.repeat(64),
