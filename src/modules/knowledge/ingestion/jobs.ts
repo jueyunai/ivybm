@@ -230,28 +230,38 @@ const persistSourceFailure = async ({
   )
 }
 
-const safeFailure = (error: unknown): { code: string; summary: string } => {
+export const safeFailure = (error: unknown): { code: string; summary: string } => {
   const code = error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
     ? (error as { code: string }).code.slice(0, 100)
     : 'ingestion-failed'
   const known: Record<string, string> = {
+    'empty-document': 'The document contains no readable text',
     'external-docx-relation': 'The document contains an external relationship',
     'file-signature-mismatch': 'The file signature does not match its declared type',
+    'file-too-large': 'The uploaded file exceeds its size limit',
     'image-too-large': 'An embedded image exceeds the allowed size',
     'image-signature-mismatch': 'An embedded image has an invalid file signature',
+    'image-total-too-large': 'The embedded images exceed their total size limit',
+    'ingestion-failed': 'The document ingestion failed unexpectedly',
     'invalid-docx': 'The DOCX document is invalid',
     'invalid-docx-archive': 'The DOCX archive is invalid',
     'invalid-docx-image': 'A referenced DOCX image is missing',
+    'invalid-file': 'The uploaded file is invalid',
+    'invalid-file-name': 'The file name is invalid',
+    'invalid-image': 'The uploaded image is invalid',
+    'invalid-image-name': 'The image file name is invalid',
     'invalid-pdf': 'The PDF document is invalid',
     'ocr-required': 'This PDF needs OCR before it can be translated',
     'pdf-page-limit': 'The PDF contains too many pages',
     'pdf-password-required': 'The PDF is password protected',
     'text-too-large': 'The extracted text exceeds the allowed size',
+    'too-many-images': 'The document contains too many images',
     'translation-prompt-ambiguous': 'The translation prompt configuration is ambiguous',
     'translation-prompt-unavailable': 'An active translation prompt is not configured',
     'translation-fidelity': 'The translation changed a required number or image placeholder',
     'translation-empty': 'The translation provider returned empty text',
     'translation-too-large': 'The document is too large to translate safely',
+    'unsupported-file-type': 'Only DOCX and PDF files are allowed',
     'unsupported-image': 'The document contains an unsupported image',
   }
   return { code, summary: known[code] ?? 'The document could not be processed safely' }
