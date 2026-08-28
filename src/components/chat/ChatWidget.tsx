@@ -177,7 +177,7 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
         if (shouldDiscardPersistedSession(caught)) discardSession()
         setError(getErrorMessage(caught, copy))
       })
-    }, 12_000)
+    }, 5_000)
     return () => window.clearInterval(timer)
   }, [activeService, commitSession, copy, discardSession, isOpen, session])
 

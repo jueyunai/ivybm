@@ -435,12 +435,12 @@ describe('ChatWidget', () => {
     expect(screen.getByTestId('chat-handoff-pending')).not.toBeNull()
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(12_000)
+      await vi.advanceTimersByTimeAsync(5_000)
     })
     expect(screen.getByRole('alert')).not.toBeNull()
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(12_000)
+      await vi.advanceTimersByTimeAsync(5_000)
     })
     expect(screen.queryByRole('alert')).toBeNull()
     expect(refreshAttempts).toBe(2)
@@ -478,7 +478,7 @@ describe('ChatWidget', () => {
       revision: handoffRequested.revision + 1,
     }
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(24_000)
+      await vi.advanceTimersByTimeAsync(10_000)
     })
     expect(pollResolvers).toHaveLength(2)
 

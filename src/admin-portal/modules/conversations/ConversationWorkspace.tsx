@@ -58,6 +58,8 @@ type ConversationFeedback = {
   selectionEpoch: number
 }
 
+const LIVE_REFRESH_INTERVAL_MS = 5_000
+
 const messageStatusRank: Record<ChatMessageStatus, number> = {
   pending: 0,
   failed: 1,
@@ -525,6 +527,26 @@ export function ConversationWorkspace({
     const timer = setTimeout(() => void loadDetail(), 0)
     return () => clearTimeout(timer)
   }, [loadDetail])
+
+  // Live-refresh: visitor and AI messages must surface without a manual
+  // refresh or an operator command. Paused while the tab is hidden.
+  useEffect(() => {
+    if (!enabled) return
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      void loadList()
+      void loadDetail()
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    const timer = window.setInterval(tick, LIVE_REFRESH_INTERVAL_MS)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [enabled, loadDetail, loadList])
 
   const counts = useMemo(() => {
     const base: Record<HandoffStatus, number> = {

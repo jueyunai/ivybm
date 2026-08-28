@@ -937,4 +937,131 @@ describe('Portal conversations module', () => {
       )
     })
   })
+
+  it('surfaces a new visitor message through live refresh without an operator action', async () => {
+    vi.useFakeTimers()
+    try {
+      const withThirdMessage: ChatSession = {
+        ...session1,
+        messages: [
+          ...session1.messages,
+          {
+            author: 'visitor',
+            content: 'Third visitor message',
+            createdAt: '2026-08-01T10:06:00.000Z',
+            id: 'm3',
+            status: 'sent',
+          },
+        ],
+        revision: session1.revision + 1,
+      }
+      let detailResponses = 0
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        const urlStr = String(url)
+        if (
+          urlStr.startsWith('/api/portal/conversations?') ||
+          urlStr === '/api/portal/conversations'
+        ) {
+          return Promise.resolve(
+            jsonResponse({
+              docs: [
+                {
+                  ...session1,
+                  lastMessageAt: session1.messages[0]?.createdAt,
+                  messages: undefined,
+                },
+              ],
+              page: 1,
+              totalDocs: 1,
+              totalPages: 1,
+            }),
+          )
+        }
+        if (urlStr.includes('/api/portal/conversations/conv-1')) {
+          detailResponses += 1
+          return Promise.resolve(jsonResponse(detailResponses >= 2 ? withThirdMessage : session1))
+        }
+        return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      renderWorkspace('conv-1')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(screen.getByText('First visitor message')).toBeDefined()
+      expect(screen.queryByText('Third visitor message')).toBeNull()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000)
+      })
+      expect(screen.getByText('Third visitor message')).toBeDefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('pauses live refresh while the tab is hidden and resumes on visibility regain', async () => {
+    vi.useFakeTimers()
+    const visibility = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+    try {
+      let detailResponses = 0
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        const urlStr = String(url)
+        if (
+          urlStr.startsWith('/api/portal/conversations?') ||
+          urlStr === '/api/portal/conversations'
+        ) {
+          return Promise.resolve(
+            jsonResponse({
+              docs: [
+                {
+                  ...session1,
+                  lastMessageAt: session1.messages[0]?.createdAt,
+                  messages: undefined,
+                },
+              ],
+              page: 1,
+              totalDocs: 1,
+              totalPages: 1,
+            }),
+          )
+        }
+        if (urlStr.includes('/api/portal/conversations/conv-1')) {
+          detailResponses += 1
+          return Promise.resolve(jsonResponse(session1))
+        }
+        return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      renderWorkspace('conv-1')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(detailResponses).toBe(1)
+
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        value: 'hidden',
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000)
+      })
+      expect(detailResponses).toBe(1)
+
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        value: 'visible',
+      })
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(detailResponses).toBe(2)
+    } finally {
+      if (visibility) Object.defineProperty(document, 'visibilityState', visibility)
+      vi.useRealTimers()
+    }
+  })
 })
