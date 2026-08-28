@@ -43,22 +43,24 @@ const request = async ({
   accessToken,
   body,
   fetch: fetchImpl,
+  method = 'POST',
   path,
   signal,
 }: {
   accessToken: string
-  body: unknown
+  body?: unknown
   fetch: FetchLike
+  method?: 'DELETE' | 'GET' | 'POST'
   path: string
   signal?: AbortSignal
 }): Promise<JsonRecord> => {
   const response = await fetchImpl(`https://open.feishu.cn${path}`, {
-    body: JSON.stringify(body),
+    ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
     headers: {
       authorization: `Bearer ${accessToken}`,
       'content-type': 'application/json; charset=utf-8',
     },
-    method: 'POST',
+    method,
     signal,
   })
   const responseBody = record(await response.json().catch(() => undefined)) ?? {}
@@ -141,6 +143,142 @@ export const createFeishuCRMTable = async ({
   return { tableId }
 }
 
+export type FeishuBaseTableRef = {
+  name: string
+  tableId: string
+}
+
+export const listFeishuCRMTables = async ({
+  accessToken,
+  appToken,
+  fetch: fetchImpl = globalThis.fetch,
+  signal,
+}: {
+  accessToken: string
+  appToken: string
+  fetch?: FetchLike
+  signal?: AbortSignal
+}): Promise<FeishuBaseTableRef[]> => {
+  const tables: FeishuBaseTableRef[] = []
+  let pageToken = ''
+  do {
+    const query = pageToken
+      ? `?page_size=100&page_token=${encodeURIComponent(pageToken)}`
+      : '?page_size=100'
+    const page = await request({
+      accessToken,
+      fetch: fetchImpl,
+      method: 'GET',
+      path: `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables${query}`,
+      signal,
+    })
+    const data = record(page.data) ?? {}
+    const items = Array.isArray(data.items) ? data.items : []
+    for (const item of items) {
+      const entry = record(item)
+      const tableId = string(entry?.table_id)
+      if (tableId) tables.push({ name: string(entry?.name) ?? '', tableId })
+    }
+    pageToken = data.has_more === true ? (string(data.page_token) ?? '') : ''
+  } while (pageToken)
+  return tables
+}
+
+export const feishuCRMTableIsEmpty = async ({
+  accessToken,
+  appToken,
+  fetch: fetchImpl = globalThis.fetch,
+  signal,
+  tableId,
+}: {
+  accessToken: string
+  appToken: string
+  fetch?: FetchLike
+  signal?: AbortSignal
+  tableId: string
+}): Promise<boolean> => {
+  const result = await request({
+    accessToken,
+    fetch: fetchImpl,
+    method: 'GET',
+    path: `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records?page_size=1`,
+    signal,
+  })
+  const data = record(result.data) ?? {}
+  const total = number(data.total)
+  if (total !== undefined) return total === 0
+  return !Array.isArray(data.items) || data.items.length === 0
+}
+
+export const deleteFeishuCRMTable = async ({
+  accessToken,
+  appToken,
+  fetch: fetchImpl = globalThis.fetch,
+  signal,
+  tableId,
+}: {
+  accessToken: string
+  appToken: string
+  fetch?: FetchLike
+  signal?: AbortSignal
+  tableId: string
+}): Promise<void> => {
+  await request({
+    accessToken,
+    fetch: fetchImpl,
+    method: 'DELETE',
+    path: `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}`,
+    signal,
+  })
+}
+
+/**
+ * A Feishu Base created through the API always ships with an auto-generated
+ * empty default table next to our 客户档案 table. Remove every table that is
+ * not the CRM table and still empty; non-empty tables are never touched so a
+ * retried cleanup cannot delete customer data entered in between.
+ */
+export const cleanupFeishuDefaultTables = async ({
+  accessToken,
+  appToken,
+  fetch: fetchImpl = globalThis.fetch,
+  keepTableId,
+  signal,
+}: {
+  accessToken: string
+  appToken: string
+  fetch?: FetchLike
+  keepTableId: string
+  signal?: AbortSignal
+}): Promise<{ deletedTableIds: string[] }> => {
+  const deletedTableIds: string[] = []
+  const tables = await listFeishuCRMTables({ accessToken, appToken, fetch: fetchImpl, signal })
+  for (const table of tables) {
+    if (table.tableId === keepTableId) continue
+    try {
+      const empty = await feishuCRMTableIsEmpty({
+        accessToken,
+        appToken,
+        fetch: fetchImpl,
+        signal,
+        tableId: table.tableId,
+      })
+      if (!empty) continue
+      await deleteFeishuCRMTable({
+        accessToken,
+        appToken,
+        fetch: fetchImpl,
+        signal,
+        tableId: table.tableId,
+      })
+      deletedTableIds.push(table.tableId)
+    } catch {
+      // Cleanup is cosmetic: a stranded empty default table never blocks provisioning.
+    }
+  }
+  return { deletedTableIds }
+}
+
 export const provisionFeishuCRM = async ({
   accessToken,
   baseName,
@@ -157,6 +295,13 @@ export const provisionFeishuCRM = async ({
     accessToken,
     appToken: base.appToken,
     fetch: fetchImpl,
+    signal,
+  })
+  await cleanupFeishuDefaultTables({
+    accessToken,
+    appToken: base.appToken,
+    fetch: fetchImpl,
+    keepTableId: table.tableId,
     signal,
   })
   return { ...base, ...table }

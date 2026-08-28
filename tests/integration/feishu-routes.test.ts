@@ -1607,8 +1607,10 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
       baseURL: `https://tenant.example.invalid/base/${suffix}`,
     }))
     const createTable = vi.fn(async () => ({ tableId: `table-${suffix}` }))
+    const cleanupTables = vi.fn(async () => ({ deletedTableIds: [] }))
     const handler = createFeishuConnectionProvisionJobHandler({
       accessToken: async () => 'task11-user-token',
+      cleanupTables,
       createBase,
       createTable,
       payload,
@@ -1749,6 +1751,10 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     await handler(claimed(job, 2), execution())
     expect(createBase).toHaveBeenCalledTimes(1)
     expect(createTable).toHaveBeenCalledTimes(1)
+    expect(cleanupTables).toHaveBeenCalledTimes(1)
+    expect(cleanupTables).toHaveBeenCalledWith(
+      expect.objectContaining({ appToken: `base-${suffix}`, keepTableId: `table-${suffix}` }),
+    )
     await payload.delete({ collection: 'jobs', context, id: job.id, overrideAccess: true })
   })
 
@@ -1799,6 +1805,7 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     jobIDs.add(qrJob.job.id)
     const handler = createFeishuConnectionProvisionJobHandler({
       accessToken: async () => 'qr-reconnect-user-token',
+      cleanupTables: vi.fn(async () => ({ deletedTableIds: [] })),
       createBase: vi.fn(async () => ({ appToken: 'unused', baseURL: 'https://unused.invalid' })),
       createTable: vi.fn(async () => ({ tableId: 'unused' })),
       payload,
@@ -1928,8 +1935,10 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
         }),
       )
       .mockResolvedValueOnce({ tableId: `resume-table-${suffix}` })
+    const cleanupTables = vi.fn(async () => ({ deletedTableIds: [] }))
     const handler = createFeishuConnectionProvisionJobHandler({
       accessToken: async () => 'resume-user-token',
+      cleanupTables,
       createBase,
       createTable,
       payload,
@@ -1955,6 +1964,13 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     await handler(claimed(fixture.job, 2, 2), execution())
     expect(createBase).toHaveBeenCalledTimes(1)
     expect(createTable).toHaveBeenCalledTimes(2)
+    expect(cleanupTables).toHaveBeenCalledTimes(1)
+    expect(cleanupTables).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appToken: `resume-base-${suffix}`,
+        keepTableId: `resume-table-${suffix}`,
+      }),
+    )
     await expect(
       payload.findByID({
         collection: 'feishu-connections',
@@ -2014,6 +2030,11 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
       })
     const handler = createFeishuConnectionProvisionJobHandler({
       accessToken: async () => 'dead-user-token',
+      // Cleanup failure must never fail provisioning: the connection still
+      // reaches connected even when the default-table cleanup throws.
+      cleanupTables: vi.fn(async () => {
+        throw new Error('cleanup outage fixture')
+      }),
       createBase,
       createTable: async () => ({ tableId: `manual-table-${suffix}` }),
       payload,

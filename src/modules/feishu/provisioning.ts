@@ -14,6 +14,7 @@ import type { JobHandler } from '@/modules/jobs/contracts'
 import { PayloadFeishuTokenProvider } from './connectionClient'
 import { FeishuApiError, FeishuConfigurationError } from './contracts'
 import {
+  cleanupFeishuDefaultTables,
   createFeishuCRMBase,
   createFeishuCRMTable,
   DEFAULT_FEISHU_FIELD_MAPPINGS,
@@ -336,11 +337,13 @@ export const createFeishuConnectionProvisionJobHandler =
   ({
     accessToken = (connectionId, signal) =>
       new PayloadFeishuTokenProvider({ connectionId, payload }).getToken('base', signal),
+    cleanupTables = cleanupFeishuDefaultTables,
     createBase = createFeishuCRMBase,
     createTable = createFeishuCRMTable,
     payload,
   }: {
     accessToken?: (connectionId: number | string, signal?: AbortSignal) => Promise<string>
+    cleanupTables?: typeof cleanupFeishuDefaultTables
     createBase?: typeof createFeishuCRMBase
     createTable?: typeof createFeishuCRMTable
     payload: Payload
@@ -374,8 +377,16 @@ export const createFeishuConnectionProvisionJobHandler =
         connection = persisted
       }
 
-      requiredString(connection.tableId, 'tableId')
+      const tableId = requiredString(connection.tableId, 'tableId')
       execution.assertLease()
+      // Cleanup runs on every (re)attempt after the CRM table exists so a crash
+      // between base creation and cleanup still gets repaired on retry.
+      await cleanupTables({
+        accessToken: token,
+        appToken,
+        keepTableId: tableId,
+        signal: execution.signal,
+      }).catch(() => undefined)
       await finalizeProvisioning({ input, payload })
       execution.assertLease()
     } catch (error) {
