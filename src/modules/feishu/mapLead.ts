@@ -87,6 +87,7 @@ export const formatAttachments = (
   if (!attachments || attachments.length === 0) return ''
 
   return attachments
+    .filter((attachment) => attachment.status === 'associated' || attachment.status === undefined)
     .map((attachment) => {
       const filename = attachment.filename?.trim() || `attachment-${attachment.id}`
       const url = resolvePortalLeadUrl(leadId, origin)
