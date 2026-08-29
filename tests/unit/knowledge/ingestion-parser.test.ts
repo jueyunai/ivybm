@@ -10,15 +10,23 @@ import {
   validateKnowledgeSourceFile,
 } from '@/modules/knowledge/ingestion/parser'
 
-const makeDocx = (): Buffer => {
+const makeDocx = (imageCount = 1): Buffer => {
+  const embeds = Array.from(
+    { length: imageCount },
+    (_, index) => `<w:drawing r:embed="rId${index + 1}"/>`,
+  ).join('')
+  const relations = Array.from(
+    { length: imageCount },
+    (_, index) => `<Relationship Id="rId${index + 1}" Target="media/image${index + 1}.png"/>`,
+  ).join('')
   const files = [
     {
       name: 'word/document.xml',
-      value: `<?xml version="1.0"?><w:document xmlns:w="x" xmlns:r="r"><w:body><w:p><w:r><w:t>Facade &amp; panels</w:t></w:r><w:r><w:tab/></w:r><w:drawing r:embed="rId1"/></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Size</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1200 mm</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`,
+      value: `<?xml version="1.0"?><w:document xmlns:w="x" xmlns:r="r"><w:body><w:p><w:r><w:t>Facade &amp; panels</w:t></w:r><w:r><w:tab/></w:r>${embeds}</w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Size</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1200 mm</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`,
     },
     {
       name: 'word/_rels/document.xml.rels',
-      value: `<Relationships><Relationship Id="rId1" Target="media/image1.png"/></Relationships>`,
+      value: `<Relationships>${relations}</Relationships>`,
     },
     {
       name: 'word/media/image1.png',
@@ -100,6 +108,17 @@ describe('knowledge source parser', () => {
     expect(parsed.text).toContain('Size | 1200 mm')
     expect(parsed.text).toContain('[[source-image-1]]')
     expect(parsed.images).toMatchObject([{ name: 'image1.png', sequence: 1, mimeType: 'image/png' }])
+  })
+
+  it('rejects a DOCX with more embedded images than the safe limit', () => {
+    let thrown: unknown
+    try {
+      parseDocx(makeDocx(101))
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeInstanceOf(KnowledgeIngestionError)
+    expect((thrown as KnowledgeIngestionError).code).toBe('too-many-images')
   })
 
   it('extracts real PDF page text and returns an actionable OCR error for textless pages', async () => {
