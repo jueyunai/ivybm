@@ -1058,10 +1058,134 @@ describe('Portal conversations module', () => {
         document.dispatchEvent(new Event('visibilitychange'))
         await vi.advanceTimersByTimeAsync(0)
       })
-      expect(detailResponses).toBe(2)
-    } finally {
-      if (visibility) Object.defineProperty(document, 'visibilityState', visibility)
-      vi.useRealTimers()
-    }
-  })
+     expect(detailResponses).toBe(2)
+   } finally {
+     if (visibility) Object.defineProperty(document, 'visibilityState', visibility)
+     vi.useRealTimers()
+   }
+ })
+
+  it('tolerates transient network errors during background live refresh without wiping active session', async () => {
+    vi.useFakeTimers()
+    try {
+      let failRefresh = false
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        const urlStr = String(url)
+        if (
+          urlStr.startsWith('/api/portal/conversations?') ||
+          urlStr === '/api/portal/conversations'
+        ) {
+          if (failRefresh) {
+            return Promise.resolve(new Response('Bad Gateway', { status: 502 }))
+          }
+          return Promise.resolve(
+            jsonResponse({
+              docs: [
+                {
+                  ...session1,
+                  lastMessageAt: session1.messages[0]?.createdAt,
+                  messages: undefined,
+                },
+              ],
+              page: 1,
+              totalDocs: 1,
+              totalPages: 1,
+            }),
+          )
+        }
+        if (urlStr.includes('/api/portal/conversations/conv-1')) {
+          if (failRefresh) {
+            return Promise.resolve(new Response('Gateway Timeout', { status: 504 }))
+          }
+          return Promise.resolve(jsonResponse(session1))
+        }
+        return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+     renderWorkspace('conv-1')
+     await act(async () => {
+       await vi.advanceTimersByTimeAsync(0)
+     })
+     expect(screen.getByText('First visitor message')).toBeDefined()
+
+     failRefresh = true
+     await act(async () => {
+       await vi.advanceTimersByTimeAsync(5_000)
+     })
+
+     expect(screen.getByText('First visitor message')).toBeDefined()
+     expect(screen.queryByText(/502|504|Bad Gateway|Gateway Timeout/)).toBeNull()
+   } finally {
+     vi.useRealTimers()
+   }
+ })
+
+ it('retains active selected conversation across background list refresh even if item is not on the first page', async () => {
+   vi.useFakeTimers()
+   try {
+     let pageRefresh = false
+     const fetchMock = vi.fn().mockImplementation((url: string) => {
+       const urlStr = String(url)
+       if (
+         urlStr.startsWith('/api/portal/conversations?') ||
+         urlStr === '/api/portal/conversations'
+       ) {
+         if (pageRefresh) {
+           return Promise.resolve(
+             jsonResponse({
+               docs: [
+                 {
+                   ...session2,
+                   lastMessageAt: session2.messages[0]?.createdAt,
+                   messages: undefined,
+                 },
+               ],
+               page: 1,
+               totalDocs: 1,
+               totalPages: 1,
+             }),
+           )
+         }
+         return Promise.resolve(
+           jsonResponse({
+             docs: [
+               {
+                 ...session1,
+                 lastMessageAt: session1.messages[0]?.createdAt,
+                 messages: undefined,
+               },
+             ],
+             page: 1,
+             totalDocs: 1,
+             totalPages: 1,
+           }),
+         )
+       }
+       if (urlStr.includes('/api/portal/conversations/conv-1')) {
+         return Promise.resolve(jsonResponse(session1))
+       }
+       if (urlStr.includes('/api/portal/conversations/conv-2')) {
+         return Promise.resolve(jsonResponse(session2))
+       }
+       return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+     })
+     vi.stubGlobal('fetch', fetchMock)
+
+     renderWorkspace('conv-1')
+     await act(async () => {
+       await vi.advanceTimersByTimeAsync(0)
+     })
+     expect(screen.getByText('First visitor message')).toBeDefined()
+
+     pageRefresh = true
+     await act(async () => {
+       await vi.advanceTimersByTimeAsync(5_000)
+     })
+
+     expect(screen.getByText('First visitor message')).toBeDefined()
+   } finally {
+     vi.useRealTimers()
+   }
+ })
 })
