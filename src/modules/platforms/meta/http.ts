@@ -28,15 +28,31 @@ const DEFAULT_MAX_BODY_BYTES = 1_000_000
 export const META_WEBHOOK_MAX_EVENT_AGE_MS = 48 * 60 * 60 * 1_000
 const META_WEBHOOK_RATE_LIMIT_PER_MINUTE = 120
 const META_WEBHOOK_RATE_LIMIT_RETRY_AFTER_SECONDS = 60
+const META_WEBHOOK_DIAGNOSTIC_COOLDOWN_MS = 5 * 60 * 1_000
 const NO_STORE_HEADERS = { 'cache-control': 'no-store' }
 
 type PayloadProvider = () => Promise<Payload>
+
+type MetaWebhookPayloadDiagnostic = {
+  code: 'invalid_payload'
+  entries: Array<{
+    changeFields: string[]
+    hasChanges: boolean
+    hasMessaging: boolean
+    messagingKinds: string[]
+  }>
+  entryCount: number
+  object: 'instagram' | 'page' | 'unknown'
+}
+
+type MetaWebhookDiagnosticSink = (diagnostic: MetaWebhookPayloadDiagnostic) => void
 
 export type MetaWebhookHandlerDependencies = {
   accountAuthorizer?: PlatformMessagingAccountAuthorizer
   allowedAccountExternalIds?: readonly string[]
   appSecret?: string
   connector?: PlatformConnector
+  diagnosticSink?: MetaWebhookDiagnosticSink
   maxBodyBytes?: number
   instagramAppSecret?: string
   now?: () => number
@@ -144,6 +160,82 @@ const configuredValue = (value: string | undefined): string | undefined => {
   return normalized || undefined
 }
 
+const knownChangeFields = new Set([
+  'comments',
+  'live_comments',
+  'mentions',
+  'message_reactions',
+  'messages',
+  'messaging_handover',
+  'messaging_postbacks',
+  'messaging_referral',
+  'messaging_seen',
+  'standby',
+  'story_insights',
+])
+
+const knownMessagingKinds = [
+  'delivery',
+  'message',
+  'message_edit',
+  'postback',
+  'reaction',
+  'read',
+  'referral',
+] as const
+
+const payloadDiagnostic = (rawBody: Uint8Array): MetaWebhookPayloadDiagnostic => {
+  let payload: unknown
+  try {
+    payload = JSON.parse(Buffer.from(rawBody).toString('utf8'))
+  } catch {
+    payload = undefined
+  }
+  const record = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : undefined
+  const object = record?.object === 'instagram' || record?.object === 'page'
+    ? record.object
+    : 'unknown'
+  const entries = Array.isArray(record?.entry) ? record.entry : []
+
+  return {
+    code: 'invalid_payload',
+    entries: entries.slice(0, 5).map((entry) => {
+      const entryRecord = entry && typeof entry === 'object' && !Array.isArray(entry)
+        ? entry as Record<string, unknown>
+        : undefined
+      const changes = Array.isArray(entryRecord?.changes) ? entryRecord.changes : []
+      const messaging = Array.isArray(entryRecord?.messaging) ? entryRecord.messaging : []
+      const changeFields = changes.map((change) => {
+        if (!change || typeof change !== 'object' || Array.isArray(change)) return 'unknown'
+        const field = (change as Record<string, unknown>).field
+        return typeof field === 'string' && knownChangeFields.has(field) ? field : 'unknown'
+      })
+      const messagingKinds = new Set<string>()
+      for (const envelope of messaging) {
+        if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) continue
+        for (const kind of knownMessagingKinds) {
+          if (kind in envelope) messagingKinds.add(kind)
+        }
+      }
+      return {
+        changeFields: [...new Set(changeFields)].sort(),
+        hasChanges: Array.isArray(entryRecord?.changes),
+        hasMessaging: Array.isArray(entryRecord?.messaging),
+        messagingKinds: [...messagingKinds].sort(),
+      }
+    }),
+    entryCount: entries.length,
+    object,
+  }
+}
+
+const productionDiagnosticSink: MetaWebhookDiagnosticSink | undefined =
+  process.env.NODE_ENV === 'production'
+    ? (diagnostic) => console.warn('[meta-webhook] rejected payload shape', diagnostic)
+    : undefined
+
 const webhookObject = (rawBody: Uint8Array): 'instagram' | 'page' | undefined => {
   try {
     const payload = JSON.parse(Buffer.from(rawBody).toString('utf8')) as unknown
@@ -182,6 +274,7 @@ export const createMetaWebhookHandlers = ({
   allowedAccountExternalIds = process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS?.split(',') ?? [],
   appSecret = process.env.META_WEBHOOK_APP_SECRET,
   connector = createMetaConnector(),
+  diagnosticSink = productionDiagnosticSink,
   maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
   instagramAppSecret = process.env.INSTAGRAM_APP_SECRET,
   now = Date.now,
@@ -202,6 +295,24 @@ export const createMetaWebhookHandlers = ({
     configuredVerifyToken && (configuredAppSecret || configuredInstagramAppSecret),
   )
   const isIngressConfigured = Boolean(isChallengeConfigured && allowedAccounts.size > 0)
+  const lastDiagnosticAt = new Map<MetaWebhookPayloadDiagnostic['code'], number>()
+
+  const emitDiagnostic = (diagnostic: MetaWebhookPayloadDiagnostic): void => {
+    if (!diagnosticSink) return
+    const emittedAt = now()
+    const previous = lastDiagnosticAt.get(diagnostic.code)
+    if (
+      previous !== undefined &&
+      emittedAt >= previous &&
+      emittedAt - previous < META_WEBHOOK_DIAGNOSTIC_COOLDOWN_MS
+    ) return
+    lastDiagnosticAt.set(diagnostic.code, emittedAt)
+    try {
+      diagnosticSink(diagnostic)
+    } catch {
+      // Diagnostics must never alter the webhook acknowledgement path.
+    }
+  }
 
   const unavailable = (): Response => safeErrorResponse('service_unavailable', 503)
   const resolveRepository = async (): Promise<PlatformEventRepository> => {
@@ -261,8 +372,9 @@ export const createMetaWebhookHandlers = ({
     },
     POST: async (request) => {
       if (!isIngressConfigured) return unavailable()
+      let rawBody: Uint8Array | undefined
       try {
-        const rawBody = await readRawBody(request, maxBodyBytes)
+        rawBody = await readRawBody(request, maxBodyBytes)
         const result = await ingestSignedWebhook({
           connector,
           eventAuthorizer: (event) => {
@@ -289,6 +401,13 @@ export const createMetaWebhookHandlers = ({
         })
         return Response.json(result, { headers: NO_STORE_HEADERS, status: 200 })
       } catch (error) {
+        if (
+          rawBody &&
+          error instanceof WebhookValidationError &&
+          error.code === 'invalid_payload'
+        ) {
+          emitDiagnostic(payloadDiagnostic(rawBody))
+        }
         return webhookErrorResponse(error)
       }
     },

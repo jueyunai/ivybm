@@ -45,6 +45,7 @@ const createHandlers = ({
   allowedAccountExternalIds = ['page-fixture-1'],
   appSecret: configuredAppSecret = appSecret,
   connector = createConnector(),
+  diagnosticSink,
   instagramAppSecret,
   maxBodyBytes,
   rateLimiter = { consume: async () => true } satisfies WebhookRateLimiter,
@@ -55,6 +56,7 @@ const createHandlers = ({
   allowedAccountExternalIds?: readonly string[]
   appSecret?: string
   connector?: PlatformConnector
+  diagnosticSink?: (diagnostic: unknown) => void
   instagramAppSecret?: string
   maxBodyBytes?: number
   rateLimiter?: WebhookRateLimiter
@@ -66,6 +68,7 @@ const createHandlers = ({
     allowedAccountExternalIds,
     appSecret: configuredAppSecret,
     connector,
+    diagnosticSink,
     instagramAppSecret,
     maxBodyBytes,
     now: () => now,
@@ -410,6 +413,136 @@ describe('Meta webhook HTTP handlers', () => {
     expect(JSON.parse(body)).toEqual({ error: { code: 'service_unavailable' } })
     expect(body).not.toContain('postgres://')
     expect(body).not.toContain('secret')
+  })
+
+  it('logs only bounded payload structure for invalid payloads', async () => {
+    const diagnosticSink = vi.fn()
+    const { handlers } = createHandlers({
+      connector: createMetaConnector(),
+      diagnosticSink,
+      instagramAppSecret: 'fixture-instagram-app-secret',
+    })
+    const rawBody = JSON.stringify({
+      entry: [
+        {
+          changes: [{
+            field: 'messages',
+            value: {
+              access_token: 'must-not-be-logged-token',
+              attachment: { url: 'https://private.example.invalid/secret.jpg' },
+              recipient: { id: 'must-not-be-logged-recipient' },
+              secretText: 'must-not-be-logged',
+              sender: { id: 'must-not-be-logged-sender' },
+            },
+          }],
+          id: 'sensitive-account-id',
+        },
+      ],
+      object: 'instagram',
+    })
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody, 'fixture-instagram-app-secret'),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(diagnosticSink).toHaveBeenCalledWith({
+      code: 'invalid_payload',
+      entries: [
+        {
+          changeFields: ['messages'],
+          hasChanges: true,
+          hasMessaging: false,
+          messagingKinds: [],
+        },
+      ],
+      entryCount: 1,
+      object: 'instagram',
+    })
+    expect(JSON.stringify(diagnosticSink.mock.calls)).not.toContain('must-not-be-logged')
+    expect(JSON.stringify(diagnosticSink.mock.calls)).not.toContain('sensitive-account-id')
+    expect(JSON.stringify(diagnosticSink.mock.calls)).not.toContain('private.example.invalid')
+  })
+
+  it('rejects unknown Instagram change fields with a sanitized structural diagnostic', async () => {
+    const diagnosticSink = vi.fn()
+    const { handlers, repository } = createHandlers({
+      connector: createMetaConnector(),
+      diagnosticSink,
+      instagramAppSecret: 'fixture-instagram-app-secret',
+    })
+    const rawBody = JSON.stringify({
+      entry: [
+        {
+          changes: [{ field: 'mesages', value: { secret: 'must-not-be-logged' } }],
+          id: 'sensitive-account-id',
+        },
+      ],
+      object: 'instagram',
+    })
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody, 'fixture-instagram-app-secret'),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: { code: 'invalid_payload' } })
+    expect(repository.events.size).toBe(0)
+    expect(diagnosticSink).toHaveBeenCalledWith({
+      code: 'invalid_payload',
+      entries: [
+        {
+          changeFields: ['unknown'],
+          hasChanges: true,
+          hasMessaging: false,
+          messagingKinds: [],
+        },
+      ],
+      entryCount: 1,
+      object: 'instagram',
+    })
+    expect(JSON.stringify(diagnosticSink.mock.calls)).not.toContain('must-not-be-logged')
+    expect(JSON.stringify(diagnosticSink.mock.calls)).not.toContain('sensitive-account-id')
+  })
+
+  it('isolates diagnostic sink failures from the webhook response', async () => {
+    const { handlers } = createHandlers({
+      connector: createMetaConnector(),
+      diagnosticSink: () => {
+        throw new Error('diagnostic sink unavailable')
+      },
+      instagramAppSecret: 'fixture-instagram-app-secret',
+    })
+    const rawBody = JSON.stringify({
+      entry: [{ changes: [{ field: 'messages', value: {} }], id: 'account-fixture-1' }],
+      object: 'instagram',
+    })
+
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody, 'fixture-instagram-app-secret'),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: { code: 'invalid_payload' } })
   })
 
   it('accepts a Meta retry after the documented delivery window and keeps it idempotent', async () => {
