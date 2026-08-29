@@ -65,6 +65,98 @@ describe('Meta messaging webhook contract', () => {
     ])
   })
 
+  it('normalizes an Instagram messages change wrapper without trusting nested account IDs', () => {
+    expect(
+      connector.normalize({
+        entry: [
+          {
+            changes: [
+              {
+                field: 'messages',
+                value: {
+                  message: { mid: 'm_fixture_instagram_change_1', text: 'Need a quotation.' },
+                  recipient: { id: 'IG_ACCOUNT_FIXTURE_1' },
+                  sender: { id: 'IG_SENDER_FIXTURE_2' },
+                  timestamp: 1_710_000_100_123,
+                },
+              },
+            ],
+            id: 'IG_ACCOUNT_FIXTURE_1',
+            time: 1_710_000_100_000,
+          },
+        ],
+        object: 'instagram',
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        accountExternalId: 'IG_ACCOUNT_FIXTURE_1',
+        externalEventId: 'm_fixture_instagram_change_1',
+        platform: 'instagram',
+        recipientExternalId: 'IG_ACCOUNT_FIXTURE_1',
+        senderExternalId: 'IG_SENDER_FIXTURE_2',
+      }),
+    ])
+  })
+
+  it('normalizes an Instagram change wrapper containing a messages array', () => {
+    expect(
+      connector.normalize({
+        entry: [
+          {
+            changes: [
+              {
+                field: 'messages',
+                value: {
+                  messages: [
+                    {
+                      message: { mid: 'm_fixture_instagram_change_array_1', text: 'Hello.' },
+                      recipient: { id: 'IG_ACCOUNT_FIXTURE_1' },
+                      sender: { id: 'IG_SENDER_FIXTURE_3' },
+                      timestamp: 1_710_000_100_124,
+                    },
+                  ],
+                },
+              },
+            ],
+            id: 'IG_ACCOUNT_FIXTURE_1',
+          },
+        ],
+        object: 'instagram',
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        accountExternalId: 'IG_ACCOUNT_FIXTURE_1',
+        externalEventId: 'm_fixture_instagram_change_array_1',
+        platform: 'instagram',
+      }),
+    ])
+  })
+
+  it('acknowledges the Meta dashboard dummy messages change without creating an event', () => {
+    expect(
+      connector.normalize({
+        entry: [
+          {
+            changes: [
+              {
+                field: 'messages',
+                value: {
+                  message: { mid: 'random_mid', text: 'random_text' },
+                  recipient: { id: '23245' },
+                  sender: { id: '12334' },
+                  timestamp: '1527459824',
+                },
+              },
+            ],
+            id: '0',
+            time: 1_744_813_777,
+          },
+        ],
+        object: 'instagram',
+      }),
+    ).toEqual([])
+  })
+
   it('does not collapse the same provider message ID across two Meta accounts', () => {
     const sharedMessageID = 'm_fixture_shared_across_accounts'
     const events = connector.normalize({
@@ -180,6 +272,29 @@ describe('Meta messaging webhook contract', () => {
         ),
       }),
     ])
+  })
+
+  it('acknowledges Instagram reaction and message-edit callbacks without creating inbound messages', () => {
+    expect(
+      connector.normalize({
+        entry: [
+          {
+            id: 'IG_ACCOUNT_FIXTURE_1',
+            messaging: [
+              {
+                reaction: { action: 'react', emoji: '👍', mid: 'm_fixture_instagram_1' },
+                timestamp: 1_710_000_000_001,
+              },
+              {
+                message_edit: { mid: 'm_fixture_instagram_1', num_edit: 0 },
+                timestamp: 1_710_000_000_002,
+              },
+            ],
+          },
+        ],
+        object: 'instagram',
+      }),
+    ).toEqual([])
   })
 
   it('rejects malformed or unsupported messaging envelopes instead of silently acknowledging them', () => {

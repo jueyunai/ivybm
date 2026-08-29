@@ -24,7 +24,44 @@ const numericValue = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined
 
 const isIgnoredControlCallback = (envelope: UnknownRecord): boolean =>
-  isRecord(envelope.delivery) || isRecord(envelope.read)
+  isRecord(envelope.delivery) ||
+  isRecord(envelope.message_edit) ||
+  isRecord(envelope.reaction) ||
+  isRecord(envelope.read)
+
+const messagingEnvelopes = (
+  entry: UnknownRecord,
+  platform: MessagingPlatform,
+  accountExternalId: string,
+): unknown[] => {
+  if (Array.isArray(entry.messaging)) return entry.messaging
+  if (platform !== 'instagram' || !Array.isArray(entry.changes)) {
+    throw new Error('Meta webhook messaging is invalid')
+  }
+
+  // Meta's App Dashboard sends a synthetic messages event with entry.id="0"
+  // and unrelated dummy sender/recipient IDs. It proves delivery only and must
+  // never enter the account allowlist or durable conversation pipeline.
+  if (accountExternalId === '0') return []
+
+  const envelopes: unknown[] = []
+  for (const change of entry.changes) {
+    if (!isRecord(change)) throw new Error('Meta webhook change is invalid')
+    const field = stringValue(change.field, 100)
+    if (!field) throw new Error('Meta webhook change field is invalid')
+    if (field !== 'messages') continue
+    if (!isRecord(change.value)) throw new Error('Meta webhook messages change is invalid')
+
+    if (Array.isArray(change.value.messaging)) {
+      envelopes.push(...change.value.messaging)
+    } else if (Array.isArray(change.value.messages)) {
+      envelopes.push(...change.value.messages)
+    } else {
+      envelopes.push(change.value)
+    }
+  }
+  return envelopes
+}
 
 const normalizeAttachments = (value: unknown): NormalizedAttachment[] => {
   if (value === undefined) return []
@@ -76,9 +113,9 @@ export const createMetaConnector = (): PlatformConnector => ({
       if (!isRecord(entry)) throw new Error('Meta webhook entry is invalid')
       const accountExternalId = stringValue(entry.id, 240)
       if (!accountExternalId) throw new Error('Meta webhook account identifier is invalid')
-      if (!Array.isArray(entry.messaging)) throw new Error('Meta webhook messaging is invalid')
+      const envelopes = messagingEnvelopes(entry, platform, accountExternalId)
 
-      for (const envelope of entry.messaging) {
+      for (const envelope of envelopes) {
         if (!isRecord(envelope)) throw new Error('Meta webhook messaging envelope is invalid')
         if (!isRecord(envelope.message)) {
           if (isIgnoredControlCallback(envelope)) continue
