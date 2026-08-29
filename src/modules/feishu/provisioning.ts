@@ -14,6 +14,7 @@ import type { JobHandler } from '@/modules/jobs/contracts'
 import { PayloadFeishuTokenProvider } from './connectionClient'
 import { FeishuApiError, FeishuConfigurationError } from './contracts'
 import {
+  cleanupFeishuDefaultTables,
   createFeishuCRMBase,
   createFeishuCRMTable,
   DEFAULT_FEISHU_FIELD_MAPPINGS,
@@ -336,11 +337,13 @@ export const createFeishuConnectionProvisionJobHandler =
   ({
     accessToken = (connectionId, signal) =>
       new PayloadFeishuTokenProvider({ connectionId, payload }).getToken('base', signal),
+    cleanupTables = cleanupFeishuDefaultTables,
     createBase = createFeishuCRMBase,
     createTable = createFeishuCRMTable,
     payload,
   }: {
     accessToken?: (connectionId: number | string, signal?: AbortSignal) => Promise<string>
+    cleanupTables?: typeof cleanupFeishuDefaultTables
     createBase?: typeof createFeishuCRMBase
     createTable?: typeof createFeishuCRMTable
     payload: Payload
@@ -352,9 +355,11 @@ export const createFeishuConnectionProvisionJobHandler =
 
     try {
       const token = await accessToken(input.connectionId, execution.signal)
+      let defaultTableId: string | undefined
       execution.assertLease()
       if (!optionalString(connection.appToken) || !optionalString(connection.baseURL)) {
         const base = await createBase({ accessToken: token, signal: execution.signal })
+        defaultTableId = base.defaultTableId
         execution.assertLease()
         const persisted = await persistBase({ ...base, input, payload })
         if (!persisted) return
@@ -374,8 +379,18 @@ export const createFeishuConnectionProvisionJobHandler =
         connection = persisted
       }
 
-      requiredString(connection.tableId, 'tableId')
+      const tableId = requiredString(connection.tableId, 'tableId')
       execution.assertLease()
+      // Only the Base creation response identifies the generated table safely.
+      // A retry without that response must leave any empty table untouched rather
+      // than infer ownership from a user-editable name.
+      await cleanupTables({
+        accessToken: token,
+        appToken,
+        ...(defaultTableId ? { defaultTableId } : {}),
+        keepTableId: tableId,
+        signal: execution.signal,
+      }).catch(() => undefined)
       await finalizeProvisioning({ input, payload })
       execution.assertLease()
     } catch (error) {

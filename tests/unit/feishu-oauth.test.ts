@@ -15,7 +15,7 @@ import {
   hashOAuthState,
   refreshFeishuOAuthToken,
 } from '@/modules/feishu/oauth'
-import { provisionFeishuCRM } from '@/modules/feishu/provision'
+import { cleanupFeishuDefaultTables, provisionFeishuCRM } from '@/modules/feishu/provision'
 
 const response = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -181,22 +181,43 @@ describe('Feishu OAuth connection', () => {
           data: {
             app: {
               app_token: 'base_fixture',
+              default_table_id: 'tbl_default',
               url: 'https://tenant.example.invalid/base/base_fixture',
             },
           },
         }),
       )
       .mockResolvedValueOnce(response({ code: 0, data: { table_id: 'tbl_fixture' } }))
+      .mockResolvedValueOnce(
+        response({
+          code: 0,
+          data: {
+            has_more: false,
+            items: [
+              { name: '客户档案', table_id: 'tbl_fixture' },
+              { name: '默认数据表', table_id: 'tbl_default' },
+            ],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(response({ code: 0, data: { items: [], total: 0 } }))
+      .mockResolvedValueOnce(response({ code: 0, data: {} }))
 
     await expect(provisionFeishuCRM({ accessToken: 'user-access', fetch })).resolves.toEqual({
       appToken: 'base_fixture',
       baseURL: 'https://tenant.example.invalid/base/base_fixture',
+      defaultTableId: 'tbl_default',
       tableId: 'tbl_fixture',
     })
     expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([
       'https://open.feishu.cn/open-apis/bitable/v1/apps',
       'https://open.feishu.cn/open-apis/bitable/v1/apps/base_fixture/tables',
+      'https://open.feishu.cn/open-apis/bitable/v1/apps/base_fixture/tables?page_size=100',
+      'https://open.feishu.cn/open-apis/bitable/v1/apps/base_fixture/tables/tbl_default/records?page_size=1',
+      'https://open.feishu.cn/open-apis/bitable/v1/apps/base_fixture/tables/tbl_default',
     ])
+    expect(fetch.mock.calls[3]?.[1]?.method).toBe('GET')
+    expect(fetch.mock.calls[4]?.[1]?.method).toBe('DELETE')
     const tableBody = JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))
     expect(tableBody.table.fields).toEqual(
       expect.arrayContaining([
@@ -206,4 +227,208 @@ describe('Feishu OAuth connection', () => {
     )
     expect(JSON.stringify(tableBody)).not.toContain('advanced')
   })
+})
+
+describe('cleanupFeishuDefaultTables', () => {
+  const tablesPage = (items: unknown[], pageToken?: string) =>
+    response({
+      code: 0,
+      data: {
+        has_more: pageToken !== undefined,
+        items,
+        ...(pageToken ? { page_token: pageToken } : {}),
+      },
+    })
+
+  it('deletes only the explicit empty default table ID', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/tables?page_size=100')) {
+        return tablesPage([
+          { name: '客户档案', table_id: 'tbl_crm' },
+          { name: '默认数据表', table_id: 'tbl_default' },
+          { name: '默认数据表 2', table_id: 'tbl_extra' },
+        ])
+      }
+      if (url.includes('/records?page_size=1')) {
+        return response({ code: 0, data: { items: [], total: 0 } })
+      }
+      expect(init?.method).toBe('DELETE')
+      return response({ code: 0, data: {} })
+    })
+    await expect(
+      cleanupFeishuDefaultTables({
+        accessToken: 'user-access',
+        appToken: 'base_fixture',
+        defaultTableId: 'tbl_default',
+        fetch,
+        keepTableId: 'tbl_crm',
+      }),
+    ).resolves.toEqual({ deletedTableIds: ['tbl_default'] })
+    const deleted = fetch.mock.calls
+      .filter(([, init]) => init?.method === 'DELETE')
+      .map(([url]) => String(url))
+    expect(deleted).toEqual([
+      'https://open.feishu.cn/open-apis/bitable/v1/apps/base_fixture/tables/tbl_default',
+    ])
+  })
+
+  it('never deletes a table that already contains records', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/tables?page_size=100')) {
+        return tablesPage([
+          { name: '客户档案', table_id: 'tbl_crm' },
+          { name: '默认数据表', table_id: 'tbl_default' },
+        ])
+      }
+      if (url.includes('/records?page_size=1')) {
+        return response({ code: 0, data: { items: [{ record_id: 'rec_1' }], total: 1 } })
+      }
+      throw new Error(`unexpected request ${init?.method} ${url}`)
+    })
+    await expect(
+      cleanupFeishuDefaultTables({
+        accessToken: 'user-access',
+        appToken: 'base_fixture',
+        defaultTableId: 'tbl_default',
+        fetch,
+        keepTableId: 'tbl_crm',
+      }),
+    ).resolves.toEqual({ deletedTableIds: [] })
+  })
+
+  it('continues when a single table check or delete fails', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/tables?page_size=100')) {
+        return tablesPage([
+          { name: '客户档案', table_id: 'tbl_crm' },
+          { name: '已删除表', table_id: 'tbl_gone' },
+          { name: '默认数据表', table_id: 'tbl_default' },
+        ])
+      }
+      if (url.includes('/tbl_gone/records')) {
+        return response({ code: 1254043, msg: 'table not found' }, 404)
+      }
+      if (url.includes('/records?page_size=1')) {
+        return response({ code: 0, data: { items: [], total: 0 } })
+      }
+      return response({ code: 0, data: {} })
+    })
+    await expect(
+      cleanupFeishuDefaultTables({
+        accessToken: 'user-access',
+        appToken: 'base_fixture',
+        defaultTableId: 'tbl_gone',
+        fetch,
+        keepTableId: 'tbl_crm',
+      }),
+    ).resolves.toEqual({ deletedTableIds: [] })
+  })
+
+  it('paginates the table listing', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/tables?page_size=100')) {
+        return tablesPage(
+          [
+            { name: '客户档案', table_id: 'tbl_crm' },
+            { name: '默认数据表', table_id: 'tbl_page1' },
+          ],
+          'page-2',
+        )
+      }
+      if (url.endsWith('/tables?page_size=100&page_token=page-2')) {
+        return tablesPage([{ name: '默认数据表 2', table_id: 'tbl_page2' }])
+      }
+      if (url.includes('/records?page_size=1')) {
+        return response({ code: 0, data: { items: [] } })
+      }
+      return response({ code: 0, data: {} })
+    })
+    await expect(
+      cleanupFeishuDefaultTables({
+        accessToken: 'user-access',
+        appToken: 'base_fixture',
+        defaultTableId: 'tbl_page2',
+        fetch,
+        keepTableId: 'tbl_crm',
+      }),
+    ).resolves.toEqual({ deletedTableIds: ['tbl_page2'] })
+  })
+
+  it('never infers a deletion candidate from a user-editable table name', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/tables?page_size=100')) {
+        return tablesPage([
+          { name: '客户档案', table_id: 'tbl_crm' },
+          { name: 'Table', table_id: 'tbl_custom_table' },
+          { name: 'Table 1', table_id: 'tbl_custom_table_1' },
+          { name: '数据表', table_id: 'tbl_custom_cn' },
+        ])
+      }
+      if (url.includes('/records?page_size=1')) {
+        return response({ code: 0, data: { items: [], total: 0 } })
+      }
+      expect(init?.method).toBe('DELETE')
+      return response({ code: 0, data: {} })
+    })
+    await expect(
+      cleanupFeishuDefaultTables({
+        accessToken: 'user-access',
+        appToken: 'base_fixture',
+        fetch,
+        keepTableId: 'tbl_crm',
+      }),
+    ).resolves.toEqual({ deletedTableIds: [] })
+    const deleted = fetch.mock.calls
+      .filter(([, init]) => init?.method === 'DELETE')
+      .map(([url]) => String(url))
+    expect(deleted).toEqual([])
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('deletes candidate matching explicit defaultTableId even with non-standard name', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/tables?page_size=100')) {
+        return tablesPage([
+          { name: '客户档案', table_id: 'tbl_crm' },
+          { name: '自定义初始表', table_id: 'tbl_auto_generated' },
+        ])
+      }
+      if (url.includes('/records?page_size=1')) {
+        return response({ code: 0, data: { items: [], total: 0 } })
+      }
+      expect(init?.method).toBe('DELETE')
+      return response({ code: 0, data: {} })
+    })
+    await expect(
+      cleanupFeishuDefaultTables({
+        accessToken: 'user-access',
+        appToken: 'base_fixture',
+        defaultTableId: 'tbl_auto_generated',
+        fetch,
+        keepTableId: 'tbl_crm',
+      }),
+    ).resolves.toEqual({ deletedTableIds: ['tbl_auto_generated'] })
+  })
+
+  it('gracefully handles list tables network or API failure without throwing', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      response({ code: 99999, msg: 'internal server error' }, 500),
+    )
+    await expect(
+      cleanupFeishuDefaultTables({
+        accessToken: 'user-access',
+        appToken: 'base_fixture',
+        defaultTableId: 'tbl_default',
+        fetch,
+        keepTableId: 'tbl_crm',
+      }),
+    ).resolves.toEqual({ deletedTableIds: [] })
+  })
+
 })
