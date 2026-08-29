@@ -67,3 +67,8 @@ export const inquiryRateLimiter = createFixedWindowRateLimiter({
   limit: 5,
   windowMs: 10 * 60 * 1_000,
 })
+
+export const inquiryAttachmentRateLimiter = createFixedWindowRateLimiter({
+  limit: 30,
+  windowMs: 10 * 60 * 1_000,
+})

@@ -1,4 +1,5 @@
 export const INQUIRY_LIMITS = {
+  attachments: 5,
   company: 160,
   country: 120,
   email: 254,
@@ -13,7 +14,13 @@ export const INQUIRY_LIMITS = {
 
 export type InquiryLocale = 'ar' | 'en'
 
+export type InquiryAttachmentReference = {
+  id: number | string
+  ticket: string
+}
+
 export type InquiryData = {
+  attachments?: InquiryAttachmentReference[]
   company?: string
   country: string
   email: string
@@ -37,6 +44,7 @@ export type InquiryField =
 
 export type InquiryValidationCode =
   | 'invalid_email'
+  | 'invalid_field'
   | 'invalid_idempotency_key'
   | 'invalid_locale'
   | 'invalid_phone'
@@ -159,10 +167,48 @@ export const validateInquiry = (input: unknown): InquiryValidationResult => {
   }
   if (sourceURL && !isSafeHTTPURL(sourceURL)) errors.sourceURL = 'invalid_url'
 
+  let attachments: InquiryAttachmentReference[] | undefined
+  if ('attachments' in input && input.attachments !== undefined && input.attachments !== null) {
+    if (!Array.isArray(input.attachments)) {
+      errors.attachments = 'invalid_field'
+    } else if (input.attachments.length > INQUIRY_LIMITS.attachments) {
+      errors.attachments = 'too_long'
+    } else {
+      const parsedAttachments: InquiryAttachmentReference[] = []
+      let valid = true
+      for (const item of input.attachments) {
+        if (!item || typeof item !== 'object') {
+          valid = false
+          break
+        }
+        const candidate = item as Record<string, unknown>
+        const id = candidate.id
+        const ticket = typeof candidate.ticket === 'string' ? candidate.ticket.trim() : ''
+        const isValidId =
+          (typeof id === 'number' && Number.isSafeInteger(id) && id > 0) ||
+          (typeof id === 'string' && id.trim().length > 0)
+        if (!isValidId || !ticket) {
+          valid = false
+          break
+        }
+        parsedAttachments.push({
+          id: typeof id === 'number' ? id : id.trim(),
+          ticket,
+        })
+      }
+      if (!valid) {
+        errors.attachments = 'invalid_field'
+      } else {
+        attachments = parsedAttachments
+      }
+    }
+  }
+
   if (Object.keys(errors).length > 0) return { errors, ok: false }
 
   return {
     data: {
+      attachments,
       company: optional(company),
       country,
       email,

@@ -3,9 +3,12 @@ import { isIP } from 'node:net'
 import { getPayload, type Payload } from 'payload'
 
 import config from '@/payload.config'
+import { LEAD_ATTACHMENT_RETENTION_MS } from '@/modules/lead-attachments/files'
+import { hashUploadTicket, verifyUploadTicket } from '@/modules/lead-attachments/tokens'
 
 import { inquiryRateLimiter, type RateLimiter } from '../security/rateLimit'
 import {
+  type InquiryAttachmentReference,
   type InquiryData,
   type InquiryLocale,
   type InquiryValidationCode,
@@ -300,10 +303,86 @@ const ensureWebsiteSource = async (payload: Payload) => {
   }
 }
 
+const associateLeadAttachments = async (
+  payload: Payload,
+  leadId: number | string,
+  attachments: InquiryAttachmentReference[],
+): Promise<void> => {
+  let hasAssociatedDrawings = false
+  for (const item of attachments) {
+    const verified = verifyUploadTicket(item.ticket)
+    if (!verified) {
+      // Invalid/expired token: tolerance semantics - do not fail lead creation
+      continue
+    }
+    const ticketHash = hashUploadTicket(item.ticket)
+    try {
+      const found = await payload.find({
+        collection: 'lead-attachments',
+        depth: 0,
+        limit: 1,
+        overrideAccess: true,
+        where: {
+          and: [
+            { id: { equals: item.id } },
+            { ticketHash: { equals: ticketHash } },
+          ],
+        },
+      })
+      const doc = found.docs[0]
+      if (doc && doc.status === 'pending') {
+        await payload.update({
+          collection: 'lead-attachments',
+          id: doc.id,
+          data: {
+            associatedAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + LEAD_ATTACHMENT_RETENTION_MS).toISOString(),
+            lead: typeof leadId === "number" ? leadId : Number(leadId),
+            status: 'associated',
+          },
+          overrideAccess: true,
+        })
+        hasAssociatedDrawings = true
+      } else if (doc && doc.status !== 'associated') {
+        await payload.update({
+          collection: 'lead-attachments',
+          id: doc.id,
+          data: {
+            status: 'missing',
+          },
+          overrideAccess: true,
+        })
+      }
+    } catch (error) {
+      // Association error should never block lead creation
+      console.error('lead_attachment_association_failed', {
+        attachmentId: item.id,
+        error: error instanceof Error ? error.message : String(error),
+        leadId,
+      })
+    }
+  }
+
+  if (hasAssociatedDrawings) {
+    try {
+      await payload.update({
+        collection: 'leads',
+        id: leadId,
+        data: {
+          hasDrawings: true,
+        },
+        overrideAccess: true,
+      })
+    } catch {
+      // Non-blocking update
+    }
+  }
+}
+
 const createLead = async (payload: Payload, data: InquiryData, requestId: string) => {
   const source = await ensureWebsiteSource(payload)
 
-  return payload.create({
+  const lead = await payload.create({
     collection: 'leads',
     data: {
       company: data.company,
@@ -330,6 +409,12 @@ const createLead = async (payload: Payload, data: InquiryData, requestId: string
     },
     overrideAccess: true,
   })
+
+  if (data.attachments && data.attachments.length > 0) {
+    await associateLeadAttachments(payload, lead.id, data.attachments)
+  }
+
+  return lead
 }
 
 export const createInquiryHandler = ({
@@ -407,6 +492,9 @@ export const createInquiryHandler = ({
       const payload = await payloadProvider()
       const existing = await findExistingLead(payload, validation.data.idempotencyKey)
       if (existing) {
+        if (validation.data.attachments && validation.data.attachments.length > 0) {
+          await associateLeadAttachments(payload, existing.id, validation.data.attachments)
+        }
         return successResponse(request, locale, existing.requestId, { duplicate: true, status: 200 })
       }
 
@@ -416,6 +504,9 @@ export const createInquiryHandler = ({
       } catch (error) {
         const raced = await findExistingLead(payload, validation.data.idempotencyKey)
         if (raced) {
+          if (validation.data.attachments && validation.data.attachments.length > 0) {
+            await associateLeadAttachments(payload, raced.id, validation.data.attachments)
+          }
           return successResponse(request, locale, raced.requestId, { duplicate: true, status: 200 })
         }
         throw error

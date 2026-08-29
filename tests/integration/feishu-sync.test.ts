@@ -33,6 +33,33 @@ const extraLeadIDs: number[] = []
 let retryAdminID: number
 let historicalLeadID: number
 
+
+const buildMinimalPDF = (): Buffer => {
+  const objects = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n",
+    "4 0 obj\n<< /Length 48 >>\nstream\nBT /F1 12 Tf 36 72 Td (IVYBM demo PDF) Tj ET\nendstream\nendobj\n",
+    "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+  ]
+  let pdf = "%PDF-1.4\n"
+  const offsets: number[] = []
+
+  for (const object of objects) {
+    offsets.push(Buffer.byteLength(pdf))
+    pdf += object
+  }
+
+  const xrefOffset = Buffer.byteLength(pdf)
+  pdf += `xref\n0 ${objects.length + 1}\n`
+  pdf += "0000000000 65535 f \n"
+  pdf += offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("")
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\n`
+  pdf += `startxref\n${xrefOffset}\n%%EOF\n`
+
+  return Buffer.from(pdf)
+}
+
 const runID = randomUUID()
 const fieldMappings = [
   { localField: 'localLeadId' as const, required: true, targetField: 'Local Lead ID' },
@@ -45,6 +72,7 @@ const fieldMappings = [
   { localField: 'email' as const, targetField: 'Email' },
   { localField: 'sourceURL' as const, targetField: 'Source URL' },
   { localField: 'originalInquiry' as const, targetField: 'Original Inquiry' },
+  { localField: 'attachments' as const, required: false, targetField: 'Attachments' },
 ]
 
 const context = { skipAudit: true }
@@ -69,6 +97,18 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
   beforeAll(async () => {
     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
     payload = await getPayload({ config, disableOnInit: true, key: 'task11-feishu-integration' })
+    await payload.delete({
+      collection: 'jobs',
+      context,
+      overrideAccess: true,
+      where: { id: { exists: true } },
+    })
+    await payload.delete({
+      collection: 'feishu-mappings',
+      context,
+      overrideAccess: true,
+      where: { id: { exists: true } },
+    })
   })
 
   afterAll(async () => {
@@ -88,6 +128,7 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
         },
       },
     })
+    await payload.delete({ collection: 'lead-attachments', context, overrideAccess: true, where: { id: { exists: true } } })
     if (handoffID)
       await payload.delete({ collection: 'handoffs', context, id: handoffID, overrideAccess: true })
     if (conversationID)
@@ -1477,4 +1518,110 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     expect(upsertRecord).toHaveBeenCalledTimes(1)
     expect(sendText).toHaveBeenCalledTimes(3)
   })
-})
+  it('syncs associated lead attachments to Feishu CRM with stable Portal URL and updates on attachment change', async () => {
+    await payload.update({
+      collection: 'feishu-mappings',
+      context,
+      data: {
+        appToken: 'bascn-fixture',
+        fieldMappings,
+        notificationRecipients: [
+          {
+            enabled: true,
+            label: 'Sales group',
+            receiveId: 'oc-fixture',
+            receiveIdType: 'chat_id',
+          },
+        ],
+        status: 'active',
+        tableId: 'tbl-fixture',
+      },
+      id: mappingID,
+      overrideAccess: true,
+    })
+
+    const attachmentLead = await payload.create({
+      collection: 'leads',
+      context,
+      data: {
+        company: 'Facade Attachment Co',
+        country: 'United Arab Emirates',
+        email: `attachment-lead-${runID}@example.invalid`,
+        idempotencyKey: randomUUID(),
+        intentLevel: 'a',
+        locale: 'en',
+        message: 'Lead with private attachments.',
+        name: 'Attachment Buyer',
+        requestId: randomUUID(),
+        source: sourceID,
+        status: 'new',
+      },
+      overrideAccess: true,
+    })
+    extraLeadIDs.push(attachmentLead.id)
+
+    const pdfBytes = buildMinimalPDF();
+    const attachment = await payload.create({
+      collection: 'lead-attachments',
+      context,
+      data: {
+        associatedAt: new Date().toISOString(),
+        byteSize: pdfBytes.byteLength,
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        filename: 'facade-specs.pdf',
+        lead: attachmentLead.id,
+        mimeType: 'application/pdf',
+        status: 'associated',
+        ticketHash: 'hash-fixture',
+      },
+      file: {
+        data: pdfBytes,
+        mimetype: 'application/pdf',
+        name: 'facade-specs.pdf',
+        size: pdfBytes.byteLength,
+      },
+      overrideAccess: true,
+    })
+
+    const jobs = await payload.find({
+      collection: 'jobs',
+      limit: 100,
+      overrideAccess: true,
+      sort: '-id',
+      where: { type: { equals: FEISHU_LEAD_SYNC_JOB_TYPE } },
+    })
+    const latestJob = jobs.docs.find(
+      (job) => jobPayload(job.payload).entityId === attachmentLead.id,
+    )
+    if (!latestJob) throw new Error('Expected lead sync job for attachment lead')
+
+    const upsertRecord = vi.fn(async () => ({ recordId: 'rec-att-1', state: 'created' as const }))
+    const sendText = vi.fn(async () => ({ messageId: 'om-att' }))
+    const client: FeishuClientPort = { sendText, upsertRecord }
+    const handler = createFeishuLeadSyncJobHandler({ client: () => client, payload })
+
+    await handler(await claimedJob(latestJob.id), {
+      assertLease: vi.fn(),
+      renewLease: vi.fn(),
+      signal: new AbortController().signal,
+    })
+
+    expect(upsertRecord).toHaveBeenCalledTimes(1)
+    expect(upsertRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fields: expect.objectContaining({
+          Attachments: `facade-specs.pdf: http://localhost:3000/dashboard/leads?lead=${attachmentLead.id}`,
+          Customer: 'Facade Attachment Co',
+          'Local Lead ID': String(attachmentLead.id),
+        }),
+      }),
+    )
+
+    await payload.delete({
+      collection: 'lead-attachments',
+      context,
+      id: attachment.id,
+      overrideAccess: true,
+    })
+  })
+});

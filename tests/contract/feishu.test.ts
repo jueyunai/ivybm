@@ -14,7 +14,7 @@ import {
   type LeadForFeishu,
 } from '@/modules/feishu/contracts'
 import { feishuLeadSyncRevision } from '@/modules/feishu/jobs'
-import { mapLead } from '@/modules/feishu/mapLead'
+import { formatAttachments, mapLead, resolvePortalLeadUrl } from '@/modules/feishu/mapLead'
 import { notifyHandoff, notifyNewLead } from '@/modules/feishu/notify'
 import { syncLead } from '@/modules/feishu/syncLead'
 
@@ -32,6 +32,7 @@ const mapping: FeishuMappingConfig = {
     { localField: 'nextFollowUpAt', targetField: 'Next Follow-up' },
     { localField: 'sourceURL', targetField: 'Source URL' },
     { localField: 'originalInquiry', targetField: 'Original Inquiry' },
+    { localField: 'attachments', required: false, targetField: 'Attachments' },
   ],
   id: 1,
   key: 'primary-leads',
@@ -92,6 +93,76 @@ describe('Feishu CRM contract', () => {
       },
       localLeadIdField: 'Local Lead ID',
     })
+  })
+
+  it('maps lead with multiple attachments to formatted Bitable field with stable Portal URLs', () => {
+    const leadWithAttachments: LeadForFeishu = {
+      ...lead,
+      attachments: [
+        { filename: 'facade-elevation.dwg', id: 101, status: 'associated' },
+        { filename: 'boq-schedule.xlsx', id: 102, status: 'associated' },
+      ],
+    }
+
+    const mapped = mapLead({ lead: leadWithAttachments, mapping })
+    expect(mapped.fields.Attachments).toBe(
+      'facade-elevation.dwg: http://localhost:3000/dashboard/leads?lead=42\nboq-schedule.xlsx: http://localhost:3000/dashboard/leads?lead=42',
+    )
+  })
+
+  it('formats stable Portal lead URL from NEXT_PUBLIC_SERVER_URL and handles explicit attachment URLs', () => {
+    const originalUrl = process.env.NEXT_PUBLIC_SERVER_URL
+    try {
+      process.env.NEXT_PUBLIC_SERVER_URL = 'https://ivybm.com'
+      expect(resolvePortalLeadUrl(42)).toBe('https://ivybm.com/dashboard/leads?lead=42')
+
+      const formatted = formatAttachments(
+        [
+          { filename: 'drawing.pdf', id: 1 },
+          { filename: 'custom.pdf', id: 2, url: 'https://files.example.com/custom.pdf' },
+        ],
+        42,
+      )
+      // Asserts that external attachment.url is ignored and strictly replaced with stable Portal URL
+      expect(formatted).toBe(
+        'drawing.pdf: https://ivybm.com/dashboard/leads?lead=42\ncustom.pdf: https://ivybm.com/dashboard/leads?lead=42',
+      )
+    } finally {
+      process.env.NEXT_PUBLIC_SERVER_URL = originalUrl
+    }
+  })
+
+  it('recomputes sync revision when associated attachments change and ignores unassociated attachments', () => {
+    const baseRevision = feishuLeadSyncRevision(lead)
+    const withAssociated = feishuLeadSyncRevision(lead, [
+      { filename: 'elevation.dwg', id: 10, status: 'associated' },
+    ])
+    const withDifferentFilename = feishuLeadSyncRevision(lead, [
+      { filename: 'elevation-v2.dwg', id: 10, status: 'associated' },
+    ])
+    const withUnassociated = feishuLeadSyncRevision(lead, [
+      { filename: 'elevation.dwg', id: 10, status: 'pending' },
+    ])
+
+    expect(withAssociated).not.toBe(baseRevision)
+    expect(withDifferentFilename).not.toBe(withAssociated)
+    // Pending/unassociated attachments do not alter revision
+    expect(withUnassociated).toBe(baseRevision)
+  })
+
+  it('syncs cleanly when mapping does not have attachments field mapping', () => {
+    const legacyMapping: FeishuMappingConfig = {
+      ...mapping,
+      fieldMappings: mapping.fieldMappings.filter((f) => f.localField !== 'attachments'),
+    }
+    const leadWithAttachments: LeadForFeishu = {
+      ...lead,
+      attachments: [{ filename: 'drawing.pdf', id: 5 }],
+    }
+
+    const mapped = mapLead({ lead: leadWithAttachments, mapping: legacyMapping })
+    expect(mapped.fields).not.toHaveProperty('Attachments')
+    expect(mapped.fields.Customer).toBe('Acme Facades')
   })
 
   it('syncs an email-less social Lead with its verified messaging identity', async () => {

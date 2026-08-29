@@ -164,3 +164,51 @@ describe('fixed-window rate limiter', () => {
     expect(limiter.consume('198.51.100.1')).toMatchObject({ allowed: true })
   })
 })
+
+describe('inquiry attachment validation', () => {
+  it('accepts valid attachment references', () => {
+    const result = validateInquiry({
+      ...validInquiry,
+      attachments: [
+        { id: 101, ticket: 'valid-ticket-token' },
+        { id: '102', ticket: 'another-valid-ticket' },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok || result.spam) return
+    expect(result.data.attachments).toEqual([
+      { id: 101, ticket: 'valid-ticket-token' },
+      { id: '102', ticket: 'another-valid-ticket' },
+    ])
+  })
+
+  it('rejects more than 5 attachment references', () => {
+    const result = validateInquiry({
+      ...validInquiry,
+      attachments: [
+        { id: 1, ticket: 't1' },
+        { id: 2, ticket: 't2' },
+        { id: 3, ticket: 't3' },
+        { id: 4, ticket: 't4' },
+        { id: 5, ticket: 't5' },
+        { id: 6, ticket: 't6' },
+      ],
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors.attachments).toBe('too_long')
+  })
+
+  it('rejects malformed attachment entries', () => {
+    const result = validateInquiry({
+      ...validInquiry,
+      attachments: [{ id: '', ticket: 't1' }],
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors.attachments).toBe('invalid_field')
+  })
+})

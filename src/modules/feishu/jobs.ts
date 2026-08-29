@@ -1,3 +1,4 @@
+import type { Lead } from '@/payload-types'
 import { createHash } from 'node:crypto'
 
 import { sql, type PostgresAdapter } from '@payloadcms/db-postgres'
@@ -23,6 +24,7 @@ import {
   type FeishuClientPort,
   type FeishuMappingConfig,
   type HandoffForFeishu,
+  type LeadAttachmentForFeishu,
   type LeadForFeishu,
 } from './contracts'
 import {
@@ -82,15 +84,75 @@ const requiredString = (value: unknown, field: string): string => {
 const optionalString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() ? value.trim() : undefined
 
-export const feishuLeadSyncRevision = (value: unknown): string => {
+export const findAssociatedLeadAttachments = async (
+  payload: Payload,
+  leadId: number | string | undefined | null,
+  req?: PayloadRequest,
+): Promise<LeadAttachmentForFeishu[]> => {
+  if (leadId === undefined || leadId === null) return []
+  const parsedId = typeof leadId === 'number' ? leadId : Number(leadId)
+  if (!Number.isInteger(parsedId) || parsedId <= 0) return []
+  try {
+    const result = await payload.find({
+      collection: 'lead-attachments',
+      depth: 0,
+      limit: 100,
+      overrideAccess: true,
+      pagination: false,
+      ...(req ? { req } : {}),
+      sort: 'createdAt',
+      where: {
+        and: [
+          { lead: { equals: parsedId } },
+          { status: { equals: 'associated' } },
+        ],
+      },
+    })
+    return (result.docs ?? []).map((att) => ({
+      byteSize: typeof att.byteSize === 'number' ? att.byteSize : null,
+      createdAt: typeof att.createdAt === 'string' ? att.createdAt : null,
+      filename: typeof att.filename === 'string' ? att.filename : `attachment-${att.id}`,
+      id: att.id,
+      mimeType: typeof att.mimeType === 'string' ? att.mimeType : null,
+      status: 'associated' as const,
+    }))
+  } catch (error) {
+    payload.logger?.warn?.(
+      `Feishu attachment lookup failed for lead ${leadId}: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return []
+  }
+}
+
+export const feishuLeadSyncRevision = (value: unknown, attachmentsCandidate?: unknown): string => {
   const lead = record(value)
   if (!lead) throw new FeishuConfigurationError('Lead document is invalid')
   const assignedTo = record(lead.assignedTo)?.id ?? lead.assignedTo ?? null
   const source = record(lead.source)?.id ?? lead.source
+
+  const rawAttachments =
+    attachmentsCandidate !== undefined ? attachmentsCandidate : lead.attachments
+  const attachments = Array.isArray(rawAttachments)
+    ? rawAttachments
+        .filter((item) => {
+          const rec = record(item)
+          return rec && (rec.status === 'associated' || rec.status === undefined)
+        })
+        .map((item) => {
+          const rec = record(item)!
+          return {
+            filename: typeof rec.filename === 'string' ? rec.filename : '',
+            id: rec.id !== undefined && rec.id !== null ? rec.id : '',
+          }
+        })
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+    : []
+
   return createHash('sha256')
     .update(
       JSON.stringify({
         assignedTo,
+        attachments: attachments.length > 0 ? attachments : null,
         budget: lead.budget ?? null,
         company: lead.company ?? null,
         country: lead.country ?? null,
@@ -240,7 +302,7 @@ const messagingIdentity = (lead: Record<string, unknown>): Partial<LeadForFeishu
   }
 }
 
-const leadForFeishu = (value: unknown): LeadForFeishu => {
+const leadForFeishu = (value: unknown, attachmentsCandidate?: unknown): LeadForFeishu => {
   const lead = record(value)
   if (!lead) throw new FeishuConfigurationError('Lead document is invalid')
   const intentLevel = lead.intentLevel
@@ -251,10 +313,34 @@ const leadForFeishu = (value: unknown): LeadForFeishu => {
   if (!['contacted', 'disqualified', 'new', 'qualified'].includes(String(status))) {
     throw new FeishuConfigurationError('Lead status is invalid')
   }
+
+  const rawAttachments =
+    attachmentsCandidate !== undefined ? attachmentsCandidate : lead.attachments
+  const attachments = Array.isArray(rawAttachments)
+    ? rawAttachments
+        .filter((item) => {
+          const rec = record(item)
+          return rec && (rec.status === 'associated' || rec.status === undefined)
+        })
+        .map((item) => {
+          const rec = record(item)!
+          return {
+            byteSize: typeof rec.byteSize === 'number' ? rec.byteSize : null,
+            createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : null,
+            filename: typeof rec.filename === 'string' ? rec.filename : `attachment-${rec.id}`,
+            id: rec.id !== undefined && rec.id !== null ? (rec.id as number | string) : '',
+            mimeType: typeof rec.mimeType === 'string' ? rec.mimeType : null,
+            status: (rec.status as 'associated') || 'associated',
+            url: typeof rec.url === 'string' ? rec.url : null,
+          }
+        })
+    : []
+
   return {
     assignedTo: lead.assignedTo
       ? (relationshipLabel(lead.assignedTo) as LeadForFeishu['assignedTo'])
       : null,
+    attachments: attachments.length > 0 ? attachments : null,
     budget: typeof lead.budget === 'string' ? lead.budget : null,
     company: typeof lead.company === 'string' ? lead.company : null,
     country: optionalString(lead.country) ?? null,
@@ -392,11 +478,16 @@ const withLockedLead = async <T>({
   }
 }
 
-export const enqueueFeishuLeadChange: CollectionAfterChangeHook = async ({
+export const enqueueFeishuLeadSyncForLead = async ({
   doc,
-  operation,
+  operation = 'update',
   previousDoc,
   req,
+}: {
+  doc: Lead | (Record<string, unknown> & { id: number | string; intentLevel?: unknown; status?: unknown })
+  operation?: 'create' | 'update'
+  previousDoc?: Lead | (Record<string, unknown> & { id?: number | string; intentLevel?: unknown; status?: unknown }) | null
+  req: PayloadRequest
 }) => {
   const mapping = await findActiveFeishuMapping(req.payload, req)
   if (!mapping) return doc
@@ -411,11 +502,20 @@ export const enqueueFeishuLeadChange: CollectionAfterChangeHook = async ({
   let intent: FeishuLeadNotificationIntent =
     operation === 'create'
       ? 'new_lead'
-      : isHighIntentLead(doc) && !isHighIntentLead(previousDoc)
+      : isHighIntentLead(doc) && (!previousDoc || !isHighIntentLead(previousDoc))
         ? 'high_intent'
         : 'none'
-  const revision = feishuLeadSyncRevision(doc)
-  const previousRevision = record(previousDoc) ? feishuLeadSyncRevision(previousDoc) : undefined
+
+  const currentAttachments = await findAssociatedLeadAttachments(req.payload, doc.id, req)
+  const previousAttachments =
+    previousDoc && previousDoc !== doc
+      ? await findAssociatedLeadAttachments(req.payload, previousDoc.id, req)
+      : []
+
+  const revision = feishuLeadSyncRevision(doc, currentAttachments)
+  const previousRevision = record(previousDoc)
+    ? feishuLeadSyncRevision(previousDoc, previousAttachments)
+    : undefined
   const contentChanged = operation === 'create' || previousRevision !== revision
   const changeEventRevision = contentChanged
     ? leadChangeEventRevision({
@@ -519,6 +619,54 @@ export const enqueueFeishuLeadChange: CollectionAfterChangeHook = async ({
   return doc
 }
 
+export const enqueueFeishuLeadChange: CollectionAfterChangeHook = async ({
+  doc,
+  operation,
+  previousDoc,
+  req,
+}) => enqueueFeishuLeadSyncForLead({ doc, operation, previousDoc, req })
+
+export const enqueueFeishuLeadAttachmentChange: CollectionAfterChangeHook = async ({
+  doc,
+  previousDoc,
+  req,
+}) => {
+  const targetLeadId = doc?.lead?.id ?? doc?.lead ?? previousDoc?.lead?.id ?? previousDoc?.lead
+  if (!targetLeadId) return doc
+
+  const statusChanged = doc?.status !== previousDoc?.status
+  const leadChanged =
+    String(doc?.lead?.id ?? doc?.lead ?? '') !==
+    String(previousDoc?.lead?.id ?? previousDoc?.lead ?? '')
+  const isAssociated = doc?.status === 'associated'
+  const wasAssociated = previousDoc?.status === 'associated'
+
+  if (!statusChanged && !leadChanged && doc?.filename === previousDoc?.filename) return doc
+  if (!isAssociated && !wasAssociated) return doc
+
+  try {
+    const lead = await req.payload.findByID({
+      collection: 'leads',
+      depth: 0,
+      id: targetLeadId,
+      overrideAccess: true,
+      req,
+    })
+    if (lead) {
+      await enqueueFeishuLeadSyncForLead({
+        doc: lead,
+        operation: 'update',
+        req,
+      })
+    }
+  } catch (error) {
+    req.payload?.logger?.warn?.(
+      `Attachment change sync trigger failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  return doc
+}
+
 export const createFeishuLeadSyncJobHandler =
   ({
     client = (mapping) => createFeishuClientForMapping({ mapping, payload }),
@@ -544,8 +692,9 @@ export const createFeishuLeadSyncJobHandler =
           overrideAccess: true,
           req,
         })
-        if (feishuLeadSyncRevision(document) !== input.entityRevision) return undefined
-        const currentLead = leadForFeishu(document)
+        const attachments = await findAssociatedLeadAttachments(payload, input.entityId, req)
+        if (feishuLeadSyncRevision(document, attachments) !== input.entityRevision) return undefined
+        const currentLead = leadForFeishu(document, attachments)
         execution.assertLease()
         await syncLead({
           client: resolvedClient,
@@ -677,12 +826,13 @@ export const createFeishuLeadSyncFailureJobHandler =
           overrideAccess: true,
           req,
         })
-        if (feishuLeadSyncRevision(document) !== sourceInput.entityRevision) return
+        const attachments = await findAssociatedLeadAttachments(payload, input.entityId, req)
+        if (feishuLeadSyncRevision(document, attachments) !== sourceInput.entityRevision) return
         execution.assertLease()
         await notifyLeadSyncFailure({
           client: await client(mapping),
           failureCycle: input.failureCycle,
-          lead: leadForFeishu(document),
+          lead: leadForFeishu(document, attachments),
           mapping,
           signal: execution.signal,
           sourceJobId: sourceJob.id,
@@ -770,7 +920,8 @@ export const enqueuePendingFeishuJobs = async ({
       sort: 'id',
     })
     for (const lead of leads.docs) {
-      const revision = feishuLeadSyncRevision(lead)
+      const attachments = await findAssociatedLeadAttachments(payload, lead.id)
+      const revision = feishuLeadSyncRevision(lead, attachments)
       const enqueued = await queue.enqueue({
         idempotencyKey: `${mapping.key}:lead:${lead.id}:${revision}`,
         payload: {
@@ -857,7 +1008,8 @@ export const enqueuePendingFeishuJobs = async ({
           overrideAccess: true,
         })
         .catch(() => null)
-      if (!currentLead || feishuLeadSyncRevision(currentLead) !== source.entityRevision) continue
+      const attachments = await findAssociatedLeadAttachments(payload, source.entityId)
+      if (!currentLead || feishuLeadSyncRevision(currentLead, attachments) !== source.entityRevision) continue
       const failureCycle = nonNegativeInteger(deadJob.manualRetryCount, 'manualRetryCount')
       const enqueued = await queue.enqueue({
         idempotencyKey: `${mapping.key}:lead-sync-dead:${deadJob.id}:cycle:${failureCycle}`,

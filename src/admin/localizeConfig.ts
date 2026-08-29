@@ -63,6 +63,7 @@ const COLLECTION_LABELS: Record<string, { plural: AdminText; singular: AdminText
     singular: text('线索来源', 'Lead Source'),
   },
   leads: { plural: text('线索', 'Leads'), singular: text('线索', 'Lead') },
+  'lead-attachments': { plural: text('线索附件', 'Lead Attachments'), singular: text('线索附件', 'Lead Attachment') },
   media: { plural: text('媒体素材', 'Media'), singular: text('媒体素材', 'Media Asset') },
   messages: { plural: text('消息', 'Messages'), singular: text('消息', 'Message') },
   pages: { plural: text('页面', 'Pages'), singular: text('页面', 'Page') },
