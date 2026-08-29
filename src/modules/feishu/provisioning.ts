@@ -355,9 +355,11 @@ export const createFeishuConnectionProvisionJobHandler =
 
     try {
       const token = await accessToken(input.connectionId, execution.signal)
+      let defaultTableId: string | undefined
       execution.assertLease()
       if (!optionalString(connection.appToken) || !optionalString(connection.baseURL)) {
         const base = await createBase({ accessToken: token, signal: execution.signal })
+        defaultTableId = base.defaultTableId
         execution.assertLease()
         const persisted = await persistBase({ ...base, input, payload })
         if (!persisted) return
@@ -379,11 +381,13 @@ export const createFeishuConnectionProvisionJobHandler =
 
       const tableId = requiredString(connection.tableId, 'tableId')
       execution.assertLease()
-      // Cleanup runs on every (re)attempt after the CRM table exists so a crash
-      // between base creation and cleanup still gets repaired on retry.
+      // Only the Base creation response identifies the generated table safely.
+      // A retry without that response must leave any empty table untouched rather
+      // than infer ownership from a user-editable name.
       await cleanupTables({
         accessToken: token,
         appToken,
+        ...(defaultTableId ? { defaultTableId } : {}),
         keepTableId: tableId,
         signal: execution.signal,
       }).catch(() => undefined)

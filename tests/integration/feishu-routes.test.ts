@@ -1605,6 +1605,7 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     const createBase = vi.fn(async () => ({
       appToken: `base-${suffix}`,
       baseURL: `https://tenant.example.invalid/base/${suffix}`,
+      defaultTableId: `default-${suffix}`,
     }))
     const createTable = vi.fn(async () => ({ tableId: `table-${suffix}` }))
     const cleanupTables = vi.fn(async () => ({ deletedTableIds: [] }))
@@ -1753,7 +1754,11 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     expect(createTable).toHaveBeenCalledTimes(1)
     expect(cleanupTables).toHaveBeenCalledTimes(1)
     expect(cleanupTables).toHaveBeenCalledWith(
-      expect.objectContaining({ appToken: `base-${suffix}`, keepTableId: `table-${suffix}` }),
+      expect.objectContaining({
+        appToken: `base-${suffix}`,
+        defaultTableId: `default-${suffix}`,
+        keepTableId: `table-${suffix}`,
+      }),
     )
     await payload.delete({ collection: 'jobs', context, id: job.id, overrideAccess: true })
   })
@@ -1923,6 +1928,7 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     const createBase = vi.fn(async () => ({
       appToken: `resume-base-${suffix}`,
       baseURL: `https://tenant.example.invalid/base/resume-${suffix}`,
+      defaultTableId: `resume-default-${suffix}`,
     }))
     const createTable = vi
       .fn()
@@ -1970,6 +1976,9 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
         appToken: `resume-base-${suffix}`,
         keepTableId: `resume-table-${suffix}`,
       }),
+    )
+    expect(cleanupTables).not.toHaveBeenCalledWith(
+      expect.objectContaining({ defaultTableId: expect.any(String) }),
     )
     await expect(
       payload.findByID({

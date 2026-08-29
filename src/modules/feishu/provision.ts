@@ -149,18 +149,6 @@ export type FeishuBaseTableRef = {
   tableId: string
 }
 
-const FEISHU_DEFAULT_TABLE_NAME_PATTERNS = [
-  /^数据表(?:\s*\d+)?$/i,
-  /^默认数据表(?:\s*\d+)?$/i,
-  /^Table(?:\s*\d+)?$/i,
-  /^Sheet(?:\s*\d+)?$/i,
-]
-
-export const isFeishuDefaultTableName = (name: string): boolean => {
-  const trimmed = name.trim()
-  return Boolean(trimmed && FEISHU_DEFAULT_TABLE_NAME_PATTERNS.some((pattern) => pattern.test(trimmed)))
-}
-
 export const listFeishuCRMTables = async ({
   accessToken,
   appToken,
@@ -250,11 +238,10 @@ export const deleteFeishuCRMTable = async ({
  * empty default table next to our 客户档案 table.
  *
  * To avoid deleting custom empty tables created by users, we strictly only
- * delete tables that:
- * 1. Are not the CRM table (tableId !== keepTableId)
- * 2. Match a known Feishu default table name (e.g. "数据表", "默认数据表", "Table 1")
- *    OR match the defaultTableId explicitly passed from Base creation
- * 3. Have 0 records (feishuCRMTableIsEmpty)
+ * delete a table that:
+ * 1. Is not the CRM table (tableId !== keepTableId)
+ * 2. Matches the defaultTableId returned by the same Base creation call
+ * 3. Has 0 records (feishuCRMTableIsEmpty)
  *
  * Cleanup is best-effort: any network or API error (including table listing)
  * is caught to prevent failing the primary provisioning flow.
@@ -275,14 +262,12 @@ export const cleanupFeishuDefaultTables = async ({
   signal?: AbortSignal
 }): Promise<{ deletedTableIds: string[] }> => {
   const deletedTableIds: string[] = []
+  if (!defaultTableId || defaultTableId === keepTableId) return { deletedTableIds }
+
   try {
     const tables = await listFeishuCRMTables({ accessToken, appToken, fetch: fetchImpl, signal })
     for (const table of tables) {
-      if (table.tableId === keepTableId) continue
-      const isDefaultCandidate =
-        (defaultTableId && table.tableId === defaultTableId) ||
-        isFeishuDefaultTableName(table.name)
-      if (!isDefaultCandidate) continue
+      if (table.tableId !== defaultTableId) continue
 
       try {
         const empty = await feishuCRMTableIsEmpty({
