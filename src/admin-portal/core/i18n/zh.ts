@@ -321,6 +321,7 @@ export const PORTAL_ZH = {
       english: '英文',
       errorSummaries: {
         'empty-document': '文档中没有可读取的正文内容，请确认文档不是纯图片或扫描件后重试。',
+        'empty-source-text': '待翻译的源文本内容为空。',
         'external-docx-relation': '文档包含不支持的外部链接关系。',
         'file-signature-mismatch': '文件格式签名与声明类型不匹配。',
         'file-too-large': '文件超过 30MB 大小限制，请压缩或拆分后重新上传。',
@@ -341,6 +342,7 @@ export const PORTAL_ZH = {
         'pdf-password-required': 'PDF 文件受密码保护，无法读取。',
         'text-too-large': '提取的正文文本过长，超出大小限制。',
         'too-many-images': '文档内嵌图片数量超过 100 张上限，请减少图片后重试。',
+        'translation-model-unavailable': '未找到可用的翻译模型或模型服务暂时不可用。',
         'translation-prompt-ambiguous': '翻译提示词配置异常。',
         'translation-prompt-unavailable': '未配置有效的翻译提示词模板。',
         'translation-fidelity': '翻译结果数字或图片占位符校验不一致。',

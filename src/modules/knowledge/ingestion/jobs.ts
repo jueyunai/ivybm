@@ -236,6 +236,7 @@ export const safeFailure = (error: unknown): { code: string; summary: string } =
     : 'ingestion-failed'
   const known: Record<string, string> = {
     'empty-document': 'The document contains no readable text',
+    'empty-source-text': 'No source text is available for translation',
     'external-docx-relation': 'The document contains an external relationship',
     'file-signature-mismatch': 'The file signature does not match its declared type',
     'file-too-large': 'The uploaded file exceeds its size limit',
@@ -256,6 +257,7 @@ export const safeFailure = (error: unknown): { code: string; summary: string } =
     'pdf-password-required': 'The PDF is password protected',
     'text-too-large': 'The extracted text exceeds the allowed size',
     'too-many-images': 'The document contains too many images',
+    'translation-model-unavailable': 'The translation model is unavailable',
     'translation-prompt-ambiguous': 'The translation prompt configuration is ambiguous',
     'translation-prompt-unavailable': 'An active translation prompt is not configured',
     'translation-fidelity': 'The translation changed a required number or image placeholder',

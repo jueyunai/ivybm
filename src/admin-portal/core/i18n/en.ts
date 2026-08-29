@@ -361,6 +361,7 @@ export const PORTAL_EN = {
       english: 'English',
       errorSummaries: {
         'empty-document': 'The document contains no readable text. Make sure it is not a pure image or scan and retry.',
+        'empty-source-text': 'No source text is available for translation.',
         'external-docx-relation': 'The document contains an unsupported external link.',
         'file-signature-mismatch': 'The file format does not match its declared type.',
         'file-too-large': 'The file exceeds the 30MB size limit. Compress or split it and upload again.',
@@ -381,6 +382,7 @@ export const PORTAL_EN = {
         'pdf-password-required': 'The PDF is password protected and cannot be read.',
         'text-too-large': 'The extracted text exceeds the allowed size.',
         'too-many-images': 'The document contains more than 100 embedded images. Reduce the images and retry.',
+        'translation-model-unavailable': 'The translation model is unavailable.',
         'translation-prompt-ambiguous': 'The translation prompt configuration is invalid.',
         'translation-prompt-unavailable': 'No active translation prompt is configured.',
         'translation-fidelity': 'The translation failed a number or image placeholder check.',

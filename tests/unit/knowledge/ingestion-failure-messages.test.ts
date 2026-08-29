@@ -11,6 +11,7 @@ import { KnowledgeIngestionError } from '@/modules/knowledge/ingestion/parser'
 // error to the opaque "could not be processed safely" fallback (HMT-0019).
 const INGESTION_ERROR_CODES = [
   'empty-document',
+  'empty-source-text',
   'external-docx-relation',
   'file-signature-mismatch',
   'file-too-large',
@@ -31,6 +32,7 @@ const INGESTION_ERROR_CODES = [
   'pdf-password-required',
   'text-too-large',
   'too-many-images',
+  'translation-model-unavailable',
   'translation-prompt-ambiguous',
   'translation-prompt-unavailable',
   'translation-fidelity',
