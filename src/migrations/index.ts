@@ -28,6 +28,7 @@ import * as migration_20260812_173701_qualification_answer_state from './2026081
 import * as migration_20260813_055309_image_generation_provider_contract from './20260813_055309_image_generation_provider_contract'
 import * as migration_20260814_080331 from './20260814_080331'
 import * as migration_20260824_125651_task13_social_lead_contact from './20260824_125651_task13_social_lead_contact'
+import * as migration_20260829_100000_lead_attachments from './20260829_100000_lead_attachments'
 
 export const migrations = [
   {
@@ -179,5 +180,10 @@ export const migrations = [
     up: migration_20260824_125651_task13_social_lead_contact.up,
     down: migration_20260824_125651_task13_social_lead_contact.down,
     name: '20260824_125651_task13_social_lead_contact',
+  },
+  {
+    up: migration_20260829_100000_lead_attachments.up,
+    down: migration_20260829_100000_lead_attachments.down,
+    name: '20260829_100000_lead_attachments',
   },
 ]

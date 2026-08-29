@@ -30,6 +30,7 @@ import { KnowledgeDocuments } from './collections/KnowledgeDocuments'
 import { KnowledgeSourceAssets } from './collections/KnowledgeSourceAssets'
 import { KnowledgeSourceDocuments } from './collections/KnowledgeSourceDocuments'
 import { Leads } from './collections/Leads'
+import { LeadAttachments } from './collections/LeadAttachments'
 import { LeadSources } from './collections/LeadSources'
 import { Media } from './collections/Media'
 import { Messages } from './collections/Messages'
@@ -107,6 +108,7 @@ export default buildConfig({
     PortalCommandReceipts,
     LeadSources,
     Leads,
+    LeadAttachments,
     FeishuConnections,
     FeishuAppRegistrations,
     FeishuMappings,
@@ -137,7 +139,7 @@ export default buildConfig({
   upload: {
     abortOnLimit: true,
     limits: {
-      fileSize: 30 * 1024 * 1024,
+      fileSize: 52 * 1024 * 1024,
       files: 1,
     },
     responseOnLimit: 'File size limit has been reached.',
