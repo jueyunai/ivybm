@@ -58,6 +58,8 @@ type ConversationFeedback = {
   selectionEpoch: number
 }
 
+const LIVE_REFRESH_INTERVAL_MS = 5_000
+
 const messageStatusRank: Record<ChatMessageStatus, number> = {
   pending: 0,
   failed: 1,
@@ -359,6 +361,7 @@ export function ConversationWorkspace({
   const detailRequest = useRef(0)
   const listAbortRef = useRef<AbortController | null>(null)
   const detailAbortRef = useRef<AbortController | null>(null)
+  const terminalDetailErrorRef = useRef<string | null>(null)
   const selectedIdRef = useRef(selectedId)
   const selectionEpochRef = useRef(0)
   const [selectionEpoch, setSelectionEpoch] = useState(0)
@@ -404,110 +407,141 @@ export function ConversationWorkspace({
         return mergeConversationSnapshots(current, result)
       })
     },
-    [isCurrentSelection],
-  )
+   [isCurrentSelection],
+ )
 
-  const loadList = useCallback(async () => {
+  const loadList = useCallback(async (options?: { isBackground?: boolean }) => {
     if (!enabled) return
+    const isBackground = options?.isBackground ?? false
     listAbortRef.current?.abort()
-    const controller = new AbortController()
-    listAbortRef.current = controller
-    const requestID = ++listRequest.current
-    setListLoading(true)
-    setListError(null)
-    try {
-      const result = await fetchConversationList({
-        page,
-        signal: controller.signal,
-        status,
-      })
-      if (requestID !== listRequest.current || controller.signal.aborted) return
-      setList(result)
-      setSelection((current) => {
-        if (current.routeConversationId !== routeConversationId && routeConversationId) {
-          return { routeConversationId, selectedId: routeConversationId }
-        }
-        const currentId =
-          current.routeConversationId === routeConversationId
-            ? current.selectedId
-            : routeConversationId
-        return {
-          routeConversationId,
-          selectedId:
-            currentId && result.docs.some(({ id }) => String(id) === String(currentId))
-              ? currentId
-              : (result.docs[0]?.id ?? null),
-        }
-      })
-    } catch (error) {
-      if (requestID !== listRequest.current || controller.signal.aborted) return
-      setListError(error instanceof Error ? error.message : copy.failedDescription)
-    } finally {
-      if (requestID === listRequest.current && !controller.signal.aborted) {
-        setListLoading(false)
-      }
-    }
-  }, [copy.failedDescription, enabled, page, routeConversationId, status])
+   const controller = new AbortController()
+   listAbortRef.current = controller
+   const requestID = ++listRequest.current
+   if (!isBackground) {
+     setListLoading(true)
+     setListError(null)
+   }
+   try {
+     const result = await fetchConversationList({
+       page,
+       signal: controller.signal,
+       status,
+     })
+     if (requestID !== listRequest.current || controller.signal.aborted) return
+     setList(result)
+     setSelection((current) => {
+       if (current.routeConversationId !== routeConversationId && routeConversationId) {
+         return { routeConversationId, selectedId: routeConversationId }
+       }
+       const currentId =
+         current.routeConversationId === routeConversationId
+           ? current.selectedId
+           : routeConversationId
+       if (isBackground && currentId) {
+         return {
+           routeConversationId,
+           selectedId: currentId,
+         }
+       }
+       return {
+         routeConversationId,
+         selectedId:
+           currentId && result.docs.some(({ id }) => String(id) === String(currentId))
+             ? currentId
+             : (result.docs[0]?.id ?? null),
+       }
+     })
+   } catch (error) {
+     if (requestID !== listRequest.current || controller.signal.aborted) return
+     if (!isBackground) {
+       setListError(error instanceof Error ? error.message : copy.failedDescription)
+     }
+   } finally {
+     if (requestID === listRequest.current && !controller.signal.aborted && !isBackground) {
+       setListLoading(false)
+     }
+   }
+ }, [copy.failedDescription, enabled, page, routeConversationId, status])
 
-  const loadDetail = useCallback(async () => {
-    if (!enabled || selectedId === null) {
-      detailAbortRef.current?.abort()
+ const loadDetail = useCallback(
+   async (options?: { isBackground?: boolean }) => {
+     const isBackground = options?.isBackground ?? false
+   if (!enabled || selectedId === null) {
+     detailAbortRef.current?.abort()
+     setSelected(null)
+     setDetailLoading(false)
+     setDetailError(terminalDetailErrorRef.current)
+     terminalDetailErrorRef.current = null
+     return
+   }
+   detailAbortRef.current?.abort()
+   const controller = new AbortController()
+   detailAbortRef.current = controller
+   const requestID = ++detailRequest.current
+   const targetId = String(selectedId)
+   const targetSelectionEpoch = selectionEpochRef.current
+   if (!isBackground) {
+     setDetailLoading(true)
+     setDetailError(null)
+   }
+   let terminalError = false
+   try {
+     const result = await fetchConversationDetail(selectedId, { signal: controller.signal })
+     if (
+       requestID !== detailRequest.current ||
+       controller.signal.aborted ||
+       !isCurrentSelection(targetId, targetSelectionEpoch)
+     ) {
+       return
+     }
+     commitSelectedSession(result, targetId, targetSelectionEpoch)
+   } catch (error) {
+     if (
+       requestID !== detailRequest.current ||
+       controller.signal.aborted ||
+       !isCurrentSelection(targetId, targetSelectionEpoch)
+     ) {
+       return
+     }
+    terminalError =
+      error instanceof ConversationClientError &&
+      (error.code === 'forbidden' || error.code === 'not_found')
+    if (!isBackground || terminalError) {
       setSelected(null)
-      setDetailLoading(false)
-      setDetailError(null)
-      return
-    }
-    detailAbortRef.current?.abort()
-    const controller = new AbortController()
-    detailAbortRef.current = controller
-    const requestID = ++detailRequest.current
-    const targetId = String(selectedId)
-    const targetSelectionEpoch = selectionEpochRef.current
-    setDetailLoading(true)
-    setDetailError(null)
-    try {
-      const result = await fetchConversationDetail(selectedId, { signal: controller.signal })
-      if (
-        requestID !== detailRequest.current ||
-        controller.signal.aborted ||
-        !isCurrentSelection(targetId, targetSelectionEpoch)
-      ) {
-        return
-      }
-      commitSelectedSession(result, targetId, targetSelectionEpoch)
-    } catch (error) {
-      if (
-        requestID !== detailRequest.current ||
-        controller.signal.aborted ||
-        !isCurrentSelection(targetId, targetSelectionEpoch)
-      ) {
-        return
-      }
-      setSelected(null)
-      setDetailError(
+      const message =
         error instanceof ConversationClientError && error.code === 'forbidden'
           ? copy.forbiddenDescription
+          : error instanceof ConversationClientError && error.code === 'not_found'
+            ? copy.failedDescription
           : error instanceof Error
             ? error.message
-            : copy.failedDescription,
-      )
-    } finally {
-      if (
-        requestID === detailRequest.current &&
-        !controller.signal.aborted &&
-        isCurrentSelection(targetId, targetSelectionEpoch)
-      ) {
-        setDetailLoading(false)
+            : copy.failedDescription
+      terminalDetailErrorRef.current = message
+      setDetailError(message)
+      if (terminalError) {
+        setSelection({ routeConversationId, selectedId: null })
       }
-    }
-  }, [
-    commitSelectedSession,
-    copy.failedDescription,
-    copy.forbiddenDescription,
-    enabled,
-    isCurrentSelection,
-    selectedId,
-  ])
+     }
+   } finally {
+     if (
+       requestID === detailRequest.current &&
+       !controller.signal.aborted &&
+       isCurrentSelection(targetId, targetSelectionEpoch) &&
+       (!isBackground || terminalError)
+     ) {
+       setDetailLoading(false)
+     }
+   }
+ }, [
+   commitSelectedSession,
+   copy.failedDescription,
+   copy.forbiddenDescription,
+   enabled,
+   isCurrentSelection,
+   routeConversationId,
+   selectedId,
+   setSelection,
+ ])
 
   useEffect(() => {
     return () => {
@@ -525,6 +559,26 @@ export function ConversationWorkspace({
     const timer = setTimeout(() => void loadDetail(), 0)
     return () => clearTimeout(timer)
   }, [loadDetail])
+
+ // Live-refresh: visitor and AI messages must surface without a manual
+ // refresh or an operator command. Paused while the tab is hidden.
+ useEffect(() => {
+   if (!enabled) return
+   const tick = () => {
+     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+     void loadList({ isBackground: true })
+     void loadDetail({ isBackground: true })
+   }
+   const onVisible = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    const timer = window.setInterval(tick, LIVE_REFRESH_INTERVAL_MS)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [enabled, loadDetail, loadList])
 
   const counts = useMemo(() => {
     const base: Record<HandoffStatus, number> = {
