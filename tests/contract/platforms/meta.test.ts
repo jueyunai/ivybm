@@ -157,6 +157,32 @@ describe('Meta messaging webhook contract', () => {
     ).toEqual([])
   })
 
+  it('rejects unknown Instagram change fields instead of acknowledging and dropping them', () => {
+    expect(() =>
+      connector.normalize({
+        entry: [
+          {
+            changes: [{ field: 'mesages', value: {} }],
+            id: 'IG_ACCOUNT_FIXTURE_1',
+          },
+        ],
+        object: 'instagram',
+      }),
+    ).toThrow('Meta webhook change field is unsupported')
+
+    expect(
+      connector.normalize({
+        entry: [
+          {
+            changes: [{ field: 'message_reactions', value: {} }],
+            id: 'IG_ACCOUNT_FIXTURE_1',
+          },
+        ],
+        object: 'instagram',
+      }),
+    ).toEqual([])
+  })
+
   it('does not collapse the same provider message ID across two Meta accounts', () => {
     const sharedMessageID = 'm_fixture_shared_across_accounts'
     const events = connector.normalize({

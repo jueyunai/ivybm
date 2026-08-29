@@ -29,6 +29,19 @@ const isIgnoredControlCallback = (envelope: UnknownRecord): boolean =>
   isRecord(envelope.reaction) ||
   isRecord(envelope.read)
 
+const IGNORED_INSTAGRAM_CHANGE_FIELDS = new Set([
+  'comments',
+  'live_comments',
+  'mentions',
+  'message_reactions',
+  'messaging_handover',
+  'messaging_postbacks',
+  'messaging_referral',
+  'messaging_seen',
+  'standby',
+  'story_insights',
+])
+
 const messagingEnvelopes = (
   entry: UnknownRecord,
   platform: MessagingPlatform,
@@ -49,7 +62,10 @@ const messagingEnvelopes = (
     if (!isRecord(change)) throw new Error('Meta webhook change is invalid')
     const field = stringValue(change.field, 100)
     if (!field) throw new Error('Meta webhook change field is invalid')
-    if (field !== 'messages') continue
+    if (field !== 'messages') {
+      if (IGNORED_INSTAGRAM_CHANGE_FIELDS.has(field)) continue
+      throw new Error('Meta webhook change field is unsupported')
+    }
     if (!isRecord(change.value)) throw new Error('Meta webhook messages change is invalid')
 
     if (Array.isArray(change.value.messaging)) {

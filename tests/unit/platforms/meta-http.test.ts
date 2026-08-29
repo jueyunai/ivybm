@@ -470,6 +470,53 @@ describe('Meta webhook HTTP handlers', () => {
     expect(JSON.stringify(diagnosticSink.mock.calls)).not.toContain('private.example.invalid')
   })
 
+  it('rejects unknown Instagram change fields with a sanitized structural diagnostic', async () => {
+    const diagnosticSink = vi.fn()
+    const { handlers, repository } = createHandlers({
+      connector: createMetaConnector(),
+      diagnosticSink,
+      instagramAppSecret: 'fixture-instagram-app-secret',
+    })
+    const rawBody = JSON.stringify({
+      entry: [
+        {
+          changes: [{ field: 'mesages', value: { secret: 'must-not-be-logged' } }],
+          id: 'sensitive-account-id',
+        },
+      ],
+      object: 'instagram',
+    })
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody, 'fixture-instagram-app-secret'),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: { code: 'invalid_payload' } })
+    expect(repository.events.size).toBe(0)
+    expect(diagnosticSink).toHaveBeenCalledWith({
+      code: 'invalid_payload',
+      entries: [
+        {
+          changeFields: ['unknown'],
+          hasChanges: true,
+          hasMessaging: false,
+          messagingKinds: [],
+        },
+      ],
+      entryCount: 1,
+      object: 'instagram',
+    })
+    expect(JSON.stringify(diagnosticSink.mock.calls)).not.toContain('must-not-be-logged')
+    expect(JSON.stringify(diagnosticSink.mock.calls)).not.toContain('sensitive-account-id')
+  })
+
   it('isolates diagnostic sink failures from the webhook response', async () => {
     const { handlers } = createHandlers({
       connector: createMetaConnector(),
