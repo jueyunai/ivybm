@@ -1188,4 +1188,39 @@ describe('Portal conversations module', () => {
      vi.useRealTimers()
    }
  })
+
+ it('clears a conversation when background refresh reports it was removed', async () => {
+   vi.useFakeTimers()
+   try {
+     let refresh = false
+     const fetchMock = vi.fn().mockImplementation((url: string) => {
+       const urlStr = String(url)
+       if (urlStr.startsWith('/api/portal/conversations?') || urlStr === '/api/portal/conversations') {
+         return Promise.resolve(
+           jsonResponse(
+             refresh
+               ? { docs: [], page: 1, totalDocs: 0, totalPages: 1 }
+               : { docs: [{ ...session1, messages: undefined }], page: 1, totalDocs: 1, totalPages: 1 },
+           ),
+         )
+       }
+       if (urlStr.includes('/api/portal/conversations/conv-1')) {
+         return refresh
+           ? Promise.resolve(jsonResponse({ error: { code: 'not_found', message: 'removed' } }, 404))
+           : Promise.resolve(jsonResponse(session1))
+       }
+       return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+     })
+     vi.stubGlobal('fetch', fetchMock)
+     renderWorkspace('conv-1')
+     await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+     expect(screen.getByText('First visitor message')).toBeDefined()
+     refresh = true
+     await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+     expect(screen.queryByText('First visitor message')).toBeNull()
+     expect(screen.getByText('会话服务读取失败，请检查网络连接后刷新重试。')).toBeDefined()
+   } finally {
+     vi.useRealTimers()
+   }
+ })
 })

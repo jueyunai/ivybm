@@ -361,6 +361,7 @@ export function ConversationWorkspace({
   const detailRequest = useRef(0)
   const listAbortRef = useRef<AbortController | null>(null)
   const detailAbortRef = useRef<AbortController | null>(null)
+  const terminalDetailErrorRef = useRef<string | null>(null)
   const selectedIdRef = useRef(selectedId)
   const selectionEpochRef = useRef(0)
   const [selectionEpoch, setSelectionEpoch] = useState(0)
@@ -469,7 +470,8 @@ export function ConversationWorkspace({
      detailAbortRef.current?.abort()
      setSelected(null)
      setDetailLoading(false)
-     setDetailError(null)
+     setDetailError(terminalDetailErrorRef.current)
+     terminalDetailErrorRef.current = null
      return
    }
    detailAbortRef.current?.abort()
@@ -482,6 +484,7 @@ export function ConversationWorkspace({
      setDetailLoading(true)
      setDetailError(null)
    }
+   let terminalError = false
    try {
      const result = await fetchConversationDetail(selectedId, { signal: controller.signal })
      if (
@@ -500,22 +503,31 @@ export function ConversationWorkspace({
      ) {
        return
      }
-     if (!isBackground) {
-       setSelected(null)
-       setDetailError(
-         error instanceof ConversationClientError && error.code === 'forbidden'
-           ? copy.forbiddenDescription
-           : error instanceof Error
-             ? error.message
-             : copy.failedDescription,
-       )
+    terminalError =
+      error instanceof ConversationClientError &&
+      (error.code === 'forbidden' || error.code === 'not_found')
+    if (!isBackground || terminalError) {
+      setSelected(null)
+      const message =
+        error instanceof ConversationClientError && error.code === 'forbidden'
+          ? copy.forbiddenDescription
+          : error instanceof ConversationClientError && error.code === 'not_found'
+            ? copy.failedDescription
+          : error instanceof Error
+            ? error.message
+            : copy.failedDescription
+      terminalDetailErrorRef.current = message
+      setDetailError(message)
+      if (terminalError) {
+        setSelection({ routeConversationId, selectedId: null })
+      }
      }
    } finally {
      if (
        requestID === detailRequest.current &&
        !controller.signal.aborted &&
        isCurrentSelection(targetId, targetSelectionEpoch) &&
-       !isBackground
+       (!isBackground || terminalError)
      ) {
        setDetailLoading(false)
      }
@@ -526,7 +538,9 @@ export function ConversationWorkspace({
    copy.forbiddenDescription,
    enabled,
    isCurrentSelection,
+   routeConversationId,
    selectedId,
+   setSelection,
  ])
 
   useEffect(() => {
