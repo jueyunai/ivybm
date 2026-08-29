@@ -25,6 +25,38 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+const createLeadItem = (overrides: Partial<LeadSummaryItem> = {}): LeadSummaryItem => ({
+  assignedTo: null,
+  attachmentCount: 0,
+  attachments: [],
+  attachmentsAccess: "authorized",
+  budget: null,
+  company: "Al Futtaim Engineering",
+  country: "United Arab Emirates",
+  email: "tender@example.com",
+  hasDrawings: false,
+  id: 10,
+  interest: "Aluminium Louvers",
+  intentLevel: "a",
+  locale: "en",
+  message: "Please review our drawings and BOQ.",
+  messagingAccountExternalId: null,
+  messagingPlatform: null,
+  messagingSenderExternalId: null,
+  messagingThreadExternalId: null,
+  name: "Ahmed Al-Mansoor",
+  phone: "+971 50 123 4567",
+  procurementPlan: "Immediate",
+  projectStage: "Tender submission",
+  quantitySquareMeters: 5000,
+  relatedConversations: [],
+  source: 1,
+  status: "new",
+  timeline: "1 month",
+  updatedAt: "2026-08-29T10:00:00.000Z",
+  ...overrides,
+})
+
 describe('formatByteSize utility', () => {
   it('formats bytes across zero, B, KB, MB, and GB boundaries', () => {
     expect(formatByteSize(0)).toBe('0 B')
@@ -240,38 +272,6 @@ describe('Portal leads page read model with attachments', () => {
 })
 
 describe('LeadsHub attachment UI presentation', () => {
-  const createLeadItem = (overrides: Partial<LeadSummaryItem> = {}): LeadSummaryItem => ({
-    assignedTo: null,
-    attachmentCount: 0,
-    attachments: [],
-    attachmentsAccess: 'authorized',
-    budget: null,
-    company: 'Al Futtaim Engineering',
-    country: 'United Arab Emirates',
-    email: 'tender@example.com',
-    hasDrawings: false,
-    id: 10,
-    interest: 'Aluminium Louvers',
-    intentLevel: 'a',
-    locale: 'en',
-    message: 'Please review our drawings and BOQ.',
-    messagingAccountExternalId: null,
-    messagingPlatform: null,
-    messagingSenderExternalId: null,
-    messagingThreadExternalId: null,
-    name: 'Ahmed Al-Mansoor',
-    phone: '+971 50 123 4567',
-    procurementPlan: 'Immediate',
-    projectStage: 'Tender submission',
-    quantitySquareMeters: 5000,
-    relatedConversations: [],
-    source: 1,
-    status: 'new',
-    timeline: '1 month',
-    updatedAt: '2026-08-29T10:00:00.000Z',
-    ...overrides,
-  })
-
   it('renders attachment badge in list item and authorized download buttons in detail', () => {
     const leadWithFiles = createLeadItem({
       attachmentCount: 2,
@@ -505,5 +505,112 @@ describe('LeadsHub attachment UI presentation', () => {
     expect(await screen.findByRole('heading', { name: 'Drawings & Attachments' })).toBeTruthy()
     expect(screen.getByText('Associated')).toBeTruthy()
     expect(screen.getByRole('link', { name: /Download/ })).toBeTruthy()
+  })
+})
+
+describe('Portal leads query and deep-link selection with lead parameter', () => {
+  it('parses lead parameter in parseLeadQuery', () => {
+    const query = parseLeadQuery({ lead: '42', q: 'facade', status: 'qualified' })
+    expect(query.lead).toBe('42')
+    expect(query.q).toBe('facade')
+    expect(query.status).toBe('qualified')
+  })
+
+  it('loads specifically requested lead when query.lead is specified outside current page', async () => {
+    const find = vi.fn().mockImplementation(({ collection }: { collection: string }) => {
+      if (collection === 'leads') {
+        return Promise.resolve({
+          docs: [
+            {
+              assignedTo: null,
+              budget: null,
+              company: 'Company First',
+              country: 'UAE',
+              email: 'first@example.com',
+              hasDrawings: false,
+              id: 101,
+              intentLevel: 'a',
+              interest: null,
+              locale: 'en',
+              message: 'First lead',
+              name: 'First',
+              phone: null,
+              procurementPlan: null,
+              projectStage: null,
+              quantitySquareMeters: null,
+              source: 1,
+              status: 'new',
+              timeline: null,
+              updatedAt: '2026-08-29T10:00:00.000Z',
+            },
+          ],
+          page: 1,
+          totalDocs: 100,
+          totalPages: 5,
+        })
+      }
+      if (collection === 'lead-sources') return Promise.resolve({ docs: [] })
+      if (collection === 'users') return Promise.resolve({ docs: [] })
+      if (collection === 'conversations') return Promise.resolve({ docs: [] })
+      if (collection === 'lead-attachments') return Promise.resolve({ docs: [] })
+      return Promise.resolve({ docs: [] })
+    })
+
+    const findByID = vi.fn().mockResolvedValue({
+      assignedTo: null,
+      budget: null,
+      company: 'Deep-linked Company',
+      country: 'KSA',
+      email: 'target@example.com',
+      hasDrawings: true,
+      id: 42,
+      intentLevel: 'a',
+      interest: 'Special Facade',
+      locale: 'en',
+      message: 'Target lead via Feishu link',
+      name: 'Target Buyer',
+      phone: null,
+      procurementPlan: null,
+      projectStage: null,
+      quantitySquareMeters: null,
+      source: 1,
+      status: 'qualified',
+      timeline: null,
+      updatedAt: '2026-08-29T12:00:00.000Z',
+    })
+
+    const result = await loadLeadsPageData({
+      env: { ADMIN_PORTAL_ENABLED: 'true', ADMIN_PORTAL_LEADS_ENABLED: 'true' } as never,
+      payload: { find, findByID } as never,
+      query: parseLeadQuery({ lead: '42' }),
+      req,
+      role: 'admin',
+    })
+
+    expect(findByID).toHaveBeenCalledWith(expect.objectContaining({ collection: 'leads', id: 42 }))
+    expect(result.summary?.items.some((item) => item.id === 42)).toBe(true)
+  })
+
+  it('selects query.lead initially in LeadsHub when deep linked', () => {
+    const leadA = createLeadItem({ id: 10, name: 'Lead 10' })
+    const leadTarget = createLeadItem({ id: 42, name: 'Lead 42 Target' })
+
+    const summary: LeadsSummary = {
+      items: [leadA, leadTarget],
+      options: { sources: [], users: [] },
+      pagination: { page: 1, totalDocs: 2, totalPages: 1 },
+      query: { intent: 'all', lead: '42', page: 1, q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(LeadsHub, { pageState: 'available', role: 'admin', summary }),
+      ),
+    )
+
+    // Lead 42 should be selected and its detail displayed
+    expect(screen.getByRole('heading', { level: 3, name: 'Lead 42 Target' })).toBeTruthy()
   })
 })

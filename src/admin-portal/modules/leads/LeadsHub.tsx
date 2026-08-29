@@ -213,7 +213,8 @@ export function LeadsHub({ feishuRegistrationEnabled = false, pageState, role, s
   const { locale } = usePortalPreferences()
   const text = copy[locale]
   const qualificationText = qualificationCopy[locale]
-  const [selectedID, setSelectedID] = useState<number | string | null>(summary?.items[0]?.id ?? null)
+  const initialID = summary?.query?.lead ? (summary?.items.find((item) => String(item.id) === String(summary.query.lead))?.id ?? summary?.query.lead) : (summary?.items[0]?.id ?? null)
+  const [selectedID, setSelectedID] = useState<number | string | null>(initialID)
   const [items, setItems] = useState<LeadSummaryItem[]>(summary?.items ?? [])
   const [editor, setEditor] = useState<EditorMode | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -221,7 +222,12 @@ export function LeadsHub({ feishuRegistrationEnabled = false, pageState, role, s
   useEffect(() => {
     const timer = setTimeout(() => {
       setItems(summary?.items ?? [])
-      setSelectedID((current) => summary?.items.some((item) => String(item.id) === String(current)) ? current : summary?.items[0]?.id ?? null)
+      setSelectedID((current) => {
+        if (summary?.query?.lead && summary?.items.some((item) => String(item.id) === String(summary.query.lead))) {
+          return summary.query.lead
+        }
+        return summary?.items.some((item) => String(item.id) === String(current)) ? current : summary?.items[0]?.id ?? null
+      })
     }, 0)
     return () => clearTimeout(timer)
   }, [summary])
@@ -262,7 +268,7 @@ export function LeadsHub({ feishuRegistrationEnabled = false, pageState, role, s
   </main>
 }
 
-function href(query: LeadsSummary['query'], page: number) { const params = new URLSearchParams(); if (query.q) params.set('q', query.q); if (query.status !== 'all') params.set('status', query.status); if (query.intent !== 'all') params.set('intent', query.intent); if (page > 1) params.set('page', String(page)); return `/dashboard/leads?${params}` }
+function href(query: LeadsSummary['query'], page: number) { const params = new URLSearchParams(); if (query.q) params.set('q', query.q); if (query.status !== 'all') params.set('status', query.status); if (query.intent !== 'all') params.set('intent', query.intent); if (query.lead) params.set('lead', String(query.lead)); if (page > 1) params.set('page', String(page)); return `/dashboard/leads?${params}` }
 
 function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { mode: EditorMode; onClose: () => void; onDone: (message: string, mutation: LeadMutation) => void; options: LeadsSummary['options']; role: PortalRole; selected: LeadSummaryItem | null; text: typeof copy['zh'] | typeof copy['en'] }) {
   const [form, setForm] = useState<LeadForm>(() => selected ? leadForm(selected) : blank(String(options.sources[0]?.id ?? '')))

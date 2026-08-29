@@ -1610,7 +1610,7 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     expect(upsertRecord).toHaveBeenCalledWith(
       expect.objectContaining({
         fields: expect.objectContaining({
-          Attachments: `facade-specs.pdf: http://localhost:3000/dashboard/leads/${attachmentLead.id}`,
+          Attachments: `facade-specs.pdf: http://localhost:3000/dashboard/leads?lead=${attachmentLead.id}`,
           Customer: 'Facade Attachment Co',
           'Local Lead ID': String(attachmentLead.id),
         }),

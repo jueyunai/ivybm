@@ -265,7 +265,7 @@ describe('Feishu Lead Attachments Sync unit tests', () => {
       expect.objectContaining({
         appToken: 'bascn-unit-test',
         fields: expect.objectContaining({
-          Attachments: 'structure.pdf: http://localhost:3000/dashboard/leads/88',
+          Attachments: 'structure.pdf: http://localhost:3000/dashboard/leads?lead=88',
           Customer: 'Façade Tech',
           'Local Lead ID': '88',
         }),

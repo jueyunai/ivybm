@@ -10,7 +10,7 @@ export const LEAD_INTENT_FILTERS = ["all", "a", "b", "c", "unscored"] as const
 export type LeadStatusFilter = (typeof LEAD_STATUS_FILTERS)[number]
 export type LeadIntentFilter = (typeof LEAD_INTENT_FILTERS)[number]
 
-export type LeadQuery = { intent: LeadIntentFilter; page: number; q: string; status: LeadStatusFilter }
+export type LeadQuery = { intent: LeadIntentFilter; lead?: null | number | string; page: number; q: string; status: LeadStatusFilter }
 
 export type LeadAttachmentSummaryItem = {
   byteSize: number
@@ -81,8 +81,10 @@ export const parseLeadQuery = (input: Record<string, string | string[] | undefin
   const page = Number.parseInt(first(input.page) ?? "1", 10)
   const status = first(input.status)
   const intent = first(input.intent)
+  const leadParam = first(input.lead)?.trim()
   return {
     intent: LEAD_INTENT_FILTERS.includes(intent as LeadIntentFilter) ? intent as LeadIntentFilter : "all",
+    ...(leadParam ? { lead: leadParam } : {}),
     page: Number.isSafeInteger(page) && page > 0 ? page : 1,
     q: (first(input.q) ?? "").trim().slice(0, 80),
     status: LEAD_STATUS_FILTERS.includes(status as LeadStatusFilter) ? status as LeadStatusFilter : "all",
@@ -131,7 +133,24 @@ export const loadLeadsPageData = async ({ env, payload, query, req, role }: {
       select: { assignedTo: true, budget: true, company: true, country: true, email: true, hasDrawings: true, interest: true, intentLevel: true, locale: true, message: true, messagingAccountExternalId: true, messagingPlatform: true, messagingSenderExternalId: true, messagingThreadExternalId: true, name: true, phone: true, procurementPlan: true, projectStage: true, quantitySquareMeters: true, source: true, status: true, timeline: true, updatedAt: true },
       sort: "-updatedAt", where: buildWhere(query),
     })
-    const ids = leads.docs.map(({ id }) => id)
+    let docs = leads.docs
+    if (query.lead && !docs.some((d) => String(d.id) === String(query.lead))) {
+      const targetId = Number.parseInt(String(query.lead), 10)
+      if (Number.isSafeInteger(targetId) && targetId > 0) {
+        const specificLead = await payload.findByID({
+          collection: "leads",
+          depth: 0,
+          id: targetId,
+          overrideAccess: false,
+          req,
+          select: { assignedTo: true, budget: true, company: true, country: true, email: true, hasDrawings: true, interest: true, intentLevel: true, locale: true, message: true, messagingAccountExternalId: true, messagingPlatform: true, messagingSenderExternalId: true, messagingThreadExternalId: true, name: true, phone: true, procurementPlan: true, projectStage: true, quantitySquareMeters: true, source: true, status: true, timeline: true, updatedAt: true },
+        }).catch(() => null)
+        if (specificLead) {
+          docs = [specificLead, ...docs]
+        }
+      }
+    }
+    const ids = docs.map(({ id }) => id)
     const canAccessAttachments = role === "admin" || role === "operator"
 
     const [sources, users, conversations, attachments] = await Promise.all([
@@ -175,7 +194,7 @@ export const loadLeadsPageData = async ({ env, payload, query, req, role }: {
     return {
       state: "available",
       summary: {
-        items: leads.docs.map((lead) => {
+        items: docs.map((lead) => {
           const leadAttachments = attachmentsByLead.get(String(lead.id)) ?? []
           return {
             assignedTo: asID(lead.assignedTo),

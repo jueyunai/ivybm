@@ -76,7 +76,7 @@ export const resolvePortalLeadUrl = (leadId: number | string, explicitOrigin?: s
       origin = 'http://localhost:3000'
     }
   }
-  return `${origin}/dashboard/leads/${leadId}`
+  return `${origin}/dashboard/leads?lead=${encodeURIComponent(String(leadId))}`
 }
 
 export const formatAttachments = (
@@ -89,7 +89,7 @@ export const formatAttachments = (
   return attachments
     .map((attachment) => {
       const filename = attachment.filename?.trim() || `attachment-${attachment.id}`
-      const url = attachment.url?.trim() || resolvePortalLeadUrl(leadId, origin)
+      const url = resolvePortalLeadUrl(leadId, origin)
       return `${filename}: ${url}`
     })
     .join('\n')
