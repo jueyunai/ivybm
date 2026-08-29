@@ -1292,7 +1292,8 @@ export interface FeishuMapping {
           | 'phone'
           | 'nextFollowUpAt'
           | 'sourceURL'
-          | 'originalInquiry';
+          | 'originalInquiry'
+          | 'attachments';
         targetField: string;
         required?: boolean | null;
         id?: string | null;

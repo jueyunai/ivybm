@@ -16305,7 +16305,8 @@
         "phone",
         "nextFollowUpAt",
         "sourceURL",
-        "originalInquiry"
+        "originalInquiry",
+        "attachments"
       ]
     },
     "public.enum_feishu_mappings_notification_recipients_receive_id_type": {

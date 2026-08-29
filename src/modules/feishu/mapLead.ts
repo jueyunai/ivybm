@@ -63,7 +63,40 @@ const originalInquiry = (lead: LeadForFeishu): string => {
     : lead.message.trim()
 }
 
+export const resolvePortalLeadUrl = (leadId: number | string, explicitOrigin?: string): string => {
+  const originCandidate =
+    explicitOrigin?.trim() ||
+    process.env.IVYBM_RUNTIME_SERVER_URL?.trim() ||
+    process.env.NEXT_PUBLIC_SERVER_URL?.trim()
+  let origin = 'http://localhost:3000'
+  if (originCandidate) {
+    try {
+      origin = new URL(originCandidate).origin
+    } catch {
+      origin = 'http://localhost:3000'
+    }
+  }
+  return `${origin}/dashboard/leads/${leadId}`
+}
+
+export const formatAttachments = (
+  attachments: LeadForFeishu['attachments'],
+  leadId: number | string,
+  origin?: string,
+): string => {
+  if (!attachments || attachments.length === 0) return ''
+
+  return attachments
+    .map((attachment) => {
+      const filename = attachment.filename?.trim() || `attachment-${attachment.id}`
+      const url = attachment.url?.trim() || resolvePortalLeadUrl(leadId, origin)
+      return `${filename}: ${url}`
+    })
+    .join('\n')
+}
+
 const leadValues = (lead: LeadForFeishu): Record<FeishuLeadField, FeishuFieldValue> => ({
+  attachments: formatAttachments(lead.attachments, lead.id),
   country: lead.country?.trim() ?? '',
   customerName: (lead.company || lead.name).trim(),
   email: lead.email?.trim() ?? '',

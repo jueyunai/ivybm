@@ -12,6 +12,7 @@ export const FEISHU_LEAD_FIELDS = [
   'nextFollowUpAt',
   'sourceURL',
   'originalInquiry',
+  'attachments',
 ] as const
 
 export type FeishuLeadField = (typeof FEISHU_LEAD_FIELDS)[number]
@@ -55,8 +56,19 @@ export type FeishuAccessTokenProvider = (
   forceRefresh?: boolean,
 ) => Promise<string>
 
+export type LeadAttachmentForFeishu = {
+  byteSize?: number | null
+  createdAt?: string | null
+  filename: string
+  id: number | string
+  mimeType?: string | null
+  status?: 'associated' | 'expired' | 'missing' | 'pending' | string | null
+  url?: string | null
+}
+
 export type LeadForFeishu = {
   assignedTo?: number | string | { email?: string | null; id: number | string } | null
+  attachments?: LeadAttachmentForFeishu[] | null
   budget?: string | null
   company?: string | null
   country?: string | null

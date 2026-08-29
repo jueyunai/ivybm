@@ -17,6 +17,7 @@ export const DEFAULT_FEISHU_FIELD_MAPPINGS = [
   { localField: 'phone', targetField: '电话' },
   { localField: 'nextFollowUpAt', targetField: '下次跟进时间' },
   { localField: 'originalInquiry', required: true, targetField: '原始咨询' },
+  { localField: 'attachments', required: false, targetField: '图纸与附件' },
 ] as const
 
 const CRM_FIELDS = [

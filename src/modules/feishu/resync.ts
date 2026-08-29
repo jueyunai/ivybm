@@ -12,7 +12,11 @@ import {
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 
 import { findActiveFeishuMapping } from './config'
-import { FEISHU_LEAD_SYNC_JOB_TYPE, feishuLeadSyncRevision } from './jobs'
+import {
+  FEISHU_LEAD_SYNC_JOB_TYPE,
+  feishuLeadSyncRevision,
+  findAssociatedLeadAttachments,
+} from './jobs'
 
 export const MAX_FEISHU_LEAD_RESYNC_IDS = 50
 
@@ -78,9 +82,10 @@ export const createFeishuLeadResyncPlan = async ({
     if (typeof lead.updatedAt !== 'string' || !lead.updatedAt.trim()) {
       throw new Error(`Lead ${leadID} has no valid updatedAt revision`)
     }
+    const attachments = await findAssociatedLeadAttachments(payload, leadID, req)
     items.push({
       id: leadID,
-      revision: feishuLeadSyncRevision(lead),
+      revision: feishuLeadSyncRevision(lead, attachments),
       updatedAt: lead.updatedAt,
     })
   }

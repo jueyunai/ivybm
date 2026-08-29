@@ -3,6 +3,7 @@ import path from 'node:path'
 import { ValidationError, type CollectionBeforeOperationHook, type CollectionConfig } from 'payload'
 
 import { adminFieldAccess, leadManagerFieldAccess } from '@/access/leads'
+import { enqueueFeishuLeadAttachmentChange } from '@/modules/feishu/jobs'
 import {
   LEAD_ATTACHMENT_MAX_BYTES,
   LEAD_ATTACHMENT_MIME_TYPES,
@@ -92,5 +93,8 @@ export const LeadAttachments: CollectionConfig = {
     staticDir: path.resolve(process.cwd(), 'private/lead-attachments'),
     mimeTypes: [...LEAD_ATTACHMENT_MIME_TYPES],
   },
-  hooks: { beforeOperation: [validateAttachmentUpload] },
+  hooks: {
+    afterChange: [enqueueFeishuLeadAttachmentChange],
+    beforeOperation: [validateAttachmentUpload],
+  },
 }

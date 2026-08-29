@@ -2,6 +2,7 @@ import { MigrateDownArgs, MigrateUpArgs, sql } from '@payloadcms/db-postgres'
 
 export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
+    ALTER TYPE "public"."enum_feishu_mappings_field_mappings_local_field" ADD VALUE 'attachments';
     CREATE TYPE "public"."enum_lead_attachments_status" AS ENUM('pending', 'associated', 'missing', 'expired');
     CREATE TABLE "lead_attachments" (
       "id" serial PRIMARY KEY NOT NULL,
@@ -45,5 +46,10 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
     DROP TABLE "lead_attachments";
     ALTER TABLE "payload_locked_documents_rels" DROP COLUMN "lead_attachments_id";
     DROP TYPE "public"."enum_lead_attachments_status";
+    ALTER TABLE "feishu_mappings_field_mappings" ALTER COLUMN "local_field" SET DATA TYPE text;
+    DELETE FROM "feishu_mappings_field_mappings" WHERE "local_field" = 'attachments';
+    DROP TYPE "public"."enum_feishu_mappings_field_mappings_local_field";
+    CREATE TYPE "public"."enum_feishu_mappings_field_mappings_local_field" AS ENUM('localLeadId', 'customerName', 'country', 'source', 'productNeed', 'projectStage', 'intentLevel', 'owner', 'email', 'phone', 'nextFollowUpAt', 'sourceURL', 'originalInquiry');
+    ALTER TABLE "feishu_mappings_field_mappings" ALTER COLUMN "local_field" SET DATA TYPE "public"."enum_feishu_mappings_field_mappings_local_field" USING "local_field"::"public"."enum_feishu_mappings_field_mappings_local_field";
   `)
 }
