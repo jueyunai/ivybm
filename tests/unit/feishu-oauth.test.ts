@@ -15,7 +15,7 @@ import {
   hashOAuthState,
   refreshFeishuOAuthToken,
 } from '@/modules/feishu/oauth'
-import { cleanupFeishuDefaultTables, provisionFeishuCRM } from '@/modules/feishu/provision'
+import { cleanupFeishuDefaultTables, isFeishuDefaultTableName, provisionFeishuCRM } from '@/modules/feishu/provision'
 
 const response = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -351,5 +351,93 @@ describe('cleanupFeishuDefaultTables', () => {
         keepTableId: 'tbl_crm',
       }),
     ).resolves.toEqual({ deletedTableIds: ['tbl_page1', 'tbl_page2'] })
+  })
+
+  it('never deletes custom user tables even if they are empty', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/tables?page_size=100')) {
+        return tablesPage([
+          { name: '客户档案', table_id: 'tbl_crm' },
+          { name: '供应商清单', table_id: 'tbl_custom_empty' },
+          { name: '产品库', table_id: 'tbl_products' },
+          { name: '默认数据表', table_id: 'tbl_default' },
+        ])
+      }
+      if (url.includes('/records?page_size=1')) {
+        return response({ code: 0, data: { items: [], total: 0 } })
+      }
+      expect(init?.method).toBe('DELETE')
+      return response({ code: 0, data: {} })
+    })
+    await expect(
+      cleanupFeishuDefaultTables({
+        accessToken: 'user-access',
+        appToken: 'base_fixture',
+        fetch,
+        keepTableId: 'tbl_crm',
+      }),
+    ).resolves.toEqual({ deletedTableIds: ['tbl_default'] })
+    const deleted = fetch.mock.calls
+      .filter(([, init]) => init?.method === 'DELETE')
+      .map(([url]) => String(url))
+    expect(deleted).toEqual([
+      'https://open.feishu.cn/open-apis/bitable/v1/apps/base_fixture/tables/tbl_default',
+    ])
+  })
+
+  it('deletes candidate matching explicit defaultTableId even with non-standard name', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/tables?page_size=100')) {
+        return tablesPage([
+          { name: '客户档案', table_id: 'tbl_crm' },
+          { name: '自定义初始表', table_id: 'tbl_auto_generated' },
+        ])
+      }
+      if (url.includes('/records?page_size=1')) {
+        return response({ code: 0, data: { items: [], total: 0 } })
+      }
+      expect(init?.method).toBe('DELETE')
+      return response({ code: 0, data: {} })
+    })
+    await expect(
+      cleanupFeishuDefaultTables({
+        accessToken: 'user-access',
+        appToken: 'base_fixture',
+        defaultTableId: 'tbl_auto_generated',
+        fetch,
+        keepTableId: 'tbl_crm',
+      }),
+    ).resolves.toEqual({ deletedTableIds: ['tbl_auto_generated'] })
+  })
+
+  it('gracefully handles list tables network or API failure without throwing', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      response({ code: 99999, msg: 'internal server error' }, 500),
+    )
+    await expect(
+      cleanupFeishuDefaultTables({
+        accessToken: 'user-access',
+        appToken: 'base_fixture',
+        fetch,
+        keepTableId: 'tbl_crm',
+      }),
+    ).resolves.toEqual({ deletedTableIds: [] })
+  })
+
+  it('matches feishu default table names correctly', () => {
+    expect(isFeishuDefaultTableName('数据表')).toBe(true)
+    expect(isFeishuDefaultTableName('数据表 1')).toBe(true)
+    expect(isFeishuDefaultTableName('默认数据表')).toBe(true)
+    expect(isFeishuDefaultTableName('默认数据表 2')).toBe(true)
+    expect(isFeishuDefaultTableName('Table')).toBe(true)
+    expect(isFeishuDefaultTableName('Table 1')).toBe(true)
+    expect(isFeishuDefaultTableName('Sheet')).toBe(true)
+    expect(isFeishuDefaultTableName('Sheet 2')).toBe(true)
+    expect(isFeishuDefaultTableName('供应商清单')).toBe(false)
+    expect(isFeishuDefaultTableName('线索汇总')).toBe(false)
+    expect(isFeishuDefaultTableName('Tableau')).toBe(false)
+    expect(isFeishuDefaultTableName('SheetMetal')).toBe(false)
   })
 })

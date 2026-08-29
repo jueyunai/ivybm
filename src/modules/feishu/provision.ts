@@ -86,7 +86,7 @@ export const createFeishuCRMBase = async ({
   baseName?: string
   fetch?: FetchLike
   signal?: AbortSignal
-}): Promise<{ appToken: string; baseURL: string }> => {
+}): Promise<{ appToken: string; baseURL: string; defaultTableId?: string }> => {
   const created = await request({
     accessToken,
     body: { name: baseName, time_zone: 'Asia/Shanghai' },
@@ -97,6 +97,7 @@ export const createFeishuCRMBase = async ({
   const app = record(record(created.data)?.app)
   const appToken = string(app?.app_token)
   const baseURL = string(app?.url)
+  const defaultTableId = string(app?.default_table_id) ?? string(record(created.data)?.default_table_id)
   if (!appToken || !baseURL) {
     throw new FeishuApiError({
       code: 'invalid_base_create_response',
@@ -105,7 +106,7 @@ export const createFeishuCRMBase = async ({
     })
   }
 
-  return { appToken, baseURL }
+  return { appToken, baseURL, ...(defaultTableId ? { defaultTableId } : {}) }
 }
 
 export const createFeishuCRMTable = async ({
@@ -146,6 +147,18 @@ export const createFeishuCRMTable = async ({
 export type FeishuBaseTableRef = {
   name: string
   tableId: string
+}
+
+const FEISHU_DEFAULT_TABLE_NAME_PATTERNS = [
+  /^数据表(?:\s*\d+)?$/i,
+  /^默认数据表(?:\s*\d+)?$/i,
+  /^Table(?:\s*\d+)?$/i,
+  /^Sheet(?:\s*\d+)?$/i,
+]
+
+export const isFeishuDefaultTableName = (name: string): boolean => {
+  const trimmed = name.trim()
+  return Boolean(trimmed && FEISHU_DEFAULT_TABLE_NAME_PATTERNS.some((pattern) => pattern.test(trimmed)))
 }
 
 export const listFeishuCRMTables = async ({
@@ -234,47 +247,66 @@ export const deleteFeishuCRMTable = async ({
 
 /**
  * A Feishu Base created through the API always ships with an auto-generated
- * empty default table next to our 客户档案 table. Remove every table that is
- * not the CRM table and still empty; non-empty tables are never touched so a
- * retried cleanup cannot delete customer data entered in between.
+ * empty default table next to our 客户档案 table.
+ *
+ * To avoid deleting custom empty tables created by users, we strictly only
+ * delete tables that:
+ * 1. Are not the CRM table (tableId !== keepTableId)
+ * 2. Match a known Feishu default table name (e.g. "数据表", "默认数据表", "Table 1")
+ *    OR match the defaultTableId explicitly passed from Base creation
+ * 3. Have 0 records (feishuCRMTableIsEmpty)
+ *
+ * Cleanup is best-effort: any network or API error (including table listing)
+ * is caught to prevent failing the primary provisioning flow.
  */
 export const cleanupFeishuDefaultTables = async ({
   accessToken,
   appToken,
+  defaultTableId,
   fetch: fetchImpl = globalThis.fetch,
   keepTableId,
   signal,
 }: {
   accessToken: string
   appToken: string
+  defaultTableId?: string
   fetch?: FetchLike
   keepTableId: string
   signal?: AbortSignal
 }): Promise<{ deletedTableIds: string[] }> => {
   const deletedTableIds: string[] = []
-  const tables = await listFeishuCRMTables({ accessToken, appToken, fetch: fetchImpl, signal })
-  for (const table of tables) {
-    if (table.tableId === keepTableId) continue
-    try {
-      const empty = await feishuCRMTableIsEmpty({
-        accessToken,
-        appToken,
-        fetch: fetchImpl,
-        signal,
-        tableId: table.tableId,
-      })
-      if (!empty) continue
-      await deleteFeishuCRMTable({
-        accessToken,
-        appToken,
-        fetch: fetchImpl,
-        signal,
-        tableId: table.tableId,
-      })
-      deletedTableIds.push(table.tableId)
-    } catch {
-      // Cleanup is cosmetic: a stranded empty default table never blocks provisioning.
+  try {
+    const tables = await listFeishuCRMTables({ accessToken, appToken, fetch: fetchImpl, signal })
+    for (const table of tables) {
+      if (table.tableId === keepTableId) continue
+      const isDefaultCandidate =
+        (defaultTableId && table.tableId === defaultTableId) ||
+        isFeishuDefaultTableName(table.name)
+      if (!isDefaultCandidate) continue
+
+      try {
+        const empty = await feishuCRMTableIsEmpty({
+          accessToken,
+          appToken,
+          fetch: fetchImpl,
+          signal,
+          tableId: table.tableId,
+        })
+        if (!empty) continue
+        await deleteFeishuCRMTable({
+          accessToken,
+          appToken,
+          fetch: fetchImpl,
+          signal,
+          tableId: table.tableId,
+        })
+        deletedTableIds.push(table.tableId)
+      } catch {
+        // Cleanup is cosmetic: a stranded empty default table never blocks provisioning.
+      }
     }
+  } catch {
+    // Listing tables failure is caught: cosmetic cleanup must never throw or block provisioning.
   }
   return { deletedTableIds }
 }
@@ -289,7 +321,7 @@ export const provisionFeishuCRM = async ({
   baseName?: string
   fetch?: FetchLike
   signal?: AbortSignal
-}): Promise<{ appToken: string; baseURL: string; tableId: string }> => {
+}): Promise<{ appToken: string; baseURL: string; defaultTableId?: string; tableId: string }> => {
   const base = await createFeishuCRMBase({ accessToken, baseName, fetch: fetchImpl, signal })
   const table = await createFeishuCRMTable({
     accessToken,
@@ -300,6 +332,7 @@ export const provisionFeishuCRM = async ({
   await cleanupFeishuDefaultTables({
     accessToken,
     appToken: base.appToken,
+    defaultTableId: base.defaultTableId,
     fetch: fetchImpl,
     keepTableId: table.tableId,
     signal,
