@@ -24,12 +24,16 @@ const payloadWith = (
 }
 
 describe('Payload Meta messaging token provider', () => {
-  it.each<[MessagingPlatform, 'facebook-page' | 'instagram-professional']>([
-    ['facebook-messenger', 'facebook-page'],
-    ['instagram', 'instagram-professional'],
+  it.each<[
+    MessagingPlatform,
+    'facebook-page' | 'instagram-professional',
+    'externalAccountId',
+  ]>([
+    ['facebook-messenger', 'facebook-page', 'externalAccountId'],
+    ['instagram', 'instagram-professional', 'externalAccountId'],
   ])(
-    'binds a %s token to one exact account kind and external ID',
-    async (platform, accountKind) => {
+    'binds a %s token to one exact account kind and authoritative identity',
+    async (platform, accountKind, identityField) => {
       const payload = payloadWith({
         accessToken: encryptedToken,
         accessTokenConfigured: true,
@@ -67,7 +71,7 @@ describe('Payload Meta messaging token provider', () => {
         where: {
           and: [
             { accountKind: { equals: accountKind } },
-            { externalAccountId: { equals: '129472283584550' } },
+            { [identityField]: { equals: '129472283584550' } },
           ],
         },
       })

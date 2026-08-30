@@ -7,6 +7,7 @@ import {
   InstagramOAuthError,
   buildInstagramAuthorizationURL,
   createInstagramOAuthTransaction,
+  discoverInstagramMessagingAccountId,
   exchangeInstagramAuthorizationCode,
   readInstagramOAuthConfiguration,
   requiredInstagramPermissions,
@@ -229,12 +230,73 @@ describe('Instagram OAuth', () => {
       accessToken: 'long-user-token',
       accountId: '987654321098765',
       displayName: '@ivymetalglass',
+      username: 'ivymetalglass',
     })
     expect(fetcher).toHaveBeenCalledTimes(1)
     const requestURL = new URL(String(fetcher.mock.calls[0][0]))
     expect(requestURL.pathname).toBe('/v22.0/me')
     expect(requestURL.searchParams.get('fields')).toBe('id,username,account_type')
     expect(requestURL.pathname).not.toContain('permissions')
+  })
+
+  it('discovers a distinct messaging participant ID by the authorized username', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              id: 'conversation-1',
+              participants: {
+                data: [
+                  { id: '17841400000000001', username: 'ivymetalglass' },
+                  { id: '17841400000000002', username: 'customer' },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    )
+
+    await expect(
+      discoverInstagramMessagingAccountId({
+        accessToken: 'long-user-token',
+        fetcher,
+        oauthAccountId: '987654321098765',
+        username: 'ivymetalglass',
+      }),
+    ).resolves.toBe('17841400000000001')
+    const requestURL = new URL(String(fetcher.mock.calls[0]?.[0]))
+    expect(requestURL.pathname).toBe('/v22.0/987654321098765/conversations')
+    expect(requestURL.searchParams.get('platform')).toBe('instagram')
+    expect(requestURL.searchParams.get('fields')).toBe('participants')
+    expect(String(requestURL)).not.toContain('long-user-token')
+  })
+
+  it('leaves messaging identity unresolved for zero or ambiguous username matches', async () => {
+    const participantSets = [
+      [{ id: '17841400000000002', username: 'customer' }],
+      [
+        { id: '17841400000000001', username: 'ivymetalglass' },
+        { id: '17841400000000003', username: 'ivymetalglass' },
+      ],
+    ]
+    for (const participants of participantSets) {
+      await expect(
+        discoverInstagramMessagingAccountId({
+          accessToken: 'long-user-token',
+          fetcher: vi.fn<typeof fetch>().mockResolvedValue(
+            new Response(
+              JSON.stringify({ data: [{ id: 'conversation-1', participants: { data: participants } }] }),
+              { status: 200 },
+            ),
+          ),
+          oauthAccountId: '987654321098765',
+          username: 'ivymetalglass',
+        }),
+      ).resolves.toBeUndefined()
+    }
   })
 
   it('fails closed on personal accounts, identity mismatch, and provider errors', async () => {

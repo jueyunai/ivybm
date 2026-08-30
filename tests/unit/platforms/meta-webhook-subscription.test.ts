@@ -42,6 +42,13 @@ describe('Meta messaging webhook asset subscription', () => {
         },
       }),
     ).toBe(false)
+    expect(
+      isMetaWebhookAccountConfigured({
+        accountExternalId: '17841400000000001',
+        environment: { META_WEBHOOK_VERIFY_TOKEN: 'fixture-verify-token' },
+        platform: 'instagram',
+      }),
+    ).toBe(true)
   })
 
   it.each([

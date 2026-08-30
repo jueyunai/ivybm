@@ -1,3 +1,5 @@
+import { createHash, randomUUID } from 'node:crypto'
+
 import { getPayload, type Payload } from 'payload'
 
 import { createFixedWindowRateLimiter, type RateLimiter } from '@/lib/security/rateLimit'
@@ -21,6 +23,12 @@ import {
   WebhookValidationError,
 } from '../webhook'
 import { createMetaConnector } from './connector'
+import { readMetaWebhookReplayEncryptionKey } from './replayCrypto'
+import {
+  PayloadMetaWebhookReplayRepository,
+  type MetaWebhookFailureRecorderPort,
+  type MetaWebhookReplayRecordInput,
+} from './replayStorage'
 
 const DEFAULT_MAX_BODY_BYTES = 1_000_000
 // Meta Graph webhooks retry failed delivery over the following 36 hours.
@@ -47,17 +55,37 @@ type MetaWebhookPayloadDiagnostic = {
 
 type MetaWebhookDiagnosticSink = (diagnostic: MetaWebhookPayloadDiagnostic) => void
 
+export type MetaWebhookFailureRecorder = MetaWebhookFailureRecorderPort
+
+export type MetaWebhookLogEvent = {
+  accepted?: number
+  bodyBytes: number
+  bodySha256: string
+  duplicates?: number
+  errorCode?: string
+  outcome: 'accepted' | 'rejected'
+  providerObject: 'instagram' | 'page' | 'unknown'
+  replayRecordId?: number
+  replayRecordStatus?: 'capacity' | 'failed' | 'pending' | 'recorded'
+  traceId: string
+}
+
+type MetaWebhookLogSink = (event: MetaWebhookLogEvent) => void
+
 export type MetaWebhookHandlerDependencies = {
   accountAuthorizer?: PlatformMessagingAccountAuthorizer
   allowedAccountExternalIds?: readonly string[]
   appSecret?: string
   connector?: PlatformConnector
   diagnosticSink?: MetaWebhookDiagnosticSink
+  failureRecorder?: MetaWebhookFailureRecorder
   maxBodyBytes?: number
   instagramAppSecret?: string
+  logSink?: MetaWebhookLogSink
   now?: () => number
   payloadProvider?: PayloadProvider
   rateLimiter?: WebhookRateLimiter
+  replayEncryptionKey?: string
   repository?: PlatformEventRepository
   verifyToken?: string
 }
@@ -236,6 +264,11 @@ const productionDiagnosticSink: MetaWebhookDiagnosticSink | undefined =
     ? (diagnostic) => console.warn('[meta-webhook] rejected payload shape', diagnostic)
     : undefined
 
+const productionLogSink: MetaWebhookLogSink | undefined =
+  process.env.NODE_ENV === 'production'
+    ? (event) => console.info('[meta-webhook]', event)
+    : undefined
+
 const webhookObject = (rawBody: Uint8Array): 'instagram' | 'page' | undefined => {
   try {
     const payload = JSON.parse(Buffer.from(rawBody).toString('utf8')) as unknown
@@ -275,17 +308,21 @@ export const createMetaWebhookHandlers = ({
   appSecret = process.env.META_WEBHOOK_APP_SECRET,
   connector = createMetaConnector(),
   diagnosticSink = productionDiagnosticSink,
+  failureRecorder,
   maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
   instagramAppSecret = process.env.INSTAGRAM_APP_SECRET,
+  logSink = productionLogSink,
   now = Date.now,
   payloadProvider = defaultPayloadProvider,
   rateLimiter = defaultRateLimiter,
+  replayEncryptionKey = process.env.WEBHOOK_REPLAY_ENCRYPTION_KEY,
   repository,
   verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN,
 }: MetaWebhookHandlerDependencies = {}): MetaWebhookHandlers => {
   const configuredAppSecret = configuredValue(appSecret)
   const configuredInstagramAppSecret = configuredValue(instagramAppSecret)
   const configuredVerifyToken = configuredValue(verifyToken)
+  const configuredReplayEncryptionKey = configuredValue(replayEncryptionKey)
   const allowedAccounts = new Set(
     allowedAccountExternalIds
       .map(configuredValue)
@@ -294,7 +331,11 @@ export const createMetaWebhookHandlers = ({
   const isChallengeConfigured = Boolean(
     configuredVerifyToken && (configuredAppSecret || configuredInstagramAppSecret),
   )
-  const isIngressConfigured = Boolean(isChallengeConfigured && allowedAccounts.size > 0)
+  const isIngressConfigured = Boolean(
+    isChallengeConfigured &&
+      (allowedAccounts.size > 0 || configuredInstagramAppSecret) &&
+      /^[a-f0-9]{64}$/iu.test(configuredReplayEncryptionKey ?? ''),
+  )
   const lastDiagnosticAt = new Map<MetaWebhookPayloadDiagnostic['code'], number>()
 
   const emitDiagnostic = (diagnostic: MetaWebhookPayloadDiagnostic): void => {
@@ -311,6 +352,34 @@ export const createMetaWebhookHandlers = ({
       diagnosticSink(diagnostic)
     } catch {
       // Diagnostics must never alter the webhook acknowledgement path.
+    }
+  }
+
+  const emitLog = (event: MetaWebhookLogEvent): void => {
+    try {
+      logSink?.(event)
+    } catch {
+      // Observability must never alter Webhook acknowledgement semantics.
+    }
+  }
+
+  const recordFailure = async (
+    input: MetaWebhookReplayRecordInput,
+  ): Promise<{
+    recordId?: number
+    status: 'capacity' | 'failed' | 'pending' | 'recorded'
+  }> => {
+    const recording = resolveFailureRecorder()
+      .then((recorder) => recorder.record(input))
+      .catch(() => ({ status: 'failed' as const }))
+    let timeoutID: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<{ status: 'pending' }>((resolve) => {
+      timeoutID = setTimeout(() => resolve({ status: 'pending' }), 250)
+    })
+    try {
+      return await Promise.race([recording, timeout])
+    } finally {
+      if (timeoutID !== undefined) clearTimeout(timeoutID)
     }
   }
 
@@ -350,6 +419,18 @@ export const createMetaWebhookHandlers = ({
       },
     }
   }
+  let resolvedFailureRecorder: MetaWebhookFailureRecorder | undefined = failureRecorder
+  const resolveFailureRecorder = async (): Promise<MetaWebhookFailureRecorder> => {
+    if (resolvedFailureRecorder) return resolvedFailureRecorder
+    const key = readMetaWebhookReplayEncryptionKey({
+      WEBHOOK_REPLAY_ENCRYPTION_KEY: configuredReplayEncryptionKey,
+    })
+    resolvedFailureRecorder = new PayloadMetaWebhookReplayRepository({
+      key,
+      payload: await payloadProvider(),
+    })
+    return resolvedFailureRecorder
+  }
 
   return {
     GET: async (request) => {
@@ -373,12 +454,19 @@ export const createMetaWebhookHandlers = ({
     POST: async (request) => {
       if (!isIngressConfigured) return unavailable()
       let rawBody: Uint8Array | undefined
+      let signatureVerified = false
+      const traceId = randomUUID()
       try {
         rawBody = await readRawBody(request, maxBodyBytes)
+        const bodySha256 = createHash('sha256').update(rawBody).digest('hex')
+        const providerObject = webhookObject(rawBody) ?? 'unknown'
         const result = await ingestSignedWebhook({
           connector,
           eventAuthorizer: (event) => {
-            if (!allowedAccounts.has(event.accountExternalId)) {
+            if (
+              event.platform === 'facebook-messenger' &&
+              !allowedAccounts.has(event.accountExternalId)
+            ) {
               throw new WebhookValidationError(
                 'unauthorized_account',
                 'Webhook account is not authorized',
@@ -389,6 +477,9 @@ export const createMetaWebhookHandlers = ({
           maxBodyBytes,
           maxEventAgeMs: META_WEBHOOK_MAX_EVENT_AGE_MS,
           nowMs: now(),
+          onSignatureVerified: () => {
+            signatureVerified = true
+          },
           rateLimiter,
           rateLimitKeyForEvent: (event) =>
             `meta-webhook:${event.platform}:${event.accountExternalId}`,
@@ -399,8 +490,52 @@ export const createMetaWebhookHandlers = ({
             metaAppSecret: configuredAppSecret,
           }),
         })
+        if (signatureVerified) {
+          emitLog({
+            accepted: result.accepted,
+            bodyBytes: rawBody.byteLength,
+            bodySha256,
+            duplicates: result.duplicates,
+            outcome: 'accepted',
+            providerObject,
+            traceId,
+          })
+        }
         return Response.json(result, { headers: NO_STORE_HEADERS, status: 200 })
       } catch (error) {
+        const errorCode =
+          error instanceof WebhookValidationError ? error.code : 'service_unavailable'
+        if (rawBody && signatureVerified) {
+          const bodySha256 = createHash('sha256').update(rawBody).digest('hex')
+          const providerObject = webhookObject(rawBody) ?? 'unknown'
+          const recordInput: MetaWebhookReplayRecordInput = {
+            body: rawBody,
+            bodySha256,
+            contentType: request.headers.get('content-type')?.slice(0, 120) ?? 'unknown',
+            errorCode,
+            providerObject,
+            traceId,
+          }
+          let replayRecordId: number | undefined
+          let replayRecordStatus: MetaWebhookLogEvent['replayRecordStatus'] = 'failed'
+          try {
+            const recorded = await recordFailure(recordInput)
+            replayRecordId = recorded.recordId
+            replayRecordStatus = recorded.status
+          } catch {
+            replayRecordStatus = 'failed'
+          }
+          emitLog({
+            bodyBytes: rawBody.byteLength,
+            bodySha256,
+            errorCode,
+            outcome: 'rejected',
+            providerObject,
+            ...(replayRecordId === undefined ? {} : { replayRecordId }),
+            replayRecordStatus,
+            traceId,
+          })
+        }
         if (
           rawBody &&
           error instanceof WebhookValidationError &&

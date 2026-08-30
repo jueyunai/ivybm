@@ -12,6 +12,7 @@ import {
 } from '@/modules/platforms/accountOAuthConcurrency'
 import { PlatformPortalRequestError, readPlatformPortalJSON } from '@/modules/platforms/portalHttp'
 import config from '@/payload.config'
+import { platformMessagingIdentityWriteContextKey } from '@/collections/PlatformAccounts'
 import type { PlatformAccount, User } from '@/payload-types'
 
 export const dynamic = 'force-dynamic'
@@ -83,10 +84,12 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
 
     await withLockedPlatformAccountMutation({
-      operation: (lockedReq) =>
-        payload.update({
+      operation: (lockedReq) => {
+        (lockedReq.context ??= {})[platformMessagingIdentityWriteContextKey] = true
+        return payload.update({
           collection: 'platform-accounts',
           data: {
+            messagingExternalAccountId: null,
             authorization: {
               clearAccessToken: true,
               clearRefreshToken: true,
@@ -99,7 +102,8 @@ export async function POST(request: NextRequest): Promise<Response> {
           overrideAccess: false,
           req: lockedReq,
           user: actor,
-        }),
+        })
+      },
       payload,
       snapshot: { accountId, authorizationRevision },
       user: actor,

@@ -12,6 +12,7 @@ import {
   readPlatformCredentialEncryptionKey,
 } from '@/modules/platforms/credentials'
 import { PlatformAccountIdentityCredentialConflictError } from '@/modules/platforms/accountValidation'
+import { platformMessagingIdentityWriteContextKey } from '@/collections/PlatformAccounts'
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
 
@@ -35,7 +36,7 @@ const accountData = ({
   refreshToken,
   state,
 }: {
-  accountKind: 'facebook-page' | 'linkedin-member'
+  accountKind: 'facebook-page' | 'instagram-professional' | 'linkedin-member'
   accessToken?: string
   externalAccountId: string
   name: string
@@ -229,6 +230,116 @@ describe.sequential('platform accounts', () => {
       user: admin,
     })
     expect(identityUpdated.authorizationRevision).toBe(5)
+  })
+
+  it('enforces one unique Instagram Messaging identity without conflating the OAuth ID', async () => {
+    const suffix = randomUUID().replaceAll('-', '')
+    const messagingExternalAccountId = `1${suffix.replaceAll(/[a-f]/gu, '1').slice(0, 16)}`
+    const first = await payload.create({
+      collection: 'platform-accounts',
+      context: { [platformMessagingIdentityWriteContextKey]: true, skipAudit: true },
+      data: {
+        ...accountData({
+          accountKind: 'instagram-professional',
+          externalAccountId: `2${messagingExternalAccountId.slice(1)}`,
+          name: `Instagram Messaging First ${suffix}`,
+          state: 'pending',
+        }),
+        messagingExternalAccountId,
+      },
+      overrideAccess: true,
+    })
+    createdAccountIDs.push(first.id)
+
+    await expect(
+      payload.create({
+        collection: 'platform-accounts',
+        context: { [platformMessagingIdentityWriteContextKey]: true, skipAudit: true },
+        data: {
+          ...accountData({
+            accountKind: 'instagram-professional',
+            externalAccountId: `3${messagingExternalAccountId.slice(1)}`,
+            name: `Instagram Messaging Second ${suffix}`,
+            state: 'pending',
+          }),
+          messagingExternalAccountId,
+        },
+        overrideAccess: true,
+      }),
+    ).rejects.toThrow()
+
+    const stored = await payload.findByID({
+      collection: 'platform-accounts',
+      id: first.id,
+      overrideAccess: true,
+    })
+    expect(stored.externalAccountId).not.toBe(stored.messagingExternalAccountId)
+    expect(stored.messagingConnectionKey).toBe(
+      `instagram-professional:messaging:${messagingExternalAccountId}`,
+    )
+  })
+
+  it('keeps the Instagram Messaging identity server-managed', async () => {
+    const suffix = randomUUID().replaceAll('-', '')
+    const numericSuffix = suffix.replaceAll(/[a-f]/gu, '1').slice(0, 15)
+    const account = await payload.create({
+      collection: 'platform-accounts',
+      context: { [platformMessagingIdentityWriteContextKey]: true, skipAudit: true },
+      data: {
+        ...accountData({
+          accountKind: 'instagram-professional',
+          externalAccountId: `4${numericSuffix}`,
+          name: `Instagram Messaging Access ${suffix}`,
+          state: 'pending',
+        }),
+        messagingExternalAccountId: `5${numericSuffix}`,
+      },
+      overrideAccess: true,
+    })
+    createdAccountIDs.push(account.id)
+
+    await expect(
+      payload.update({
+        collection: 'platform-accounts',
+        data: { messagingExternalAccountId: `6${numericSuffix}` },
+        id: account.id,
+        overrideAccess: false,
+        user: admin,
+      }),
+    ).rejects.toThrow()
+  })
+
+  it('clears an Instagram Messaging identity when the OAuth identity changes', async () => {
+    const suffix = randomUUID().replaceAll('-', '').replaceAll(/[a-f]/gu, '1')
+    const account = await payload.create({
+      collection: 'platform-accounts',
+      context: { [platformMessagingIdentityWriteContextKey]: true, skipAudit: true },
+      data: {
+        ...accountData({
+          accountKind: 'instagram-professional',
+          externalAccountId: `7${suffix.slice(0, 15)}`,
+          name: `Instagram Messaging reset ${suffix}`,
+          state: 'pending',
+        }),
+        messagingExternalAccountId: `8${suffix.slice(0, 15)}`,
+      },
+      overrideAccess: true,
+    })
+    createdAccountIDs.push(account.id)
+
+    const updated = await payload.update({
+      collection: 'platform-accounts',
+      data: { externalAccountId: `9${suffix.slice(0, 15)}` },
+      id: account.id,
+      overrideAccess: false,
+      user: admin,
+    })
+
+    expect(updated).toMatchObject({
+      externalAccountId: `9${suffix.slice(0, 15)}`,
+      messagingConnectionKey: null,
+      messagingExternalAccountId: null,
+    })
   })
 
   it('keeps account tokens write-only, encrypted, and visible only to administrators', async () => {

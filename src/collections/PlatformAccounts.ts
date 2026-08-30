@@ -20,6 +20,7 @@ import {
   PLATFORM_AUTHORIZATION_STATES,
   PLATFORM_CAPABILITY_APPROVAL_STATES,
   derivePlatformConnectionKey,
+  derivePlatformMessagingConnectionKey,
   isPlatformAccountKind,
   isPlatformAuthorizationState,
   platformFamilyForAccountKind,
@@ -29,6 +30,7 @@ import { PlatformAccountIdentityCredentialConflictError } from '../modules/platf
 type UnknownRecord = Record<string, unknown>
 
 const requestedAuthorizationContextKey = '__platformAccountRequestedAuthorization'
+export const platformMessagingIdentityWriteContextKey = '__platformMessagingIdentityWrite'
 const MAX_AUTHORIZATION_REVISION = Number.MAX_SAFE_INTEGER
 
 const isRecord = (value: unknown): value is UnknownRecord =>
@@ -80,6 +82,16 @@ const lockPlatformAccountBeforeUpdate: CollectionBeforeOperationHook = async ({
 
   const requestedData = 'data' in args ? asRecord(args.data) : {}
   req.context[requestedAuthorizationContextKey] = asRecord(requestedData.authorization)
+  if (
+    Object.prototype.hasOwnProperty.call(requestedData, 'messagingExternalAccountId') &&
+    req.context[platformMessagingIdentityWriteContextKey] !== true
+  ) {
+    throw validationError(
+      req,
+      'Instagram messaging identity is server-managed',
+      'messagingExternalAccountId',
+    )
+  }
 
   const id = 'id' in args ? args.id : undefined
   if (id === undefined || id === null) {
@@ -190,6 +202,47 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
   }
   candidate.platformFamily = platformFamilyForAccountKind(accountKind)
   candidate.connectionKey = derivePlatformConnectionKey(accountKind, externalAccountId) ?? null
+  const connectionIdentityChanged = Boolean(
+    originalDoc &&
+    (accountKind !== originalDoc.accountKind ||
+      externalAccountId !== nonEmpty(originalDoc.externalAccountId)),
+  )
+  const submittedMessagingIdentity = Object.prototype.hasOwnProperty.call(
+    candidate,
+    'messagingExternalAccountId',
+  )
+  const messagingExternalAccountId = nonEmpty(
+    connectionIdentityChanged
+      ? context[platformMessagingIdentityWriteContextKey] === true && submittedMessagingIdentity
+        ? candidate.messagingExternalAccountId
+        : undefined
+      : candidate.messagingExternalAccountId ?? originalDoc?.messagingExternalAccountId,
+  )
+  const originalMessagingExternalAccountId = nonEmpty(originalDoc?.messagingExternalAccountId)
+  if (
+    messagingExternalAccountId !== originalMessagingExternalAccountId &&
+    !connectionIdentityChanged &&
+    context[platformMessagingIdentityWriteContextKey] !== true
+  ) {
+    throw validationError(
+      req,
+      'Instagram messaging identity is server-managed',
+      'messagingExternalAccountId',
+    )
+  }
+  if (
+    messagingExternalAccountId &&
+    (accountKind !== 'instagram-professional' || !/^[1-9][0-9]{0,31}$/u.test(messagingExternalAccountId))
+  ) {
+    throw validationError(
+      req,
+      'Instagram messaging identity must be a valid provider ID',
+      'messagingExternalAccountId',
+    )
+  }
+  candidate.messagingExternalAccountId = messagingExternalAccountId ?? null
+  candidate.messagingConnectionKey =
+    derivePlatformMessagingConnectionKey(accountKind, messagingExternalAccountId) ?? null
 
   const existingAuthorization = asRecord(originalDoc?.authorization)
   const submittedAuthorization = asRecord(candidate.authorization)
@@ -201,12 +254,6 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
   const existingAccessToken = nonEmpty(existingAuthorization.accessToken)
   const submittedRefreshToken = nonEmpty(submittedAuthorization.refreshToken)
   const existingRefreshToken = nonEmpty(existingAuthorization.refreshToken)
-  const connectionIdentityChanged = Boolean(
-    originalDoc &&
-    (accountKind !== originalDoc.accountKind ||
-      externalAccountId !== nonEmpty(originalDoc.externalAccountId)),
-  )
-
   const accessToken = retainOrReplaceCredential({
     clear: submittedAuthorization.clearAccessToken === true,
     existing: existingAuthorization.accessToken,
@@ -335,6 +382,7 @@ export const PlatformAccounts: CollectionConfig = {
       'platformFamily',
       'accountKind',
       'externalAccountId',
+      'messagingExternalAccountId',
       'authorization.state',
       'updatedAt',
     ],
@@ -370,6 +418,28 @@ export const PlatformAccounts: CollectionConfig = {
     },
     {
       name: 'connectionKey',
+      type: 'text',
+      access: { create: () => false, update: () => false },
+      admin: { hidden: true, readOnly: true },
+      unique: true,
+    },
+    {
+      name: 'messagingExternalAccountId',
+      type: 'text',
+      access: {
+        create: ({ req }) => req.context[platformMessagingIdentityWriteContextKey] === true,
+        update: ({ req }) => req.context[platformMessagingIdentityWriteContextKey] === true,
+      },
+      admin: {
+        description:
+          'Provider messaging recipient identity. Server-managed and distinct from the OAuth/publishing ID.',
+        readOnly: true,
+      },
+      index: true,
+      maxLength: 240,
+    },
+    {
+      name: 'messagingConnectionKey',
       type: 'text',
       access: { create: () => false, update: () => false },
       admin: { hidden: true, readOnly: true },

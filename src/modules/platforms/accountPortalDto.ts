@@ -55,6 +55,7 @@ export type RedactedPlatformAccountSummary = {
   authorizationRevision: number
   capabilities: RedactedPlatformAccountCapabilities
   externalAccountId: string | null
+  messagingExternalAccountId: string | null
   id: number
   name: string
   notes: string | null
@@ -90,6 +91,7 @@ export const toRedactedPlatformAccountSummary = (
       publishing: capabilities?.publishing,
     },
     externalAccountId: account.externalAccountId ?? null,
+    messagingExternalAccountId: account.messagingExternalAccountId ?? null,
     id: account.id,
     name: account.name,
     notes: account.notes ?? null,

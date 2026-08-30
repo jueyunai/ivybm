@@ -108,6 +108,7 @@ export type InstagramAuthorizedAccount = {
   accessToken: string
   accountId: string
   displayName: string
+  username: string
 }
 
 export type InstagramUserToken = {
@@ -884,5 +885,85 @@ export const resolveInstagramAuthorizedAccount = async ({
     accessToken: normalizedToken,
     accountId,
     displayName: username ? `@${username}` : accountId,
+    username,
   }
+}
+
+export const discoverInstagramMessagingAccountId = async ({
+  accessToken,
+  fetcher = fetch,
+  oauthAccountId,
+  username,
+}: {
+  accessToken: string
+  fetcher?: typeof fetch
+  oauthAccountId: string
+  username: string
+}): Promise<string | undefined> => {
+  const token = accessToken.trim()
+  const accountId = requireInstagramExternalId(oauthAccountId)
+  const normalizedUsername = username.trim().toLowerCase()
+  if (
+    !token ||
+    token.length > MAX_CREDENTIAL_LENGTH ||
+    !normalizedUsername ||
+    normalizedUsername.length > 100
+  ) return undefined
+
+  const url = new URL(
+    `/${INSTAGRAM_GRAPH_API_VERSION}/${accountId}/conversations`,
+    INSTAGRAM_GRAPH_ORIGIN,
+  )
+  url.searchParams.set('platform', 'instagram')
+  url.searchParams.set('fields', 'participants')
+  url.searchParams.set('limit', '100')
+  let response: Response
+  try {
+    response = await fetcher(url, {
+      cache: 'no-store',
+      headers: { accept: 'application/json', authorization: `Bearer ${token}` },
+      method: 'GET',
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MILLISECONDS),
+    })
+  } catch {
+    return undefined
+  }
+  if (!response.ok) return undefined
+  const contentLength = response.headers.get('content-length')
+  if (contentLength && /^\d+$/u.test(contentLength) && Number(contentLength) > MAX_PROVIDER_RESPONSE_LENGTH) {
+    return undefined
+  }
+  let body: string
+  try {
+    body = await response.text()
+  } catch {
+    return undefined
+  }
+  if (!body || Buffer.byteLength(body) > MAX_PROVIDER_RESPONSE_LENGTH) return undefined
+  let payload: unknown
+  try {
+    payload = JSON.parse(body)
+  } catch {
+    return undefined
+  }
+  const record = asProviderRecord(payload)
+  const conversations = Array.isArray(record?.data) ? record.data.slice(0, 100) : []
+  const matches = new Set<string>()
+  for (const conversation of conversations) {
+    const conversationRecord = asProviderRecord(conversation)
+    const participantsRecord = asProviderRecord(conversationRecord?.participants)
+    const participants = Array.isArray(participantsRecord?.data)
+      ? participantsRecord.data.slice(0, 100)
+      : []
+    for (const participant of participants) {
+      const participantRecord = asProviderRecord(participant)
+      const rawId = participantRecord?.id
+      const rawUsername = participantRecord?.username
+      const id = typeof rawId === 'string' ? rawId.trim() : ''
+      const candidateUsername =
+        typeof rawUsername === 'string' ? rawUsername.trim().toLowerCase() : ''
+      if (INSTAGRAM_ID_PATTERN.test(id) && candidateUsername === normalizedUsername) matches.add(id)
+    }
+  }
+  return matches.size === 1 ? [...matches][0] : undefined
 }

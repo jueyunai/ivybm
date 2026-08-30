@@ -48,6 +48,7 @@ type IngestSignedWebhookInput = {
   maxEventAgeMs?: number
   maxFutureSkewMs?: number
   nowMs?: number
+  onSignatureVerified?: () => void
   rateLimiter: WebhookRateLimiter
   rateLimitKey?: string
   rateLimitKeyForEvent?: (event: NormalizedPlatformEvent) => string
@@ -203,6 +204,7 @@ export const ingestSignedWebhook = async ({
   maxEventAgeMs = 10 * 60 * 1_000,
   maxFutureSkewMs = 60_000,
   nowMs = Date.now(),
+  onSignatureVerified,
   rawBody,
   rateLimiter,
   rateLimitKey,
@@ -229,6 +231,7 @@ export const ingestSignedWebhook = async ({
   if (!signatureIsValid) {
     throw new WebhookValidationError('invalid_signature', 'Webhook signature is invalid')
   }
+  onSignatureVerified?.()
 
   let events
   try {

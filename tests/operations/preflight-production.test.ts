@@ -40,6 +40,7 @@ ADMIN_PORTAL_PLATFORMS_ENABLED=true
 ADMIN_PORTAL_OPERATIONS_ENABLED=true
 ADMIN_PORTAL_PUBLISHING_ENABLED=false
 AI_CONFIG_ENCRYPTION_KEY=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+WEBHOOK_REPLAY_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 FEISHU_QR_REGISTRATION_ENABLED=false
 `
 
@@ -82,6 +83,7 @@ const runPreflight = (environment: string, overrides: Record<string, string | un
       'ADMIN_PORTAL_OPERATIONS_ENABLED',
       'ADMIN_PORTAL_PUBLISHING_ENABLED',
       'AI_CONFIG_ENCRYPTION_KEY',
+      'WEBHOOK_REPLAY_ENCRYPTION_KEY',
       'PLATFORM_CREDENTIAL_ENCRYPTION_KEY',
       'AI_PROVIDER_BASE_URL',
       'AI_PROVIDER_API_KEY',
@@ -368,6 +370,26 @@ META_WEBHOOK_ALLOWED_ACCOUNT_IDS=1234567890,9876543210
     expect(complete.stdout).not.toContain('operation-meta-app-secret')
   })
 
+  it('requires a dedicated replay key when Meta ingress is enabled', () => {
+    const configured = `${productionEnvironment}META_WEBHOOK_APP_SECRET=operation-meta-app-secret
+META_WEBHOOK_VERIFY_TOKEN=operation-meta-verify-token
+META_WEBHOOK_ALLOWED_ACCOUNT_IDS=123456789
+`
+    const missing = runPreflight(
+      configured.replace(`WEBHOOK_REPLAY_ENCRYPTION_KEY=${'d'.repeat(64)}\n`, ''),
+    )
+    const invalid = runPreflight(
+      configured.replace(`WEBHOOK_REPLAY_ENCRYPTION_KEY=${'d'.repeat(64)}`, 'WEBHOOK_REPLAY_ENCRYPTION_KEY=bad'),
+    )
+    const valid = runPreflight(configured)
+
+    expect(missing.status).not.toBe(0)
+    expect(missing.stderr).toContain('WEBHOOK_REPLAY_ENCRYPTION_KEY')
+    expect(invalid.status).not.toBe(0)
+    expect(invalid.stderr).toContain('WEBHOOK_REPLAY_ENCRYPTION_KEY')
+    expect(valid.status).toBe(0)
+  })
+
   it('requires a complete Meta OAuth set, exact callback, and credential encryption', () => {
     const webhook = `META_WEBHOOK_APP_SECRET=operation-meta-app-secret
 META_WEBHOOK_VERIFY_TOKEN=operation-meta-verify-token
@@ -419,6 +441,7 @@ INSTAGRAM_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/instagram/oauth/cal
 INSTAGRAM_APP_SECRET=operation-instagram-secret
 INSTAGRAM_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/instagram/oauth/callback
 PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+META_WEBHOOK_VERIFY_TOKEN=operation-meta-verify-token
 `)
 
     expect(partial.status).not.toBe(0)
