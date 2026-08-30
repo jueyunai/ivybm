@@ -139,7 +139,7 @@ describe('Meta webhook encrypted replay fixtures', () => {
     })
   })
 
-  it('does not pass through string or object timestamp content', () => {
+  it('does not pass through string, object, or invalid timestamp content', () => {
     const fixture = sanitizeMetaWebhookReplayFixture({
       entry: [
         {
@@ -149,7 +149,7 @@ describe('Meta webhook encrypted replay fixtures', () => {
               message: { mid: 'message-id', text: 'private message' },
               recipient: { id: 'account-id' },
               sender: { id: 'sender-id' },
-              timestamp: { note: 'private timestamp object' },
+              timestamp: { note: 'private timestamp object', opaqueNumber: 987_654_321 },
             },
           ],
           time: 'private timestamp string',
@@ -161,11 +161,12 @@ describe('Meta webhook encrypted replay fixtures', () => {
     const serialized = JSON.stringify(fixture)
 
     expect(serialized).not.toContain('private timestamp object')
+    expect(serialized).not.toContain('987654321')
     expect(serialized).not.toContain('private timestamp string')
     expect(fixture).toMatchObject({
       entry: [
         {
-          messaging: [{ timestamp: { note: '[REDACTED]' } }],
+          messaging: [{ timestamp: '[REDACTED]' }],
           time: '[REDACTED]',
           timestamp: '[REDACTED]',
         },

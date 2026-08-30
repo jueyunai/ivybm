@@ -79,11 +79,7 @@ const sanitize = (value: unknown, path: string[] = []): unknown => {
       continue
     }
     if (key === 'timestamp' || key === 'time') {
-      output[key] = isValidTimestamp(child)
-        ? child
-        : isRecord(child) || Array.isArray(child)
-          ? sanitize(child, [...path, key])
-          : '[REDACTED]'
+      output[key] = isValidTimestamp(child) ? child : '[REDACTED]'
       continue
     }
     output[key] = sanitize(child, [...path, key])
