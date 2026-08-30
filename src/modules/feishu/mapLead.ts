@@ -63,7 +63,7 @@ const originalInquiry = (lead: LeadForFeishu): string => {
     : lead.message.trim()
 }
 
-export const resolvePortalLeadUrl = (leadId: number | string, explicitOrigin?: string): string => {
+const resolvePortalOrigin = (explicitOrigin?: string): string => {
   const originCandidate =
     explicitOrigin?.trim() ||
     process.env.IVYBM_RUNTIME_SERVER_URL?.trim() ||
@@ -76,8 +76,18 @@ export const resolvePortalLeadUrl = (leadId: number | string, explicitOrigin?: s
       origin = 'http://localhost:3000'
     }
   }
-  return `${origin}/dashboard/leads?lead=${encodeURIComponent(String(leadId))}`
+  return origin
 }
+
+export const resolvePortalLeadUrl = (leadId: number | string, explicitOrigin?: string): string =>
+  `${resolvePortalOrigin(explicitOrigin)}/dashboard/leads?lead=${encodeURIComponent(String(leadId))}`
+
+export const resolvePortalAttachmentUrl = (
+  leadId: number | string,
+  attachmentId: number | string,
+  explicitOrigin?: string,
+): string =>
+  `${resolvePortalOrigin(explicitOrigin)}/api/portal/leads/${encodeURIComponent(String(leadId))}/attachments/${encodeURIComponent(String(attachmentId))}`
 
 export const formatAttachments = (
   attachments: LeadForFeishu['attachments'],
@@ -90,7 +100,7 @@ export const formatAttachments = (
     .filter((attachment) => attachment.status === 'associated' || attachment.status === undefined)
     .map((attachment) => {
       const filename = attachment.filename?.trim() || `attachment-${attachment.id}`
-      const url = resolvePortalLeadUrl(leadId, origin)
+      const url = resolvePortalAttachmentUrl(leadId, attachment.id, origin)
       return `${filename}: ${url}`
     })
     .join('\n')

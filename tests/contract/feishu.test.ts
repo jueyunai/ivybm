@@ -14,7 +14,12 @@ import {
   type LeadForFeishu,
 } from '@/modules/feishu/contracts'
 import { feishuLeadSyncRevision } from '@/modules/feishu/jobs'
-import { formatAttachments, mapLead, resolvePortalLeadUrl } from '@/modules/feishu/mapLead'
+import {
+  formatAttachments,
+  mapLead,
+  resolvePortalAttachmentUrl,
+  resolvePortalLeadUrl,
+} from '@/modules/feishu/mapLead'
 import { notifyHandoff, notifyNewLead } from '@/modules/feishu/notify'
 import { syncLead } from '@/modules/feishu/syncLead'
 
@@ -95,7 +100,7 @@ describe('Feishu CRM contract', () => {
     })
   })
 
-  it('maps lead with multiple attachments to formatted Bitable field with stable Portal URLs', () => {
+  it('maps lead with multiple attachments to formatted Bitable field with direct download URLs', () => {
     const leadWithAttachments: LeadForFeishu = {
       ...lead,
       attachments: [
@@ -106,7 +111,7 @@ describe('Feishu CRM contract', () => {
 
     const mapped = mapLead({ lead: leadWithAttachments, mapping })
     expect(mapped.fields.Attachments).toBe(
-      'facade-elevation.dwg: http://localhost:3000/dashboard/leads?lead=42\nboq-schedule.xlsx: http://localhost:3000/dashboard/leads?lead=42',
+      'facade-elevation.dwg: http://localhost:3000/api/portal/leads/42/attachments/101\nboq-schedule.xlsx: http://localhost:3000/api/portal/leads/42/attachments/102',
     )
   })
 
@@ -115,6 +120,9 @@ describe('Feishu CRM contract', () => {
     try {
       process.env.NEXT_PUBLIC_SERVER_URL = 'https://ivybm.com'
       expect(resolvePortalLeadUrl(42)).toBe('https://ivybm.com/dashboard/leads?lead=42')
+      expect(resolvePortalAttachmentUrl(42, 7)).toBe(
+        'https://ivybm.com/api/portal/leads/42/attachments/7',
+      )
 
       const formatted = formatAttachments(
         [
@@ -123,9 +131,9 @@ describe('Feishu CRM contract', () => {
         ],
         42,
       )
-      // Asserts that external attachment.url is ignored and strictly replaced with stable Portal URL
+      // Asserts that external attachment.url is ignored and strictly replaced with an authenticated download URL
       expect(formatted).toBe(
-        'drawing.pdf: https://ivybm.com/dashboard/leads?lead=42\ncustom.pdf: https://ivybm.com/dashboard/leads?lead=42',
+        'drawing.pdf: https://ivybm.com/api/portal/leads/42/attachments/1\ncustom.pdf: https://ivybm.com/api/portal/leads/42/attachments/2',
       )
     } finally {
       process.env.NEXT_PUBLIC_SERVER_URL = originalUrl
