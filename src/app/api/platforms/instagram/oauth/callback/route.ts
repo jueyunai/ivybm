@@ -284,7 +284,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     await withLockedPlatformOAuthAccount({
       operation: (req) =>
         {
-          req.context[platformMessagingIdentityWriteContextKey] = true
+          (req.context ??= {})[platformMessagingIdentityWriteContextKey] = true
           return callbackPayload.update({
           collection: 'platform-accounts',
           data: {

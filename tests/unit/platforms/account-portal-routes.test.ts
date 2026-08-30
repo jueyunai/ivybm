@@ -164,6 +164,7 @@ describe('platform account portal routes', () => {
       authorizationRevision: 3,
       capabilities: { messagingInbound: 'not_started', publishing: 'not_started' },
       externalAccountId: '123456789012345',
+      messagingExternalAccountId: null,
       id: 42,
       name: 'Test Page',
       notes: null,

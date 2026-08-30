@@ -17,13 +17,17 @@ const mocks = vi.hoisted(() => ({
   killTransaction: vi.fn(),
 }))
 
-vi.mock('payload', () => ({
-  commitTransaction: mocks.commitTransaction,
-  createLocalReq: mocks.createLocalReq,
-  getPayload: mocks.getPayload,
-  initTransaction: mocks.initTransaction,
-  killTransaction: mocks.killTransaction,
-}))
+vi.mock('payload', async () => {
+  const actual = await vi.importActual<typeof import('payload')>('payload')
+  return {
+    ...actual,
+    commitTransaction: mocks.commitTransaction,
+    createLocalReq: mocks.createLocalReq,
+    getPayload: mocks.getPayload,
+    initTransaction: mocks.initTransaction,
+    killTransaction: mocks.killTransaction,
+  }
+})
 vi.mock('@/payload.config', () => ({ default: {} }))
 
 import { GET as instagramOAuthCallback } from '@/app/api/platforms/instagram/oauth/callback/route'
@@ -127,7 +131,7 @@ const cookieHeader = (response: Response): string => {
 describe('Instagram OAuth routes', () => {
   beforeEach(() => {
     for (const mock of Object.values(mocks)) mock.mockReset()
-    mocks.createLocalReq.mockResolvedValue({ transactionID: undefined })
+    mocks.createLocalReq.mockResolvedValue({ context: {}, transactionID: undefined })
     mocks.commitTransaction.mockResolvedValue(undefined)
     mocks.initTransaction.mockResolvedValue(undefined)
     mocks.killTransaction.mockResolvedValue(undefined)
@@ -319,6 +323,24 @@ describe('Instagram OAuth routes', () => {
       .mockResolvedValueOnce(
         new Response(JSON.stringify(instagramOAuthFixture.responses.profile), { status: 200 }),
       )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'conversation-1',
+                participants: {
+                  data: [
+                    { id: '178414000000001', username: 'ivymetalglass' },
+                    { id: '178414000000002', username: 'customer' },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
       .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }))
     vi.stubGlobal('fetch', fetcher)
 
@@ -332,14 +354,24 @@ describe('Instagram OAuth routes', () => {
     expect(response.headers.get('location')).toBe(
       'http://localhost:3000/dashboard/platforms?instagramOAuth=connected',
     )
-    const [subscriptionURL, subscriptionInit] = fetcher.mock.calls[3]!
+    const [discoveryURL] = fetcher.mock.calls[3]!
+    expect(String(discoveryURL)).toBe(
+      `https://graph.instagram.com/v22.0/${account.externalAccountId}/conversations?platform=instagram&fields=participants&limit=100`,
+    )
+    const [subscriptionURL, subscriptionInit] = fetcher.mock.calls[4]!
     expect(String(subscriptionURL)).toBe(
       `https://graph.instagram.com/v22.0/${account.externalAccountId}/subscribed_apps?subscribed_fields=messages`,
     )
     expect(subscriptionInit?.headers).toMatchObject({
       authorization: `Bearer ${instagramOAuthFixture.responses.longToken.access_token}`,
     })
-    expect(payload.update).toHaveBeenCalledTimes(1)
+    expect(payload.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          messagingExternalAccountId: '178414000000001',
+        }),
+      }),
+    )
   })
 
   it('logs only safe structured diagnostics when the provider rejects token exchange', async () => {
