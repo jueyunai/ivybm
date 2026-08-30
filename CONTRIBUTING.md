@@ -135,6 +135,8 @@ PR 用于审查已经稳定的结果，不用于替代本地调试。每个 chec
 
 缺少真实账号、数据库或受控环境时，在 PR 中记录 blocker 和已有本地 / fixture 证据，不把 skipped、fake 或未运行结果写成真实平台联调通过。
 
+遵守**测试完整性与反作弊纪律**：严禁通过删减/弱化断言、滥用 skip/xfail、特判输入或篡改全局测试环境来获取假绿；PR 评审实行**完整性差异（Integrity Diff）**，实现 diff 与测试/门禁 diff 分开审视。
+
 ### PR 粒度、Draft / Ready 与自动 CI
 
 - PR 以“一个业务 / 工程目标 + 一个实施计划 + 一致的 Review 边界 + 可一起回滚 / 发布”为默认边界。满足这四项的方案、实现、测试和验证记录放在一个 Draft PR，用分阶段 commit 保持可审，不额外拆成方案 PR、代码 PR、验证 PR。
@@ -144,6 +146,7 @@ PR 用于审查已经稳定的结果，不用于替代本地调试。每个 chec
 - CI 自动按路径分类，作者不选择 Fast / Full 档次，也不得使用 `[skip ci]`。Draft 代码运行 Fast CI；Ready 和 `main` 针对当前 head 运行数据库、build、E2E、operations 等适用门禁；未知路径或 diff / 分类失败走完整 fallback。
 - 稳定的 `CI policy` 汇总 job 负责核对预期 job。Review 与合并前必须记录并复核当前 base / head SHA，只接受当前 head 的成功 policy；Draft Fast-only、旧 head、pending、neutral、skipped、cancelled 或 failure 都不是合并证据。Ready 后的新提交会使旧结论失效并重新运行门禁。
 - `.github/workflows/**`、`scripts/ci/**`、policy 和 production image 触发边界必须由另一名开发者独立 Review。docs-only 轻量检查不豁免共享结构 / 跨人边界 Review；镜像成功只提供不可变 SHA + digest，不授权 production 部署。
+- **结构化 Review 协议与过度设计护栏**：PR 审查必须输出结构化结论（`verdict: pass|fail`、`blocking` 阻断项、`advisory` 建议项、`evidence` 证据）；评审者严格遵守**过度设计护栏**，只阻断正确性缺陷、需求未满足或契约/数据破坏三类硬伤，不为审而审，严禁将个人代码风格或额外特性作为阻断项。
 
 本项目内的编码代理还必须遵守 `AGENTS.md`；Claude Code 同时读取 `CLAUDE.md`。这些文件用于阻止代理主动直推，并统一人工操作预期。
 

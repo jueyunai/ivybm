@@ -62,11 +62,41 @@ bash scripts/install-git-hooks.sh
 - production 发布仍由 jueyunai 审批，一期上线验收必须由两人共同确认。
 - `main` 上的紧急修复只能在用户明确授权后使用 `IVYBM_ALLOW_MAIN_PUSH=1` 绕过本地 hook；完成后必须补建 PR 或事故记录。
 
+### 规格即契约（Spec as Contract）实施标准
+
+当制定实施计划（Implementation Plan）或编写新任务规格（Task Spec）时，规格必须**自包含**，模板参见 `docs/templates/TASK_SPEC_TEMPLATE.md`。必须包含以下 5 大核心要素，严禁让执行者或 AI 猜测：
+1. **点名文件与目录**：明确列出需要新建（`[NEW]`）或修改（`[MODIFY]`）的具体文件路径，禁止写“在相关地方修改”；
+2. **点名接口与签名**：给出涉及的函数、API 端点、DTO 请求响应数据结构与状态枚举的真实签名；
+3. **明确不做清单（Out-of-Scope — 强制项）**：显式列出本次**坚决不包含**的功能与范围，杜绝 AI 顺手镀金或范围蔓延；
+4. **版本锚定**：按项目当前实际安装的框架/库版本 API 编写，严禁凭通用印象编造不存在或已废弃的语法；
+5. **端到端验证命令收尾**：必须附带一条（或一组）可在终端直接执行的验证命令与断言，覆盖核心成功流与关键错误流，以此作为任务交付完成的硬性定义。
+
 ### 本地验证与证据诚实
 
 - PR 应交付已经稳定的结果；探索、E2E 失败定位和本地联调优先在独立 worktree 完成。每个 checkpoint 选择与本次 diff 直接相关的最小测试层，不强制为每个 checkpoint 新增或重复运行 E2E。
 - 失败后区分测试定位 / 断言问题、环境 blocker 和生产代码缺陷；生产缺陷必须与能证明修复的回归测试一起提交。
 - 缺少真实账号、数据库或受控环境时，记录 blocker 和已有本地 / fixture 证据；不得把未运行、skipped、fake 或 fixture 结果描述为真实平台联调通过。
+
+### 测试完整性与反作弊纪律
+
+- **一套全绿的测试，只有在确认它没被作弊的前提下才可信。** 当“让测试通过”成为目标时，严禁通过改松验证代替修复生产代码：
+  1. **严禁弱化或删除断言**：禁止将精确断言改为宽泛断言（如 `toEqual` 改 `toBeDefined`）、删减核心校验；
+  2. **严禁滥用 skip / xfail**：禁止为掩盖失败或规避门禁而给用例打 `skip`、`todo`、`xfail` 或直接注释；
+  3. **严禁特判可见用例 / 硬编码输出**：禁止在实现中针对测试输入做硬编码特判（背答案）；
+  4. **严禁篡改测试框架与全局环境**：禁止修改全局 setup、fixture 或异常捕获钩子使错误被吞没；
+  5. **严禁私自放宽门禁**：禁止调低覆盖率阈值、添加 lint 豁免规则或关闭必过检查。
+- **完整性差异（Integrity Diff）**：PR 评审时，实现改动的 diff 与测试/门禁改动的 diff 必须**分开审视**；对测试与门禁配置的任何放宽都必须受到严格盘问并提供合理解释。
+
+### 结构化 Review 协议与过度设计护栏
+
+- **结构化裁决输出**：代理与协作者进行代码审查时，必须输出结构化结论，禁止给出模糊的口头意见：
+  - `verdict`: `pass` | `fail`（明确二选一，禁止“基本可以”）；
+  - `blocking`: 阻断项清单（指明违反哪条需求/契约/验收标准 + 对应 diff 证据 + 明确期望）；
+  - `advisory`: 非阻断建议（仅作后续改进参考，不阻断本次 PR 合并）；
+  - `evidence`: 支撑审查判定的测试用例、diff 片段或运行证据。
+- **过度设计护栏（Over-Engineering Guard）**：
+  - 评审者**只标三类阻断**：① 正确性缺陷；② 需求/验收标准未满足；③ 契约/安全/数据完整性破坏。
+  - **严禁为审而审**：严禁把个人代码风格偏好、与本次任务无关的“更优雅重构”、未被要求的额外特性或纯为刷指标的代码作为阻断项。
 
 ## AI 与 CI 门禁
 
@@ -78,6 +108,23 @@ bash scripts/install-git-hooks.sh
 - 审核时记录 base SHA、head SHA、mergeability、完整 diff、Review 状态和 `CI policy`。只有与当前 head SHA 一致的成功 `CI policy` 可作为门禁证据；Draft Fast CI、旧 head，以及 pending、neutral、skipped、cancelled 或 failure 均不能授权合并。
 - `.github/workflows/**`、`scripts/ci/**`、CI policy 或 production image 触发边界的修改必须由另一名开发者独立 Review，不适用负责人自检合并。
 - docs-only 轻量门禁不改变共享结构、跨人契约和协作者边界的人工 Review 规则。production image 构建成功也不代表 production 部署授权；部署仍需 jueyunai 人工审批和既有 smoke / rollback 流程。
+
+### 生成式代码失效模式与防线
+
+AI 生成的代码在演示时“能跑”但在生产中极易出现结构性偏差，编码与自检审查时必须逐项对照以下 6 类失效模式与防线：
+
+1. **沉默逻辑错误（Silent Logic Failure，最致命）**：未被测试覆盖的分支或边缘行为被悄悄算错，编译与已有测试全绿但业务错误。
+   - *防线*：通过影响面分析将测试压到未覆盖的关键行为上，对核心逻辑做变异定向加固，要求独立验证者对照需求复核。
+2. **幻觉依赖与接口（Hallucinated Dependencies / APIs）**：凭通用印象编造不存在的 NPM 包、不存在的函数签名或参数形状。
+   - *防线*：依赖与接口**存在性核验**；必须先确认已安装依赖的**实际版本**并按该版本 API 编写（版本锚定）；构建/类型检查必须 0 错误拦截。
+3. **缺失系统上下文（Missing System Context）**：遗漏鉴权/RBAC 校验、速率限制、配额上限、并发锁、数据库事务、幂等键或网络隔离。
+   - *防线*：将系统级约束作为显式清单注入并在代码中逐项验收，严禁遗漏边界保护。
+4. **性能盲区（Performance Blindspots）**：N+1 查询、循环内 I/O 或数据库调用、无分页/无索引/全量加载、缺少超时控制。
+   - *防线*：对热点路径与数据层调用进行复杂度与容量审查。
+5. **Happy-Path 偏差与异常吞没（Happy-Path Bias）**：只写/只测成功流程，错误/超时分支缺失，或在 `catch` 块中静默吞掉异常/返回假成功。
+   - *防线*：按错误分类法穷举失败路径并补齐边界/错误分支用例。
+6. **静默缺失（Silent Missing Imports / Unused Results）**：遗漏 import 在特定运行时才报错、Promise 未 `await`、函数返回值未被使用。
+   - *防线*：必须通过严格的静态检查、ESLint 与构建门禁拦截在本地。
 
 ## 分工与依赖
 
@@ -95,6 +142,27 @@ bash scripts/install-git-hooks.sh
 - 上条对跨分支/跨 PR 的数据库依赖保持不变。Portal V1 同一 Draft PR 内的生产者与消费者可以在前置 checkpoint 已完成完整 Collection、migration、Payload 注册、生成类型和定向测试后继续，不为制造 main gate 机械拆 PR；相关结构和 adapter 仍必须由另一名开发者 review 后才能合并。
 - 外部平台联调需要对应账号、授权和 production 或等价受控真实环境；条件不足时以官方 fixture 契约测试、配置说明和阻塞记录按一期 P1 口径验收。WhatsApp 与其他未列平台作为二期项，不进入一期验收。
 - migration 以先合并到 `main` 的历史为准；未合并分支在同步最新 `main` 后重新生成，不修改已合并 migration。
+
+## 代码组织与 UI 交付红线
+
+### 1. 代码组织与分层原则（依赖只能向下）
+
+- **分层依赖规范**：表现层 (Routes / Controllers) $\rightarrow$ 业务层 (Services) $\rightarrow$ 数据层 (Repositories / Models) $\rightarrow$ 基础设施。依赖**只能向下**，严禁下层反向 import 上层；
+- **入口文件只做装配**：`app.ts`、`server.ts`、路由入口只做中间件与路由挂载及启动，**严禁编写任何业务逻辑**；
+- **业务逻辑下沉 Service**：Controller/Router 只负责参数校验与响应组装，业务逻辑必须下沉到 Service；Service 禁止耦合 HTTP `req`/`res` 对象；
+- **单文件规模控制**：单文件建议控制在 300 行以内（不含注释），超限按单一职责与子功能拆分，严禁将所有逻辑堆在单个巨型文件中。
+
+### 2. UI 与视觉交付绝对红线（违反即退回）
+
+- **P0-1: 严禁使用 emoji 作为 UI 功能图标**：
+  - 功能按钮、导航栏、操作项等所有 UI 控件**严禁使用 emoji** 作为图标；
+  - 必须统一使用项目锁定的矢量图标库（如 **Lucide** `lucide-react` / 内联 SVG），保持统一描边与尺寸规范（16px 行内 / 20px 按钮 / 24px 独立图标）；
+  - *例外*：仅允许在用户生成内容（UGC）和即时通讯聊天消息中出现 emoji。
+- **P0-2: 严禁紫粉渐变 AI 模板味**：
+  - 严禁 `linear-gradient(135deg, #7C3AED -> #EC4899)` 及类似 Indigo $\rightarrow$ Pink 渐变 + 发光边框 + 毛玻璃的典型 AI 模板套路；
+  - 使用项目主题规范的纯色与品牌基调。
+- **P0-3: 严禁空洞占位文案**：
+  - 严禁 "Lorem ipsum" / "Welcome to Our App" / "Sign up today" 等空洞模板占位文案，必须使用真实业务文案与 Design Token。
 
 ## 安全与资料边界
 
