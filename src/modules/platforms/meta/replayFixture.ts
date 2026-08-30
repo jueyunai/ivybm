@@ -10,6 +10,12 @@ const isRecord = (value: unknown): value is UnknownRecord =>
 const fingerprint = (value: string): string =>
   createHash('sha256').update(value).digest('hex').slice(0, 16)
 
+const isValidTimestamp = (value: unknown): value is number => {
+  if (!Number.isSafeInteger(value) || Number(value) <= 0) return false
+  const milliseconds = Number(value) < 100_000_000_000 ? Number(value) * 1_000 : Number(value)
+  return !Number.isNaN(new Date(milliseconds).getTime())
+}
+
 const forbiddenKey = (key: string): boolean =>
   /(access[_-]?token|authorization|cookie|secret|signature)/iu.test(key)
 
@@ -45,18 +51,19 @@ const sanitize = (value: unknown, path: string[] = []): unknown => {
   for (const [key, child] of Object.entries(value)) {
     if (forbiddenKey(key)) continue
     const parent = path.at(-1)
-    if (key === 'id' && typeof child === 'string') {
+    if (key === 'id' && (typeof child === 'string' || typeof child === 'number')) {
+      const identifier = String(child)
       if (parent === 'sender' || parent === 'from') {
-        output[key] = `SENDER_REDACTED_${fingerprint(child)}`
+        output[key] = `SENDER_REDACTED_${fingerprint(identifier)}`
       } else if (parent === 'recipient' || path.at(-2) === 'entry') {
-        output[key] = `ACCOUNT_REDACTED_${fingerprint(child)}`
+        output[key] = `ACCOUNT_REDACTED_${fingerprint(identifier)}`
       } else {
-        output[key] = `ID_REDACTED_${fingerprint(child)}`
+        output[key] = `ID_REDACTED_${fingerprint(identifier)}`
       }
       continue
     }
-    if (key === 'mid' && typeof child === 'string') {
-      output[key] = `m_replay_${fingerprint(child)}`
+    if (key === 'mid' && (typeof child === 'string' || typeof child === 'number')) {
+      output[key] = `m_replay_${fingerprint(String(child))}`
       continue
     }
     if (key === 'url') {
@@ -72,7 +79,11 @@ const sanitize = (value: unknown, path: string[] = []): unknown => {
       continue
     }
     if (key === 'timestamp' || key === 'time') {
-      output[key] = child
+      output[key] = isValidTimestamp(child)
+        ? child
+        : isRecord(child) || Array.isArray(child)
+          ? sanitize(child, [...path, key])
+          : '[REDACTED]'
       continue
     }
     output[key] = sanitize(child, [...path, key])

@@ -29,9 +29,12 @@ describe('Meta webhook encrypted replay fixtures', () => {
         key,
       }),
     ).toEqual(rawBody)
+    const encryptedParts = encrypted.split(':')
+    const encryptedBody = encryptedParts.at(-1)!
+    encryptedParts[encryptedParts.length - 1] = `${encryptedBody[0] === 'A' ? 'B' : 'A'}${encryptedBody.slice(1)}`
     expect(() =>
       decryptMetaWebhookReplayBody({
-        ciphertext: `${encrypted.slice(0, -1)}x`,
+        ciphertext: encryptedParts.join(':'),
         context: 'trace-fixture-1',
         key,
       }),
@@ -99,5 +102,77 @@ describe('Meta webhook encrypted replay fixtures', () => {
     expect(summary.accountExternalIds).toEqual([
       expect.stringMatching(/^ACCOUNT_REDACTED_[a-f0-9]{16}$/u),
     ])
+  })
+
+  it('fingerprints numeric provider IDs while preserving a valid numeric timestamp', () => {
+    const source = {
+      entry: [
+        {
+          id: 98_765_432_109,
+          messaging: [
+            {
+              message: { mid: 12_345_678_901, text: 'private message' },
+              recipient: { id: 98_765_432_109 },
+              sender: { id: 11_111_111_111 },
+              timestamp: 1_777_000_000_000,
+            },
+          ],
+        },
+      ],
+      object: 'instagram',
+    }
+
+    const fixture = sanitizeMetaWebhookReplayFixture(source)
+    const serialized = JSON.stringify(fixture)
+    expect(serialized).not.toContain('98765432109')
+    expect(serialized).not.toContain('12345678901')
+    expect(serialized).not.toContain('11111111111')
+    expect(serialized).toContain('ACCOUNT_REDACTED_')
+    expect(serialized).toContain('SENDER_REDACTED_')
+    expect(serialized).toContain('m_replay_')
+    expect(fixture).toMatchObject({
+      entry: [{ messaging: [{ timestamp: 1_777_000_000_000 }] }],
+    })
+    expect(replaySanitizedMetaWebhookFixture(fixture)).toMatchObject({
+      eventCount: 1,
+      platforms: ['instagram'],
+    })
+  })
+
+  it('does not pass through string or object timestamp content', () => {
+    const fixture = sanitizeMetaWebhookReplayFixture({
+      entry: [
+        {
+          id: 'account-id',
+          messaging: [
+            {
+              message: { mid: 'message-id', text: 'private message' },
+              recipient: { id: 'account-id' },
+              sender: { id: 'sender-id' },
+              timestamp: { note: 'private timestamp object' },
+            },
+          ],
+          time: 'private timestamp string',
+          timestamp: Number.MAX_SAFE_INTEGER,
+        },
+      ],
+      object: 'instagram',
+    })
+    const serialized = JSON.stringify(fixture)
+
+    expect(serialized).not.toContain('private timestamp object')
+    expect(serialized).not.toContain('private timestamp string')
+    expect(fixture).toMatchObject({
+      entry: [
+        {
+          messaging: [{ timestamp: { note: '[REDACTED]' } }],
+          time: '[REDACTED]',
+          timestamp: '[REDACTED]',
+        },
+      ],
+    })
+    expect(() => replaySanitizedMetaWebhookFixture(fixture)).toThrow(
+      'Meta message event is missing required identifiers or timestamp',
+    )
   })
 })
