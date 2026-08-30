@@ -142,6 +142,8 @@ const messages = {
       meta_app_secret: 'The Meta app secret must be configured in the restricted maintenance flow.',
       meta_verify_token:
         'The Meta verification token must be configured in the restricted maintenance flow.',
+      messaging_external_account_id:
+        'The Instagram Messaging identity has not been discovered for this account.',
       official_tiktok_dm_schema: 'TikTok DM has no supported official schema yet.',
       publishing_job_adapter: 'The publishing job adapter is not implemented.',
       publishing_disabled: 'The controlled publishing kill switch is disabled.',
@@ -179,6 +181,8 @@ const messages = {
         'Configure or rotate credentials through the restricted maintenance flow.',
       'configure-meta-webhook':
         'Configure the Meta webhook secret, verification token, and account allowlist.',
+      'discover-messaging-identity':
+        'Run the restricted Instagram messaging identity discovery after a test conversation exists.',
       'configure-publishing-runtime':
         'Complete the restricted publishing runtime configuration before the controlled test.',
       'implement-publishing-adapter':
@@ -292,6 +296,7 @@ const messages = {
       meta_account_allowlist: '需要将该账号加入 Meta Webhook 允许列表。',
       meta_app_secret: '需要联系技术团队在服务器配置 Meta 应用密钥。',
       meta_verify_token: '需要联系技术团队在服务器配置 Meta 验证令牌。',
+      messaging_external_account_id: '尚未发现该 Instagram 账号的私信身份标识。',
       official_tiktok_dm_schema: 'TikTok 官方私信接口暂未开放对接。',
       publishing_job_adapter: '该平台的发布接口正在对接中。',
       publishing_disabled: '系统社媒发布总开关当前未开启，请联系管理员开启。',
@@ -322,6 +327,7 @@ const messages = {
       'complete-tiktok-eligibility': '请确认账号和地区具备 TikTok 私信 API 资格。',
       'configure-credentials': '请联系技术团队在服务器配置或轮换凭据。',
       'configure-meta-webhook': '请配置 Meta Webhook 密钥、验证令牌和账号白名单。',
+      'discover-messaging-identity': '请在测试会话存在后，由技术团队执行 Instagram 私信身份发现。',
       'configure-publishing-runtime': '请联系技术团队配置发布服务环境变量。',
       'implement-publishing-adapter': '请先完成发布接口对接与验证，再启用此能力。',
       'monitor-available-capability': '请持续监控已验证能力，并在出现问题时通过异常中心处理。',

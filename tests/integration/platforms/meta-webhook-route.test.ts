@@ -8,6 +8,7 @@ import { createMetaWebhookHandlers } from '@/modules/platforms/meta/http'
 import { PLATFORM_EVENT_JOB_TYPE } from '@/modules/platforms/eventJobs'
 import { platformEventKeyV2 } from '@/modules/platforms/types'
 import config from '@/payload.config'
+import { platformMessagingIdentityWriteContextKey } from '@/collections/PlatformAccounts'
 
 const appSecret = 'integration-meta-app-secret'
 const verifyToken = 'integration-meta-verify-token'
@@ -20,8 +21,8 @@ const jobKeys: string[] = []
 
 const pool = (): PostgresAdapter['pool'] => (payload.db as unknown as PostgresAdapter).pool
 
-const signatureFor = (rawBody: string): string =>
-  `sha256=${createHmac('sha256', appSecret).update(rawBody).digest('hex')}`
+const signatureFor = (rawBody: string, secret = appSecret): string =>
+  `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`
 
 describe.sequential('Meta webhook route durable ingress', () => {
   beforeAll(async () => {
@@ -282,5 +283,87 @@ describe.sequential('Meta webhook route durable ingress', () => {
       [PLATFORM_EVENT_JOB_TYPE, idempotencyKeys],
     )
     expect(jobs.rows).toEqual([{ count: '0' }])
+  })
+
+  it('accepts Instagram by its distinct Messaging ID without an OAuth-ID env allowlist', async () => {
+    const suffix = randomUUID()
+    const oauthAccountId = '27656145620744697'
+    const messagingAccountId = `1${Date.now()}${Math.floor(Math.random() * 1000)}`
+    const externalEventId = `instagram-message-${suffix}`
+    const idempotencyKey = platformEventKeyV2('instagram', messagingAccountId, externalEventId)
+    jobKeys.push(idempotencyKey)
+    const account = await payload.create({
+      collection: 'platform-accounts',
+      context: { [platformMessagingIdentityWriteContextKey]: true, skipAudit: true },
+      data: {
+        accountKind: 'instagram-professional',
+        authorizationRevision: 0,
+        authorization: {
+          accessToken: `instagram-route-token-${suffix}`,
+          accessTokenConfigured: false,
+          appId: null,
+          clearAccessToken: false,
+          clearRefreshToken: false,
+          expiresAt: null,
+          refreshToken: null,
+          refreshTokenConfigured: false,
+          scopes: [],
+          state: 'connected',
+        },
+        capabilities: { messagingInbound: 'approved', publishing: 'not_started' },
+        connectionKey: null,
+        externalAccountId: oauthAccountId,
+        messagingConnectionKey: null,
+        messagingExternalAccountId: messagingAccountId,
+        name: `Instagram route account ${suffix}`,
+        notes: null,
+        platformFamily: 'meta',
+      },
+      overrideAccess: true,
+    })
+    accountIDs.push(account.id)
+    const instagramSecret = 'integration-instagram-app-secret'
+    const rawBody = JSON.stringify({
+      entry: [
+        {
+          id: 'instagram-entry-alias',
+          messaging: [
+            {
+              message: { mid: externalEventId, text: 'Instagram fixture message.' },
+              recipient: { id: messagingAccountId },
+              sender: { id: `sender-${suffix}` },
+              timestamp: now,
+            },
+          ],
+        },
+      ],
+      object: 'instagram',
+    })
+    const handlers = createMetaWebhookHandlers({
+      allowedAccountExternalIds: [],
+      instagramAppSecret: instagramSecret,
+      now: () => now,
+      payloadProvider: async () => payload,
+      rateLimiter: { consume: async () => true },
+      verifyToken,
+    })
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody, instagramSecret),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({ accepted: 1, duplicates: 0, total: 1 })
+    const jobs = await pool().query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM jobs WHERE type = $1 AND idempotency_key = $2',
+      [PLATFORM_EVENT_JOB_TYPE, idempotencyKey],
+    )
+    expect(jobs.rows).toEqual([{ count: '1' }])
   })
 })

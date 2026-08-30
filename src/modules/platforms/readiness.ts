@@ -70,6 +70,7 @@ export type PlatformReadinessRequirement =
   | 'meta_account_allowlist'
   | 'meta_app_secret'
   | 'meta_verify_token'
+  | 'messaging_external_account_id'
   | 'official_tiktok_dm_schema'
   | 'publishing_job_adapter'
   | 'publishing_disabled'
@@ -101,6 +102,7 @@ export type PlatformReadinessActionCode =
   | 'configure-credentials'
   | 'complete-authorization'
   | 'complete-tiktok-eligibility'
+  | 'discover-messaging-identity'
   | 'implement-publishing-adapter'
   | 'monitor-available-capability'
   | 'provide-external-account'
@@ -138,6 +140,7 @@ export type PlatformAccountReadinessInput = {
       Record<PlatformAccountCapability, PlatformControlledTestEvidence>
     >
     externalAccountId?: string | null
+    messagingExternalAccountId?: string | null
     refreshTokenConfigured: boolean
     refreshTokenReadable: boolean
   }
@@ -211,6 +214,9 @@ export const getPlatformReadinessAction = ({
   ) {
     return { code: 'configure-meta-webhook', owner: 'engineering' }
   }
+  if (missing.includes('messaging_external_account_id')) {
+    return { code: 'discover-messaging-identity', owner: 'administrator' }
+  }
   if (missing.includes('external_account_id')) {
     return { code: 'provide-external-account', owner: 'account-owner' }
   }
@@ -260,6 +266,14 @@ export const derivePlatformConnectionKey = (
 ): string | undefined => {
   const normalizedID = nonEmpty(externalAccountId)
   return normalizedID ? `${kind}:${normalizedID}` : undefined
+}
+
+export const derivePlatformMessagingConnectionKey = (
+  kind: PlatformAccountKind,
+  messagingExternalAccountId: string | null | undefined,
+): string | undefined => {
+  const normalizedID = nonEmpty(messagingExternalAccountId)
+  return normalizedID ? `${kind}:messaging:${normalizedID}` : undefined
 }
 
 const configuredMetaAllowlist = (
@@ -351,6 +365,7 @@ export const assessPlatformAccountReadiness = ({
   const definition = getPlatformAccountDefinition(account.accountKind)
   const connection = connectionMissing(account, nowMilliseconds)
   const externalAccountId = nonEmpty(account.externalAccountId)
+  const messagingExternalAccountId = nonEmpty(account.messagingExternalAccountId)
   const metaAllowlist = configuredMetaAllowlist(environment)
   const metaEnvironmentMissing: PlatformReadinessRequirement[] = []
   const publishingEnvironment = publishingEnvironmentMissing(account.accountKind, environment)
@@ -365,7 +380,10 @@ export const assessPlatformAccountReadiness = ({
   }
   if (!nonEmpty(environment.META_WEBHOOK_VERIFY_TOKEN))
     metaEnvironmentMissing.push('meta_verify_token')
-  if (!externalAccountId || !metaAllowlist.has(externalAccountId)) {
+  if (
+    account.accountKind === 'facebook-page' &&
+    (!externalAccountId || !metaAllowlist.has(externalAccountId))
+  ) {
     metaEnvironmentMissing.push('meta_account_allowlist')
   }
 
@@ -437,7 +455,15 @@ export const assessPlatformAccountReadiness = ({
       }
     }
 
-    const missing = unique([...connection, ...metaEnvironmentMissing])
+    const messagingIdentityMissing =
+      account.accountKind === 'instagram-professional' && !messagingExternalAccountId
+        ? (['messaging_external_account_id'] as PlatformReadinessRequirement[])
+        : []
+    const missing = unique([
+      ...connection,
+      ...messagingIdentityMissing,
+      ...metaEnvironmentMissing,
+    ])
     const hasVerifiedCapability =
       missing.length === 0 &&
       approval === 'approved' &&

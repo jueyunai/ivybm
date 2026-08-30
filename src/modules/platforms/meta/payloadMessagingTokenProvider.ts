@@ -13,6 +13,11 @@ const accountKindForPlatform = (
   return undefined
 }
 
+const identityFieldForPlatform = (
+  platform: MessagingPlatform,
+): 'externalAccountId' | 'messagingExternalAccountId' =>
+  platform === 'instagram' ? 'messagingExternalAccountId' : 'externalAccountId'
+
 const boundedExternalId = (value: string): string | undefined => {
   const normalized = typeof value === 'string' ? value.trim() : ''
   return normalized && normalized === value && /^[0-9]{1,32}$/.test(normalized)
@@ -72,7 +77,7 @@ export class PayloadMetaMessagingTokenProvider {
       where: {
         and: [
           { accountKind: { equals: accountKind } },
-          { externalAccountId: { equals: normalizedAccountId } },
+          { [identityFieldForPlatform(platform)]: { equals: normalizedAccountId } },
         ],
       },
     })

@@ -22,9 +22,11 @@ export class MetaWebhookSubscriptionError extends Error {
 export const isMetaWebhookAccountConfigured = ({
   accountExternalId,
   environment = process.env,
+  platform = 'facebook-messenger',
 }: {
   accountExternalId: string
   environment?: Readonly<Record<string, string | undefined>>
+  platform?: MetaWebhookSubscriptionPlatform
 }): boolean => {
   const accountId = exactDecimalId(accountExternalId)
   const verifyToken = environment.META_WEBHOOK_VERIFY_TOKEN?.trim()
@@ -34,7 +36,11 @@ export const isMetaWebhookAccountConfigured = ({
       .map((value) => value.trim())
       .filter(Boolean),
   )
-  return Boolean(accountId && verifyToken && allowedAccountIds.has(accountId))
+  return Boolean(
+    accountId &&
+    verifyToken &&
+    (platform === 'instagram' || allowedAccountIds.has(accountId)),
+  )
 }
 
 const exactDecimalId = (value: unknown): string | undefined =>

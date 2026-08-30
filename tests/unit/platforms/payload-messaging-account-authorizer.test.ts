@@ -19,11 +19,11 @@ const account = (
 
 describe('Payload platform messaging account authorizer', () => {
   it.each([
-    ['facebook-messenger', 'facebook-page'],
-    ['instagram', 'instagram-professional'],
+    ['facebook-messenger', 'facebook-page', 'externalAccountId'],
+    ['instagram', 'instagram-professional', 'messagingExternalAccountId'],
   ] as const)(
-    'maps %s to %s and allows a connected controlled-test account',
-    async (platform, kind) => {
+    'maps %s to %s and its authoritative identity field',
+    async (platform, kind, identityField) => {
       const payload = payloadWithAccounts([account('connected')])
       const authorizer = new PayloadPlatformMessagingAccountAuthorizer({ payload })
 
@@ -41,7 +41,7 @@ describe('Payload platform messaging account authorizer', () => {
           where: {
             and: [
               { accountKind: { equals: kind } },
-              { externalAccountId: { equals: 'account-123' } },
+              { [identityField]: { equals: 'account-123' } },
             ],
           },
         }),

@@ -36,6 +36,11 @@ const accountKindForPlatform = (
   return 'tiktok-business'
 }
 
+const identityFieldForPlatform = (
+  platform: MessagingPlatform,
+): 'externalAccountId' | 'messagingExternalAccountId' =>
+  platform === 'instagram' ? 'messagingExternalAccountId' : 'externalAccountId'
+
 export class PayloadPlatformMessagingAccountAuthorizer implements PlatformMessagingAccountAuthorizer {
   private readonly payload: Payload
 
@@ -60,7 +65,7 @@ export class PayloadPlatformMessagingAccountAuthorizer implements PlatformMessag
       where: {
         and: [
           { accountKind: { equals: accountKindForPlatform(platform) } },
-          { externalAccountId: { equals: accountExternalId } },
+          { [identityFieldForPlatform(platform)]: { equals: accountExternalId } },
         ],
       },
     })

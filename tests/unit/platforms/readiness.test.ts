@@ -75,9 +75,73 @@ describe('platform account readiness', () => {
             'access_token',
             'instagram_app_secret',
             'meta_verify_token',
-            'meta_account_allowlist',
+            'messaging_external_account_id',
           ]),
           status: 'action-required',
+        }),
+      ]),
+    )
+  })
+
+  it('keeps Instagram messaging action-required until its distinct messaging identity is known', () => {
+    const withoutMessagingIdentity = assessPlatformAccountReadiness({
+      account: {
+        accessTokenConfigured: true,
+        accessTokenReadable: true,
+        accountKind: 'instagram-professional',
+        authorizationState: 'connected',
+        capabilityApprovals: { messagingInbound: 'approved', publishing: 'approved' },
+        externalAccountId: '27656145620744697',
+        messagingExternalAccountId: null,
+        refreshTokenConfigured: false,
+        refreshTokenReadable: false,
+      },
+      environment: {
+        ADMIN_PORTAL_PUBLISHING_ENABLED: 'true',
+        INSTAGRAM_APP_SECRET: 'fixture-instagram-secret',
+        META_WEBHOOK_VERIFY_TOKEN: 'fixture-verify-token',
+        PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'b'.repeat(64),
+      },
+    })
+
+    expect(withoutMessagingIdentity.connection).toEqual({
+      missing: [],
+      status: 'ready-for-controlled-test',
+    })
+    expect(withoutMessagingIdentity.capabilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          capability: 'messaging-inbound',
+          missing: ['messaging_external_account_id'],
+          status: 'action-required',
+        }),
+        expect.objectContaining({ capability: 'publishing', status: 'ready-for-controlled-test' }),
+      ]),
+    )
+
+    const ready = assessPlatformAccountReadiness({
+      account: {
+        accessTokenConfigured: true,
+        accessTokenReadable: true,
+        accountKind: 'instagram-professional',
+        authorizationState: 'connected',
+        capabilityApprovals: { messagingInbound: 'approved' },
+        externalAccountId: '27656145620744697',
+        messagingExternalAccountId: '17841400000000000',
+        refreshTokenConfigured: false,
+        refreshTokenReadable: false,
+      },
+      environment: {
+        INSTAGRAM_APP_SECRET: 'fixture-instagram-secret',
+        META_WEBHOOK_VERIFY_TOKEN: 'fixture-verify-token',
+      },
+    })
+    expect(ready.capabilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          capability: 'messaging-inbound',
+          missing: [],
+          status: 'ready-for-controlled-test',
         }),
       ]),
     )

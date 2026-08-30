@@ -6,6 +6,7 @@ import {
   INSTAGRAM_OAUTH_TRANSACTION_COOKIE,
   InstagramOAuthError,
   exchangeInstagramAuthorizationCode,
+  discoverInstagramMessagingAccountId,
   readInstagramOAuthConfiguration,
   resolveInstagramAuthorizedAccount,
   verifyInstagramOAuthTransaction,
@@ -20,6 +21,7 @@ import {
   withLockedPlatformOAuthAccount,
 } from '@/modules/platforms/accountOAuthConcurrency'
 import config from '@/payload.config'
+import { platformMessagingIdentityWriteContextKey } from '@/collections/PlatformAccounts'
 import type { PlatformAccount, User } from '@/payload-types'
 
 export const dynamic = 'force-dynamic'
@@ -254,8 +256,19 @@ export async function GET(request: NextRequest): Promise<Response> {
       externalAccountId: transaction.externalAccountId,
       userAccessToken: userToken.accessToken,
     })
+    const messagingExternalAccountId =
+      account.capabilities?.messagingInbound === 'approved'
+        ? await discoverInstagramMessagingAccountId({
+            accessToken: authorizedAccount.accessToken,
+            oauthAccountId: authorizedAccount.accountId,
+            username: authorizedAccount.username,
+          })
+        : undefined
     if (account.capabilities?.messagingInbound === 'approved') {
-      if (!isMetaWebhookAccountConfigured({ accountExternalId: authorizedAccount.accountId })) {
+      if (!isMetaWebhookAccountConfigured({
+        accountExternalId: authorizedAccount.accountId,
+        platform: 'instagram',
+      })) {
         throw new InstagramOAuthError('webhook_subscription_failed')
       }
       try {
@@ -270,9 +283,12 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
     await withLockedPlatformOAuthAccount({
       operation: (req) =>
-        callbackPayload.update({
+        {
+          req.context[platformMessagingIdentityWriteContextKey] = true
+          return callbackPayload.update({
           collection: 'platform-accounts',
           data: {
+            ...(messagingExternalAccountId ? { messagingExternalAccountId } : {}),
             authorization: {
               accessToken: authorizedAccount.accessToken,
               appId: oauth.appId,
@@ -289,7 +305,8 @@ export async function GET(request: NextRequest): Promise<Response> {
           overrideAccess: false,
           req,
           user: actor,
-        }),
+          })
+        },
       payload: callbackPayload,
       snapshot: callbackTransaction,
       user: actor,

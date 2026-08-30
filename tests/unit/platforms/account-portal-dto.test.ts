@@ -64,6 +64,7 @@ describe('account portal DTO', () => {
       capabilities: { messagingInbound: 'available', publishing: 'available' },
       externalAccountId: '123456789012345',
       id: 42,
+      messagingExternalAccountId: null,
       name: 'Test Page',
       notes: 'Staging account',
       platformFamily: 'meta',
