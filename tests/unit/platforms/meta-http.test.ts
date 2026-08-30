@@ -50,10 +50,11 @@ const createHandlers = ({
   appSecret: configuredAppSecret = appSecret,
   connector = createConnector(),
   diagnosticSink,
-  failureRecorder,
+  failureRecorder = { record: async () => ({ status: 'recorded' as const }) },
   instagramAppSecret,
   logSink,
   maxBodyBytes,
+  replayEncryptionKey = 'a'.repeat(64),
   rateLimiter = { consume: async () => true } satisfies WebhookRateLimiter,
   repository = new FakePlatformEventRepository(),
   verifyToken: configuredVerifyToken = verifyToken,
@@ -67,6 +68,7 @@ const createHandlers = ({
   instagramAppSecret?: string
   logSink?: (event: MetaWebhookLogEvent) => void
   maxBodyBytes?: number
+  replayEncryptionKey?: string
   rateLimiter?: WebhookRateLimiter
   repository?: FakePlatformEventRepository
   verifyToken?: string
@@ -83,6 +85,7 @@ const createHandlers = ({
     maxBodyBytes,
     now: () => now,
     rateLimiter,
+    replayEncryptionKey,
     repository,
     verifyToken: configuredVerifyToken,
   }),
@@ -584,9 +587,11 @@ describe('Meta webhook HTTP handlers', () => {
       allowedAccountExternalIds: ['page-fixture-1'],
       appSecret,
       connector: createConnector(),
+      failureRecorder: { record: async () => ({ status: 'recorded' as const }) },
       now: () => now,
       payloadProvider,
       rateLimiter: { consume: async () => true },
+      replayEncryptionKey: 'a'.repeat(64),
       verifyToken,
     })
 
@@ -608,6 +613,8 @@ describe('Meta webhook HTTP handlers', () => {
       now: () => now,
       payloadProvider,
       rateLimiter: { consume: async () => false },
+      failureRecorder: { record: async () => ({ status: 'recorded' as const }) },
+      replayEncryptionKey: 'a'.repeat(64),
       verifyToken,
     })
     await expect(
@@ -631,6 +638,8 @@ describe('Meta webhook HTTP handlers', () => {
       now: () => now,
       payloadProvider,
       rateLimiter: { consume: async () => true },
+      failureRecorder: { record: async () => ({ status: 'recorded' as const }) },
+      replayEncryptionKey: 'a'.repeat(64),
       verifyToken,
     })
     const malformedBody = JSON.stringify({
@@ -661,11 +670,13 @@ describe('Meta webhook HTTP handlers', () => {
       connector: createConnector(),
       now: () => now,
       rateLimiter: { consume: async () => true },
+      failureRecorder: { record: async () => ({ status: 'recorded' as const }) },
       repository: {
         enqueueBatch: async () => {
           throw new Error('postgres://user:secret@internal.example.invalid/ivybm')
         },
       },
+      replayEncryptionKey: 'a'.repeat(64),
       verifyToken,
     })
 
@@ -849,6 +860,7 @@ describe('Meta webhook HTTP handlers', () => {
       now: () => now,
       payloadProvider,
       rateLimiter: { consume: async () => true },
+      replayEncryptionKey: 'a'.repeat(64),
       verifyToken,
     })
     const unauthorized = createMetaWebhookHandlers({
@@ -858,6 +870,8 @@ describe('Meta webhook HTTP handlers', () => {
       now: () => now,
       payloadProvider,
       rateLimiter: { consume: async () => true },
+      failureRecorder: { record: async () => ({ status: 'recorded' as const }) },
+      replayEncryptionKey: 'a'.repeat(64),
       verifyToken,
     })
     const request = () =>
@@ -875,5 +889,29 @@ describe('Meta webhook HTTP handlers', () => {
     expect(response.status).toBe(403)
     await expect(response.json()).resolves.toEqual({ error: { code: 'unauthorized_account' } })
     expect(payloadProvider).not.toHaveBeenCalled()
+  })
+
+  it('fails closed before accepting signed ingress when the replay key is missing', async () => {
+    const handlers = createMetaWebhookHandlers({
+      allowedAccountExternalIds: ['page-fixture-1'],
+      appSecret,
+      connector: createConnector(),
+      replayEncryptionKey: '',
+      verifyToken,
+    })
+    const rawBody = JSON.stringify({ object: 'page', fixture: 'missing-replay-key' })
+
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(503)
   })
 })

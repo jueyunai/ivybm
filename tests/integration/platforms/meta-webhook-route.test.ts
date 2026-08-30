@@ -12,6 +12,7 @@ import { platformMessagingIdentityWriteContextKey } from '@/collections/Platform
 
 const appSecret = 'integration-meta-app-secret'
 const verifyToken = 'integration-meta-verify-token'
+const replayEncryptionKey = 'a'.repeat(64)
 const now = Date.UTC(2026, 6, 22, 8, 0, 0)
 
 let payload: Payload
@@ -117,6 +118,7 @@ describe.sequential('Meta webhook route durable ingress', () => {
       now: () => now,
       payloadProvider: async () => payload,
       rateLimiter: { consume: async () => true },
+      replayEncryptionKey,
       verifyToken,
     })
     const request = () =>
@@ -262,6 +264,7 @@ describe.sequential('Meta webhook route durable ingress', () => {
       now: () => now,
       payloadProvider: async () => payload,
       rateLimiter: { consume: async () => true },
+      replayEncryptionKey,
       verifyToken,
     })
 
@@ -345,6 +348,7 @@ describe.sequential('Meta webhook route durable ingress', () => {
       now: () => now,
       payloadProvider: async () => payload,
       rateLimiter: { consume: async () => true },
+      replayEncryptionKey,
       verifyToken,
     })
     const response = await handlers.POST(

@@ -7,7 +7,10 @@ import config from '@/payload.config'
 import { platformMessagingIdentityWriteContextKey } from '@/collections/PlatformAccounts'
 import { decryptPlatformCredential, readPlatformCredentialEncryptionKey } from '@/modules/platforms/credentials'
 import { withLockedPlatformOAuthAccount } from '@/modules/platforms/accountOAuthConcurrency'
-import { discoverInstagramMessagingAccountId } from '@/modules/platforms/instagram/oauth'
+import {
+  discoverInstagramMessagingAccountId,
+  resolveInstagramAuthorizedAccount,
+} from '@/modules/platforms/instagram/oauth'
 import type { User } from '@/payload-types'
 
 const rawId = process.argv.find((arg) => arg.startsWith('--account-id='))?.slice(13)
@@ -36,17 +39,14 @@ try {
     account.authorization.accessToken,
     readPlatformCredentialEncryptionKey(),
   )
-  const profileResponse = await fetch(
-    `https://graph.instagram.com/v22.0/me?fields=id,username,account_type`,
-    { headers: { authorization: `Bearer ${token}` } },
-  )
-  const profile = await profileResponse.json() as { username?: unknown }
-  const username = typeof profile.username === 'string' ? profile.username.trim() : ''
-  if (!profileResponse.ok || !username) throw new Error('Instagram profile lookup failed')
+  const authorizedAccount = await resolveInstagramAuthorizedAccount({
+    externalAccountId: account.externalAccountId,
+    userAccessToken: token,
+  })
   const discovered = await discoverInstagramMessagingAccountId({
     accessToken: token,
-    oauthAccountId: account.externalAccountId,
-    username,
+    oauthAccountId: authorizedAccount.accountId,
+    username: authorizedAccount.username,
   })
   if (!discovered) throw new Error('Instagram messaging identity could not be uniquely discovered')
   if (apply) {

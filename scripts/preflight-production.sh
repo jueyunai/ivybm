@@ -317,7 +317,7 @@ case "$reasoning_effort" in
     ;;
 esac
 
-if [[ -n "$meta_webhook_app_secret" || -n "$meta_webhook_verify_token" || -n "$meta_webhook_allowed_account_ids" ]]; then
+if [[ -n "$meta_webhook_app_secret" || -n "$meta_webhook_allowed_account_ids" ]]; then
   for key in META_WEBHOOK_APP_SECRET META_WEBHOOK_VERIFY_TOKEN META_WEBHOOK_ALLOWED_ACCOUNT_IDS; do
     case "$key" in
       META_WEBHOOK_APP_SECRET) value="$meta_webhook_app_secret" ;;
@@ -334,6 +334,9 @@ if [[ -n "$meta_webhook_app_secret" || -n "$meta_webhook_verify_token" || -n "$m
     exit 1
   fi
   require_pattern WEBHOOK_REPLAY_ENCRYPTION_KEY "$webhook_replay_encryption_key" '^[a-fA-F0-9]{64}$'
+elif [[ -n "$meta_webhook_verify_token" && -z "$instagram_app_secret" ]]; then
+  echo 'META_WEBHOOK_VERIFY_TOKEN requires Meta app secret and account allowlist' >&2
+  exit 1
 fi
 
 if [[ -n "$meta_app_id" || -n "$meta_login_config_id" || -n "$meta_oauth_redirect_uri" ]]; then

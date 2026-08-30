@@ -43,8 +43,8 @@ const safeEnumValues: Record<string, ReadonlySet<string>> = {
 const sanitize = (value: unknown, path: string[] = []): unknown => {
   if (Array.isArray(value)) return value.map((item, index) => sanitize(item, [...path, String(index)]))
   if (!isRecord(value)) {
-    if (typeof value === 'number' || typeof value === 'boolean' || value === null) return value
-    return typeof value === 'string' ? '[REDACTED]' : null
+    if (typeof value === 'boolean' || value === null) return value
+    return '[REDACTED]'
   }
 
   const output: UnknownRecord = {}

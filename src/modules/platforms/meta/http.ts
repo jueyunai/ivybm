@@ -85,6 +85,7 @@ export type MetaWebhookHandlerDependencies = {
   now?: () => number
   payloadProvider?: PayloadProvider
   rateLimiter?: WebhookRateLimiter
+  replayEncryptionKey?: string
   repository?: PlatformEventRepository
   verifyToken?: string
 }
@@ -314,12 +315,14 @@ export const createMetaWebhookHandlers = ({
   now = Date.now,
   payloadProvider = defaultPayloadProvider,
   rateLimiter = defaultRateLimiter,
+  replayEncryptionKey = process.env.WEBHOOK_REPLAY_ENCRYPTION_KEY,
   repository,
   verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN,
 }: MetaWebhookHandlerDependencies = {}): MetaWebhookHandlers => {
   const configuredAppSecret = configuredValue(appSecret)
   const configuredInstagramAppSecret = configuredValue(instagramAppSecret)
   const configuredVerifyToken = configuredValue(verifyToken)
+  const configuredReplayEncryptionKey = configuredValue(replayEncryptionKey)
   const allowedAccounts = new Set(
     allowedAccountExternalIds
       .map(configuredValue)
@@ -329,7 +332,9 @@ export const createMetaWebhookHandlers = ({
     configuredVerifyToken && (configuredAppSecret || configuredInstagramAppSecret),
   )
   const isIngressConfigured = Boolean(
-    isChallengeConfigured && (allowedAccounts.size > 0 || configuredInstagramAppSecret),
+    isChallengeConfigured &&
+      (allowedAccounts.size > 0 || configuredInstagramAppSecret) &&
+      /^[a-f0-9]{64}$/iu.test(configuredReplayEncryptionKey ?? ''),
   )
   const lastDiagnosticAt = new Map<MetaWebhookPayloadDiagnostic['code'], number>()
 
@@ -417,7 +422,9 @@ export const createMetaWebhookHandlers = ({
   let resolvedFailureRecorder: MetaWebhookFailureRecorder | undefined = failureRecorder
   const resolveFailureRecorder = async (): Promise<MetaWebhookFailureRecorder> => {
     if (resolvedFailureRecorder) return resolvedFailureRecorder
-    const key = readMetaWebhookReplayEncryptionKey()
+    const key = readMetaWebhookReplayEncryptionKey({
+      WEBHOOK_REPLAY_ENCRYPTION_KEY: configuredReplayEncryptionKey,
+    })
     resolvedFailureRecorder = new PayloadMetaWebhookReplayRepository({
       key,
       payload: await payloadProvider(),

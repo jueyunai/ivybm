@@ -265,6 +265,7 @@ describe('Instagram OAuth routes', () => {
     expect(payload.update).toHaveBeenCalledWith({
       collection: 'platform-accounts',
       data: {
+        messagingExternalAccountId: null,
         authorization: {
           accessToken: instagramOAuthFixture.responses.longToken.access_token,
           appId: '1221206873460693',
@@ -582,6 +583,7 @@ describe('Instagram OAuth routes', () => {
     expect(payload.update).toHaveBeenCalledWith({
       collection: 'platform-accounts',
       data: {
+        messagingExternalAccountId: null,
         authorization: {
           clearAccessToken: true,
           clearRefreshToken: true,

@@ -282,13 +282,12 @@ export async function GET(request: NextRequest): Promise<Response> {
       }
     }
     await withLockedPlatformOAuthAccount({
-      operation: (req) =>
-        {
-          (req.context ??= {})[platformMessagingIdentityWriteContextKey] = true
-          return callbackPayload.update({
+      operation: (req) => {
+        (req.context ??= {})[platformMessagingIdentityWriteContextKey] = true
+        return callbackPayload.update({
           collection: 'platform-accounts',
           data: {
-            ...(messagingExternalAccountId ? { messagingExternalAccountId } : {}),
+            messagingExternalAccountId: messagingExternalAccountId ?? null,
             authorization: {
               accessToken: authorizedAccount.accessToken,
               appId: oauth.appId,
@@ -305,8 +304,8 @@ export async function GET(request: NextRequest): Promise<Response> {
           overrideAccess: false,
           req,
           user: actor,
-          })
-        },
+        })
+      },
       payload: callbackPayload,
       snapshot: callbackTransaction,
       user: actor,

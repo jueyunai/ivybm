@@ -11,6 +11,36 @@ import { PayloadConversationLeadSink } from '@/modules/leads/conversationLeadSin
 import type { ConversationMessagePort, PlatformEventDeliveryResult } from './ports'
 import type { MessagingPlatform, NormalizedInboundMessage } from './types'
 
+export const resolveInstagramOAuthAccountId = async (
+  payload: Payload,
+  messagingAccountExternalId: string,
+): Promise<string> => {
+  const accounts = await payload.find({
+    collection: 'platform-accounts',
+    depth: 0,
+    limit: 2,
+    overrideAccess: true,
+    pagination: false,
+    select: { externalAccountId: true },
+    where: {
+      and: [
+        { accountKind: { equals: 'instagram-professional' } },
+        { messagingExternalAccountId: { equals: messagingAccountExternalId } },
+      ],
+    },
+  })
+  const externalAccountId = accounts.docs.length === 1
+    ? accounts.docs[0]?.externalAccountId
+    : undefined
+  if (
+    typeof externalAccountId !== 'string' ||
+    !/^[1-9][0-9]{0,31}$/u.test(externalAccountId)
+  ) {
+    throw new Error('Instagram OAuth identity is unavailable for the messaging account')
+  }
+  return externalAccountId
+}
+
 // The durable Job lease is 120s. Keeping the nested ConversationCommand lease shorter
 // guarantees that a worker reclaim can recover after a process dies mid-delivery.
 export const PLATFORM_CONVERSATION_COMMAND_LEASE_MS = 60_000
@@ -90,6 +120,9 @@ export class PayloadPlatformConversationPort implements ConversationMessagePort 
   ): Promise<PlatformEventDeliveryResult> {
     const channel = conversationChannelFor(message.platform, this.allowTikTokNormalizedDelivery)
     const externalThreadId = `${message.accountExternalId}:${message.senderExternalId}`
+    const conversationAccountExternalId = message.platform === 'instagram'
+      ? await resolveInstagramOAuthAccountId(this.payload, message.accountExternalId)
+      : message.accountExternalId
     const text = inboundText(message)
     const service = createConversationService({
       allowTikTokNormalizedDelivery: this.allowTikTokNormalizedDelivery,
@@ -103,7 +136,7 @@ export class PayloadPlatformConversationPort implements ConversationMessagePort 
     })
     const delivery = await service.ingestExternalMessage({
       channel,
-      externalAccountId: message.accountExternalId,
+      externalAccountId: conversationAccountExternalId,
       externalMessageId: message.externalEventId,
       externalSenderId: message.senderExternalId,
       externalThreadId,

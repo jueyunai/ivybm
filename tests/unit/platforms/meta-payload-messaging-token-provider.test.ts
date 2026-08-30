@@ -27,10 +27,10 @@ describe('Payload Meta messaging token provider', () => {
   it.each<[
     MessagingPlatform,
     'facebook-page' | 'instagram-professional',
-    'externalAccountId' | 'messagingExternalAccountId',
+    'externalAccountId',
   ]>([
     ['facebook-messenger', 'facebook-page', 'externalAccountId'],
-    ['instagram', 'instagram-professional', 'messagingExternalAccountId'],
+    ['instagram', 'instagram-professional', 'externalAccountId'],
   ])(
     'binds a %s token to one exact account kind and authoritative identity',
     async (platform, accountKind, identityField) => {

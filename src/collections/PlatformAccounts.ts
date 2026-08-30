@@ -202,12 +202,26 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
   }
   candidate.platformFamily = platformFamilyForAccountKind(accountKind)
   candidate.connectionKey = derivePlatformConnectionKey(accountKind, externalAccountId) ?? null
+  const connectionIdentityChanged = Boolean(
+    originalDoc &&
+    (accountKind !== originalDoc.accountKind ||
+      externalAccountId !== nonEmpty(originalDoc.externalAccountId)),
+  )
+  const submittedMessagingIdentity = Object.prototype.hasOwnProperty.call(
+    candidate,
+    'messagingExternalAccountId',
+  )
   const messagingExternalAccountId = nonEmpty(
-    candidate.messagingExternalAccountId ?? originalDoc?.messagingExternalAccountId,
+    connectionIdentityChanged
+      ? context[platformMessagingIdentityWriteContextKey] === true && submittedMessagingIdentity
+        ? candidate.messagingExternalAccountId
+        : undefined
+      : candidate.messagingExternalAccountId ?? originalDoc?.messagingExternalAccountId,
   )
   const originalMessagingExternalAccountId = nonEmpty(originalDoc?.messagingExternalAccountId)
   if (
     messagingExternalAccountId !== originalMessagingExternalAccountId &&
+    !connectionIdentityChanged &&
     context[platformMessagingIdentityWriteContextKey] !== true
   ) {
     throw validationError(
@@ -240,12 +254,6 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
   const existingAccessToken = nonEmpty(existingAuthorization.accessToken)
   const submittedRefreshToken = nonEmpty(submittedAuthorization.refreshToken)
   const existingRefreshToken = nonEmpty(existingAuthorization.refreshToken)
-  const connectionIdentityChanged = Boolean(
-    originalDoc &&
-    (accountKind !== originalDoc.accountKind ||
-      externalAccountId !== nonEmpty(originalDoc.externalAccountId)),
-  )
-
   const accessToken = retainOrReplaceCredential({
     clear: submittedAuthorization.clearAccessToken === true,
     existing: existingAuthorization.accessToken,

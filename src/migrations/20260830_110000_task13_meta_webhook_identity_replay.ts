@@ -48,6 +48,12 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
       IF EXISTS (SELECT 1 FROM "meta_webhook_replays" WHERE "expires_at" > now()) THEN
         RAISE EXCEPTION 'Cannot remove Meta webhook replay storage while unexpired records exist';
       END IF;
+      IF EXISTS (
+        SELECT 1 FROM "platform_accounts"
+        WHERE "messaging_external_account_id" IS NOT NULL
+      ) THEN
+        RAISE EXCEPTION 'Cannot remove Instagram messaging identities during rollback';
+      END IF;
     END $$;
     DROP TABLE "meta_webhook_replays";
     DROP INDEX "platform_accounts_messaging_connection_key_idx";
