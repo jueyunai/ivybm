@@ -98,6 +98,38 @@ describe('Meta messaging webhook contract', () => {
     ])
   })
 
+  it('uses the signed Instagram recipient as the account boundary when entry.id is an alias', () => {
+    const events = connector.normalize({
+      entry: [
+        {
+          id: 'IG_ENTRY_ALIAS_FIXTURE_1',
+          messaging: [
+            {
+              message: { mid: 'm_fixture_instagram_recipient_boundary', text: 'Hello.' },
+              recipient: { id: 'IG_ACCOUNT_FIXTURE_1' },
+              sender: { id: 'IG_SENDER_FIXTURE_4' },
+              timestamp: '1710000100',
+            },
+          ],
+        },
+      ],
+      object: 'instagram',
+    })
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        accountExternalId: 'IG_ACCOUNT_FIXTURE_1',
+        idempotencyKey: platformEventKeyV2(
+          'instagram',
+          'IG_ACCOUNT_FIXTURE_1',
+          'm_fixture_instagram_recipient_boundary',
+        ),
+        occurredAt: '2024-03-09T16:01:40.000Z',
+        recipientExternalId: 'IG_ACCOUNT_FIXTURE_1',
+      }),
+    ])
+  })
+
   it('normalizes an Instagram change wrapper containing a messages array', () => {
     expect(
       connector.normalize({

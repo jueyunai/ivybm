@@ -158,6 +158,99 @@ describe('Meta webhook HTTP handlers', () => {
     await expect(accepted.json()).resolves.toEqual({ accepted: 1, duplicates: 0, total: 1 })
   })
 
+  it('authorizes an Instagram message by its recipient account when entry.id is an alias', async () => {
+    const instagramSecret = 'fixture-instagram-app-secret'
+    const assertCanReceive = vi.fn(async () => undefined)
+    const repository = new FakePlatformEventRepository()
+    const { handlers } = createHandlers({
+      accountAuthorizer: { assertCanReceive },
+      allowedAccountExternalIds: ['ig-account-fixture-1'],
+      connector: createMetaConnector(),
+      instagramAppSecret: instagramSecret,
+      repository,
+    })
+    const rawBody = JSON.stringify({
+      entry: [
+        {
+          id: 'ig-entry-alias-fixture-1',
+          messaging: [
+            {
+              message: { mid: 'm_fixture_instagram_recipient_boundary_http', text: 'Hello.' },
+              recipient: { id: 'ig-account-fixture-1' },
+              sender: { id: 'ig-sender-fixture-1' },
+              timestamp: String(now),
+            },
+          ],
+        },
+      ],
+      object: 'instagram',
+    })
+
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody, instagramSecret),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({ accepted: 1, duplicates: 0, total: 1 })
+    expect(assertCanReceive).toHaveBeenCalledWith(expect.objectContaining({
+      accountExternalId: 'ig-account-fixture-1',
+      platform: 'instagram',
+    }))
+    expect(repository.events.size).toBe(1)
+  })
+
+  it('rejects an Instagram message when only the entry alias is allowlisted', async () => {
+    const instagramSecret = 'fixture-instagram-app-secret'
+    const assertCanReceive = vi.fn(async () => undefined)
+    const repository = new FakePlatformEventRepository()
+    const { handlers } = createHandlers({
+      accountAuthorizer: { assertCanReceive },
+      allowedAccountExternalIds: ['ig-account-fixture-1'],
+      connector: createMetaConnector(),
+      instagramAppSecret: instagramSecret,
+      repository,
+    })
+    const rawBody = JSON.stringify({
+      entry: [
+        {
+          id: 'ig-account-fixture-1',
+          messaging: [
+            {
+              message: { mid: 'm_fixture_instagram_recipient_not_allowlisted', text: 'Hello.' },
+              recipient: { id: 'ig-account-other' },
+              sender: { id: 'ig-sender-fixture-2' },
+              timestamp: String(now),
+            },
+          ],
+        },
+      ],
+      object: 'instagram',
+    })
+
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody, instagramSecret),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toEqual({ error: { code: 'unauthorized_account' } })
+    expect(assertCanReceive).not.toHaveBeenCalled()
+    expect(repository.events.size).toBe(0)
+  })
+
   it('rejects an account blocked by PlatformAccounts before durable enqueue', async () => {
     const assertCanReceive = vi.fn(async () => {
       throw new Error('Platform messaging account is blocked')

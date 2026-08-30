@@ -20,8 +20,19 @@ const stringValue = (value: unknown, maxLength = 5_000): string | undefined => {
   return normalized && normalized.length <= maxLength ? normalized : undefined
 }
 
-const numericValue = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+const numericValue = (value: unknown): number | undefined => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : undefined
+  }
+  if (typeof value !== 'string') return undefined
+  const normalized = value.trim()
+  if (!/^\d{1,16}$/u.test(normalized)) return undefined
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+const timestampMilliseconds = (value: number): number =>
+  value < 100_000_000_000 ? value * 1_000 : value
 
 const isIgnoredControlCallback = (envelope: UnknownRecord): boolean =>
   isRecord(envelope.delivery) ||
@@ -151,17 +162,23 @@ export const createMetaConnector = (): PlatformConnector => ({
         if (!externalEventId || !senderExternalId || !recipientExternalId || !timestamp) {
           throw new Error('Meta message event is missing required identifiers or timestamp')
         }
-        if (recipientExternalId !== accountExternalId) {
+        // Instagram has recently emitted signed messages whose entry.id is an
+        // alias while recipient.id remains the actual Professional account ID.
+        // Use the signed recipient as the account boundary for Instagram, then
+        // retain the allowlist and PlatformAccounts authorization checks.
+        const eventAccountExternalId =
+          platform === 'instagram' ? recipientExternalId : accountExternalId
+        if (platform !== 'instagram' && recipientExternalId !== accountExternalId) {
           throw new Error('Meta message recipient does not match the webhook account')
         }
 
         events.push({
-          accountExternalId,
+          accountExternalId: eventAccountExternalId,
           content: normalizeContent(message),
           externalEventId,
-          idempotencyKey: platformEventKeyV2(platform, accountExternalId, externalEventId),
+          idempotencyKey: platformEventKeyV2(platform, eventAccountExternalId, externalEventId),
           kind: 'inbound-message',
-          occurredAt: platformTimestamp(timestamp, 'milliseconds'),
+          occurredAt: platformTimestamp(timestampMilliseconds(timestamp), 'milliseconds'),
           platform,
           recipientExternalId,
           senderExternalId,
