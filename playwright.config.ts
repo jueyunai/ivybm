@@ -63,6 +63,7 @@ export default defineConfig({
             NEXT_PUBLIC_SERVER_URL: process.env.NEXT_PUBLIC_SERVER_URL ?? context.baseURL,
             PORT: new URL(context.baseURL).port,
             PLATFORM_CREDENTIAL_ENCRYPTION_KEY: 'b'.repeat(64),
+            WEBHOOK_REPLAY_ENCRYPTION_KEY: 'c'.repeat(64),
           },
           reuseExistingServer: false,
           timeout: 120_000,
