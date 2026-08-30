@@ -442,6 +442,8 @@ INSTAGRAM_APP_SECRET=operation-instagram-secret
 INSTAGRAM_OAUTH_REDIRECT_URI=https://ivybm.com/api/platforms/instagram/oauth/callback
 PLATFORM_CREDENTIAL_ENCRYPTION_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 META_WEBHOOK_VERIFY_TOKEN=operation-meta-verify-token
+META_WEBHOOK_APP_SECRET=operation-meta-app-secret
+META_WEBHOOK_ALLOWED_ACCOUNT_IDS=1234567890,9876543210
 `)
 
     expect(partial.status).not.toBe(0)
