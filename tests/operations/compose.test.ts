@@ -83,6 +83,7 @@ const requiredEnvironment = {
   TRUST_PROXY_HEADERS: 'true',
   WORKER_IMAGE: 'registry.example.invalid/ivybm-worker',
   WORKER_IMAGE_DIGEST: workerDigest,
+  WEBHOOK_REPLAY_ENCRYPTION_KEY: '7'.repeat(64),
 }
 
 const getProductionComposeConfig = (): ComposeConfig => {
@@ -412,6 +413,14 @@ describe('production Compose configuration', () => {
       expect(config.services.worker.environment).not.toHaveProperty('INSTAGRAM_APP_SECRET')
       expect(config.services.migrate.environment).not.toHaveProperty('LINKEDIN_APP_ID')
       expect(config.services.worker.environment).not.toHaveProperty('LINKEDIN_APP_SECRET')
+    }
+  })
+
+  it('passes the webhook replay key only to the app', () => {
+    for (const config of [getProductionComposeConfig(), getStagingComposeConfig()]) {
+      expect(config.services.app.environment?.WEBHOOK_REPLAY_ENCRYPTION_KEY).toBe('7'.repeat(64))
+      expect(config.services.worker.environment).not.toHaveProperty('WEBHOOK_REPLAY_ENCRYPTION_KEY')
+      expect(config.services.migrate.environment).not.toHaveProperty('WEBHOOK_REPLAY_ENCRYPTION_KEY')
     }
   })
 

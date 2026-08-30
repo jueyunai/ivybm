@@ -162,6 +162,46 @@ describe('platform webhook verification and ingestion', () => {
     expect(repository.events.size).toBe(0)
   })
 
+  it('signals signature verification exactly once before downstream validation', async () => {
+    const rawBody = JSON.stringify({ object: 'fixture' })
+    const onSignatureVerified = vi.fn()
+    const invalidPayloadConnector: PlatformConnector = {
+      normalize: () => {
+        throw new Error('invalid provider payload')
+      },
+      platformFamily: 'meta',
+    }
+
+    await expect(
+      ingestSignedWebhook({
+        connector: invalidPayloadConnector,
+        headers: { 'content-type': 'application/json' },
+        onSignatureVerified,
+        rateLimiter: allowAll,
+        rateLimitKey: 'meta',
+        rawBody: Buffer.from(rawBody),
+        repository: new FakePlatformEventRepository(),
+        verifier: { verify: () => true },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_payload' })
+    expect(onSignatureVerified).toHaveBeenCalledTimes(1)
+
+    onSignatureVerified.mockClear()
+    await expect(
+      ingestSignedWebhook({
+        connector: invalidPayloadConnector,
+        headers: { 'content-type': 'application/json' },
+        onSignatureVerified,
+        rateLimiter: allowAll,
+        rateLimitKey: 'meta',
+        rawBody: Buffer.from(rawBody),
+        repository: new FakePlatformEventRepository(),
+        verifier: { verify: () => false },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_signature' })
+    expect(onSignatureVerified).not.toHaveBeenCalled()
+  })
+
   it('accepts exact duplicates once under concurrent delivery', async () => {
     const rawBody = JSON.stringify({ object: 'fixture', version: 1 })
     const repository = new FakePlatformEventRepository()

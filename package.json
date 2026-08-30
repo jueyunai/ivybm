@@ -23,6 +23,8 @@
     "dev": "cross-env NODE_OPTIONS=--no-deprecation next dev",
     "e2e:server": "node scripts/e2e/start-standalone-server.mjs",
     "feishu:resync": "cross-env NODE_OPTIONS=--no-deprecation tsx scripts/feishu-resync/cli.ts",
+    "meta:webhook-replay": "cross-env NODE_OPTIONS=--no-deprecation tsx scripts/meta-webhook-replay.ts",
+    "platform:instagram:messaging-id": "cross-env NODE_OPTIONS=--no-deprecation tsx scripts/instagram-messaging-identity.ts",
     "generate:importmap": "cross-env NODE_OPTIONS=--no-deprecation payload generate:importmap",
     "generate:types": "cross-env NODE_OPTIONS=--no-deprecation payload generate:types",
     "lint": "cross-env NODE_OPTIONS=--no-deprecation eslint .",

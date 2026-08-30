@@ -2,7 +2,11 @@ import { createHmac } from 'node:crypto'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { createMetaWebhookHandlers } from '@/modules/platforms/meta/http'
+import {
+  createMetaWebhookHandlers,
+  type MetaWebhookFailureRecorder,
+  type MetaWebhookLogEvent,
+} from '@/modules/platforms/meta/http'
 import { createMetaConnector } from '@/modules/platforms/meta/connector'
 import type { PlatformConnector, WebhookRateLimiter } from '@/modules/platforms/ports'
 import { platformEventKeyV2, type NormalizedInboundMessage } from '@/modules/platforms/types'
@@ -46,7 +50,9 @@ const createHandlers = ({
   appSecret: configuredAppSecret = appSecret,
   connector = createConnector(),
   diagnosticSink,
+  failureRecorder,
   instagramAppSecret,
+  logSink,
   maxBodyBytes,
   rateLimiter = { consume: async () => true } satisfies WebhookRateLimiter,
   repository = new FakePlatformEventRepository(),
@@ -57,7 +63,9 @@ const createHandlers = ({
   appSecret?: string
   connector?: PlatformConnector
   diagnosticSink?: (diagnostic: unknown) => void
+  failureRecorder?: MetaWebhookFailureRecorder
   instagramAppSecret?: string
+  logSink?: (event: MetaWebhookLogEvent) => void
   maxBodyBytes?: number
   rateLimiter?: WebhookRateLimiter
   repository?: FakePlatformEventRepository
@@ -69,7 +77,9 @@ const createHandlers = ({
     appSecret: configuredAppSecret,
     connector,
     diagnosticSink,
+    failureRecorder,
     instagramAppSecret,
+    logSink,
     maxBodyBytes,
     now: () => now,
     rateLimiter,
@@ -133,6 +143,168 @@ describe('Meta webhook HTTP handlers', () => {
     expect(duplicate.status).toBe(200)
     await expect(duplicate.json()).resolves.toEqual({ accepted: 0, duplicates: 1, total: 1 })
     expect(repository.events.size).toBe(1)
+  })
+
+  it('logs every verified callback and records a replay artifact for downstream rejection', async () => {
+    const failureRecorder: MetaWebhookFailureRecorder = {
+      record: vi.fn(async () => ({ recordId: 42, status: 'recorded' as const })),
+    }
+    const logSink = vi.fn<(event: MetaWebhookLogEvent) => void>()
+    const { handlers } = createHandlers({
+      allowedAccountExternalIds: ['another-page'],
+      failureRecorder,
+      logSink,
+    })
+    const rawBody = JSON.stringify({
+      object: 'page',
+      privateText: 'must-not-enter-ordinary-logs',
+    })
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(403)
+    expect(failureRecorder.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: new Uint8Array(Buffer.from(rawBody)),
+        contentType: 'application/json',
+        errorCode: 'unauthorized_account',
+        providerObject: 'page',
+        traceId: expect.any(String),
+      }),
+    )
+    expect(logSink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bodyBytes: Buffer.byteLength(rawBody),
+        bodySha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        errorCode: 'unauthorized_account',
+        outcome: 'rejected',
+        providerObject: 'page',
+        replayRecordId: 42,
+        traceId: expect.any(String),
+      }),
+    )
+    expect(JSON.stringify(logSink.mock.calls)).not.toContain('must-not-enter-ordinary-logs')
+  })
+
+  it('never records or logs unverified callback bodies', async () => {
+    const failureRecorder: MetaWebhookFailureRecorder = {
+      record: vi.fn(async () => ({ recordId: 1, status: 'recorded' as const })),
+    }
+    const logSink = vi.fn<(event: MetaWebhookLogEvent) => void>()
+    const { handlers } = createHandlers({ failureRecorder, logSink })
+    const rawBody = JSON.stringify({ privateText: 'untrusted-attacker-body', object: 'page' })
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': 'sha256=invalid',
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(401)
+    expect(failureRecorder.record).not.toHaveBeenCalled()
+    expect(logSink).not.toHaveBeenCalled()
+  })
+
+  it('keeps the original response when replay persistence fails', async () => {
+    const failureRecorder: MetaWebhookFailureRecorder = {
+      record: vi.fn(async () => {
+        throw new Error('postgres://secret-replay-database')
+      }),
+    }
+    const logSink = vi.fn<(event: MetaWebhookLogEvent) => void>()
+    const { handlers } = createHandlers({
+      allowedAccountExternalIds: ['another-page'],
+      failureRecorder,
+      logSink,
+    })
+    const rawBody = JSON.stringify({ object: 'page', privateText: 'must-remain-encrypted' })
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(403)
+    expect(logSink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: 'unauthorized_account',
+        outcome: 'rejected',
+        replayRecordStatus: 'failed',
+      }),
+    )
+    expect(JSON.stringify(logSink.mock.calls)).not.toContain('postgres://')
+    expect(JSON.stringify(logSink.mock.calls)).not.toContain('must-remain-encrypted')
+  })
+
+  it('does not hold the Meta response open while replay storage is unavailable', async () => {
+    const failureRecorder: MetaWebhookFailureRecorder = {
+      record: vi.fn(
+        () => new Promise<never>(() => undefined),
+      ),
+    }
+    const logSink = vi.fn<(event: MetaWebhookLogEvent) => void>()
+    const { handlers } = createHandlers({
+      allowedAccountExternalIds: ['another-page'],
+      failureRecorder,
+      logSink,
+    })
+    const rawBody = JSON.stringify({ object: 'page', privateText: 'bounded persistence test' })
+    const startedAt = Date.now()
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(403)
+    expect(Date.now() - startedAt).toBeLessThan(1_000)
+    expect(logSink).toHaveBeenCalledWith(
+      expect.objectContaining({ replayRecordStatus: 'pending', outcome: 'rejected' }),
+    )
+  })
+
+  it('isolates ordinary structured-log failures from Webhook acknowledgement', async () => {
+    const { handlers } = createHandlers({
+      logSink: () => {
+        throw new Error('log transport unavailable')
+      },
+    })
+    const rawBody = JSON.stringify({ object: 'page', fixture: 'log-sink-failure' })
+    const response = await handlers.POST(
+      new Request('https://ivybm.example.invalid/api/webhooks/meta', {
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-hub-signature-256': signatureFor(rawBody),
+        },
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({ accepted: 1, duplicates: 0, total: 1 })
   })
 
   it('selects the Instagram App Secret for Instagram webhook signatures', async () => {
@@ -206,9 +378,11 @@ describe('Meta webhook HTTP handlers', () => {
     expect(repository.events.size).toBe(1)
   })
 
-  it('rejects an Instagram message when only the entry alias is allowlisted', async () => {
+  it('rejects an Instagram message when its messaging identity is absent from PlatformAccounts', async () => {
     const instagramSecret = 'fixture-instagram-app-secret'
-    const assertCanReceive = vi.fn(async () => undefined)
+    const assertCanReceive = vi.fn(async () => {
+      throw new Error('messaging identity is not configured')
+    })
     const repository = new FakePlatformEventRepository()
     const { handlers } = createHandlers({
       accountAuthorizer: { assertCanReceive },
@@ -247,7 +421,12 @@ describe('Meta webhook HTTP handlers', () => {
 
     expect(response.status).toBe(403)
     await expect(response.json()).resolves.toEqual({ error: { code: 'unauthorized_account' } })
-    expect(assertCanReceive).not.toHaveBeenCalled()
+    expect(assertCanReceive).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountExternalId: 'ig-account-other',
+        platform: 'instagram',
+      }),
+    )
     expect(repository.events.size).toBe(0)
   })
 

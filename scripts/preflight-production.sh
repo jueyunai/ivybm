@@ -28,6 +28,7 @@ release_environment_keys=(
   ADMIN_PORTAL_PLATFORMS_ENABLED ADMIN_PORTAL_OPERATIONS_ENABLED ADMIN_PORTAL_PUBLISHING_ENABLED
   AI_CONFIG_ENCRYPTION_KEY PLATFORM_CREDENTIAL_ENCRYPTION_KEY AI_PROVIDER_BASE_URL AI_PROVIDER_API_KEY
   AI_TEXT_MODEL AI_EMBEDDING_MODEL AI_EMBEDDING_DIMENSIONS AI_TEXT_TIMEOUT_MS AI_EMBEDDING_TIMEOUT_MS
+  WEBHOOK_REPLAY_ENCRYPTION_KEY
   AI_REASONING_ENABLED AI_REASONING_EFFORT META_WEBHOOK_APP_SECRET META_WEBHOOK_VERIFY_TOKEN
   META_WEBHOOK_ALLOWED_ACCOUNT_IDS META_APP_ID META_LOGIN_CONFIG_ID META_OAUTH_REDIRECT_URI
   INSTAGRAM_APP_ID INSTAGRAM_APP_SECRET INSTAGRAM_OAUTH_REDIRECT_URI LINKEDIN_APP_ID
@@ -132,6 +133,7 @@ ai_embedding_dimensions="$(read_optional_env_value AI_EMBEDDING_DIMENSIONS)"
 meta_webhook_app_secret="$(read_optional_env_value META_WEBHOOK_APP_SECRET)"
 meta_webhook_verify_token="$(read_optional_env_value META_WEBHOOK_VERIFY_TOKEN)"
 meta_webhook_allowed_account_ids="$(read_optional_env_value META_WEBHOOK_ALLOWED_ACCOUNT_IDS)"
+webhook_replay_encryption_key="$(read_optional_env_value WEBHOOK_REPLAY_ENCRYPTION_KEY)"
 meta_app_id="$(read_optional_env_value META_APP_ID)"
 meta_login_config_id="$(read_optional_env_value META_LOGIN_CONFIG_ID)"
 meta_oauth_redirect_uri="$(read_optional_env_value META_OAUTH_REDIRECT_URI)"
@@ -331,6 +333,7 @@ if [[ -n "$meta_webhook_app_secret" || -n "$meta_webhook_verify_token" || -n "$m
     echo 'META_WEBHOOK_ALLOWED_ACCOUNT_IDS must be a comma-separated list without empty values' >&2
     exit 1
   fi
+  require_pattern WEBHOOK_REPLAY_ENCRYPTION_KEY "$webhook_replay_encryption_key" '^[a-fA-F0-9]{64}$'
 fi
 
 if [[ -n "$meta_app_id" || -n "$meta_login_config_id" || -n "$meta_oauth_redirect_uri" ]]; then
@@ -379,6 +382,11 @@ if [[ -n "$instagram_app_id" || -n "$instagram_app_secret" || -n "$instagram_oau
     echo 'PLATFORM_CREDENTIAL_ENCRYPTION_KEY is required when Instagram OAuth is enabled' >&2
     exit 1
   fi
+  if [[ -z "$meta_webhook_verify_token" ]]; then
+    echo 'META_WEBHOOK_VERIFY_TOKEN is required when Instagram messaging ingress is enabled' >&2
+    exit 1
+  fi
+  require_pattern WEBHOOK_REPLAY_ENCRYPTION_KEY "$webhook_replay_encryption_key" '^[a-fA-F0-9]{64}$'
 fi
 
 if [[ -n "$linkedin_app_id" || -n "$linkedin_app_secret" || -n "$linkedin_oauth_redirect_uri" ]]; then
