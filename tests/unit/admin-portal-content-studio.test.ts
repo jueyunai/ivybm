@@ -188,4 +188,90 @@ describe('Portal Content Studio', () => {
         .hasAttribute('disabled'),
     ).toBe(false)
   })
+
+  it('maintains draft list visibility side-by-side when opening draft generator and editor', () => {
+    const summary: ContentStudioSummary = {
+      items: [
+        {
+          assets: [],
+          body: 'Draft post content',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 101,
+          knowledgeSources: [],
+          platform: 'linkedin',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [{ claim: 'Precision engineering', source: 'Engineering manual' }],
+          status: 'draft',
+          title: 'First Draft Post',
+          updatedAt: '2026-08-31T10:00:00.000Z',
+        },
+        {
+          assets: [],
+          body: 'Second draft post content',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 102,
+          knowledgeSources: [],
+          platform: 'facebook',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'draft',
+          title: 'Second Draft Post',
+          updatedAt: '2026-08-31T11:00:00.000Z',
+        },
+      ],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 2, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    // Initially, list items are visible
+    expect(screen.getByRole('button', { name: /First Draft Post/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Second Draft Post/ })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'First Draft Post' })).toBeTruthy()
+
+    // 1. Open New Draft Editor
+    fireEvent.click(screen.getByRole('button', { name: '新建草稿' }))
+
+    // Editor is open
+    expect(screen.getByRole('heading', { name: '新建草稿' })).toBeTruthy()
+    // CRITICAL: Draft list must remain rendered and visible side-by-side in workspace
+    expect(screen.getByRole('button', { name: /First Draft Post/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Second Draft Post/ })).toBeTruthy()
+
+    // Cancel editor
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.queryByRole('heading', { name: '新增草稿' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'First Draft Post' })).toBeTruthy()
+
+    // 2. Open Draft Generator
+    fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+
+    // Generator is open
+    expect(screen.getByRole('heading', { name: '生成草稿' })).toBeTruthy()
+    // CRITICAL: Draft list must still remain rendered and visible side-by-side
+    expect(screen.getByRole('button', { name: /First Draft Post/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Second Draft Post/ })).toBeTruthy()
+
+    // Cancel generator
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.queryByRole('heading', { name: '生成草稿' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'First Draft Post' })).toBeTruthy()
+  })
 })

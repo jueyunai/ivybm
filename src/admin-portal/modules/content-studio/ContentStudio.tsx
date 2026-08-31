@@ -167,61 +167,6 @@ export function ContentStudio({
           <Button type="submit">{copy.filter}</Button>
         </form>
       </Surface>
-      {generator ? (
-        <Surface as="section" className="portal-content-studio__editor">
-          <GenerateDraftEditor
-            copy={copy}
-            drafts={summary.items.filter((item) => item.status === 'draft')}
-            options={summary.options}
-            onClose={() => setGenerator(false)}
-            onDone={onDone}
-            selectedDraftId={selected?.status === 'draft' ? selected.id : null}
-          />
-        </Surface>
-      ) : null}
-      {editor ? (
-        <Surface as="section" className="portal-content-studio__editor">
-          <DraftEditor
-            key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
-            copy={copy}
-            item={editor === 'edit' ? selected : null}
-            options={summary.options}
-            onClose={() => setEditor(null)}
-            onDone={onDone}
-          />
-        </Surface>
-      ) : null}
-      {reviewing && selected ? (
-        <Surface as="section" className="portal-content-studio__editor">
-          <ReviewEditor
-            copy={copy}
-            item={selected}
-            onClose={() => setReviewing(false)}
-            onDone={onDone}
-          />
-        </Surface>
-      ) : null}
-      {scheduling && selected ? (
-        <Surface as="section" className="portal-content-studio__editor">
-          <ScheduleEditor
-            copy={copy}
-            item={selected}
-            onClose={() => setScheduling(false)}
-            onDone={onDone}
-          />
-        </Surface>
-      ) : null}
-      {publishingNow && selected ? (
-        <Surface as="section" className="portal-content-studio__editor">
-          <PublishNowEditor
-            copy={copy}
-            item={selected}
-            onClose={() => setPublishingNow(false)}
-            onDone={onDone}
-            options={summary.options.platformAccounts}
-          />
-        </Surface>
-      ) : null}
       <div className="portal-content-studio__workspace">
         <Surface as="section" className="portal-content-studio__list">
           <header>
@@ -264,27 +209,80 @@ export function ContentStudio({
             />
           ) : null}
         </Surface>
-        <Surface as="section" className="portal-content-studio__detail">
-          {selected ? (
-            <ContentDetail
+
+        {generator ? (
+          <Surface as="section" className="portal-content-studio__editor">
+            <GenerateDraftEditor
               copy={copy}
-              disabled={isRefreshing}
-              item={selected}
-              onDelete={() => onDone(copy.feedback)}
-              onEdit={() => setEditor('edit')}
-              onReview={() => setReviewing(true)}
-              onPublish={() => setPublishingNow(true)}
-              onRefresh={refreshPublicationResults}
-              publishingAvailable={
-                summary.publishingEnabled && summary.options.platformAccounts.length > 0
-              }
-              onSchedule={() => setScheduling(true)}
-              onSubmitToReview={() => onDone(copy.readyForReview)}
+              drafts={summary.items.filter((item) => item.status === 'draft')}
+              options={summary.options}
+              onClose={() => setGenerator(false)}
+              onDone={onDone}
+              selectedDraftId={selected?.status === 'draft' ? selected.id : null}
             />
-          ) : (
-            <PortalState description={copy.empty} title={copy.empty} type="empty" />
-          )}
-        </Surface>
+          </Surface>
+        ) : editor ? (
+          <Surface as="section" className="portal-content-studio__editor">
+            <DraftEditor
+              key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
+              copy={copy}
+              item={editor === 'edit' ? selected : null}
+              options={summary.options}
+              onClose={() => setEditor(null)}
+              onDone={onDone}
+            />
+          </Surface>
+        ) : reviewing && selected ? (
+          <Surface as="section" className="portal-content-studio__editor">
+            <ReviewEditor
+              copy={copy}
+              item={selected}
+              onClose={() => setReviewing(false)}
+              onDone={onDone}
+            />
+          </Surface>
+        ) : scheduling && selected ? (
+          <Surface as="section" className="portal-content-studio__editor">
+            <ScheduleEditor
+              copy={copy}
+              item={selected}
+              onClose={() => setScheduling(false)}
+              onDone={onDone}
+            />
+          </Surface>
+        ) : publishingNow && selected ? (
+          <Surface as="section" className="portal-content-studio__editor">
+            <PublishNowEditor
+              copy={copy}
+              item={selected}
+              onClose={() => setPublishingNow(false)}
+              onDone={onDone}
+              options={summary.options.platformAccounts}
+            />
+          </Surface>
+        ) : (
+          <Surface as="section" className="portal-content-studio__detail">
+            {selected ? (
+              <ContentDetail
+                copy={copy}
+                disabled={isRefreshing}
+                item={selected}
+                onDelete={() => onDone(copy.feedback)}
+                onEdit={() => setEditor('edit')}
+                onReview={() => setReviewing(true)}
+                onPublish={() => setPublishingNow(true)}
+                onRefresh={refreshPublicationResults}
+                publishingAvailable={
+                  summary.publishingEnabled && summary.options.platformAccounts.length > 0
+                }
+                onSchedule={() => setScheduling(true)}
+                onSubmitToReview={() => onDone(copy.readyForReview)}
+              />
+            ) : (
+              <PortalState description={copy.empty} title={copy.empty} type="empty" />
+            )}
+          </Surface>
+        )}
       </div>
     </main>
   )
