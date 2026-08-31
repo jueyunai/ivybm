@@ -2502,3 +2502,76 @@ html[dir='rtl'] .chat-widget {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* === Product & Project v1.7 Case Study & Workflow Styles === */
+
+.case-study-4d {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 32px;
+}
+
+.case-dimension-card {
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.case-dimension-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(28, 39, 49, 0.12);
+}
+
+.case-dimension-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.case-dimension-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: #eaf4ff;
+  color: var(--blue);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.case-dimension-card h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.product-workflow-section {
+  margin-top: 32px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+
+.product-disclaimer-box {
+  margin-top: 24px;
+  padding: 16px 20px;
+  border-radius: 6px;
+  background: var(--panel);
+  border-inline-start: 4px solid var(--steel);
+  font-size: 13px;
+  color: #5a646e;
+  line-height: 1.5;
+}
+
+@media (max-width: 920px) {
+  .case-study-4d {
+    grid-template-columns: 1fr;
+  }
+}
