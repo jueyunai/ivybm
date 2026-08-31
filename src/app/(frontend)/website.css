@@ -2592,3 +2592,38 @@ html[dir='rtl'] .chat-widget {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Utility Strip / Topbar */
+.utility-strip {
+  background: #14171a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 0;
+  letter-spacing: 0.01em;
+}
+
+.utility-strip-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.utility-strip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #7faee0;
+}
+
+@media (max-width: 640px) {
+  .utility-strip-inner {
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+  }
+}

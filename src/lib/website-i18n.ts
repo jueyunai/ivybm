@@ -177,6 +177,8 @@ export const WEBSITE_V17_COPY = {
       professionalsSubtitle:
         'Dedicated technical coordination and commercial deliverables for architects, facade contractors, and procurement heads.',
       professionalsTitle: 'Engineered for Project Decision Makers',
+      utilityLeft: 'Architectural aluminum for complex facade projects',
+      utilityRight: 'Engineering · Fabrication · QC · Global Delivery',
     },
     knowledge: {
       allCategories: 'All Topics',
@@ -389,6 +391,8 @@ export const WEBSITE_V17_COPY = {
       professionalsSubtitle:
         'مخرجات هندسية واضحة وتنسيق فني للمعماريين ومقاولي الواجهات ومديري المشتريات.',
       professionalsTitle: 'مصمم خصيصًا لصناع القرار في المشاريع',
+      utilityLeft: 'ألمنيوم معماري لمشاريع الواجهات المعقدة',
+      utilityRight: 'الهندسة · التصنيع · ضبط الجودة · التسليم الدولي',
     },
     knowledge: {
       allCategories: 'جميع المواضيع',

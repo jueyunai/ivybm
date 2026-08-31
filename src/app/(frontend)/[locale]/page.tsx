@@ -78,7 +78,15 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
 
   return (
     <>
-      {/* 1. Hero */}
+      {/* 1. Utility Topbar Strip */}
+      <div className="utility-strip" data-testid="utility-strip">
+        <div className="container utility-strip-inner">
+          <span>{copy.home.utilityLeft}</span>
+          <span className="utility-strip-badge">{copy.home.utilityRight}</span>
+        </div>
+      </div>
+
+      {/* 2. Hero */}
       <HeroCarousel
         images={heroImages}
         locale={locale}
@@ -86,7 +94,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         title={copy.home.heroTitle}
       />
 
-      {/* 2. "How IVY supports your project" 4-Step Engineering Workflow */}
+      {/* 3. "How IVY supports your project" 4-Step Engineering Workflow */}
       <section className="section">
         <div className="container">
           <SectionHeader
@@ -128,7 +136,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </div>
       </section>
 
-      {/* 3. Core Capability & Craftsmanship Value */}
+      {/* 4. Core Craftsmanship & Engineering Values (Neutral Craftsmanship) */}
       <section className="section alt">
         <div className="container">
           <SectionHeader
@@ -137,19 +145,17 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
             title={copy.home.coreCapabilitiesTitle}
           />
           <div className="stats">
-            {copy.capabilities.stats.map(([statVal, statLabel]) => (
-              <div className="stat" key={statLabel}>
-                <strong className="ltr-text" dir="ltr">
-                  {statVal}
-                </strong>
-                <span>{statLabel}</span>
+            {copy.capabilities.stats.map(([statTitle, statDesc]) => (
+              <div className="stat" key={statTitle}>
+                <strong>{statTitle}</strong>
+                <span>{statDesc}</span>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* 4. For Professionals 3 Role Pillars */}
+      {/* 5. For Professionals 3 Role Pillars */}
       <section className="section">
         <div className="container">
           <SectionHeader
@@ -195,7 +201,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </div>
       </section>
 
-      {/* 5. Product Categories */}
+      {/* 6. Product Categories */}
       <section className="section alt">
         <div className="container">
           <SectionHeader
@@ -211,7 +217,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </div>
       </section>
 
-      {/* 6. Featured Projects */}
+      {/* 7. Featured Projects */}
       <section className="section">
         <div className="container">
           <SectionHeader
@@ -232,7 +238,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </div>
       </section>
 
-      {/* 7. Final Buildability Review / Upload Drawing CTA */}
+      {/* 8. Final Buildability Review / Upload Drawing CTA */}
       <section className="section feature-band">
         <div className="container">
           <SectionHeader
