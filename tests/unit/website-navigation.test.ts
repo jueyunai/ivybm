@@ -1,4 +1,6 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import fs from 'node:fs'
+import path from 'node:path'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -92,6 +94,35 @@ describe('SiteHeader navigation and CTA', () => {
     expect(within(nav).getByRole('link', { name: 'من نحن' })).toBeDefined()
     const cta = within(nav).getByRole('link', { name: /رفع المخططات/i })
     expect(cta.getAttribute('href')).toBe('/ar/contact')
+  })
+
+  it('toggles mobile navigation drawer on menu button click', () => {
+    render(
+      React.createElement(SiteHeader, {
+        locale: 'en',
+        siteName: 'IVYBM',
+      }),
+    )
+
+    const mobileNav = screen.getByRole('navigation', { name: 'Mobile navigation' })
+    expect(mobileNav.getAttribute('data-open')).toBe('false')
+
+    const menuButton = screen.getByRole('button', { name: 'Menu' })
+    fireEvent.click(menuButton)
+    expect(mobileNav.getAttribute('data-open')).toBe('true')
+
+    fireEvent.click(menuButton)
+    expect(mobileNav.getAttribute('data-open')).toBe('false')
+  })
+
+  it('ensures mobile-navigation is positioned relative to header bottom instead of hardcoded 82px fixed top', () => {
+    const cssPath = path.resolve(process.cwd(), 'src/app/(frontend)/website.css')
+    const cssContent = fs.readFileSync(cssPath, 'utf8')
+
+    // Verify mobile-navigation uses dynamic positioning relative to header
+    expect(cssContent).toMatch(/\.mobile-navigation\s*\{[^}]*position:\s*absolute/u)
+    expect(cssContent).toMatch(/\.mobile-navigation\s*\{[^}]*top:\s*calc\(100%/u)
+    expect(cssContent).not.toMatch(/\.mobile-navigation\s*\{[^}]*top:\s*82px/u)
   })
 })
 

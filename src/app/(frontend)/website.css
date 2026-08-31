@@ -2098,8 +2098,8 @@ html[dir='rtl'] .chat-widget {
   }
 
   .mobile-navigation {
-    position: fixed;
-    top: 82px;
+    position: absolute;
+    top: calc(100% + 8px);
     right: 16px;
     left: 16px;
     display: none;
@@ -2112,9 +2112,6 @@ html[dir='rtl'] .chat-widget {
     box-shadow: var(--shadow);
     z-index: 60;
   }
-}
-
-@media (max-width: 920px) {
 
   .mobile-navigation[data-open='true'] {
     display: flex;
@@ -2128,6 +2125,9 @@ html[dir='rtl'] .chat-widget {
   .mobile-navigation a:hover {
     background: rgba(255, 255, 255, 0.1);
   }
+}
+
+@media (max-width: 920px) {
 
   .grid.cols-4,
   .grid.cols-3 {
