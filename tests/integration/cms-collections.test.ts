@@ -453,6 +453,7 @@ describe.sequential('multilingual CMS collections', () => {
       data: {
         _status: 'published',
         category: 'industry',
+        contentType: 'news',
         slug: `facade-guide-${suffix}`,
         title: 'Facade Design Guide',
       },

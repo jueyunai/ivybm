@@ -922,6 +922,7 @@ export interface Post {
    */
   slug: string;
   hasBeenPublished?: boolean | null;
+  contentType: 'news' | 'knowledge';
   excerpt?: string | null;
   content?: {
     root: {
@@ -938,7 +939,15 @@ export interface Post {
     };
     [k: string]: unknown;
   } | null;
-  category: 'industry' | 'products' | 'projects' | 'company';
+  category:
+    | 'industry'
+    | 'products'
+    | 'projects'
+    | 'company'
+    | 'material-comparison'
+    | 'technical-guide'
+    | 'procurement'
+    | 'quality-logistics';
   featuredImage?: (number | null) | Media;
   publishedAt?: string | null;
   seo?: {
@@ -2110,6 +2119,7 @@ export interface PostsSelect<T extends boolean = true> {
   generateSlug?: T;
   slug?: T;
   hasBeenPublished?: T;
+  contentType?: T;
   excerpt?: T;
   content?: T;
   category?: T;

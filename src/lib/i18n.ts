@@ -3,7 +3,7 @@ export const DEFAULT_LOCALE = 'en' as const
 
 export type Locale = (typeof PUBLIC_LOCALES)[number]
 export type LocaleDirection = 'ltr' | 'rtl'
-export type PostCategory = 'company' | 'industry' | 'products' | 'projects'
+export type PostCategory = 'company' | 'industry' | 'products' | 'projects' | 'material-comparison' | 'technical-guide' | 'procurement' | 'quality-logistics'
 
 export const isPublicLocale = (value: string): value is Locale =>
   PUBLIC_LOCALES.includes(value as Locale)
@@ -389,10 +389,16 @@ export const getWebsiteCopy = (locale: Locale) => WEBSITE_COPY[locale]
 export const getPostCategoryLabel = (locale: Locale, category: PostCategory): string => {
   const copy = getWebsiteCopy(locale)
 
-  return {
+  const labels: Record<PostCategory, string> = {
     company: copy.tabs.company,
     industry: copy.tabs.industry,
+    'material-comparison': locale === 'ar' ? 'مقارنة المواد' : 'Material Comparison',
+    procurement: locale === 'ar' ? 'دليل الشراء' : 'Procurement',
     products: copy.tabs.products,
     projects: copy.tabs.projects,
-  }[category]
+    'quality-logistics': locale === 'ar' ? 'الجودة والخدمات اللوجستية' : 'Quality & Logistics',
+    'technical-guide': locale === 'ar' ? 'دليل فني' : 'Technical Guide',
+  }
+
+  return labels[category] ?? category
 }
