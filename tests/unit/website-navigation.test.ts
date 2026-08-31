@@ -29,6 +29,11 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
     expect(logo.getAttribute('src')).toContain('ivybm-logo-trimmed.png')
   })
 
+  it('allows brand images in next.config.ts localPatterns', () => {
+    const nextConfig = fs.readFileSync(path.join(process.cwd(), 'next.config.ts'), 'utf8')
+    expect(nextConfig).toContain("pathname: '/brand/**'")
+  })
+
   it('renders utility topbar strip above navigation in English', () => {
     render(
       React.createElement(SiteHeader, {
