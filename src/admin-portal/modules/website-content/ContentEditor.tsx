@@ -54,7 +54,7 @@ export type ContentEditorTransitionRequest = (
 ) => void
 
 const EMPTY_OPTIONS: EditorOptions = { categories: [], media: [] }
-const VERSIONED = new Set<ContentTypeId>(['pages', 'posts', 'products', 'projects'])
+const VERSIONED = new Set<ContentTypeId>(['pages', 'posts', 'knowledge', 'products', 'projects'])
 const commitTransitionImmediately: ContentEditorTransitionRequest = (_targetTitle, commit) =>
   commit()
 
@@ -89,22 +89,27 @@ const copy = {
       application: 'Application',
       body: 'Body',
       canonicalUrl: 'Canonical URL',
+      capabilities: 'Capability Blocks (Title | Description | Badge | Metrics)',
       coverImage: 'Cover image',
       description: 'Description',
       downloadFile: 'Download file',
       downloadType: 'Download type',
       excerpt: 'Excerpt',
+      faq: 'Frequently Asked Questions (Question | Answer)',
       featuredImage: 'Featured image',
       gallery: 'Gallery',
       heroImage: 'Hero image',
       internalNotes: 'Internal notes',
       keywords: 'Keywords',
+      knowledgeCategory: 'Knowledge category',
       location: 'Location',
       noIndex: 'Exclude from search indexing',
       openGraphImage: 'Open Graph image',
       postCategory: 'Post category',
       productCategory: 'Product category',
       publishedAt: 'Published at',
+      resourceMatrix: 'Resource Matrix (Title | Category | Description)',
+      roleCards: 'Professional Roles (RoleKey | Title | Description | Deliverables)',
       seoDescription: 'SEO description',
       seoTitle: 'SEO title',
       shortDescription: 'Short description',
@@ -113,6 +118,7 @@ const copy = {
       specifications: 'Specifications (label | value)',
       summary: 'Summary',
       title: 'Title',
+      workflow: '4-Step Engineering Workflow (Step | Title | Description)',
     },
     loading: 'Loading editor...',
     locale: 'Content language',
@@ -123,10 +129,14 @@ const copy = {
       certificate: 'Certificate',
       company: 'Company',
       industry: 'Industry',
+      materialComparison: 'Material Comparison',
       other: 'Other',
+      procurement: 'Procurement Guide',
       products: 'Products',
       projects: 'Projects',
+      qualityLogistics: 'Quality & Logistics',
       technicalData: 'Technical data',
+      technicalGuide: 'Technical Guide',
     },
     publish: 'Publish',
     publishValidation: 'Complete the required fields before publishing.',
@@ -155,22 +165,27 @@ const copy = {
       application: '应用场景',
       body: '正文',
       canonicalUrl: '规范链接',
+      capabilities: '能力卡片 (标题 | 描述 | 徽标 | 核心指标)',
       coverImage: '封面图',
       description: '描述',
       downloadFile: '下载文件',
       downloadType: '资料类型',
       excerpt: '摘要',
+      faq: '常见问答 FAQ (问题 | 答案)',
       featuredImage: '特色图',
       gallery: '图库',
       heroImage: '头图',
       internalNotes: '内部备注',
       keywords: '关键词',
+      knowledgeCategory: '知识分类',
       location: '项目地点',
       noIndex: '不允许搜索引擎收录',
       openGraphImage: '社交分享图',
       postCategory: '文章分类',
       productCategory: '产品分类',
       publishedAt: '发布时间',
+      resourceMatrix: '资源矩阵 (标题 | 分类 | 说明)',
+      roleCards: '角色专区 (角色key | 标题 | 说明 | 交付产物)',
       seoDescription: '搜索摘要',
       seoTitle: '搜索标题',
       shortDescription: '简短介绍',
@@ -179,6 +194,7 @@ const copy = {
       specifications: '规格参数（名称 | 数值）',
       summary: '摘要',
       title: '标题',
+      workflow: '4 步工程流程 (步骤序号 | 步骤标题 | 步骤说明)',
     },
     loading: '正在加载编辑器…',
     locale: '内容语言',
@@ -189,10 +205,14 @@ const copy = {
       certificate: '证书',
       company: '公司动态',
       industry: '行业资讯',
+      materialComparison: '材料对比',
       other: '其他',
+      procurement: '采购指南',
       products: '产品资讯',
       projects: '项目案例',
+      qualityLogistics: '质检与物流',
       technicalData: '技术资料',
+      technicalGuide: '技术指南',
     },
     publish: '发布',
     publishValidation: '请先补全必填项，再发布内容。',
@@ -251,12 +271,14 @@ const emptyForm = (locale: 'ar' | 'en') => ({
   action: 'save-draft',
   application: '',
   bodyText: '',
+  capabilitiesText: '',
   category: 'industry',
   categoryId: '',
   coverImageId: '',
   description: '',
   downloadType: 'catalog',
   excerpt: '',
+  faqText: '',
   featuredImageId: '',
   fileId: '',
   galleryIds: [] as string[],
@@ -266,6 +288,8 @@ const emptyForm = (locale: 'ar' | 'en') => ({
   locale,
   location: '',
   publishedAt: '',
+  resourceMatrixText: '',
+  roleCardsText: '',
   seoCanonical: '',
   seoDescription: '',
   seoKeywords: '',
@@ -279,6 +303,7 @@ const emptyForm = (locale: 'ar' | 'en') => ({
   summary: '',
   title: '',
   updatedAt: '',
+  workflowText: '',
 })
 
 type EditorForm = ReturnType<typeof emptyForm>
@@ -292,12 +317,14 @@ const normalizeForm = (record: ContentEditorRecord): EditorForm => {
     ...form,
     application: scalar('application'),
     bodyText: scalar('bodyText'),
-    category: scalar('category') || 'industry',
+    capabilitiesText: scalar('capabilitiesText'),
+    category: scalar('category') || (record.type === 'knowledge' ? 'technical-guide' : 'industry'),
     categoryId: scalar('categoryId'),
     coverImageId: scalar('coverImageId'),
     description: scalar('description'),
     downloadType: scalar('downloadType') || 'catalog',
     excerpt: scalar('excerpt'),
+    faqText: scalar('faqText'),
     featuredImageId: scalar('featuredImageId'),
     fileId: scalar('fileId'),
     galleryIds: Array.isArray(data.galleryIds) ? data.galleryIds.map(String) : [],
@@ -307,6 +334,8 @@ const normalizeForm = (record: ContentEditorRecord): EditorForm => {
     locale: record.locale,
     location: scalar('location'),
     publishedAt: toDateTimeLocalValue(data.publishedAt),
+    resourceMatrixText: scalar('resourceMatrixText'),
+    roleCardsText: scalar('roleCardsText'),
     seoCanonical: scalar('seoCanonical'),
     seoDescription: scalar('seoDescription'),
     seoKeywords: scalar('seoKeywords'),
@@ -327,6 +356,7 @@ const normalizeForm = (record: ContentEditorRecord): EditorForm => {
     summary: scalar('summary'),
     title: scalar('title'),
     updatedAt: record.updatedAt,
+    workflowText: scalar('workflowText'),
   }
 }
 
@@ -841,7 +871,7 @@ export const ContentEditor = forwardRef<
             />
           </Field>
         ) : null}
-        {type === 'posts' ? (
+        {type === 'posts' || type === 'knowledge' ? (
           <Field label={text.fields.excerpt} wide>
             <textarea
               maxLength={1000}
@@ -903,6 +933,19 @@ export const ContentEditor = forwardRef<
             </select>
           </Field>
         ) : null}
+        {type === 'knowledge' ? (
+          <Field label={text.fields.knowledgeCategory}>
+            <select
+              onChange={(event) => update('category', event.target.value)}
+              value={form.category}
+            >
+              <option value="technical-guide">{text.options.technicalGuide}</option>
+              <option value="material-comparison">{text.options.materialComparison}</option>
+              <option value="procurement">{text.options.procurement}</option>
+              <option value="quality-logistics">{text.options.qualityLogistics}</option>
+            </select>
+          </Field>
+        ) : null}
         {type === 'downloads' ? (
           <Field label={text.fields.downloadType}>
             <select
@@ -937,7 +980,7 @@ export const ContentEditor = forwardRef<
             value={form.coverImageId}
           />
         ) : null}
-        {type === 'posts' ? (
+        {type === 'posts' || type === 'knowledge' ? (
           <ImageSelect
             label={text.fields.featuredImage}
             name="featuredImageId"
@@ -984,6 +1027,97 @@ export const ContentEditor = forwardRef<
           />
         ) : null}
 
+        {type === 'pages' ? (
+          <>
+            <details className="portal-content-editor__section is-wide">
+              <summary>
+                <IconChevronDown aria-hidden="true" size={16} />{" "}
+                {portalLocale === 'zh'
+                  ? '能力与工程流程（Capabilities & Workflow）'
+                  : 'Capabilities & Workflow Blocks'}
+              </summary>
+              <div className="portal-content-editor__fields">
+                <Field label={text.fields.capabilities} wide>
+                  <textarea
+                    maxLength={10000}
+                    onChange={(event) => update('capabilitiesText', event.target.value)}
+                    placeholder={
+                      portalLocale === 'zh'
+                        ? '复杂曲面加工 | 具备高精度双曲弯弧与无痕焊接能力 | 核心工艺 | 精度 ±0.5mm'
+                        : 'Complex Fabrication | High-precision curved forming and seamless welding | Core Process | Tolerance ±0.5mm'
+                    }
+                    rows={4}
+                    value={form.capabilitiesText}
+                  />
+                </Field>
+                <Field label={text.fields.workflow} wide>
+                  <textarea
+                    maxLength={10000}
+                    onChange={(event) => update('workflowText', event.target.value)}
+                    placeholder={
+                      portalLocale === 'zh'
+                        ? '1 | 设计深化 | 3D建模与节点深化设计\n2 | 复杂成型 | 高精度数控弯圆成型\n3 | 打样质检 | 1:1实物样板与严苛质检\n4 | 全球交付 | 专用木箱与全球海运跟踪'
+                        : '1 | Design & Engineering | 3D parametric modeling\n2 | Complex Fabrication | High-precision CNC forming\n3 | Mock-up & QC | 1:1 physical sample and QA\n4 | Global Delivery | Protected crate packaging'
+                    }
+                    rows={4}
+                    value={form.workflowText}
+                  />
+                </Field>
+              </div>
+            </details>
+
+            <details className="portal-content-editor__section is-wide">
+              <summary>
+                <IconChevronDown aria-hidden="true" size={16} />{" "}
+                {portalLocale === 'zh'
+                  ? '专业角色与问答专区（For Professionals & FAQ）'
+                  : 'For Professionals & FAQ Blocks'}
+              </summary>
+              <div className="portal-content-editor__fields">
+                <Field label={text.fields.roleCards} wide>
+                  <textarea
+                    maxLength={10000}
+                    onChange={(event) => update('roleCardsText', event.target.value)}
+                    placeholder={
+                      portalLocale === 'zh'
+                        ? 'architects | 建筑师与方案深化 | 完美还原设计曲线与自由曲面 | 3D参数化模型与节点构造图'
+                        : 'architects | Architects & Designers | Realize complex freeform designs | 3D parametric models and shop drawings'
+                    }
+                    rows={4}
+                    value={form.roleCardsText}
+                  />
+                </Field>
+                <Field label={text.fields.resourceMatrix} wide>
+                  <textarea
+                    maxLength={10000}
+                    onChange={(event) => update('resourceMatrixText', event.target.value)}
+                    placeholder={
+                      portalLocale === 'zh'
+                        ? '双曲铝板深化节点图集 | CAD图纸 | 包含常规幕墙收口与防漏设计节点'
+                        : 'Double-Curved Panel Detail Library | CAD Drawings | Standard curtain wall junction and flashing details'
+                    }
+                    rows={3}
+                    value={form.resourceMatrixText}
+                  />
+                </Field>
+                <Field label={text.fields.faq} wide>
+                  <textarea
+                    maxLength={10000}
+                    onChange={(event) => update('faqText', event.target.value)}
+                    placeholder={
+                      portalLocale === 'zh'
+                        ? '双曲铝板如何保证施工现场拼缝精度？ | 我们提供出厂前 1:1 预拼装与三维激光扫描检测。'
+                        : 'How is on-site joint precision guaranteed? | We provide factory 1:1 trial assembly and laser 3D scanning verification.'
+                    }
+                    rows={4}
+                    value={form.faqText}
+                  />
+                </Field>
+              </div>
+            </details>
+          </>
+        ) : null}
+
         {type === 'products' ? (
           <Field label={text.fields.specifications} wide>
             <textarea
@@ -1022,7 +1156,7 @@ export const ContentEditor = forwardRef<
             />
           </Field>
         ) : null}
-        {type === 'posts' ? (
+        {type === 'posts' || type === 'knowledge' ? (
           <Field label={text.fields.publishedAt}>
             <input
               onChange={(event) => update('publishedAt', event.target.value)}
@@ -1086,7 +1220,7 @@ export const ContentEditor = forwardRef<
           </div>
         </details>
 
-        {['pages', 'products', 'projects', 'posts'].includes(type) ? (
+        {['pages', 'products', 'projects', 'posts', 'knowledge'].includes(type) ? (
           <Field label={text.fields.internalNotes} wide>
             <textarea
               maxLength={5000}

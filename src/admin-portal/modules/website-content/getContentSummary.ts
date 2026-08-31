@@ -10,6 +10,7 @@ export const CONTENT_TYPE_IDS = [
   'product-categories',
   'projects',
   'posts',
+  'knowledge',
   'downloads',
 ] as const
 
@@ -80,6 +81,7 @@ interface ContentProjection {
   body?: unknown
   category?: unknown
   content?: unknown
+  contentType?: unknown
   coverImage?: unknown
   description?: unknown
   excerpt?: unknown
@@ -119,7 +121,13 @@ interface MediaProjection {
   url?: null | string
 }
 
-const VERSIONED_TYPES = new Set<ContentTypeId>(['pages', 'posts', 'products', 'projects'])
+const VERSIONED_TYPES = new Set<ContentTypeId>([
+  'pages',
+  'posts',
+  'knowledge',
+  'products',
+  'projects',
+])
 const PAGE_SIZE = 12
 
 const firstValue = (value: string | string[] | undefined): string | undefined =>
@@ -160,6 +168,14 @@ const normalizedStatus = (
 const buildWhere = (query: ContentQuery): Where => {
   const clauses: Where[] = []
   const status = normalizedStatus(query.type, query.status)
+
+  if (query.type === 'knowledge') {
+    clauses.push({ contentType: { equals: 'knowledge' } })
+  } else if (query.type === 'posts') {
+    clauses.push({
+      or: [{ contentType: { equals: 'news' } }, { contentType: { exists: false } }],
+    })
+  }
 
   if (query.q) {
     clauses.push({
@@ -203,8 +219,10 @@ const selectionFor = (type: ContentTypeId) => {
         ...common,
         _status: true,
         body: true,
+        capabilities: true,
         hasBeenPublished: true,
         heroImage: true,
+        professionalSection: true,
         summary: true,
       } as const
     case 'products':
@@ -232,14 +250,18 @@ const selectionFor = (type: ContentTypeId) => {
         location: true,
         summary: true,
       } as const
+    case 'knowledge':
     case 'posts':
       return {
         ...common,
         _status: true,
+        category: true,
         content: true,
+        contentType: true,
         excerpt: true,
         featuredImage: true,
         hasBeenPublished: true,
+        publishedAt: true,
       } as const
     case 'downloads':
       return {
@@ -315,6 +337,7 @@ const findContent = async ({
         draft: true,
         ...options,
       })) as ContentFindResult
+    case 'knowledge':
     case 'posts':
       return (await payload.find({
         collection: 'posts',
@@ -353,7 +376,7 @@ const countContent = async ({
   }
 
   const result = await payload.count({
-    collection: type,
+    collection: type === 'knowledge' ? 'posts' : type,
     overrideAccess: false,
     req,
     where,
@@ -363,6 +386,7 @@ const countContent = async ({
 
 const REQUIRED_FIELDS: Record<ContentTypeId, string[]> = {
   downloads: ['title', 'description', 'file', 'coverImage', 'seo.title', 'seo.description'],
+  knowledge: ['title', 'excerpt', 'content', 'featuredImage', 'seo.title', 'seo.description'],
   pages: ['title', 'summary', 'body', 'heroImage', 'seo.title', 'seo.description'],
   posts: ['title', 'excerpt', 'content', 'featuredImage', 'seo.title', 'seo.description'],
   'product-categories': ['title', 'description', 'seo.title', 'seo.description'],
@@ -481,7 +505,7 @@ const imageReferencesFor = (
       document.gallery.forEach((value, index) => addReference(`gallery.${index}`, value))
     }
   }
-  if (type === 'posts') addReference('featuredImage', document.featuredImage)
+  if (type === 'posts' || type === 'knowledge') addReference('featuredImage', document.featuredImage)
   if (type === 'downloads') addReference('coverImage', document.coverImage)
   addReference('seo.ogImage', document.seo?.ogImage)
 
@@ -541,6 +565,7 @@ const previewHrefFor = (
   if (type === 'products') return `/${locale}/products/${slug}`
   if (type === 'projects') return `/${locale}/projects/${slug}`
   if (type === 'posts') return `/${locale}/news/${slug}`
+  if (type === 'knowledge') return `/${locale}/knowledge/${slug}`
   return null
 }
 
@@ -599,8 +624,15 @@ export async function getContentSummary({
 
   try {
     const collectionResults = await Promise.all(
-      CONTENT_TYPE_IDS.map((type) =>
-        findContent({
+      CONTENT_TYPE_IDS.map((type) => {
+        const typeWhere: Where | undefined =
+          type === 'knowledge'
+            ? { contentType: { equals: 'knowledge' } }
+            : type === 'posts'
+              ? { or: [{ contentType: { equals: 'news' } }, { contentType: { exists: false } }] }
+              : undefined
+
+        return findContent({
           fallbackLocale: false,
           limit: 1,
           locale: 'all',
@@ -609,8 +641,9 @@ export async function getContentSummary({
           req,
           select: { updatedAt: true },
           type,
-        }),
-      ),
+          where: typeWhere,
+        })
+      }),
     )
 
     const localized = await findContent({
@@ -659,29 +692,57 @@ export async function getContentSummary({
       ),
     )
 
+    const statusTypeFilter: Where =
+      normalizedQuery.type === 'knowledge'
+        ? { contentType: { equals: 'knowledge' } }
+        : normalizedQuery.type === 'posts'
+          ? { or: [{ contentType: { equals: 'news' } }, { contentType: { exists: false } }] }
+          : {}
+    const hasStatusFilter = Object.keys(statusTypeFilter).length > 0
+
     const statusBreakdown = VERSIONED_TYPES.has(normalizedQuery.type)
       ? {
           draft: await countContent({
             payload,
             req,
             type: normalizedQuery.type,
-            where: {
-              and: [{ _status: { equals: 'draft' } }, { hasBeenPublished: { equals: false } }],
-            },
+            where: hasStatusFilter
+              ? {
+                  and: [
+                    statusTypeFilter,
+                    { _status: { equals: 'draft' } },
+                    { hasBeenPublished: { equals: false } },
+                  ],
+                }
+              : {
+                  and: [{ _status: { equals: 'draft' } }, { hasBeenPublished: { equals: false } }],
+                },
           }),
           published: await countContent({
             payload,
             req,
             type: normalizedQuery.type,
-            where: { _status: { equals: 'published' } },
+            where: hasStatusFilter
+              ? {
+                  and: [statusTypeFilter, { _status: { equals: 'published' } }],
+                }
+              : { _status: { equals: 'published' } },
           }),
           unpublished: await countContent({
             payload,
             req,
             type: normalizedQuery.type,
-            where: {
-              and: [{ _status: { equals: 'draft' } }, { hasBeenPublished: { equals: true } }],
-            },
+            where: hasStatusFilter
+              ? {
+                  and: [
+                    statusTypeFilter,
+                    { _status: { equals: 'draft' } },
+                    { hasBeenPublished: { equals: true } },
+                  ],
+                }
+              : {
+                  and: [{ _status: { equals: 'draft' } }, { hasBeenPublished: { equals: true } }],
+                },
           }),
         }
       : normalizedQuery.type === 'downloads'

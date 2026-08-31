@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 
 import { executePortalRouteCommand } from '@/admin-portal/core/commands/portalCommandReceipts'
 import {
+  collectionFor,
   deletePortalContent,
   getPortalContentEditor,
   getPortalContentOptions,
@@ -61,7 +62,7 @@ export async function PATCH(
         req,
         request,
         scope: `portal.website-content:${type}:update:${id}`,
-        target: { collection: type, id },
+        target: { collection: collectionFor(type) as any, id },
       }),
     })
   } catch (error) {
@@ -93,7 +94,7 @@ export async function DELETE(
         req,
         request,
         scope: `portal.website-content:${type}:delete:${id}`,
-        target: { collection: type, id },
+        target: { collection: collectionFor(type) as any, id },
       }),
     })
   } catch (error) {

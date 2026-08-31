@@ -112,7 +112,7 @@ describe('Portal website content summary', () => {
       req,
     })
 
-    expect(find).toHaveBeenCalledTimes(11)
+    expect(find).toHaveBeenCalledTimes(12)
     expect(count).not.toHaveBeenCalled()
     for (const [options] of [...find.mock.calls, ...count.mock.calls]) {
       expect(options).toEqual(expect.objectContaining({ overrideAccess: false, req }))
@@ -206,7 +206,7 @@ describe('Portal website content summary', () => {
     expect(payload.count).not.toHaveBeenCalled()
   })
 
-  it('renders the six content types, filters, metadata detail, preview, and editor gate', () => {
+  it('renders the seven content types, filters, metadata detail, preview, and editor gate', () => {
     const { container } = render(
       React.createElement(
         PortalPreferencesProvider,
@@ -220,6 +220,7 @@ describe('Portal website content summary', () => {
               { id: 'product-categories', total: 1, updatedAt: null },
               { id: 'projects', total: 1, updatedAt: null },
               { id: 'posts', total: 1, updatedAt: null },
+              { id: 'knowledge', total: 1, updatedAt: null },
               { id: 'downloads', total: 1, updatedAt: null },
             ],
             editor: { status: 'available' },
@@ -261,7 +262,7 @@ describe('Portal website content summary', () => {
 
     expect(screen.getByRole('heading', { name: '官网内容' })).toBeTruthy()
     expect(screen.getByRole('navigation', { name: '官网内容' }).querySelectorAll('a')).toHaveLength(
-      6,
+      7,
     )
     expect(screen.getByRole('link', { name: /^产品2/ }).getAttribute('aria-current')).toBe('page')
     expect(screen.getByRole('link', { name: '英文预览' }).getAttribute('href')).toBe(

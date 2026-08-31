@@ -74,10 +74,25 @@ export class ContentCommandError extends Error {
   }
 }
 
-const VERSIONED_TYPES = new Set<ContentTypeId>(['pages', 'posts', 'products', 'projects'])
+const VERSIONED_TYPES = new Set<ContentTypeId>([
+  'pages',
+  'posts',
+  'knowledge',
+  'products',
+  'projects',
+])
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const POST_CATEGORIES = new Set(['industry', 'products', 'projects', 'company'])
+const KNOWLEDGE_CATEGORIES = new Set([
+  'material-comparison',
+  'technical-guide',
+  'procurement',
+  'quality-logistics',
+])
 const DOWNLOAD_TYPES = new Set(['catalog', 'technical-data', 'certificate', 'other'])
+
+export const collectionFor = (type: ContentTypeId): string =>
+  type === 'knowledge' ? 'posts' : type
 
 const asRecord = (input: unknown): LooseRecord =>
   input && typeof input === 'object' && !Array.isArray(input) ? (input as LooseRecord) : {}
@@ -273,6 +288,93 @@ export const richTextToPlainText = (value: unknown): string => {
     .trim()
 }
 
+export const parseCapabilities = (value: string) =>
+  value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [title, description, badge, metrics] = line.split('|').map((s) => s.trim())
+      return {
+        badge: badge || null,
+        description: description || '',
+        metrics: metrics || null,
+        title: title || '',
+      }
+    })
+    .filter((item) => item.title)
+
+export const parseWorkflow = (value: string) =>
+  value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const parts = line.split('|').map((s) => s.trim())
+      let stepNumber = index + 1
+      let title = parts[0] || ''
+      let description = parts[1] || ''
+      if (parts.length >= 3 && /^\d+$/.test(parts[0])) {
+        stepNumber = Number(parts[0])
+        title = parts[1] || ''
+        description = parts[2] || ''
+      }
+      return {
+        description,
+        stepNumber,
+        title,
+      }
+    })
+    .filter((item) => item.title)
+
+export const parseRoleCards = (value: string) =>
+  value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [roleKey, title, description, deliverables] = line.split('|').map((s) => s.trim())
+      const validRole = ['architects', 'facade-contractors', 'main-contractors'].includes(roleKey)
+        ? roleKey
+        : 'architects'
+      return {
+        deliverables: deliverables || null,
+        description: description || '',
+        roleKey: validRole,
+        title: title || '',
+      }
+    })
+    .filter((item) => item.title)
+
+export const parseFaq = (value: string) =>
+  value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [question, ...rest] = line.split('|').map((s) => s.trim())
+      return {
+        answer: rest.join(' | ').trim(),
+        question: question || '',
+      }
+    })
+    .filter((item) => item.question && item.answer)
+
+export const parseResourceMatrix = (value: string) =>
+  value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [title, category, description] = line.split('|').map((s) => s.trim())
+      return {
+        category: category || null,
+        description: description || null,
+        title: title || '',
+      }
+    })
+    .filter((item) => item.title)
+
 const commonData = (input: LooseRecord) => {
   const slug = stringValue(input, 'slug', { max: 120, required: true })
   if (!SLUG_PATTERN.test(slug)) {
@@ -317,11 +419,34 @@ export function parseContentMutation(
   switch (type) {
     case 'pages': {
       const bodyText = stringValue(input, 'bodyText', { max: 80_000 })
+      const inputCapabilities = asRecord(input.capabilities)
+      const inputProfessional = asRecord(input.professionalSection)
+      const capabilities = {
+        items: Array.isArray(inputCapabilities.items)
+          ? inputCapabilities.items
+          : parseCapabilities(stringValue(input, 'capabilitiesText', { max: 10_000 })),
+        workflow: Array.isArray(inputCapabilities.workflow)
+          ? inputCapabilities.workflow
+          : parseWorkflow(stringValue(input, 'workflowText', { max: 10_000 })),
+      }
+      const professionalSection = {
+        faq: Array.isArray(inputProfessional.faq)
+          ? inputProfessional.faq
+          : parseFaq(stringValue(input, 'faqText', { max: 10_000 })),
+        resourceMatrix: Array.isArray(inputProfessional.resourceMatrix)
+          ? inputProfessional.resourceMatrix
+          : parseResourceMatrix(stringValue(input, 'resourceMatrixText', { max: 10_000 })),
+        roleCards: Array.isArray(inputProfessional.roleCards)
+          ? inputProfessional.roleCards
+          : parseRoleCards(stringValue(input, 'roleCardsText', { max: 10_000 })),
+      }
       data = {
         ...common,
         body: bodyText ? buildPlainRichText(bodyText, locale) : null,
+        capabilities,
         heroImage: numericValue(input, 'heroImageId'),
         internalNotes: optionalString(input, 'internalNotes', 5000),
+        professionalSection,
         summary: optionalString(input, 'summary', 1000),
       }
       break
@@ -381,6 +506,23 @@ export function parseContentMutation(
         ...common,
         category,
         content: bodyText ? buildPlainRichText(bodyText, locale) : null,
+        contentType: 'news',
+        excerpt: optionalString(input, 'excerpt', 1000),
+        featuredImage: numericValue(input, 'featuredImageId'),
+        internalNotes: optionalString(input, 'internalNotes', 5000),
+        publishedAt: optionalString(input, 'publishedAt', 100),
+      }
+      break
+    }
+    case 'knowledge': {
+      const bodyText = stringValue(input, 'bodyText', { max: 80_000 })
+      const rawCategory = stringValue(input, 'category', { max: 40 })
+      const category = KNOWLEDGE_CATEGORIES.has(rawCategory) ? rawCategory : 'technical-guide'
+      data = {
+        ...common,
+        category,
+        content: bodyText ? buildPlainRichText(bodyText, locale) : null,
+        contentType: 'knowledge',
         excerpt: optionalString(input, 'excerpt', 1000),
         featuredImage: numericValue(input, 'featuredImageId'),
         internalNotes: optionalString(input, 'internalNotes', 5000),
@@ -522,7 +664,8 @@ const assertPublishable = (type: ContentTypeId, data: LooseRecord) => {
       ['coverImage', data.coverImage],
     )
   }
-  if (type === 'posts') required.push(['excerpt', data.excerpt], ['content', data.content])
+  if (type === 'posts' || type === 'knowledge')
+    required.push(['excerpt', data.excerpt], ['content', data.content])
 
   const missing = required.filter(([, value]) => !hasText(value)).map(([field]) => field)
   if (missing.length) {
@@ -553,7 +696,7 @@ const contentMediaReferences = (type: ContentTypeId, data: LooseRecord): MediaRe
       data.gallery.forEach((id, index) => add(`gallery.${index}`, id, true))
     }
   }
-  if (type === 'posts') add('featuredImage', data.featuredImage, true)
+  if (type === 'posts' || type === 'knowledge') add('featuredImage', data.featuredImage, true)
   if (type === 'downloads') {
     add('coverImage', data.coverImage, true)
     add('file', data.file, false)
@@ -647,7 +790,7 @@ const writePortalContentAudit = async ({
       action,
       actor: req.user?.id,
       documentId: String(documentId),
-      resource: type,
+      resource: collectionFor(type),
     },
     overrideAccess: true,
     req,
@@ -666,6 +809,7 @@ export async function createPortalContent({
   type: ContentTypeId
 }): Promise<ContentCommandResult> {
   const mutation = parseContentMutation(type, input)
+  const collection = collectionFor(type)
   if (mutation.action === 'unpublish') {
     throw new ContentCommandError(
       'content-invalid-action',
@@ -677,7 +821,7 @@ export async function createPortalContent({
 
   const find = requireMethod(payload, 'find')
   const existing = await find({
-    collection: type,
+    collection,
     depth: 0,
     fallbackLocale: false,
     limit: 1,
@@ -700,7 +844,7 @@ export async function createPortalContent({
 
   const create = requireMethod(payload, 'create')
   const document = await create({
-    collection: type,
+    collection,
     data: mutation.data,
     ...writeOptions(type, mutation, req),
   })
@@ -730,9 +874,10 @@ export async function updatePortalContent({
   type: ContentTypeId
 }): Promise<ContentCommandResult> {
   const mutation = parseContentMutation(type, input)
+  const collection = collectionFor(type)
   const findByID = requireMethod(payload, 'findByID')
   const current = await findByID({
-    collection: type,
+    collection,
     depth: 0,
     draft: VERSIONED_TYPES.has(type),
     fallbackLocale: false,
@@ -760,12 +905,12 @@ export async function updatePortalContent({
   if (mutation.action === 'publish') assertPublishable(type, mutation.data)
   await assertContentMediaReferences({ data: mutation.data, payload, req, type })
 
-  if (type === 'posts' && mutation.action === 'publish' && !mutation.data.publishedAt) {
+  if ((type === 'posts' || type === 'knowledge') && mutation.action === 'publish' && !mutation.data.publishedAt) {
     mutation.data.publishedAt = now().toISOString()
   }
   const update = requireMethod(payload, 'update')
   const document = await update({
-    collection: type,
+    collection,
     data: mutation.data,
     id,
     ...writeOptions(type, mutation, req),
@@ -795,9 +940,10 @@ export async function deletePortalContent({
   updatedAt: string
   locale: ContentLocale
 }): Promise<ContentCommandResult> {
+  const collection = collectionFor(type)
   const findByID = requireMethod(payload, 'findByID')
   const current = await findByID({
-    collection: type,
+    collection,
     depth: 0,
     draft: VERSIONED_TYPES.has(type),
     fallbackLocale: false,
@@ -831,7 +977,7 @@ export async function deletePortalContent({
 
   const deleteDocument = requireMethod(payload, 'delete')
   const document = await deleteDocument({
-    collection: type,
+    collection,
     context: { skipAudit: true },
     id,
     overrideAccess: false,
@@ -861,14 +1007,59 @@ const editorDataFor = (type: ContentTypeId, document: LooseRecord): LooseRecord 
     title: document.title ?? '',
   }
   switch (type) {
-    case 'pages':
+    case 'pages': {
+      const capabilities = asRecord(document.capabilities)
+      const professionalSection = asRecord(document.professionalSection)
+      const capabilitiesItems = Array.isArray(capabilities.items) ? capabilities.items : []
+      const workflowItems = Array.isArray(capabilities.workflow) ? capabilities.workflow : []
+      const roleCardItems = Array.isArray(professionalSection.roleCards) ? professionalSection.roleCards : []
+      const faqItems = Array.isArray(professionalSection.faq) ? professionalSection.faq : []
+      const resourceItems = Array.isArray(professionalSection.resourceMatrix) ? professionalSection.resourceMatrix : []
+
       return {
         ...common,
         bodyText: richTextToPlainText(document.body),
+        capabilitiesText: capabilitiesItems
+          .map((item) => {
+            const rec = asRecord(item)
+            return [rec.title, rec.description, rec.badge, rec.metrics]
+              .filter((v) => v !== undefined && v !== null && v !== '')
+              .join(' | ')
+          })
+          .join('\n'),
+        faqText: faqItems
+          .map((item) => {
+            const rec = asRecord(item)
+            return `${rec.question || ''} | ${rec.answer || ''}`
+          })
+          .join('\n'),
         heroImageId: relationID(document.heroImage),
         internalNotes: document.internalNotes ?? '',
+        resourceMatrixText: resourceItems
+          .map((item) => {
+            const rec = asRecord(item)
+            return [rec.title, rec.category, rec.description]
+              .filter((v) => v !== undefined && v !== null && v !== '')
+              .join(' | ')
+          })
+          .join('\n'),
+        roleCardsText: roleCardItems
+          .map((item) => {
+            const rec = asRecord(item)
+            return [rec.roleKey, rec.title, rec.description, rec.deliverables]
+              .filter((v) => v !== undefined && v !== null && v !== '')
+              .join(' | ')
+          })
+          .join('\n'),
         summary: document.summary ?? '',
+        workflowText: workflowItems
+          .map((item) => {
+            const rec = asRecord(item)
+            return `${rec.stepNumber ?? ''} | ${rec.title || ''} | ${rec.description || ''}`
+          })
+          .join('\n'),
       }
+    }
     case 'products':
       return {
         ...common,
@@ -901,11 +1092,12 @@ const editorDataFor = (type: ContentTypeId, document: LooseRecord): LooseRecord 
         location: document.location ?? '',
         summary: document.summary ?? '',
       }
+    case 'knowledge':
     case 'posts':
       return {
         ...common,
         bodyText: richTextToPlainText(document.content),
-        category: document.category ?? 'industry',
+        category: document.category ?? (type === 'knowledge' ? 'technical-guide' : 'industry'),
         excerpt: document.excerpt ?? '',
         featuredImageId: relationID(document.featuredImage),
         internalNotes: document.internalNotes ?? '',
@@ -925,6 +1117,7 @@ const editorDataFor = (type: ContentTypeId, document: LooseRecord): LooseRecord 
 
 const LOCALIZED_EDITOR_FIELDS: Record<ContentTypeId, readonly string[]> = {
   downloads: ['description', 'title'],
+  knowledge: ['content', 'excerpt', 'title'],
   pages: ['body', 'summary', 'title'],
   posts: ['content', 'excerpt', 'title'],
   'product-categories': ['description', 'title'],
@@ -989,14 +1182,14 @@ export async function getPortalContentEditor({
   type: ContentTypeId
 }): Promise<ContentEditorRecord> {
   const find = requireMethod(payload, 'find')
-  // Isolate top-level locale mutation; depth 0 also avoids sharing relationship DataLoaders.
+  const collection = collectionFor(type)
   const editorReq = {
     ...req,
     context: { ...req.context },
     query: { ...req.query },
   } as PayloadRequest
   const result = await find({
-    collection: type,
+    collection,
     depth: 0,
     draft: VERSIONED_TYPES.has(type),
     fallbackLocale: false,
