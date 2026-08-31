@@ -20,10 +20,10 @@ export const WEBSITE_V17_COPY = {
       items: [
         {
           description:
-            'BIM coordination, Rhino/Grasshopper parametric modeling, structural wind pressure calculations, expansion node deepening, and CNC fabrication unwrapping.',
+            'BIM coordination, Rhino/Grasshopper parametric modeling, structural calculations, expansion node deepening, and CNC fabrication unwrapping.',
           features: [
             'Rhino & Grasshopper parametric surface modeling',
-            'Structural wind pressure & deflection analysis',
+            'Structural analysis & deflection coordination',
             'Expansion joint & substructure interface detailing',
             'Automated fabrication unfolding & node numbering',
           ],
@@ -46,11 +46,11 @@ export const WEBSITE_V17_COPY = {
         },
         {
           description:
-            'Full-scale Visual Mock-up (VMU) and Performance Mock-up (PMU) pre-assembly, 3D laser scanning coordinate inspection, and coating adhesion audit.',
+            'Full-scale Visual Mock-up (VMU) and Performance Mock-up (PMU) pre-assembly, coordinate inspection, and coating adhesion verification.',
           features: [
             '1:1 VMU visual & PMU performance pre-assembly',
-            '3D laser scanning spatial coordinate audit',
-            'Dimensional tolerance strictly within ±1.0 mm',
+            '3D coordinate checking & geometric audit',
+            'Rigorous dimensional tolerance & alignment check',
             'Dry film thickness & cross-hatch adhesion testing',
           ],
           id: 'mockup-qc',
@@ -73,10 +73,10 @@ export const WEBSITE_V17_COPY = {
       ],
       kicker: 'Factory Capabilities',
       stats: [
-        ['±1.0 mm', 'Hyperbolic fabrication tolerance'],
-        ['100%', 'Pre-assembly trial inspection'],
-        ['20+', 'Overseas export markets served'],
-        ['120+', 'Landmark facade batches delivered'],
+        ['Design Deepening', 'BIM & parametric coordination'],
+        ['Complex Forming', 'Multi-axis CNC hyperbolic roll-bending'],
+        ['Trial Assembly', '1:1 VMU & PMU inspection'],
+        ['Global Delivery', 'Export packing and logistics coordination'],
       ],
       subtitle:
         'A complete 4-step engineering workflow from parametric design deepening to complex hyperbolic fabrication, 1:1 mock-up verification, and overseas export delivery.',
@@ -131,7 +131,7 @@ export const WEBSITE_V17_COPY = {
           description:
             'Direct factory shop drawing coordination, bracket interface engineering, and reliable staged delivery schedules.',
           highlights: [
-            'Shop drawing & structural calculation review',
+            'Shop drawing & engineering calculation review',
             'Substructure & bracket interface coordination',
             'Batch coding & installation sequence labeling',
             'On-site installation tolerance guidance',
@@ -159,6 +159,25 @@ export const WEBSITE_V17_COPY = {
         'Tailored engineering coordination, fabrication feasibility analysis, and commercial support for architects, facade contractors, and main contractors.',
       title: 'Engineering Support for Facade Professionals',
     },
+    home: {
+      coreCapabilitiesKicker: 'Factory Craftsmanship',
+      coreCapabilitiesSubtitle:
+        'Source factory capability for double-curved, single-curved, perforated, and bespoke architectural metal envelopes.',
+      coreCapabilitiesTitle: 'High-Precision Complex Geometry Fabrication',
+      ctaButton: 'Upload Drawing',
+      ctaKicker: 'Start Your RFQ',
+      ctaSubtitle:
+        'Upload your architectural drawings, 3D geometry files, or tender BOQ for direct source factory buildability review.',
+      ctaTitle: 'Ready for a Buildability Review of Your Facade?',
+      howIvySupportsKicker: 'Engineering Workflow',
+      howIvySupportsSubtitle:
+        'A complete 4-step engineering model spanning design deepening, precision fabrication, 1:1 mock-up verification, and global export logistics.',
+      howIvySupportsTitle: 'How IVY Supports Your Facade Project',
+      professionalsKicker: 'Tailored Solutions',
+      professionalsSubtitle:
+        'Dedicated technical coordination and commercial deliverables for architects, facade contractors, and procurement heads.',
+      professionalsTitle: 'Engineered for Project Decision Makers',
+    },
     knowledge: {
       allCategories: 'All Topics',
       backToKnowledge: 'Back to Knowledge Base',
@@ -181,7 +200,7 @@ export const WEBSITE_V17_COPY = {
       title: 'Technical Facade Knowledge Base',
     },
     navigation: {
-      about: 'About Us',
+      about: 'About',
       capabilities: 'Capabilities',
       contact: 'Contact',
       forProfessionals: 'For Professionals',
@@ -213,10 +232,10 @@ export const WEBSITE_V17_COPY = {
       items: [
         {
           description:
-            'تكامل BIM، نمذجة بارامترية عبر Rhino/Grasshopper، حسابات ضغط الرياح، تعميق فواصل التمدد والتثبيت، وفرد التصنيع المؤتمت.',
+            'تكامل BIM، نمذجة بارامترية عبر Rhino/Grasshopper، حسابات إنشائية، تعميق فواصل التمدد والتثبيت، وفرد التصنيع المؤتمت.',
           features: [
             'نمذجة أسطح بارامترية عبر Rhino و Grasshopper',
-            'تحليل ضغط الرياح والتشوه الإنشائي',
+            'تحليل الإجهاد الإنشائي ومقاومة الرياح',
             'تفصيل فواصل التمدد وواجهات الهيكل الثانوي',
             'فرد ألواح التصنيع وترقيم العقد تلقائيًا',
           ],
@@ -239,11 +258,11 @@ export const WEBSITE_V17_COPY = {
         },
         {
           description:
-            'تجميع تجريبي مسبق لعينات VMU البصرية واختبارات PMU للأداء، تدقيق الإحداثيات بالمسح الليزري ثلاثي الأبعاد، وفحص الالتصاق.',
+            'تجميع تجريبي مسبق لعينات VMU البصرية واختبارات PMU للأداء، تدقيق الإحداثيات الهندسية، وفحص التصاق الطلاء.',
           features: [
             'تجميع تجريبي مسبق لعينات 1:1 VMU و PMU',
-            'تدقيق إحداثيات الأبعاد بالمسح الليزري 3D',
-            'تفاوت أبعاد التصنيع بدقة ضمن ±1.0 مم',
+            'تدقيق إحداثيات الأبعاد والتحقق الهندسي',
+            'فحص دقيق لتفاوت الأبعاد ومحاذاة المفاصل',
             'فحص سماكة طبقة الطلاء واختبار الالتصاق الشبكي',
           ],
           id: 'mockup-qc',
@@ -266,10 +285,10 @@ export const WEBSITE_V17_COPY = {
       ],
       kicker: 'قدرات المصنع',
       stats: [
-        ['±1.0 مم', 'تفاوت تصنيع الألواح المنحنية'],
-        ['100%', 'فحص تجميع تجريبي مسبق'],
-        ['+20', 'سوق تصدير دولي تمت خدمته'],
-        ['+120', 'دفعة واجهات لمشاريع مميزة'],
+        ['تعميق التصميم', 'تنسيق بارامتري عبر BIM و Grasshopper'],
+        ['التشكيل المعقد', 'درفلة CNC متعددة المحاور للألواح المنحنية'],
+        ['التجميع التجريبي', 'فحص عينات 1:1 VMU و PMU'],
+        ['التسليم الدولي', 'تعبئة مخصصة للتصدير وتنسيق لوجستي'],
       ],
       subtitle:
         'مسار عمل هندسي متكامل من 4 خطوات: من تعميق التصميم البارامتري إلى التشكيل المنحني المعقد، ونماذج 1:1، والتسليم للتصدير.',
@@ -324,7 +343,7 @@ export const WEBSITE_V17_COPY = {
           description:
             'تنسيق مباشر للرسومات التنفيذية من المصنع، هندسة واجهات التثبيت، وجداول تسليم مرحلية موثوقة للموقع.',
           highlights: [
-            'مراجعة الرسومات التنفيذية والحسابات الإنشائية',
+            'مراجعة الرسومات التنفيذية والحسابات الهندسية',
             'تنسيق واجهات التثبيت مع الهيكل الإنشائي الثانوي',
             'ترميز الدفعات وتسمية تسلسل التركيب بوضوح',
             'إرشادات تفاوت الأبعاد والتركيب في الموقع',
@@ -351,6 +370,25 @@ export const WEBSITE_V17_COPY = {
       subtitle:
         'تنسيق هندسي متخصص، وتحليل جدوى التصنيع، ودعم تجاري مخصص للمعماريين ومقاولي الواجهات والمقاولين الرئيسيين.',
       title: 'الدعم الهندسي للمهنيين واستشاريي الواجهات',
+    },
+    home: {
+      coreCapabilitiesKicker: 'حرفية وتصنيع المصنع',
+      coreCapabilitiesSubtitle:
+        'قدرة مصنع مصدر للألواح أحادية الانحناء ومزدوجة الانحناء والمثقبة والمظاريف المعمارية المخصصة.',
+      coreCapabilitiesTitle: 'تصنيع عالي الدقة للأشكال الهندسية المعقدة',
+      ctaButton: 'رفع المخططات',
+      ctaKicker: 'ابدأ طلبك',
+      ctaSubtitle:
+        'أرسل رسوماتك التنفيذية أو ملفات النماذج ثلاثية الأبعاد أو جداول الكميات لتقييم مباشر من المصنع.',
+      ctaTitle: 'هل أنت جاهز لمراجعة قابلية تصنيع واجهتك؟',
+      howIvySupportsKicker: 'مسار العمل الهندسي',
+      howIvySupportsSubtitle:
+        'نموذج هندسي متكامل من المصنع المصدر يشمل تعميق التصميم، والتصنيع الدقيق، والتحقق عبر نماذج 1:1، واللوجستيات الدولية.',
+      howIvySupportsTitle: 'كيف تدعم IVYBM مشروع واجهتك',
+      professionalsKicker: 'حلول مخصصة',
+      professionalsSubtitle:
+        'مخرجات هندسية واضحة وتنسيق فني للمعماريين ومقاولي الواجهات ومديري المشتريات.',
+      professionalsTitle: 'مصمم خصيصًا لصناع القرار في المشاريع',
     },
     knowledge: {
       allCategories: 'جميع المواضيع',
@@ -411,6 +449,10 @@ export const getWebsiteV17Copy = (locale: Locale) => {
       ...v17Extension.contact,
     },
     forProfessionals: v17Extension.forProfessionals,
+    home: {
+      ...baseCopy.home,
+      ...v17Extension.home,
+    },
     knowledge: v17Extension.knowledge,
     navigation: {
       ...baseCopy.navigation,

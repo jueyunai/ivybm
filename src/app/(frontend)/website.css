@@ -98,7 +98,7 @@ h2 {
   align-items: center;
   justify-content: space-between;
   margin: 0 auto;
-  gap: 20px;
+  gap: 12px;
 }
 
 .brand {
@@ -106,6 +106,8 @@ h2 {
   align-items: center;
   gap: 10px;
   font-weight: 800;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .brand-mark {
@@ -122,14 +124,18 @@ h2 {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  flex-wrap: nowrap;
+  flex-shrink: 1;
 }
 
 .nav-links a {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 6px;
   color: rgba(255, 255, 255, 0.82);
   font-size: 14px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .nav-links a.active,
@@ -142,6 +148,13 @@ h2 {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
+  margin-inline-start: auto;
+}
+
+.nav-quote {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .language-select {
@@ -2075,7 +2088,7 @@ html[dir='rtl'] .chat-widget {
   }
 }
 
-@media (max-width: 920px) {
+@media (max-width: 1100px) {
   .nav-links {
     display: none;
   }
@@ -2097,7 +2110,11 @@ html[dir='rtl'] .chat-widget {
     border-radius: 8px;
     background: #24282d;
     box-shadow: var(--shadow);
+    z-index: 60;
   }
+}
+
+@media (max-width: 920px) {
 
   .mobile-navigation[data-open='true'] {
     display: flex;
