@@ -2178,10 +2178,6 @@ html[dir='rtl'] .chat-widget {
     gap: 8px;
   }
 
-  .brand > span:last-child {
-    display: none;
-  }
-
   .nav-quote {
     display: none;
   }

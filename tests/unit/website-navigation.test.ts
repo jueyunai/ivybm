@@ -27,6 +27,16 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
     const logo = screen.getByRole('img', { name: 'IVYBM' })
     expect(logo).toBeDefined()
     expect(logo.getAttribute('src')).toContain('ivybm-logo-trimmed.png')
+    const frame = logo.closest('.brand-logo-frame')
+    expect(frame).not.toBeNull()
+  })
+
+  it('ensures mobile CSS does not hide the brand logo or logo frame on narrow screens', () => {
+    const cssPath = path.resolve(process.cwd(), 'src/app/(frontend)/website.css')
+    const cssContent = fs.readFileSync(cssPath, 'utf8')
+
+    // Ensure the legacy rule that hides the last-child span in .brand is removed
+    expect(cssContent).not.toMatch(/\.brand\s*>\s*span:last-child/u)
   })
 
   it('allows brand images in next.config.ts localPatterns', () => {
