@@ -1,5 +1,11 @@
 const FALLBACK_PORTAL_PATH = '/dashboard'
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001F\u007F]/
+const PORTAL_ATTACHMENT_PATH_PATTERN = /^\/api\/portal\/leads\/[1-9]\d*\/attachments\/[1-9]\d*$/
+
+const isAllowedPortalPath = (pathname: string): boolean =>
+  pathname === '/dashboard' ||
+  pathname.startsWith('/dashboard/') ||
+  PORTAL_ATTACHMENT_PATH_PATTERN.test(pathname)
 
 const containsUnsafeEncoding = (value: string): boolean => {
   try {
@@ -19,14 +25,14 @@ export const safePortalReturnTo = (value: string | null | undefined): string => 
     return FALLBACK_PORTAL_PATH
   }
 
-  if (!value.startsWith('/dashboard') || containsUnsafeEncoding(value)) {
+  if (containsUnsafeEncoding(value)) {
     return FALLBACK_PORTAL_PATH
   }
 
   try {
     const parsed = new URL(value, 'https://portal.invalid')
     if (parsed.origin !== 'https://portal.invalid') return FALLBACK_PORTAL_PATH
-    if (parsed.pathname !== '/dashboard' && !parsed.pathname.startsWith('/dashboard/')) {
+    if (!isAllowedPortalPath(parsed.pathname)) {
       return FALLBACK_PORTAL_PATH
     }
     if (parsed.pathname.split('/').some((segment) => segment === '..' || segment === '.')) {
