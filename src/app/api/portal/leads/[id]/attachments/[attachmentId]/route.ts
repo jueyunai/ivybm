@@ -1,11 +1,12 @@
 import { readFile } from 'node:fs/promises'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 import {
   authorizeLeadRequest,
   leadErrorResponse,
   requireLeadID,
 } from '@/admin-portal/modules/leads/leadRoute'
+import { LeadCommandError } from '@/admin-portal/modules/leads/leadCommands'
 import { resolveManagedLeadAttachmentPath } from '@/modules/lead-attachments/files'
 
 export const dynamic = 'force-dynamic'
@@ -13,6 +14,18 @@ export const runtime = 'nodejs'
 
 export type LeadAttachmentDownloadDependencies = {
   fileReader?: (filePath: string) => Promise<Buffer | Uint8Array>
+}
+
+const isBrowserNavigation = (request: Request): boolean => {
+  const accept = request.headers.get('accept')?.toLowerCase() ?? ''
+  return accept.includes('text/html') || accept.includes('application/xhtml+xml')
+}
+
+const redirectUnauthenticatedBrowserToLogin = (request: Request): Response => {
+  const requestURL = new URL(request.url)
+  const loginURL = new URL('/dashboard/login', requestURL)
+  loginURL.searchParams.set('returnTo', `${requestURL.pathname}${requestURL.search}`)
+  return NextResponse.redirect(loginURL, 303)
 }
 
 export const createLeadAttachmentDownloadHandler = ({
@@ -96,6 +109,13 @@ export const createLeadAttachmentDownloadHandler = ({
         return new Response('Not found', { status: 404 })
       }
     } catch (error) {
+      if (
+        error instanceof LeadCommandError &&
+        error.code === 'leads-unauthenticated' &&
+        isBrowserNavigation(request)
+      ) {
+        return redirectUnauthenticatedBrowserToLogin(request)
+      }
       if ((error as { status?: unknown })?.status === 404) {
         return new Response('Not found', { status: 404 })
       }
