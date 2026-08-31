@@ -48,6 +48,14 @@ export function SiteHeader({
 
   return (
     <header className="site-header">
+      {/* Utility Topbar Strip */}
+      <div className="utility-strip" data-testid="utility-strip">
+        <div className="container utility-strip-inner">
+          <span>{copy.home.utilityLeft}</span>
+          <span className="utility-strip-badge">{copy.home.utilityRight}</span>
+        </div>
+      </div>
+
       <nav aria-label={copy.accessibility.mainNavigation} className="nav-shell">
         <Link aria-label={siteName} className="brand" href={localePath(locale)}>
           <span className="brand-mark">IVY</span>

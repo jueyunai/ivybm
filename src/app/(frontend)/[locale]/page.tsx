@@ -78,15 +78,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
 
   return (
     <>
-      {/* 1. Utility Topbar Strip */}
-      <div className="utility-strip" data-testid="utility-strip">
-        <div className="container utility-strip-inner">
-          <span>{copy.home.utilityLeft}</span>
-          <span className="utility-strip-badge">{copy.home.utilityRight}</span>
-        </div>
-      </div>
-
-      {/* 2. Hero */}
+      {/* 1. Hero */}
       <HeroCarousel
         images={heroImages}
         locale={locale}
@@ -94,7 +86,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         title={copy.home.heroTitle}
       />
 
-      {/* 3. "How IVY supports your project" 4-Step Engineering Workflow */}
+      {/* 2. "How IVY supports your project" 4-Step Engineering Workflow */}
       <section className="section">
         <div className="container">
           <SectionHeader
@@ -136,7 +128,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </div>
       </section>
 
-      {/* 4. Core Craftsmanship & Engineering Values (Neutral Craftsmanship) */}
+      {/* 3. Core Craftsmanship & Engineering Values (Neutral Craftsmanship) */}
       <section className="section alt">
         <div className="container">
           <SectionHeader
@@ -155,7 +147,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </div>
       </section>
 
-      {/* 5. For Professionals 3 Role Pillars */}
+      {/* 4. For Professionals 3 Role Pillars */}
       <section className="section">
         <div className="container">
           <SectionHeader
@@ -201,7 +193,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </div>
       </section>
 
-      {/* 6. Product Categories */}
+      {/* 5. Product Categories */}
       <section className="section alt">
         <div className="container">
           <SectionHeader
@@ -217,7 +209,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </div>
       </section>
 
-      {/* 7. Featured Projects */}
+      {/* 6. Featured Projects */}
       <section className="section">
         <div className="container">
           <SectionHeader
@@ -238,7 +230,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </div>
       </section>
 
-      {/* 8. Final Buildability Review / Upload Drawing CTA */}
+      {/* 7. Final Buildability Review / Upload Drawing CTA */}
       <section className="section feature-band">
         <div className="container">
           <SectionHeader

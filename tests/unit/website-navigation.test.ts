@@ -14,6 +14,18 @@ vi.mock('next/navigation', () => ({
 afterEach(cleanup)
 
 describe('SiteHeader navigation and CTA', () => {
+  it('renders utility topbar strip above navigation in English', () => {
+    render(
+      React.createElement(SiteHeader, {
+        locale: 'en',
+        siteName: 'IVYBM',
+      }),
+    )
+
+    expect(screen.getByText('Architectural aluminum for complex facade projects')).toBeDefined()
+    expect(screen.getByText('Engineering · Fabrication · QC · Global Delivery')).toBeDefined()
+  })
+
   it('renders navigation tabs in the fixed order: Products -> Capabilities -> Projects -> For Professionals -> Knowledge -> News -> About (About instead of About Us)', () => {
     render(
       React.createElement(SiteHeader, {
@@ -60,6 +72,9 @@ describe('SiteHeader navigation and CTA', () => {
         siteName: 'IVYBM',
       }),
     )
+
+    expect(screen.getByText('ألمنيوم معماري لمشاريع الواجهات المعقدة')).toBeDefined()
+    expect(screen.getByText('الهندسة · التصنيع · ضبط الجودة · التسليم الدولي')).toBeDefined()
 
     const nav = screen.getByRole('navigation', { name: 'التنقل الرئيسي' })
     const links = Array.from(nav.querySelectorAll('.nav-links a')).map((a) => a.getAttribute('href'))
