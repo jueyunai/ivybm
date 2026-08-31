@@ -55,7 +55,7 @@ import { getPageBySlug, getProducts, getProjects, getSiteSettings } from '@/lib/
 afterEach(cleanup)
 
 describe('HomePage v1.7 Narrative & Structure', () => {
-  it('renders concise home page with Hero, 4-step workflow summary, 3 craftsmanship focus cards with Explore Capabilities, 3 role summary cards, and final CTA in English', async () => {
+  it('renders concise home page with distinct layout, independent summaries, and no detail-page long copy in English', async () => {
     vi.mocked(getPageBySlug).mockResolvedValueOnce(mockPage)
     vi.mocked(getProducts).mockResolvedValueOnce(mockProducts)
     vi.mocked(getProjects).mockResolvedValueOnce(mockProjects)
@@ -70,28 +70,43 @@ describe('HomePage v1.7 Narrative & Structure', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Professional Curved Aluminum Panel Manufacturer' })).toBeDefined()
     expect(screen.getAllByRole('link', { name: /View All Projects/i }).length).toBeGreaterThanOrEqual(1)
 
-    // 2. "How IVY supports your project" 4 steps (summary cards, no long features lists)
+    // 2. "How IVY supports your project" 4 steps in distinct home-support-grid (independent short descriptions)
+    expect(container.querySelector('.home-support-band')).not.toBeNull()
+    expect(container.querySelector('.home-support-grid')).not.toBeNull()
     expect(screen.getByText('How IVY Supports Your Facade Project')).toBeDefined()
-    expect(screen.getByText('Design Deepening & 3D Engineering')).toBeDefined()
-    expect(screen.getByText('Complex Hyperbolic Fabrication')).toBeDefined()
-    expect(screen.getByText('1:1 Mock-up & Precision Inspection')).toBeDefined()
-    expect(screen.getByText('Global Export Delivery & Packaging')).toBeDefined()
-    // Verify no capability-features list on home page
+    expect(screen.getByText('Design & Engineering')).toBeDefined()
+    expect(screen.getByText('Geometry review, panelization, shop drawings and buildability input.')).toBeDefined()
+    expect(screen.getByText('Complex Fabrication')).toBeDefined()
+    expect(screen.getByText('Flat, curved, perforated and free-form architectural aluminum.')).toBeDefined()
+    expect(screen.getByText('Mock-up & QC')).toBeDefined()
+    expect(screen.getByText('Representative samples, dimensional checks, finish review and pre-shipment inspection.')).toBeDefined()
+    expect(screen.getByText('Global Delivery')).toBeDefined()
+    expect(screen.getByText('Panel numbering, export packing, container planning and shipment coordination.')).toBeDefined()
+
+    // Assert that detail-page long descriptions and feature lists do NOT appear on Home page
+    expect(screen.queryByText(/BIM coordination, Rhino\/Grasshopper parametric modeling/i)).toBeNull()
+    expect(screen.queryByText(/Multi-axis CNC roll-bending, hyperbolic panel forming/i)).toBeNull()
     expect(container.querySelector('.capability-features')).toBeNull()
 
-    // 3. Core Capabilities / Craftsmanship (3 concise cards with Explore Capabilities action link)
+    // 3. Core Capabilities / Craftsmanship in distinct home-focus-grid (3 focus cards with Explore Capabilities action link)
+    expect(container.querySelector('.home-focus-grid')).not.toBeNull()
     expect(screen.getByText('High-Precision Complex Geometry Fabrication')).toBeDefined()
     expect(screen.getByText('Double-Curved & Complex Geometry')).toBeDefined()
     expect(screen.getByText('Curved Louvers & Architectural Fins')).toBeDefined()
     expect(screen.getByText('Mashrabiya & Perforated Metal Panels')).toBeDefined()
     expect(screen.getByRole('link', { name: /Explore Capabilities/i })).toBeDefined()
 
-    // 4. For Professionals 3 Pillars (concise role cards, no long highlights lists)
+    // 4. For Professionals in editorial split layout (home-prof-split) with concise summaries
+    expect(container.querySelector('.home-prof-split')).not.toBeNull()
     expect(screen.getByText('Engineered for Project Decision Makers')).toBeDefined()
-    expect(screen.getByText('Architects & Facade Consultants')).toBeDefined()
-    expect(screen.getByText('Curtain Wall & Facade Contractors')).toBeDefined()
-    expect(screen.getByText('Main Contractors & Procurement Heads')).toBeDefined()
-    // Verify no role-highlights list on home page
+    expect(screen.getByText('Architects & Consultants')).toBeDefined()
+    expect(screen.getByText('Geometry optimization, parametric surface rationalization, and physical VMU sample support.')).toBeDefined()
+    expect(screen.getByText('Facade Contractors')).toBeDefined()
+    expect(screen.getByText('General Contractors & Procurement')).toBeDefined()
+    expect(screen.getByRole('link', { name: /Explore Professional Solutions/i })).toBeDefined()
+
+    // Assert that detail-page long role descriptions and highlight lists do NOT appear on Home page
+    expect(screen.queryByText(/Transform complex parametric sketches and freeform curves/i)).toBeNull()
     expect(container.querySelector('.role-highlights')).toBeNull()
 
     // 5. Products & Projects
@@ -104,7 +119,7 @@ describe('HomePage v1.7 Narrative & Structure', () => {
     expect(allCtaButtons.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('renders Arabic localized concise home narrative, 3 craftsmanship cards, and Explore Capabilities CTA properly', async () => {
+  it('renders Arabic localized concise home narrative, distinct support grid, 3 craftsmanship cards, and Explore Capabilities CTA properly', async () => {
     vi.mocked(getPageBySlug).mockResolvedValueOnce(mockPage)
     vi.mocked(getProducts).mockResolvedValueOnce(mockProducts)
     vi.mocked(getProjects).mockResolvedValueOnce(mockProjects)
@@ -116,10 +131,14 @@ describe('HomePage v1.7 Narrative & Structure', () => {
     render(pageElement)
 
     expect(screen.getByText('كيف تدعم IVYBM مشروع واجهتك')).toBeDefined()
+    expect(screen.getByText('التصميم والهندسة')).toBeDefined()
+    expect(screen.getByText('التصنيع المعقد')).toBeDefined()
     expect(screen.getByText('تصنيع عالي الدقة للأشكال الهندسية المعقدة')).toBeDefined()
     expect(screen.getByText('الألواح مزدوجة الانحناء والأشكال المعقدة')).toBeDefined()
     expect(screen.getByRole('link', { name: /استكشف القدرات الهندسية/i })).toBeDefined()
     expect(screen.getByText('مصمم خصيصًا لصناع القرار في المشاريع')).toBeDefined()
+    expect(screen.getByText('المعماريون والاستشاريون')).toBeDefined()
+    expect(screen.getByRole('link', { name: /استكشف حلول المهنيين/i })).toBeDefined()
     expect(screen.getByText('هل أنت جاهز لمراجعة قابلية تصنيع واجهتك؟')).toBeDefined()
   })
 })

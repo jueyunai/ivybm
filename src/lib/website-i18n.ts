@@ -162,24 +162,24 @@ export const WEBSITE_V17_COPY = {
     home: {
       coreCapabilitiesKicker: 'Factory Craftsmanship',
       coreCapabilitiesSubtitle:
-        'Source factory capability specializing in double-curved panels, architectural louvers, and bespoke building envelopes.',
+        'Source factory capability for custom curved panels, architectural louvers, and perforated facade systems.',
       coreCapabilitiesTitle: 'High-Precision Complex Geometry Fabrication',
       craftsmanshipItems: [
         {
           description:
-            'Multi-axis CNC roll-bending and robotic seamless welding for freeform architectural envelopes.',
+            'Single-curved, double-curved and custom-shaped aluminum panels for architectural facades.',
           id: 'double-curved',
           title: 'Double-Curved & Complex Geometry',
         },
         {
           description:
-            'Custom extruded and formed aerodynamic shading profiles with durable 3-coat PVDF finish.',
+            'Aerodynamic shading louvers, decorative fins and custom extruded profiles.',
           id: 'louvers',
           title: 'Curved Louvers & Architectural Fins',
         },
         {
           description:
-            'Precision CNC laser perforation, acoustic patterns, and decorative facade lattice screens.',
+            'Custom laser-cut perforation, geometric screening and architectural lattice panels.',
           id: 'mashrabiya',
           title: 'Mashrabiya & Perforated Metal Panels',
         },
@@ -194,10 +194,63 @@ export const WEBSITE_V17_COPY = {
       howIvySupportsSubtitle:
         'A streamlined 4-step engineering model from design deepening to precision fabrication, mock-up testing, and export delivery.',
       howIvySupportsTitle: 'How IVY Supports Your Facade Project',
+      professionalsBody:
+        'From parametric modeling and mock-up verification to site delivery batches and BOQ optimization, we provide direct engineering coordination tailored to each project stakeholder.',
+      professionalsCta: 'Explore Professional Solutions',
       professionalsKicker: 'Tailored Solutions',
       professionalsSubtitle:
         'Dedicated technical coordination and commercial deliverables for architects, facade contractors, and procurement heads.',
       professionalsTitle: 'Engineered for Project Decision Makers',
+      professionalSummaries: [
+        {
+          description:
+            'Geometry optimization, parametric surface rationalization, and physical VMU sample support.',
+          id: 'architects',
+          title: 'Architects & Consultants',
+        },
+        {
+          description:
+            'Shop drawing coordination, bracket interface engineering, and staged site delivery schedules.',
+          id: 'contractors',
+          title: 'Facade Contractors',
+        },
+        {
+          description:
+            'Factory-direct BOQ pricing, transparent raw material certifications, and export logistics.',
+          id: 'procurement',
+          title: 'General Contractors & Procurement',
+        },
+      ],
+      supportItems: [
+        {
+          description:
+            'Geometry review, panelization, shop drawings and buildability input.',
+          id: 'design-engineering',
+          step: '01',
+          title: 'Design & Engineering',
+        },
+        {
+          description:
+            'Flat, curved, perforated and free-form architectural aluminum.',
+          id: 'complex-fabrication',
+          step: '02',
+          title: 'Complex Fabrication',
+        },
+        {
+          description:
+            'Representative samples, dimensional checks, finish review and pre-shipment inspection.',
+          id: 'mockup-qc',
+          step: '03',
+          title: 'Mock-up & QC',
+        },
+        {
+          description:
+            'Panel numbering, export packing, container planning and shipment coordination.',
+          id: 'global-delivery',
+          step: '04',
+          title: 'Global Delivery',
+        },
+      ],
       utilityLeft: 'Architectural aluminum for complex facade projects',
       utilityRight: 'Engineering · Fabrication · QC · Global Delivery',
     },
@@ -397,24 +450,24 @@ export const WEBSITE_V17_COPY = {
     home: {
       coreCapabilitiesKicker: 'حرفية وتصنيع المصنع',
       coreCapabilitiesSubtitle:
-        'قدرة مصنع مصدر متخصصة في الألواح مزدوجة الانحناء، وكواسر الشمس المعمارية، والمظاريف المخصصة.',
+        'قدرة مصنع مصدر متخصصة في الألواح المنحنية المخصصة، وكواسر الشمس المعمارية، وأنظمة الواجهات المثقبة.',
       coreCapabilitiesTitle: 'تصنيع عالي الدقة للأشكال الهندسية المعقدة',
       craftsmanshipItems: [
         {
           description:
-            'درفلة CNC متعددة المحاور ولحام أرجون آلي غير ملحوم للمظاريف المعمارية الحرة.',
+            'ألواح ألمنيوم أحادية ومزدوجة الانحناء ومخصصة للواجهات المعمارية.',
           id: 'double-curved',
           title: 'الألواح مزدوجة الانحناء والأشكال المعقدة',
         },
         {
           description:
-            'مقاطع تظليل انسيابية مخصصة مشكلة ومطلية بـ PVDF ثلاثي الطبقات عالي المتانة.',
+            'كواسر شمس انسيابية، وزعانف معمارية، ومقاطع ألمنيوم مسحوبة مخصصة.',
           id: 'louvers',
           title: 'كواسر الشمس المنحنية والزعانف المعمارية',
         },
         {
           description:
-            'تثقيب ليزري دقيق CNC، وأنماط صوتية هندسية، وشاشات شبكية معمارية مزخرفة.',
+            'تثقيب ليزري مخصص، وشاشات هندسية، وألواح مشربية معمارية.',
           id: 'mashrabiya',
           title: 'المشربية والألواح المعدنية المثقبة',
         },
@@ -427,12 +480,65 @@ export const WEBSITE_V17_COPY = {
       exploreCapabilities: 'استكشف القدرات الهندسية',
       howIvySupportsKicker: 'مسار العمل الهندسي',
       howIvySupportsSubtitle:
-        'نموذج هندسي متكامل من 4 خطوات: من تعميق التصميم إلى التصنيع الدقيق، وفحص النماذج، والتسليم للتصدير.',
+        'نموذج هندسي مبسط من 4 خطوات: من تعميق التصميم إلى التصنيع الدقيق، وفحص النماذج، والتسليم للتصدير.',
       howIvySupportsTitle: 'كيف تدعم IVYBM مشروع واجهتك',
+      professionalsBody:
+        'من النمذجة البارامترية واعتماد النماذج إلى دفعات التسليم للموقع وتحسين جداول الكميات، نقدم تنسيقًا هندسيًا مباشرًا لكل شريك في المشروع.',
+      professionalsCta: 'استكشف حلول المهنيين',
       professionalsKicker: 'حلول مخصصة',
       professionalsSubtitle:
         'تنسيق فني متخصص ومخرجات تجارية واضحة للمعماريين ومقاولي الواجهات ومديري المشتريات.',
       professionalsTitle: 'مصمم خصيصًا لصناع القرار في المشاريع',
+      professionalSummaries: [
+        {
+          description:
+            'تحسين الأشكال الهندسية، وترشيد الأسطح البارامترية، ودعم عينات VMU الفعلية.',
+          id: 'architects',
+          title: 'المعماريون والاستشاريون',
+        },
+        {
+          description:
+            'تنسيق الرسومات التنفيذية، وهندسة واجهات التثبيت، وجداول تسليم مرحلية للموقع.',
+          id: 'contractors',
+          title: 'مقاولو الواجهات',
+        },
+        {
+          description:
+            'تسعير جداول الكميات مباشرة من المصنع، وشهادات المواد المعتمدة، ولوجستيات التصدير.',
+          id: 'procurement',
+          title: 'المقاولون العامون والمشتريات',
+        },
+      ],
+      supportItems: [
+        {
+          description:
+            'مراجعة الأشكال الهندسية، وتقسيم الألواح، والرسومات التنفيذية، ومدخلات قابلية التصنيع.',
+          id: 'design-engineering',
+          step: '01',
+          title: 'التصميم والهندسة',
+        },
+        {
+          description:
+            'ألواح ألمنيوم معمارية مسطحة ومنحنية ومثقبة وذات أشكال حرة.',
+          id: 'complex-fabrication',
+          step: '02',
+          title: 'التصنيع المعقد',
+        },
+        {
+          description:
+            'عينات ممثلة، وفحص الأبعاد، ومراجعة التشطيب، والفحص قبل الشحن.',
+          id: 'mockup-qc',
+          step: '03',
+          title: 'النماذج وضبط الجودة',
+        },
+        {
+          description:
+            'ترقيم الألواح، وتعبئة التصدير، وتخطيط الحاويات، وتنسيق الشحن.',
+          id: 'global-delivery',
+          step: '04',
+          title: 'التسليم الدولي',
+        },
+      ],
       utilityLeft: 'ألمنيوم معماري لمشاريع الواجهات المعقدة',
       utilityRight: 'الهندسة · التصنيع · ضبط الجودة · التسليم الدولي',
     },

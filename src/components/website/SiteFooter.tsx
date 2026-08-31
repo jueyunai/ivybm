@@ -33,13 +33,15 @@ export function SiteFooter({ locale, settings }: { locale: Locale; settings: Sit
       <div className="container footer-grid">
         <div>
           <Link aria-label={settings.siteName} className="brand" href={localePath(locale)}>
-            <Image
-              alt={settings.siteName}
-              className="brand-logo footer-brand-logo"
-              height={48}
-              src="/brand/ivybm-logo-trimmed.png"
-              width={150}
-            />
+            <span className="brand-logo-frame">
+              <Image
+                alt={settings.siteName}
+                className="brand-logo footer-brand-logo"
+                height={44}
+                src="/brand/ivybm-logo-trimmed.png"
+                width={140}
+              />
+            </span>
           </Link>
           {settings.siteDescription ? <p>{settings.siteDescription}</p> : null}
         </div>

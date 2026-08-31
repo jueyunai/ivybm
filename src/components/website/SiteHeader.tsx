@@ -59,14 +59,16 @@ export function SiteHeader({
 
       <nav aria-label={copy.accessibility.mainNavigation} className="nav-shell">
         <Link aria-label={siteName} className="brand" href={localePath(locale)}>
-          <Image
-            alt={siteName}
-            className="brand-logo header-brand-logo"
-            height={36}
-            priority
-            src="/brand/ivybm-logo-trimmed.png"
-            width={112}
-          />
+          <span className="brand-logo-frame">
+            <Image
+              alt={siteName}
+              className="brand-logo header-brand-logo"
+              height={32}
+              priority
+              src="/brand/ivybm-logo-trimmed.png"
+              width={104}
+            />
+          </span>
         </Link>
 
         <div className="nav-links" data-open={menuOpen}>

@@ -1,14 +1,11 @@
 import {
   IconArrowRight,
-  IconBuildingFactory2,
   IconColumns,
-  IconCompass,
   IconCube3dSphere,
   IconFlame,
   IconGridDots,
   IconPackageExport,
   IconTools,
-  IconTruckDelivery,
 } from '@tabler/icons-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
@@ -30,7 +27,6 @@ import { getWebsiteV17Copy } from '@/lib/website-i18n'
 
 const stepIcons = [IconCube3dSphere, IconFlame, IconTools, IconPackageExport]
 const craftIcons = [IconCube3dSphere, IconColumns, IconGridDots]
-const roleIcons = [IconCompass, IconBuildingFactory2, IconTruckDelivery]
 
 const loadHome = async (locale: Locale) => {
   const [page, products, projects, settings] = await Promise.all([
@@ -88,8 +84,8 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         title={copy.home.heroTitle}
       />
 
-      {/* 2. "How IVY supports your project" 4-Step Engineering Workflow (Concise summary cards) */}
-      <section className="section">
+      {/* 2. "How IVY supports your project" 4-Step Engineering Workflow (Full-width band, 4-column compact grid) */}
+      <section className="section home-support-band">
         <div className="container">
           <SectionHeader
             action={
@@ -102,19 +98,19 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
             kicker={copy.home.howIvySupportsKicker}
             title={copy.home.howIvySupportsTitle}
           />
-          <div className="capabilities-workflow">
-            {copy.capabilities.items.map((item, index) => {
+          <div className="home-support-grid">
+            {copy.home.supportItems.map((item, index) => {
               const Icon = stepIcons[index] || IconTools
               return (
-                <article className="capability-card" data-testid="workflow-step-card" key={item.id}>
-                  <div className="capability-header">
+                <article className="home-support-card" data-testid="workflow-step-card" key={item.id}>
+                  <div className="home-support-header">
                     <span className="capability-step" dir="ltr">
                       {item.step}
                     </span>
-                    <Icon aria-hidden className="text-blue" size={26} stroke={1.6} />
+                    <Icon aria-hidden className="text-blue" size={24} stroke={1.6} />
                   </div>
                   <h3>{item.title}</h3>
-                  <p className="muted">{item.description}</p>
+                  <p>{item.description}</p>
                 </article>
               )
             })}
@@ -122,7 +118,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </div>
       </section>
 
-      {/* 3. Core Capability & Craftsmanship (3 Concise Summary Focus Cards with Explore Capabilities link) */}
+      {/* 3. Core Capability & Craftsmanship (3 Focus Cards with Explore Capabilities link) */}
       <section className="section alt">
         <div className="container">
           <SectionHeader
@@ -136,16 +132,16 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
             kicker={copy.home.coreCapabilitiesKicker}
             title={copy.home.coreCapabilitiesTitle}
           />
-          <div className="grid cols-3">
+          <div className="home-focus-grid">
             {copy.home.craftsmanshipItems.map((craft, idx) => {
               const Icon = craftIcons[idx] || IconCube3dSphere
               return (
-                <article className="content-card p-6" data-testid="craftsmanship-card" key={craft.id}>
-                  <div className="mb-4 text-blue">
-                    <Icon aria-hidden size={30} stroke={1.6} />
+                <article className="home-focus-card" data-testid="craftsmanship-card" key={craft.id}>
+                  <div className="home-focus-icon">
+                    <Icon aria-hidden size={32} stroke={1.6} />
                   </div>
                   <h3>{craft.title}</h3>
-                  <p className="muted">{craft.description}</p>
+                  <p>{craft.description}</p>
                 </article>
               )
             })}
@@ -153,40 +149,25 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </div>
       </section>
 
-      {/* 4. For Professionals 3 Role Pillars (Concise Summary Cards) */}
+      {/* 4. For Professionals (Editorial Split Layout: Left Intro + Right 3 Concise Role Items) */}
       <section className="section">
-        <div className="container">
-          <SectionHeader
-            action={
-              <Link className="button ghost" href={localePath(locale, '/for-professionals')}>
-                {copy.actions.learnMore}
-                <IconArrowRight aria-hidden size={17} />
-              </Link>
-            }
-            description={copy.home.professionalsSubtitle}
-            kicker={copy.home.professionalsKicker}
-            title={copy.home.professionalsTitle}
-          />
-          <div className="professionals-grid">
-            {copy.forProfessionals.roles.map((role, index) => {
-              const Icon = roleIcons[index] || IconCompass
-              return (
-                <article className="role-card" data-testid="home-role-card" key={role.id}>
-                  <div className="capability-header">
-                    <span className="role-badge">{role.badge}</span>
-                    <Icon aria-hidden className="text-blue" size={24} stroke={1.6} />
-                  </div>
-                  <h3>{role.title}</h3>
-                  <p className="muted">{role.description}</p>
-                  <div className="role-card-action">
-                    <Link className="text-link" href={localePath(locale, '/for-professionals')}>
-                      {copy.actions.learnMore}
-                      <IconArrowRight aria-hidden size={17} />
-                    </Link>
-                  </div>
-                </article>
-              )
-            })}
+        <div className="container home-prof-split">
+          <div className="home-prof-intro">
+            <div className="section-kicker">{copy.home.professionalsKicker}</div>
+            <h2>{copy.home.professionalsTitle}</h2>
+            <p className="muted">{copy.home.professionalsBody}</p>
+            <Link className="button" href={localePath(locale, '/for-professionals')}>
+              {copy.home.professionalsCta}
+              <IconArrowRight aria-hidden size={18} />
+            </Link>
+          </div>
+          <div className="home-prof-list">
+            {copy.home.professionalSummaries.map((role) => (
+              <article className="home-prof-item" data-testid="home-role-card" key={role.id}>
+                <h3>{role.title}</h3>
+                <p>{role.description}</p>
+              </article>
+            ))}
           </div>
         </div>
       </section>
