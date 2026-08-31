@@ -222,6 +222,7 @@ describe('Feishu OAuth connection', () => {
     expect(tableBody.table.fields).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ field_name: '系统 Lead ID', type: 1 }),
+        expect.objectContaining({ field_name: '图纸与附件', type: 1 }),
         expect.objectContaining({ field_name: '下次跟进时间', type: 5 }),
       ]),
     )
