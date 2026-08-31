@@ -195,13 +195,13 @@ export const migrations = [
     name: '20260830_110000_task13_meta_webhook_identity_replay',
   },
   {
-    up: migration_20260831_100000_posts_content_type.up,
-    down: migration_20260831_100000_posts_content_type.down,
-    name: '20260831_100000_posts_content_type',
-  },
-]
     up: migration_20260831_092856_v17_cms_structures.up,
     down: migration_20260831_092856_v17_cms_structures.down,
     name: '20260831_092856_v17_cms_structures',
+  },
+  {
+    up: migration_20260831_100000_posts_content_type.up,
+    down: migration_20260831_100000_posts_content_type.down,
+    name: '20260831_100000_posts_content_type',
   },
 ]

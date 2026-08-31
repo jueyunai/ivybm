@@ -274,9 +274,7 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   CREATE INDEX "_products_v_version_engineering_workflow_order_idx" ON "_products_v_version_engineering_workflow" USING btree ("_order");
   CREATE INDEX "_products_v_version_engineering_workflow_parent_id_idx" ON "_products_v_version_engineering_workflow" USING btree ("_parent_id");
   CREATE UNIQUE INDEX "_products_v_version_engineering_workflow_locales_locale_pare" ON "_products_v_version_engineering_workflow_locales" USING btree ("_locale","_parent_id");
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_lead_attachments_fk" FOREIGN KEY ("lead_attachments_id") REFERENCES "public"."lead_attachments"("id") ON DELETE cascade ON UPDATE no action;
-  CREATE INDEX "payload_locked_documents_rels_lead_attachments_id_idx" ON "payload_locked_documents_rels" USING btree ("lead_attachments_id");
-  CREATE UNIQUE INDEX "lead_attachments_filename_idx" ON "lead_attachments" USING btree ("filename");`)
+  `)
 }
 
 export async function down({ db, payload, req }: MigrateDownArgs): Promise<void> {
@@ -329,10 +327,6 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   DROP TABLE "products_engineering_workflow_locales" CASCADE;
   DROP TABLE "_products_v_version_engineering_workflow" CASCADE;
   DROP TABLE "_products_v_version_engineering_workflow_locales" CASCADE;
-  ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_lead_attachments_fk";
-  
-  DROP INDEX "lead_attachments_filename_idx";
-  DROP INDEX "payload_locked_documents_rels_lead_attachments_id_idx";
   ALTER TABLE "products_locales" DROP COLUMN "disclaimer";
   ALTER TABLE "_products_v_locales" DROP COLUMN "version_disclaimer";
   ALTER TABLE "projects_locales" DROP COLUMN "project_snapshot";

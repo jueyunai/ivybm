@@ -18,12 +18,12 @@ import { getProductBySlug, getSiteSettings } from '@/lib/website-data'
 import { getWebsiteV17Copy } from '@/lib/website-i18n'
 import type { Product } from '@/payload-types'
 
-type ProductV17Fields = Product & {
+type ProductV17Fields = Omit<Product, 'disclaimer' | 'engineeringWorkflow'> & {
   disclaimer?: string | Record<string, unknown> | null
   engineeringWorkflow?:
     | string
     | Record<string, unknown>
-    | Array<{ description?: string | null; step?: string | null; title?: string | null }>
+    | Array<{ description?: string | null; stepNumber?: number | null; title?: string | null }>
     | null
   faqs?: Array<{ answer?: string | null; question?: string | null }> | null
 }
@@ -151,7 +151,9 @@ export default async function ProductDetailPage({
                       <div className="capability-card" key={idx}>
                         <div className="capability-header">
                           <span className="capability-step" dir="ltr">
-                            {stepItem.step || `0${idx + 1}`}
+                            {stepItem.stepNumber
+                              ? String(stepItem.stepNumber).padStart(2, '0')
+                              : `0${idx + 1}`}
                           </span>
                           <IconCube3dSphere aria-hidden className="text-blue" size={24} />
                         </div>
