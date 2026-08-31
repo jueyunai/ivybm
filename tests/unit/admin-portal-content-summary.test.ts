@@ -36,7 +36,7 @@ describe('Portal website content summary', () => {
 
     expect(
       parseContentQuery({ page: '-5', q: 'x'.repeat(120), status: 'unknown', type: 'users' }),
-    ).toEqual({ page: 1, q: 'x'.repeat(80), status: 'all', type: 'pages' })
+    ).toEqual({ page: 1, q: 'x'.repeat(80), status: 'all', type: 'products' })
   })
 
   it('uses access-controlled localized reads and returns metadata instead of CMS bodies', async () => {
@@ -262,7 +262,7 @@ describe('Portal website content summary', () => {
 
     expect(screen.getByRole('heading', { name: '官网内容' })).toBeTruthy()
     expect(screen.getByRole('navigation', { name: '官网内容' }).querySelectorAll('a')).toHaveLength(
-      7,
+      5,
     )
     expect(screen.getByRole('link', { name: /^产品2/ }).getAttribute('aria-current')).toBe('page')
     expect(screen.getByRole('link', { name: '英文预览' }).getAttribute('href')).toBe(

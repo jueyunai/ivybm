@@ -14,6 +14,17 @@ export const CONTENT_TYPE_IDS = [
   'downloads',
 ] as const
 
+// Pages and downloads remain available to internal migration/API code, but are not
+// operational content types. The Portal UI is intentionally limited to the
+// storefront collections that operators are expected to maintain.
+export const PORTAL_CONTENT_TYPE_IDS = [
+  'products',
+  'product-categories',
+  'projects',
+  'posts',
+  'knowledge',
+] as const
+
 export const CONTENT_STATUS_FILTERS = [
   'all',
   'draft',
@@ -28,6 +39,9 @@ export type ContentStatusFilter = (typeof CONTENT_STATUS_FILTERS)[number]
 export type ContentItemStatus =
   'active' | 'always-visible' | 'draft' | 'inactive' | 'published' | 'unpublished'
 export type ContentLocale = 'ar' | 'en'
+
+export const isPortalContentType = (value: string | undefined): value is ContentTypeId =>
+  PORTAL_CONTENT_TYPE_IDS.includes(value as (typeof PORTAL_CONTENT_TYPE_IDS)[number])
 
 export interface ContentQuery {
   page: number
@@ -140,15 +154,15 @@ export function parseContentQuery(
   const statusValue = firstValue(input.status)
   const pageValue = Number.parseInt(firstValue(input.page) ?? '1', 10)
 
+  const requestedType = typeValue as ContentTypeId | undefined
+
   return {
     page: Number.isSafeInteger(pageValue) && pageValue > 0 ? pageValue : 1,
     q: (firstValue(input.q) ?? '').trim().slice(0, 80),
     status: CONTENT_STATUS_FILTERS.includes(statusValue as ContentStatusFilter)
       ? (statusValue as ContentStatusFilter)
       : 'all',
-    type: CONTENT_TYPE_IDS.includes(typeValue as ContentTypeId)
-      ? (typeValue as ContentTypeId)
-      : 'pages',
+    type: isPortalContentType(requestedType) ? requestedType : 'products',
   }
 }
 

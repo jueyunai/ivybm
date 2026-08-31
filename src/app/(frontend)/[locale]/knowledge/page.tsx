@@ -9,7 +9,10 @@ import { getPosts, getSiteSettings } from '@/lib/website-data'
 import { getWebsiteV17Copy } from '@/lib/website-i18n'
 
 const loadKnowledgePosts = async (locale: Locale) => {
-  const [posts, settings] = await Promise.all([getPosts(locale), getSiteSettings(locale)])
+  const [posts, settings] = await Promise.all([
+    getPosts(locale, { contentType: 'knowledge' }),
+    getSiteSettings(locale),
+  ])
   return { posts, settings }
 }
 
