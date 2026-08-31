@@ -463,11 +463,16 @@ export function parseContentMutation(
             }
           })
         : []
+      const engineeringWorkflow = Array.isArray(input.engineeringWorkflow)
+        ? input.engineeringWorkflow
+        : parseWorkflow(stringValue(input, 'engineeringWorkflowText', { max: 10_000 }))
       data = {
         ...common,
         category: numericValue(input, 'categoryId', { required: true }),
         coverImage: numericValue(input, 'coverImageId', { required: true }),
         description: bodyText ? buildPlainRichText(bodyText, locale) : null,
+        disclaimer: optionalString(input, 'disclaimer', 5000),
+        engineeringWorkflow,
         gallery: numericList(input, 'galleryIds'),
         internalNotes: optionalString(input, 'internalNotes', 5000),
         shortDescription: optionalString(input, 'shortDescription', 1000),
@@ -492,6 +497,10 @@ export function parseContentMutation(
         gallery: numericList(input, 'galleryIds'),
         internalNotes: optionalString(input, 'internalNotes', 5000),
         location: optionalString(input, 'location', 500),
+        observedFocus: optionalString(input, 'observedFocus', 5000),
+        projectSnapshot: optionalString(input, 'projectSnapshot', 5000),
+        qualityVerification: optionalString(input, 'qualityVerification', 5000),
+        solutionFramework: optionalString(input, 'solutionFramework', 5000),
         summary: optionalString(input, 'summary', 1000),
       }
       break
@@ -1060,12 +1069,20 @@ const editorDataFor = (type: ContentTypeId, document: LooseRecord): LooseRecord 
           .join('\n'),
       }
     }
-    case 'products':
+    case 'products': {
+      const workflow = Array.isArray(document.engineeringWorkflow) ? document.engineeringWorkflow : []
       return {
         ...common,
         bodyText: richTextToPlainText(document.description),
         categoryId: relationID(document.category),
         coverImageId: relationID(document.coverImage),
+        disclaimer: document.disclaimer ?? '',
+        engineeringWorkflowText: workflow
+          .map((item) => {
+            const rec = asRecord(item)
+            return `${rec.stepNumber ?? ''} | ${rec.title || ''} | ${rec.description || ''}`
+          })
+          .join('\n'),
         galleryIds: Array.isArray(document.gallery)
           ? document.gallery.map(relationID).filter(Boolean)
           : [],
@@ -1073,6 +1090,7 @@ const editorDataFor = (type: ContentTypeId, document: LooseRecord): LooseRecord 
         shortDescription: document.shortDescription ?? '',
         specifications: Array.isArray(document.specifications) ? document.specifications : [],
       }
+    }
     case 'product-categories':
       return {
         ...common,
@@ -1090,6 +1108,10 @@ const editorDataFor = (type: ContentTypeId, document: LooseRecord): LooseRecord 
           : [],
         internalNotes: document.internalNotes ?? '',
         location: document.location ?? '',
+        observedFocus: document.observedFocus ?? '',
+        projectSnapshot: document.projectSnapshot ?? '',
+        qualityVerification: document.qualityVerification ?? '',
+        solutionFramework: document.solutionFramework ?? '',
         summary: document.summary ?? '',
       }
     case 'knowledge':
@@ -1121,8 +1143,8 @@ const LOCALIZED_EDITOR_FIELDS: Record<ContentTypeId, readonly string[]> = {
   pages: ['body', 'summary', 'title'],
   posts: ['content', 'excerpt', 'title'],
   'product-categories': ['description', 'title'],
-  products: ['description', 'shortDescription', 'title'],
-  projects: ['application', 'description', 'location', 'summary', 'title'],
+  products: ['description', 'disclaimer', 'shortDescription', 'title'],
+  projects: ['application', 'description', 'location', 'observedFocus', 'projectSnapshot', 'qualityVerification', 'solutionFramework', 'summary', 'title'],
 }
 
 const valueForLocale = (value: unknown, locale: ContentLocale): unknown => {

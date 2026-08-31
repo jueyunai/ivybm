@@ -28,10 +28,11 @@ import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import { Button, StatusBadge } from '@/admin-portal/core/ui'
 
-import type {
-  ContentCommandResult,
-  ContentEditorOption,
-  ContentEditorRecord,
+import {
+  parseWorkflow,
+  type ContentCommandResult,
+  type ContentEditorOption,
+  type ContentEditorRecord,
 } from './contentCommands'
 import type { ContentLocale, ContentSummaryItem, ContentTypeId } from './getContentSummary'
 
@@ -92,7 +93,9 @@ const copy = {
       capabilities: 'Capability Blocks (Title | Description | Badge | Metrics)',
       coverImage: 'Cover image',
       description: 'Description',
+      disclaimer: 'Disclaimer / Ordering notes',
       downloadFile: 'Download file',
+      engineeringWorkflow: '4-Step Engineering Workflow (Step | Title | Description)',
       downloadType: 'Download type',
       excerpt: 'Excerpt',
       faq: 'Frequently Asked Questions (Question | Answer)',
@@ -104,7 +107,10 @@ const copy = {
       knowledgeCategory: 'Knowledge category',
       location: 'Location',
       noIndex: 'Exclude from search indexing',
+      observedFocus: 'Design Challenge & Observed Focus',
       openGraphImage: 'Open Graph image',
+      projectSnapshot: 'Project Snapshot (Scale, Timeline, Scope)',
+      qualityVerification: 'Quality Verification & Delivery',
       postCategory: 'Post category',
       productCategory: 'Product category',
       publishedAt: 'Published at',
@@ -114,6 +120,7 @@ const copy = {
       seoTitle: 'SEO title',
       shortDescription: 'Short description',
       slug: 'Stable slug',
+      solutionFramework: 'Solution Framework & Engineering Method',
       sortOrder: 'Sort order',
       specifications: 'Specifications (label | value)',
       summary: 'Summary',
@@ -168,7 +175,9 @@ const copy = {
       capabilities: '能力卡片 (标题 | 描述 | 徽标 | 核心指标)',
       coverImage: '封面图',
       description: '描述',
+      disclaimer: '免责声明 / 订购须知',
       downloadFile: '下载文件',
+      engineeringWorkflow: '4 步工程流程 (步骤序号 | 步骤标题 | 步骤说明)',
       downloadType: '资料类型',
       excerpt: '摘要',
       faq: '常见问答 FAQ (问题 | 答案)',
@@ -180,7 +189,10 @@ const copy = {
       knowledgeCategory: '知识分类',
       location: '项目地点',
       noIndex: '不允许搜索引擎收录',
+      observedFocus: '设计挑战与关注点',
       openGraphImage: '社交分享图',
+      projectSnapshot: '项目概况（规模、周期、范围）',
+      qualityVerification: '质量验证与交付',
       postCategory: '文章分类',
       productCategory: '产品分类',
       publishedAt: '发布时间',
@@ -190,6 +202,7 @@ const copy = {
       seoTitle: '搜索标题',
       shortDescription: '简短介绍',
       slug: '固定链接标识',
+      solutionFramework: '工程解决方案',
       sortOrder: '排序',
       specifications: '规格参数（名称 | 数值）',
       summary: '摘要',
@@ -276,6 +289,8 @@ const emptyForm = (locale: 'ar' | 'en') => ({
   categoryId: '',
   coverImageId: '',
   description: '',
+  disclaimer: '',
+  engineeringWorkflowText: '',
   downloadType: 'catalog',
   excerpt: '',
   faqText: '',
@@ -287,7 +302,11 @@ const emptyForm = (locale: 'ar' | 'en') => ({
   isActive: true,
   locale,
   location: '',
+  observedFocus: '',
+  projectSnapshot: '',
   publishedAt: '',
+  qualityVerification: '',
+  solutionFramework: '',
   resourceMatrixText: '',
   roleCardsText: '',
   seoCanonical: '',
@@ -322,6 +341,8 @@ const normalizeForm = (record: ContentEditorRecord): EditorForm => {
     categoryId: scalar('categoryId'),
     coverImageId: scalar('coverImageId'),
     description: scalar('description'),
+    disclaimer: scalar('disclaimer'),
+    engineeringWorkflowText: scalar('engineeringWorkflowText'),
     downloadType: scalar('downloadType') || 'catalog',
     excerpt: scalar('excerpt'),
     faqText: scalar('faqText'),
@@ -333,7 +354,11 @@ const normalizeForm = (record: ContentEditorRecord): EditorForm => {
     isActive: data.isActive !== false,
     locale: record.locale,
     location: scalar('location'),
+    observedFocus: scalar('observedFocus'),
+    projectSnapshot: scalar('projectSnapshot'),
     publishedAt: toDateTimeLocalValue(data.publishedAt),
+    qualityVerification: scalar('qualityVerification'),
+    solutionFramework: scalar('solutionFramework'),
     resourceMatrixText: scalar('resourceMatrixText'),
     roleCardsText: scalar('roleCardsText'),
     seoCanonical: scalar('seoCanonical'),
@@ -674,6 +699,7 @@ export const ContentEditor = forwardRef<
   const requestBody = (action: string) => ({
     ...form,
     action,
+    engineeringWorkflow: parseWorkflow(form.engineeringWorkflowText),
     publishedAt: toISOStringOrEmpty(form.publishedAt),
     specifications: parseSpecifications(form.specificationsText),
   })
@@ -1119,6 +1145,36 @@ export const ContentEditor = forwardRef<
         ) : null}
 
         {type === 'products' ? (
+          <>
+            <Field label={text.fields.engineeringWorkflow} wide>
+              <textarea
+                maxLength={10000}
+                onChange={(event) => update('engineeringWorkflowText', event.target.value)}
+                placeholder={
+                  portalLocale === 'zh'
+                    ? '1 | 设计深化 | 3D建模与节点深化设计\n2 | 复杂成型 | 高精度数控弯圆成型\n3 | 打样质检 | 1:1实物样板与严苛质检\n4 | 全球交付 | 专用木箱与全球海运跟踪'
+                    : '1 | Design & Engineering | 3D parametric modeling\n2 | Complex Fabrication | High-precision CNC forming\n3 | Mock-up & QC | 1:1 physical sample and QA\n4 | Global Delivery | Protected crate packaging'
+                }
+                rows={4}
+                value={form.engineeringWorkflowText}
+              />
+            </Field>
+            <Field label={text.fields.disclaimer} wide>
+              <textarea
+                maxLength={5000}
+                onChange={(event) => update('disclaimer', event.target.value)}
+                placeholder={
+                  portalLocale === 'zh'
+                    ? '参考参数以最终工程图纸、确认样品与合同技术协议为准。'
+                    : 'Parameters are reference values. Final specifications are governed by approved shop drawings and contract.'
+                }
+                rows={3}
+                value={form.disclaimer}
+              />
+            </Field>
+          </>
+        ) : null}
+        {type === 'products' ? (
           <Field label={text.fields.specifications} wide>
             <textarea
               onChange={(event) => update('specificationsText', event.target.value)}
@@ -1127,6 +1183,70 @@ export const ContentEditor = forwardRef<
               value={form.specificationsText}
             />
           </Field>
+        ) : null}
+        {type === 'projects' ? (
+          <details className="portal-content-editor__section is-wide">
+            <summary>
+              <IconChevronDown aria-hidden="true" size={16} />{" "}
+              {portalLocale === 'zh'
+                ? '工程案例四维结构（Case Study 4D Structure）'
+                : 'Four-Dimensional Case Study Structure'}
+            </summary>
+            <div className="portal-content-editor__fields">
+              <Field label={text.fields.projectSnapshot} wide>
+                <textarea
+                  maxLength={5000}
+                  onChange={(event) => update('projectSnapshot', event.target.value)}
+                  placeholder={
+                    portalLocale === 'zh'
+                      ? '项目规模、工期要求与幕墙覆盖范围概况。'
+                      : 'Project scale, timeline, and envelope scope snapshot.'
+                  }
+                  rows={3}
+                  value={form.projectSnapshot}
+                />
+              </Field>
+              <Field label={text.fields.observedFocus} wide>
+                <textarea
+                  maxLength={5000}
+                  onChange={(event) => update('observedFocus', event.target.value)}
+                  placeholder={
+                    portalLocale === 'zh'
+                      ? '建筑曲面造型难点、节点连接要求与结构公差挑战。'
+                      : 'Freeform curvature, joint interface requirements, and structural tolerance challenges.'
+                  }
+                  rows={3}
+                  value={form.observedFocus}
+                />
+              </Field>
+              <Field label={text.fields.solutionFramework} wide>
+                <textarea
+                  maxLength={5000}
+                  onChange={(event) => update('solutionFramework', event.target.value)}
+                  placeholder={
+                    portalLocale === 'zh'
+                      ? '3D参数化分格拆件、数控滚弯与装配深化工程方案。'
+                      : 'Parametric panelization, CNC roll-bending, and fabrication engineering framework.'
+                  }
+                  rows={3}
+                  value={form.solutionFramework}
+                />
+              </Field>
+              <Field label={text.fields.qualityVerification} wide>
+                <textarea
+                  maxLength={5000}
+                  onChange={(event) => update('qualityVerification', event.target.value)}
+                  placeholder={
+                    portalLocale === 'zh'
+                      ? '1:1样板试拼装、三维激光扫描检测与现场平整度质量结果。'
+                      : '1:1 trial assembly, 3D laser scan inspection, and installed flatness verification.'
+                  }
+                  rows={3}
+                  value={form.qualityVerification}
+                />
+              </Field>
+            </div>
+          </details>
         ) : null}
         {type === 'projects' ? (
           <>

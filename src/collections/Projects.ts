@@ -62,6 +62,38 @@ export const Projects: CollectionConfig = {
       localized: true,
     },
     {
+      name: 'projectSnapshot',
+      type: 'textarea',
+      admin: {
+        description: 'Project overview snapshot (scale, timeline, scope, key challenges)',
+      },
+      localized: true,
+    },
+    {
+      name: 'observedFocus',
+      type: 'textarea',
+      admin: {
+        description: 'Key engineering challenges, architectural requirements, or design focus',
+      },
+      localized: true,
+    },
+    {
+      name: 'solutionFramework',
+      type: 'textarea',
+      admin: {
+        description: 'Engineering solution, 3D modeling, material selection, and fabrication method',
+      },
+      localized: true,
+    },
+    {
+      name: 'qualityVerification',
+      type: 'textarea',
+      admin: {
+        description: 'Quality inspection, trial assembly, tolerance verification, and delivery results',
+      },
+      localized: true,
+    },
+    {
       name: 'coverImage',
       type: 'upload',
       filterOptions: imageMediaFilter,

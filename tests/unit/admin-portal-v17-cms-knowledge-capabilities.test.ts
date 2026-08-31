@@ -381,3 +381,135 @@ describe('Knowledge content in Portal CMS (Posts contentType contract)', () => {
     )
   })
 })
+
+describe('Products & Projects v1.7 CMS structured fields', () => {
+  it('mutates and parses Products engineeringWorkflow and disclaimer', async () => {
+    const mutation = parseContentMutation('products', {
+      action: 'save-draft',
+      bodyText: 'Product description',
+      categoryId: '5',
+      coverImageId: '91',
+      disclaimer: 'Parameters are reference values. Final specifications are governed by shop drawings.',
+      engineeringWorkflowText: '1 | 3D Design | Parametric modeling\n2 | Roll-Bending | CNC fabrication',
+      locale: 'en',
+      seoDescription: 'SEO desc',
+      seoTitle: 'SEO title',
+      shortDescription: 'Short desc',
+      slug: 'double-curved-panel',
+      specifications: [{ label: 'Thickness', value: '3.0 mm' }],
+      title: 'Double Curved Panel',
+    })
+
+    expect(mutation.data).toMatchObject({
+      disclaimer: 'Parameters are reference values. Final specifications are governed by shop drawings.',
+      engineeringWorkflow: [
+        { description: 'Parametric modeling', stepNumber: 1, title: '3D Design' },
+        { description: 'CNC fabrication', stepNumber: 2, title: 'Roll-Bending' },
+      ],
+      slug: 'double-curved-panel',
+      title: 'Double Curved Panel',
+    })
+
+    const find = vi.fn().mockResolvedValue({
+      docs: [
+        {
+          _status: 'draft',
+          category: 5,
+          coverImage: 91,
+          disclaimer: 'Parameters are reference values.',
+          engineeringWorkflow: [
+            { description: 'Parametric modeling', stepNumber: 1, title: '3D Design' },
+          ],
+          id: 20,
+          seo: { description: 'Desc', title: 'Title' },
+          shortDescription: 'Short',
+          slug: 'double-curved-panel',
+          title: 'Double Curved Panel',
+          updatedAt: '2026-08-31T10:00:00.000Z',
+        },
+      ],
+    })
+
+    const editor = await getPortalContentEditor({
+      id: 20,
+      locale: 'en',
+      payload: { find },
+      req,
+      type: 'products',
+    })
+
+    expect(editor.data.disclaimer).toBe('Parameters are reference values.')
+    expect(editor.data.engineeringWorkflowText).toBe('1 | 3D Design | Parametric modeling')
+  })
+
+  it('mutates and parses Projects 4-dimensional case study fields', async () => {
+    const mutation = parseContentMutation('projects', {
+      action: 'save-draft',
+      application: 'Commercial facade',
+      bodyText: 'Project description',
+      coverImageId: '91',
+      locale: 'en',
+      location: 'Dubai, UAE',
+      observedFocus: 'Curved facade joints and tight tolerances',
+      projectSnapshot: '50,000 sqm landmark development',
+      qualityVerification: '1:1 trial assembly and laser 3D scanning',
+      seoDescription: 'Case study SEO',
+      seoTitle: 'Case study',
+      slug: 'dubai-tower',
+      solutionFramework: 'Parametric unitized panel engineering',
+      summary: 'Project summary',
+      title: 'Dubai Tower',
+    })
+
+    expect(mutation.data).toMatchObject({
+      observedFocus: 'Curved facade joints and tight tolerances',
+      projectSnapshot: '50,000 sqm landmark development',
+      qualityVerification: '1:1 trial assembly and laser 3D scanning',
+      solutionFramework: 'Parametric unitized panel engineering',
+      slug: 'dubai-tower',
+      title: 'Dubai Tower',
+    })
+
+    const find = vi.fn().mockResolvedValue({
+      docs: [
+        {
+          _status: 'draft',
+          application: 'Commercial facade',
+          coverImage: 91,
+          id: 30,
+          location: 'Dubai, UAE',
+          observedFocus: 'Curved facade joints',
+          projectSnapshot: '50,000 sqm landmark',
+          qualityVerification: '1:1 trial assembly',
+          seo: { description: 'Desc', title: 'Title' },
+          slug: 'dubai-tower',
+          solutionFramework: 'Parametric panel engineering',
+          summary: 'Summary',
+          title: 'Dubai Tower',
+          updatedAt: '2026-08-31T10:00:00.000Z',
+        },
+      ],
+    })
+
+    const editor = await getPortalContentEditor({
+      id: 30,
+      locale: 'en',
+      payload: { find },
+      req,
+      type: 'projects',
+    })
+
+    expect(editor.data.projectSnapshot).toBe('50,000 sqm landmark')
+    expect(editor.data.observedFocus).toBe('Curved facade joints')
+    expect(editor.data.solutionFramework).toBe('Parametric panel engineering')
+    expect(editor.data.qualityVerification).toBe('1:1 trial assembly')
+  })
+
+  it('registers the v1.7 CMS structures migration in the migration index', async () => {
+    const { migrations } = await import('@/migrations')
+    const v17Migration = migrations.find((m) => m.name === '20260831_092856_v17_cms_structures')
+    expect(v17Migration).toBeDefined()
+    expect(typeof v17Migration?.up).toBe('function')
+    expect(typeof v17Migration?.down).toBe('function')
+  })
+})

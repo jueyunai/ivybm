@@ -31,6 +31,7 @@ import * as migration_20260824_125651_task13_social_lead_contact from './2026082
 import * as migration_20260829_100000_lead_attachments from './20260829_100000_lead_attachments'
 import * as migration_20260830_110000_task13_meta_webhook_identity_replay from './20260830_110000_task13_meta_webhook_identity_replay'
 import * as migration_20260831_100000_posts_content_type from './20260831_100000_posts_content_type'
+import * as migration_20260831_092856_v17_cms_structures from './20260831_092856_v17_cms_structures'
 
 export const migrations = [
   {
@@ -197,5 +198,10 @@ export const migrations = [
     up: migration_20260831_100000_posts_content_type.up,
     down: migration_20260831_100000_posts_content_type.down,
     name: '20260831_100000_posts_content_type',
+  },
+]
+    up: migration_20260831_092856_v17_cms_structures.up,
+    down: migration_20260831_092856_v17_cms_structures.down,
+    name: '20260831_092856_v17_cms_structures',
   },
 ]
