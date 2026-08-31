@@ -3,7 +3,7 @@
 import {
   IconMenu2,
   IconMessageCircle,
-  IconSend,
+  IconUpload,
   IconX,
 } from '@tabler/icons-react'
 import Link from 'next/link'
@@ -11,19 +11,20 @@ import { usePathname, useRouter } from 'next/navigation'
 import React, { useState } from 'react'
 
 import {
-  getWebsiteCopy,
   localePath,
   type Locale,
   replacePathLocale,
 } from '@/lib/i18n'
+import { getWebsiteV17Copy } from '@/lib/website-i18n'
 
 const navItems = [
-  ['home', '/'],
-  ['about', '/about'],
   ['products', '/products'],
+  ['capabilities', '/capabilities'],
   ['projects', '/projects'],
+  ['forProfessionals', '/for-professionals'],
+  ['knowledge', '/knowledge'],
   ['news', '/news'],
-  ['contact', '/contact'],
+  ['about', '/about'],
 ] as const
 
 export function SiteHeader({
@@ -35,7 +36,7 @@ export function SiteHeader({
   siteName: string
   whatsapp?: null | string
 }) {
-  const copy = getWebsiteCopy(locale)
+  const copy = getWebsiteV17Copy(locale)
   const pathname = usePathname()
   const router = useRouter()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -56,7 +57,7 @@ export function SiteHeader({
         <div className="nav-links" data-open={menuOpen}>
           {navItems.map(([key, route]) => {
             const href = localePath(locale, route)
-            const active = route === '/' ? pathname === href : pathname.startsWith(href)
+            const active = pathname === href || pathname.startsWith(`${href}/`)
 
             return (
               <Link
@@ -66,7 +67,7 @@ export function SiteHeader({
                 key={key}
                 onClick={() => setMenuOpen(false)}
               >
-                {copy.navigation[key]}
+                {copy.navigation[key as keyof typeof copy.navigation]}
               </Link>
             )
           })}
@@ -94,8 +95,8 @@ export function SiteHeader({
             </a>
           ) : null}
           <Link className="button nav-quote" href={localePath(locale, '/contact')}>
-            <IconSend aria-hidden size={19} stroke={1.8} />
-            {copy.actions.quote}
+            <IconUpload aria-hidden size={19} stroke={1.8} />
+            {copy.actions.uploadDrawing}
           </Link>
           <button
             aria-expanded={menuOpen}
@@ -111,7 +112,7 @@ export function SiteHeader({
       <nav aria-label={copy.accessibility.mobileNavigation} className="mobile-navigation" data-open={menuOpen}>
         {navItems.map(([key, route]) => (
           <Link href={localePath(locale, route)} key={key} onClick={() => setMenuOpen(false)}>
-            {copy.navigation[key]}
+            {copy.navigation[key as keyof typeof copy.navigation]}
           </Link>
         ))}
       </nav>

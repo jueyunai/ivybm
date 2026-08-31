@@ -1,16 +1,18 @@
 import Link from 'next/link'
 import React from 'react'
 
-import { getWebsiteCopy, localePath, type Locale } from '@/lib/i18n'
+import { localePath, type Locale } from '@/lib/i18n'
+import { getWebsiteV17Copy } from '@/lib/website-i18n'
 import type { SiteSetting } from '@/payload-types'
 
 const navItems = [
-  ['home', '/'],
-  ['about', '/about'],
   ['products', '/products'],
+  ['capabilities', '/capabilities'],
   ['projects', '/projects'],
+  ['forProfessionals', '/for-professionals'],
+  ['knowledge', '/knowledge'],
   ['news', '/news'],
-  ['contact', '/contact'],
+  ['about', '/about'],
 ] as const
 
 const legalItems = [
@@ -20,7 +22,7 @@ const legalItems = [
 ] as const
 
 export function SiteFooter({ locale, settings }: { locale: Locale; settings: SiteSetting }) {
-  const copy = getWebsiteCopy(locale)
+  const copy = getWebsiteV17Copy(locale)
   const contactLines = [settings.contact?.email, settings.contact?.phone, settings.contact?.address]
     .filter(Boolean)
     .join('\n')
@@ -40,14 +42,14 @@ export function SiteFooter({ locale, settings }: { locale: Locale; settings: Sit
           <div className="footer-links">
             {navItems.map(([key, route]) => (
               <Link href={localePath(locale, route)} key={key}>
-                {copy.navigation[key]}
+                {copy.navigation[key as keyof typeof copy.navigation]}
               </Link>
             ))}
           </div>
           <div className="footer-links footer-links--legal">
             {legalItems.map(([key, route]) => (
               <Link href={localePath(locale, route)} key={key}>
-                {copy.legal[key]}
+                {copy.legal[key as keyof typeof copy.legal]}
               </Link>
             ))}
           </div>

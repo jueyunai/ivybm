@@ -180,3 +180,37 @@ export function PostCard({ locale, post }: { locale: Locale; post: Post }) {
     </article>
   )
 }
+
+export function KnowledgeCard({ locale, post }: { locale: Locale; post: Post }) {
+  const copy = getWebsiteCopy(locale)
+  const categoryLabel = getPostCategoryLabel(locale, post.category)
+
+  return (
+    <article className="content-card knowledge-card" data-testid="knowledge-card">
+      <Link href={localePath(locale, `/knowledge/${post.slug}`)}>
+        <WebsiteImage
+          className="card-image"
+          media={post.featuredImage}
+          sizes="(max-width: 640px) 100vw, 33vw"
+          type="card"
+        />
+      </Link>
+      <div className="card-body">
+        <div className="knowledge-meta">
+          <span className="knowledge-badge">{categoryLabel}</span>
+          {post.publishedAt ? (
+            <span>{new Intl.DateTimeFormat(locale).format(new Date(post.publishedAt))}</span>
+          ) : null}
+        </div>
+        <h3>
+          <Link href={localePath(locale, `/knowledge/${post.slug}`)}>{post.title}</Link>
+        </h3>
+        {post.excerpt ? <p className="muted">{post.excerpt}</p> : null}
+        <Link className="text-link" href={localePath(locale, `/knowledge/${post.slug}`)}>
+          {copy.actions.readMore}
+          <IconArrowRight aria-hidden size={17} />
+        </Link>
+      </div>
+    </article>
+  )
+}
