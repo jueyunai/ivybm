@@ -6,6 +6,7 @@ import {
   IconUpload,
   IconX,
 } from '@tabler/icons-react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import React, { useState } from 'react'
@@ -58,8 +59,14 @@ export function SiteHeader({
 
       <nav aria-label={copy.accessibility.mainNavigation} className="nav-shell">
         <Link aria-label={siteName} className="brand" href={localePath(locale)}>
-          <span className="brand-mark">IVY</span>
-          <span>{siteName}</span>
+          <Image
+            alt={siteName}
+            className="brand-logo header-brand-logo"
+            height={36}
+            priority
+            src="/brand/ivybm-logo-trimmed.png"
+            width={112}
+          />
         </Link>
 
         <div className="nav-links" data-open={menuOpen}>

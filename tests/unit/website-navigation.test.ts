@@ -15,7 +15,20 @@ vi.mock('next/navigation', () => ({
 
 afterEach(cleanup)
 
-describe('SiteHeader navigation and CTA', () => {
+describe('SiteHeader navigation, brand logo, and CTA', () => {
+  it('renders brand logo referencing /brand/ivybm-logo-trimmed.png with proper attributes in Header', () => {
+    render(
+      React.createElement(SiteHeader, {
+        locale: 'en',
+        siteName: 'IVYBM',
+      }),
+    )
+
+    const logo = screen.getByRole('img', { name: 'IVYBM' })
+    expect(logo).toBeDefined()
+    expect(logo.getAttribute('src')).toContain('ivybm-logo-trimmed.png')
+  })
+
   it('renders utility topbar strip above navigation in English', () => {
     render(
       React.createElement(SiteHeader, {
@@ -126,8 +139,8 @@ describe('SiteHeader navigation and CTA', () => {
   })
 })
 
-describe('SiteFooter navigation', () => {
-  it('renders navigation links in fixed order and legal links', () => {
+describe('SiteFooter brand logo and navigation', () => {
+  it('renders brand logo referencing /brand/ivybm-logo-trimmed.png in Footer', () => {
     const mockSettings = {
       contact: { address: 'Foshan, China', email: 'info@ivybm.com', phone: '+86 757 0000 0000' },
       siteDescription: 'Leading architectural facade panel manufacturer',
@@ -141,6 +154,9 @@ describe('SiteFooter navigation', () => {
       }),
     )
 
+    const logo = screen.getByRole('img', { name: 'IVYBM' })
+    expect(logo).toBeDefined()
+    expect(logo.getAttribute('src')).toContain('ivybm-logo-trimmed.png')
     expect(screen.getByText('Quick Links')).toBeDefined()
     expect(screen.getByRole('link', { name: 'About' })).toBeDefined()
     expect(screen.getByRole('link', { name: 'Privacy Policy' })).toBeDefined()

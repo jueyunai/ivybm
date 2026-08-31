@@ -162,16 +162,37 @@ export const WEBSITE_V17_COPY = {
     home: {
       coreCapabilitiesKicker: 'Factory Craftsmanship',
       coreCapabilitiesSubtitle:
-        'Source factory capability for double-curved, single-curved, perforated, and bespoke architectural metal envelopes.',
+        'Source factory capability specializing in double-curved panels, architectural louvers, and bespoke building envelopes.',
       coreCapabilitiesTitle: 'High-Precision Complex Geometry Fabrication',
+      craftsmanshipItems: [
+        {
+          description:
+            'Multi-axis CNC roll-bending and robotic seamless welding for freeform architectural envelopes.',
+          id: 'double-curved',
+          title: 'Double-Curved & Complex Geometry',
+        },
+        {
+          description:
+            'Custom extruded and formed aerodynamic shading profiles with durable 3-coat PVDF finish.',
+          id: 'louvers',
+          title: 'Curved Louvers & Architectural Fins',
+        },
+        {
+          description:
+            'Precision CNC laser perforation, acoustic patterns, and decorative facade lattice screens.',
+          id: 'mashrabiya',
+          title: 'Mashrabiya & Perforated Metal Panels',
+        },
+      ],
       ctaButton: 'Upload Drawing',
       ctaKicker: 'Start Your RFQ',
       ctaSubtitle:
         'Upload your architectural drawings, 3D geometry files, or tender BOQ for direct source factory buildability review.',
       ctaTitle: 'Ready for a Buildability Review of Your Facade?',
+      exploreCapabilities: 'Explore Capabilities',
       howIvySupportsKicker: 'Engineering Workflow',
       howIvySupportsSubtitle:
-        'A complete 4-step engineering model spanning design deepening, precision fabrication, 1:1 mock-up verification, and global export logistics.',
+        'A streamlined 4-step engineering model from design deepening to precision fabrication, mock-up testing, and export delivery.',
       howIvySupportsTitle: 'How IVY Supports Your Facade Project',
       professionalsKicker: 'Tailored Solutions',
       professionalsSubtitle:
@@ -376,20 +397,41 @@ export const WEBSITE_V17_COPY = {
     home: {
       coreCapabilitiesKicker: 'حرفية وتصنيع المصنع',
       coreCapabilitiesSubtitle:
-        'قدرة مصنع مصدر للألواح أحادية الانحناء ومزدوجة الانحناء والمثقبة والمظاريف المعمارية المخصصة.',
+        'قدرة مصنع مصدر متخصصة في الألواح مزدوجة الانحناء، وكواسر الشمس المعمارية، والمظاريف المخصصة.',
       coreCapabilitiesTitle: 'تصنيع عالي الدقة للأشكال الهندسية المعقدة',
+      craftsmanshipItems: [
+        {
+          description:
+            'درفلة CNC متعددة المحاور ولحام أرجون آلي غير ملحوم للمظاريف المعمارية الحرة.',
+          id: 'double-curved',
+          title: 'الألواح مزدوجة الانحناء والأشكال المعقدة',
+        },
+        {
+          description:
+            'مقاطع تظليل انسيابية مخصصة مشكلة ومطلية بـ PVDF ثلاثي الطبقات عالي المتانة.',
+          id: 'louvers',
+          title: 'كواسر الشمس المنحنية والزعانف المعمارية',
+        },
+        {
+          description:
+            'تثقيب ليزري دقيق CNC، وأنماط صوتية هندسية، وشاشات شبكية معمارية مزخرفة.',
+          id: 'mashrabiya',
+          title: 'المشربية والألواح المعدنية المثقبة',
+        },
+      ],
       ctaButton: 'رفع المخططات',
       ctaKicker: 'ابدأ طلبك',
       ctaSubtitle:
         'أرسل رسوماتك التنفيذية أو ملفات النماذج ثلاثية الأبعاد أو جداول الكميات لتقييم مباشر من المصنع.',
       ctaTitle: 'هل أنت جاهز لمراجعة قابلية تصنيع واجهتك؟',
+      exploreCapabilities: 'استكشف القدرات الهندسية',
       howIvySupportsKicker: 'مسار العمل الهندسي',
       howIvySupportsSubtitle:
-        'نموذج هندسي متكامل من المصنع المصدر يشمل تعميق التصميم، والتصنيع الدقيق، والتحقق عبر نماذج 1:1، واللوجستيات الدولية.',
+        'نموذج هندسي متكامل من 4 خطوات: من تعميق التصميم إلى التصنيع الدقيق، وفحص النماذج، والتسليم للتصدير.',
       howIvySupportsTitle: 'كيف تدعم IVYBM مشروع واجهتك',
       professionalsKicker: 'حلول مخصصة',
       professionalsSubtitle:
-        'مخرجات هندسية واضحة وتنسيق فني للمعماريين ومقاولي الواجهات ومديري المشتريات.',
+        'تنسيق فني متخصص ومخرجات تجارية واضحة للمعماريين ومقاولي الواجهات ومديري المشتريات.',
       professionalsTitle: 'مصمم خصيصًا لصناع القرار في المشاريع',
       utilityLeft: 'ألمنيوم معماري لمشاريع الواجهات المعقدة',
       utilityRight: 'الهندسة · التصنيع · ضبط الجودة · التسليم الدولي',

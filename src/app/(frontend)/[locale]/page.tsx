@@ -1,10 +1,11 @@
 import {
   IconArrowRight,
   IconBuildingFactory2,
-  IconCheck,
+  IconColumns,
   IconCompass,
   IconCube3dSphere,
   IconFlame,
+  IconGridDots,
   IconPackageExport,
   IconTools,
   IconTruckDelivery,
@@ -28,6 +29,7 @@ import {
 import { getWebsiteV17Copy } from '@/lib/website-i18n'
 
 const stepIcons = [IconCube3dSphere, IconFlame, IconTools, IconPackageExport]
+const craftIcons = [IconCube3dSphere, IconColumns, IconGridDots]
 const roleIcons = [IconCompass, IconBuildingFactory2, IconTruckDelivery]
 
 const loadHome = async (locale: Locale) => {
@@ -86,7 +88,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         title={copy.home.heroTitle}
       />
 
-      {/* 2. "How IVY supports your project" 4-Step Engineering Workflow */}
+      {/* 2. "How IVY supports your project" 4-Step Engineering Workflow (Concise summary cards) */}
       <section className="section">
         <div className="container">
           <SectionHeader
@@ -113,14 +115,6 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
                   </div>
                   <h3>{item.title}</h3>
                   <p className="muted">{item.description}</p>
-                  <ul className="capability-features">
-                    {item.features.slice(0, 2).map((feat, fIdx) => (
-                      <li key={fIdx}>
-                        <IconCheck aria-hidden className="inline-icon text-green" size={15} stroke={2.4} />
-                        <span>{feat}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </article>
               )
             })}
@@ -128,26 +122,38 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         </div>
       </section>
 
-      {/* 3. Core Craftsmanship & Engineering Values (Neutral Craftsmanship) */}
+      {/* 3. Core Capability & Craftsmanship (3 Concise Summary Focus Cards with Explore Capabilities link) */}
       <section className="section alt">
         <div className="container">
           <SectionHeader
+            action={
+              <Link className="button ghost" href={localePath(locale, '/capabilities')}>
+                {copy.home.exploreCapabilities}
+                <IconArrowRight aria-hidden size={17} />
+              </Link>
+            }
             description={copy.home.coreCapabilitiesSubtitle}
             kicker={copy.home.coreCapabilitiesKicker}
             title={copy.home.coreCapabilitiesTitle}
           />
-          <div className="stats">
-            {copy.capabilities.stats.map(([statTitle, statDesc]) => (
-              <div className="stat" key={statTitle}>
-                <strong>{statTitle}</strong>
-                <span>{statDesc}</span>
-              </div>
-            ))}
+          <div className="grid cols-3">
+            {copy.home.craftsmanshipItems.map((craft, idx) => {
+              const Icon = craftIcons[idx] || IconCube3dSphere
+              return (
+                <article className="content-card p-6" data-testid="craftsmanship-card" key={craft.id}>
+                  <div className="mb-4 text-blue">
+                    <Icon aria-hidden size={30} stroke={1.6} />
+                  </div>
+                  <h3>{craft.title}</h3>
+                  <p className="muted">{craft.description}</p>
+                </article>
+              )
+            })}
           </div>
         </div>
       </section>
 
-      {/* 4. For Professionals 3 Role Pillars */}
+      {/* 4. For Professionals 3 Role Pillars (Concise Summary Cards) */}
       <section className="section">
         <div className="container">
           <SectionHeader
@@ -172,17 +178,9 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
                   </div>
                   <h3>{role.title}</h3>
                   <p className="muted">{role.description}</p>
-                  <ul className="role-highlights">
-                    {role.highlights.slice(0, 2).map((highlight, hIndex) => (
-                      <li key={hIndex}>
-                        <IconCheck aria-hidden className="inline-icon text-green" size={15} stroke={2.4} />
-                        <span>{highlight}</span>
-                      </li>
-                    ))}
-                  </ul>
                   <div className="role-card-action">
-                    <Link className="text-link" href={localePath(locale, '/contact')}>
-                      {copy.actions.buildabilityReview}
+                    <Link className="text-link" href={localePath(locale, '/for-professionals')}>
+                      {copy.actions.learnMore}
                       <IconArrowRight aria-hidden size={17} />
                     </Link>
                   </div>

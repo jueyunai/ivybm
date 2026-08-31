@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import Link from 'next/link'
 import React from 'react'
 
@@ -31,9 +32,14 @@ export function SiteFooter({ locale, settings }: { locale: Locale; settings: Sit
     <footer className="site-footer">
       <div className="container footer-grid">
         <div>
-          <Link className="brand" href={localePath(locale)}>
-            <span className="brand-mark">IVY</span>
-            <span>{settings.siteName}</span>
+          <Link aria-label={settings.siteName} className="brand" href={localePath(locale)}>
+            <Image
+              alt={settings.siteName}
+              className="brand-logo footer-brand-logo"
+              height={48}
+              src="/brand/ivybm-logo-trimmed.png"
+              width={150}
+            />
           </Link>
           {settings.siteDescription ? <p>{settings.siteDescription}</p> : null}
         </div>
