@@ -1,27 +1,50 @@
-import { IconArrowRight, IconChecklist } from '@tabler/icons-react'
+import { IconArrowRight, IconChecklist, IconCube3dSphere } from '@tabler/icons-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import React from 'react'
 
+import { SpecificationTable } from '@/components/website/Cards'
 import { JsonLd } from '@/components/website/JsonLd'
 import { PageHero } from '@/components/website/PageHero'
 import { ProductGallery } from '@/components/website/ProductGallery'
 import { RichText } from '@/components/website/RichText'
-import { SpecificationTable } from '@/components/website/Cards'
 import { WebsiteImage } from '@/components/website/WebsiteImage'
 import { isPublicLocale } from '@/lib/i18n'
-import { getProductProcurementContent } from '@/lib/product-procurement'
 import { normalizeProductGallery } from '@/lib/product-gallery'
+import { getProductProcurementContent } from '@/lib/product-procurement'
 import { buildPageMetadata, buildProductJsonLd, getMediaURL } from '@/lib/seo'
 import { getProductBySlug, getSiteSettings } from '@/lib/website-data'
+import { getWebsiteV17Copy } from '@/lib/website-i18n'
+import type { Product } from '@/payload-types'
+
+type ProductV17Fields = Omit<Product, 'disclaimer' | 'engineeringWorkflow'> & {
+  disclaimer?: string | Record<string, unknown> | null
+  engineeringWorkflow?:
+    | string
+    | Record<string, unknown>
+    | Array<{ description?: string | null; stepNumber?: number | null; title?: string | null }>
+    | null
+  faqs?: Array<{ answer?: string | null; question?: string | null }> | null
+}
 
 const loadProduct = async (locale: 'ar' | 'en', slug: string) => {
   const [product, settings] = await Promise.all([
     getProductBySlug(locale, slug),
     getSiteSettings(locale),
   ])
-  return { product, settings }
+  return { product: product as ProductV17Fields | null, settings }
+}
+
+function RenderContentField({ data }: { data: unknown }) {
+  if (!data) return null
+  if (typeof data === 'string' && data.trim()) {
+    return <p className="muted pre-line">{data}</p>
+  }
+  if (typeof data === 'object' && 'root' in (data as Record<string, unknown>)) {
+    return <RichText data={data as Record<string, unknown>} />
+  }
+  return null
 }
 
 export async function generateMetadata({
@@ -54,9 +77,12 @@ export default async function ProductDetailPage({
   if (!isPublicLocale(locale)) notFound()
   const { product } = await loadProduct(locale, slug)
   if (!product) notFound()
+
+  const copy = getWebsiteV17Copy(locale)
   const gallery = normalizeProductGallery(product.coverImage, product.gallery)
   const procurement = getProductProcurementContent(locale, slug)
   const storyImages = gallery.slice(1)
+
   const jsonLd = buildProductJsonLd({
     description: product.shortDescription,
     image: getMediaURL(product.coverImage, 'large'),
@@ -64,6 +90,17 @@ export default async function ProductDetailPage({
     name: product.title,
     path: `/products/${slug}`,
   })
+
+  // Dynamic CMS fields with fallback
+  const hasCmsWorkflow = Boolean(product.engineeringWorkflow)
+  const hasCmsDisclaimer = Boolean(product.disclaimer)
+  const effectiveFaqs =
+    product.faqs && product.faqs.length > 0
+      ? product.faqs.filter(
+          (faq): faq is { answer: string; question: string } =>
+            Boolean(faq.question?.trim()) && Boolean(faq.answer?.trim()),
+        )
+      : procurement.faqs
 
   return (
     <>
@@ -89,7 +126,7 @@ export default async function ProductDetailPage({
               />
             ) : null}
             <Link className="button product-quote-button" href={procurement.quoteHref}>
-              {procurement.quoteAction}
+              {copy.actions.uploadDrawing}
               <IconArrowRight aria-hidden size={19} />
             </Link>
           </div>
@@ -99,6 +136,53 @@ export default async function ProductDetailPage({
         <div className="container product-decision-layout">
           <article className="product-description-card">
             <RichText data={product.description} />
+
+            {/* Engineering Workflow (CMS field prioritized, unified 4-step fallback) */}
+            <section aria-labelledby="product-workflow-title" className="product-workflow-section">
+              <h2 id="product-workflow-title">
+                {locale === 'ar'
+                  ? 'مسار العمل الهندسي وضبط التصنيع'
+                  : 'Engineering Workflow & Production Control'}
+              </h2>
+              {hasCmsWorkflow ? (
+                Array.isArray(product.engineeringWorkflow) ? (
+                  <div className="capabilities-workflow">
+                    {product.engineeringWorkflow.map((stepItem, idx) => (
+                      <div className="capability-card" key={idx}>
+                        <div className="capability-header">
+                          <span className="capability-step" dir="ltr">
+                            {stepItem.stepNumber
+                              ? String(stepItem.stepNumber).padStart(2, '0')
+                              : `0${idx + 1}`}
+                          </span>
+                          <IconCube3dSphere aria-hidden className="text-blue" size={24} />
+                        </div>
+                        {stepItem.title ? <h3>{stepItem.title}</h3> : null}
+                        {stepItem.description ? <p className="muted">{stepItem.description}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <RenderContentField data={product.engineeringWorkflow} />
+                )
+              ) : (
+                <div className="capabilities-workflow">
+                  {copy.capabilities.items.map((item) => (
+                    <div className="capability-card" key={item.id}>
+                      <div className="capability-header">
+                        <span className="capability-step" dir="ltr">
+                          {item.step}
+                        </span>
+                        <IconCube3dSphere aria-hidden className="text-blue" size={24} />
+                      </div>
+                      <h3>{item.title}</h3>
+                      <p className="muted">{item.description}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
             {storyImages.length ? (
               <section aria-labelledby="product-story-title" className="product-story">
                 <h2 id="product-story-title">{procurement.productStoryTitle}</h2>
@@ -121,6 +205,7 @@ export default async function ProductDetailPage({
                 </div>
               </section>
             ) : null}
+
             <section
               aria-labelledby="product-legacy-reference-title"
               className="product-legacy-reference"
@@ -131,6 +216,15 @@ export default async function ProductDetailPage({
                 caption={procurement.legacyReferenceCaption}
                 rows={[...procurement.legacyReferenceRows]}
               />
+
+              {/* Disclaimer block (CMS field prioritized, safe fallback) */}
+              <div className="product-disclaimer-box">
+                {hasCmsDisclaimer ? (
+                  <RenderContentField data={product.disclaimer} />
+                ) : (
+                  <p>{procurement.legacyReferenceNote}</p>
+                )}
+              </div>
             </section>
           </article>
           <aside className="product-procurement-aside">
@@ -144,7 +238,7 @@ export default async function ProductDetailPage({
                 ))}
               </ul>
               <Link className="button" href={procurement.quoteHref}>
-                {procurement.quoteAction}
+                {copy.actions.uploadDrawing}
                 <IconArrowRight aria-hidden size={19} />
               </Link>
             </section>
@@ -161,17 +255,19 @@ export default async function ProductDetailPage({
             ) : null}
           </aside>
         </div>
-        <div className="container product-faq">
-          <h2>{procurement.faqTitle}</h2>
-          <div className="product-faq-list">
-            {procurement.faqs.map((item) => (
-              <details key={item.question}>
-                <summary>{item.question}</summary>
-                <p>{item.answer}</p>
-              </details>
-            ))}
+        {effectiveFaqs.length ? (
+          <div className="container product-faq">
+            <h2>{procurement.faqTitle}</h2>
+            <div className="product-faq-list">
+              {effectiveFaqs.map((item) => (
+                <details key={item.question}>
+                  <summary>{item.question}</summary>
+                  <p>{item.answer}</p>
+                </details>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
       </section>
     </>
   )

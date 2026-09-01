@@ -185,6 +185,7 @@ const messages = {
         'Disconnect the account before changing its provider identity.',
       invalid_capabilities: 'Select a valid review status for both capabilities.',
       invalid_external_account_id: 'Enter a valid provider account ID.',
+      invalid_ai_auto_reply_enabled: 'Choose whether AI auto-reply is enabled or paused.',
       invalid_name: 'Enter a valid display name.',
       invalid_notes: 'Notes are too long.',
       no_changes: 'No changes were detected.',
@@ -355,6 +356,7 @@ const messages = {
       identity_change_requires_credential_rotation: '请先断开授权，再修改平台账号标识。',
       invalid_capabilities: '请为两项能力选择有效的审核状态。',
       invalid_external_account_id: '请输入有效的平台账号 ID。',
+      invalid_ai_auto_reply_enabled: '请选择开启或暂停 AI 自动回复。',
       invalid_name: '请输入有效的显示名称。',
       invalid_notes: '备注内容过长。',
       no_changes: '没有检测到修改。',
@@ -1056,17 +1058,6 @@ export function PlatformReadinessPage({
                         <Button asChild size="compact" variant="secondary">
                           <a href={`${paths.start}?accountId=${account.id}`}>{copy.reauthorize}</a>
                         </Button>
-                        <Button
-                          disabled={disconnectingId === account.id}
-                          onClick={() => {
-                            setDeletingId(null)
-                            setDisconnectingId(account.id)
-                          }}
-                          size="compact"
-                          variant="danger"
-                        >
-                          {copy.disconnect}
-                        </Button>
                       </>
                     ) : paths ? (
                       <Button asChild size="compact" variant="primary">
@@ -1267,9 +1258,7 @@ export function PlatformReadinessPage({
                       >
                         {autoReplyEnabled(account) ? copy.pauseAutoReply : copy.resumeAutoReply}
                       </Button>
-                    ) : (
-                      <small>{autoReplyLabel(account, copy)}</small>
-                    )}
+                    ) : null}
                   </div>
                   <div>
                     <span>{copy.publishing}</span>

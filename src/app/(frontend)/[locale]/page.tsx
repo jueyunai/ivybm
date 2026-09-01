@@ -1,8 +1,11 @@
 import {
-  IconBuildingFactory2,
-  IconCertificate,
-  IconSettings,
-  IconShip,
+  IconArrowRight,
+  IconColumns,
+  IconCube3dSphere,
+  IconFlame,
+  IconGridDots,
+  IconPackageExport,
+  IconTools,
 } from '@tabler/icons-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
@@ -12,7 +15,7 @@ import React from 'react'
 import { ProductCard, ProjectCard } from '@/components/website/Cards'
 import { HeroCarousel } from '@/components/website/HeroCarousel'
 import { SectionHeader } from '@/components/website/SectionHeader'
-import { getWebsiteCopy, isPublicLocale, localePath, type Locale } from '@/lib/i18n'
+import { isPublicLocale, localePath, type Locale } from '@/lib/i18n'
 import { buildPageMetadata } from '@/lib/seo'
 import {
   getPageBySlug,
@@ -20,8 +23,10 @@ import {
   getProjects,
   getSiteSettings,
 } from '@/lib/website-data'
+import { getWebsiteV17Copy } from '@/lib/website-i18n'
 
-const valueIcons = [IconBuildingFactory2, IconSettings, IconShip, IconCertificate]
+const stepIcons = [IconCube3dSphere, IconFlame, IconTools, IconPackageExport]
+const craftIcons = [IconCube3dSphere, IconColumns, IconGridDots]
 
 const loadHome = async (locale: Locale) => {
   const [page, products, projects, settings] = await Promise.all([
@@ -34,11 +39,15 @@ const loadHome = async (locale: Locale) => {
   return { page, products, projects, settings }
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>
+}): Promise<Metadata> {
   const { locale: value } = await params
   if (!isPublicLocale(value)) return {}
   const { page, settings } = await loadHome(value)
-  const copy = getWebsiteCopy(value)
+  const copy = getWebsiteV17Copy(value)
 
   return buildPageMetadata({
     description: page?.summary || copy.home.heroSubtitle,
@@ -57,7 +66,8 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   const locale: Locale = value
   const { page, products, projects } = await loadHome(locale)
   if (!page) notFound()
-  const copy = getWebsiteCopy(locale)
+  const copy = getWebsiteV17Copy(locale)
+
   const heroImages = [
     page.heroImage,
     ...products.slice(0, 2).map((product) => product.coverImage),
@@ -66,28 +76,103 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
 
   return (
     <>
-      <HeroCarousel images={heroImages} locale={locale} subtitle={page.summary} title={copy.home.heroTitle} />
-      <section className="section">
+      {/* 1. Hero */}
+      <HeroCarousel
+        images={heroImages}
+        locale={locale}
+        subtitle={page.summary}
+        title={copy.home.heroTitle}
+      />
+
+      {/* 2. "How IVY supports your project" 4-Step Engineering Workflow (Full-width band, 4-column compact grid) */}
+      <section className="section home-support-band">
         <div className="container">
           <SectionHeader
-            description={copy.home.advantagesSubtitle}
-            kicker={copy.home.advantagesKicker}
-            title={copy.home.advantagesTitle}
+            action={
+              <Link className="button ghost" href={localePath(locale, '/capabilities')}>
+                {copy.actions.learnMore}
+                <IconArrowRight aria-hidden size={17} />
+              </Link>
+            }
+            description={copy.home.howIvySupportsSubtitle}
+            kicker={copy.home.howIvySupportsKicker}
+            title={copy.home.howIvySupportsTitle}
           />
-          <div className="grid cols-4">
-            {copy.home.values.map(([title, description], index) => {
-              const Icon = valueIcons[index]
+          <div className="home-support-grid">
+            {copy.home.supportItems.map((item, index) => {
+              const Icon = stepIcons[index] || IconTools
               return (
-                <article className="value-card" key={title}>
-                  <Icon aria-hidden size={30} stroke={1.7} />
-                  <h3>{title}</h3>
-                  <p className="muted">{description}</p>
+                <article className="home-support-card" data-testid="workflow-step-card" key={item.id}>
+                  <div className="home-support-header">
+                    <span className="capability-step" dir="ltr">
+                      {item.step}
+                    </span>
+                    <Icon aria-hidden className="text-blue" size={24} stroke={1.6} />
+                  </div>
+                  <h3>{item.title}</h3>
+                  <p>{item.description}</p>
                 </article>
               )
             })}
           </div>
         </div>
       </section>
+
+      {/* 3. Core Capability & Craftsmanship (3 Focus Cards with Explore Capabilities link) */}
+      <section className="section alt">
+        <div className="container">
+          <SectionHeader
+            action={
+              <Link className="button ghost" href={localePath(locale, '/capabilities')}>
+                {copy.home.exploreCapabilities}
+                <IconArrowRight aria-hidden size={17} />
+              </Link>
+            }
+            description={copy.home.coreCapabilitiesSubtitle}
+            kicker={copy.home.coreCapabilitiesKicker}
+            title={copy.home.coreCapabilitiesTitle}
+          />
+          <div className="home-focus-grid">
+            {copy.home.craftsmanshipItems.map((craft, idx) => {
+              const Icon = craftIcons[idx] || IconCube3dSphere
+              return (
+                <article className="home-focus-card" data-testid="craftsmanship-card" key={craft.id}>
+                  <div className="home-focus-icon">
+                    <Icon aria-hidden size={32} stroke={1.6} />
+                  </div>
+                  <h3>{craft.title}</h3>
+                  <p>{craft.description}</p>
+                </article>
+              )
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* 4. For Professionals (Editorial Split Layout: Left Intro + Right 3 Concise Role Items) */}
+      <section className="section">
+        <div className="container home-prof-split">
+          <div className="home-prof-intro">
+            <div className="section-kicker">{copy.home.professionalsKicker}</div>
+            <h2>{copy.home.professionalsTitle}</h2>
+            <p className="muted">{copy.home.professionalsBody}</p>
+            <Link className="button" href={localePath(locale, '/for-professionals')}>
+              {copy.home.professionalsCta}
+              <IconArrowRight aria-hidden size={18} />
+            </Link>
+          </div>
+          <div className="home-prof-list">
+            {copy.home.professionalSummaries.map((role) => (
+              <article className="home-prof-item" data-testid="home-role-card" key={role.id}>
+                <h3>{role.title}</h3>
+                <p>{role.description}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 5. Product Categories */}
       <section className="section alt">
         <div className="container">
           <SectionHeader
@@ -102,6 +187,8 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
           </div>
         </div>
       </section>
+
+      {/* 6. Featured Projects */}
       <section className="section">
         <div className="container">
           <SectionHeader
@@ -119,6 +206,23 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
               <ProjectCard key={project.id} locale={locale} project={project} />
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* 7. Final Buildability Review / Upload Drawing CTA */}
+      <section className="section feature-band">
+        <div className="container">
+          <SectionHeader
+            action={
+              <Link className="button" href={localePath(locale, '/contact')}>
+                {copy.actions.uploadDrawing}
+                <IconArrowRight aria-hidden size={19} />
+              </Link>
+            }
+            description={copy.home.ctaSubtitle}
+            kicker={copy.home.ctaKicker}
+            title={copy.home.ctaTitle}
+          />
         </div>
       </section>
     </>

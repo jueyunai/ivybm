@@ -14,7 +14,8 @@ import {
 import React, { useRef, useState } from 'react'
 
 import { createIdempotencyKey } from '@/lib/inquiries/idempotency'
-import { getWebsiteCopy, type Locale } from '@/lib/i18n'
+import { type Locale } from '@/lib/i18n'
+import { getWebsiteV17Copy } from '@/lib/website-i18n'
 import {
   type InquiryAttachmentReference,
   type InquiryField,
@@ -25,6 +26,7 @@ import {
 const LEAD_ATTACHMENT_MAX_FILES = 5
 const LEAD_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024 // 50 MB
 const LEAD_ATTACHMENT_MAX_TOTAL_BYTES = 200 * 1024 * 1024 // 200 MB
+const UPLOAD_TIMEOUT_MS = 120_000 // 120s timeout per requirement
 
 const ALLOWED_EXTENSIONS = [
   '.pdf',
@@ -130,7 +132,7 @@ export function InquiryForm({
   initialInterest?: string
   locale: Locale
 }) {
-  const copy = getWebsiteCopy(locale)
+  const copy = getWebsiteV17Copy(locale)
   const [attachments, setAttachments] = useState<AttachmentItem[]>([])
   const [attachmentError, setAttachmentError] = useState<string>('')
   const [errors, setErrors] = useState<Partial<Record<FormField, string>>>({})
@@ -181,6 +183,7 @@ export function InquiryForm({
   const startUpload = (item: AttachmentItem, ticketOverride?: string) => {
     const xhr = new XMLHttpRequest()
     item.xhr = xhr
+    xhr.timeout = UPLOAD_TIMEOUT_MS
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
@@ -236,6 +239,21 @@ export function InquiryForm({
             ? {
                 ...a,
                 error: mapUploadError(errorCode),
+                status: 'error',
+                xhr: undefined,
+              }
+            : a,
+        ),
+      )
+    }
+
+    xhr.ontimeout = () => {
+      setAttachments((prev) =>
+        prev.map((a) =>
+          a.id === item.id
+            ? {
+                ...a,
+                error: copy.contact.attachmentsUploadFailed,
                 status: 'error',
                 xhr: undefined,
               }
@@ -537,6 +555,9 @@ export function InquiryForm({
       </div>
       <h2>{copy.contact.title}</h2>
       <p className="muted">{copy.contact.subtitle}</p>
+      <div className="inquiry-banner">
+        <p>{copy.contact.submitWithoutDrawings}</p>
+      </div>
       <div className="form-grid">
         <Field error={errors.name} label={copy.contact.name} name="name" />
         <Field error={errors.email} label={copy.contact.email} name="email" type="email" />
@@ -561,6 +582,30 @@ export function InquiryForm({
           options={copy.contact.productOptions}
           required={false}
         />
+        <SelectField
+          label={copy.contact.projectStage}
+          name="projectStage"
+          options={copy.contact.projectStageOptions}
+          required={false}
+        />
+        <SelectField
+          label={copy.contact.drawingStatus}
+          name="drawingStatus"
+          options={copy.contact.drawingStatusOptions}
+          required={false}
+        />
+        <Field
+          label={copy.contact.estimatedQuantity}
+          name="quantitySquareMeters"
+          placeholder="e.g. 5000"
+          required={false}
+        />
+        <SelectField
+          label={copy.contact.inquiryIntent}
+          name="inquiryIntent"
+          options={copy.contact.inquiryIntentOptions}
+          required={false}
+        />
         <Field
           className="full"
           error={errors.message}
@@ -576,6 +621,7 @@ export function InquiryForm({
             <label htmlFor="inquiry-attachments-input">
               <IconPaperclip aria-hidden size={18} stroke={2} />
               <span>{copy.contact.attachments}</span>
+              <span className="attachment-optional-badge">({copy.contact.optionalNote})</span>
             </label>
             <span className="attachment-limit-hint">{copy.contact.attachmentsLimit}</span>
           </div>
@@ -749,14 +795,16 @@ export function InquiryForm({
           ) : null}
         </div>
       </div>
-      <button
-        className="button"
-        disabled={status === 'submitting' || attachments.some((a) => a.status === 'uploading')}
-        type="submit"
-      >
-        <IconSend aria-hidden size={19} />
-        {status === 'submitting' ? copy.contact.sending : copy.contact.send}
-      </button>
+      <div className="form-actions" data-testid="inquiry-form-actions">
+        <button
+          className="button submit-button"
+          disabled={status === 'submitting' || attachments.some((a) => a.status === 'uploading')}
+          type="submit"
+        >
+          <IconSend aria-hidden size={19} />
+          {status === 'submitting' ? copy.contact.sending : copy.contact.send}
+        </button>
+      </div>
       <div aria-live="polite" className="form-status" data-error={status === 'error'} role="status">
         {statusMessage}
         {requestId ? (
@@ -830,7 +878,7 @@ function SelectField({
   label,
   name,
   options,
-  required = true,
+  required = false,
 }: {
   defaultValue?: string
   error?: string
@@ -852,7 +900,7 @@ function SelectField({
         name={name}
         required={required}
       >
-        <option disabled value="">
+        <option disabled={required} value="">
           —
         </option>
         {options.map(([value, optionLabel]) => (

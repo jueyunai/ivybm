@@ -16,4 +16,4 @@
 - 本机 Compose/preflight operations 测试依赖 Docker CLI，当前环境未安装，不能作为本地通过证据；应依赖 GitHub CI。
 - 本轮真实 Meta canary 尚未执行；需在 PR 合并、生产审批、重新授权后验证暂停只落库不出站、恢复只处理新消息。
 - 账号页 E2E 在本地隔离 PostgreSQL + 本地 app 上 7/7 通过，包含桌面/390px/摘要/诊断折叠/账号管理流程。
-- 全量 unit 的既有 PDF 解析测试发生 5 秒超时（1723/1724 通过）；未触碰知识解析代码，保留为独立环境/基线问题。
+- 此前审查记录中的 PDF 解析测试超时已不再复现；当前 exact head `pnpm test:unit` 为 205 files / 1821 tests passed，未触碰知识解析代码。

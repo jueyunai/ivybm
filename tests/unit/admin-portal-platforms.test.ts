@@ -85,9 +85,14 @@ describe('Portal platform readiness', () => {
     expect(pageText).toContain('请向已连接账号发送一条测试消息，以验证入站消息能力。')
     expect(pageText).toContain('连接')
     expect(pageText).toContain('管理账号')
+    expect(screen.queryByRole('button', { name: '断开授权' })).toBeNull()
     expect(pageText).not.toMatch(
       /access token|refresh token|app secret|accessToken|refreshToken|authorization\.accessToken/i,
     )
+
+    fireEvent.click(screen.getByRole('button', { name: '管理账号' }))
+    expect(screen.getByRole('button', { name: '断开授权' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
 
     const toggle = screen.getByRole('switch', { name: '恢复 AI 回复' })
     expect(toggle.getAttribute('aria-checked')).toBe('false')
@@ -106,6 +111,65 @@ describe('Portal platform readiness', () => {
         method: 'PATCH',
       })
       expect(screen.getByRole('status').textContent).toContain('AI 自动回复设置已更新')
+    })
+  })
+
+  it('shows the specific API error when an auto-reply update is malformed', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: 'invalid_ai_auto_reply_enabled' } }), {
+        headers: { 'content-type': 'application/json' },
+        status: 400,
+      }),
+    )
+    vi.stubGlobal('fetch', fetcher)
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(PlatformReadinessPage, {
+          accounts: [],
+          pageState: 'available',
+          summary: {
+            accounts: [
+              {
+                aiAutoReplyEnabled: false,
+                accountKind: 'facebook-page',
+                authorization: {
+                  accessTokenConfigured: true,
+                  refreshTokenConfigured: false,
+                  state: 'connected',
+                },
+                authorizationRevision: 0,
+                capabilities: { messagingInbound: 'approved', publishing: 'pending' },
+                externalAccountId: 'page-123',
+                id: 8,
+                name: 'IVYBM Facebook',
+                notes: null,
+                readiness: {
+                  capabilities: [
+                    {
+                      capability: 'messaging-inbound',
+                      implementation: 'implemented',
+                      missing: [],
+                      productionRequirements: [],
+                      status: 'ready-for-controlled-test',
+                    },
+                  ],
+                  connection: { missing: [], status: 'ready-for-controlled-test' },
+                  family: 'meta',
+                },
+              },
+            ],
+          },
+        }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('switch', { name: '恢复 AI 回复' }))
+    fireEvent.click(screen.getByRole('button', { name: '恢复 AI 回复' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('请选择开启或暂停 AI 自动回复')
     })
   })
 
@@ -155,6 +219,7 @@ describe('Portal platform readiness', () => {
     expect(screen.queryByRole('link', { name: '连接' })).toBeNull()
     expect(screen.queryByRole('link', { name: '重新授权' })).toBeNull()
     expect(screen.queryByRole('button', { name: '断开授权' })).toBeNull()
+    expect(screen.getAllByText('不适用')).toHaveLength(2)
     fireEvent.click(screen.getByRole('button', { name: '管理账号' }))
     expect(screen.getByRole('heading', { name: '编辑账号: Historical TikTok' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '删除' })).toBeTruthy()

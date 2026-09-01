@@ -13,7 +13,10 @@ import { buildArticleJsonLd, buildPageMetadata, getMediaURL } from '@/lib/seo'
 import { getPostBySlug, getSiteSettings } from '@/lib/website-data'
 
 const loadPost = async (locale: 'ar' | 'en', slug: string) => {
-  const [post, settings] = await Promise.all([getPostBySlug(locale, slug), getSiteSettings(locale)])
+  const [post, settings] = await Promise.all([
+    getPostBySlug(locale, slug, { contentType: 'news' }),
+    getSiteSettings(locale),
+  ])
   return { post, settings }
 }
 

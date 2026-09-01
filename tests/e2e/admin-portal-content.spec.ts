@@ -459,7 +459,7 @@ const login = async (page: import('@playwright/test').Page) => {
   await expect(page).toHaveURL(/\/dashboard\/content$/)
 }
 
-test('website content hub exposes six safe content types, filters, detail, and preview', async ({
+test('website content hub exposes five operational content types, filters, detail, and preview', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ height: 900, width: 1440 })
@@ -468,7 +468,7 @@ test('website content hub exposes six safe content types, filters, detail, and p
 
   await page.goto('/dashboard/content?type=products')
   await expect(page.getByRole('heading', { level: 2, name: '官网内容' })).toBeVisible()
-  await expect(page.getByRole('navigation', { name: '官网内容' }).getByRole('link')).toHaveCount(6)
+  await expect(page.getByRole('navigation', { name: '官网内容' }).getByRole('link')).toHaveCount(5)
   await expect(page.getByRole('link', { name: /^产品 \d/ })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('button', { name: '新增内容' }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: '编辑内容' })).toBeVisible()
@@ -732,7 +732,9 @@ test('CMS-01 syncs localized site identity and contact details to the public web
           locale === 'ar' ? 'rtl' : 'ltr',
         )
         await expect(
-          anonymousPage.getByRole('link', { exact: true, name: expected.name }),
+          anonymousPage
+            .locator('.site-header')
+            .getByRole('link', { exact: true, name: expected.name }),
         ).toBeVisible()
         await expect(anonymousPage.getByText(expected.description, { exact: true })).toBeVisible()
         await expect(anonymousPage.locator('.site-footer')).toContainText(updates.email)

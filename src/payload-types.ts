@@ -729,6 +729,59 @@ export interface Page {
     [k: string]: unknown;
   } | null;
   heroImage?: (number | null) | Media;
+  /**
+   * Structured engineering & manufacturing capability blocks for capabilities/landing pages
+   */
+  capabilities?: {
+    items?:
+      | {
+          title?: string | null;
+          description?: string | null;
+          badge?: string | null;
+          metrics?: string | null;
+          image?: (number | null) | Media;
+          id?: string | null;
+        }[]
+      | null;
+    workflow?:
+      | {
+          stepNumber?: number | null;
+          title?: string | null;
+          description?: string | null;
+          id?: string | null;
+        }[]
+      | null;
+  };
+  /**
+   * Structured role-specific content blocks and resource matrix for For Professionals page
+   */
+  professionalSection?: {
+    roleCards?:
+      | {
+          roleKey?: ('architects' | 'facade-contractors' | 'main-contractors') | null;
+          title?: string | null;
+          description?: string | null;
+          deliverables?: string | null;
+          id?: string | null;
+        }[]
+      | null;
+    resourceMatrix?:
+      | {
+          title?: string | null;
+          category?: string | null;
+          description?: string | null;
+          file?: (number | null) | Media;
+          id?: string | null;
+        }[]
+      | null;
+    faq?:
+      | {
+          question?: string | null;
+          answer?: string | null;
+          id?: string | null;
+        }[]
+      | null;
+  };
   seo?: {
     title?: string | null;
     description?: string | null;
@@ -830,6 +883,21 @@ export interface Product {
         id?: string | null;
       }[]
     | null;
+  /**
+   * 4-step engineering and fabrication workflow for product detail page
+   */
+  engineeringWorkflow?:
+    | {
+        stepNumber?: number | null;
+        title?: string | null;
+        description?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Product-specific engineering disclaimer, order notes, or standard tolerances
+   */
+  disclaimer?: string | null;
   seo?: {
     title?: string | null;
     description?: string | null;
@@ -886,6 +954,22 @@ export interface Project {
   } | null;
   location?: string | null;
   application?: string | null;
+  /**
+   * Project overview snapshot (scale, timeline, scope, key challenges)
+   */
+  projectSnapshot?: string | null;
+  /**
+   * Key engineering challenges, architectural requirements, or design focus
+   */
+  observedFocus?: string | null;
+  /**
+   * Engineering solution, 3D modeling, material selection, and fabrication method
+   */
+  solutionFramework?: string | null;
+  /**
+   * Quality inspection, trial assembly, tolerance verification, and delivery results
+   */
+  qualityVerification?: string | null;
   coverImage: number | Media;
   gallery?: (number | Media)[] | null;
   seo?: {
@@ -926,6 +1010,7 @@ export interface Post {
    */
   slug: string;
   hasBeenPublished?: boolean | null;
+  contentType: 'news' | 'knowledge';
   excerpt?: string | null;
   content?: {
     root: {
@@ -942,7 +1027,15 @@ export interface Post {
     };
     [k: string]: unknown;
   } | null;
-  category: 'industry' | 'products' | 'projects' | 'company';
+  category:
+    | 'industry'
+    | 'products'
+    | 'projects'
+    | 'company'
+    | 'material-comparison'
+    | 'technical-guide'
+    | 'procurement'
+    | 'quality-logistics';
   featuredImage?: (number | null) | Media;
   publishedAt?: string | null;
   seo?: {
@@ -2001,6 +2094,57 @@ export interface PagesSelect<T extends boolean = true> {
   summary?: T;
   body?: T;
   heroImage?: T;
+  capabilities?:
+    | T
+    | {
+        items?:
+          | T
+          | {
+              title?: T;
+              description?: T;
+              badge?: T;
+              metrics?: T;
+              image?: T;
+              id?: T;
+            };
+        workflow?:
+          | T
+          | {
+              stepNumber?: T;
+              title?: T;
+              description?: T;
+              id?: T;
+            };
+      };
+  professionalSection?:
+    | T
+    | {
+        roleCards?:
+          | T
+          | {
+              roleKey?: T;
+              title?: T;
+              description?: T;
+              deliverables?: T;
+              id?: T;
+            };
+        resourceMatrix?:
+          | T
+          | {
+              title?: T;
+              category?: T;
+              description?: T;
+              file?: T;
+              id?: T;
+            };
+        faq?:
+          | T
+          | {
+              question?: T;
+              answer?: T;
+              id?: T;
+            };
+      };
   seo?:
     | T
     | {
@@ -2060,6 +2204,15 @@ export interface ProductsSelect<T extends boolean = true> {
         value?: T;
         id?: T;
       };
+  engineeringWorkflow?:
+    | T
+    | {
+        stepNumber?: T;
+        title?: T;
+        description?: T;
+        id?: T;
+      };
+  disclaimer?: T;
   seo?:
     | T
     | {
@@ -2088,6 +2241,10 @@ export interface ProjectsSelect<T extends boolean = true> {
   description?: T;
   location?: T;
   application?: T;
+  projectSnapshot?: T;
+  observedFocus?: T;
+  solutionFramework?: T;
+  qualityVerification?: T;
   coverImage?: T;
   gallery?: T;
   seo?:
@@ -2114,6 +2271,7 @@ export interface PostsSelect<T extends boolean = true> {
   generateSlug?: T;
   slug?: T;
   hasBeenPublished?: T;
+  contentType?: T;
   excerpt?: T;
   content?: T;
   category?: T;

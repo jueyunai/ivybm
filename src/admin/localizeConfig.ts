@@ -135,6 +135,7 @@ const FIELD_LABELS: Record<string, AdminText> = {
   connectionKey: text('连接标识', 'Connection Key'),
   contact: text('联系方式', 'Contact'),
   content: text('内容', 'Content'),
+  contentType: text('内容类型', 'Content Type'),
   conversation: text('会话', 'Conversation'),
   country: text('国家或地区', 'Country / Region'),
   coverImage: text('封面图', 'Cover Image'),
@@ -304,8 +305,16 @@ const OPTION_LABELS: Record<string, Record<string, AdminText>> = {
   category: {
     company: text('公司动态', 'Company'),
     industry: text('行业资讯', 'Industry'),
+    'material-comparison': text('材料对比', 'Material Comparison'),
+    procurement: text('采购建议', 'Procurement'),
     products: text('产品资讯', 'Products'),
     projects: text('项目案例', 'Projects'),
+    'quality-logistics': text('质检与物流', 'Quality & Logistics'),
+    'technical-guide': text('技术指南', 'Technical Guide'),
+  },
+  contentType: {
+    knowledge: text('专业知识', 'Knowledge'),
+    news: text('新闻动态', 'News'),
   },
   channel: {
     'ai-chat': text('AI 聊天', 'AI Chat'),

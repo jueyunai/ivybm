@@ -18,6 +18,21 @@ import {
 } from '../hooks/revalidateContent'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 
+export const POST_CONTENT_TYPES = ['news', 'knowledge'] as const
+export type PostContentType = (typeof POST_CONTENT_TYPES)[number]
+
+export const POST_CATEGORIES = [
+  'industry',
+  'products',
+  'projects',
+  'company',
+  'material-comparison',
+  'technical-guide',
+  'procurement',
+  'quality-logistics',
+] as const
+export type PostCategory = (typeof POST_CATEGORIES)[number]
+
 export const Posts: CollectionConfig = {
   slug: 'posts',
   access: {
@@ -28,7 +43,7 @@ export const Posts: CollectionConfig = {
     update: contentUpdate,
   },
   admin: {
-    defaultColumns: ['title', 'category', 'publishedAt', '_status', 'updatedAt'],
+    defaultColumns: ['title', 'contentType', 'category', 'publishedAt', '_status', 'updatedAt'],
     group: 'Website Content',
     useAsTitle: 'title',
   },
@@ -41,6 +56,17 @@ export const Posts: CollectionConfig = {
     },
     stableSlugField(),
     publicationHistoryField,
+    {
+      name: 'contentType',
+      type: 'select',
+      defaultValue: 'news',
+      index: true,
+      options: [
+        { label: 'News', value: 'news' },
+        { label: 'Knowledge', value: 'knowledge' },
+      ],
+      required: true,
+    },
     {
       name: 'excerpt',
       type: 'textarea',
@@ -60,6 +86,10 @@ export const Posts: CollectionConfig = {
         { label: 'Products', value: 'products' },
         { label: 'Projects', value: 'projects' },
         { label: 'Company', value: 'company' },
+        { label: 'Material Comparison', value: 'material-comparison' },
+        { label: 'Technical Guide', value: 'technical-guide' },
+        { label: 'Procurement', value: 'procurement' },
+        { label: 'Quality & Logistics', value: 'quality-logistics' },
       ],
       required: true,
     },

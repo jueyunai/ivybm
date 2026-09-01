@@ -90,7 +90,8 @@ test('mobile navigation, locale switch, carousel and product filtering work', as
   await page.getByRole('button', { name: 'Menu' }).click()
   await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible()
 
-  await page.getByLabel('Language').selectOption('ar')
+  await page.getByRole('button', { name: 'Language' }).click()
+  await page.getByRole('option', { name: 'العربية' }).click()
   await expect(page).toHaveURL(/\/ar$/)
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl')
 
@@ -124,7 +125,7 @@ test('mobile navigation, locale switch, carousel and product filtering work', as
 
 test('contact form exposes accessible validation without simulated success', async ({ page }) => {
   await page.goto('/en/contact')
-  await page.getByRole('button', { name: 'Send Inquiry' }).click()
+  await page.getByRole('button', { name: 'Submit' }).click()
   await expect(page.getByText('This field is required.').first()).toBeVisible()
   await expect(page.getByLabel('Name *')).toHaveAttribute('aria-invalid', 'true')
   await expect(page.getByLabel('Name *')).toHaveAttribute('aria-describedby', 'name-error')
@@ -154,7 +155,7 @@ test('INQ-01 closes website inquiry, idempotent Lead, Portal, and fake Feishu', 
       (request) =>
         request.method() === 'POST' && new URL(request.url()).pathname === '/api/inquiries',
     )
-    await page.getByRole('button', { name: 'Send Inquiry' }).click()
+    await page.getByRole('button', { name: 'Submit' }).click()
     const requestBody = (await submittedRequest).postDataJSON() as Record<string, unknown>
     await expect(page.getByText(/Inquiry received/)).toBeVisible()
     const requestId = await page.locator('[data-testid="inquiry-request-id"]').textContent()
@@ -187,6 +188,10 @@ test('INQ-01 closes website inquiry, idempotent Lead, Portal, and fake Feishu', 
     await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
     await page.getByRole('button', { name: '登录后台' }).click()
     await expect(page).toHaveURL(/\/dashboard\/leads$/)
+    await page.goto(`/dashboard/leads?q=${encodeURIComponent(email)}`)
+    const leadRow = page.locator('.portal-leads__list button').filter({ hasText: email })
+    await expect(leadRow).toBeVisible()
+    await leadRow.click()
     await expect(page.getByRole('definition').filter({ hasText: email })).toBeVisible()
   } finally {
     await harness.cleanup()
