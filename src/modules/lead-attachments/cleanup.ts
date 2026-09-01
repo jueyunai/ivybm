@@ -9,6 +9,7 @@ import {
 
 export type CleanupLeadAttachmentsOptions = {
   dryRun?: boolean
+  fileUnlink?: (filePath: string) => Promise<void>
   now?: Date | number | string
   payload: Payload
   retentionMs?: number
@@ -40,6 +41,7 @@ export type CleanupResult = {
 
 export const cleanupLeadAttachments = async ({
   dryRun = true,
+  fileUnlink = unlink,
   now: explicitNow,
   payload,
   retentionMs = LEAD_ATTACHMENT_RETENTION_MS,
@@ -138,25 +140,32 @@ export const cleanupLeadAttachments = async ({
   if (!dryRun) {
     for (const candidate of candidates) {
       try {
-        if (candidate.filename) {
-          try {
-            const filePath = await resolveManagedLeadAttachmentPath(candidate.filename)
-            await unlink(filePath)
-          } catch (fileError) {
-            if ((fileError as { code?: string })?.code !== 'ENOENT') {
-              payload.logger.warn(
-                `Could not remove file ${candidate.filename}: ${String(fileError)}`,
-              )
-            }
-          }
-        }
-
+        // 1. Delete database record first. If DB delete fails, physical file must NOT be unlinked.
         await payload.delete({
           collection: 'lead-attachments',
           id: candidate.id,
           overrideAccess: true,
         })
 
+        // 2. Delete physical file from storage.
+        if (candidate.filename) {
+          try {
+            const filePath = await resolveManagedLeadAttachmentPath(candidate.filename)
+            await fileUnlink(filePath)
+          } catch (fileError) {
+            const code = (fileError as { code?: string })?.code
+            if (code === 'ENOENT') {
+              // ENOENT is tolerable: the physical file is already absent on disk.
+            } else {
+              payload.logger.error(
+                `Failed to remove physical file ${candidate.filename} for lead attachment ${candidate.id}: ${fileError instanceof Error ? fileError.message : String(fileError)}`,
+              )
+              throw fileError
+            }
+          }
+        }
+
+        // 3. Record audit log.
         try {
           await payload.create({
             collection: 'audit-logs',
