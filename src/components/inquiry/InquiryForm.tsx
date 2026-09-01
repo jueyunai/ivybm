@@ -795,14 +795,16 @@ export function InquiryForm({
           ) : null}
         </div>
       </div>
-      <button
-        className="button"
-        disabled={status === 'submitting' || attachments.some((a) => a.status === 'uploading')}
-        type="submit"
-      >
-        <IconSend aria-hidden size={19} />
-        {status === 'submitting' ? copy.contact.sending : copy.contact.send}
-      </button>
+      <div className="form-actions" data-testid="inquiry-form-actions">
+        <button
+          className="button submit-button"
+          disabled={status === 'submitting' || attachments.some((a) => a.status === 'uploading')}
+          type="submit"
+        >
+          <IconSend aria-hidden size={19} />
+          {status === 'submitting' ? copy.contact.sending : copy.contact.send}
+        </button>
+      </div>
       <div aria-live="polite" className="form-status" data-error={status === 'error'} role="status">
         {statusMessage}
         {requestId ? (

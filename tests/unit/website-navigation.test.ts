@@ -154,7 +154,7 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
   })
 })
 
-describe('SiteFooter brand logo and navigation', () => {
+describe('SiteFooter brand logo, line-height typography and navigation', () => {
   it('renders brand logo referencing /brand/ivybm-logo-trimmed.png in Footer', () => {
     const mockSettings = {
       contact: { address: 'Foshan, China', email: 'info@ivybm.com', phone: '+86 757 0000 0000' },
@@ -177,5 +177,14 @@ describe('SiteFooter brand logo and navigation', () => {
     expect(screen.getByRole('link', { name: 'Privacy Policy' })).toBeDefined()
     expect(screen.getByRole('link', { name: 'Terms of Service' })).toBeDefined()
     expect(screen.getByRole('link', { name: 'Data Deletion' })).toBeDefined()
+  })
+
+  it('ensures footer text and contact info have readable line-height and paragraph spacing', () => {
+    const cssPath = path.resolve(process.cwd(), 'src/app/(frontend)/website.css')
+    const cssContent = fs.readFileSync(cssPath, 'utf8')
+
+    expect(cssContent).toMatch(/\.footer-grid\s+p\s*\{[^}]*line-height:\s*1\.65/u)
+    expect(cssContent).toMatch(/\.footer-grid\s+p\.pre-line\s*\{[^}]*line-height:\s*1\.7/u)
+    expect(cssContent).toMatch(/\.form-actions\s*\{[^}]*justify-content:\s*flex-end/u)
   })
 })

@@ -83,6 +83,8 @@ export const WEBSITE_V17_COPY = {
       title: 'Engineering & Manufacturing Capabilities',
     },
     contact: {
+      send: 'Submit',
+      sending: 'Submitting…',
       drawingStatus: 'Drawings / 3D Model Status',
       drawingStatusOptions: [
         ['ready', 'Drawings / 3D models available'],
@@ -371,6 +373,8 @@ export const WEBSITE_V17_COPY = {
       title: 'القدرات الهندسية والتصنيعية',
     },
     contact: {
+      send: 'إرسال',
+      sending: 'جارٍ الإرسال…',
       drawingStatus: 'حالة المخططات والنماذج',
       drawingStatusOptions: [
         ['ready', 'تتوفر مخططات / نماذج ثلاثية الأبعاد'],
