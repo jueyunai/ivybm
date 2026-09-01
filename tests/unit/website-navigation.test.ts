@@ -8,9 +8,10 @@ import { SiteFooter } from '@/components/website/SiteFooter'
 import { SiteHeader } from '@/components/website/SiteHeader'
 import type { SiteSetting } from '@/payload-types'
 
+const pushMock = vi.fn()
 vi.mock('next/navigation', () => ({
   usePathname: () => '/en/products',
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: pushMock }),
 }))
 
 afterEach(cleanup)
@@ -152,7 +153,52 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
     expect(cssContent).toMatch(/\.mobile-navigation\s*\{[^}]*top:\s*calc\(100%/u)
     expect(cssContent).not.toMatch(/\.mobile-navigation\s*\{[^}]*top:\s*82px/u)
   })
-})
+
+  it('renders language selector with accessible label and triggers router push on change', () => {
+    pushMock.mockClear()
+    render(
+      React.createElement(SiteHeader, {
+        locale: 'en',
+        siteName: 'IVYBM',
+      }),
+    )
+
+    const select = screen.getByRole('combobox', { name: 'Language' })
+    expect(select).toBeDefined()
+    expect(select.classList.contains('language-select')).toBe(true)
+    expect((select as HTMLSelectElement).value).toBe('en')
+
+    fireEvent.change(select, { target: { value: 'ar' } })
+    expect(pushMock).toHaveBeenCalledWith('/ar/products')
+  })
+
+  it('renders Arabic language selector with Arabic accessibility label', () => {
+    pushMock.mockClear()
+    render(
+      React.createElement(SiteHeader, {
+        locale: 'ar',
+        siteName: 'IVYBM',
+      }),
+    )
+
+    const select = screen.getByRole('combobox', { name: 'اللغة' })
+    expect(select).toBeDefined()
+    expect((select as HTMLSelectElement).value).toBe('ar')
+  })
+
+  it('ensures language selector in website.css has standard 40px height, appearance none, custom chevron arrow, and RTL left alignment', () => {
+    const cssPath = path.resolve(process.cwd(), 'src/app/(frontend)/website.css')
+    const cssContent = fs.readFileSync(cssPath, 'utf8')
+
+    expect(cssContent).toMatch(/\.language-select\s*\{[^}]*appearance:\s*none/u)
+    expect(cssContent).toMatch(/\.language-select\s*\{[^}]*height:\s*40px/u)
+    expect(cssContent).toMatch(/\.language-select\s*\{[^}]*padding-inline-start:\s*10px/u)
+    expect(cssContent).toMatch(/\.language-select\s*\{[^}]*padding-inline-end:\s*28px/u)
+    expect(cssContent).toMatch(/\.language-select:focus-visible\s*\{[^}]*outline:\s*2px/u)
+    expect(cssContent).toMatch(/html\[dir='rtl'\]\s+\.language-select\s*\{[^}]*background-position:\s*left\s+10px\s+center/u)
+    expect(cssContent).toMatch(/\.language-select\s+option\s*\{[^}]*background-color:/u)
+  })
+});
 
 describe('SiteFooter brand logo, line-height typography and navigation', () => {
   it('renders brand logo referencing /brand/ivybm-logo-trimmed.png in Footer', () => {

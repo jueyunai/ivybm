@@ -174,21 +174,72 @@ h2 {
 }
 
 .nav-quote {
+  height: 40px;
+  min-height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .language-select {
-  height: 38px;
-  padding: 0 8px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  min-height: 40px;
+  min-width: 58px;
+  box-sizing: border-box;
+  padding-inline-start: 10px;
+  padding-inline-end: 28px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background-color: rgba(255, 255, 255, 0.08);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.75)' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.language-select:hover {
+  background-color: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.language-select:focus {
+  outline: none;
+}
+
+.language-select:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 2px rgba(29, 111, 242, 0.35);
 }
 
 .language-select option {
-  color: var(--ink);
+  background-color: #0c1929;
+  color: #ffffff;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+
+html[dir='rtl'] .language-select {
+  background-position: left 10px center;
 }
 
 .icon-button {
@@ -202,6 +253,23 @@ h2 {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
   cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.icon-button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.icon-button:focus {
+  outline: none;
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .menu-button {
@@ -2202,6 +2270,10 @@ html[dir='rtl'] .chat-widget {
 @media (max-width: 640px) {
   .nav-shell {
     width: min(100% - 20px, 1180px);
+    gap: 8px;
+  }
+
+  .nav-actions {
     gap: 8px;
   }
 
