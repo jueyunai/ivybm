@@ -154,7 +154,22 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
     expect(cssContent).not.toMatch(/\.mobile-navigation\s*\{[^}]*top:\s*82px/u)
   })
 
-  it('renders language selector with accessible label and triggers router push on change', () => {
+  it('renders custom language menu button with accessible attributes and label', () => {
+    render(
+      React.createElement(SiteHeader, {
+        locale: 'en',
+        siteName: 'IVYBM',
+      }),
+    )
+
+    const langBtn = screen.getByRole('button', { name: 'Language' })
+    expect(langBtn).toBeDefined()
+    expect(langBtn.getAttribute('aria-haspopup')).toBe('listbox')
+    expect(langBtn.getAttribute('aria-expanded')).toBe('false')
+    expect(langBtn.textContent).toContain('EN')
+  })
+
+  it('toggles custom language dropdown listbox and switches locale on selection', () => {
     pushMock.mockClear()
     render(
       React.createElement(SiteHeader, {
@@ -163,17 +178,71 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
       }),
     )
 
-    const select = screen.getByRole('combobox', { name: 'Language' })
-    expect(select).toBeDefined()
-    expect(select.classList.contains('language-select')).toBe(true)
-    expect((select as HTMLSelectElement).value).toBe('en')
+    const langBtn = screen.getByRole('button', { name: 'Language' })
+    fireEvent.click(langBtn)
 
-    fireEvent.change(select, { target: { value: 'ar' } })
+    expect(langBtn.getAttribute('aria-expanded')).toBe('true')
+    const listbox = screen.getByRole('listbox', { name: 'Language' })
+    expect(listbox).toBeDefined()
+
+    const options = screen.getAllByRole('option')
+    expect(options.length).toBe(2)
+    expect(options[0].getAttribute('aria-selected')).toBe('true')
+    expect(options[1].getAttribute('aria-selected')).toBe('false')
+
+    // Click Arabic option
+    fireEvent.click(options[1])
     expect(pushMock).toHaveBeenCalledWith('/ar/products')
+    expect(screen.queryByRole('listbox')).toBeNull()
   })
 
-  it('renders Arabic language selector with Arabic accessibility label', () => {
+  it('supports keyboard navigation on language menu (ArrowDown, Enter, Escape)', () => {
     pushMock.mockClear()
+    render(
+      React.createElement(SiteHeader, {
+        locale: 'en',
+        siteName: 'IVYBM',
+      }),
+    )
+
+    const langBtn = screen.getByRole('button', { name: 'Language' })
+
+    // Open with Enter key
+    fireEvent.keyDown(langBtn, { key: 'Enter' })
+    expect(langBtn.getAttribute('aria-expanded')).toBe('true')
+
+    const options = screen.getAllByRole('option')
+
+    // Navigate to Arabic option with ArrowDown and select with Enter
+    fireEvent.keyDown(options[0], { key: 'ArrowDown' })
+    fireEvent.keyDown(options[1], { key: 'Enter' })
+    expect(pushMock).toHaveBeenCalledWith('/ar/products')
+
+    // Re-open and close with Escape
+    fireEvent.click(langBtn)
+    expect(screen.getByRole('listbox')).toBeDefined()
+    const openOptions = screen.getAllByRole('option')
+    fireEvent.keyDown(openOptions[0], { key: 'Escape' })
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+
+  it('closes custom language menu when clicking outside', () => {
+    render(
+      React.createElement(SiteHeader, {
+        locale: 'en',
+        siteName: 'IVYBM',
+      }),
+    )
+
+    const langBtn = screen.getByRole('button', { name: 'Language' })
+    fireEvent.click(langBtn)
+    expect(screen.getByRole('listbox')).toBeDefined()
+
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+
+  it('renders Arabic custom language menu with Arabic accessibility label and selection indicator', () => {
     render(
       React.createElement(SiteHeader, {
         locale: 'ar',
@@ -181,24 +250,26 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
       }),
     )
 
-    const select = screen.getByRole('combobox', { name: 'اللغة' })
-    expect(select).toBeDefined()
-    expect((select as HTMLSelectElement).value).toBe('ar')
+    const langBtn = screen.getByRole('button', { name: 'اللغة' })
+    expect(langBtn).toBeDefined()
+    expect(langBtn.textContent).toContain('AR')
+
+    fireEvent.click(langBtn)
+    const options = screen.getAllByRole('option')
+    expect(options[1].getAttribute('aria-selected')).toBe('true')
   })
 
-  it('ensures language selector in website.css has standard 40px height, appearance none, custom chevron arrow, and RTL left alignment', () => {
+  it('ensures custom language dropdown in website.css has standard 40px height, dark panel background, and RTL left alignment', () => {
     const cssPath = path.resolve(process.cwd(), 'src/app/(frontend)/website.css')
     const cssContent = fs.readFileSync(cssPath, 'utf8')
 
-    expect(cssContent).toMatch(/\.language-select\s*\{[^}]*appearance:\s*none/u)
-    expect(cssContent).toMatch(/\.language-select\s*\{[^}]*height:\s*40px/u)
-    expect(cssContent).toMatch(/\.language-select\s*\{[^}]*padding-inline-start:\s*10px/u)
-    expect(cssContent).toMatch(/\.language-select\s*\{[^}]*padding-inline-end:\s*28px/u)
-    expect(cssContent).toMatch(/\.language-select:focus-visible\s*\{[^}]*outline:\s*2px/u)
-    expect(cssContent).toMatch(/html\[dir='rtl'\]\s+\.language-select\s*\{[^}]*background-position:\s*left\s+10px\s+center/u)
-    expect(cssContent).toMatch(/\.language-select\s+option\s*\{[^}]*background-color:/u)
+    expect(cssContent).toMatch(/\.language-dropdown-toggle\s*\{[^}]*height:\s*40px/u)
+    expect(cssContent).toMatch(/\.language-dropdown-toggle:focus-visible\s*\{[^}]*outline:\s*2px/u)
+    expect(cssContent).toMatch(/\.language-dropdown-menu\s*\{[^}]*background:\s*#0f1c2d/u)
+    expect(cssContent).toMatch(/html\[dir='rtl'\]\s+\.language-dropdown-menu\s*\{[^}]*left:\s*0/u)
+    expect(cssContent).toMatch(/\.language-dropdown-item\.selected\s*\{[^}]*background:/u)
   })
-});
+})
 
 describe('SiteFooter brand logo, line-height typography and navigation', () => {
   it('renders brand logo referencing /brand/ivybm-logo-trimmed.png in Footer', () => {
