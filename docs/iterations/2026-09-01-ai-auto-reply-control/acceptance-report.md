@@ -3,6 +3,7 @@
 状态：engineering-verified，待产品验收与真实平台 canary。
 
 - 定向 unit：107/107；contract：16/16。
+- 全量 unit：1723/1724 通过；唯一失败是既有 PDF 解析测试 5 秒超时，非本次改动路径。
 - PlatformAccounts + conversation delivery integration：20/20（含暂停入站、暂停竞态和 provider I/O 后 `delivery_unknown` 保持）。
 - migration snapshot：4/4；typecheck、改动文件 ESLint、`git diff --check`：通过。
 - 平台页 E2E：7/7（桌面、390px、摘要/诊断折叠、账号管理流程）。

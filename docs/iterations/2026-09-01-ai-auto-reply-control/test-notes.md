@@ -18,6 +18,7 @@
 ## 当前证据
 
 - Unit：107/107；Contract：16/16。
+- 全量 unit：1723/1724 通过；唯一失败为既有 `tests/unit/knowledge/ingestion-parser.test.ts` 的 PDF 解析测试超时（与本次改动无关），未修改该模块。
 - PlatformAccounts / conversation delivery integration：20/20。
 - Migration snapshot：4/4；typecheck、改动文件 ESLint、`git diff --check`：通过。
 - 平台页本地 E2E：7/7，覆盖桌面、390px、摘要/诊断折叠和账号管理流程。
