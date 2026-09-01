@@ -1,10 +1,11 @@
 'use client'
 
-import { IconBuildingSkyscraper, IconChevronLeft, IconChevronRight, IconSend } from '@tabler/icons-react'
+import { IconBuildingSkyscraper, IconChevronLeft, IconChevronRight, IconUpload } from '@tabler/icons-react'
 import Link from 'next/link'
 import React, { useEffect, useState } from 'react'
 
-import { getWebsiteCopy, localePath, type Locale } from '@/lib/i18n'
+import { localePath, type Locale } from '@/lib/i18n'
+import { getWebsiteV17Copy } from '@/lib/website-i18n'
 import type { Media } from '@/payload-types'
 
 import { WebsiteImage } from './WebsiteImage'
@@ -20,7 +21,7 @@ export function HeroCarousel({
   subtitle?: null | string
   title?: null | string
 }) {
-  const copy = getWebsiteCopy(locale)
+  const copy = getWebsiteV17Copy(locale)
   const usableImages = images.filter((image): image is Media => Boolean(image && typeof image === 'object'))
   const slides = usableImages.length ? usableImages : []
   const [activeIndex, setActiveIndex] = useState(0)
@@ -63,8 +64,8 @@ export function HeroCarousel({
         <p className="lead">{subtitle || copy.home.heroSubtitle}</p>
         <div className="hero-actions">
           <Link className="button" href={localePath(locale, '/contact')}>
-            <IconSend aria-hidden size={19} />
-            {copy.actions.quote}
+            <IconUpload aria-hidden size={19} />
+            {copy.actions.uploadDrawing}
           </Link>
           <Link className="button secondary" href={localePath(locale, '/projects')}>
             <IconBuildingSkyscraper aria-hidden size={19} />

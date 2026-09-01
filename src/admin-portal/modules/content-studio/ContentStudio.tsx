@@ -46,12 +46,9 @@ export function ContentStudio({
   const { locale } = usePortalPreferences()
   const copy = getContentStudioMessages(locale)
   const router = useRouter()
+  type ActiveAction = 'create' | 'edit' | 'generator' | 'publish-now' | 'review' | 'schedule' | null
   const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [editor, setEditor] = useState<'create' | 'edit' | null>(null)
-  const [generator, setGenerator] = useState(false)
-  const [reviewing, setReviewing] = useState(false)
-  const [publishingNow, setPublishingNow] = useState(false)
-  const [scheduling, setScheduling] = useState(false)
+  const [activeAction, setActiveAction] = useState<ActiveAction>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isRefreshing, startRefresh] = useTransition()
   const hasActivePublication =
@@ -92,12 +89,9 @@ export function ContentStudio({
     )
   const selected = summary.items.find((item) => item.id === selectedId) ?? summary.items[0] ?? null
   const refreshPublicationResults = () => startRefresh(() => router.refresh())
+  const closeAction = () => setActiveAction(null)
   const onDone = (message: string) => {
-    setEditor(null)
-    setGenerator(false)
-    setReviewing(false)
-    setPublishingNow(false)
-    setScheduling(false)
+    setActiveAction(null)
     setFeedback(message)
     startRefresh(() => router.refresh())
   }
@@ -112,7 +106,7 @@ export function ContentStudio({
         <div className="portal-content-studio__intro-actions">
           <Button
             onClick={() => {
-              setGenerator(true)
+              setActiveAction('generator')
               setFeedback(null)
             }}
             variant="secondary"
@@ -122,7 +116,7 @@ export function ContentStudio({
           </Button>
           <Button
             onClick={() => {
-              setEditor('create')
+              setActiveAction('create')
               setFeedback(null)
             }}
           >
@@ -167,61 +161,6 @@ export function ContentStudio({
           <Button type="submit">{copy.filter}</Button>
         </form>
       </Surface>
-      {generator ? (
-        <Surface as="section" className="portal-content-studio__editor">
-          <GenerateDraftEditor
-            copy={copy}
-            drafts={summary.items.filter((item) => item.status === 'draft')}
-            options={summary.options}
-            onClose={() => setGenerator(false)}
-            onDone={onDone}
-            selectedDraftId={selected?.status === 'draft' ? selected.id : null}
-          />
-        </Surface>
-      ) : null}
-      {editor ? (
-        <Surface as="section" className="portal-content-studio__editor">
-          <DraftEditor
-            key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
-            copy={copy}
-            item={editor === 'edit' ? selected : null}
-            options={summary.options}
-            onClose={() => setEditor(null)}
-            onDone={onDone}
-          />
-        </Surface>
-      ) : null}
-      {reviewing && selected ? (
-        <Surface as="section" className="portal-content-studio__editor">
-          <ReviewEditor
-            copy={copy}
-            item={selected}
-            onClose={() => setReviewing(false)}
-            onDone={onDone}
-          />
-        </Surface>
-      ) : null}
-      {scheduling && selected ? (
-        <Surface as="section" className="portal-content-studio__editor">
-          <ScheduleEditor
-            copy={copy}
-            item={selected}
-            onClose={() => setScheduling(false)}
-            onDone={onDone}
-          />
-        </Surface>
-      ) : null}
-      {publishingNow && selected ? (
-        <Surface as="section" className="portal-content-studio__editor">
-          <PublishNowEditor
-            copy={copy}
-            item={selected}
-            onClose={() => setPublishingNow(false)}
-            onDone={onDone}
-            options={summary.options.platformAccounts}
-          />
-        </Surface>
-      ) : null}
       <div className="portal-content-studio__workspace">
         <Surface as="section" className="portal-content-studio__list">
           <header>
@@ -264,27 +203,92 @@ export function ContentStudio({
             />
           ) : null}
         </Surface>
-        <Surface as="section" className="portal-content-studio__detail">
-          {selected ? (
-            <ContentDetail
+
+        {activeAction === 'generator' ? (
+          <Surface as="section" className="portal-content-studio__editor portal-content-studio__editor--drawer">
+            <GenerateDraftEditor
               copy={copy}
-              disabled={isRefreshing}
-              item={selected}
-              onDelete={() => onDone(copy.feedback)}
-              onEdit={() => setEditor('edit')}
-              onReview={() => setReviewing(true)}
-              onPublish={() => setPublishingNow(true)}
-              onRefresh={refreshPublicationResults}
-              publishingAvailable={
-                summary.publishingEnabled && summary.options.platformAccounts.length > 0
-              }
-              onSchedule={() => setScheduling(true)}
-              onSubmitToReview={() => onDone(copy.readyForReview)}
+              drafts={summary.items.filter((item) => item.status === 'draft')}
+              options={summary.options}
+              onClose={closeAction}
+              onDone={onDone}
+              selectedDraftId={selected?.status === 'draft' ? selected.id : null}
             />
-          ) : (
-            <PortalState description={copy.empty} title={copy.empty} type="empty" />
-          )}
-        </Surface>
+          </Surface>
+        ) : activeAction === 'create' || (activeAction === 'edit' && selected) ? (
+          <Surface as="section" className="portal-content-studio__editor portal-content-studio__editor--drawer">
+            <DraftEditor
+              key={`${activeAction}:${activeAction === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
+              copy={copy}
+              item={activeAction === 'edit' ? selected : null}
+              options={summary.options}
+              onClose={closeAction}
+              onDone={onDone}
+            />
+          </Surface>
+        ) : activeAction === 'review' && selected ? (
+          <Surface as="section" className="portal-content-studio__editor portal-content-studio__editor--drawer">
+            <ReviewEditor
+              copy={copy}
+              item={selected}
+              onClose={closeAction}
+              onDone={onDone}
+            />
+          </Surface>
+        ) : activeAction === 'schedule' && selected ? (
+          <Surface as="section" className="portal-content-studio__editor portal-content-studio__editor--drawer">
+            <ScheduleEditor
+              copy={copy}
+              item={selected}
+              onClose={closeAction}
+              onDone={onDone}
+            />
+          </Surface>
+        ) : activeAction === 'publish-now' && selected ? (
+          <Surface as="section" className="portal-content-studio__editor portal-content-studio__editor--drawer">
+            <PublishNowEditor
+              copy={copy}
+              item={selected}
+              onClose={closeAction}
+              onDone={onDone}
+              options={summary.options.platformAccounts}
+            />
+          </Surface>
+        ) : (
+          <Surface as="section" className="portal-content-studio__detail">
+            {selected ? (
+              <ContentDetail
+                copy={copy}
+                disabled={isRefreshing}
+                item={selected}
+                onDelete={() => onDone(copy.feedback)}
+                onEdit={() => {
+                  setActiveAction('edit')
+                  setFeedback(null)
+                }}
+                onReview={() => {
+                  setActiveAction('review')
+                  setFeedback(null)
+                }}
+                onPublish={() => {
+                  setActiveAction('publish-now')
+                  setFeedback(null)
+                }}
+                onRefresh={refreshPublicationResults}
+                publishingAvailable={
+                  summary.publishingEnabled && summary.options.platformAccounts.length > 0
+                }
+                onSchedule={() => {
+                  setActiveAction('schedule')
+                  setFeedback(null)
+                }}
+                onSubmitToReview={() => onDone(copy.readyForReview)}
+              />
+            ) : (
+              <PortalState description={copy.empty} title={copy.empty} type="empty" />
+            )}
+          </Surface>
+        )}
       </div>
     </main>
   )

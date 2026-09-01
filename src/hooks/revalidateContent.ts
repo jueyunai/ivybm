@@ -11,10 +11,17 @@ import { purgeCloudflareEverything, purgeCloudflareUrls } from '@/lib/cloudflare
 const PUBLIC_LOCALES = ['en', 'ar'] as const
 
 type PublicCollectionSlug =
-  'downloads' | 'pages' | 'posts' | 'product-categories' | 'products' | 'projects'
+  | 'downloads'
+  | 'pages'
+  | 'posts'
+  | 'product-categories'
+  | 'products'
+  | 'projects'
 
 type PublicDocument = {
   _status?: unknown
+  category?: unknown
+  contentType?: unknown
   isActive?: unknown
   slug?: unknown
 }
@@ -36,7 +43,7 @@ const isPublicDocument = (collection: PublicCollectionSlug, doc: PublicDocument)
   return doc._status === 'published'
 }
 
-const localizedPaths = (collection: PublicCollectionSlug, doc: PublicDocument): string[] => {
+export const localizedPaths = (collection: PublicCollectionSlug, doc: PublicDocument): string[] => {
   const slug = typeof doc.slug === 'string' ? doc.slug : undefined
   const paths: string[] = []
 
@@ -64,8 +71,10 @@ const localizedPaths = (collection: PublicCollectionSlug, doc: PublicDocument): 
     }
 
     if (collection === 'posts') {
-      paths.push(`/${locale}/news`)
-      if (slug) paths.push(`/${locale}/news/${slug}`)
+      const isKnowledge = doc.contentType === 'knowledge'
+      const section = isKnowledge ? 'knowledge' : 'news'
+      paths.push(`/${locale}/${section}`)
+      if (slug) paths.push(`/${locale}/${section}/${slug}`)
       continue
     }
 

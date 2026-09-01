@@ -1,5 +1,5 @@
 import { cache } from 'react'
-import { getPayload } from 'payload'
+import { getPayload, type Where } from 'payload'
 
 import type { Locale } from '@/lib/i18n'
 import type { Page, Post, Product, ProductCategory, Project, SiteSetting } from '@/payload-types'
@@ -7,73 +7,106 @@ import config from '@/payload.config'
 
 const getPayloadClient = cache(async () => getPayload({ config }))
 
-export const getSiteSettings = cache(async (locale: Locale): Promise<SiteSetting> => {
-  const payload = await getPayloadClient()
+export type PostContentType = 'news' | 'knowledge'
 
-  return payload.findGlobal({
-    depth: 1,
-    fallbackLocale: false,
-    locale,
-    overrideAccess: false,
-    slug: 'site-settings',
-  })
-})
+export type GetPostsOptions = {
+  contentType?: PostContentType
+  fallbackLocale?: false | 'en'
+  limit?: number
+}
 
-export const getPageBySlug = cache(async (locale: Locale, slug: string): Promise<null | Page> => {
-  const payload = await getPayloadClient()
-  const result = await payload.find({
-    collection: 'pages',
-    depth: 1,
-    draft: false,
-    fallbackLocale: false,
-    limit: 1,
-    locale,
-    overrideAccess: false,
-    where: { slug: { equals: slug } },
-  })
+export const getSiteSettings = cache(
+  async (
+    locale: Locale,
+    options: { fallbackLocale?: false | 'en' } = {},
+  ): Promise<SiteSetting> => {
+    const payload = await getPayloadClient()
 
-  return result.docs[0] || null
-})
+    return payload.findGlobal({
+      depth: 1,
+      fallbackLocale: options.fallbackLocale ?? 'en',
+      locale,
+      overrideAccess: false,
+      slug: 'site-settings',
+    })
+  },
+)
 
-export const getProductCategories = cache(async (locale: Locale): Promise<ProductCategory[]> => {
-  const payload = await getPayloadClient()
-  const result = await payload.find({
-    collection: 'product-categories',
-    depth: 0,
-    fallbackLocale: false,
-    limit: 100,
-    locale,
-    overrideAccess: false,
-    sort: 'sortOrder',
-  })
+export const getPageBySlug = cache(
+  async (
+    locale: Locale,
+    slug: string,
+    options: { fallbackLocale?: false | 'en' } = {},
+  ): Promise<null | Page> => {
+    const payload = await getPayloadClient()
+    const result = await payload.find({
+      collection: 'pages',
+      depth: 1,
+      draft: false,
+      fallbackLocale: options.fallbackLocale ?? 'en',
+      limit: 1,
+      locale,
+      overrideAccess: false,
+      where: { slug: { equals: slug } },
+    })
 
-  return result.docs
-})
+    return result.docs[0] || null
+  },
+)
 
-export const getProducts = cache(async (locale: Locale): Promise<Product[]> => {
-  const payload = await getPayloadClient()
-  const result = await payload.find({
-    collection: 'products',
-    depth: 1,
-    draft: false,
-    fallbackLocale: false,
-    limit: 100,
-    locale,
-    overrideAccess: false,
-    sort: 'title',
-  })
+export const getProductCategories = cache(
+  async (
+    locale: Locale,
+    options: { fallbackLocale?: false | 'en' } = {},
+  ): Promise<ProductCategory[]> => {
+    const payload = await getPayloadClient()
+    const result = await payload.find({
+      collection: 'product-categories',
+      depth: 0,
+      fallbackLocale: options.fallbackLocale ?? 'en',
+      limit: 100,
+      locale,
+      overrideAccess: false,
+      sort: 'sortOrder',
+    })
 
-  return result.docs
-})
+    return result.docs
+  },
+)
 
-export const getProductBySlug = cache(
-  async (locale: Locale, slug: string): Promise<null | Product> => {
+export const getProducts = cache(
+  async (
+    locale: Locale,
+    options: { fallbackLocale?: false | 'en' } = {},
+  ): Promise<Product[]> => {
     const payload = await getPayloadClient()
     const result = await payload.find({
       collection: 'products',
       depth: 1,
       draft: false,
-      fallbackLocale: false,
+      fallbackLocale: options.fallbackLocale ?? 'en',
+      limit: 100,
+      locale,
+      overrideAccess: false,
+      sort: 'title',
+    })
+
+    return result.docs
+  },
+)
+
+export const getProductBySlug = cache(
+  async (
+    locale: Locale,
+    slug: string,
+    options: { fallbackLocale?: false | 'en' } = {},
+  ): Promise<null | Product> => {
+    const payload = await getPayloadClient()
+    const result = await payload.find({
+      collection: 'products',
+      depth: 1,
+      draft: false,
+      fallbackLocale: options.fallbackLocale ?? 'en',
       limit: 1,
       locale,
       overrideAccess: false,
@@ -84,30 +117,39 @@ export const getProductBySlug = cache(
   },
 )
 
-export const getProjects = cache(async (locale: Locale): Promise<Project[]> => {
-  const payload = await getPayloadClient()
-  const result = await payload.find({
-    collection: 'projects',
-    depth: 1,
-    draft: false,
-    fallbackLocale: false,
-    limit: 100,
-    locale,
-    overrideAccess: false,
-    sort: '-createdAt',
-  })
-
-  return result.docs
-})
-
-export const getProjectBySlug = cache(
-  async (locale: Locale, slug: string): Promise<null | Project> => {
+export const getProjects = cache(
+  async (
+    locale: Locale,
+    options: { fallbackLocale?: false | 'en' } = {},
+  ): Promise<Project[]> => {
     const payload = await getPayloadClient()
     const result = await payload.find({
       collection: 'projects',
       depth: 1,
       draft: false,
-      fallbackLocale: false,
+      fallbackLocale: options.fallbackLocale ?? 'en',
+      limit: 100,
+      locale,
+      overrideAccess: false,
+      sort: '-createdAt',
+    })
+
+    return result.docs
+  },
+)
+
+export const getProjectBySlug = cache(
+  async (
+    locale: Locale,
+    slug: string,
+    options: { fallbackLocale?: false | 'en' } = {},
+  ): Promise<null | Project> => {
+    const payload = await getPayloadClient()
+    const result = await payload.find({
+      collection: 'projects',
+      depth: 1,
+      draft: false,
+      fallbackLocale: options.fallbackLocale ?? 'en',
       limit: 1,
       locale,
       overrideAccess: false,
@@ -118,34 +160,52 @@ export const getProjectBySlug = cache(
   },
 )
 
-export const getPosts = cache(async (locale: Locale): Promise<Post[]> => {
-  const payload = await getPayloadClient()
-  const result = await payload.find({
-    collection: 'posts',
-    depth: 1,
-    draft: false,
-    fallbackLocale: false,
-    limit: 100,
-    locale,
-    overrideAccess: false,
-    sort: '-publishedAt',
-  })
+export const getPosts = cache(
+  async (locale: Locale, options: GetPostsOptions = {}): Promise<Post[]> => {
+    const payload = await getPayloadClient()
+    const where: Where = {
+      ...(options.contentType ? { contentType: { equals: options.contentType } } : {}),
+    }
 
-  return result.docs
-})
+    const result = await payload.find({
+      collection: 'posts',
+      depth: 1,
+      draft: false,
+      fallbackLocale: options.fallbackLocale ?? 'en',
+      limit: options.limit ?? 100,
+      locale,
+      overrideAccess: false,
+      sort: '-publishedAt',
+      where,
+    })
 
-export const getPostBySlug = cache(async (locale: Locale, slug: string): Promise<null | Post> => {
-  const payload = await getPayloadClient()
-  const result = await payload.find({
-    collection: 'posts',
-    depth: 1,
-    draft: false,
-    fallbackLocale: false,
-    limit: 1,
-    locale,
-    overrideAccess: false,
-    where: { slug: { equals: slug } },
-  })
+    return result.docs
+  },
+)
 
-  return result.docs[0] || null
-})
+export const getPostBySlug = cache(
+  async (
+    locale: Locale,
+    slug: string,
+    options: { contentType?: PostContentType; fallbackLocale?: false | 'en' } = {},
+  ): Promise<null | Post> => {
+    const payload = await getPayloadClient()
+    const result = await payload.find({
+      collection: 'posts',
+      depth: 1,
+      draft: false,
+      fallbackLocale: options.fallbackLocale ?? 'en',
+      limit: 1,
+      locale,
+      overrideAccess: false,
+      where: {
+        and: [
+          { slug: { equals: slug } },
+          ...(options.contentType ? [{ contentType: { equals: options.contentType } }] : []),
+        ],
+      },
+    })
+
+    return result.docs[0] || null
+  },
+)

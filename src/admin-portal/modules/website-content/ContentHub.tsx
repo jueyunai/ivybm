@@ -36,6 +36,7 @@ import type {
   ContentTypeId,
   WebsiteContentPageState,
 } from './getContentSummary'
+import { PORTAL_CONTENT_TYPE_IDS } from './getContentSummary'
 
 export interface ContentHubProps {
   pageState: WebsiteContentPageState | 'read-failed'
@@ -253,7 +254,7 @@ function ItemButton({
 }
 
 const statusOptionsFor = (type: ContentTypeId): ContentStatusFilter[] => {
-  if (['pages', 'posts', 'products', 'projects'].includes(type)) {
+  if (['pages', 'posts', 'knowledge', 'products', 'projects'].includes(type)) {
     return ['all', 'draft', 'published', 'unpublished']
   }
   if (type === 'downloads') return ['all', 'active', 'inactive']
@@ -442,23 +443,33 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
         </div>
         <div className="portal-content__intro-actions">
           <StatusBadge label={messages.editorStatus} tone="success" />
-          <ContentEditorActions onCreate={openCreate} />
+          {PORTAL_CONTENT_TYPE_IDS.includes(
+            summary.query.type as (typeof PORTAL_CONTENT_TYPE_IDS)[number],
+          ) ? (
+            <ContentEditorActions onCreate={openCreate} />
+          ) : null}
         </div>
       </header>
 
       <nav aria-label={messages.title} className="portal-content__types">
-        {summary.collections.map((collection) => (
-          <Link
-            aria-current={collection.id === summary.query.type ? 'page' : undefined}
-            className={collection.id === summary.query.type ? 'is-active' : undefined}
-            href={buildContentHref({ type: collection.id })}
-            key={collection.id}
-          >
-            <span>{messages.collections[collection.id]}</span>
-            <strong>{collection.total}</strong>
-            <small>{formatTimestamp(collection.updatedAt, locale)}</small>
-          </Link>
-        ))}
+        {summary.collections
+          .filter((collection) =>
+            PORTAL_CONTENT_TYPE_IDS.includes(
+              collection.id as (typeof PORTAL_CONTENT_TYPE_IDS)[number],
+            ),
+          )
+          .map((collection) => (
+            <Link
+              aria-current={collection.id === summary.query.type ? 'page' : undefined}
+              className={collection.id === summary.query.type ? 'is-active' : undefined}
+              href={buildContentHref({ type: collection.id })}
+              key={collection.id}
+            >
+              <span>{messages.collections[collection.id]}</span>
+              <strong>{collection.total}</strong>
+              <small>{formatTimestamp(collection.updatedAt, locale)}</small>
+            </Link>
+          ))}
       </nav>
 
       <Surface as="section" className="portal-content__filters">
@@ -663,7 +674,11 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
                 />
               </section>
 
-              <ContentEditorActions onCreate={openCreate} onEdit={() => setEditor('edit')} />
+              {PORTAL_CONTENT_TYPE_IDS.includes(
+                summary.query.type as (typeof PORTAL_CONTENT_TYPE_IDS)[number],
+              ) ? (
+                <ContentEditorActions onCreate={openCreate} onEdit={() => setEditor('edit')} />
+              ) : null}
 
               {selected.previewHrefs.en || selected.previewHrefs.ar ? (
                 <div aria-label={messages.preview} className="portal-content__preview-actions">

@@ -22,6 +22,7 @@
     "db:test:persistence": "bash scripts/db/verify-compose-persistence.sh",
     "dev": "cross-env NODE_OPTIONS=--no-deprecation next dev",
     "e2e:server": "node scripts/e2e/start-standalone-server.mjs",
+    "attachments:cleanup": "cross-env NODE_OPTIONS=--no-deprecation tsx scripts/lead-attachments-cleanup.ts",
     "feishu:resync": "cross-env NODE_OPTIONS=--no-deprecation tsx scripts/feishu-resync/cli.ts",
     "meta:webhook-replay": "cross-env NODE_OPTIONS=--no-deprecation tsx scripts/meta-webhook-replay.ts",
     "platform:instagram:messaging-id": "cross-env NODE_OPTIONS=--no-deprecation tsx scripts/instagram-messaging-identity.ts",

@@ -94,6 +94,37 @@ export const Products: CollectionConfig = {
         },
       ],
     },
+    {
+      name: 'engineeringWorkflow',
+      type: 'array',
+      admin: {
+        description: '4-step engineering and fabrication workflow for product detail page',
+      },
+      fields: [
+        {
+          name: 'stepNumber',
+          type: 'number',
+        },
+        {
+          name: 'title',
+          type: 'text',
+          localized: true,
+        },
+        {
+          name: 'description',
+          type: 'textarea',
+          localized: true,
+        },
+      ],
+    },
+    {
+      name: 'disclaimer',
+      type: 'textarea',
+      admin: {
+        description: 'Product-specific engineering disclaimer, order notes, or standard tolerances',
+      },
+      localized: true,
+    },
     seoField(),
     internalNotesField(),
   ],

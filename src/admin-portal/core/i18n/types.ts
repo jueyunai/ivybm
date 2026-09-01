@@ -252,7 +252,7 @@ export interface PortalWebsiteContentMessages {
   completenessComplete: string
   completenessMissing: string
   collections: Record<
-    'downloads' | 'pages' | 'posts' | 'product-categories' | 'products' | 'projects',
+    'downloads' | 'knowledge' | 'pages' | 'posts' | 'product-categories' | 'products' | 'projects',
     string
   >
   description: string

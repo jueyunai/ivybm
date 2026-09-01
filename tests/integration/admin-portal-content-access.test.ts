@@ -497,6 +497,7 @@ describe.sequential('Portal website content access', () => {
       downloads: 'downloads',
       pages: 'pages',
       posts: 'posts',
+      knowledge: 'posts',
       'product-categories': 'product-categories',
       products: 'products',
       projects: 'projects',
@@ -555,6 +556,15 @@ describe.sequential('Portal website content access', () => {
             action: 'save-draft',
             bodyText: body,
             category: 'industry',
+            excerpt: body,
+            featuredImageId: imageID,
+          }
+        case 'knowledge':
+          return {
+            ...base,
+            action: 'save-draft',
+            bodyText: body,
+            category: 'technical-guide',
             excerpt: body,
             featuredImageId: imageID,
           }

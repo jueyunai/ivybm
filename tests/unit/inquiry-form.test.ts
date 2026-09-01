@@ -17,9 +17,11 @@ class MockXMLHttpRequest {
   }
   onload: (() => void) | null = null
   onerror: (() => void) | null = null
+  ontimeout: (() => void) | null = null
   onabort: (() => void) | null = null
   sendPayload: unknown = null
   aborted = false
+  timeout = 0
 
   constructor() {
     MockXMLHttpRequest.instances.push(this)
@@ -61,6 +63,10 @@ class MockXMLHttpRequest {
     if (this.onload) this.onload()
   }
 
+  simulateTimeout() {
+    if (this.ontimeout) this.ontimeout()
+  }
+
   simulateNetworkError() {
     if (this.onerror) this.onerror()
   }
@@ -83,7 +89,7 @@ afterEach(() => {
 })
 
 describe('InquiryForm component', () => {
-  it('renders drawing and document attachment fields and limits', () => {
+  it('renders drawing and document attachment fields, optional note and limits', () => {
     render(
       React.createElement(InquiryForm, {
         initialIdempotencyKey: '2dcfd680-64e6-4f63-961a-16eec41f60d2',
@@ -92,8 +98,23 @@ describe('InquiryForm component', () => {
     )
 
     expect(screen.getByText('Drawings & Documents')).toBeDefined()
+    expect(screen.getByText(/Optional \(recommended for faster RFQ\)/i)).toBeDefined()
     expect(screen.getByText('Max 5 files, up to 50 MB each (200 MB total)')).toBeDefined()
     expect(screen.getByText(/Upload shop drawings, BOQ, or specifications/i)).toBeDefined()
+  })
+
+  it('renders submit button inside independent form-actions container with Submit copy', () => {
+    const { container } = render(
+      React.createElement(InquiryForm, {
+        initialIdempotencyKey: '2dcfd680-64e6-4f63-961a-16eec41f60d2',
+        locale: 'en',
+      }),
+    )
+
+    const actions = container.querySelector('.form-actions')
+    expect(actions).not.toBeNull()
+    const submitBtn = screen.getByRole('button', { name: 'Submit' })
+    expect(actions?.contains(submitBtn)).toBe(true)
   })
 
   it('rejects unsupported file extensions with localized error without disabling dropzone', async () => {
@@ -222,7 +243,7 @@ describe('InquiryForm component', () => {
     expect(dropzone?.classList.contains('is-disabled')).toBe(true)
   })
 
-  it('handles asynchronous upload with progress, ticket sharing, and success state without duplicate XHR triggers', async () => {
+  it('handles asynchronous upload with progress, ticket sharing, 120s timeout setting, and success state', async () => {
     ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       json: () => Promise.resolve({ ok: true, ticket: 'ticket-session-123' }),
       ok: true,
@@ -246,6 +267,7 @@ describe('InquiryForm component', () => {
     expect(MockXMLHttpRequest.instances).toHaveLength(1)
     const xhr = MockXMLHttpRequest.instances[0]
     expect(xhr.url).toBe('/api/inquiries/attachments/upload')
+    expect(xhr.timeout).toBe(120000)
 
     // Simulate upload progress
     await act(async () => {
@@ -344,7 +366,7 @@ describe('InquiryForm component', () => {
     expect(screen.getByText('Uploaded')).toBeDefined()
   })
 
-  it('submits inquiry with attachment references { id, ticket }', async () => {
+  it('submits inquiry with Submit button and carries attachment references { id, ticket }', async () => {
     let capturedBody: string | null = null
     ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation((url, init) => {
       if (url === '/api/inquiries/attachments/ticket') {
@@ -398,9 +420,9 @@ describe('InquiryForm component', () => {
     fireEvent.change(screen.getByLabelText('Country *'), { target: { value: 'United Arab Emirates' } })
     fireEvent.change(screen.getByLabelText('Message *'), { target: { value: 'Please review attached drawing for quote.' } })
 
-    // Submit form
+    // Submit form using Submit button
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Send Inquiry' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
     })
 
     await waitFor(() => {
@@ -414,7 +436,48 @@ describe('InquiryForm component', () => {
     expect(parsed.email).toBe('jane@facade.com')
   })
 
-  it('renders Arabic localized labels and RTL texts properly', () => {
+  it('submits inquiry smoothly without any attachments attached', async () => {
+    let capturedBody: string | null = null
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation((url, init) => {
+      if (url === '/api/inquiries') {
+        capturedBody = init.body as string
+        return Promise.resolve({
+          json: () => Promise.resolve({ duplicate: false, ok: true, requestId: 'req-no-drawing-1' }),
+          ok: true,
+        })
+      }
+      return Promise.reject(new Error('unhandled fetch'))
+    })
+
+    render(
+      React.createElement(InquiryForm, {
+        initialIdempotencyKey: '2dcfd680-64e6-4f63-961a-16eec41f60d2',
+        locale: 'en',
+      }),
+    )
+
+    // Fill form without adding any attachments
+    fireEvent.change(screen.getByLabelText('Name *'), { target: { value: 'Concept Buyer' } })
+    fireEvent.change(screen.getByLabelText('Email *'), { target: { value: 'buyer@concept.com' } })
+    fireEvent.change(screen.getByLabelText('Country *'), { target: { value: 'Saudi Arabia' } })
+    fireEvent.change(screen.getByLabelText('Message *'), { target: { value: 'Concept inquiry without drawings.' } })
+
+    // Submit form
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('inquiry-request-id').textContent).toBe('req-no-drawing-1')
+    })
+
+    expect(capturedBody).not.toBeNull()
+    const parsed = JSON.parse(capturedBody!)
+    expect(parsed.attachments).toBeUndefined()
+    expect(parsed.name).toBe('Concept Buyer')
+  })
+
+  it('renders Arabic localized labels and Submit button properly', () => {
     render(
       React.createElement(InquiryForm, {
         initialIdempotencyKey: '2dcfd680-64e6-4f63-961a-16eec41f60d2',
@@ -425,6 +488,6 @@ describe('InquiryForm component', () => {
     expect(screen.getByText('الرسومات والمستندات')).toBeDefined()
     expect(screen.getByText(/بحد أقصى 5 ملفات/i)).toBeDefined()
     expect(screen.getByText('استعراض الملفات')).toBeDefined()
-    expect(screen.getByRole('button', { name: 'إرسال الاستفسار' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'إرسال' })).toBeDefined()
   })
 })

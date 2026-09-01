@@ -9,7 +9,10 @@ import { buildPageMetadata } from '@/lib/seo'
 import { getPosts, getSiteSettings } from '@/lib/website-data'
 
 const loadPosts = async (locale: Locale) => {
-  const [posts, settings] = await Promise.all([getPosts(locale), getSiteSettings(locale)])
+  const [posts, settings] = await Promise.all([
+    getPosts(locale, { contentType: 'news' }),
+    getSiteSettings(locale),
+  ])
   return { posts, settings }
 }
 

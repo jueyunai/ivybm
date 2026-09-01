@@ -128,10 +128,11 @@ export const PORTAL_EN = {
       'product-categories': 'Product categories',
       projects: 'Projects',
       posts: 'News posts',
+      knowledge: 'Knowledge',
       downloads: 'Downloads',
     },
     description:
-      'Inspect six website content types, publishing state, and English/Arabic completeness in one workspace.',
+      'Inspect website content types, publishing state, and English/Arabic completeness in one workspace.',
     editorDescription:
       'Create, edit, manage state, preview, and safely delete English and Arabic content.',
     editorStatus: 'Create and edit available',

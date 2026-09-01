@@ -74,6 +74,23 @@ const renderHub = () =>
     ),
   )
 
+const hiddenContentSummary: ContentSummary = {
+  ...summary,
+  collections: [
+    { id: 'pages', total: 3, updatedAt: '2026-08-04T10:00:00.000Z' },
+    { id: 'products', total: 1, updatedAt: '2026-08-04T10:00:00.000Z' },
+    { id: 'product-categories', total: 0, updatedAt: null },
+    { id: 'projects', total: 0, updatedAt: null },
+    { id: 'posts', total: 0, updatedAt: null },
+    { id: 'knowledge', total: 0, updatedAt: null },
+    { id: 'downloads', total: 5, updatedAt: '2026-08-04T10:00:00.000Z' },
+  ],
+  items: [],
+  pagination: { page: 1, totalDocs: 0, totalPages: 0 },
+  query: { page: 1, q: '', status: 'all', type: 'products' },
+  statusBreakdown: { draft: 0, published: 0, unpublished: 0 },
+}
+
 describe('Portal content hub editing transitions', () => {
   beforeEach(() => {
     navigation.refresh.mockReset()
@@ -114,6 +131,21 @@ describe('Portal content hub editing transitions', () => {
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
+  })
+
+  it('does not expose fixed pages or downloads as operator content types', () => {
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentHub, { pageState: 'available', summary: hiddenContentSummary }),
+      ),
+    )
+
+    const navigation = screen.getByRole('navigation', { name: '官网内容' })
+    expect(within(navigation).queryByText('页面')).toBeNull()
+    expect(within(navigation).queryByText('下载资料')).toBeNull()
+    expect(screen.queryByRole('button', { name: '新增内容' })).toBeTruthy()
   })
 
   it('clears the previous list selection when creating new content', async () => {
