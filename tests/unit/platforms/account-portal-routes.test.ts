@@ -42,6 +42,7 @@ const operator = { collection: 'users' as const, id: 8, role: 'operator' as cons
 
 const account = {
   accountKind: 'facebook-page' as const,
+  aiAutoReplyEnabled: false,
   authorization: {
     accessTokenConfigured: false,
     appId: null,
@@ -153,6 +154,7 @@ describe('platform account portal routes', () => {
     expect(body.accounts).toHaveLength(1)
     expect(body.accounts[0]).toEqual({
       accountKind: 'facebook-page',
+      aiAutoReplyEnabled: false,
       authorization: {
         accessTokenConfigured: false,
         appId: null,
@@ -227,6 +229,7 @@ describe('platform account portal routes', () => {
       collection: 'platform-accounts',
       data: expect.objectContaining({
         accountKind: 'linkedin-member',
+        aiAutoReplyEnabled: false,
         authorization: expect.objectContaining({ state: 'not_started' }),
         externalAccountId: 'member-123',
         name: 'New LinkedIn',
@@ -411,6 +414,60 @@ describe('platform account portal routes', () => {
       req: expect.any(Object),
       user: admin,
     })
+  })
+
+  it('updates the AI auto-reply policy with stale-write protection', async () => {
+    const payload = createPayload({
+      findByIDResult: { ...account, aiAutoReplyEnabled: true, authorizationRevision: 4 },
+    })
+    mocks.getPayload.mockResolvedValue(payload)
+
+    const response = await PATCH(
+      jsonRequest({
+        body: { aiAutoReplyEnabled: true, authorizationRevision: 4 },
+        method: 'PATCH',
+        path: '/api/platforms/accounts/42',
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(payload.update).toHaveBeenCalledWith({
+      collection: 'platform-accounts',
+      data: { aiAutoReplyEnabled: true },
+      id: 42,
+      overrideAccess: false,
+      req: expect.any(Object),
+      user: admin,
+    })
+  })
+
+  it('rejects malformed or unauthorized AI auto-reply policy changes', async () => {
+    const payload = createPayload()
+    mocks.getPayload.mockResolvedValue(payload)
+
+    const malformed = await PATCH(
+      jsonRequest({
+        body: { aiAutoReplyEnabled: 'true', authorizationRevision: 3 },
+        method: 'PATCH',
+        path: '/api/platforms/accounts/42',
+      }),
+    )
+    expect(malformed.status).toBe(400)
+    await expect(malformed.json()).resolves.toEqual({
+      error: { code: 'invalid_ai_auto_reply_enabled' },
+    })
+
+    const operatorPayload = createPayload({ authenticatedUser: operator })
+    mocks.getPayload.mockResolvedValue(operatorPayload)
+    const forbidden = await PATCH(
+      jsonRequest({
+        body: { aiAutoReplyEnabled: true, authorizationRevision: 3 },
+        method: 'PATCH',
+        path: '/api/platforms/accounts/42',
+      }),
+    )
+    expect(forbidden.status).toBe(403)
+    expect(operatorPayload.update).not.toHaveBeenCalled()
   })
 
   it('rejects malformed external account IDs using the locked account kind', async () => {

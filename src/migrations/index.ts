@@ -30,6 +30,7 @@ import * as migration_20260814_080331 from './20260814_080331'
 import * as migration_20260824_125651_task13_social_lead_contact from './20260824_125651_task13_social_lead_contact'
 import * as migration_20260829_100000_lead_attachments from './20260829_100000_lead_attachments'
 import * as migration_20260830_110000_task13_meta_webhook_identity_replay from './20260830_110000_task13_meta_webhook_identity_replay'
+import * as migration_20260901_120000_task14_ai_auto_reply_control from './20260901_120000_task14_ai_auto_reply_control'
 
 export const migrations = [
   {
@@ -191,5 +192,10 @@ export const migrations = [
     up: migration_20260830_110000_task13_meta_webhook_identity_replay.up,
     down: migration_20260830_110000_task13_meta_webhook_identity_replay.down,
     name: '20260830_110000_task13_meta_webhook_identity_replay',
+  },
+  {
+    up: migration_20260901_120000_task14_ai_auto_reply_control.up,
+    down: migration_20260901_120000_task14_ai_auto_reply_control.down,
+    name: '20260901_120000_task14_ai_auto_reply_control',
   },
 ]

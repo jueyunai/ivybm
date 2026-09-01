@@ -15,6 +15,7 @@ import type {
 
 type IntentRow = {
   account_external_id: string
+  ai_auto_reply_enabled: boolean
   claim_id: string | null
   claim_lease_expires_at: Date | string | null
   conversation_id: number
@@ -132,11 +133,18 @@ export class PayloadPlatformConversationDeliveryAuthority implements PlatformCon
     try {
       await client.query('BEGIN')
       const found = await client.query<IntentRow>(
-        `SELECT d.*, c.revision, c.handoff_status
+        `SELECT d.*, c.revision, c.handoff_status, pa.ai_auto_reply_enabled
          FROM conversation_delivery_intents AS d
          JOIN conversations AS c ON c.id = d.conversation_id
+         JOIN platform_accounts AS pa
+           ON pa.external_account_id = d.account_external_id
+          AND (
+            (d.platform::text = 'facebook-messenger' AND pa.account_kind::text = 'facebook-page')
+            OR
+            (d.platform::text = 'instagram' AND pa.account_kind::text = 'instagram-professional')
+          )
          WHERE d.queue_job_id = $1 AND d.delivery_key = $2
-         FOR UPDATE OF c, d`,
+         FOR UPDATE OF c, d, pa`,
         [intent.jobId, intent.transport.deliveryKey],
       )
       const row = found.rows[0]
@@ -172,6 +180,27 @@ export class PayloadPlatformConversationDeliveryAuthority implements PlatformCon
         return { reason: 'busy', status: 'blocked' }
       }
       const mode = row.provider_i_o_started_at ? 'recover' : 'send'
+      if (
+        mode === 'send' &&
+        row.required_handoff_status === 'ai_active' &&
+        row.ai_auto_reply_enabled !== true
+      ) {
+        await client.query(
+          `UPDATE conversation_delivery_intents
+           SET status = 'blocked'::enum_conversation_delivery_intents_status,
+               last_error_code = 'ai_auto_reply_paused',
+               last_error_summary = 'AI auto reply is paused for this account.',
+               retryable = false, updated_at = $1
+           WHERE queue_job_id = $2 AND delivery_key = $3`,
+          [instant.toISOString(), intent.jobId, intent.transport.deliveryKey],
+        )
+        await client.query(
+          `UPDATE messages SET status = 'failed'::enum_messages_status, error_code = 'ai_auto_reply_paused', updated_at = $1 WHERE id = $2`,
+          [instant.toISOString(), row.reply_message_id],
+        )
+        await client.query('COMMIT')
+        return { reason: 'ai_auto_reply_paused', status: 'blocked' }
+      }
       if (mode === 'send' && row.handoff_status !== row.required_handoff_status) {
         await client.query(
           `UPDATE conversation_delivery_intents

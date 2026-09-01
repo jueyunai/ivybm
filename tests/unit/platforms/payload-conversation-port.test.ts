@@ -30,9 +30,9 @@ describe('platform conversation account identity resolution', () => {
       find: vi.fn().mockResolvedValue({ docs: [{ externalAccountId: '987654321098765' }] }),
     }
 
-    await expect(
-      resolveInstagramOAuthAccountId(payload as never, '178414000000001'),
-    ).resolves.toBe('987654321098765')
+    await expect(resolveInstagramOAuthAccountId(payload as never, '178414000000001')).resolves.toBe(
+      '987654321098765',
+    )
     expect(payload.find).toHaveBeenCalledWith(
       expect.objectContaining({
         collection: 'platform-accounts',
@@ -49,7 +49,10 @@ describe('platform conversation account identity resolution', () => {
   })
 
   it('fails closed for an ambiguous or incomplete Instagram mapping', async () => {
-    for (const docs of [[{ externalAccountId: '987654321098765' }, { externalAccountId: '987654321098766' }], [{ externalAccountId: null }]]) {
+    for (const docs of [
+      [{ externalAccountId: '987654321098765' }, { externalAccountId: '987654321098766' }],
+      [{ externalAccountId: null }],
+    ]) {
       const payload = { find: vi.fn().mockResolvedValue({ docs }) }
       await expect(
         resolveInstagramOAuthAccountId(payload as never, '178414000000001'),
@@ -70,6 +73,7 @@ describe('platform conversation account identity resolution', () => {
       ),
     ).resolves.toEqual({ idempotencyKey: 'instagram-event-key', status: 'accepted' })
     expect(ingestExternalMessage).toHaveBeenCalledWith({
+      aiAutoReplyEnabled: false,
       channel: 'instagram',
       externalAccountId: '987654321098765',
       externalMessageId: 'instagram-message-1',

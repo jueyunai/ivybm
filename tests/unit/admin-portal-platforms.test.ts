@@ -19,6 +19,13 @@ afterEach(() => {
 
 describe('Portal platform readiness', () => {
   it('shows credential-free capability-specific instructions before controlled testing', () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ data: { id: 8, aiAutoReplyEnabled: true } }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    )
+    vi.stubGlobal('fetch', fetcher)
     const { container } = render(
       React.createElement(
         PortalPreferencesProvider,
@@ -29,6 +36,7 @@ describe('Portal platform readiness', () => {
           summary: {
             accounts: [
               {
+                aiAutoReplyEnabled: false,
                 accountKind: 'facebook-page',
                 authorization: {
                   accessTokenConfigured: true,
@@ -76,11 +84,29 @@ describe('Portal platform readiness', () => {
     expect(pageText).toContain('请在 AI 内容工作台发布一条测试贴文，以验证该账号连接。')
     expect(pageText).toContain('请向已连接账号发送一条测试消息，以验证入站消息能力。')
     expect(pageText).toContain('连接')
-    expect(pageText).toContain('编辑')
-    expect(pageText).toContain('删除')
+    expect(pageText).toContain('管理账号')
     expect(pageText).not.toMatch(
       /access token|refresh token|app secret|accessToken|refreshToken|authorization\.accessToken/i,
     )
+
+    const toggle = screen.getByRole('switch', { name: '恢复 AI 回复' })
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(toggle)
+    expect(screen.getByRole('alertdialog', { name: '恢复 AI 自动回复？' })).toBeTruthy()
+    expect(screen.getByRole('alertdialog').textContent).toContain('恢复')
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    fireEvent.click(toggle)
+    fireEvent.click(screen.getByRole('button', { name: '恢复 AI 回复' }))
+    return waitFor(() => {
+      expect(fetcher).toHaveBeenCalledWith('/api/platforms/accounts/8', {
+        body: JSON.stringify({ authorizationRevision: 0, aiAutoReplyEnabled: true }),
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        method: 'PATCH',
+      })
+      expect(screen.getByRole('status').textContent).toContain('AI 自动回复设置已更新')
+    })
   })
 
   it('does not offer OAuth actions for a historical unsupported account kind', () => {
@@ -101,6 +127,7 @@ describe('Portal platform readiness', () => {
           summary: {
             accounts: [
               {
+                aiAutoReplyEnabled: false,
                 accountKind: 'tiktok-business' as never,
                 authorization: {
                   accessTokenConfigured: true,
@@ -128,10 +155,10 @@ describe('Portal platform readiness', () => {
     expect(screen.queryByRole('link', { name: '连接' })).toBeNull()
     expect(screen.queryByRole('link', { name: '重新授权' })).toBeNull()
     expect(screen.queryByRole('button', { name: '断开授权' })).toBeNull()
-    expect(screen.getByRole('button', { name: '编辑' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '管理账号' }))
+    expect(screen.getByRole('heading', { name: '编辑账号: Historical TikTok' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '删除' })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
     expect(screen.queryByLabelText('外部账号 ID')).toBeNull()
     fireEvent.change(screen.getByLabelText('显示名称'), {
       target: { value: 'Renamed Historical TikTok' },

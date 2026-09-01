@@ -50,6 +50,7 @@ export type RedactedPlatformAccountCapabilities = {
 }
 
 export type RedactedPlatformAccountSummary = {
+  aiAutoReplyEnabled: boolean
   accountKind: PlatformAccount['accountKind']
   authorization: RedactedPlatformAccountAuthorization
   authorizationRevision: number
@@ -68,6 +69,7 @@ export const toRedactedPlatformAccountSummary = (
   const authorization = account.authorization
   const capabilities = account.capabilities
   return {
+    aiAutoReplyEnabled: account.aiAutoReplyEnabled === true,
     accountKind: account.accountKind,
     authorization: {
       accessTokenConfigured: authorization.accessTokenConfigured === true,
@@ -157,6 +159,7 @@ export const validateCreatePlatformAccountInput = (
 }
 
 export type UpdatePlatformAccountInput = {
+  aiAutoReplyEnabled?: boolean
   authorizationRevision: number
   externalAccountId?: string | null
   messagingInbound?: PlatformCapabilityApprovalState
@@ -219,6 +222,11 @@ export const validateUpdatePlatformAccountInput = (
   }
   const rawMessagingInbound = record.messagingInbound
   const rawPublishing = record.publishing
+  const rawAiAutoReplyEnabled = record.aiAutoReplyEnabled
+  if (rawAiAutoReplyEnabled !== undefined && typeof rawAiAutoReplyEnabled !== 'boolean') {
+    return { error: { code: 'invalid_ai_auto_reply_enabled' }, success: false }
+  }
+  const aiAutoReplyEnabled = rawAiAutoReplyEnabled as boolean | undefined
   const hasCapabilityUpdate = rawMessagingInbound !== undefined || rawPublishing !== undefined
   if (
     hasCapabilityUpdate &&
@@ -237,7 +245,8 @@ export const validateUpdatePlatformAccountInput = (
     name === undefined &&
     externalAccountId === undefined &&
     notes === undefined &&
-    !hasCapabilityUpdate
+    !hasCapabilityUpdate &&
+    aiAutoReplyEnabled === undefined
   ) {
     return { error: { code: 'no_changes' }, success: false }
   }
@@ -245,6 +254,7 @@ export const validateUpdatePlatformAccountInput = (
     success: true,
     value: {
       authorizationRevision,
+      aiAutoReplyEnabled,
       externalAccountId,
       messagingInbound,
       name,

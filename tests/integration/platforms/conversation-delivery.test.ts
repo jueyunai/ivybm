@@ -22,10 +22,38 @@ import type { PlatformConversationDeliveryIntent } from '@/modules/platforms/typ
 let payload: Payload
 const testThreads: string[] = []
 const testUserIDs: number[] = []
+const testAccountIDs: number[] = []
 
 const pool = (): PostgresAdapter['pool'] => (payload.db as unknown as PostgresAdapter).pool
 const relationshipID = (value: number | { id: number }): number =>
   typeof value === 'number' ? value : value.id
+
+const createPlatformAccount = async ({
+  accountExternalId,
+  accountKind = 'facebook-page',
+  aiAutoReplyEnabled,
+}: {
+  accountExternalId: string
+  accountKind?: 'facebook-page' | 'instagram-professional'
+  aiAutoReplyEnabled: boolean
+}) => {
+  const account = await payload.create({
+    collection: 'platform-accounts',
+    context: { skipAudit: true },
+    data: {
+      accountKind,
+      aiAutoReplyEnabled,
+      authorization: { state: 'not_started' },
+      authorizationRevision: 0,
+      externalAccountId: accountExternalId,
+      name: `Task 14 ${accountKind} ${accountExternalId}`,
+      platformFamily: 'meta',
+    },
+    overrideAccess: true,
+  })
+  testAccountIDs.push(account.id)
+  return account
+}
 
 const persistedIntent = async (
   conversationId: number,
@@ -127,8 +155,17 @@ describe.sequential('Task 13 persisted platform conversation delivery', () => {
     for (const userID of testUserIDs) {
       await payload.delete({ collection: 'users', id: userID, overrideAccess: true })
     }
+    for (const accountID of testAccountIDs) {
+      await payload.delete({
+        collection: 'platform-accounts',
+        context: { skipAudit: true },
+        id: accountID,
+        overrideAccess: true,
+      })
+    }
     testThreads.length = 0
     testUserIDs.length = 0
+    testAccountIDs.length = 0
   })
 
   afterAll(async () => {
@@ -142,6 +179,7 @@ describe.sequential('Task 13 persisted platform conversation delivery', () => {
     const senderExternalId = `22${digits.slice(0, 14)}`
     const externalThreadId = `${accountExternalId}:${senderExternalId}`
     testThreads.push(externalThreadId)
+    await createPlatformAccount({ accountExternalId, aiAutoReplyEnabled: true })
     const generateReply = vi.fn(async ({ session }: { session: { locale: 'ar' | 'en' } }) => {
       expect(session.locale).toBe('ar')
       return {
@@ -256,6 +294,192 @@ describe.sequential('Task 13 persisted platform conversation delivery', () => {
     await expect(queue.getByID(job.id)).resolves.toMatchObject({ status: 'succeeded' })
   })
 
+  it('blocks a queued automatic reply when the account is paused before provider I/O', async () => {
+    const suffix = randomUUID().replaceAll('-', '')
+    const digits = randomUUID().replace(/\D/gu, '').padEnd(20, '7')
+    const accountExternalId = `71${digits.slice(0, 14)}`
+    const senderExternalId = `81${digits.slice(0, 14)}`
+    const externalThreadId = `${accountExternalId}:${senderExternalId}`
+    testThreads.push(externalThreadId)
+    const account = await createPlatformAccount({
+      accountExternalId,
+      aiAutoReplyEnabled: true,
+    })
+    const conversations = new PayloadPlatformConversationPort({
+      payload,
+      responder: {
+        generateReply: async () => ({
+          content: 'This reply must be fenced before provider I/O.',
+          estimatedCostUSD: 0,
+          model: 'integration-model',
+          promptVersion: 1,
+          tokenUsage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 },
+        }),
+      },
+    })
+
+    await conversations.writeInboundMessage({
+      accountExternalId,
+      content: { messageType: 'text', text: 'Please share more project information.' },
+      externalEventId: `paused-message-${suffix}`,
+      idempotencyKey: `paused-transport-${suffix}`,
+      kind: 'inbound-message',
+      occurredAt: '2026-09-01T00:00:00.000Z',
+      platform: 'facebook-messenger',
+      recipientExternalId: accountExternalId,
+      senderExternalId,
+    })
+    const conversation = await payload.find({
+      collection: 'conversations',
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      where: { externalThreadId: { equals: externalThreadId } },
+    })
+    const conversationId = conversation.docs[0]?.id
+    if (!conversationId) throw new Error('Expected persisted external conversation')
+    const intent = await persistedIntent(conversationId)
+    await payload.update({
+      collection: 'platform-accounts',
+      context: { skipAudit: true },
+      data: { aiAutoReplyEnabled: false },
+      id: account.id,
+      overrideAccess: true,
+    })
+
+    const queue = new PayloadJobQueue({ payload })
+    const job = await queue.claimNext([PLATFORM_CONVERSATION_DELIVERY_JOB_TYPE])
+    if (!job) throw new Error('Expected one platform conversation delivery Job')
+    const send = vi.fn()
+    const handler = createPlatformConversationDeliveryJobHandler({
+      delivery: createPlatformConversationDeliveryService({
+        authority: new PayloadPlatformConversationDeliveryAuthority(payload),
+        outbound: {
+          recoverUnknownOutcome: vi.fn(),
+          send,
+        },
+      }),
+      payload,
+    })
+
+    await handler(job, {
+      assertLease: () => undefined,
+      renewLease: async () => job,
+      signal: new AbortController().signal,
+    })
+    await queue.complete(job)
+
+    expect(send).not.toHaveBeenCalled()
+    await expect(
+      payload.findByID({ collection: 'messages', id: intent.replyId, overrideAccess: true }),
+    ).resolves.toMatchObject({ errorCode: 'ai_auto_reply_paused', status: 'failed' })
+    const blocked = await payload.find({
+      collection: 'conversation-delivery-intents',
+      limit: 1,
+      overrideAccess: true,
+      where: { conversation: { equals: conversationId } },
+    })
+    expect(blocked.docs[0]).toMatchObject({
+      lastErrorCode: 'ai_auto_reply_paused',
+      retryable: false,
+      status: 'blocked',
+    })
+  })
+
+  it('preserves recovery after provider I/O even if the account is paused later', async () => {
+    const suffix = randomUUID().replaceAll('-', '')
+    const digits = randomUUID().replace(/\D/gu, '').padEnd(20, '7')
+    const accountExternalId = `91${digits.slice(0, 14)}`
+    const senderExternalId = `92${digits.slice(0, 14)}`
+    const externalThreadId = `${accountExternalId}:${senderExternalId}`
+    testThreads.push(externalThreadId)
+    const account = await createPlatformAccount({ accountExternalId, aiAutoReplyEnabled: true })
+    const service = createConversationService({
+      repository: new PayloadConversationRepository({
+        payload,
+        sessionTokenHash: hashVisitorToken(`recovery-${suffix}`),
+      }),
+      responder: {
+        generateReply: async () => ({
+          content: 'Provider I/O recovery must remain authoritative.',
+          estimatedCostUSD: 0,
+          model: 'integration-model',
+          promptVersion: 1,
+          tokenUsage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 },
+        }),
+      },
+    })
+    await service.ingestExternalMessage({
+      aiAutoReplyEnabled: true,
+      channel: 'facebook',
+      externalAccountId: accountExternalId,
+      externalMessageId: `recovery-message-${suffix}`,
+      externalSenderId: senderExternalId,
+      externalThreadId,
+      locale: 'en',
+      text: 'We need facade panels for a commercial project.',
+    })
+    const conversation = await payload.find({
+      collection: 'conversations',
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      where: { externalThreadId: { equals: externalThreadId } },
+    })
+    const conversationId = conversation.docs[0]?.id
+    if (!conversationId) throw new Error('Expected persisted external conversation')
+    const intent = await persistedIntent(conversationId)
+    const queue = new PayloadJobQueue({ payload })
+    const job = await queue.claimNext([PLATFORM_CONVERSATION_DELIVERY_JOB_TYPE])
+    if (!job) throw new Error('Expected one platform conversation delivery Job')
+    const authority = new PayloadPlatformConversationDeliveryAuthority(payload)
+    const firstClaim = await authority.claimDelivery(intent, {
+      jobId: job.id,
+      leaseExpiresAt: job.leaseExpiresAt,
+      ownerToken: job.ownerToken,
+    })
+    if (firstClaim.status !== 'claimed') throw new Error('Expected initial delivery claim')
+    await expect(authority.markProviderIOStarted(firstClaim.claim)).resolves.toEqual({
+      status: 'fenced',
+    })
+    await payload.update({
+      collection: 'platform-accounts',
+      context: { skipAudit: true },
+      data: { aiAutoReplyEnabled: false },
+      id: account.id,
+      overrideAccess: true,
+    })
+    await pool().query(
+      `UPDATE conversation_delivery_intents
+       SET claim_lease_expires_at = now() - interval '1 second'
+       WHERE queue_job_id = $1`,
+      [job.id],
+    )
+
+    const recoveryClaim = await authority.claimDelivery(intent, {
+      jobId: job.id,
+      leaseExpiresAt: job.leaseExpiresAt,
+      ownerToken: job.ownerToken,
+    })
+    expect(recoveryClaim).toMatchObject({ claim: { mode: 'recover' }, status: 'claimed' })
+    if (recoveryClaim.status !== 'claimed') throw new Error('Expected recovery delivery claim')
+    await authority.releaseDelivery(recoveryClaim.claim, {
+      deliveryKey: intent.transport.deliveryKey,
+      platform: intent.transport.platform,
+      status: 'delivery_unknown',
+    })
+    const recovered = await payload.find({
+      collection: 'conversation-delivery-intents',
+      limit: 1,
+      overrideAccess: true,
+      where: { conversation: { equals: conversationId } },
+    })
+    expect(recovered.docs[0]).toMatchObject({
+      lastErrorCode: 'delivery_unknown',
+      status: 'delivery_unknown',
+    })
+  })
+
   it('blocks a handoff transition while provider I/O is fenced', async () => {
     const suffix = randomUUID().replaceAll('-', '')
     const digits = randomUUID().replace(/\D/gu, '').padEnd(20, '7')
@@ -263,6 +487,7 @@ describe.sequential('Task 13 persisted platform conversation delivery', () => {
     const senderExternalId = `41${digits.slice(0, 14)}`
     const externalThreadId = `${accountExternalId}:${senderExternalId}`
     testThreads.push(externalThreadId)
+    await createPlatformAccount({ accountExternalId, aiAutoReplyEnabled: true })
     const service = createConversationService({
       leadSink: new PayloadConversationLeadSink(),
       repository: new PayloadConversationRepository({
@@ -347,6 +572,11 @@ describe.sequential('Task 13 persisted platform conversation delivery', () => {
     const senderExternalId = `61${digits.slice(0, 14)}`
     const externalThreadId = `${accountExternalId}:${senderExternalId}`
     testThreads.push(externalThreadId)
+    await createPlatformAccount({
+      accountExternalId,
+      accountKind: 'instagram-professional',
+      aiAutoReplyEnabled: false,
+    })
     const operator = await payload.create({
       collection: 'users',
       context: { skipAudit: true },
