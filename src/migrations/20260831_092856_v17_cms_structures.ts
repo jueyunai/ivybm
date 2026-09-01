@@ -5,197 +5,197 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
    CREATE TYPE "public"."enum_pages_professional_section_role_cards_role_key" AS ENUM('architects', 'facade-contractors', 'main-contractors');
   CREATE TYPE "public"."enum__pages_v_version_professional_section_role_cards_role_key" AS ENUM('architects', 'facade-contractors', 'main-contractors');
   CREATE TABLE "pages_capabilities_items" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" integer NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"image_id" integer
+    "_order" integer NOT NULL,
+    "_parent_id" integer NOT NULL,
+    "id" varchar PRIMARY KEY NOT NULL,
+    "image_id" integer
   );
-  
+
   CREATE TABLE "pages_capabilities_items_locales" (
-  	"title" varchar,
-  	"description" varchar,
-  	"badge" varchar,
-  	"metrics" varchar,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_locale" "_locales" NOT NULL,
-  	"_parent_id" varchar NOT NULL
+    "title" varchar,
+    "description" varchar,
+    "badge" varchar,
+    "metrics" varchar,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_locale" "_locales" NOT NULL,
+    "_parent_id" varchar NOT NULL
   );
-  
+
   CREATE TABLE "pages_capabilities_workflow" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" integer NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"step_number" numeric
+    "_order" integer NOT NULL,
+    "_parent_id" integer NOT NULL,
+    "id" varchar PRIMARY KEY NOT NULL,
+    "step_number" numeric
   );
-  
+
   CREATE TABLE "pages_capabilities_workflow_locales" (
-  	"title" varchar,
-  	"description" varchar,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_locale" "_locales" NOT NULL,
-  	"_parent_id" varchar NOT NULL
+    "title" varchar,
+    "description" varchar,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_locale" "_locales" NOT NULL,
+    "_parent_id" varchar NOT NULL
   );
-  
+
   CREATE TABLE "pages_professional_section_role_cards" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" integer NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"role_key" "enum_pages_professional_section_role_cards_role_key"
+    "_order" integer NOT NULL,
+    "_parent_id" integer NOT NULL,
+    "id" varchar PRIMARY KEY NOT NULL,
+    "role_key" "enum_pages_professional_section_role_cards_role_key"
   );
-  
+
   CREATE TABLE "pages_professional_section_role_cards_locales" (
-  	"title" varchar,
-  	"description" varchar,
-  	"deliverables" varchar,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_locale" "_locales" NOT NULL,
-  	"_parent_id" varchar NOT NULL
+    "title" varchar,
+    "description" varchar,
+    "deliverables" varchar,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_locale" "_locales" NOT NULL,
+    "_parent_id" varchar NOT NULL
   );
-  
+
   CREATE TABLE "pages_professional_section_resource_matrix" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" integer NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"file_id" integer
+    "_order" integer NOT NULL,
+    "_parent_id" integer NOT NULL,
+    "id" varchar PRIMARY KEY NOT NULL,
+    "file_id" integer
   );
-  
+
   CREATE TABLE "pages_professional_section_resource_matrix_locales" (
-  	"title" varchar,
-  	"category" varchar,
-  	"description" varchar,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_locale" "_locales" NOT NULL,
-  	"_parent_id" varchar NOT NULL
+    "title" varchar,
+    "category" varchar,
+    "description" varchar,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_locale" "_locales" NOT NULL,
+    "_parent_id" varchar NOT NULL
   );
-  
+
   CREATE TABLE "pages_professional_section_faq" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" integer NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL
+    "_order" integer NOT NULL,
+    "_parent_id" integer NOT NULL,
+    "id" varchar PRIMARY KEY NOT NULL
   );
-  
+
   CREATE TABLE "pages_professional_section_faq_locales" (
-  	"question" varchar,
-  	"answer" varchar,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_locale" "_locales" NOT NULL,
-  	"_parent_id" varchar NOT NULL
+    "question" varchar,
+    "answer" varchar,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_locale" "_locales" NOT NULL,
+    "_parent_id" varchar NOT NULL
   );
-  
+
   CREATE TABLE "_pages_v_version_capabilities_items" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" integer NOT NULL,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"image_id" integer,
-  	"_uuid" varchar
+    "_order" integer NOT NULL,
+    "_parent_id" integer NOT NULL,
+    "id" serial PRIMARY KEY NOT NULL,
+    "image_id" integer,
+    "_uuid" varchar
   );
-  
+
   CREATE TABLE "_pages_v_version_capabilities_items_locales" (
-  	"title" varchar,
-  	"description" varchar,
-  	"badge" varchar,
-  	"metrics" varchar,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_locale" "_locales" NOT NULL,
-  	"_parent_id" integer NOT NULL
+    "title" varchar,
+    "description" varchar,
+    "badge" varchar,
+    "metrics" varchar,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_locale" "_locales" NOT NULL,
+    "_parent_id" integer NOT NULL
   );
-  
+
   CREATE TABLE "_pages_v_version_capabilities_workflow" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" integer NOT NULL,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"step_number" numeric,
-  	"_uuid" varchar
+    "_order" integer NOT NULL,
+    "_parent_id" integer NOT NULL,
+    "id" serial PRIMARY KEY NOT NULL,
+    "step_number" numeric,
+    "_uuid" varchar
   );
-  
+
   CREATE TABLE "_pages_v_version_capabilities_workflow_locales" (
-  	"title" varchar,
-  	"description" varchar,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_locale" "_locales" NOT NULL,
-  	"_parent_id" integer NOT NULL
+    "title" varchar,
+    "description" varchar,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_locale" "_locales" NOT NULL,
+    "_parent_id" integer NOT NULL
   );
-  
+
   CREATE TABLE "_pages_v_version_professional_section_role_cards" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" integer NOT NULL,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"role_key" "enum__pages_v_version_professional_section_role_cards_role_key",
-  	"_uuid" varchar
+    "_order" integer NOT NULL,
+    "_parent_id" integer NOT NULL,
+    "id" serial PRIMARY KEY NOT NULL,
+    "role_key" "enum__pages_v_version_professional_section_role_cards_role_key",
+    "_uuid" varchar
   );
-  
+
   CREATE TABLE "_pages_v_version_professional_section_role_cards_locales" (
-  	"title" varchar,
-  	"description" varchar,
-  	"deliverables" varchar,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_locale" "_locales" NOT NULL,
-  	"_parent_id" integer NOT NULL
+    "title" varchar,
+    "description" varchar,
+    "deliverables" varchar,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_locale" "_locales" NOT NULL,
+    "_parent_id" integer NOT NULL
   );
-  
+
   CREATE TABLE "_pages_v_version_professional_section_resource_matrix" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" integer NOT NULL,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"file_id" integer,
-  	"_uuid" varchar
+    "_order" integer NOT NULL,
+    "_parent_id" integer NOT NULL,
+    "id" serial PRIMARY KEY NOT NULL,
+    "file_id" integer,
+    "_uuid" varchar
   );
-  
+
   CREATE TABLE "_pages_v_version_professional_section_resource_matrix_locales" (
-  	"title" varchar,
-  	"category" varchar,
-  	"description" varchar,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_locale" "_locales" NOT NULL,
-  	"_parent_id" integer NOT NULL
+    "title" varchar,
+    "category" varchar,
+    "description" varchar,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_locale" "_locales" NOT NULL,
+    "_parent_id" integer NOT NULL
   );
-  
+
   CREATE TABLE "_pages_v_version_professional_section_faq" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" integer NOT NULL,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_uuid" varchar
+    "_order" integer NOT NULL,
+    "_parent_id" integer NOT NULL,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_uuid" varchar
   );
-  
+
   CREATE TABLE "_pages_v_version_professional_section_faq_locales" (
-  	"question" varchar,
-  	"answer" varchar,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_locale" "_locales" NOT NULL,
-  	"_parent_id" integer NOT NULL
+    "question" varchar,
+    "answer" varchar,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_locale" "_locales" NOT NULL,
+    "_parent_id" integer NOT NULL
   );
-  
+
   CREATE TABLE "products_engineering_workflow" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" integer NOT NULL,
-  	"id" varchar PRIMARY KEY NOT NULL,
-  	"step_number" numeric
+    "_order" integer NOT NULL,
+    "_parent_id" integer NOT NULL,
+    "id" varchar PRIMARY KEY NOT NULL,
+    "step_number" numeric
   );
-  
+
   CREATE TABLE "products_engineering_workflow_locales" (
-  	"title" varchar,
-  	"description" varchar,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_locale" "_locales" NOT NULL,
-  	"_parent_id" varchar NOT NULL
+    "title" varchar,
+    "description" varchar,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_locale" "_locales" NOT NULL,
+    "_parent_id" varchar NOT NULL
   );
-  
+
   CREATE TABLE "_products_v_version_engineering_workflow" (
-  	"_order" integer NOT NULL,
-  	"_parent_id" integer NOT NULL,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"step_number" numeric,
-  	"_uuid" varchar
+    "_order" integer NOT NULL,
+    "_parent_id" integer NOT NULL,
+    "id" serial PRIMARY KEY NOT NULL,
+    "step_number" numeric,
+    "_uuid" varchar
   );
-  
+
   CREATE TABLE "_products_v_version_engineering_workflow_locales" (
-  	"title" varchar,
-  	"description" varchar,
-  	"id" serial PRIMARY KEY NOT NULL,
-  	"_locale" "_locales" NOT NULL,
-  	"_parent_id" integer NOT NULL
+    "title" varchar,
+    "description" varchar,
+    "id" serial PRIMARY KEY NOT NULL,
+    "_locale" "_locales" NOT NULL,
+    "_parent_id" integer NOT NULL
   );
-  
+
   ALTER TABLE "products_locales" ADD COLUMN "disclaimer" varchar;
   ALTER TABLE "_products_v_locales" ADD COLUMN "version_disclaimer" varchar;
   ALTER TABLE "projects_locales" ADD COLUMN "project_snapshot" varchar;
