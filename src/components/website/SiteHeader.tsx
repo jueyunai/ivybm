@@ -212,6 +212,7 @@ export function SiteHeader({
                   const isSelected = locale === opt.code
                   return (
                     <li
+                      aria-label={opt.label}
                       aria-selected={isSelected}
                       className={`language-dropdown-item ${isSelected ? 'selected' : ''}`}
                       key={opt.code}
@@ -223,9 +224,7 @@ export function SiteHeader({
                       role="option"
                       tabIndex={0}
                     >
-                      <span className="language-item-name" dir={opt.code === 'ar' ? 'rtl' : 'ltr'}>
-                        {opt.label}
-                      </span>
+                      <span className="language-item-name">{opt.name}</span>
                       {isSelected ? (
                         <IconCheck aria-hidden className="language-item-check" size={15} stroke={2.5} />
                       ) : null}

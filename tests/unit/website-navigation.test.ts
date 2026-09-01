@@ -169,7 +169,7 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
     expect(langBtn.textContent).toContain('EN')
   })
 
-  it('toggles custom language dropdown listbox and switches locale on selection', () => {
+  it('toggles custom language dropdown listbox and switches locale on selection with EN/AR visible items', () => {
     pushMock.mockClear()
     render(
       React.createElement(SiteHeader, {
@@ -187,7 +187,12 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
 
     const options = screen.getAllByRole('option')
     expect(options.length).toBe(2)
+    expect(options[0].textContent).toContain('EN')
+    expect(options[0].getAttribute('aria-label')).toBe('English')
     expect(options[0].getAttribute('aria-selected')).toBe('true')
+
+    expect(options[1].textContent).toContain('AR')
+    expect(options[1].getAttribute('aria-label')).toBe('العربية')
     expect(options[1].getAttribute('aria-selected')).toBe('false')
 
     // Click Arabic option
