@@ -46,21 +46,23 @@ describe('Website v1.7 CMS content collections contract specification', () => {
   })
 
   it('specifies v1.7 contentType field contract for Knowledge isolation', () => {
-    // Specification for contentType field to be merged into Posts
-    const expectedContentTypeConfig = {
-      defaultValue: 'news',
-      name: 'contentType',
-      options: [
-        { label: 'News Article', value: 'news' },
-        { label: 'Knowledge Base', value: 'knowledge' },
-      ],
-      required: true,
-      type: 'select',
-    }
+    const contentTypeField = Posts.fields.find(
+      (field) => 'name' in field && field.name === 'contentType',
+    ) as {
+      defaultValue?: unknown
+      options: Array<{ label: string; value: string }>
+      required?: boolean
+      type: string
+    } | undefined
 
-    expect(expectedContentTypeConfig.name).toBe('contentType')
-    expect(expectedContentTypeConfig.defaultValue).toBe('news')
-    expect(expectedContentTypeConfig.options.map((o) => o.value)).toEqual(['news', 'knowledge'])
+    expect(contentTypeField).toBeDefined()
+    expect(contentTypeField?.type).toBe('select')
+    expect(contentTypeField?.required).toBe(true)
+    expect(contentTypeField?.defaultValue).toBe('news')
+    expect(contentTypeField?.options).toEqual([
+      { label: 'News', value: 'news' },
+      { label: 'Knowledge', value: 'knowledge' },
+    ])
   })
 
   it('specifies Lead model v1.7 contract (optional attachments, hasDrawings, inquiryIntent)', () => {

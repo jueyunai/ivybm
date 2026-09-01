@@ -1176,15 +1176,94 @@ const editorDocumentForLocale = (
     title: valueForLocale(seo.title, locale),
   }
 
-  if (type === 'products' && Array.isArray(document.specifications)) {
-    localized.specifications = document.specifications.map((item) => {
-      const specification = asRecord(item)
-      return {
-        ...specification,
-        label: valueForLocale(specification.label, locale),
-        value: valueForLocale(specification.value, locale),
-      }
-    })
+  if (type === 'products') {
+    if (Array.isArray(document.specifications)) {
+      localized.specifications = document.specifications.map((item) => {
+        const specification = asRecord(item)
+        return {
+          ...specification,
+          label: valueForLocale(specification.label, locale),
+          value: valueForLocale(specification.value, locale),
+        }
+      })
+    }
+
+    if (Array.isArray(document.engineeringWorkflow)) {
+      localized.engineeringWorkflow = document.engineeringWorkflow.map((item) => {
+        const workflow = asRecord(item)
+        return {
+          ...workflow,
+          description: valueForLocale(workflow.description, locale),
+          title: valueForLocale(workflow.title, locale),
+        }
+      })
+    }
+  }
+
+  if (type === 'pages') {
+    const capabilities = asRecord(document.capabilities)
+    localized.capabilities = {
+      ...capabilities,
+      items: Array.isArray(capabilities.items)
+        ? capabilities.items.map((item) => {
+            const capability = asRecord(item)
+            return {
+              ...capability,
+              badge: valueForLocale(capability.badge, locale),
+              description: valueForLocale(capability.description, locale),
+              metrics: valueForLocale(capability.metrics, locale),
+              title: valueForLocale(capability.title, locale),
+            }
+          })
+        : [],
+      workflow: Array.isArray(capabilities.workflow)
+        ? capabilities.workflow.map((item) => {
+            const workflow = asRecord(item)
+            return {
+              ...workflow,
+              description: valueForLocale(workflow.description, locale),
+              title: valueForLocale(workflow.title, locale),
+            }
+          })
+        : [],
+    }
+
+    const professionalSection = asRecord(document.professionalSection)
+    localized.professionalSection = {
+      ...professionalSection,
+      faq: Array.isArray(professionalSection.faq)
+        ? professionalSection.faq.map((item) => {
+            const faq = asRecord(item)
+            return {
+              ...faq,
+              answer: valueForLocale(faq.answer, locale),
+              question: valueForLocale(faq.question, locale),
+            }
+          })
+        : [],
+      resourceMatrix: Array.isArray(professionalSection.resourceMatrix)
+        ? professionalSection.resourceMatrix.map((item) => {
+            const resource = asRecord(item)
+            return {
+              ...resource,
+              category: valueForLocale(resource.category, locale),
+              description: valueForLocale(resource.description, locale),
+              title: valueForLocale(resource.title, locale),
+            }
+          })
+        : [],
+      roleCards: Array.isArray(professionalSection.roleCards)
+        ? professionalSection.roleCards.map((item) => {
+            const role = asRecord(item)
+            return {
+              ...role,
+              deliverables: valueForLocale(role.deliverables, locale),
+              description: valueForLocale(role.description, locale),
+              title: valueForLocale(role.title, locale),
+            }
+          })
+        : [],
+    }
   }
 
   return localized

@@ -173,36 +173,52 @@ describe('Pages mutation with structured v1.7 CMS fields', () => {
           capabilities: {
             items: [
               {
-                badge: 'Precision',
-                description: '5-Axis CNC curving',
-                metrics: '±0.5mm',
-                title: 'Double-Curved Forming',
+                badge: { ar: 'AR Precision', en: 'Precision' },
+                description: { ar: 'AR 5-Axis CNC curving', en: '5-Axis CNC curving' },
+                metrics: { ar: 'AR 0.5mm', en: '0.5mm' },
+                title: { ar: 'AR Double-Curved Forming', en: 'Double-Curved Forming' },
               },
             ],
             workflow: [
-              { description: '3D Parametric modeling', stepNumber: 1, title: 'Design' },
+              {
+                description: { ar: 'AR 3D Parametric modeling', en: '3D Parametric modeling' },
+                stepNumber: 1,
+                title: { ar: 'AR Design', en: 'Design' },
+              },
             ],
           },
           heroImage: 91,
           id: 10,
           professionalSection: {
-            faq: [{ answer: 'Yes, we provide 1:1 mockups.', question: 'Are mockups provided?' }],
+            faq: [
+              {
+                answer: { ar: 'AR Yes, we provide mockups.', en: 'Yes, we provide mockups.' },
+                question: { ar: 'AR Are mockups provided?', en: 'Are mockups provided?' },
+              },
+            ],
             resourceMatrix: [
-              { category: 'Specs', description: 'ASTM standards', title: 'Product Guide' },
+              {
+                category: { ar: 'AR Specs', en: 'Specs' },
+                description: { ar: 'AR Standards', en: 'Standards' },
+                title: { ar: 'AR Product Guide', en: 'Product Guide' },
+              },
             ],
             roleCards: [
               {
-                deliverables: 'Shop drawings',
-                description: 'Parametric curves',
+                deliverables: { ar: 'AR Shop drawings', en: 'Shop drawings' },
+                description: { ar: 'AR Parametric curves', en: 'Parametric curves' },
                 roleKey: 'architects',
-                title: 'Architects',
+                title: { ar: 'AR Architects', en: 'Architects' },
               },
             ],
           },
-          seo: { description: 'Description', title: 'Title' },
+          seo: {
+            description: { ar: 'AR Description', en: 'Description' },
+            title: { ar: 'AR Title', en: 'Title' },
+          },
           slug: 'capabilities',
-          summary: 'Capabilities summary',
-          title: 'Capabilities',
+          summary: { ar: 'AR Capabilities summary', en: 'Capabilities summary' },
+          title: { ar: 'AR Capabilities', en: 'Capabilities' },
           updatedAt: '2026-08-31T10:00:00.000Z',
         },
       ],
@@ -217,12 +233,44 @@ describe('Pages mutation with structured v1.7 CMS fields', () => {
     })
 
     expect(editor.data.capabilitiesText).toBe(
-      'Double-Curved Forming | 5-Axis CNC curving | Precision | ±0.5mm',
+      'Double-Curved Forming | 5-Axis CNC curving | Precision | 0.5mm',
     )
     expect(editor.data.workflowText).toBe('1 | Design | 3D Parametric modeling')
     expect(editor.data.roleCardsText).toBe('architects | Architects | Parametric curves | Shop drawings')
-    expect(editor.data.faqText).toBe('Are mockups provided? | Yes, we provide 1:1 mockups.')
-    expect(editor.data.resourceMatrixText).toBe('Product Guide | Specs | ASTM standards')
+    expect(editor.data.faqText).toBe('Are mockups provided? | Yes, we provide mockups.')
+    expect(editor.data.resourceMatrixText).toBe('Product Guide | Specs | Standards')
+    expect(JSON.stringify(editor.data)).not.toContain('[object Object]')
+
+    const parsed = parseContentMutation('pages', {
+      ...editor.data,
+      action: 'save-draft',
+      locale: 'en',
+    })
+    expect(parsed.data.capabilities).toMatchObject({
+      items: [
+        {
+          badge: 'Precision',
+          description: '5-Axis CNC curving',
+          metrics: '0.5mm',
+          title: 'Double-Curved Forming',
+        },
+      ],
+    })
+
+    const arabicEditor = await getPortalContentEditor({
+      id: 10,
+      locale: 'ar',
+      payload: { find },
+      req,
+      type: 'pages',
+    })
+    expect(arabicEditor.data.capabilitiesText).toBe(
+      'AR Double-Curved Forming | AR 5-Axis CNC curving | AR Precision | AR 0.5mm',
+    )
+    expect(arabicEditor.data.roleCardsText).toBe(
+      'architects | AR Architects | AR Parametric curves | AR Shop drawings',
+    )
+    expect(JSON.stringify(arabicEditor.data)).not.toContain('[object Object]')
   })
 })
 
@@ -416,15 +464,28 @@ describe('Products & Projects v1.7 CMS structured fields', () => {
           _status: 'draft',
           category: 5,
           coverImage: 91,
-          disclaimer: 'Parameters are reference values.',
+          disclaimer: { ar: 'AR Parameters', en: 'Parameters are reference values.' },
           engineeringWorkflow: [
-            { description: 'Parametric modeling', stepNumber: 1, title: '3D Design' },
+            {
+              description: { ar: 'AR Parametric modeling', en: 'Parametric modeling' },
+              stepNumber: 1,
+              title: { ar: 'AR 3D Design', en: '3D Design' },
+            },
           ],
           id: 20,
-          seo: { description: 'Desc', title: 'Title' },
-          shortDescription: 'Short',
+          seo: {
+            description: { ar: 'AR Desc', en: 'Desc' },
+            title: { ar: 'AR Title', en: 'Title' },
+          },
+          shortDescription: { ar: 'AR Short', en: 'Short' },
           slug: 'double-curved-panel',
-          title: 'Double Curved Panel',
+          specifications: [
+            {
+              label: { ar: 'AR Thickness', en: 'Thickness' },
+              value: { ar: 'AR 3mm', en: '3mm' },
+            },
+          ],
+          title: { ar: 'AR Double Curved Panel', en: 'Double Curved Panel' },
           updatedAt: '2026-08-31T10:00:00.000Z',
         },
       ],
@@ -440,6 +501,33 @@ describe('Products & Projects v1.7 CMS structured fields', () => {
 
     expect(editor.data.disclaimer).toBe('Parameters are reference values.')
     expect(editor.data.engineeringWorkflowText).toBe('1 | 3D Design | Parametric modeling')
+    expect(editor.data.specifications).toEqual([{ label: 'Thickness', value: '3mm' }])
+    expect(JSON.stringify(editor.data)).not.toContain('[object Object]')
+
+    const parsedEditor = parseContentMutation('products', {
+      ...editor.data,
+      action: 'save-draft',
+      locale: 'en',
+    })
+    expect(parsedEditor.data.engineeringWorkflow).toEqual([
+      { description: 'Parametric modeling', stepNumber: 1, title: '3D Design' },
+    ])
+
+    const arabicEditor = await getPortalContentEditor({
+      id: 20,
+      locale: 'ar',
+      payload: { find },
+      req,
+      type: 'products',
+    })
+    expect(arabicEditor.data.disclaimer).toBe('AR Parameters')
+    expect(arabicEditor.data.engineeringWorkflowText).toBe(
+      '1 | AR 3D Design | AR Parametric modeling',
+    )
+    expect(arabicEditor.data.specifications).toEqual([
+      { label: 'AR Thickness', value: 'AR 3mm' },
+    ])
+    expect(JSON.stringify(arabicEditor.data)).not.toContain('[object Object]')
   })
 
   it('mutates and parses Projects 4-dimensional case study fields', async () => {
