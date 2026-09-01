@@ -15,4 +15,11 @@
 | AR-SEC-01 | API/审计/log | 不暴露 Token、正文、provider payload | unit/integration review |
 | AR-PROD-01 | 真实 Instagram/Facebook canary | 暂停只落库不回复；开启后新消息回复 | production UAT（blocked until release） |
 
-实现前状态：全部 pending。
+## 当前证据
+
+- Unit：107/107；Contract：16/16。
+- PlatformAccounts / conversation delivery integration：20/20。
+- Migration snapshot：4/4；typecheck、改动文件 ESLint、`git diff --check`：通过。
+- 平台页本地 E2E：7/7，覆盖桌面、390px、摘要/诊断折叠和账号管理流程。
+- Compose/preflight operations：本机缺少 Docker CLI，未运行成功，等待 GitHub CI。
+- 真实 Facebook/Instagram canary：未运行，必须在 PR 合并、生产审批和账号授权后执行。
