@@ -181,6 +181,7 @@ type VisitorMessageCommand = SendChatMessageInput & {
   externalInbound?: boolean
   externalMessageId?: string
   persistedIdempotencyKey?: string
+  aiAutoReplyEnabled?: boolean
 }
 
 const requireExternalIdentifier = (value: unknown, field: string, maxLength: number): string => {
@@ -374,6 +375,18 @@ export const createConversationService = ({
           claim,
         )
       }
+      if (input.externalInbound && input.aiAutoReplyEnabled === false) {
+        const qualificationState = consumeQualificationAnswerContext(
+          session.qualificationState,
+          undefined,
+        )
+        session.qualificationState = qualificationState
+        return repository.saveSession(
+          session,
+          { base, qualificationState, ...(messageMetadata ? { messageMetadata } : {}) },
+          claim,
+        )
+      }
       const highRiskTopic = requiresHumanReview(text)
       let leadEvaluation = highRiskTopic
         ? await leadSink?.evaluate(session).catch(() => undefined)
@@ -505,6 +518,7 @@ export const createConversationService = ({
         ),
         sessionId: session.id,
         text: input.text,
+        aiAutoReplyEnabled: input.aiAutoReplyEnabled,
       })
       return {
         session: result.session,

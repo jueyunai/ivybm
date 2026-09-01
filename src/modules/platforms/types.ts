@@ -120,6 +120,7 @@ export type NormalizedPlatformEvent = NormalizedInboundMessage | NormalizedMessa
  */
 export const PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES = [
   'account_not_connected',
+  'ai_auto_reply_paused',
   'authorization_required',
   'delivery_busy',
   'delivery_unknown',
@@ -187,6 +188,7 @@ export type PlatformConversationDeliveryLeaseFence = {
 }
 
 export const PLATFORM_CONVERSATION_DELIVERY_BLOCK_REASONS = [
+  'ai_auto_reply_paused',
   'busy',
   'claim_conflict',
   'handoff_required',
@@ -323,8 +325,7 @@ export type PlatformConversationOutboundRecoveryResult =
     })
 
 export type PlatformConversationDeliveryOutcome =
-  | PlatformConversationOutboundRecoveryResult
-  | PlatformConversationOutboundResult
+  PlatformConversationOutboundRecoveryResult | PlatformConversationOutboundResult
 
 /**
  * Automatic platform replies are only allowed while the authoritative

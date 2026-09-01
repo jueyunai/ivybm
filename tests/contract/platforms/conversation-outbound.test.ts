@@ -37,6 +37,7 @@ describe('phase-one platform conversation outbound contract', () => {
   it('freezes only credential-free outbound error codes', () => {
     expect(PLATFORM_CONVERSATION_OUTBOUND_ERROR_CODES).toEqual([
       'account_not_connected',
+      'ai_auto_reply_paused',
       'authorization_required',
       'delivery_busy',
       'delivery_unknown',
@@ -76,6 +77,7 @@ describe('phase-one platform conversation outbound contract', () => {
     expect(intent.jobId).toBe(leaseFence.jobId)
     expect(Object.keys(leaseFence).sort()).toEqual(['jobId', 'leaseExpiresAt', 'ownerToken'])
     expect(PLATFORM_CONVERSATION_DELIVERY_BLOCK_REASONS).toEqual([
+      'ai_auto_reply_paused',
       'busy',
       'claim_conflict',
       'handoff_required',

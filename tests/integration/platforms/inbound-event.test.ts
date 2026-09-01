@@ -27,6 +27,7 @@ let payload: Payload
 const allowAllAccounts = { assertCanReceive: async () => undefined }
 const testKeys: string[] = []
 const testThreads: string[] = []
+const testAccountIDs: Array<number | string> = []
 
 const pool = (): PostgresAdapter['pool'] => (payload.db as unknown as PostgresAdapter).pool
 
@@ -161,6 +162,14 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
         [documentIDs],
       )
     }
+    for (const accountID of testAccountIDs.splice(0)) {
+      await payload.delete({
+        collection: 'platform-accounts',
+        context: { skipAudit: true },
+        id: accountID,
+        overrideAccess: true,
+      })
+    }
     testKeys.length = 0
     testThreads.length = 0
   })
@@ -168,6 +177,35 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
   afterAll(async () => {
     await payload?.destroy()
   })
+
+  const createFixtureAccount = async (
+    platform: MessagingPlatform,
+    externalAccountId: string,
+    aiAutoReplyEnabled: boolean,
+  ) => {
+    const accountKind =
+      platform === 'facebook-messenger'
+        ? 'facebook-page'
+        : platform === 'instagram'
+          ? 'instagram-professional'
+          : 'tiktok-business'
+    const account = await payload.create({
+      collection: 'platform-accounts',
+      context: { skipAudit: true },
+      data: {
+        accountKind,
+        aiAutoReplyEnabled,
+        authorization: { state: 'not_started' },
+        authorizationRevision: 0,
+        externalAccountId,
+        name: `Task 14 enabled fixture ${randomUUID()}`,
+        platformFamily: platform === 'tiktok' ? 'tiktok' : 'meta',
+      },
+      overrideAccess: true,
+    })
+    testAccountIDs.push(account.id)
+    return account
+  }
 
   it('atomically rejects a semantic conflict without retaining earlier batch writes', async () => {
     const repository = new PayloadPlatformEventRepository({ payload })
@@ -216,6 +254,7 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
   it('delivers a queued Meta event once to the authoritative conversation service', async () => {
     const repository = new PayloadPlatformEventRepository({ payload })
     const persisted = createInboundEvent(randomUUID())
+    await createFixtureAccount(persisted.event.platform, persisted.event.accountExternalId, true)
     const queue = new PayloadJobQueue({ payload })
     const conversations = new PayloadPlatformConversationPort({ payload })
     const handler = createPlatformEventJobHandler({
@@ -538,6 +577,7 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
       'Please share facade panel samples for our project.',
       'tiktok',
     )
+    await createFixtureAccount(persisted.event.platform, persisted.event.accountExternalId, true)
     const queue = new PayloadJobQueue({ payload })
     const conversations = new PayloadPlatformConversationPort({
       allowTikTokNormalizedDelivery: true,
@@ -695,6 +735,7 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
   it('persists a distinct follow-up from the same Meta sender after handoff is requested', async () => {
     const repository = new PayloadPlatformEventRepository({ payload })
     const first = createInboundEvent(randomUUID(), 'First customer message.')
+    await createFixtureAccount(first.event.platform, first.event.accountExternalId, true)
     const followUpExternalEventID = `${first.event.externalEventId}-follow-up`
     const followUpEvent: NormalizedInboundMessage = {
       ...first.event,
@@ -789,6 +830,28 @@ describe.sequential('Task 13 durable inbound platform event delivery', () => {
     )
     expect(messages.docs).toHaveLength(2)
     await expect(queue.getByID(followUpJob.id)).resolves.toMatchObject({ status: 'succeeded' })
+  })
+
+  it('keeps AI automation active when a platform account is default-off', async () => {
+    const persisted = createInboundEvent(randomUUID(), 'A routine customer question.')
+    await createFixtureAccount(persisted.event.platform, persisted.event.accountExternalId, false)
+    const conversations = new PayloadPlatformConversationPort({ payload })
+
+    await expect(conversations.writeInboundMessage(persisted.event)).resolves.toMatchObject({
+      status: 'accepted',
+    })
+    const conversation = await payload.find({
+      collection: 'conversations',
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      where: {
+        externalThreadId: {
+          equals: `${persisted.event.accountExternalId}:${persisted.event.senderExternalId}`,
+        },
+      },
+    })
+    expect(conversation.docs[0]).toMatchObject({ handoffStatus: 'ai_active' })
   })
 
   it('recovers an unacknowledged committed delivery after the worker lease expires', async () => {

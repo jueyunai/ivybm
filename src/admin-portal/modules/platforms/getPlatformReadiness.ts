@@ -13,6 +13,7 @@ export type PlatformReadinessPageState =
   'available' | 'forbidden' | 'module-disabled' | 'portal-disabled'
 
 export interface PlatformReadinessAccountSummary {
+  aiAutoReplyEnabled: boolean
   accountKind: PlatformAccount['accountKind']
   authorization: {
     accessTokenConfigured: boolean
@@ -63,6 +64,7 @@ export const toPlatformReadinessAccountSummary = ({
   const accessTokenConfigured = authorization.accessTokenConfigured === true
 
   return {
+    aiAutoReplyEnabled: account.aiAutoReplyEnabled === true,
     accountKind: account.accountKind,
     authorization: {
       accessTokenConfigured,

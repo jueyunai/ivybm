@@ -45,6 +45,8 @@ const messages = {
     blocked: 'Blocked',
     cancel: 'Cancel',
     capability: 'Capability',
+    publishing: 'Content publishing',
+    viewDiagnostics: 'View diagnostics / next steps',
     connect: 'Connect',
     connection: 'Connection',
     confirmDelete: 'Delete this account?',
@@ -155,6 +157,23 @@ const messages = {
       tiktok_dm_api_eligibility: 'The TikTok account is not eligible for the DM API.',
     },
     save: 'Save',
+    manageAccount: 'Manage account',
+    inbound: 'Inbound messages',
+    notApplicable: 'Not applicable',
+    autoReply: 'AI auto-reply',
+    autoReplyOn: 'Auto-reply enabled',
+    autoReplyOff: 'Auto-reply paused',
+    autoReplyNeedsConnection: 'Connect account first',
+    autoReplyNeedsApproval: 'Complete inbound approval first',
+    pauseAutoReply: 'Pause AI replies',
+    resumeAutoReply: 'Resume AI replies',
+    pauseAutoReplyTitle: 'Pause AI auto-reply?',
+    resumeAutoReplyTitle: 'Resume AI auto-reply?',
+    pauseAutoReplyDescription:
+      'New messages will still be received and saved for human handling; the system will not generate or send AI replies.',
+    resumeAutoReplyDescription:
+      'Only new inbound messages will be handled automatically. Messages from the paused period will not be replayed.',
+    autoReplyUpdated: 'AI auto-reply setting updated.',
     saving: 'Saving…',
     errors: {
       account_has_publication_history:
@@ -166,6 +185,7 @@ const messages = {
         'Disconnect the account before changing its provider identity.',
       invalid_capabilities: 'Select a valid review status for both capabilities.',
       invalid_external_account_id: 'Enter a valid provider account ID.',
+      invalid_ai_auto_reply_enabled: 'Choose whether AI auto-reply is enabled or paused.',
       invalid_name: 'Enter a valid display name.',
       invalid_notes: 'Notes are too long.',
       no_changes: 'No changes were detected.',
@@ -193,12 +213,14 @@ const messages = {
         'Ask the account owner to provide the external account identifier.',
       'request-platform-approval':
         'Submit or follow up on the platform approval required for this capability.',
-      'run-controlled-test': 'Complete the relevant capability connectivity test, record its result, then reassess account status.',
+      'run-controlled-test':
+        'Complete the relevant capability connectivity test, record its result, then reassess account status.',
       'wait-for-official-schema':
         'Wait for the official TikTok DM schema before planning integration work.',
     },
     readyForTest: 'Ready for controlled test',
-    publishingTest: 'Publish a test post from the AI content workspace to verify this account connection.',
+    publishingTest:
+      'Publish a test post from the AI content workspace to verify this account connection.',
     messagingTest: 'Send a test message to the connected account to verify inbound messaging.',
     refresh: 'Refresh',
     saveFailed: 'Save failed.',
@@ -225,6 +247,8 @@ const messages = {
     blocked: '受阻',
     cancel: '取消',
     capability: '能力',
+    publishing: '内容发布',
+    viewDiagnostics: '查看诊断 / 下一步',
     connect: '连接',
     connection: '连接状态',
     confirmDelete: '确定删除该账号？',
@@ -306,6 +330,23 @@ const messages = {
       tiktok_dm_api_eligibility: '该 TikTok 账号尚不具备私信 API 资格。',
     },
     save: '保存',
+    manageAccount: '管理账号',
+    inbound: '入站消息',
+    notApplicable: '不适用',
+    autoReply: 'AI 自动回复',
+    autoReplyOn: '自动回复已开启',
+    autoReplyOff: '自动回复已暂停',
+    autoReplyNeedsConnection: '需先连接账号',
+    autoReplyNeedsApproval: '需先完成入站消息授权',
+    pauseAutoReply: '暂停 AI 回复',
+    resumeAutoReply: '恢复 AI 回复',
+    pauseAutoReplyTitle: '暂停 AI 自动回复？',
+    resumeAutoReplyTitle: '恢复 AI 自动回复？',
+    pauseAutoReplyDescription:
+      '暂停后仍会接收并保存新私信，客服可以在会话工作台人工处理；系统不会自动生成或发送 AI 回复。',
+    resumeAutoReplyDescription:
+      '恢复后只会自动处理新的入站消息，不会补发暂停期间的历史消息。已人工接管的会话不会恢复 AI。',
+    autoReplyUpdated: 'AI 自动回复设置已更新。',
     saving: '保存中…',
     errors: {
       account_has_publication_history: '该账号已有发布历史，不能删除。',
@@ -315,6 +356,7 @@ const messages = {
       identity_change_requires_credential_rotation: '请先断开授权，再修改平台账号标识。',
       invalid_capabilities: '请为两项能力选择有效的审核状态。',
       invalid_external_account_id: '请输入有效的平台账号 ID。',
+      invalid_ai_auto_reply_enabled: '请选择开启或暂停 AI 自动回复。',
       invalid_name: '请输入有效的显示名称。',
       invalid_notes: '备注内容过长。',
       no_changes: '没有检测到修改。',
@@ -363,6 +405,21 @@ const toneFor = (status: PlatformReadinessStatus) =>
     : status === 'available' || status === 'ready-for-controlled-test'
       ? ('success' as const)
       : ('warning' as const)
+
+const connectionStatus = (account: PlatformReadinessAccountSummary): PlatformReadinessStatus =>
+  account.readiness.connection.status
+const autoReplyEnabled = (account: PlatformReadinessAccountSummary) =>
+  account.aiAutoReplyEnabled === true
+const autoReplyLabel = (account: PlatformReadinessAccountSummary, copy: PlatformCopy) => {
+  if (account.accountKind !== 'facebook-page' && account.accountKind !== 'instagram-professional') {
+    return copy.notApplicable
+  }
+  if (account.authorization.state !== 'connected' || !account.authorization.accessTokenConfigured) {
+    return copy.autoReplyNeedsConnection
+  }
+  if (account.capabilities.messagingInbound !== 'approved') return copy.autoReplyNeedsApproval
+  return autoReplyEnabled(account) ? copy.autoReplyOn : copy.autoReplyOff
+}
 
 const readableRequirement = (value: PlatformReadinessRequirement, copy: PlatformCopy): string =>
   copy.requirements[value]
@@ -609,8 +666,52 @@ export function PlatformReadinessPage({
   const [editingId, setEditingId] = useState<number | null>(null)
   const [disconnectingId, setDisconnectingId] = useState<number | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [autoReplyId, setAutoReplyId] = useState<number | null>(null)
+  const [pendingAutoReply, setPendingAutoReply] = useState<{ id: number; enabled: boolean } | null>(
+    null,
+  )
   const [formError, setFormError] = useState<string | null>(null)
+  const [formStatus, setFormStatus] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const editorDialogRef = useRef<HTMLDivElement>(null)
+  const editorPreviousFocusRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (editingId === null) return
+
+    editorPreviousFocusRef.current = document.activeElement as HTMLElement | null
+    const dialog = editorDialogRef.current
+    const focusableSelector =
+      'input:not(:disabled), select:not(:disabled), textarea:not(:disabled), button:not(:disabled)'
+    dialog?.querySelector<HTMLElement>(focusableSelector)?.focus()
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setEditingId(null)
+        return
+      }
+      if (event.key !== 'Tab') return
+      const focusable = dialog?.querySelectorAll<HTMLElement>(focusableSelector)
+      if (!focusable?.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      editorPreviousFocusRef.current?.focus()
+      editorPreviousFocusRef.current = null
+    }
+  }, [editingId])
 
   const accounts = summary?.accounts ?? initialAccounts
 
@@ -651,6 +752,41 @@ export function PlatformReadinessPage({
 
   const errorMessage = (code: string): string =>
     copy.errors[code as keyof typeof copy.errors] ?? copy.errors.unknown
+
+  const handleAutoReplyToggle = async (accountId: number, enabled: boolean) => {
+    const account = accounts.find((item) => item.id === accountId)
+    if (!account) return
+    setAutoReplyId(accountId)
+    setFormError(null)
+    setFormStatus(null)
+    try {
+      const response = await fetch(`/api/platforms/accounts/${accountId}`, {
+        body: JSON.stringify({
+          authorizationRevision: account.authorizationRevision,
+          aiAutoReplyEnabled: enabled,
+        }),
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        method: 'PATCH',
+      })
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({ error: { code: 'unknown' } }))
+        const code = result.error?.code ?? 'unknown'
+        if (code === 'stale_revision') {
+          setFormError(locale === 'zh' ? '账号已更新，请刷新' : 'Account updated, please refresh')
+          router.refresh()
+          return
+        }
+        throw new Error(code)
+      }
+      setFormStatus(copy.autoReplyUpdated)
+      router.refresh()
+    } catch (error) {
+      setFormError(errorMessage(error instanceof Error ? error.message : 'unknown'))
+    } finally {
+      setAutoReplyId(null)
+    }
+  }
 
   if (pageState !== 'available' || !summary) {
     const type =
@@ -842,6 +978,11 @@ export function PlatformReadinessPage({
           {formError === 'disconnect_failed' ? copy.disconnectFailed : formError}
         </div>
       ) : null}
+      {formStatus ? (
+        <div className="portal-platforms__form-status" role="status">
+          {formStatus}
+        </div>
+      ) : null}
 
       {isAdding ? (
         <Surface as="section" className="portal-platforms__form">
@@ -891,9 +1032,16 @@ export function PlatformReadinessPage({
         <section className="portal-platforms__grid">
           {summary.accounts.map((account) => {
             const paths = oauthPaths(account.accountKind)
-            const supportsMessaging = account.readiness.capabilities.some(
+            const inboundCapability = account.readiness.capabilities.find(
               (capability) => capability.capability === 'messaging-inbound',
             )
+            const supportsMessaging = Boolean(inboundCapability)
+            const canToggleAutoReply =
+              (account.accountKind === 'facebook-page' ||
+                account.accountKind === 'instagram-professional') &&
+              supportsMessaging &&
+              account.authorization.state === 'connected' &&
+              account.capabilities.messagingInbound === 'approved'
             return (
               <Surface as="article" className="portal-platforms__account" key={account.id}>
                 <header>
@@ -910,17 +1058,6 @@ export function PlatformReadinessPage({
                         <Button asChild size="compact" variant="secondary">
                           <a href={`${paths.start}?accountId=${account.id}`}>{copy.reauthorize}</a>
                         </Button>
-                        <Button
-                          disabled={disconnectingId === account.id}
-                          onClick={() => {
-                            setDeletingId(null)
-                            setDisconnectingId(account.id)
-                          }}
-                          size="compact"
-                          variant="danger"
-                        >
-                          {copy.disconnect}
-                        </Button>
                       </>
                     ) : paths ? (
                       <Button asChild size="compact" variant="primary">
@@ -931,99 +1068,127 @@ export function PlatformReadinessPage({
                       disabled={editingId === account.id}
                       onClick={() => setEditingId(account.id)}
                       size="compact"
-                      variant="ghost"
+                      variant="secondary"
                     >
-                      {copy.edit}
-                    </Button>
-                    <Button
-                      disabled={deletingId === account.id}
-                      onClick={() => {
-                        setDisconnectingId(null)
-                        setDeletingId(account.id)
-                      }}
-                      size="compact"
-                      variant="ghost"
-                    >
-                      {copy.delete}
+                      {copy.manageAccount}
                     </Button>
                   </div>
                 </header>
 
                 {editingId === account.id ? (
-                  <form onSubmit={(event) => handleEdit(event, account.id)}>
-                    <label>
-                      {copy.name}
-                      <input defaultValue={account.name} name="name" required type="text" />
-                    </label>
-                    {isPortalSupportedAccountKind(account.accountKind) ? (
-                      <label>
-                        {copy.externalAccountId}
-                        <input
-                          defaultValue={account.externalAccountId ?? ''}
-                          name="externalAccountId"
-                          type="text"
-                        />
-                        <small>{copy.externalAccountIdHelp}</small>
-                      </label>
-                    ) : null}
-                    <label>
-                      {copy.notes}
-                      <textarea defaultValue={account.notes ?? ''} name="notes" rows={3} />
-                    </label>
-                    {isPortalSupportedAccountKind(account.accountKind) ? (
-                      <>
-                        {supportsMessaging ? (
-                          <label>
-                            {readableCapability('messaging-inbound', copy)} {copy.approvalStatus}
-                            <select
-                              defaultValue={capabilityApprovalValue(
-                                account.capabilities.messagingInbound,
-                              )}
-                              name="messagingInbound"
-                            >
-                              {capabilityApprovalOptions.map((status) => (
-                                <option key={status} value={status}>
-                                  {copy.approvalStatuses[status]}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : (
-                          <input
-                            name="messagingInbound"
-                            type="hidden"
-                            value={capabilityApprovalValue(account.capabilities.messagingInbound)}
-                          />
-                        )}
+                  <div className="portal-platforms__dialog-backdrop">
+                    <div
+                      aria-modal="true"
+                      aria-labelledby={`platform-edit-${account.id}`}
+                      className="portal-platforms__editor"
+                      ref={editorDialogRef}
+                      role="dialog"
+                    >
+                      <h3 id={`platform-edit-${account.id}`}>
+                        {copy.editAccount}: {account.name}
+                      </h3>
+                      <form onSubmit={(event) => handleEdit(event, account.id)}>
                         <label>
-                          {readableCapability('publishing', copy)} {copy.approvalStatus}
-                          <select
-                            defaultValue={capabilityApprovalValue(account.capabilities.publishing)}
-                            name="publishing"
-                          >
-                            {capabilityApprovalOptions.map((status) => (
-                              <option key={status} value={status}>
-                                {copy.approvalStatuses[status]}
-                              </option>
-                            ))}
-                          </select>
-                          <small>{copy.approvalHelp}</small>
+                          {copy.name}
+                          <input defaultValue={account.name} name="name" required type="text" />
                         </label>
-                      </>
-                    ) : null}
-                    <div className="portal-platforms__form-actions">
-                      <Button disabled={isSubmitting} type="submit">
-                        {isSubmitting ? copy.saving : copy.save}
-                      </Button>
-                      <Button
-                        disabled={isSubmitting}
-                        onClick={() => setEditingId(null)}
-                        variant="secondary"
-                      >
-                        {copy.cancel}
-                      </Button>
+                        {isPortalSupportedAccountKind(account.accountKind) ? (
+                          <label>
+                            {copy.externalAccountId}
+                            <input
+                              defaultValue={account.externalAccountId ?? ''}
+                              name="externalAccountId"
+                              type="text"
+                            />
+                            <small>{copy.externalAccountIdHelp}</small>
+                          </label>
+                        ) : null}
+                        <label>
+                          {copy.notes}
+                          <textarea defaultValue={account.notes ?? ''} name="notes" rows={3} />
+                        </label>
+                        {isPortalSupportedAccountKind(account.accountKind) ? (
+                          <>
+                            {supportsMessaging ? (
+                              <label>
+                                {readableCapability('messaging-inbound', copy)}{' '}
+                                {copy.approvalStatus}
+                                <select
+                                  defaultValue={capabilityApprovalValue(
+                                    account.capabilities.messagingInbound,
+                                  )}
+                                  name="messagingInbound"
+                                >
+                                  {capabilityApprovalOptions.map((status) => (
+                                    <option key={status} value={status}>
+                                      {copy.approvalStatuses[status]}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : (
+                              <input
+                                name="messagingInbound"
+                                type="hidden"
+                                value={capabilityApprovalValue(
+                                  account.capabilities.messagingInbound,
+                                )}
+                              />
+                            )}
+                            <label>
+                              {readableCapability('publishing', copy)} {copy.approvalStatus}
+                              <select
+                                defaultValue={capabilityApprovalValue(
+                                  account.capabilities.publishing,
+                                )}
+                                name="publishing"
+                              >
+                                {capabilityApprovalOptions.map((status) => (
+                                  <option key={status} value={status}>
+                                    {copy.approvalStatuses[status]}
+                                  </option>
+                                ))}
+                              </select>
+                              <small>{copy.approvalHelp}</small>
+                            </label>
+                          </>
+                        ) : null}
+                        <div className="portal-platforms__form-actions">
+                          <Button disabled={isSubmitting} type="submit">
+                            {isSubmitting ? copy.saving : copy.save}
+                          </Button>
+                          <Button
+                            disabled={isSubmitting}
+                            onClick={() => setEditingId(null)}
+                            variant="secondary"
+                          >
+                            {copy.cancel}
+                          </Button>
+                        </div>
+                        <fieldset className="portal-platforms__danger-zone">
+                          <legend>{copy.deleteAccount}</legend>
+                          {paths && authorizedAccountIds.has(account.id) ? (
+                            <Button
+                              disabled={isSubmitting}
+                              onClick={() => setDisconnectingId(account.id)}
+                              type="button"
+                              variant="secondary"
+                            >
+                              {copy.disconnect}
+                            </Button>
+                          ) : null}
+                          <Button
+                            disabled={isSubmitting}
+                            onClick={() => setDeletingId(account.id)}
+                            type="button"
+                            variant="danger"
+                          >
+                            {copy.delete}
+                          </Button>
+                        </fieldset>
+                      </form>
                     </div>
-                  </form>
+                  </div>
                 ) : null}
 
                 {disconnectingId === account.id ? (
@@ -1052,7 +1217,95 @@ export function PlatformReadinessPage({
                   />
                 ) : null}
 
-                <AccountReadiness account={account} copy={copy} />
+                <section
+                  className="portal-platforms__summary"
+                  aria-label={`${account.name} summary`}
+                >
+                  <div>
+                    <span>{copy.connection}</span>
+                    <StatusBadge
+                      label={labelFor(connectionStatus(account), copy)}
+                      tone={toneFor(connectionStatus(account))}
+                    />
+                  </div>
+                  <div>
+                    <span>{copy.inbound}</span>
+                    {supportsMessaging ? (
+                      <StatusBadge
+                        label={labelFor(inboundCapability?.status ?? 'blocked', copy)}
+                        tone={toneFor(inboundCapability?.status ?? 'blocked')}
+                      />
+                    ) : (
+                      <strong>{copy.notApplicable}</strong>
+                    )}
+                  </div>
+                  <div>
+                    <span>{copy.autoReply}</span>
+                    <strong>{autoReplyLabel(account, copy)}</strong>
+                    {canToggleAutoReply ? (
+                      <Button
+                        aria-checked={autoReplyEnabled(account)}
+                        disabled={autoReplyId === account.id}
+                        onClick={() =>
+                          setPendingAutoReply({
+                            id: account.id,
+                            enabled: !autoReplyEnabled(account),
+                          })
+                        }
+                        role="switch"
+                        size="compact"
+                        variant="ghost"
+                      >
+                        {autoReplyEnabled(account) ? copy.pauseAutoReply : copy.resumeAutoReply}
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div>
+                    <span>{copy.publishing}</span>
+                    <StatusBadge
+                      label={labelFor(
+                        account.readiness.capabilities.find(
+                          (item) => item.capability === 'publishing',
+                        )?.status ?? 'blocked',
+                        copy,
+                      )}
+                      tone={toneFor(
+                        account.readiness.capabilities.find(
+                          (item) => item.capability === 'publishing',
+                        )?.status ?? 'blocked',
+                      )}
+                    />
+                  </div>
+                </section>
+                {pendingAutoReply?.id === account.id ? (
+                  <ConfirmDialog
+                    busy={autoReplyId === account.id}
+                    cancelLabel={copy.cancel}
+                    confirmLabel={
+                      pendingAutoReply.enabled ? copy.resumeAutoReply : copy.pauseAutoReply
+                    }
+                    description={
+                      pendingAutoReply.enabled
+                        ? copy.resumeAutoReplyDescription
+                        : copy.pauseAutoReplyDescription
+                    }
+                    id={`platform-auto-reply-${account.id}`}
+                    onCancel={() => setPendingAutoReply(null)}
+                    onConfirm={() => {
+                      setPendingAutoReply(null)
+                      void handleAutoReplyToggle(account.id, pendingAutoReply.enabled)
+                    }}
+                    title={
+                      pendingAutoReply.enabled
+                        ? copy.resumeAutoReplyTitle
+                        : copy.pauseAutoReplyTitle
+                    }
+                  />
+                ) : null}
+                <details className="portal-platforms__diagnostics">
+                  <summary>{copy.viewDiagnostics}</summary>
+                  <AccountReadiness account={account} copy={copy} />
+                </details>
               </Surface>
             )
           })}

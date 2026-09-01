@@ -114,13 +114,17 @@ test('FB-READY-01 and READY-02 expose fail-closed platform truth without availab
       const card = page.locator('article', {
         has: page.getByRole('heading', { exact: true, name: accountName }),
       })
-      await expect(card.getByText('受阻')).toHaveCount(blockedCount)
-      await expect(card.getByText('可用')).toHaveCount(0)
+      const summary = card.locator('.portal-platforms__summary')
+      await expect(summary.getByText('受阻')).toHaveCount(blockedCount)
+      await expect(summary.getByText('可用')).toHaveCount(0)
     }
     const facebookCard = page.locator('article', {
       has: page.getByRole('heading', { name: /^e2e-fb-page-/ }),
     })
-    await expect(facebookCard.getByText('系统社媒发布总开关当前未开启，请联系管理员开启。')).toBeVisible()
+    await facebookCard.getByText('查看诊断 / 下一步').click()
+    await expect(
+      facebookCard.getByText('系统社媒发布总开关当前未开启，请联系管理员开启。'),
+    ).toBeVisible()
     await expect(facebookCard.getByText('可用')).toHaveCount(0)
   } finally {
     await harness.cleanup()
@@ -163,7 +167,7 @@ test('admin can create and edit a platform account without entering /admin', asy
   const card = page.locator('article', {
     has: page.getByRole('heading', { name: 'E2E LinkedIn Member' }),
   })
-  await card.getByRole('button', { name: '编辑' }).click()
+  await card.getByRole('button', { name: '管理账号' }).click()
   await card.getByRole('textbox', { name: '显示名称' }).fill('E2E LinkedIn Member Updated')
   await expect(card.getByRole('textbox', { name: '备注' })).toHaveValue(
     'Keep this note while editing',
@@ -215,6 +219,7 @@ test('admin can delete a platform account without entering /admin', async ({ pag
     has: page.getByRole('heading', { exact: true, name: accountName }),
   })
   await expect(card).toBeVisible()
+  await card.getByRole('button', { name: '管理账号' }).click()
   await card.getByRole('button', { name: '删除' }).click()
   await card.getByRole('button', { name: /^删除账号/ }).click()
 
