@@ -23,8 +23,10 @@ export const loginToPortal = async ({
 }): Promise<void> => {
   await page.goto(`${config.targetUrl}/dashboard/login?returnTo=${encodeURIComponent(returnTo)}`, {
     timeout: 30_000,
-    waitUntil: 'domcontentloaded',
+    waitUntil: 'load',
   })
+  // A still-valid session is redirected directly to the requested Portal page.
+  if (new URL(page.url()).pathname === returnTo) return
 
   await page.getByRole('textbox', { name: '邮箱' }).fill(config.portalEmail)
   await page.getByRole('textbox', { name: '密码' }).fill(config.portalPassword)
@@ -98,9 +100,9 @@ export const verifyUniquePortalLead = async ({
   await leadButton.click()
 
   const detail = page.locator('.portal-leads__detail').first()
-  await expect(detail.getByText(data.name, { exact: true })).toBeVisible()
+  await expect(detail.getByRole('heading', { name: data.name, exact: true })).toBeVisible()
   await expect(detail.getByText(data.email, { exact: true })).toBeVisible()
-  await expect(detail.getByText(data.company, { exact: true })).toBeVisible()
+  await expect(detail.getByText(data.company, { exact: true }).and(detail.locator('p'))).toBeVisible()
   await expect(detail.getByText(locale.toUpperCase(), { exact: true })).toBeVisible()
   await expect(detail).toBeVisible()
   await detail.screenshot({ path: screenshotPath })
@@ -171,7 +173,8 @@ export const markCanaryLeadDisqualified = async ({
 
     const detail = page.locator('.portal-leads__detail').first()
     await expect(detail.getByText(data.email, { exact: true })).toBeVisible()
-    await expect(detail.getByText(data.company, { exact: true })).toBeVisible()
+    await expect(detail.getByRole('heading', { name: data.name, exact: true })).toBeVisible()
+    await expect(detail.getByText(data.company, { exact: true }).and(detail.locator('p'))).toBeVisible()
     safeDetail = detail
 
     const disqualified = detail.getByText(/不合格|Disqualified/u, { exact: true }).first()

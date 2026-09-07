@@ -9,7 +9,6 @@ import sharp from 'sharp'
 import { runLiveWorkflowSmoke } from '../../scripts/smoke/live-workflow-smoke'
 import { verifyFeishuRecord } from '../../scripts/smoke/feishu-verifier'
 import type { SmokeConfig } from '../../scripts/smoke/config'
-import { generateCanaryData } from '../../scripts/smoke/marker'
 
 type SyntheticLead = {
   company: string
@@ -128,13 +127,18 @@ test.describe('live-workflow browser runner with synthetic server', () => {
           state.chatMessages.push({ author: 'visitor', content: parsed.text ?? '' })
           const runId = parsed.text?.match(/\[CANARY ([^\]]+)\]/u)?.[1]
           if (runId && /@example\.invalid/u.test(parsed.text ?? '')) {
-            const locale = /-ar@example\.invalid/u.test(parsed.text ?? '') ? 'ar' : 'en'
-            const data = generateCanaryData(runId, locale)
+            // Consume what the visitor actually sent, independently of the smoke
+            // generator. Production uses the captured company as the Lead name.
+            const companyMessage = state.chatMessages.find((message) =>
+              /^(Company:|اسم الشركة:)/u.test(message.content),
+            )?.content ?? ''
+            const company = companyMessage.match(/^(?:Company: |اسم الشركة: )(.+?)(?:\. The project|،)/u)?.[1] ?? ''
+            const email = parsed.text?.match(/[a-zA-Z0-9-]+@example\.invalid/u)?.[0] ?? ''
             const lead: SyntheticLead = {
-              company: data.company,
-              email: data.email,
-              message: data.message,
-              name: data.name,
+              company,
+              email,
+              message: state.chatMessages.map((message) => message.content).join('\n'),
+              name: company,
               status: 'new',
             }
             const existingLead = state.leads.findIndex((item) => item.email === lead.email)
@@ -302,7 +306,7 @@ test.describe('live-workflow browser runner with synthetic server', () => {
               </header>
               <p id="detail-email">${selected.email}</p>
               <p id="detail-company">${selected.company}</p>
-              <p id="detail-locale">EN</p>
+              <p id="detail-locale">${selected.email.endsWith('-ar@example.invalid') ? 'AR' : 'EN'}</p>
               <p id="detail-message">${selected.message}</p>
             </div>
             <section class="portal-leads-editor portal-leads__editor" style="display:none">
@@ -680,6 +684,23 @@ test.describe('live-workflow browser runner with synthetic server', () => {
     expect(report.evidence).toHaveLength(7)
     expect(state.inquiries.length).toBeGreaterThan(0)
     expect(state.inquiries[0]?.company).toBe('Canary Facade canary-test-synthetic-123')
+    expect(state.leads.map(({ email, name, status }) => ({ email, name, status }))).toEqual([
+      { email: 'canary-canary-test-synthetic-123@example.invalid', name: 'Canary Buyer canary-test-synthetic-123', status: 'disqualified' },
+      { email: 'canary-canary-test-synthetic-123-chat@example.invalid', name: 'Canary Facade canary-test-synthetic-123', status: 'disqualified' },
+    ])
+  })
+
+  test('verifies and cleans the Arabic chat Lead using its actual company name', async () => {
+    const { report } = await runLiveWorkflowSmoke({
+      evidenceMode: 'compact', feishuTableUrl: `${serverUrl}/feishu-public-table`,
+      headless: true, locales: ['ar'], outputDir: tempDir,
+      portalEmail: 'smoke@example.invalid', portalPassword: 'secret-password-123',
+      scenario: 'chat', targetUrl: serverUrl, timeoutMs: 60_000,
+    }, 'canary-test-ar-chat')
+    expect(report.overallStatus).toBe('PASS')
+    expect(report.scenarios.chat?.runs[0]).toMatchObject({ operatorReplyReceived: true, conversationResolved: true, feishuFound: true })
+    expect(state.leads).toHaveLength(1)
+    expect(state.leads[0]).toMatchObject({ email: 'canary-canary-test-ar-chat-chat-ar@example.invalid', name: 'شركة اختبار الواجهات canary-test-ar-chat', status: 'disqualified' })
   })
 
   test('compact evidence omits successful visitor screenshots but keeps final chain proof', async () => {

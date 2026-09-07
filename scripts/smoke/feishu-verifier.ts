@@ -127,7 +127,10 @@ export const verifyFeishuRecord = async ({
         visibleCount(record.getByText(company, { exact: true })),
         visibleCount(record.getByText(name, { exact: true })),
       ])
-      if (companyCount === 1 && nameCount === 1) {
+      // A chat Lead legitimately has the same text in its name and company cells.
+      // Still require both cells within the one email-matched record.
+      const expectedCount = company === name ? 2 : 1
+      if (companyCount === expectedCount && nameCount === expectedCount) {
         const screenshotSaved = screenshotPath
           ? await captureLocatorEvidence({ locator: record, path: screenshotPath })
           : undefined

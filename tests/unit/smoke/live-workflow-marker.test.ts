@@ -3,6 +3,19 @@ import { describe, expect, it } from 'vitest'
 import { generateCanaryData, generateRunId } from '../../../scripts/smoke/marker'
 
 describe('live-workflow marker and canary generator', () => {
+  it.each(['en', 'ar'] as const)('keeps %s chat Lead identity separate from inquiry identity', (locale) => {
+    const runId = 'canary-20260907-103302-52c15e'
+    const inquiry = generateCanaryData(runId, locale)
+    const chat = generateCanaryData(runId, locale, 'chat')
+    const company = locale === 'en' ? `Canary Facade ${runId}` : `شركة اختبار الواجهات ${runId}`
+    expect(chat.name).toBe(company)
+    expect(chat.email).toBe(`canary-${runId}-chat${locale === 'ar' ? '-ar' : ''}@example.invalid`)
+    expect(chat.email).not.toBe(inquiry.email)
+    expect(chat.chatMessages[1]).toContain(company)
+    expect(chat.chatMessages[2]).toContain(chat.email)
+    expect(inquiry.name).toBe(locale === 'en' ? `Canary Buyer ${runId}` : `عميل اختبار ${runId}`)
+  })
+
   it('generates a valid runId matching the canary pattern', () => {
     const fixedDate = new Date(Date.UTC(2026, 7, 25, 14, 30, 45))
     const runId = generateRunId(fixedDate, '1a2b3c')

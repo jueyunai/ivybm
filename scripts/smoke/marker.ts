@@ -29,9 +29,16 @@ export const generateRunId = (
   return `canary-${year}${month}${day}-${hours}${minutes}${seconds}-${randomSuffix.slice(0, 6)}`
 }
 
-export const generateCanaryData = (runId: string, locale: SmokeLocale): CanaryData => {
+export const generateCanaryData = (
+  runId: string,
+  locale: SmokeLocale,
+  scenario: 'chat' | 'inquiry' = 'inquiry',
+): CanaryData => {
+  // Chat Leads use the captured company as their name (PayloadChatRepository).
+  // Separate emails also keep `--scenario=all` from conflating two real Leads.
+  const chatSuffix = scenario === 'chat' ? '-chat' : ''
   if (locale === 'ar') {
-    const email = `canary-${runId}-ar@example.invalid`
+    const email = `canary-${runId}${chatSuffix}-ar@example.invalid`
     const company = `شركة اختبار الواجهات ${runId}`
     return {
       chatMessages: [
@@ -43,14 +50,14 @@ export const generateCanaryData = (runId: string, locale: SmokeLocale): CanaryDa
       country: 'United Arab Emirates',
       email,
       message: `[CANARY ${runId}] اختبار فحص تلقائي. لا يلزم متابعة.`,
-      name: `عميل اختبار ${runId}`,
+      name: scenario === 'chat' ? company : `عميل اختبار ${runId}`,
       operatorReply: `[CANARY ${runId}] رد المشغل التجريبي.`,
       phone: '+971501234567',
       runId,
     }
   }
 
-  const email = `canary-${runId}@example.invalid`
+  const email = `canary-${runId}${chatSuffix}@example.invalid`
   const company = `Canary Facade ${runId}`
   return {
     chatMessages: [
@@ -62,7 +69,7 @@ export const generateCanaryData = (runId: string, locale: SmokeLocale): CanaryDa
     country: 'United Arab Emirates',
     email,
     message: `[CANARY ${runId}] Automated workflow smoke. No follow-up required.`,
-    name: `Canary Buyer ${runId}`,
+    name: scenario === 'chat' ? company : `Canary Buyer ${runId}`,
     operatorReply: `[CANARY ${runId}] Test operator reply.`,
     phone: '+971501234567',
     runId,
