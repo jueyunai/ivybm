@@ -92,6 +92,17 @@ describe('Portal platform readiness', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '管理账号' }))
     expect(screen.getByRole('button', { name: '断开授权' })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('显示名称'), {
+      target: { value: 'Unsaved account name' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '断开授权' }))
+    expect(screen.getByRole('alertdialog', { name: '确认断开' })).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.getByRole('dialog', { name: '编辑账号: IVYBM Facebook' })).toBeTruthy()
+    expect((screen.getByLabelText('显示名称') as HTMLInputElement).value).toBe(
+      'Unsaved account name',
+    )
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
 
     const toggle = screen.getByRole('switch', { name: '恢复 AI 回复' })
@@ -111,6 +122,76 @@ describe('Portal platform readiness', () => {
         method: 'PATCH',
       })
       expect(screen.getByRole('status').textContent).toContain('AI 自动回复设置已更新')
+    })
+  })
+
+  it('keeps edit failures visible inside the open account dialog', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: 'stale_revision' } }), {
+          headers: { 'content-type': 'application/json' },
+          status: 409,
+        }),
+      ),
+    )
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(PlatformReadinessPage, {
+          accounts: [],
+          pageState: 'available',
+          summary: {
+            accounts: [
+              {
+                aiAutoReplyEnabled: false,
+                accountKind: 'facebook-page',
+                authorization: {
+                  accessTokenConfigured: true,
+                  refreshTokenConfigured: false,
+                  state: 'connected',
+                },
+                authorizationRevision: 2,
+                capabilities: { messagingInbound: 'approved', publishing: 'pending' },
+                externalAccountId: 'page-123',
+                id: 8,
+                name: 'IVYBM Facebook',
+                notes: null,
+                readiness: {
+                  capabilities: [
+                    {
+                      capability: 'messaging-inbound',
+                      implementation: 'implemented',
+                      missing: [],
+                      productionRequirements: [],
+                      status: 'ready-for-controlled-test',
+                    },
+                  ],
+                  connection: { missing: [], status: 'ready-for-controlled-test' },
+                  family: 'meta',
+                },
+              },
+            ],
+          },
+        }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '管理账号' }))
+    fireEvent.change(screen.getByLabelText('显示名称'), {
+      target: { value: 'Updated account name' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      const dialog = screen.getByRole('dialog', { name: '编辑账号: IVYBM Facebook' })
+      const alert = screen.getByRole('alert')
+      expect(dialog.contains(alert)).toBe(true)
+      expect(alert.textContent).toContain('该账号已在其他会话中更新')
+      expect((screen.getByLabelText('显示名称') as HTMLInputElement).value).toBe(
+        'Updated account name',
+      )
     })
   })
 

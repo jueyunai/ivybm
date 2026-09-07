@@ -687,6 +687,7 @@ export function PlatformReadinessPage({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (document.querySelector('[role="alertdialog"]')) return
         event.preventDefault()
         setEditingId(null)
         return
@@ -973,7 +974,7 @@ export function PlatformReadinessPage({
         </div>
       ) : null}
 
-      {formError ? (
+      {formError && editingId === null ? (
         <div className="portal-platforms__form-error" role="alert">
           {formError === 'disconnect_failed' ? copy.disconnectFailed : formError}
         </div>
@@ -1088,6 +1089,11 @@ export function PlatformReadinessPage({
                         {copy.editAccount}: {account.name}
                       </h3>
                       <form onSubmit={(event) => handleEdit(event, account.id)}>
+                        {formError ? (
+                          <div className="portal-platforms__form-error" role="alert">
+                            {formError}
+                          </div>
+                        ) : null}
                         <label>
                           {copy.name}
                           <input defaultValue={account.name} name="name" required type="text" />
