@@ -74,7 +74,7 @@ const recoverTimedOutConversation = async ({
 
   const context = await browser.newContext({ viewport: { height: 900, width: 1440 } })
   const page = await context.newPage()
-  const data = generateCanaryData(runId, active.locale)
+  const data = generateCanaryData(runId, active.locale, 'chat')
   try {
     await loginToPortal({ config, page, returnTo: '/dashboard/conversations' })
     await page.goto(

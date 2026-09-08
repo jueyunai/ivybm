@@ -361,9 +361,8 @@ export const runChatWorkflow = async ({
 
   try {
     const feishuResult = await verifyFeishuRecord({
-      company: data.company,
+      customerName: data.company || data.name,
       email: data.email,
-      name: data.name,
       page: feishuPage,
       screenshotPath: screenshotPaths.feishu,
       tableUrl: config.feishuTableUrl,

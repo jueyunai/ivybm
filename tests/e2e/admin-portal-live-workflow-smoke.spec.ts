@@ -7,6 +7,7 @@ import { chromium, expect, test } from '@playwright/test'
 import sharp from 'sharp'
 
 import { runLiveWorkflowSmoke } from '../../scripts/smoke/live-workflow-smoke'
+import { loginToPortal } from '../../scripts/smoke/portal'
 import { verifyFeishuRecord } from '../../scripts/smoke/feishu-verifier'
 import type { SmokeConfig } from '../../scripts/smoke/config'
 
@@ -25,6 +26,7 @@ test.describe('live-workflow browser runner with synthetic server', () => {
   let tempDir: string
 
   const state = {
+    activePortalSession: false,
     chatMessages: [] as Array<{ author: string; content: string }>,
     conversationResolved: false,
     delayedFeishuSearchMs: 0,
@@ -46,6 +48,7 @@ test.describe('live-workflow browser runner with synthetic server', () => {
   }
 
   test.beforeEach(() => {
+    state.activePortalSession = false
     state.chatMessages.length = 0
     state.conversationResolved = false
     state.delayedFeishuSearchMs = 0
@@ -254,6 +257,11 @@ test.describe('live-workflow browser runner with synthetic server', () => {
       // Synthetic Page: Portal Login
       if (url.pathname === '/dashboard/login') {
         const returnTo = url.searchParams.get('returnTo') || '/dashboard/leads'
+        if (state.activePortalSession) {
+          res.writeHead(302, { Location: returnTo })
+          res.end()
+          return
+        }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
         res.end(`
           <!DOCTYPE html>
@@ -497,6 +505,7 @@ test.describe('live-workflow browser runner with synthetic server', () => {
           name: 'Canary Buyer Test',
           status: 'new' as const,
         }
+        const customerName = (latestInquiry.company || latestInquiry.name).trim()
         const searchControl = state.delayedFeishuSearchMs
           ? `<div id="search-slot"></div><script>
               setTimeout(() => {
@@ -518,17 +527,15 @@ test.describe('live-workflow browser runner with synthetic server', () => {
               state.hideFeishuRecord
                 ? ''
                 : state.feishuSplitFields
-                  ? `<div role="row"><div>${latestInquiry.name}</div></div>
-                     <div role="row"><div>${latestInquiry.email}</div></div>
-                     <div role="row"><div>${latestInquiry.company}</div></div>`
+                  ? `<div role="row"><div class="cell-customer-name">${customerName}</div></div>
+                     <div role="row"><div class="cell-email">${latestInquiry.email}</div></div>`
                   : `<div class="bitable-grid" role="row">
-                      <div class="cell-name">${latestInquiry.name}</div>
+                      <div class="cell-customer-name">${customerName}</div>
                       <div class="cell-email">${latestInquiry.email}</div>
-                      <div class="cell-company">${latestInquiry.company}</div>
                     </div>`
             }
-            ${state.unrelatedFeishuRecord ? '<div data-testid="unrelated-customer-row" role="row"><div>Unrelated Customer</div><div>unrelated@example.invalid</div><div>Unrelated Company</div></div>' : ''}
-            ${state.duplicateFeishuRecord ? `<div role="row"><div>${latestInquiry.name}</div><div>${latestInquiry.email}</div><div>${latestInquiry.company}</div></div>` : ''}
+            ${state.unrelatedFeishuRecord ? '<div data-testid="unrelated-customer-row" role="row"><div>Unrelated Customer</div><div>unrelated@example.invalid</div></div>' : ''}
+            ${state.duplicateFeishuRecord ? `<div role="row"><div>${customerName}</div><div>${latestInquiry.email}</div></div>` : ''}
           </body>
           </html>
         `)
@@ -571,6 +578,34 @@ test.describe('live-workflow browser runner with synthetic server', () => {
   test.afterAll(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()))
     await rm(tempDir, { force: true, recursive: true }).catch(() => undefined)
+  })
+
+  test('bypasses login and succeeds immediately when active portal session redirects directly to returnTo', async () => {
+    state.activePortalSession = true
+    const browser = await chromium.launch({ headless: true })
+    const page = await browser.newPage()
+    try {
+      await loginToPortal({
+        config: {
+          evidenceMode: 'compact',
+          feishuTableUrl: `${serverUrl}/feishu-public-table`,
+          headless: true,
+          locales: ['en'],
+          outputDir: tempDir,
+          portalEmail: 'smoke@example.invalid',
+          portalPassword: 'secret-password-123',
+          scenario: 'chat',
+          targetUrl: serverUrl,
+          timeoutMs: 30_000,
+        },
+        page,
+        returnTo: '/dashboard/conversations',
+      })
+      expect(new URL(page.url()).pathname).toBe('/dashboard/conversations')
+    } finally {
+      await page.close()
+      await browser.close()
+    }
   })
 
   test('verifies feishu public table verifier identifies records and catches blocked states', async () => {

@@ -5,7 +5,7 @@ import { generateCanaryData, generateRunId } from '../../../scripts/smoke/marker
 describe('live-workflow marker and canary generator', () => {
   it.each(['en', 'ar'] as const)('keeps %s chat Lead identity separate from inquiry identity', (locale) => {
     const runId = 'canary-20260907-103302-52c15e'
-    const inquiry = generateCanaryData(runId, locale)
+    const inquiry = generateCanaryData(runId, locale, 'inquiry')
     const chat = generateCanaryData(runId, locale, 'chat')
     const company = locale === 'en' ? `Canary Facade ${runId}` : `شركة اختبار الواجهات ${runId}`
     expect(chat.name).toBe(company)
@@ -27,7 +27,7 @@ describe('live-workflow marker and canary generator', () => {
 
   it('generates English canary data with reserved domain and marker tags', () => {
     const runId = 'canary-20260825-143045-1a2b3c'
-    const data = generateCanaryData(runId, 'en')
+    const data = generateCanaryData(runId, 'en', 'inquiry')
 
     expect(data.email).toBe(`canary-${runId}@example.invalid`)
     expect(data.name).toBe(`Canary Buyer ${runId}`)
@@ -43,7 +43,7 @@ describe('live-workflow marker and canary generator', () => {
 
   it('generates Arabic canary data with localized strings and marker tags', () => {
     const runId = 'canary-20260825-143045-1a2b3c'
-    const data = generateCanaryData(runId, 'ar')
+    const data = generateCanaryData(runId, 'ar', 'inquiry')
 
     expect(data.email).toBe(`canary-${runId}-ar@example.invalid`)
     expect(data.name).toBe(`عميل اختبار ${runId}`)

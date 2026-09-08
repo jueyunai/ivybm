@@ -32,7 +32,7 @@ export const generateRunId = (
 export const generateCanaryData = (
   runId: string,
   locale: SmokeLocale,
-  scenario: 'chat' | 'inquiry' = 'inquiry',
+  scenario: 'chat' | 'inquiry',
 ): CanaryData => {
   // Chat Leads use the captured company as their name (PayloadChatRepository).
   // Separate emails also keep `--scenario=all` from conflating two real Leads.
