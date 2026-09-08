@@ -92,6 +92,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         accountKind: input.value.accountKind,
         authorization: { state: 'not_started' },
         authorizationRevision: 0,
+        aiAutoReplyEnabled: false,
         externalAccountId: input.value.externalAccountId ?? null,
         name: input.value.name,
         notes: input.value.notes ?? null,

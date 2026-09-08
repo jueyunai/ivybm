@@ -29,13 +29,9 @@ export const resolveInstagramOAuthAccountId = async (
       ],
     },
   })
-  const externalAccountId = accounts.docs.length === 1
-    ? accounts.docs[0]?.externalAccountId
-    : undefined
-  if (
-    typeof externalAccountId !== 'string' ||
-    !/^[1-9][0-9]{0,31}$/u.test(externalAccountId)
-  ) {
+  const externalAccountId =
+    accounts.docs.length === 1 ? accounts.docs[0]?.externalAccountId : undefined
+  if (typeof externalAccountId !== 'string' || !/^[1-9][0-9]{0,31}$/u.test(externalAccountId)) {
     throw new Error('Instagram OAuth identity is unavailable for the messaging account')
   }
   return externalAccountId
@@ -120,10 +116,36 @@ export class PayloadPlatformConversationPort implements ConversationMessagePort 
   ): Promise<PlatformEventDeliveryResult> {
     const channel = conversationChannelFor(message.platform, this.allowTikTokNormalizedDelivery)
     const externalThreadId = `${message.accountExternalId}:${message.senderExternalId}`
-    const conversationAccountExternalId = message.platform === 'instagram'
-      ? await resolveInstagramOAuthAccountId(this.payload, message.accountExternalId)
-      : message.accountExternalId
+    const conversationAccountExternalId =
+      message.platform === 'instagram'
+        ? await resolveInstagramOAuthAccountId(this.payload, message.accountExternalId)
+        : message.accountExternalId
     const text = inboundText(message)
+    const account = await this.payload.find({
+      collection: 'platform-accounts',
+      depth: 0,
+      limit: 2,
+      pagination: false,
+      overrideAccess: true,
+      select: { aiAutoReplyEnabled: true },
+      where: {
+        and: [
+          {
+            accountKind: {
+              equals:
+                channel === 'facebook'
+                  ? 'facebook-page'
+                  : channel === 'instagram'
+                    ? 'instagram-professional'
+                    : 'tiktok-business',
+            },
+          },
+          { externalAccountId: { equals: conversationAccountExternalId } },
+        ],
+      },
+    })
+    const aiAutoReplyEnabled =
+      account.docs.length === 1 && account.docs[0]?.aiAutoReplyEnabled === true
     const service = createConversationService({
       allowTikTokNormalizedDelivery: this.allowTikTokNormalizedDelivery,
       leadSink: new PayloadConversationLeadSink(),
@@ -142,6 +164,7 @@ export class PayloadPlatformConversationPort implements ConversationMessagePort 
       externalThreadId,
       locale: /\p{Script=Arabic}/u.test(text) ? 'ar' : 'en',
       text,
+      aiAutoReplyEnabled,
     })
     return { idempotencyKey: message.idempotencyKey, status: delivery.status }
   }

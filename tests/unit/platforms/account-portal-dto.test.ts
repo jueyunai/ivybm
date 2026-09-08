@@ -52,6 +52,7 @@ describe('account portal DTO', () => {
 
     expect(redacted).toEqual({
       accountKind: 'facebook-page',
+      aiAutoReplyEnabled: false,
       authorization: {
         accessTokenConfigured: true,
         appId: 'meta-app-id',

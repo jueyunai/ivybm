@@ -340,6 +340,7 @@ export class FacebookE2EHarness {
       context: { skipAudit: true },
       data: {
         accountKind: 'facebook-page',
+        aiAutoReplyEnabled: true,
         authorizationRevision: 0,
         authorization: {
           accessToken: `e2e-meta-access-token-${randomUUID()}`,
@@ -371,6 +372,7 @@ export class FacebookE2EHarness {
       context: { skipAudit: true },
       data: {
         accountKind: 'facebook-page',
+        aiAutoReplyEnabled: true,
         authorizationRevision: 0,
         authorization: {
           accessToken: `e2e-meta-publishing-token-${randomUUID()}`,
@@ -476,6 +478,7 @@ export class FacebookE2EHarness {
       context: { skipAudit: true },
       data: {
         accountKind,
+        aiAutoReplyEnabled: false,
         authorizationRevision: 0,
         authorization: {
           accessToken: null,

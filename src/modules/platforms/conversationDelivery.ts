@@ -189,6 +189,15 @@ const authorityBlockedOutcome = (
       status: 'blocked',
     }
   }
+  if (reason === 'ai_auto_reply_paused') {
+    return {
+      deliveryKey: request.deliveryKey,
+      errorCode: 'ai_auto_reply_paused',
+      platform: request.platform,
+      retryable: false,
+      status: 'blocked',
+    }
+  }
   return {
     deliveryKey: request.deliveryKey,
     errorCode: 'invalid_request',

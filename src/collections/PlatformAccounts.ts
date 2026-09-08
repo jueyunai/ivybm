@@ -1,6 +1,7 @@
 import { sql, type PostgresAdapter } from '@payloadcms/db-postgres'
 import {
   ValidationError,
+  type CollectionAfterChangeHook,
   type CollectionBeforeChangeHook,
   type CollectionBeforeOperationHook,
   type CollectionConfig,
@@ -54,6 +55,33 @@ const validationError = (
     errors: [{ message, path }],
     req,
   })
+
+const writeAiAutoReplyAuditAfterChange: CollectionAfterChangeHook = async ({
+  context,
+  doc,
+  operation,
+  previousDoc,
+  req,
+}) => {
+  if (context?.skipAudit === true || operation !== 'update') return doc
+  const wasEnabled = previousDoc?.aiAutoReplyEnabled === true
+  const isEnabled = doc.aiAutoReplyEnabled === true
+  if (wasEnabled === isEnabled) return doc
+
+  await req.payload.create({
+    collection: 'audit-logs',
+    context: { ...context, skipAudit: true },
+    data: {
+      action: 'update',
+      actor: req.user?.id,
+      documentId: String(doc.id),
+      resource: `platform-accounts.ai-auto-reply.${isEnabled ? 'enabled' : 'paused'}`,
+    },
+    overrideAccess: true,
+    req,
+  })
+  return doc
+}
 
 const transactionDB = async (req: Parameters<CollectionBeforeChangeHook>[0]['req']) => {
   const transactionID = await req.transactionID
@@ -193,6 +221,8 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
   const candidate = data as UnknownRecord
   const accountKind = candidate.accountKind ?? originalDoc?.accountKind
   if (!isPlatformAccountKind(accountKind)) return candidate
+  candidate.aiAutoReplyEnabled =
+    (candidate.aiAutoReplyEnabled ?? originalDoc?.aiAutoReplyEnabled) === true
 
   const externalAccountId = nonEmpty(candidate.externalAccountId ?? originalDoc?.externalAccountId)
   if (externalAccountId) {
@@ -216,7 +246,7 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
       ? context[platformMessagingIdentityWriteContextKey] === true && submittedMessagingIdentity
         ? candidate.messagingExternalAccountId
         : undefined
-      : candidate.messagingExternalAccountId ?? originalDoc?.messagingExternalAccountId,
+      : (candidate.messagingExternalAccountId ?? originalDoc?.messagingExternalAccountId),
   )
   const originalMessagingExternalAccountId = nonEmpty(originalDoc?.messagingExternalAccountId)
   if (
@@ -232,7 +262,8 @@ const normalizeAccountBeforeChange: CollectionBeforeChangeHook = async ({
   }
   if (
     messagingExternalAccountId &&
-    (accountKind !== 'instagram-professional' || !/^[1-9][0-9]{0,31}$/u.test(messagingExternalAccountId))
+    (accountKind !== 'instagram-professional' ||
+      !/^[1-9][0-9]{0,31}$/u.test(messagingExternalAccountId))
   ) {
     throw validationError(
       req,
@@ -545,10 +576,18 @@ export const PlatformAccounts: CollectionConfig = {
         },
       ],
     },
+    {
+      name: 'aiAutoReplyEnabled',
+      type: 'checkbox',
+      defaultValue: false,
+      admin: {
+        description: 'Whether AI may automatically reply to inbound messages for this account.',
+      },
+    },
     { name: 'notes', type: 'textarea' },
   ],
   hooks: {
-    afterChange: [writeAuditLogAfterChange],
+    afterChange: [writeAiAutoReplyAuditAfterChange, writeAuditLogAfterChange],
     afterDelete: [writeAuditLogAfterDelete],
     beforeChange: [normalizeAccountBeforeChange],
     beforeOperation: [lockPlatformAccountBeforeUpdate],

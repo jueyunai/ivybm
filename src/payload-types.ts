@@ -635,6 +635,10 @@ export interface PlatformAccount {
     messagingInbound?: ('not_started' | 'pending' | 'approved' | 'blocked') | null;
     publishing?: ('not_started' | 'pending' | 'approved' | 'blocked') | null;
   };
+  /**
+   * Whether AI may automatically reply to inbound messages for this account.
+   */
+  aiAutoReplyEnabled?: boolean | null;
   notes?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -2478,6 +2482,7 @@ export interface PlatformAccountsSelect<T extends boolean = true> {
         messagingInbound?: T;
         publishing?: T;
       };
+  aiAutoReplyEnabled?: T;
   notes?: T;
   updatedAt?: T;
   createdAt?: T;

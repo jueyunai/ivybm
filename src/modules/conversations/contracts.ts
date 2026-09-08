@@ -26,6 +26,7 @@ export type ChatAllowedAction =
 
 export type ChatErrorCode =
   | 'ai_unavailable'
+  | 'ai_auto_reply_paused'
   | 'conflict'
   | 'forbidden'
   | 'handoff_required'
@@ -136,6 +137,8 @@ export type IngestExternalMessageInput = {
   externalMessageId: string
   externalSenderId: string
   externalThreadId: string
+  /** Server-only snapshot; never accepted by public routes. */
+  aiAutoReplyEnabled?: boolean
   locale: ChatLocale
   text: string
 }
