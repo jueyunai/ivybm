@@ -63,29 +63,15 @@ export const getPortalSettingsSummary = async ({
   return selectPortalSettingsSummary(settings, user)
 }
 
-const selectSiteSettingsEditor = (settings: unknown): PortalSiteSettingsEditor => {
+const selectLocaleSettings = (settings: unknown) => {
   const record = toRecord(settings)
-  const contact = toRecord(record.contact)
   const optional = (value: unknown): string | null =>
     typeof value === 'string' && value.trim() ? value.trim() : null
   const required = (value: unknown): string => optional(value) ?? 'IVYBM'
 
   return {
-    contact: {
-      email: optional(contact.email),
-      phone: optional(contact.phone),
-    },
-    locales: {
-      ar: {
-        siteDescription: optional(record.siteDescription),
-        siteName: required(record.siteName),
-      },
-      en: {
-        siteDescription: optional(record.siteDescription),
-        siteName: required(record.siteName),
-      },
-    },
-    updatedAt: optional(record.updatedAt) ?? '',
+    siteDescription: optional(record.siteDescription),
+    siteName: required(record.siteName),
   }
 }
 
@@ -96,24 +82,41 @@ export const getPortalSiteSettingsEditor = async ({
   payload: Payload
   req: PayloadRequest
 }): Promise<PortalSiteSettingsEditor> => {
-  const [english, arabic] = await Promise.all(
-    (['en', 'ar'] as const).map((locale) =>
-      payload.findGlobal({
-        depth: 0,
-        fallbackLocale: false,
-        locale,
-        overrideAccess: false,
-        req,
-        select: { contact: true, siteDescription: true, siteName: true, updatedAt: true },
-        slug: 'site-settings',
-      }),
-    ),
-  )
-  const en = selectSiteSettingsEditor(english)
-  const ar = selectSiteSettingsEditor(arabic)
+  const [english, arabic] = await Promise.all([
+    payload.findGlobal({
+      depth: 0,
+      fallbackLocale: false,
+      locale: 'en',
+      overrideAccess: false,
+      req: { ...req } as PayloadRequest,
+      select: { contact: true, siteDescription: true, siteName: true, updatedAt: true },
+      slug: 'site-settings',
+    }),
+    payload.findGlobal({
+      depth: 0,
+      fallbackLocale: false,
+      locale: 'ar',
+      overrideAccess: false,
+      req: { ...req } as PayloadRequest,
+      select: { contact: true, siteDescription: true, siteName: true, updatedAt: true },
+      slug: 'site-settings',
+    }),
+  ])
+
+  const enRecord = toRecord(english)
+  const contact = toRecord(enRecord.contact)
+  const optional = (value: unknown): string | null =>
+    typeof value === 'string' && value.trim() ? value.trim() : null
+
   return {
-    contact: en.contact,
-    locales: { ar: ar.locales.ar, en: en.locales.en },
-    updatedAt: en.updatedAt,
+    contact: {
+      email: optional(contact.email),
+      phone: optional(contact.phone),
+    },
+    locales: {
+      ar: selectLocaleSettings(arabic),
+      en: selectLocaleSettings(english),
+    },
+    updatedAt: optional(enRecord.updatedAt) ?? '',
   }
 }
