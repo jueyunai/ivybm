@@ -45,9 +45,9 @@ export const PORTAL_ZH = {
     settings: '已提供本人偏好、模块状态和站点设置概览。',
   },
   overview: {
-    dependencyDescription: '线索自动同步依赖飞书应用凭据与多维表格映射，可在「线索管理」中配置。',
+    dependencyDescription: '线索自动流转与飞书多维表格的协同状态，可在「线索管理」中查看与维护。',
     dependencyItems: {
-      'feishu-failures': { label: '飞书线索同步', description: '等待管理员在「线索管理」中完成飞书应用授权与多维表格映射' },
+      'feishu-failures': { label: '飞书协同状态', description: '飞书应用授权与多维表格映射状态（可在「线索管理」维护）' },
     },
     dependencyStatus: '功能接入中',
     dependencyTitle: '规划与接入',

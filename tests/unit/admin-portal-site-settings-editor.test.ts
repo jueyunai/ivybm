@@ -11,11 +11,18 @@ describe('Portal site settings editor reader', () => {
       user: { collection: 'users', id: 1 },
     } as unknown as PayloadRequest
 
+    const receivedRequests: PayloadRequest[] = []
+
     const findGlobal = vi.fn().mockImplementation(async ({ locale, req }) => {
+      receivedRequests.push(req)
       // Simulate Payload internal createLocalReq mutating req.locale in-place
       req.locale = locale
 
-      if (locale === 'en') {
+      // Asynchronously yield so concurrent tasks interleave, faithfully reproducing the race condition
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      // Crucial: return based on the actual mutated state of req.locale, matching Payload runtime behavior
+      if (req.locale === 'en') {
         return {
           contact: {
             email: 'sales@ivybm.com',
@@ -43,6 +50,12 @@ describe('Portal site settings editor reader', () => {
     const result = await getPortalSiteSettingsEditor({ payload, req: originalReq })
 
     expect(findGlobal).toHaveBeenCalledTimes(2)
+    // Assert that each parallel call received a distinct request object, not the shared original
+    expect(receivedRequests).toHaveLength(2)
+    expect(receivedRequests[0]).not.toBe(receivedRequests[1])
+    expect(receivedRequests[0]).not.toBe(originalReq)
+    expect(receivedRequests[1]).not.toBe(originalReq)
+
     expect(result.locales.en).toEqual({
       siteDescription: 'Architectural aluminum facade manufacturer',
       siteName: 'IVY Building Materials',
@@ -57,7 +70,7 @@ describe('Portal site settings editor reader', () => {
     })
     expect(result.updatedAt).toBe('2026-08-19T00:00:01.000Z')
 
-    // Verify findGlobal received cloned requests, so originalReq was not mutated
+    // Verify originalReq was not mutated
     expect(originalReq.locale).toBe('en')
   })
 

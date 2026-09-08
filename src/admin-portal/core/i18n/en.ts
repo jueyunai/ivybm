@@ -48,11 +48,11 @@ export const PORTAL_EN = {
   },
   overview: {
     dependencyDescription:
-      'Lead synchronization requires Feishu application credentials and bitable mapping, configured in Leads Hub.',
+      'Lead workflow and Feishu bitable integration status, managed in Leads Hub.',
     dependencyItems: {
       'feishu-failures': {
-        label: 'Feishu lead sync',
-        description: 'Waiting for Feishu application authorization and bitable mapping in Leads Hub',
+        label: 'Feishu integration',
+        description: 'Feishu application authorization and bitable mapping status (managed in Leads Hub)',
       },
     },
     dependencyStatus: 'DEPENDENCY-GATED',

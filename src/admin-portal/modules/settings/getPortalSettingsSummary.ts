@@ -82,6 +82,9 @@ export const getPortalSiteSettingsEditor = async ({
   payload: Payload
   req: PayloadRequest
 }): Promise<PortalSiteSettingsEditor> => {
+  // Shallow copy req here is explicitly scoped to isolate top-level in-place mutations
+  // (such as req.locale and req.fallbackLocale set by Payload's createLocalReq) during
+  // parallel read-only global queries. This is safe for depth=0 scalar reads without transactions.
   const [english, arabic] = await Promise.all([
     payload.findGlobal({
       depth: 0,
