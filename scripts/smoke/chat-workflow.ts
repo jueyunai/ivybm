@@ -51,7 +51,7 @@ export const runChatWorkflow = async ({
   visitorContext: BrowserContext
 }): Promise<ChatRunResult> => {
   const startTime = Date.now()
-  const data: CanaryData = generateCanaryData(runId, locale)
+  const data: CanaryData = generateCanaryData(runId, locale, 'chat')
   const captureFullEvidence = config.evidenceMode === 'full'
   const screenshotPaths = {
     feishu: join(runDir, `chat-feishu-${locale}.png`),
@@ -79,7 +79,7 @@ export const runChatWorkflow = async ({
   try {
     await visitorPage.goto(`${config.targetUrl}/${locale}`, {
       timeout: 30_000,
-      waitUntil: 'domcontentloaded',
+      waitUntil: 'load',
     })
 
     const launcherName = locale === 'ar' ? 'اسأل مساعد المشروع' : 'Ask our project assistant'
@@ -361,9 +361,8 @@ export const runChatWorkflow = async ({
 
   try {
     const feishuResult = await verifyFeishuRecord({
-      company: data.company,
+      customerName: data.company || data.name,
       email: data.email,
-      name: data.name,
       page: feishuPage,
       screenshotPath: screenshotPaths.feishu,
       tableUrl: config.feishuTableUrl,
