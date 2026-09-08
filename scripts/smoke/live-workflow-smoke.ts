@@ -74,7 +74,7 @@ const recoverTimedOutConversation = async ({
 
   const context = await browser.newContext({ viewport: { height: 900, width: 1440 } })
   const page = await context.newPage()
-  const data = generateCanaryData(runId, active.locale)
+  const data = generateCanaryData(runId, active.locale, 'chat')
   try {
     await loginToPortal({ config, page, returnTo: '/dashboard/conversations' })
     await page.goto(
@@ -127,16 +127,19 @@ const cleanupCanaryLeads = async ({
   runId: string
 }): Promise<CleanupResult[]> => {
   const results: CleanupResult[] = []
-  for (const locale of config.locales) {
+  const scenarios = config.scenario === 'all' ? (['inquiry', 'chat'] as const) : [config.scenario]
+  for (const { locale, scenario } of config.locales.flatMap((locale) =>
+    scenarios.map((scenario) => ({ locale, scenario })),
+  )) {
     const context = await browser.newContext({ viewport: { height: 900, width: 1440 } })
     const page = await context.newPage()
     try {
       results.push(
         await markCanaryLeadDisqualified({
           config,
-          data: generateCanaryData(runId, locale),
+          data: generateCanaryData(runId, locale, scenario),
           page,
-          screenshotPath: join(runDir, `cleanup-lead-${locale}.png`),
+          screenshotPath: join(runDir, `cleanup-lead-${scenario}-${locale}.png`),
         }),
       )
     } finally {

@@ -28,7 +28,7 @@ export const runInquiryWorkflow = async ({
   visitorContext: BrowserContext
 }): Promise<InquiryRunResult> => {
   const startTime = Date.now()
-  const data: CanaryData = generateCanaryData(runId, locale)
+  const data: CanaryData = generateCanaryData(runId, locale, 'inquiry')
   const captureFullEvidence = config.evidenceMode === 'full'
   const screenshotPaths = {
     feishu: join(runDir, `inquiry-feishu-${locale}.png`),
@@ -162,9 +162,8 @@ export const runInquiryWorkflow = async ({
 
   try {
     const feishuResult = await verifyFeishuRecord({
-      company: data.company,
+      customerName: data.company || data.name,
       email: data.email,
-      name: data.name,
       page: feishuPage,
       screenshotPath: screenshotPaths.feishu,
       tableUrl: config.feishuTableUrl,

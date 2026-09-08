@@ -42,6 +42,7 @@ const recordContainerFor = (emailMatch: Locator): Locator =>
 
 export const verifyFeishuRecord = async ({
   company,
+  customerName,
   email,
   name,
   page,
@@ -49,14 +50,19 @@ export const verifyFeishuRecord = async ({
   tableUrl,
   timeoutMs = 60_000,
 }: {
-  company: string
+  company?: string
+  customerName?: string
   email: string
-  name: string
+  name?: string
   page: Page
   screenshotPath?: string
   tableUrl: string
   timeoutMs?: number
 }): Promise<FeishuVerificationResult> => {
+  const expectedCustomerName = (customerName || company || name || "").trim()
+  if (!expectedCustomerName) {
+    throw new Error("A customerName, company, or name is required for Feishu verification")
+  }
   try {
     await page.goto(tableUrl, {
       timeout: Math.min(30_000, timeoutMs),
@@ -123,11 +129,10 @@ export const verifyFeishuRecord = async ({
         }
       }
 
-      const [companyCount, nameCount] = await Promise.all([
-        visibleCount(record.getByText(company, { exact: true })),
-        visibleCount(record.getByText(name, { exact: true })),
-      ])
-      if (companyCount === 1 && nameCount === 1) {
+      const customerNameCount = await visibleCount(
+        record.getByText(expectedCustomerName, { exact: true }),
+      )
+      if (customerNameCount === 1) {
         const screenshotSaved = screenshotPath
           ? await captureLocatorEvidence({ locator: record, path: screenshotPath })
           : undefined
@@ -161,7 +166,7 @@ export const verifyFeishuRecord = async ({
 
   return {
     found: false,
-    message: `Unique record for "${email}" was not visible with matching name and company within ${timeoutMs / 1000}s.`,
+    message: `Unique record for "${email}" was not visible with matching customerName "${expectedCustomerName}" within ${timeoutMs / 1000}s.`,
     status: 'FAIL_FEISHU',
   }
 }
