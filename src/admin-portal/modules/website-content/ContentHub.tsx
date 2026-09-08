@@ -15,7 +15,7 @@ import {
 
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import { Button, PortalState, SearchInput, StatusBadge, Surface, UiSelect } from '@/admin-portal/core/ui'
 
 import {
   ContentEditor,
@@ -480,38 +480,35 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
           method="get"
         >
           <input name="type" type="hidden" value={summary.query.type} />
-          <label className="portal-content__search">
-            <span className="portal-field__label">{messages.searchLabel}</span>
-            <span className="portal-field__control">
-              <IconSearch aria-hidden="true" size={16} stroke={1.8} />
-              <input
-                defaultValue={summary.query.q}
-                maxLength={80}
-                name="q"
-                placeholder={messages.searchPlaceholder}
-                type="search"
-              />
-            </span>
-          </label>
-          <label className="portal-content__status-filter">
-            <span className="portal-field__label">{messages.filterLabel}</span>
-            <select defaultValue={summary.query.status} name="status">
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {statusLabel[status]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button className="portal-content__submit" type="submit">
-            <IconSearch aria-hidden="true" size={16} stroke={1.8} />
-            {messages.searchSubmit}
-          </Button>
-          <Button asChild variant="ghost">
-            <Link href={buildContentHref({ type: summary.query.type })}>
-              {messages.resetFilters}
-            </Link>
-          </Button>
+          <div className="portal-content__filter-item portal-content__search">
+            <span className="portal-content__filter-label">{messages.searchLabel}</span>
+            <SearchInput
+              defaultValue={summary.query.q}
+              maxLength={80}
+              name="q"
+              placeholder={messages.searchPlaceholder}
+            />
+          </div>
+          <div className="portal-content__filter-item portal-content__status-filter">
+            <span className="portal-content__filter-label">{messages.filterLabel}</span>
+            <UiSelect
+              ariaLabel={messages.filterLabel}
+              name="status"
+              options={statusOptions.map((s) => ({ value: s, label: statusLabel[s] }))}
+              value={summary.query.status}
+            />
+          </div>
+          <div className="portal-content__filter-actions">
+            <Button className="portal-content__submit" size="compact" type="submit">
+              <IconSearch aria-hidden="true" size={15} stroke={1.8} />
+              {messages.searchSubmit}
+            </Button>
+            <Button asChild size="compact" variant="ghost">
+              <Link href={buildContentHref({ type: summary.query.type })}>
+                {messages.resetFilters}
+              </Link>
+            </Button>
+          </div>
         </form>
       </Surface>
 
@@ -547,7 +544,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
               {summary.items.map((item) => (
                 <li key={item.id}>
                   <ItemButton
-                    active={String(item.id) === String(selected?.id)}
+                    active={editor !== 'create' && String(item.id) === String(selected?.id)}
                     item={item}
                     locale={locale}
                     onSelect={() => requestSelection(item)}

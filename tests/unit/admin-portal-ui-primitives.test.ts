@@ -1,13 +1,31 @@
 import React from 'react'
 
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import {
+  Button,
+  ConfirmDialog,
+  FormDialog,
+  ModalDialog,
+  PortalState,
+  SearchInput,
+  Select,
+  StatusBadge,
+  Surface,
+  UiSelect,
+} from '@/admin-portal/core/ui'
 
 afterEach(cleanup)
 
 describe('Portal UI primitives', () => {
+  beforeEach(() => {
+    window.HTMLElement.prototype.hasPointerCapture = vi.fn()
+    window.HTMLElement.prototype.setPointerCapture = vi.fn()
+    window.HTMLElement.prototype.releasePointerCapture = vi.fn()
+    window.HTMLElement.prototype.scrollIntoView = vi.fn()
+  })
+
   it('renders a stable button without changing native semantics', () => {
     render(React.createElement(Button, { disabled: true }, 'Save changes'))
 
@@ -51,5 +69,75 @@ describe('Portal UI primitives', () => {
 
     rerender(React.createElement(Surface, { as: 'article', variant: 'subtle' }, 'Article content'))
     expect(screen.getByText('Article content').tagName).toBe('ARTICLE')
+  })
+
+  it('renders a unified Select component with options and chevron', () => {
+    const options = [
+      { label: 'All items', value: 'all' },
+      { label: 'Active items', value: 'active' },
+    ]
+    render(
+      React.createElement(Select, {
+        'aria-label': 'Filter status',
+        defaultValue: 'all',
+        options,
+      }),
+    )
+
+    const select = screen.getByRole('combobox', { name: 'Filter status' }) as HTMLSelectElement
+    expect(select.value).toBe('all')
+    expect(screen.getByText('Active items')).toBeTruthy()
+  })
+
+  it('renders a unified UiSelect component with Radix trigger', () => {
+    const options = [
+      { label: 'All items', value: 'all' },
+      { label: 'Active items', value: 'active' },
+    ]
+    render(
+      React.createElement(UiSelect, {
+        ariaLabel: 'Filter status',
+        defaultValue: 'all',
+        options,
+      }),
+    )
+
+    expect(screen.getByRole('combobox', { name: 'Filter status' })).toBeTruthy()
+    expect(screen.getByText('All items')).toBeTruthy()
+  })
+
+  it('renders a unified SearchInput component with search icon and search semantics', () => {
+    render(
+      React.createElement(SearchInput, {
+        name: 'q',
+        placeholder: 'Search items...',
+      }),
+    )
+
+    const input = screen.getByPlaceholderText('Search items...') as HTMLInputElement
+    expect(input.type).toBe('search')
+    expect(input.name).toBe('q')
+  })
+
+  it('renders ModalDialog, ConfirmDialog, and FormDialog accessible markup', () => {
+    const onOpenChange = vi.fn()
+    const onConfirm = vi.fn()
+
+    const { unmount } = render(
+      React.createElement(ConfirmDialog, {
+        description: 'Permanent delete test',
+        onConfirm,
+        onOpenChange,
+        open: true,
+        title: 'Confirm deletion',
+      }),
+    )
+
+    expect(screen.getByRole('heading', { name: 'Confirm deletion' })).toBeTruthy()
+    expect(screen.getByText('Permanent delete test')).toBeTruthy()
+    const confirmButton = screen.getByRole('button', { name: '确认' })
+    fireEvent.click(confirmButton)
+    expect(onConfirm).toHaveBeenCalled()
+    unmount()
   })
 })

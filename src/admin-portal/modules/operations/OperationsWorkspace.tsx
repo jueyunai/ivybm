@@ -2,13 +2,13 @@
 
 import { useState } from 'react'
 
-import { IconRefresh, IconRotateClockwise } from '@tabler/icons-react'
+import { IconRefresh, IconRotateClockwise, IconSearch } from '@tabler/icons-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 import { formatJobTypeLabel } from '@/admin-portal/core/jobLabels'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import { Button, PortalState, StatusBadge, Surface, UiSelect } from '@/admin-portal/core/ui'
 
 import type { SafeJobPageData, SafeJobQuery, SafeJobSummary } from './getSafeJobPage'
 
@@ -174,7 +174,36 @@ export function OperationsWorkspace({ pageState, summary }: { pageState: SafeJob
       </header>
       {feedback ? <p className="portal-operations__feedback" role="status">{feedback}</p> : null}
       <Surface as="section" className="portal-operations__filters">
-        <form action="/dashboard/operations" method="get"><label><span>{copy.filter}</span><select defaultValue={summary.query.status} name="status"><option value="all">{copy.all}</option><option value="pending">{copy.pending}</option><option value="processing">{copy.processing}</option><option value="succeeded">{copy.succeeded}</option><option value="failed">{copy.failed}</option><option value="dead">{copy.dead}</option></select></label><Button type="submit">{copy.filter}</Button></form>
+        <form action="/dashboard/operations" method="get">
+          <div className="portal-operations__filter-item">
+            <span className="portal-operations__filter-label">{copy.filter}</span>
+            <UiSelect
+              ariaLabel={copy.filter}
+              name="status"
+              defaultValue={summary.query.status}
+              options={[
+                { value: 'all', label: copy.all },
+                { value: 'pending', label: copy.pending },
+                { value: 'processing', label: copy.processing },
+                { value: 'succeeded', label: copy.succeeded },
+                { value: 'failed', label: copy.failed },
+                { value: 'dead', label: copy.dead },
+              ]}
+              onChange={(val) => {
+                router.push(hrefFor({ ...summary.query, page: 1 }, val as typeof summary.query.status))
+              }}
+            />
+          </div>
+          <div className="portal-operations__filter-actions">
+            <Button size="compact" type="submit">
+              <IconSearch aria-hidden="true" size={15} stroke={1.8} />
+              {copy.filter}
+            </Button>
+            <Button asChild size="compact" variant="ghost">
+              <Link href="/dashboard/operations">{locale === 'zh' ? '清除筛选' : 'Reset'}</Link>
+            </Button>
+          </div>
+        </form>
       </Surface>
       {summary.items.length ? <section className="portal-operations__grid">{summary.items.map((item) => <JobCard copy={copy} item={item} key={item.id} locale={locale} onDone={onDone} />)}</section> : <Surface as="section"><PortalState description={copy.empty} title={copy.empty} type="empty" /></Surface>}
       {summary.pagination.totalPages > 1 ? <nav className="portal-operations__pagination"><Button asChild disabled={summary.pagination.page <= 1} size="compact" variant="secondary"><Link href={hrefFor({ ...summary.query, page: summary.pagination.page - 1 }, summary.query.status)}>‹</Link></Button><span>{summary.pagination.page} / {summary.pagination.totalPages}</span><Button asChild disabled={summary.pagination.page >= summary.pagination.totalPages} size="compact" variant="secondary"><Link href={hrefFor({ ...summary.query, page: summary.pagination.page + 1 }, summary.query.status)}>›</Link></Button></nav> : null}

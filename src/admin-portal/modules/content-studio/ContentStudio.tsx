@@ -15,6 +15,7 @@ import {
   IconFileTypePdf,
   IconPhoto,
   IconPlus,
+  IconSearch,
   IconRefresh,
   IconSend,
   IconSparkles,
@@ -24,7 +25,7 @@ import {
 
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import { Button, PortalState, SearchInput, StatusBadge, Surface, UiSelect } from '@/admin-portal/core/ui'
 
 import type {
   ContentStudioItem,
@@ -132,33 +133,49 @@ export function ContentStudio({
       ) : null}
       <Surface as="section" className="portal-content-studio__filters">
         <form action="/dashboard/content-studio" method="get">
-          <label>
-            <span>{copy.titleField}</span>
-            <input defaultValue={summary.query.q} name="q" type="search" />
-          </label>
-          <label>
-            <span>{copy.status}</span>
-            <select defaultValue={summary.query.status} name="status">
-              <option value="all">{copy.status}</option>
-              {(['draft', 'review', 'approved'] as const).map((status) => (
-                <option key={status} value={status}>
-                  {copy.statusLabels[status]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{copy.platform}</span>
-            <select defaultValue={summary.query.platform} name="platform">
-              <option value="all">{copy.platform}</option>
-              {(['facebook', 'instagram', 'linkedin'] as const).map((platform) => (
-                <option key={platform} value={platform}>
-                  {copy.platformLabels[platform]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button type="submit">{copy.filter}</Button>
+          <div className="portal-content-studio__filter-item">
+            <span className="portal-content-studio__filter-label">{copy.titleField}</span>
+            <SearchInput defaultValue={summary.query.q} name="q" placeholder={copy.titleField} />
+          </div>
+          <div className="portal-content-studio__filter-item">
+            <span className="portal-content-studio__filter-label">{copy.status}</span>
+            <UiSelect
+              ariaLabel={copy.status}
+              name="status"
+              defaultValue={summary.query.status}
+              options={[
+                { value: 'all', label: copy.status },
+                ...(['draft', 'review', 'approved'] as const).map((status) => ({
+                  value: status,
+                  label: copy.statusLabels[status],
+                })),
+              ]}
+            />
+          </div>
+          <div className="portal-content-studio__filter-item">
+            <span className="portal-content-studio__filter-label">{copy.platform}</span>
+            <UiSelect
+              ariaLabel={copy.platform}
+              name="platform"
+              defaultValue={summary.query.platform}
+              options={[
+                { value: 'all', label: copy.platform },
+                ...(['facebook', 'instagram', 'linkedin'] as const).map((platform) => ({
+                  value: platform,
+                  label: copy.platformLabels[platform],
+                })),
+              ]}
+            />
+          </div>
+          <div className="portal-content-studio__filter-actions">
+            <Button size="compact" type="submit">
+              <IconSearch aria-hidden="true" size={15} stroke={1.8} />
+              {copy.filter}
+            </Button>
+            <Button asChild size="compact" variant="ghost">
+              <Link href="/dashboard/content-studio">{locale === 'zh' ? '清除筛选' : 'Reset'}</Link>
+            </Button>
+          </div>
         </form>
       </Surface>
       <div className="portal-content-studio__workspace">
@@ -174,8 +191,8 @@ export function ContentStudio({
               {summary.items.map((item) => (
                 <li key={item.id}>
                   <button
-                    aria-pressed={selected?.id === item.id}
-                    className={selected?.id === item.id ? 'is-selected' : undefined}
+                    aria-pressed={activeAction !== 'create' && selected?.id === item.id}
+                    className={activeAction !== 'create' && selected?.id === item.id ? 'is-selected' : undefined}
                     onClick={() => {
                       setSelectedId(item.id)
                       setFeedback(null)

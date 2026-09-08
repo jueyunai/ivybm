@@ -15,7 +15,7 @@ import {
 
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, StatusBadge } from '@/admin-portal/core/ui'
+import { Button, Select, StatusBadge } from '@/admin-portal/core/ui'
 
 import type { KnowledgeDocumentSummary, KnowledgeSourceType } from './getKnowledgePage'
 import type { KnowledgeEditorOption, KnowledgeEditorRecord } from './knowledgeCommands'
@@ -309,7 +309,7 @@ export function KnowledgeEditor({
         </label>
         <label className="portal-knowledge-editor__field">
           <span>{text.sourceType}</span>
-          <select
+          <Select
             onChange={(event) => update('sourceType', event.target.value as KnowledgeSourceType)}
             value={form.sourceType}
           >
@@ -318,17 +318,17 @@ export function KnowledgeEditor({
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="portal-knowledge-editor__field">
           <span>{text.locale}</span>
-          <select
+          <Select
             onChange={(event) => update('locale', event.target.value as 'ar' | 'en')}
             value={form.locale}
           >
             <option value="en">English</option>
             <option value="ar">العربية</option>
-          </select>
+          </Select>
         </label>
         <label className="portal-knowledge-editor__field">
           <span>{text.sourceVersion}</span>
@@ -351,7 +351,7 @@ export function KnowledgeEditor({
         </label>
         <label className="portal-knowledge-editor__field is-wide">
           <span>{text.file}</span>
-          <select
+          <Select
             onChange={(event) => update('sourceFileId', event.target.value)}
             value={form.sourceFileId}
           >
@@ -362,7 +362,7 @@ export function KnowledgeEditor({
                 {option.meta ? ` · ${option.meta}` : ''}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="portal-knowledge-editor__field is-wide">
           <span>{text.content}</span>

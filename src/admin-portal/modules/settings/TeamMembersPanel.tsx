@@ -18,12 +18,13 @@ import {
   IconPlus,
   IconTrash,
   IconUsers,
+  IconX,
 } from '@tabler/icons-react'
 
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import { Button, StatusBadge, Surface, UiSelect } from '@/admin-portal/core/ui'
 
 import type { PortalTeamMemberDTO, PortalTeamMemberRole } from './userSettingsContracts'
 
@@ -156,7 +157,7 @@ function TeamMemberDialog({
         <Dialog.Overlay className="portal-modal-backdrop" />
         <Dialog.Content
           aria-describedby={description ? descriptionId : undefined}
-          className="portal-surface portal-modal"
+          className="portal-shell portal-surface portal-modal"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
             returnFocusRef.current?.focus()
@@ -168,10 +169,12 @@ function TeamMemberDialog({
           onInteractOutside={(event) => event.preventDefault()}
           onOpenAutoFocus={(event) => {
             event.preventDefault()
-            const firstField = contentRef.current?.querySelector<HTMLElement>(
-              '[data-dialog-initial-focus], input:not([disabled]), select:not([disabled]), button:not([disabled])',
-            )
-            firstField?.focus()
+            const target =
+              contentRef.current?.querySelector<HTMLElement>('[data-dialog-initial-focus]') ??
+              contentRef.current?.querySelector<HTMLElement>(
+                'form input:not([disabled]), form select:not([disabled]), form button:not([disabled])',
+              )
+            target?.focus()
           }}
           ref={contentRef}
         >
@@ -182,6 +185,18 @@ function TeamMemberDialog({
             {description ? (
               <Dialog.Description id={descriptionId}>{description}</Dialog.Description>
             ) : null}
+            <Dialog.Close asChild>
+              <Button
+                aria-label="关闭弹窗"
+                className="portal-modal__close-btn"
+                disabled={busy}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <IconX aria-hidden="true" size={16} stroke={2} />
+              </Button>
+            </Dialog.Close>
           </header>
           {children}
         </Dialog.Content>
@@ -847,20 +862,19 @@ export function TeamMembersPanel({
             </span>
           </label>
 
-          <label className="portal-field">
+          <div className="portal-field">
             <span className="portal-field__label">{messages.memberRole}</span>
-            <span className="portal-field__control">
-              <select
-                aria-label={messages.memberRole}
-                onChange={(event) => setFormRole(event.target.value as PortalTeamMemberRole)}
-                value={formRole}
-              >
-                <option value="sales">{messages.roleSalesOption}</option>
-                <option value="operator">{messages.roleOperatorOption}</option>
-                <option value="admin">{messages.roleAdminOption}</option>
-              </select>
-            </span>
-          </label>
+            <UiSelect
+              ariaLabel={messages.memberRole}
+              onChange={(value) => setFormRole(value as PortalTeamMemberRole)}
+              options={[
+                { label: messages.roleSalesOption, value: "sales" },
+                { label: messages.roleOperatorOption, value: "operator" },
+                { label: messages.roleAdminOption, value: "admin" },
+              ]}
+              value={formRole}
+            />
+          </div>
 
           <label className="portal-field">
             <span className="portal-field__label">{messages.initialPassword}</span>
@@ -932,20 +946,19 @@ export function TeamMembersPanel({
             </span>
           </label>
 
-          <label className="portal-field">
+          <div className="portal-field">
             <span className="portal-field__label">{messages.memberRole}</span>
-            <span className="portal-field__control">
-              <select
-                aria-label={messages.memberRole}
-                onChange={(event) => setFormRole(event.target.value as PortalTeamMemberRole)}
-                value={formRole}
-              >
-                <option value="sales">{messages.roleSalesOption}</option>
-                <option value="operator">{messages.roleOperatorOption}</option>
-                <option value="admin">{messages.roleAdminOption}</option>
-              </select>
-            </span>
-          </label>
+            <UiSelect
+              ariaLabel={messages.memberRole}
+              onChange={(value) => setFormRole(value as PortalTeamMemberRole)}
+              options={[
+                { label: messages.roleSalesOption, value: "sales" },
+                { label: messages.roleOperatorOption, value: "operator" },
+                { label: messages.roleAdminOption, value: "admin" },
+              ]}
+              value={formRole}
+            />
+          </div>
 
           <div className="portal-modal__actions">
             <Button
