@@ -91,19 +91,57 @@ describe('Portal UI primitives', () => {
 
   it('renders a unified UiSelect component with Radix trigger', () => {
     const options = [
-      { label: 'All items', value: 'all' },
-      { label: 'Active items', value: 'active' },
+      { label: '全部状态', value: 'all' },
+      { label: '活跃项', value: 'active' },
+      { label: '草稿', value: 'draft' },
     ]
-    render(
+    const { unmount } = render(
       React.createElement(UiSelect, {
         ariaLabel: 'Filter status',
         defaultValue: 'all',
+        name: 'status',
         options,
       }),
     )
 
-    expect(screen.getByRole('combobox', { name: 'Filter status' })).toBeTruthy()
-    expect(screen.getByText('All items')).toBeTruthy()
+    const trigger = screen.getByRole('combobox', { name: 'Filter status' })
+    expect(trigger).toBeTruthy()
+    expect(screen.getByText('全部状态')).toBeTruthy()
+    unmount()
+  })
+
+  it('supports controlled mode in UiSelect with value prop', () => {
+    const onChange = vi.fn()
+    const options = [
+      { label: '全部平台', value: 'all' },
+      { label: 'Facebook', value: 'facebook' },
+      { label: 'Instagram', value: 'instagram' },
+    ]
+    const { rerender, unmount } = render(
+      React.createElement(UiSelect, {
+        ariaLabel: 'Platform filter',
+        name: 'platform',
+        onChange,
+        options,
+        value: 'all',
+      }),
+    )
+
+    expect(screen.getByRole('combobox', { name: 'Platform filter' })).toBeTruthy()
+    expect(screen.getByText('全部平台')).toBeTruthy()
+
+    // 受控模式下由外部重新传入 value 驱动展示文本更新
+    rerender(
+      React.createElement(UiSelect, {
+        ariaLabel: 'Platform filter',
+        name: 'platform',
+        onChange,
+        options,
+        value: 'facebook',
+      }),
+    )
+    expect(screen.getByText('Facebook')).toBeTruthy()
+    unmount()
   })
 
   it('renders a unified SearchInput component with search icon and search semantics', () => {
