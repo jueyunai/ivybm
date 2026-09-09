@@ -42,6 +42,7 @@ export async function POST(request: Request): Promise<Response> {
       confirmPassword: typeof raw.confirmPassword === 'string' ? raw.confirmPassword : '',
       email: typeof raw.email === 'string' ? raw.email : '',
       password: typeof raw.password === 'string' ? raw.password : '',
+      permissions: raw.permissions && typeof raw.permissions === 'object' ? (raw.permissions as any) : undefined,
       role: raw.role as PortalTeamMemberRole,
     }
 

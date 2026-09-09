@@ -376,8 +376,8 @@ describe('Portal knowledge workspace', () => {
     )
 
     expect(screen.getByRole('heading', { name: '知识文档' })).toBeTruthy()
-    expect(screen.getAllByText('审核通过').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('等待索引').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('通过').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('待检索').length).toBeGreaterThan(0)
     expect(screen.getByText('仅管理员可查看模型配置')).toBeTruthy()
     expect(screen.getByRole('button', { name: '开始索引' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '新增文档' }).hasAttribute('disabled')).toBe(false)

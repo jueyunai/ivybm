@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import { ValidationError, type Payload, type PayloadRequest } from 'payload'
 
+import { DEFAULT_PERMISSIONS_FOR_ROLE } from './userSettingsContracts'
 import type { User } from '@/payload-types'
 import { getDatabaseForRequest } from '@/admin-portal/core/commands/portalCommandReceipts'
 
@@ -381,6 +382,7 @@ export const createTeamMember = async ({
       data: {
         email,
         password,
+        ...(input.permissions ? { permissions: input.permissions } : {}),
         role,
       } as never,
       overrideAccess: false,
@@ -423,10 +425,11 @@ export const updateTeamMember = async ({
   const email = input.email !== undefined ? validateEmail(input.email) : undefined
   const role = input.role !== undefined ? validateRole(input.role) : undefined
 
-  if (email === undefined && role === undefined) {
+  const permissions = input.permissions !== undefined ? input.permissions : undefined
+  if (email === undefined && role === undefined && permissions === undefined) {
     throw new UserSettingsCommandError(
       'invalid-input',
-      'At least email or role must be provided.',
+      'At least email, role or permissions must be provided.',
       400,
     )
   }

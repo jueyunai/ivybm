@@ -653,7 +653,7 @@ function ContentDetail({
               disabled={busy || disabled}
               onClick={() => setConfirmDelete(true)}
               size="compact"
-              variant="ghost"
+              variant="danger"
             >
               <IconTrash aria-hidden="true" size={15} />
               {copy.delete}

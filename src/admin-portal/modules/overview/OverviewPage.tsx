@@ -3,6 +3,7 @@
 import {
   IconAlertTriangle,
   IconArrowRight,
+  IconChevronRight,
   IconHeadset,
   IconMessageCircle,
   IconShieldCheck,
@@ -80,19 +81,38 @@ function PriorityItem({ item, locale }: { item: PortalOverviewPriorityItem; loca
       ? messages.statuses[item.status as keyof typeof messages.statuses]
       : item.status
 
+  const priorityHref = (targetKind: PortalOverviewPriorityItem['kind'], targetId: number | string) => {
+    switch (targetKind) {
+      case 'active-conversation':
+      case 'handoff-request':
+        return `/dashboard/conversations?id=${targetId}`
+      case 'lead':
+        return `/dashboard/leads?id=${targetId}`
+      case 'job':
+        return `/dashboard/operations?id=${targetId}`
+      default:
+        return '/dashboard'
+    }
+  }
+
   return (
-    <li className="portal-overview__priority-item">
-      <StatusBadge label={kind.label} tone={priorityTone[item.kind]} />
-      <div className="portal-overview__priority-copy">
-        <strong>{formatReference(item.kind, item.reference, locale)}</strong>
-        <span>{kind.description}</span>
-      </div>
-      <div className="portal-overview__priority-meta">
-        <strong>{status}</strong>
-        <time dateTime={item.updatedAt}>
-          {messages.updatedAt} {formatTimestamp(item.updatedAt, locale)}
-        </time>
-      </div>
+    <li>
+      <Link className="portal-overview__priority-item" href={priorityHref(item.kind, item.id)}>
+        <StatusBadge label={kind.label} tone={priorityTone[item.kind]} />
+        <div className="portal-overview__priority-copy">
+          <strong>{formatReference(item.kind, item.reference, locale)}</strong>
+          <span>{kind.description}</span>
+        </div>
+        <div className="portal-overview__priority-meta">
+          <strong>{status}</strong>
+          <time dateTime={item.updatedAt}>
+            {messages.updatedAt} {formatTimestamp(item.updatedAt, locale)}
+          </time>
+        </div>
+        <span aria-hidden="true" className="portal-overview__priority-arrow">
+          <IconChevronRight size={16} stroke={1.8} />
+        </span>
+      </Link>
     </li>
   )
 }

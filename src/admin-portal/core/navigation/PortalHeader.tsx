@@ -63,14 +63,6 @@ export function PortalHeader({
       </div>
 
       <div className="portal-header__actions">
-        <StatusBadge
-          label={
-            environment === 'production'
-              ? messages.shell.productionEnvironment
-              : messages.shell.localEnvironment
-          }
-          tone={environment === 'production' ? 'success' : 'info'}
-        />
         <button
           aria-label={messages.shell.noNotifications}
           className="portal-header__icon-button"

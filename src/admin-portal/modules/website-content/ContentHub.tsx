@@ -442,7 +442,6 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
           <p>{messages.description}</p>
         </div>
         <div className="portal-content__intro-actions">
-          <StatusBadge label={messages.editorStatus} tone="success" />
           {PORTAL_CONTENT_TYPE_IDS.includes(
             summary.query.type as (typeof PORTAL_CONTENT_TYPE_IDS)[number],
           ) ? (

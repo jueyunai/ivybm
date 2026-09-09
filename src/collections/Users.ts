@@ -75,6 +75,14 @@ export const Users: CollectionConfig = {
       required: true,
       saveToJWT: true,
     },
+    {
+      name: 'permissions',
+      type: 'json',
+      access: {
+        create: admins,
+        update: admins,
+      },
+    },
   ],
   hooks: {
     afterChange: [writeAuditLogAfterChange],

@@ -201,7 +201,6 @@ describe('Portal settings hub', () => {
 
     expect(screen.getByRole('heading', { name: '基础设置' })).toBeTruthy()
     expect(screen.getByText('sales@example.com')).toBeTruthy()
-    expect(screen.getByText('只读摘要')).toBeTruthy()
     expect(screen.getByText('邮箱')).toBeTruthy()
     expect(screen.getByText('角色')).toBeTruthy()
 

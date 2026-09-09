@@ -116,7 +116,6 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
           <h2>{messages.title}</h2>
           <p>{messages.description}</p>
         </div>
-        <StatusBadge label={messages.editorStatus} tone="success" />
       </header>
 
       <Surface as="section" className="portal-media__toolbar">

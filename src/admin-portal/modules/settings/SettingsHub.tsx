@@ -1,6 +1,6 @@
 'use client'
 
-import { IconAccessible, IconBuildingStore, IconUserCircle } from '@tabler/icons-react'
+import { IconAccessible, IconUserCircle } from '@tabler/icons-react'
 
 import type { PortalUser } from '@/admin-portal/core/auth/types'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
@@ -212,80 +212,7 @@ export function SettingsHub({
           <SiteSettingsEditor initialSettings={siteSettings} />
         ) : null}
 
-        <Surface as="section" className="portal-settings__section portal-settings__section--wide">
-          <div className="portal-settings__section-heading">
-            <span aria-hidden="true" className="portal-settings__section-icon">
-              <IconBuildingStore size={20} stroke={1.8} />
-            </span>
-            <div>
-              <h3>{messages.settings.siteSummaryTitle}</h3>
-              <p>{messages.settings.siteSummaryDescription}</p>
-            </div>
-            <StatusBadge label={messages.settings.readOnly} tone="neutral" />
-          </div>
-          {readError || !summary ? (
-            <PortalState
-              description={messages.states.error}
-              title={messages.states.error}
-              type="error"
-            />
-          ) : (
-            <dl className="portal-settings__summary">
-              <div>
-                <dt>{messages.settings.siteName}</dt>
-                <dd>{summary.siteName}</dd>
-              </div>
-              <div>
-                <dt>{messages.settings.siteDescription}</dt>
-                <dd>{summary.siteDescription ?? messages.settings.noSiteDescription}</dd>
-              </div>
-              {summary.canUpdate ? (
-                <div className="portal-settings__permission">
-                  <dt>{messages.settings.permission}</dt>
-                  <dd>{messages.settings.canUpdateSite}</dd>
-                </div>
-              ) : null}
-            </dl>
-          )}
-        </Surface>
 
-        <Surface as="section" className="portal-settings__section portal-settings__section--wide">
-          <div className="portal-settings__section-heading">
-            <div>
-              <h3>{messages.settings.moduleStatusTitle}</h3>
-              <p>{messages.settings.moduleStatusDescription}</p>
-            </div>
-          </div>
-          <div className="portal-settings__modules">
-            {modules.map((portalModule) => (
-              <article className="portal-settings__module" key={portalModule.id}>
-                <div>
-                  <strong>{messages.modules[portalModule.labelKey]}</strong>
-                  <span>
-                    {messages.settings.moduleOwner}:{' '}
-                    {portalModule.owner === 'jueyunai'
-                      ? locale === 'zh'
-                        ? '系统核心组'
-                        : 'Core System'
-                      : portalModule.owner === 'xuemusi'
-                        ? locale === 'zh'
-                          ? 'AI 与渠道组'
-                          : 'AI & Channels'
-                        : portalModule.owner}
-                  </span>
-                </div>
-                <p>
-                  <span>{messages.settings.nextStep}</span>
-                  {messages.nextSteps[portalModule.maintenance.nextStepKey]}
-                </p>
-                <StatusBadge
-                  label={messages.states[portalModule.featureState.reason]}
-                  tone={statusTone(portalModule)}
-                />
-              </article>
-            ))}
-          </div>
-        </Surface>
       </div>
     </main>
   )
