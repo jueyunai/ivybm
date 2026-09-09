@@ -143,6 +143,18 @@ export class UserSettingsCommandError extends Error {
   }
 }
 
+
+export const validateAccount = (value: unknown): string => {
+  if (typeof value !== 'string') {
+    throw new UserSettingsCommandError('invalid-input', 'A valid account or email address is required.', 400)
+  }
+  const normalized = value.trim().toLowerCase()
+  if (!normalized || normalized.length < 2 || normalized.length > 320 || /\s/.test(normalized)) {
+    throw new UserSettingsCommandError('invalid-input', 'A valid account or email address is required.', 400)
+  }
+  return normalized
+}
+
 export const validateEmail = (value: unknown): string => {
   if (typeof value !== 'string') {
     throw new UserSettingsCommandError('invalid-input', 'A valid email address is required.', 400)

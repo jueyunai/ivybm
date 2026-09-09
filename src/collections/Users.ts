@@ -65,6 +65,18 @@ export const Users: CollectionConfig = {
   },
   fields: [
     {
+      name: 'email',
+      type: 'email',
+      validate: (value: unknown) => {
+        if (!value || typeof value !== 'string') return '请输入有效的账号'
+        const trimmed = value.trim()
+        if (trimmed.length < 2 || trimmed.length > 320 || /\s/.test(trimmed)) {
+          return '账号需为 2 至 320 个字符且不包含空格'
+        }
+        return true
+      },
+    },
+    {
       name: 'role',
       type: 'select',
       access: {

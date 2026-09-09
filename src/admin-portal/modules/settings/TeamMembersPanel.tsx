@@ -267,8 +267,8 @@ export function TeamMembersPanel({
     setFormRole('sales')
     setPermissionTemplate('sales')
     setFormPermissions(DEFAULT_PERMISSIONS_FOR_ROLE.sales)
-    setFormPassword('')
-    setFormConfirmPassword('')
+    setFormPassword('Ivybm@2026Pass!')
+    setFormConfirmPassword('Ivybm@2026Pass!')
     setFeedback(null)
     setModalMode('add')
   }
@@ -947,8 +947,9 @@ export function TeamMembersPanel({
                 autoComplete="off"
                 data-dialog-initial-focus
                 onChange={(event) => setFormEmail(event.target.value)}
+                placeholder="例如 operator_ivy 或 sales@ivybm.com"
                 required
-                type="email"
+                type="text"
                 value={formEmail}
               />
             </span>
@@ -992,77 +993,69 @@ export function TeamMembersPanel({
               />
             </div>
 
-            <div className="portal-team-members__perm-matrix">
-              <table className="portal-team-members__perm-table">
-                <thead>
-                  <tr>
-                    <th>功能模块</th>
-                    <th style={{ textAlign: "center", width: "70px" }}>查看</th>
-                    <th style={{ textAlign: "center", width: "70px" }}>修改</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {PERMISSION_MODULES.map((mod) => {
-                    const perm = formPermissions[mod.id] ?? { edit: false, view: false };
-                    return (
-                      <tr key={mod.id}>
-                        <td>
-                          <strong>{mod.label}</strong>
-                          <small>{mod.description}</small>
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <input
-                            aria-label={`${mod.label} 查看`}
-                            checked={perm.view}
-                            onChange={() => handlePermissionToggle(mod.id, "view")}
-                            type="checkbox"
-                          />
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <input
-                            aria-label={`${mod.label} 修改`}
-                            checked={perm.edit}
-                            onChange={() => handlePermissionToggle(mod.id, "edit")}
-                            type="checkbox"
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        <div className="portal-team-members__perm-grid">
+              {PERMISSION_MODULES.map((mod) => {
+                const perm = formPermissions[mod.id] ?? { edit: false, view: false };
+                const isChecked = perm.view || perm.edit;
+                return (
+                  <div
+                    className={`portal-team-members__perm-card${isChecked ? " is-active" : ""}`}
+                    key={mod.id}
+                  >
+                    <div className="portal-team-members__perm-card-header">
+                      <strong>{mod.label}</strong>
+                      <small>{mod.description}</small>
+                    </div>
+                    <div className="portal-team-members__perm-card-actions">
+                      <label className="portal-team-members__check-label">
+                        <input
+                          aria-label={`${mod.label} 查看`}
+                          checked={perm.view}
+                          onChange={() => handlePermissionToggle(mod.id, "view")}
+                          type="checkbox"
+                        />
+                        <span>查看</span>
+                      </label>
+                      <label className="portal-team-members__check-label">
+                        <input
+                          aria-label={`${mod.label} 修改`}
+                          checked={perm.edit}
+                          onChange={() => handlePermissionToggle(mod.id, "edit")}
+                          type="checkbox"
+                        />
+                        <span>修改</span>
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           <label className="portal-field">
-            <span className="portal-field__label">{messages.initialPassword}</span>
+            <span className="portal-field__label">{messages.initialPassword}（明文显示，不少于12位）</span>
             <span className="portal-field__control">
               <input
                 aria-label={messages.initialPassword}
                 maxLength={128}
                 minLength={12}
-                onChange={(event) => setFormPassword(event.target.value)}
+                onChange={(event) => {
+                  setFormPassword(event.target.value);
+                  setFormConfirmPassword(event.target.value);
+                }}
+                placeholder="例如 Ivybm@2026Pass!"
                 required
-                type="password"
+                type="text"
                 value={formPassword}
               />
             </span>
           </label>
-
-          <label className="portal-field">
-            <span className="portal-field__label">{messages.confirmInitialPassword}</span>
-            <span className="portal-field__control">
-              <input
-                aria-label={messages.confirmInitialPassword}
-                maxLength={128}
-                minLength={12}
-                onChange={(event) => setFormConfirmPassword(event.target.value)}
-                required
-                type="password"
-                value={formConfirmPassword}
-              />
-            </span>
-          </label>
+          <input
+            aria-label={messages.confirmInitialPassword}
+            tabIndex={-1}
+            type="hidden"
+            value={formConfirmPassword}
+          />
 
           <div className="portal-modal__actions">
             <Button
@@ -1097,8 +1090,9 @@ export function TeamMembersPanel({
                 aria-label={messages.memberEmail}
                 data-dialog-initial-focus
                 onChange={(event) => setFormEmail(event.target.value)}
+                placeholder="例如 operator_ivy 或 sales@ivybm.com"
                 required
-                type="email"
+                type="text"
                 value={formEmail}
               />
             </span>
@@ -1142,45 +1136,42 @@ export function TeamMembersPanel({
               />
             </div>
 
-            <div className="portal-team-members__perm-matrix">
-              <table className="portal-team-members__perm-table">
-                <thead>
-                  <tr>
-                    <th>功能模块</th>
-                    <th style={{ textAlign: "center", width: "70px" }}>查看</th>
-                    <th style={{ textAlign: "center", width: "70px" }}>修改</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {PERMISSION_MODULES.map((mod) => {
-                    const perm = formPermissions[mod.id] ?? { edit: false, view: false };
-                    return (
-                      <tr key={mod.id}>
-                        <td>
-                          <strong>{mod.label}</strong>
-                          <small>{mod.description}</small>
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <input
-                            aria-label={`${mod.label} 查看`}
-                            checked={perm.view}
-                            onChange={() => handlePermissionToggle(mod.id, "view")}
-                            type="checkbox"
-                          />
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <input
-                            aria-label={`${mod.label} 修改`}
-                            checked={perm.edit}
-                            onChange={() => handlePermissionToggle(mod.id, "edit")}
-                            type="checkbox"
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        <div className="portal-team-members__perm-grid">
+              {PERMISSION_MODULES.map((mod) => {
+                const perm = formPermissions[mod.id] ?? { edit: false, view: false };
+                const isChecked = perm.view || perm.edit;
+                return (
+                  <div
+                    className={`portal-team-members__perm-card${isChecked ? " is-active" : ""}`}
+                    key={mod.id}
+                  >
+                    <div className="portal-team-members__perm-card-header">
+                      <strong>{mod.label}</strong>
+                      <small>{mod.description}</small>
+                    </div>
+                    <div className="portal-team-members__perm-card-actions">
+                      <label className="portal-team-members__check-label">
+                        <input
+                          aria-label={`${mod.label} 查看`}
+                          checked={perm.view}
+                          onChange={() => handlePermissionToggle(mod.id, "view")}
+                          type="checkbox"
+                        />
+                        <span>查看</span>
+                      </label>
+                      <label className="portal-team-members__check-label">
+                        <input
+                          aria-label={`${mod.label} 修改`}
+                          checked={perm.edit}
+                          onChange={() => handlePermissionToggle(mod.id, "edit")}
+                          type="checkbox"
+                        />
+                        <span>修改</span>
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -1284,7 +1275,7 @@ export function TeamMembersPanel({
                 onChange={(event) => setFormConfirmEmail(event.target.value)}
                 placeholder={selectedMember?.email}
                 required
-                type="email"
+                type="text"
                 value={formConfirmEmail}
               />
             </span>

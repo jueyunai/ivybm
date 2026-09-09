@@ -254,35 +254,7 @@ export function OverviewPage({ pageState = 'available', query, readError = false
               )}
             </Surface>
 
-            <div className="portal-overview__aside-stack">
-              <Surface as="aside" className="portal-overview__dependencies">
-                <div className="portal-overview__section-heading">
-                  <div>
-                    <h3>{messages.dependencyTitle}</h3>
-                    <p>{messages.dependencyDescription}</p>
-                  </div>
-                  <StatusBadge label={messages.dependencyStatus} tone="warning" />
-                </div>
-                <ul>
-                  {summary.dependencies.map((dependency) => {
-                    const copy = messages.dependencyItems[dependency.id]
-                    return (
-                      <li key={dependency.id}>
-                        <strong>{copy.label}</strong>
-                        <span>{copy.description}</span>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </Surface>
-
-              <Surface as="aside" className="portal-overview__role-notice" variant="subtle">
-                <IconShieldCheck aria-hidden="true" size={22} stroke={1.8} />
-                <h3>{messages.roleNoticeTitle}</h3>
-                <p>{messages.roleNotice[user.role]}</p>
-              </Surface>
             </div>
-          </div>
         </>
       )}
     </main>

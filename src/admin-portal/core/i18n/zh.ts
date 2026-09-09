@@ -527,7 +527,7 @@ export const PORTAL_ZH = {
     lockMemberTitle: '锁定成员账号',
     memberActions: '操作',
     memberCreatedAt: '创建时间',
-    memberEmail: '登录邮箱',
+    memberEmail: '登录账号',
     memberLockedUntil: '锁定到期',
     memberRole: '分配角色',
     memberSaved: '成员信息已保存。',

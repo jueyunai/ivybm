@@ -397,5 +397,204 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
     payload.logger.info(`Seeded ${demoContents.length} demo generated contents.`)
   }
 
-  payload.logger.info('Portal demo data seeding completed.')
+
+  // 5. Team Members (团队成员账号)
+  const existingUsers = await payload.find({ collection: "users", limit: 10, overrideAccess: true });
+  if (existingUsers.totalDocs <= 1) {
+    const demoMembers = [
+      {
+        email: "operator_content",
+        password: "Password123!Ivybm",
+        role: "operator" as const,
+        permissions: {
+          conversations: { edit: false, view: true },
+          leads: { edit: false, view: true },
+          content: { edit: true, view: true },
+          media: { edit: true, view: true },
+          contentStudio: { edit: true, view: true },
+          knowledge: { edit: false, view: true },
+          platforms: { edit: false, view: false },
+          operations: { edit: false, view: false },
+          settings: { edit: false, view: false },
+        },
+      },
+      {
+        email: "sales_mena",
+        password: "Password123!Ivybm",
+        role: "sales" as const,
+        permissions: {
+          conversations: { edit: true, view: true },
+          leads: { edit: true, view: true },
+          content: { edit: false, view: false },
+          media: { edit: false, view: false },
+          contentStudio: { edit: false, view: false },
+          knowledge: { edit: false, view: false },
+          platforms: { edit: false, view: false },
+          operations: { edit: false, view: false },
+          settings: { edit: false, view: false },
+        },
+      },
+      {
+        email: "operator_ai",
+        password: "Password123!Ivybm",
+        role: "operator" as const,
+        permissions: {
+          conversations: { edit: false, view: true },
+          leads: { edit: false, view: false },
+          content: { edit: false, view: false },
+          media: { edit: false, view: false },
+          contentStudio: { edit: true, view: true },
+          knowledge: { edit: true, view: true },
+          platforms: { edit: false, view: true },
+          operations: { edit: true, view: true },
+          settings: { edit: false, view: false },
+        },
+      },
+      {
+        email: "audit_lead",
+        password: "Password123!Ivybm",
+        role: "sales" as const,
+        permissions: {
+          conversations: { edit: false, view: true },
+          leads: { edit: false, view: true },
+          content: { edit: false, view: false },
+          media: { edit: false, view: false },
+          contentStudio: { edit: false, view: false },
+          knowledge: { edit: false, view: false },
+          platforms: { edit: false, view: false },
+          operations: { edit: false, view: false },
+          settings: { edit: false, view: false },
+        },
+      },
+    ];
+
+    for (const member of demoMembers) {
+      try {
+        await payload.create({
+          collection: "users",
+          data: member as any,
+          overrideAccess: true,
+        });
+      } catch (err) {
+        payload.logger.warn(`Failed to seed user ${member.email}: ${err}`);
+      }
+    }
+    payload.logger.info(`Seeded ${demoMembers.length} demo team members.`);
+  }
+
+  // 6. Platform Accounts (平台账号)
+  const existingPlatforms = await payload.find({ collection: "platform-accounts", limit: 1, overrideAccess: true });
+  if (existingPlatforms.totalDocs === 0) {
+    let mockToken = "";
+    let mockRefreshToken = "";
+    try {
+      const { readPlatformCredentialEncryptionKey, encryptPlatformCredential } = await import(
+        "@/modules/platforms/credentials"
+      );
+      const encKey = readPlatformCredentialEncryptionKey();
+      mockToken = encryptPlatformCredential("EAABsbCS1...mock-access-token", encKey);
+      mockRefreshToken = encryptPlatformCredential("mock-refresh-token-12345", encKey);
+    } catch {
+      // Key might not be configured
+    }
+
+    const demoPlatformAccounts = [
+      {
+        name: "IVY Building Materials (官方主页)",
+        accountKind: "facebook-page" as const,
+        platformFamily: "meta" as const,
+        externalAccountId: "108472910384721",
+        authorization: {
+          state: mockToken ? ("connected" as const) : ("not_started" as const),
+          appId: "108472910384721",
+          accessToken: mockToken || undefined,
+          accessTokenConfigured: Boolean(mockToken),
+          refreshToken: mockRefreshToken || undefined,
+          refreshTokenConfigured: Boolean(mockRefreshToken),
+          scopes: [{ scope: "pages_show_list" }, { scope: "pages_read_engagement" }, { scope: "pages_manage_posts" }],
+        },
+        capabilities: {
+          messagingInbound: "approved" as const,
+          publishing: "approved" as const,
+        },
+        aiAutoReplyEnabled: true,
+        notes: "Meta Facebook 官方企业主页，用于中东及欧美市场品牌展示与客户询盘接入。",
+      },
+      {
+        name: "@ivybm_architectural (Instagram 商业号)",
+        accountKind: "instagram-professional" as const,
+        platformFamily: "meta" as const,
+        externalAccountId: "178414002938471",
+        messagingExternalAccountId: "178414002938471",
+        authorization: {
+          state: mockToken ? ("connected" as const) : ("not_started" as const),
+          appId: "178414002938471",
+          accessToken: mockToken || undefined,
+          accessTokenConfigured: Boolean(mockToken),
+          refreshToken: mockRefreshToken || undefined,
+          refreshTokenConfigured: Boolean(mockRefreshToken),
+          scopes: [{ scope: "instagram_basic" }, { scope: "instagram_manage_messages" }, { scope: "instagram_content_publish" }],
+        },
+        capabilities: {
+          messagingInbound: "approved" as const,
+          publishing: "approved" as const,
+        },
+        aiAutoReplyEnabled: true,
+        notes: "Instagram 官方品牌视觉账号，同步海外建筑幕墙工程案例贴文与私信。",
+      },
+      {
+        name: "IVY Building Materials Global (领英机构主页)",
+        accountKind: "linkedin-organization" as const,
+        platformFamily: "linkedin" as const,
+        externalAccountId: "urn:li:organization:98273641",
+        authorization: {
+          state: mockToken ? ("connected" as const) : ("not_started" as const),
+          appId: "urn:li:organization:98273641",
+          accessToken: mockToken || undefined,
+          accessTokenConfigured: Boolean(mockToken),
+          refreshToken: mockRefreshToken || undefined,
+          refreshTokenConfigured: Boolean(mockRefreshToken),
+          scopes: [{ scope: "w_organization_social" }, { scope: "r_organization_social" }],
+        },
+        capabilities: {
+          messagingInbound: "not_started" as const,
+          publishing: "approved" as const,
+        },
+        aiAutoReplyEnabled: false,
+        notes: "LinkedIn B2B 行业客户与海外采购总包机构账号，发布工程白皮书与技术案例。",
+      },
+      {
+        name: "@ivybm_official (TikTok 企业号)",
+        accountKind: "tiktok-business" as const,
+        platformFamily: "tiktok" as const,
+        externalAccountId: "tiktok_ivybm_7829",
+        authorization: {
+          state: "pending" as const,
+        },
+        capabilities: {
+          messagingInbound: "pending" as const,
+          publishing: "not_started" as const,
+        },
+        aiAutoReplyEnabled: false,
+        notes: "TikTok 视频营销账号，授权流程待审批。",
+      },
+    ];
+
+    for (const pa of demoPlatformAccounts) {
+      try {
+        await payload.create({
+          collection: "platform-accounts",
+          context: { __platformMessagingIdentityWrite: true },
+          data: pa as any,
+          overrideAccess: true,
+        });
+      } catch (err) {
+        payload.logger.warn(`Failed to seed platform account ${pa.name}: ${err}`);
+      }
+    }
+    payload.logger.info(`Seeded ${demoPlatformAccounts.length} demo platform accounts.`);
+  }
+
+  payload.logger.info("Portal demo data seeding completed.");
 }
+

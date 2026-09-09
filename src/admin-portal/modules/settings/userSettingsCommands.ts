@@ -9,6 +9,7 @@ import {
   MANUAL_LOCK_UNTIL,
   selectPortalTeamMemberDTO,
   UserSettingsCommandError,
+  validateAccount,
   validateEmail,
   validatePassword,
   validateRole,
@@ -344,7 +345,7 @@ export const createTeamMember = async ({
   payload: Payload
   req: PayloadRequest
 }): Promise<PortalTeamMemberDTO> => {
-  const email = validateEmail(input.email)
+  const email = validateAccount(input.email)
   const password = validatePassword(input.password, 'Initial password')
   const confirmPassword = validatePassword(input.confirmPassword, 'Confirm initial password')
 
@@ -422,7 +423,7 @@ export const updateTeamMember = async ({
   req: PayloadRequest
 }): Promise<PortalTeamMemberDTO> => {
   const updatedAt = validateUpdatedAt(input.updatedAt)
-  const email = input.email !== undefined ? validateEmail(input.email) : undefined
+  const email = input.email !== undefined ? validateAccount(input.email) : undefined
   const role = input.role !== undefined ? validateRole(input.role) : undefined
 
   const permissions = input.permissions !== undefined ? input.permissions : undefined
