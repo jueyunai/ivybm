@@ -151,9 +151,9 @@ describe('Portal Content Studio', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+    fireEvent.click(screen.getByRole('button', { name: 'AI 生成' }))
     const form = screen
-      .getByRole('heading', { name: '生成草稿' })
+      .getByRole('heading', { name: 'AI 生成' })
       .closest('.portal-content-studio__form')
     expect(form).toBeTruthy()
     const assetOptions = container.querySelectorAll('.portal-content-studio__asset-option')
@@ -184,7 +184,7 @@ describe('Portal Content Studio', () => {
     fireEvent.change(brief, { target: { value: 'Write a general introduction.' } })
     expect(
       within(form as HTMLElement)
-        .getByRole('button', { name: '生成草稿' })
+        .getByRole('button', { name: 'AI 生成' })
         .hasAttribute('disabled'),
     ).toBe(false)
   })
@@ -247,10 +247,10 @@ describe('Portal Content Studio', () => {
     expect(screen.getByRole('heading', { name: 'First Draft Post' })).toBeTruthy()
 
     // 1. Open New Draft Editor
-    fireEvent.click(screen.getByRole('button', { name: '新建草稿' }))
+    fireEvent.click(screen.getByRole('button', { name: '手动新建' }))
 
     // Editor is open and has drawer class
-    const editorHeading = screen.getByRole('heading', { name: '新建草稿' })
+    const editorHeading = screen.getByRole('heading', { name: '手动新建' })
     expect(editorHeading).toBeTruthy()
     const editorContainer = editorHeading.closest('.portal-content-studio__editor--drawer')
     expect(editorContainer).toBeTruthy()
@@ -261,14 +261,14 @@ describe('Portal Content Studio', () => {
 
     // Cancel editor
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.queryByRole('heading', { name: '新建草稿' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: '手动新建' })).toBeNull()
     expect(screen.getByRole('heading', { name: 'First Draft Post' })).toBeTruthy()
 
     // 2. Open Draft Generator
-    fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+    fireEvent.click(screen.getByRole('button', { name: 'AI 生成' }))
 
     // Generator is open and has drawer class
-    const generatorHeading = screen.getByRole('heading', { name: '生成草稿' })
+    const generatorHeading = screen.getByRole('heading', { name: 'AI 生成' })
     expect(generatorHeading).toBeTruthy()
     expect(generatorHeading.closest('.portal-content-studio__editor--drawer')).toBeTruthy()
 
@@ -278,7 +278,7 @@ describe('Portal Content Studio', () => {
 
     // Cancel generator
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.queryByRole('heading', { name: '生成草稿' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'AI 生成' })).toBeNull()
     expect(screen.getByRole('heading', { name: 'First Draft Post' })).toBeTruthy()
   })
 
@@ -319,17 +319,17 @@ describe('Portal Content Studio', () => {
       ),
     )
 
-    // 1. Generator -> Create switch: clicking "新建草稿" while "生成草稿" is open immediately shows "新建草稿"
-    fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
-    expect(screen.getByRole('heading', { name: '生成草稿' })).toBeTruthy()
+    // 1. Generator -> Create switch: clicking "手动新建" while "AI 生成" is open immediately shows "手动新建"
+    fireEvent.click(screen.getByRole('button', { name: 'AI 生成' }))
+    expect(screen.getByRole('heading', { name: 'AI 生成' })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: '新建草稿' }))
-    expect(screen.getByRole('heading', { name: '新建草稿' })).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: '生成草稿' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '手动新建' }))
+    expect(screen.getByRole('heading', { name: '手动新建' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'AI 生成' })).toBeNull()
 
     // 2. Close Create and verify detail view
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.queryByRole('heading', { name: '新建草稿' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: '手动新建' })).toBeNull()
     expect(screen.getByRole('heading', { name: 'Approved Post' })).toBeTruthy()
 
     // 3. Open Publish Now from detail view
@@ -337,13 +337,13 @@ describe('Portal Content Studio', () => {
     expect(screen.getByRole('heading', { name: '立即发布' })).toBeTruthy()
 
     // 4. Switch from Publish Now to Generator via top button
-    fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
-    expect(screen.getByRole('heading', { name: '生成草稿' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'AI 生成' }))
+    expect(screen.getByRole('heading', { name: 'AI 生成' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: '立即发布' })).toBeNull()
 
     // 5. Switch from Generator to Schedule via Detail button (cancel generator first)
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.queryByRole('heading', { name: '生成草稿' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'AI 生成' })).toBeNull()
     expect(screen.getByRole('heading', { name: 'Approved Post' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: '创建内部排期' }))
@@ -353,8 +353,8 @@ describe('Portal Content Studio', () => {
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
     expect(screen.queryByRole('heading', { level: 3, name: '创建内部排期' })).toBeNull()
     expect(screen.queryByRole('heading', { name: '立即发布' })).toBeNull()
-    expect(screen.queryByRole('heading', { name: '新建草稿' })).toBeNull()
-    expect(screen.queryByRole('heading', { name: '生成草稿' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: '手动新建' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'AI 生成' })).toBeNull()
     expect(screen.getByRole('heading', { name: 'Approved Post' })).toBeTruthy()
   })
 })

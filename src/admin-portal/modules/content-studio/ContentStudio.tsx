@@ -31,7 +31,6 @@ import type {
   ContentStudioItem,
   ContentStudioPageData,
   ContentStudioQuery,
-  ContentStudioSourceReference,
   ContentStudioSummary,
 } from './getContentStudioPage'
 import { formatScheduledAt } from './formatScheduledAt'
@@ -585,7 +584,7 @@ function ContentDetail({
               {copy.edit}
             </Button>
             <Button
-              disabled={busy || disabled || item.sourceReferences.length === 0}
+              disabled={busy || disabled}
               onClick={() => void submit()}
               size="compact"
             >
@@ -697,11 +696,15 @@ function DraftEditor({
   const [error, setError] = useState<string | null>(null)
   const update = <Key extends keyof typeof form>(key: Key, value: (typeof form)[Key]) =>
     setForm((current) => ({ ...current, [key]: value }))
-  const toggle = (key: 'assets' | 'knowledgeSources', value: string) =>
-    update(
-      key,
-      form[key].includes(value) ? form[key].filter((id) => id !== value) : [...form[key], value],
-    )
+  const toggleAsset = (value: string) => {
+    setForm((current) => {
+      const nextAssets = current.assets.includes(value)
+        ? current.assets.filter((id) => id !== value)
+        : [...current.assets, value]
+      const nextContentType = nextAssets.length >= 2 ? 'carousel' : 'post'
+      return { ...current, assets: nextAssets, contentType: nextContentType }
+    })
+  }
   const save = async () => {
     setBusy(true)
     setError(null)
@@ -724,9 +727,6 @@ function DraftEditor({
       setBusy(false)
     }
   }
-  const selectedSources = options.knowledgeSources
-    .filter((option) => form.knowledgeSources.includes(String(option.id)))
-    .flatMap((option) => (option.reference ? [option.reference] : []))
   return (
     <div className="portal-content-studio__form">
       <header>
@@ -770,20 +770,6 @@ function DraftEditor({
             <option value="ar">AR</option>
           </select>
         </Field>
-        <Field label={copy.type}>
-          <select
-            onChange={(event) =>
-              update('contentType', event.target.value as typeof form.contentType)
-            }
-            value={form.contentType}
-          >
-            {(['post', 'carousel', 'long-form'] as const).map((type) => (
-              <option key={type} value={type}>
-                {copy.typeLabels[type]}
-              </option>
-            ))}
-          </select>
-        </Field>
         <Field label={copy.body} wide>
           <textarea
             dir={form.contentLocale === 'ar' ? 'rtl' : undefined}
@@ -798,23 +784,10 @@ function DraftEditor({
             assetPreviews
             options={options.assets}
             selected={form.assets}
-            toggle={(value) => toggle('assets', value)}
-          />
-        </Field>
-        <Field label={copy.knowledge} wide>
-          <MultiOptions
-            options={options.knowledgeSources}
-            selected={form.knowledgeSources}
-            toggle={(value) => toggle('knowledgeSources', value)}
+            toggle={toggleAsset}
           />
         </Field>
       </div>
-      <FactEditor
-        copy={copy}
-        sources={selectedSources}
-        value={form.sourceReferences}
-        onChange={(sourceReferences) => update('sourceReferences', sourceReferences)}
-      />
       <footer>
         <Button disabled={busy} onClick={() => void save()}>
           {item ? copy.save : copy.create}
@@ -983,7 +956,7 @@ function GenerateDraftEditor({
           <footer>
             <Button disabled={busy || !form.brief.trim()} onClick={() => void generate()}>
               <IconSparkles aria-hidden="true" size={16} />
-              {copy.generate}
+              {busy ? copy.generating : copy.generate}
             </Button>
           </footer>
         </>
@@ -1519,69 +1492,6 @@ export function PublishNowEditor({
   )
 }
 
-function FactEditor({
-  copy,
-  onChange,
-  sources,
-  value,
-}: {
-  copy: Copy
-  onChange: (value: ContentStudioSourceReference[]) => void
-  sources: string[]
-  value: ContentStudioSourceReference[]
-}) {
-  const update = (index: number, key: keyof ContentStudioSourceReference, next: string) =>
-    onChange(value.map((item, current) => (current === index ? { ...item, [key]: next } : item)))
-  return (
-    <section className="portal-content-studio__facts-editor">
-      <header>
-        <h4>{copy.facts}</h4>
-        <Button
-          disabled={sources.length === 0}
-          onClick={() => onChange([...value, { claim: '', source: sources[0] ?? '' }])}
-          size="compact"
-          variant="secondary"
-        >
-          <IconPlus aria-hidden="true" size={14} />
-          {copy.addFact}
-        </Button>
-      </header>
-      {value.map((fact, index) => {
-        const available =
-          fact.source && !sources.includes(fact.source) ? [fact.source, ...sources] : sources
-        return (
-          <div key={`${index}:${fact.claim}`}>
-            <input
-              maxLength={500}
-              onChange={(event) => update(index, 'claim', event.target.value)}
-              placeholder={copy.claim}
-              value={fact.claim}
-            />
-            <select
-              aria-label={copy.source}
-              onChange={(event) => update(index, 'source', event.target.value)}
-              value={fact.source}
-            >
-              <option value="">{copy.source}</option>
-              {available.map((source) => (
-                <option key={source} value={source}>
-                  {source}
-                </option>
-              ))}
-            </select>
-            <Button
-              onClick={() => onChange(value.filter((_, current) => current !== index))}
-              size="compact"
-              variant="ghost"
-            >
-              {copy.remove}
-            </Button>
-          </div>
-        )
-      })}
-    </section>
-  )
-}
 function AssetThumbnail({ option }: { option: ContentStudioSummary['options']['assets'][number] }) {
   const [failed, setFailed] = useState(false)
   const isImage = option.meta?.startsWith('image/') === true

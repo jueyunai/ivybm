@@ -748,6 +748,35 @@ describe('Portal Content Studio draft commands', () => {
     })
   })
 
+  it('allows general drafts without knowledge sources to be submitted for review', async () => {
+    const generalContent = {
+      id: 72,
+      knowledgeSources: [],
+      sourceReferences: [],
+      status: 'draft',
+      updatedAt: '2026-07-30T12:00:00.000Z',
+    }
+    const update = vi.fn().mockResolvedValue({ ...generalContent, status: 'review' })
+    const find = vi.fn().mockResolvedValue({ docs: [] })
+
+    await expect(
+      submitContentStudioReview({
+        id: 72,
+        input: { updatedAt: generalContent.updatedAt },
+        payload: { find, findByID: vi.fn().mockResolvedValue(generalContent), update } as any,
+        req,
+      }),
+    ).resolves.toMatchObject({ id: 72, status: 'review' })
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'generated-contents',
+        data: { status: 'review' },
+        id: 72,
+      }),
+    )
+  })
+
   it('requires a complete checklist and persists each review decision before changing status', async () => {
     const content = {
       id: 71,

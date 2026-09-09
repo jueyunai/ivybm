@@ -972,21 +972,23 @@ export async function submitContentStudioReview({
     const id = asRelationID(source)
     return id === null ? [] : [id]
   })
-  if (knowledgeSourceIDs.length === 0 || references.length === 0) {
-    throw new ContentStudioCommandError(
-      'content-studio-sources-required',
-      'At least one fact source is required before review',
-      409,
-    )
-  }
-  const reviewedSources = await generationSources({ ids: knowledgeSourceIDs, payload, req })
-  const allowedLabels = new Set(reviewedSources.map(({ label }) => label))
-  if (references.some(({ source }) => !allowedLabels.has(source))) {
-    throw new ContentStudioCommandError(
-      'content-studio-sources-unavailable',
-      'Every fact source must reference a selected, reviewed, and indexed knowledge document',
-      409,
-    )
+  if (knowledgeSourceIDs.length > 0 || references.length > 0) {
+    if (knowledgeSourceIDs.length === 0 || references.length === 0) {
+      throw new ContentStudioCommandError(
+        'content-studio-sources-required',
+        'At least one fact source is required when knowledge sources are selected',
+        409,
+      )
+    }
+    const reviewedSources = await generationSources({ ids: knowledgeSourceIDs, payload, req })
+    const allowedLabels = new Set(reviewedSources.map(({ label }) => label))
+    if (references.some(({ source }) => !allowedLabels.has(source))) {
+      throw new ContentStudioCommandError(
+        'content-studio-sources-unavailable',
+        'Every fact source must reference a selected, reviewed, and indexed knowledge document',
+        409,
+      )
+    }
   }
   const document = await payload.update({
     collection: 'generated-contents',

@@ -57,7 +57,7 @@ describe('Portal login', () => {
 
     expect(screen.getByRole('button', { name: '登录后台' }).closest('form')?.method).toBe('post')
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'operator@example.com' } })
+    fireEvent.change(screen.getByLabelText(/账号|邮箱/), { target: { value: 'operator@example.com' } })
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'local-password-value' } })
     const submit = screen.getByRole('button', { name: '登录后台' }) as HTMLButtonElement
     fireEvent.click(submit)
@@ -88,11 +88,11 @@ describe('Portal login', () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 401 }))
     render(React.createElement(PortalLoginForm, { fetcher, returnTo: '/dashboard' }))
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'operator@example.com' } })
+    fireEvent.change(screen.getByLabelText(/账号|邮箱/), { target: { value: 'operator@example.com' } })
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'wrong-password' } })
     fireEvent.click(screen.getByRole('button', { name: '登录后台' }))
 
-    expect((await screen.findByRole('alert')).textContent).toBe('邮箱或密码不正确，请重新输入。')
+    expect((await screen.findByRole('alert')).textContent).toMatch(/(账号|邮箱)或密码不正确，请重新输入。/)
     expect((screen.getByRole('button', { name: '登录后台' }) as HTMLButtonElement).disabled).toBe(
       false,
     )
