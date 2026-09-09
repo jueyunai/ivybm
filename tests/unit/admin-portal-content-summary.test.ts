@@ -14,6 +14,10 @@ import {
 import { ContentHub } from '@/admin-portal/modules/website-content/ContentHub'
 import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
 
+const navigation = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }))
+
+vi.mock('next/navigation', () => ({ useRouter: () => navigation }))
+
 const req = {
   user: { collection: 'users', email: 'operator@example.invalid', id: 2, role: 'operator' },
 } as unknown as PayloadRequest

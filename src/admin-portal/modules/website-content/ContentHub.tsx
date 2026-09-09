@@ -295,7 +295,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
     },
     [],
   )
-  const cancelTransition = useCallback(() => setPendingTransition(null), [])
+  const cancelTransition = useCallback(() => setPendingTransition(null), [setPendingTransition])
 
   if (pageState === 'forbidden') {
     return (

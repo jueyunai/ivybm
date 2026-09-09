@@ -61,6 +61,7 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
   const messages = getPortalMessages(locale).mediaWorkspace
   const [selectedId, setSelectedId] = useState<null | number | string>(null)
   const [editor, setEditor] = useState<'create' | 'edit' | null>(null)
+  const router = useRouter()
 
   if (pageState === 'forbidden') {
     return (
@@ -108,7 +109,6 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
     private: messages.private,
     public: messages.public,
   }
-  const router = useRouter()
   const viewHref = (view: MediaView) => buildMediaHref({ ...summary.query, page: 1, view })
 
   return (

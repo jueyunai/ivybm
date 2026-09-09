@@ -39,12 +39,12 @@ export function UiSelect({
 }: UiSelectProps) {
   const isControlled = value !== undefined
   const [uncontrolledValue, setUncontrolledValue] = useState(defaultValue ?? '')
+  const [prevDefaultValue, setPrevDefaultValue] = useState(defaultValue)
 
-  useEffect(() => {
-    if (!isControlled && defaultValue !== undefined) {
-      setUncontrolledValue(defaultValue)
-    }
-  }, [isControlled, defaultValue])
+  if (!isControlled && defaultValue !== prevDefaultValue) {
+    setPrevDefaultValue(defaultValue)
+    setUncontrolledValue(defaultValue ?? '')
+  }
 
   const effectiveVal = isControlled ? value : uncontrolledValue
   const selectedOption =
