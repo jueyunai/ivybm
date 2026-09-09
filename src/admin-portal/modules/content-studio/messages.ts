@@ -58,6 +58,30 @@ export const contentStudioMessages = {
     platform: 'Platform',
     allStatus: 'All statuses',
     allPlatforms: 'All platforms',
+    quickIntents: {
+      shipment: '📦 Factory shipment',
+      project: '🏛 Engineering project',
+      craft: '✨ Material craft',
+      product: '🆕 New product',
+    },
+    quickIntentDescriptions: {
+      shipment:
+        'Container shipment for overseas project, highlighting strict packing and reliable delivery.',
+      project:
+        'Architectural facade and ceiling project showcase, highlighting design aesthetics and quality installation.',
+      craft:
+        'Premium architectural metal panel texture, precision perforation, and durable finish specification.',
+      product:
+        'Innovative building material product launch, featuring modern aesthetics, easy installation, and eco-friendly attributes.',
+    },
+    autoGenerateImage: 'Generate AI image if no media uploaded',
+    uploadMedia: 'Upload images',
+    uploadPrompt: 'Click or drop 1-3 images here',
+    briefPlaceholderWithImages:
+      'Optional: leave blank for AI vision analysis of images, or add specific requirements...',
+    briefPlaceholderGeneral:
+      'Describe product selling points, project context, or click an intent capsule below...',
+    inferredFormatNotice: 'Format automatically determined by media count.',
     resetFilters: 'Clear filters',
     review: 'Review',
     reviewChecklist: 'Review checklist',
@@ -169,6 +193,25 @@ export const contentStudioMessages = {
     platform: '平台',
     allStatus: '全部状态',
     allPlatforms: '全部平台',
+    quickIntents: {
+      shipment: '📦 工厂出货 / 准时交付',
+      project: '🏛 经典工程 / 落地案例',
+      craft: '✨ 样品打样 / 工艺细节',
+      product: '🆕 新品推介 / 制造实力',
+    },
+    quickIntentDescriptions: {
+      shipment: '海外工程集装箱装柜出海，强调专业防撞木箱打包与准时履约交付。',
+      project: '大型商业综合体或交通枢纽外立面与吊顶工程落地实景，突出建筑设计美学与精工品质。',
+      craft: '高端建筑金属装饰板材微距特写，突出表面喷涂质感、数控冲孔精度与耐候性能。',
+      product: '全新建筑装饰金属材料上新推介，突出绿色环保、轻量化与快速模块化安装优势。',
+    },
+    autoGenerateImage: '手头无图？由 AI 自动生成概念配图',
+    uploadMedia: '上传配图',
+    uploadPrompt: '点击或拖拽上传 1~3 张图片',
+    briefPlaceholderWithImages:
+      '（选填）可留空，AI 将自动看图分析建材品类与场景；也可补充具体诉求...',
+    briefPlaceholderGeneral: '输入产品卖点、案例背景，或点击下方快捷意图胶囊...',
+    inferredFormatNotice: '系统将根据配图数量自动匹配最佳内容格式。',
     resetFilters: '清除筛选',
     review: '审核',
     reviewChecklist: '审核清单',

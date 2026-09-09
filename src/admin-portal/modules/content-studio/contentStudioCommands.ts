@@ -373,6 +373,27 @@ const mediaReference = async ({
   return { data, mimeType: mimeType as AiImageMimeType }
 }
 
+const loadAssetImages = async ({
+  assetIDs,
+  payload,
+  req,
+}: {
+  assetIDs: number[]
+  payload: ContentStudioPayload
+  req: PayloadRequest
+}): Promise<Array<{ data: Uint8Array; mimeType: AiImageMimeType }>> => {
+  const images: Array<{ data: Uint8Array; mimeType: AiImageMimeType }> = []
+  for (const id of assetIDs.slice(0, 3)) {
+    try {
+      const ref = await mediaReference({ id, payload, req })
+      images.push(ref)
+    } catch {
+      // Non-image or unavailable media is ignored for vision prompt
+    }
+  }
+  return images
+}
+
 const imageExtension = (mimeType: AiImageMimeType): string => {
   if (mimeType === 'image/jpeg') return 'jpg'
   if (mimeType === 'image/webp') return 'webp'
@@ -543,6 +564,7 @@ export async function adoptContentStudioImage({
 
 type ContentStudioGenerationInput = {
   assets: number[]
+  autoGenerateImage?: boolean
   brief: string
   contentLocale: 'ar' | 'en'
   contentType: ContentStudioType
@@ -554,11 +576,19 @@ type ContentStudioGenerationInput = {
 const parseGenerationInput = (input: unknown): ContentStudioGenerationInput => {
   const record = asRecord(input)
   const knowledgeSources = idList(record.knowledgeSources, 'knowledgeSources', 20)
+  const assets = idList(record.assets, 'assets', 100)
+  const autoGenerateImage = Boolean(record.autoGenerateImage)
+  const briefRequired = assets.length === 0
+  const inferredType: ContentStudioType = assets.length >= 2 ? 'carousel' : 'post'
+  const contentType = record.contentType
+    ? selected(record.contentType, GENERATED_CONTENT_TYPES, 'contentType')
+    : inferredType
   return {
-    assets: idList(record.assets, 'assets', 100),
-    brief: stringValue(record, 'brief', { max: 2_000, required: true }),
+    assets,
+    autoGenerateImage,
+    brief: stringValue(record, 'brief', { max: 2_000, required: briefRequired }),
     contentLocale: selected(record.contentLocale, ['en', 'ar'] as const, 'contentLocale'),
-    contentType: selected(record.contentType, GENERATED_CONTENT_TYPES, 'contentType'),
+    contentType,
     idempotencyKey: idempotencyKey(record.idempotencyKey),
     knowledgeSources,
     platform: selected(record.platform, GENERATED_CONTENT_PLATFORMS, 'platform'),
@@ -694,6 +724,7 @@ const generationFingerprint = (input: ContentStudioGenerationInput): string =>
     .update(
       JSON.stringify({
         assets: input.assets,
+        autoGenerateImage: input.autoGenerateImage ?? false,
         brief: input.brief,
         contentLocale: input.contentLocale,
         contentType: input.contentType,
@@ -786,29 +817,57 @@ export async function generateContentStudioDraft({
   const sourceContext = sources
     .map(({ content, label }, index) => `SOURCE ${index + 1}: ${label}\n${content.slice(0, 6_000)}`)
     .join('\n\n')
-    .slice(0, 18_000)
+  const images = await loadAssetImages({ assetIDs: input.assets, payload, req })
+  const briefText = input.brief.trim()
+    ? input.brief
+    : 'Analyze the provided architectural building material images and create an engaging, professional social media post highlighting material quality, craft, and application.'
+
+  const visionGuidance =
+    images.length > 0
+      ? 'You are provided with images of architectural building materials or project scenes. Analyze the material type, finish, texture, and application shown, and ensure the social media copy highlights these visual details.'
+      : ''
+
+  const shouldAutoGenerateImage = input.autoGenerateImage && input.assets.length === 0
+  const autoImageShape = shouldAutoGenerateImage
+    ? 'Return JSON only with this exact shape: {"title":"...","body":"...","imagePrompt":"...detailed realistic architectural rendering prompt in English...","sourceReferences":[]}.'
+    : 'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[]}.'
+
+  const instructions = sources.length
+    ? [
+        `Create a ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
+        visionGuidance,
+        'Use only the approved sources supplied in the request. Do not invent facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
+        'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[{"claim":"...","source":"..."}]}.',
+        `Each source value must be exactly one of: ${sources.map(({ label }) => JSON.stringify(label)).join(', ')}.`,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : [
+        `Create a general ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
+        visionGuidance,
+        'No knowledge source was selected. Keep the copy general: do not invent product facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
+        autoImageShape,
+      ]
+        .filter(Boolean)
+        .join('\n')
+
   let generatedText: string
   try {
     const gateway = await resolveGateway({
       payload: payload as unknown as Payload,
-      routes: [{ operation: 'text', usageKey: AI_USAGE_KEYS.chatReply }],
+      routes: [
+        { operation: 'text', usageKey: AI_USAGE_KEYS.chatReply },
+        ...(shouldAutoGenerateImage
+          ? [{ operation: 'image' as const, usageKey: AI_USAGE_KEYS.contentImageGeneration }]
+          : []),
+      ],
     })
     const result = await gateway.generateText({
+      images: images.length > 0 ? images : undefined,
       input: sources.length
-        ? `Content brief:\n${input.brief}\n\nApproved sources:\n${sourceContext}`
-        : `Content brief:\n${input.brief}`,
-      instructions: sources.length
-        ? [
-            `Create a ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
-            'Use only the approved sources supplied in the request. Do not invent facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
-            'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[{"claim":"...","source":"..."}]}.',
-            `Each source value must be exactly one of: ${sources.map(({ label }) => JSON.stringify(label)).join(', ')}.`,
-          ].join('\n')
-        : [
-            `Create a general ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
-            'No knowledge source was selected. Keep the copy general: do not invent product facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
-            'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[]}.',
-          ].join('\n'),
+        ? `Content brief:\n${briefText}\n\nApproved sources:\n${sourceContext}`
+        : `Content brief:\n${briefText}`,
+      instructions,
       maxOutputTokens: 1_800,
       onDispatch: onProviderDispatch,
       temperature: 0.2,
@@ -822,17 +881,45 @@ export async function generateContentStudioDraft({
       503,
     )
   }
+  const parsedJSON = parseGeneratedJSON(generatedText)
   const draft = normalizeGeneratedDraft({
-    generated: parseGeneratedJSON(generatedText),
+    generated: parsedJSON,
     input,
     sources,
   })
+
+  let finalAssetIDs = input.assets
+  if (shouldAutoGenerateImage) {
+    const rawRecord = asRecord(parsedJSON)
+    const promptForImage =
+      (typeof rawRecord.imagePrompt === 'string' && rawRecord.imagePrompt.trim()) ||
+      input.brief ||
+      draft.title
+    try {
+      const imageResult = await generateContentStudioImage({
+        input: {
+          idempotencyKey: `${input.idempotencyKey}:auto-image`,
+          prompt: promptForImage,
+          size: input.platform === 'linkedin' ? '1536x1024' : '1024x1024',
+        },
+        onProviderDispatch,
+        payload,
+        req,
+        resolveGateway,
+      })
+      finalAssetIDs = [Number(imageResult.media.id)]
+    } catch {
+      // If auto image generation fails, fallback to draft without generated image
+    }
+  }
+
   try {
     const document = await payload.create({
       collection: 'generated-contents',
       context: internalContext,
       data: {
         ...draft,
+        assets: finalAssetIDs,
         createdBy: actorID,
         creationFingerprint: fingerprint,
         idempotencyKey: input.idempotencyKey,

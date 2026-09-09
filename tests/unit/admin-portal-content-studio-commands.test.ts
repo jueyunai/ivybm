@@ -561,6 +561,114 @@ describe('Portal Content Studio draft commands', () => {
     )
   })
 
+  it('generates a draft when brief is empty but images are provided', async () => {
+    let stored: Record<string, unknown> | null = null
+    const create = vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      stored = { ...data, id: 75, status: 'draft', updatedAt: '2026-07-30T12:00:00.000Z' }
+      return stored
+    })
+    const find = vi.fn(async () => ({ docs: [] }))
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        body: 'A vision-derived post highlighting modern architectural facade panels.',
+        sourceReferences: [],
+        title: 'Architectural facade panels',
+      }),
+    })
+
+    await expect(
+      generateContentStudioDraft({
+        input: {
+          assets: [4],
+          brief: '',
+          contentLocale: 'en',
+          idempotencyKey: 'portal-content-studio:generate-from-images-only',
+          knowledgeSources: [],
+          platform: 'linkedin',
+        },
+        payload: { create, find } as any,
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateText }) as any,
+      }),
+    ).resolves.toMatchObject({ content: { id: 75, status: 'draft' }, duplicate: false })
+
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.stringContaining('Analyze the provided architectural building material images'),
+      }),
+    )
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          assets: [4],
+          contentType: 'post',
+          status: 'draft',
+        }),
+      }),
+    )
+  })
+
+  it('automatically generates an image and attaches it to the draft when autoGenerateImage is true', async () => {
+    let stored: Record<string, unknown> | null = null
+    const create = vi.fn(async ({ collection, data }: { collection: string; data: Record<string, unknown> }) => {
+      if (collection === 'media') {
+        return { ...data, filename: 'ai-gen.png', id: 88, mimeType: 'image/png' }
+      }
+      stored = { ...data, id: 76, status: 'draft', updatedAt: '2026-07-30T12:00:00.000Z' }
+      return stored
+    })
+    const find = vi.fn(async () => ({ docs: [] }))
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        body: 'Post with AI image generation.',
+        imagePrompt: 'Modern architectural rendering of perforated facade panels.',
+        sourceReferences: [],
+        title: 'Perforated panels showcase',
+      }),
+    })
+    const generateImage = vi.fn().mockResolvedValue({
+      image: {
+        data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        mimeType: 'image/png',
+      },
+      model: 'dall-e-3',
+    })
+
+    readFileMock.mockResolvedValue(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+
+    await expect(
+      generateContentStudioDraft({
+        input: {
+          assets: [],
+          autoGenerateImage: true,
+          brief: 'Promote our perforated panels.',
+          contentLocale: 'en',
+          idempotencyKey: 'portal-content-studio:generate-with-auto-image',
+          knowledgeSources: [],
+          platform: 'linkedin',
+        },
+        payload: { create, find } as any,
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateImage, generateText }) as any,
+      }),
+    ).resolves.toMatchObject({ content: { id: 76, status: 'draft' }, duplicate: false })
+
+    expect(generateImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: 'Modern architectural rendering of perforated facade panels.',
+        size: '1536x1024',
+      }),
+    )
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          assets: [88],
+          status: 'draft',
+        }),
+      }),
+    )
+  })
+
   it('keeps selected knowledge restricted to reviewed ready documents and exact references', async () => {
     const generationInput = {
       assets: [],

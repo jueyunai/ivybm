@@ -69,7 +69,15 @@ export type AiReasoning = {
   effort: AiReasoningEffort
 }
 
+export const AI_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
+export const AI_IMAGE_SIZES = ['1024x1024', '1536x1024', '1024x1536'] as const
+export const AI_GENERATED_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+
+export type AiImageMimeType = (typeof AI_IMAGE_MIME_TYPES)[number]
+export type AiImageSize = (typeof AI_IMAGE_SIZES)[number]
+
 export type ProviderGenerateTextInput = {
+  images?: Array<{ data: Uint8Array; mimeType: AiImageMimeType }>
   input: string
   instructions?: string
   maxOutputTokens?: number
@@ -100,13 +108,6 @@ export type ProviderEmbedResult = {
   requestId?: string
   usage: AiTokenUsage
 }
-
-export const AI_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
-export const AI_IMAGE_SIZES = ['1024x1024', '1536x1024', '1024x1536'] as const
-export const AI_GENERATED_IMAGE_MAX_BYTES = 8 * 1024 * 1024
-
-export type AiImageMimeType = (typeof AI_IMAGE_MIME_TYPES)[number]
-export type AiImageSize = (typeof AI_IMAGE_SIZES)[number]
 
 export type ProviderGenerateImageInput = {
   model: string
@@ -531,8 +532,14 @@ export const createAiGateway = (options: GatewayOptions) => ({
     }
   },
   generateText: async (input: GenerateTextInput) => {
-    if (!input.input.trim()) {
+    if (!input.input.trim() && (!input.images || input.images.length === 0)) {
       throw new AiGatewayError('invalid_request', 'Text generation input is required')
+    }
+    if (
+      input.images &&
+      input.images.some((image) => !isValidAiImage(image.data, image.mimeType))
+    ) {
+      throw new AiGatewayError('invalid_request', 'Text generation image reference is invalid')
     }
     const operation = options.operations?.text
     const model = requireModel(input.model ?? operation?.model ?? options.models?.text)

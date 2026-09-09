@@ -14,7 +14,7 @@ import {
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import { Button, StatusBadge, Surface, UiSelect } from '@/admin-portal/core/ui'
 import type { OpenAICompatibleTextGenerationContract } from '@/modules/ai/providers/openaiCompatible'
 import { AI_USAGE_KEYS } from '@/modules/ai/registry'
 
@@ -457,18 +457,20 @@ function ProviderForm({
       </label>
       <label>
         <span>{messages.textGenerationContract}</span>
-        <select
+        <UiSelect
           disabled={busy}
-          onChange={(event) =>
-            setTextGenerationContract(event.target.value as OpenAICompatibleTextGenerationContract)
+          onChange={(val: string) =>
+            setTextGenerationContract(val as OpenAICompatibleTextGenerationContract)
           }
+          options={[
+            { label: messages.textGenerationContracts.responses, value: "responses" },
+            {
+              label: messages.textGenerationContracts["chat-completions"],
+              value: "chat-completions",
+            },
+          ]}
           value={textGenerationContract}
-        >
-          <option value="responses">{messages.textGenerationContracts.responses}</option>
-          <option value="chat-completions">
-            {messages.textGenerationContracts['chat-completions']}
-          </option>
-        </select>
+        />
         <small>{messages.textGenerationContractDescription}</small>
       </label>
       <label>
@@ -667,34 +669,32 @@ function ProfileForm({
         </label>
         <label>
           <span>{messages.provider}</span>
-          <select
+          <UiSelect
             disabled={busy}
-            onChange={(event) => setProviderID(Number(event.target.value))}
-            required
-            value={providerID}
-          >
-            {providers.map((provider) => (
-              <option key={provider.id} value={provider.id}>
-                {provider.name}
-              </option>
-            ))}
-          </select>
+            onChange={(val: string) => setProviderID(Number(val))}
+            options={providers.map((provider) => ({
+              label: provider.name,
+              value: String(provider.id),
+            }))}
+            value={String(providerID)}
+          />
         </label>
         <label>
           <span>{messages.capability}</span>
-          <select
+          <UiSelect
             disabled={busy}
-            onChange={(event) => {
-              const nextCapability = event.target.value as PortalAiCapability
+            onChange={(val: string) => {
+              const nextCapability = val as PortalAiCapability
               setCapability(nextCapability)
-              if (!profile) setTimeoutMs(String(nextCapability === 'image' ? 120000 : 30000))
+              if (!profile) setTimeoutMs(String(nextCapability === "image" ? 120000 : 30000))
             }}
+            options={[
+              { label: messages.capabilities.text, value: "text" },
+              { label: messages.capabilities.embedding, value: "embedding" },
+              { label: messages.capabilities.image, value: "image" },
+            ]}
             value={capability}
-          >
-            <option value="text">{messages.capabilities.text}</option>
-            <option value="embedding">{messages.capabilities.embedding}</option>
-            <option value="image">{messages.capabilities.image}</option>
-          </select>
+          />
         </label>
         <label>
           <span>{messages.model}</span>
@@ -771,17 +771,15 @@ function ProfileForm({
             </label>
             <label>
               <span>{messages.reasoningEffort}</span>
-              <select
+              <UiSelect
                 disabled={busy || !reasoningEnabled}
-                onChange={(event) => setReasoningEffort(event.target.value)}
+                onChange={(val: string) => setReasoningEffort(val)}
+                options={["none", "minimal", "low", "medium", "high", "xhigh", "max"].map((val) => ({
+                  label: val,
+                  value: val,
+                }))}
                 value={reasoningEffort}
-              >
-                {['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
           </>
         ) : null}
@@ -946,42 +944,41 @@ function RouteForm({
       </header>
       <label>
         <span>{messages.usageKey}</span>
-        <select
+        <UiSelect
           disabled={busy}
-          onChange={(event) => setUsageKey(event.target.value)}
+          onChange={(val: string) => setUsageKey(val)}
+          options={[
+            {
+              label: `${messages.usageLabels[AI_USAGE_KEYS.chatReply]} · ${AI_USAGE_KEYS.chatReply}`,
+              value: AI_USAGE_KEYS.chatReply,
+            },
+            {
+              label: `${messages.usageLabels[AI_USAGE_KEYS.knowledgeEmbedding]} · ${AI_USAGE_KEYS.knowledgeEmbedding}`,
+              value: AI_USAGE_KEYS.knowledgeEmbedding,
+            },
+            {
+              label: `${messages.usageLabels[AI_USAGE_KEYS.knowledgeTranslation]} · ${AI_USAGE_KEYS.knowledgeTranslation}`,
+              value: AI_USAGE_KEYS.knowledgeTranslation,
+            },
+            {
+              label: `${messages.usageLabels[AI_USAGE_KEYS.contentImageGeneration]} · ${AI_USAGE_KEYS.contentImageGeneration}`,
+              value: AI_USAGE_KEYS.contentImageGeneration,
+            },
+          ]}
           value={usageKey}
-        >
-          <option value={AI_USAGE_KEYS.chatReply}>
-            {messages.usageLabels[AI_USAGE_KEYS.chatReply]} · {AI_USAGE_KEYS.chatReply}
-          </option>
-          <option value={AI_USAGE_KEYS.knowledgeEmbedding}>
-            {messages.usageLabels[AI_USAGE_KEYS.knowledgeEmbedding]} ·{' '}
-            {AI_USAGE_KEYS.knowledgeEmbedding}
-          </option>
-          <option value={AI_USAGE_KEYS.knowledgeTranslation}>
-            {messages.usageLabels[AI_USAGE_KEYS.knowledgeTranslation]} ·{' '}
-            {AI_USAGE_KEYS.knowledgeTranslation}
-          </option>
-          <option value={AI_USAGE_KEYS.contentImageGeneration}>
-            {messages.usageLabels[AI_USAGE_KEYS.contentImageGeneration]} ·{' '}
-            {AI_USAGE_KEYS.contentImageGeneration}
-          </option>
-        </select>
+        />
       </label>
       <label>
         <span>{messages.profile}</span>
-        <select
+        <UiSelect
           disabled={busy || !compatible.length}
-          onChange={(event) => setProfileID(Number(event.target.value))}
-          required
-          value={normalizedProfileID}
-        >
-          {compatible.map((profile) => (
-            <option key={profile.id} value={profile.id}>
-              {profile.name} · {profile.model}
-            </option>
-          ))}
-        </select>
+          onChange={(val: string) => setProfileID(Number(val))}
+          options={compatible.map((profile) => ({
+            label: `${profile.name} · ${profile.model}`,
+            value: String(profile.id),
+          }))}
+          value={String(normalizedProfileID)}
+        />
       </label>
       <label className="portal-ai-settings__check">
         <input

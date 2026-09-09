@@ -207,6 +207,28 @@ export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProv
     name: options.name ?? 'openai-compatible',
     generateText: async (input: ProviderGenerateTextInput): Promise<ProviderGenerateTextResult> => {
       const chatCompletions = textGenerationContract === 'chat-completions'
+      const userContent =
+        input.images && input.images.length > 0
+          ? [
+              ...(input.input.trim() ? [{ text: input.input, type: 'text' as const }] : []),
+              ...input.images.map((image) => ({
+                image_url: {
+                  url: `data:${image.mimeType};base64,${Buffer.from(image.data).toString('base64')}`,
+                },
+                type: 'image_url' as const,
+              })),
+            ]
+          : input.input
+      const responseInput =
+        input.images && input.images.length > 0
+          ? [
+              ...(input.input.trim() ? [{ text: input.input, type: 'input_text' as const }] : []),
+              ...input.images.map((image) => ({
+                image_url: `data:${image.mimeType};base64,${Buffer.from(image.data).toString('base64')}`,
+                type: 'input_image' as const,
+              })),
+            ]
+          : input.input
       const { body, requestId } = await requestJSON(
         fetchImplementation,
         `${baseURL}/${chatCompletions ? 'chat/completions' : 'responses'}`,
@@ -219,7 +241,7 @@ export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProv
                     ...(input.instructions
                       ? [{ content: input.instructions, role: 'system' as const }]
                       : []),
-                    { content: input.input, role: 'user' as const },
+                    { content: userContent, role: 'user' as const },
                   ],
                   model: input.model,
                   ...(input.reasoning ? { reasoning_effort: input.reasoning.effort } : {}),
@@ -227,7 +249,7 @@ export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProv
                   top_p: input.topP,
                 }
               : {
-                  input: input.input,
+                  input: responseInput,
                   instructions: input.instructions,
                   max_output_tokens: input.maxOutputTokens,
                   model: input.model,
