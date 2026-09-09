@@ -181,15 +181,18 @@ describe('Portal UI primitives', () => {
     unmountConfirm()
 
     const { unmount: unmountForm } = render(
-      React.createElement(FormDialog, {
-        children: React.createElement('input', { 'aria-label': 'Entity name', defaultValue: 'Test' }),
-        closeLabel: 'Dismiss form',
-        description: 'Edit entity form',
-        onOpenChange,
-        onSubmit: vi.fn(),
-        open: true,
-        title: 'Edit entity',
-      }),
+      React.createElement(
+        FormDialog,
+        {
+          closeLabel: 'Dismiss form',
+          description: 'Edit entity form',
+          onOpenChange,
+          onSubmit: vi.fn(),
+          open: true,
+          title: 'Edit entity',
+        },
+        React.createElement('input', { 'aria-label': 'Entity name', defaultValue: 'Test' }),
+      ),
     )
 
     expect(screen.getByRole('heading', { name: 'Edit entity' })).toBeTruthy()
@@ -197,14 +200,17 @@ describe('Portal UI primitives', () => {
     unmountForm()
 
     const { unmount: unmountModal } = render(
-      React.createElement(ModalDialog, {
-        children: React.createElement('div', null, 'Inner dialog content'),
-        closeLabel: 'Close generic dialog',
-        description: 'Generic modal content',
-        onOpenChange,
-        open: true,
-        title: 'Generic modal',
-      }),
+      React.createElement(
+        ModalDialog,
+        {
+          closeLabel: 'Close generic dialog',
+          description: 'Generic modal content',
+          onOpenChange,
+          open: true,
+          title: 'Generic modal',
+        },
+        React.createElement('div', null, 'Inner dialog content'),
+      ),
     )
 
     expect(screen.getByRole('heading', { name: 'Generic modal' })).toBeTruthy()

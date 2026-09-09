@@ -6,7 +6,7 @@ import { Button } from './Button'
 import { cn } from './cn'
 
 export interface ModalDialogProps {
-  children: ReactNode
+  children?: ReactNode
   className?: string
   closeLabel?: string
   description?: string
@@ -66,7 +66,7 @@ export function ModalDialog({
 }
 
 export interface DrawerDialogProps {
-  children: ReactNode
+  children?: ReactNode
   className?: string
   closeLabel?: string
   description?: string
@@ -190,7 +190,7 @@ export interface FormDialogProps {
   busy?: boolean
   busyLabel?: string
   cancelLabel?: string
-  children: ReactNode
+  children?: ReactNode
   closeLabel?: string
   confirmLabel?: string
   description?: string
