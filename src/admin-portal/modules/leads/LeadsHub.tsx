@@ -240,13 +240,14 @@ export function LeadsHub({ feishuRegistrationEnabled = false, pageState, role, s
     return <main className="portal-page portal-leads"><PortalState description={isForbidden ? text.forbidden : pageState === 'read-failed' ? text.error : text.blocked} title={isForbidden ? text.forbidden : pageState === 'read-failed' ? text.error : text.blocked} type={isForbidden ? 'forbidden' : pageState === 'read-failed' ? 'error' : 'blocked'} /></main>
   }
 
-  const updateFilters = (name: string, value: string) => {
+  const updateFilters = (name: 'status' | 'intent', value: string) => {
     const params = new URLSearchParams()
     if (summary.query.q) params.set('q', summary.query.q)
-    if (summary.query.status !== 'all') params.set('status', summary.query.status)
-    if (summary.query.intent !== 'all') params.set('intent', summary.query.intent)
-    if (value !== 'all') params.set(name, value)
-    router.push(`/dashboard/leads?${params}`)
+    const nextStatus = name === 'status' ? value : summary.query.status
+    const nextIntent = name === 'intent' ? value : summary.query.intent
+    if (nextStatus && nextStatus !== 'all') params.set('status', nextStatus)
+    if (nextIntent && nextIntent !== 'all') params.set('intent', nextIntent)
+    router.push(params.toString() ? `/dashboard/leads?${params}` : '/dashboard/leads')
   }
 
   const hasActiveFilters = Boolean(summary.query.q || summary.query.status !== 'all' || summary.query.intent !== 'all')

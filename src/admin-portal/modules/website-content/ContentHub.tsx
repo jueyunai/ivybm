@@ -493,6 +493,15 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
             <UiSelect
               ariaLabel={messages.filterLabel}
               name="status"
+              onChange={(val) => {
+                router.push(
+                  buildContentHref({
+                    type: summary.query.type,
+                    q: summary.query.q,
+                    status: val as ContentStatusFilter,
+                  }),
+                )
+              }}
               options={statusOptions.map((s) => ({ value: s, label: statusLabel[s] }))}
               value={summary.query.status}
             />

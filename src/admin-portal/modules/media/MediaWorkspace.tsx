@@ -3,6 +3,7 @@
 import { useState } from 'react'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   IconArrowLeft,
   IconArrowRight,
@@ -107,6 +108,7 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
     private: messages.private,
     public: messages.public,
   }
+  const router = useRouter()
   const viewHref = (view: MediaView) => buildMediaHref({ ...summary.query, page: 1, view })
 
   return (
@@ -144,9 +146,12 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
             </label>
             <UiSelect
               ariaLabel={messages.kindLabel}
-              defaultValue={summary.query.kind}
               name="kind"
+              onChange={(val) => {
+                router.push(buildMediaHref({ ...summary.query, kind: val as MediaKindFilter, page: 1 }))
+              }}
               options={Object.entries(kindLabels).map(([value, label]) => ({ label, value }))}
+              value={summary.query.kind}
             />
           </div>
           <div className="portal-media__filter-item">
@@ -155,9 +160,12 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
             </label>
             <UiSelect
               ariaLabel={messages.visibilityLabel}
-              defaultValue={summary.query.visibility}
               name="visibility"
+              onChange={(val) => {
+                router.push(buildMediaHref({ ...summary.query, visibility: val as MediaVisibilityFilter, page: 1 }))
+              }}
               options={Object.entries(visibilityLabels).map(([value, label]) => ({ label, value }))}
+              value={summary.query.visibility}
             />
           </div>
           <div className="portal-media__filter-item">

@@ -193,8 +193,10 @@
     font-size: 12px;
   }
 
+  .portal-search__input:focus,
   .portal-search__input:focus-visible {
-    outline: none;
+    outline: none !important;
+    box-shadow: none !important;
   }
 
   .portal-search.is-disabled {
@@ -367,6 +369,14 @@
     transition: background-color 100ms ease, color 100ms ease;
   }
 
+  .portal-ui-select__option,
+  .portal-ui-select__option:focus,
+  .portal-ui-select__option:focus-visible,
+  .portal-ui-select__option[data-highlighted] {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
   .portal-ui-select__option[data-highlighted],
   .portal-ui-select__option:hover {
     background: var(--portal-accent-soft);
@@ -377,6 +387,12 @@
     background: var(--portal-accent);
     color: #ffffff;
     font-weight: 600;
+  }
+
+  .portal-ui-select__option[data-state="checked"][data-highlighted],
+  .portal-ui-select__option[data-state="checked"]:hover {
+    background: var(--portal-accent);
+    color: #ffffff;
   }
 
   .portal-ui-select__option[data-state="checked"] svg {
@@ -3625,8 +3641,8 @@
     min-width: 0;
     gap: 6px;
     color: var(--portal-ink-2);
-    font-size: 10px;
-    font-weight: 700;
+    font-size: 12px;
+    font-weight: 600;
   }
 
   .portal-knowledge-editor__field.is-wide,
@@ -3649,14 +3665,16 @@
     background: var(--portal-canvas);
     color: var(--portal-ink);
     font: inherit;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 400;
     letter-spacing: 0;
+    line-height: 1.5;
   }
 
   .portal-knowledge-editor__field textarea,
   .portal-knowledge-ai-debug textarea {
     resize: vertical;
+    line-height: 1.6;
   }
 
   .portal-knowledge-editor__field input:focus,
@@ -3926,13 +3944,14 @@
 
   .portal-knowledge__detail-type {
     color: var(--portal-muted);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
   }
 
   .portal-knowledge__detail-header h3 {
     margin: 2px 0 0;
-    font-size: 15px;
+    font-size: 16px;
+    font-weight: 700;
   }
 
   .portal-knowledge__detail-actions {
@@ -3950,13 +3969,14 @@
 
   .portal-knowledge__detail-meta dt {
     color: var(--portal-muted);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
   }
 
   .portal-knowledge__detail-meta dd {
     margin: 3px 0 0;
-    font-size: 12px;
+    font-size: 13px;
+    color: var(--portal-ink);
   }
 
   .portal-knowledge__secondary {
@@ -4068,11 +4088,10 @@
 
   .portal-knowledge__table td {
     height: 64px;
-    padding: 8px 11px;
+    padding: 8px 12px;
     overflow: hidden;
     color: var(--portal-ink-2);
-    font-family: var(--portal-font-data);
-    font-size: 9px;
+    font-size: 13px;
     text-overflow: ellipsis;
   }
 
@@ -4111,13 +4130,14 @@
 
   .portal-knowledge__table td:first-child strong {
     color: var(--portal-ink);
-    font-size: 11px;
+    font-size: 13px;
+    font-weight: 600;
   }
 
   .portal-knowledge__table td:first-child span {
     color: var(--portal-muted);
     font-family: var(--portal-font-data);
-    font-size: 8px;
+    font-size: 12px;
   }
 
   .portal-knowledge__table .portal-status-badge {
@@ -5262,7 +5282,7 @@
   .portal-leads__list li button > span {
     overflow: hidden;
     color: var(--portal-muted);
-    font-size: 9px;
+    font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

@@ -2,7 +2,7 @@
 
 import * as RadixSelect from '@radix-ui/react-select'
 import { IconCheck, IconChevronDown } from '@tabler/icons-react'
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import { cn } from './cn'
 
@@ -38,17 +38,36 @@ export function UiSelect({
   value,
 }: UiSelectProps) {
   const isControlled = value !== undefined
-  const currentVal = isControlled ? value : (defaultValue ?? '')
-  const selectedOption = options.find((opt) => opt.value === currentVal) ?? options[0]
-
-  const normalizedValue = selectedOption?.value ?? ''
-  const internalValue = normalizedValue === '' ? EMPTY_SELECT_SENTINEL : normalizedValue
+  const [uncontrolledValue, setUncontrolledValue] = useState(defaultValue ?? '')
 
   useEffect(() => {
-    if (isControlled && value !== normalizedValue) {
+    if (!isControlled && defaultValue !== undefined) {
+      setUncontrolledValue(defaultValue)
+    }
+  }, [isControlled, defaultValue])
+
+  const effectiveVal = isControlled ? value : uncontrolledValue
+  const selectedOption =
+    options.find((opt) => opt.value === effectiveVal) ??
+    (effectiveVal === '' ? options.find((opt) => opt.value === '') : undefined) ??
+    options[0]
+
+  const normalizedValue = selectedOption?.value ?? ''
+  const radixValue = normalizedValue === '' ? EMPTY_SELECT_SENTINEL : normalizedValue
+
+  useEffect(() => {
+    if (isControlled && value !== normalizedValue && options.length > 0) {
       onChange?.(normalizedValue)
     }
-  }, [isControlled, normalizedValue, onChange, value])
+  }, [isControlled, normalizedValue, onChange, options.length, value])
+
+  const handleValueChange = (nextVal: string) => {
+    const actualVal = nextVal === EMPTY_SELECT_SENTINEL ? '' : nextVal
+    if (!isControlled) {
+      setUncontrolledValue(actualVal)
+    }
+    onChange?.(actualVal)
+  }
 
   // In test environments without pointer capture support (e.g. unmocked JSDOM),
   // fallback to a clean native select so fireEvent.change works out-of-the-box.
@@ -65,8 +84,8 @@ export function UiSelect({
           className={cn('portal-select__control', leadingIcon && 'has-leading-icon')}
           disabled={disabled}
           name={name}
-          onChange={(e) => onChange?.(e.target.value)}
-          value={currentVal}
+          onChange={(e) => handleValueChange(e.target.value)}
+          value={effectiveVal}
         >
           {options.map((option) => (
             <option disabled={option.disabled} key={option.value} value={option.value}>
@@ -84,10 +103,8 @@ export function UiSelect({
       <RadixSelect.Root
         disabled={disabled}
         name={name}
-        onValueChange={(nextVal) => {
-          onChange?.(nextVal === EMPTY_SELECT_SENTINEL ? '' : nextVal)
-        }}
-        value={internalValue}
+        onValueChange={handleValueChange}
+        value={radixValue}
       >
         <RadixSelect.Trigger
           aria-label={ariaLabel}

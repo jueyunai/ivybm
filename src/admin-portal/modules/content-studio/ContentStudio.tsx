@@ -96,6 +96,16 @@ export function ContentStudio({
     startRefresh(() => router.refresh())
   }
 
+  const updateFilters = (name: 'status' | 'platform', value: string) => {
+    const params = new URLSearchParams()
+    if (summary?.query.q) params.set('q', summary.query.q)
+    const nextStatus = name === 'status' ? value : (summary?.query.status ?? 'all')
+    const nextPlatform = name === 'platform' ? value : (summary?.query.platform ?? 'all')
+    if (nextStatus && nextStatus !== 'all') params.set('status', nextStatus)
+    if (nextPlatform && nextPlatform !== 'all') params.set('platform', nextPlatform)
+    router.push(params.toString() ? `/dashboard/content-studio?${params}` : '/dashboard/content-studio')
+  }
+
   return (
     <main className="portal-page portal-content-studio">
       <header className="portal-page__intro portal-content-studio__intro">
@@ -141,14 +151,15 @@ export function ContentStudio({
             <UiSelect
               ariaLabel={copy.status}
               name="status"
-              defaultValue={summary.query.status}
+              onChange={(val) => updateFilters('status', val)}
               options={[
-                { value: 'all', label: copy.status },
+                { value: 'all', label: copy.allStatus },
                 ...(['draft', 'review', 'approved'] as const).map((status) => ({
                   value: status,
                   label: copy.statusLabels[status],
                 })),
               ]}
+              value={summary.query.status}
             />
           </div>
           <div className="portal-content-studio__filter-item">
@@ -156,14 +167,15 @@ export function ContentStudio({
             <UiSelect
               ariaLabel={copy.platform}
               name="platform"
-              defaultValue={summary.query.platform}
+              onChange={(val) => updateFilters('platform', val)}
               options={[
-                { value: 'all', label: copy.platform },
+                { value: 'all', label: copy.allPlatforms },
                 ...(['facebook', 'instagram', 'linkedin'] as const).map((platform) => ({
                   value: platform,
                   label: copy.platformLabels[platform],
                 })),
               ]}
+              value={summary.query.platform}
             />
           </div>
           <div className="portal-content-studio__filter-actions">
@@ -172,7 +184,7 @@ export function ContentStudio({
               {copy.filter}
             </Button>
             <Button asChild size="compact" variant="ghost">
-              <Link href="/dashboard/content-studio">{locale === 'zh' ? '清除筛选' : 'Reset'}</Link>
+              <Link href="/dashboard/content-studio">{copy.resetFilters}</Link>
             </Button>
           </div>
         </form>
@@ -748,27 +760,28 @@ function DraftEditor({
           />
         </Field>
         <Field label={copy.platform}>
-          <select
-            onChange={(event) => update('platform', event.target.value as typeof form.platform)}
+          <UiSelect
+            ariaLabel={copy.platform}
+            onChange={(val) => update('platform', val as typeof form.platform)}
+            options={(['facebook', 'instagram', 'linkedin'] as const).map((platform) => ({
+              label: copy.platformLabels[platform],
+              value: platform,
+            }))}
             value={form.platform}
-          >
-            {(['facebook', 'instagram', 'linkedin'] as const).map((platform) => (
-              <option key={platform} value={platform}>
-                {copy.platformLabels[platform]}
-              </option>
-            ))}
-          </select>
+          />
         </Field>
         <Field label={copy.locale}>
-          <select
-            onChange={(event) =>
-              update('contentLocale', event.target.value as typeof form.contentLocale)
+          <UiSelect
+            ariaLabel={copy.locale}
+            onChange={(val) =>
+              update('contentLocale', val as typeof form.contentLocale)
             }
+            options={[
+              { label: 'EN', value: 'en' },
+              { label: 'AR', value: 'ar' },
+            ]}
             value={form.contentLocale}
-          >
-            <option value="en">EN</option>
-            <option value="ar">AR</option>
-          </select>
+          />
         </Field>
         <Field label={copy.body} wide>
           <textarea
@@ -901,41 +914,41 @@ function GenerateDraftEditor({
               />
             </Field>
             <Field label={copy.platform}>
-              <select
-                onChange={(event) => update('platform', event.target.value as typeof form.platform)}
+              <UiSelect
+                ariaLabel={copy.platform}
+                onChange={(val) => update('platform', val as typeof form.platform)}
+                options={(['facebook', 'instagram', 'linkedin'] as const).map((platform) => ({
+                  label: copy.platformLabels[platform],
+                  value: platform,
+                }))}
                 value={form.platform}
-              >
-                {(['facebook', 'instagram', 'linkedin'] as const).map((platform) => (
-                  <option key={platform} value={platform}>
-                    {copy.platformLabels[platform]}
-                  </option>
-                ))}
-              </select>
+              />
             </Field>
             <Field label={copy.locale}>
-              <select
-                onChange={(event) =>
-                  update('contentLocale', event.target.value as typeof form.contentLocale)
+              <UiSelect
+                ariaLabel={copy.locale}
+                onChange={(val) =>
+                  update('contentLocale', val as typeof form.contentLocale)
                 }
+                options={[
+                  { label: 'EN', value: 'en' },
+                  { label: 'AR', value: 'ar' },
+                ]}
                 value={form.contentLocale}
-              >
-                <option value="en">EN</option>
-                <option value="ar">AR</option>
-              </select>
+              />
             </Field>
             <Field label={copy.type}>
-              <select
-                onChange={(event) =>
-                  update('contentType', event.target.value as typeof form.contentType)
+              <UiSelect
+                ariaLabel={copy.type}
+                onChange={(val) =>
+                  update('contentType', val as typeof form.contentType)
                 }
+                options={(['post', 'carousel', 'long-form'] as const).map((type) => ({
+                  label: copy.typeLabels[type],
+                  value: type,
+                }))}
                 value={form.contentType}
-              >
-                {(['post', 'carousel', 'long-form'] as const).map((type) => (
-                  <option key={type} value={type}>
-                    {copy.typeLabels[type]}
-                  </option>
-                ))}
-              </select>
+              />
             </Field>
             <Field label={copy.knowledge} wide>
               <MultiOptions
