@@ -597,4 +597,3 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
 
   payload.logger.info("Portal demo data seeding completed.");
 }
-

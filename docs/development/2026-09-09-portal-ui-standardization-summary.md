@@ -1,7 +1,7 @@
 # Admin Portal UI 下拉组件与搜索框标准化及缺陷修复总结
 
-**日期**：2026-09-09  
-**分支**：`feat/portal-ui-standardization`  
+**日期**：2026-09-09
+**分支**：`feat/portal-ui-standardization`
 **涉及模块**：Portal Core UI (`UiSelect`, `portal.css`), AI 内容工作台 (`ContentStudio`), 知识库 (`KnowledgeWorkspace`), 线索管理 (`LeadsHub`), 官网内容 (`ContentHub`), 素材库 (`MediaWorkspace`), 社交平台配置 (`PlatformReadinessPage`) 等。
 
 ---
