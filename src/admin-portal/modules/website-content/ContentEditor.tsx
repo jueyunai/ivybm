@@ -26,7 +26,7 @@ import {
 
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, StatusBadge } from '@/admin-portal/core/ui'
+import { Button, StatusBadge, UiSelect } from '@/admin-portal/core/ui'
 
 import {
   parseWorkflow,
@@ -932,57 +932,57 @@ export const ContentEditor = forwardRef<
 
         {type === 'products' ? (
           <Field label={text.fields.productCategory}>
-            <select
-              onChange={(event) => update('categoryId', event.target.value)}
-              required
+            <UiSelect
+              ariaLabel={text.fields.productCategory}
+              onChange={(val) => update('categoryId', val)}
+              options={[{ label: '—', value: '' }, ...options.categories.map((option) => ({ label: option.label, value: String(option.id) }))]}
               value={form.categoryId}
-            >
-              <option value="">—</option>
-              {options.categories.map((option) => (
-                <option key={option.id} value={String(option.id)}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            />
           </Field>
         ) : null}
         {type === 'posts' ? (
           <Field label={text.fields.postCategory}>
-            <select
-              onChange={(event) => update('category', event.target.value)}
+            <UiSelect
+              ariaLabel={text.fields.postCategory}
+              onChange={(val) => update('category', val)}
+              options={[
+                { label: text.options.industry, value: 'industry' },
+                { label: text.options.products, value: 'products' },
+                { label: text.options.projects, value: 'projects' },
+                { label: text.options.company, value: 'company' },
+              ]}
               value={form.category}
-            >
-              <option value="industry">{text.options.industry}</option>
-              <option value="products">{text.options.products}</option>
-              <option value="projects">{text.options.projects}</option>
-              <option value="company">{text.options.company}</option>
-            </select>
+            />
           </Field>
         ) : null}
         {type === 'knowledge' ? (
           <Field label={text.fields.knowledgeCategory}>
-            <select
-              onChange={(event) => update('category', event.target.value)}
+            <UiSelect
+              ariaLabel={text.fields.knowledgeCategory}
+              onChange={(val) => update('category', val)}
+              options={[
+                { label: text.options.technicalGuide, value: 'technical-guide' },
+                { label: text.options.materialComparison, value: 'material-comparison' },
+                { label: text.options.procurement, value: 'procurement' },
+                { label: text.options.qualityLogistics, value: 'quality-logistics' },
+              ]}
               value={form.category}
-            >
-              <option value="technical-guide">{text.options.technicalGuide}</option>
-              <option value="material-comparison">{text.options.materialComparison}</option>
-              <option value="procurement">{text.options.procurement}</option>
-              <option value="quality-logistics">{text.options.qualityLogistics}</option>
-            </select>
+            />
           </Field>
         ) : null}
         {type === 'downloads' ? (
           <Field label={text.fields.downloadType}>
-            <select
-              onChange={(event) => update('downloadType', event.target.value)}
+            <UiSelect
+              ariaLabel={text.fields.downloadType}
+              onChange={(val) => update('downloadType', val)}
+              options={[
+                { label: text.options.catalog, value: 'catalog' },
+                { label: text.options.technicalData, value: 'technical-data' },
+                { label: text.options.certificate, value: 'certificate' },
+                { label: text.options.other, value: 'other' },
+              ]}
               value={form.downloadType}
-            >
-              <option value="catalog">{text.options.catalog}</option>
-              <option value="technical-data">{text.options.technicalData}</option>
-              <option value="certificate">{text.options.certificate}</option>
-              <option value="other">{text.options.other}</option>
-            </select>
+            />
           </Field>
         ) : null}
 
@@ -1018,19 +1018,12 @@ export const ContentEditor = forwardRef<
         ) : null}
         {type === 'downloads' ? (
           <Field label={text.fields.downloadFile}>
-            <select
-              onChange={(event) => update('fileId', event.target.value)}
-              required
+            <UiSelect
+              ariaLabel={text.fields.downloadFile}
+              onChange={(val) => update('fileId', val)}
+              options={[{ label: '—', value: '' }, ...options.media.map((option) => ({ label: option.label + (option.meta ? ` · ${option.meta}` : ''), value: String(option.id) }))]}
               value={form.fileId}
-            >
-              <option value="">—</option>
-              {options.media.map((option) => (
-                <option key={option.id} value={String(option.id)}>
-                  {option.label}
-                  {option.meta ? ` · ${option.meta}` : ''}
-                </option>
-              ))}
-            </select>
+            />
           </Field>
         ) : null}
         {type === 'downloads' ? (

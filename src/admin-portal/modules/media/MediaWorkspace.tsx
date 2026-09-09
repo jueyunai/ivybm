@@ -15,7 +15,7 @@ import {
 
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, PortalState, SearchInput, Select, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import { Button, PortalState, SearchInput, UiSelect, StatusBadge, Surface } from '@/admin-portal/core/ui'
 
 import type {
   MediaKindFilter,
@@ -142,25 +142,23 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
             <label className="portal-media__filter-label" htmlFor="media-kind-select">
               {messages.kindLabel}
             </label>
-            <Select defaultValue={summary.query.kind} id="media-kind-select" name="kind">
-              {Object.entries(kindLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
+            <UiSelect
+              ariaLabel={messages.kindLabel}
+              defaultValue={summary.query.kind}
+              name="kind"
+              options={Object.entries(kindLabels).map(([value, label]) => ({ label, value }))}
+            />
           </div>
           <div className="portal-media__filter-item">
             <label className="portal-media__filter-label" htmlFor="media-visibility-select">
               {messages.visibilityLabel}
             </label>
-            <Select defaultValue={summary.query.visibility} id="media-visibility-select" name="visibility">
-              {Object.entries(visibilityLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
+            <UiSelect
+              ariaLabel={messages.visibilityLabel}
+              defaultValue={summary.query.visibility}
+              name="visibility"
+              options={Object.entries(visibilityLabels).map(([value, label]) => ({ label, value }))}
+            />
           </div>
           <div className="portal-media__filter-item">
             <label className="portal-media__filter-label" htmlFor="media-source-input">

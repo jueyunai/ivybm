@@ -20,7 +20,7 @@ import {
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import type { PortalRole } from '@/admin-portal/core/modules/types'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, PortalState, SearchInput, Select, StatusBadge, Surface, UiSelect } from '@/admin-portal/core/ui'
+import { Button, PortalState, SearchInput, StatusBadge, Surface, UiSelect } from '@/admin-portal/core/ui'
 
 import { FeishuRegistrationPanel } from './FeishuRegistrationPanel'
 import { formatByteSize, type LeadSummaryItem, type LeadsSummary } from './getLeadsPage'
@@ -620,44 +620,49 @@ function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { 
           <input maxLength={160} onChange={(event) => update('interest', event.target.value)} value={form.interest} />
         </Field>
         <Field label={text.status}>
-          <Select onChange={(event) => update('status', event.target.value)} value={form.status}>
-            {Object.entries(text.state).map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
-            ))}
-          </Select>
+          <UiSelect
+            ariaLabel={text.status}
+            onChange={(val) => update('status', val as any)}
+            options={Object.entries(text.state).map(([key, label]) => ({ label, value: key }))}
+            value={form.status}
+          />
         </Field>
         <Field label={text.intent}>
-          <Select onChange={(event) => update('intentLevel', event.target.value)} value={form.intentLevel}>
-            {Object.entries(text.intentState).map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
-            ))}
-          </Select>
+          <UiSelect
+            ariaLabel={text.intent}
+            onChange={(val) => update('intentLevel', val as any)}
+            options={Object.entries(text.intentState).map(([key, label]) => ({ label, value: key }))}
+            value={form.intentLevel}
+          />
         </Field>
         {role !== 'sales' ? (
           <Field label={text.source}>
-            <Select onChange={(event) => update('sourceId', event.target.value)} value={form.sourceId}>
-              {options.sources.map((source) => (
-                <option key={source.id} value={String(source.id)}>{source.label}</option>
-              ))}
-            </Select>
+            <UiSelect
+              ariaLabel={text.source}
+              onChange={(val) => update('sourceId', val)}
+              options={options.sources.map((source) => ({ label: source.label, value: String(source.id) }))}
+              value={form.sourceId}
+            />
           </Field>
         ) : null}
         {mode === 'create' ? (
           <Field label={text.locale}>
-            <Select onChange={(event) => update('locale', event.target.value)} value={form.locale}>
-              <option value="en">EN</option>
-              <option value="ar">AR</option>
-            </Select>
+            <UiSelect
+              ariaLabel={text.locale}
+              onChange={(val) => update('locale', val as any)}
+              options={[{ label: 'EN', value: 'en' }, { label: 'AR', value: 'ar' }]}
+              value={form.locale}
+            />
           </Field>
         ) : null}
         {role === 'admin' ? (
           <Field label={text.assignment}>
-            <Select onChange={(event) => update('assignedToId', event.target.value)} value={form.assignedToId}>
-              <option value="">{text.unknown}</option>
-              {options.users.map((user) => (
-                <option key={user.id} value={String(user.id)}>{user.label}</option>
-              ))}
-            </Select>
+            <UiSelect
+              ariaLabel={text.assignment}
+              onChange={(val) => update('assignedToId', val)}
+              options={[{ label: text.unknown, value: '' }, ...options.users.map((user) => ({ label: user.label, value: String(user.id) }))]}
+              value={form.assignedToId}
+            />
           </Field>
         ) : null}
         <Field label={text.message} wide>

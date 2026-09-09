@@ -1138,33 +1138,33 @@ function ImageGenerationEditor({
           />
         </Field>
         <Field label={copy.imageSize}>
-          <select
-            onChange={(event) => {
-              setSize(event.target.value as typeof size)
+          <UiSelect
+            ariaLabel={copy.imageSize}
+            onChange={(val) => {
+              setSize(val as typeof size)
               setGenerated(null)
             }}
+            options={[
+              { label: '1024 × 1024', value: '1024x1024' },
+              { label: '1536 × 1024', value: '1536x1024' },
+              { label: '1024 × 1536', value: '1024x1536' },
+            ]}
             value={size}
-          >
-            <option value="1024x1024">1024 × 1024</option>
-            <option value="1536x1024">1536 × 1024</option>
-            <option value="1024x1536">1024 × 1536</option>
-          </select>
+          />
         </Field>
         <Field label={copy.referenceAsset}>
-          <select
-            onChange={(event) => {
-              setReferenceMediaId(event.target.value ? Number(event.target.value) : null)
+          <UiSelect
+            ariaLabel={copy.referenceAsset}
+            onChange={(val) => {
+              setReferenceMediaId(val ? Number(val) : null)
               setGenerated(null)
             }}
-            value={referenceMediaId ?? ''}
-          >
-            <option value="">{copy.noReference}</option>
-            {references.map((asset) => (
-              <option key={asset.id} value={asset.id}>
-                {asset.label}
-              </option>
-            ))}
-          </select>
+            options={[
+              { label: copy.noReference, value: '' },
+              ...references.map((asset) => ({ label: asset.label, value: String(asset.id) })),
+            ]}
+            value={referenceMediaId ? String(referenceMediaId) : ''}
+          />
         </Field>
         <div className="portal-content-studio__upload-field is-wide">
           <label htmlFor="content-studio-reference-upload">{copy.uploadReference}</label>
@@ -1218,19 +1218,15 @@ function ImageGenerationEditor({
           </div>
           {generated.revisedPrompt ? <p>{generated.revisedPrompt}</p> : null}
           <Field label={copy.targetDraft}>
-            <select
-              onChange={(event) =>
-                setTargetDraftId(event.target.value ? Number(event.target.value) : null)
-              }
-              value={targetDraftId ?? ''}
-            >
-              <option value="">{copy.selectDraft}</option>
-              {drafts.map((draft) => (
-                <option key={draft.id} value={draft.id}>
-                  {draft.title}
-                </option>
-              ))}
-            </select>
+            <UiSelect
+              ariaLabel={copy.targetDraft}
+              onChange={(val) => setTargetDraftId(val ? Number(val) : null)}
+              options={[
+                { label: copy.selectDraft, value: '' },
+                ...drafts.map((draft) => ({ label: draft.title, value: String(draft.id) })),
+              ]}
+              value={targetDraftId ? String(targetDraftId) : ''}
+            />
           </Field>
           <Button disabled={busy !== null || !targetDraft} onClick={() => void adopt()}>
             {copy.adoptImage}
