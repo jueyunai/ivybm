@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   IconArrowLeft,
   IconArrowRight,
@@ -262,6 +263,7 @@ const statusOptionsFor = (type: ContentTypeId): ContentStatusFilter[] => {
 }
 
 export function ContentHub({ pageState, summary }: ContentHubProps) {
+  const router = useRouter()
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).websiteContent
   const [selectedId, setSelectedId] = useState<number | string | null>(null)

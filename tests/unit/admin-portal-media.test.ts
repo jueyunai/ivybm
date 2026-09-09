@@ -19,6 +19,16 @@ const req = {
   user: { collection: 'users', email: 'operator@example.invalid', id: 2, role: 'operator' },
 } as unknown as PayloadRequest
 
+const router = { push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }
+
+vi.mock('next/navigation', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('next/navigation')>()
+  return {
+    ...actual,
+    useRouter: () => router,
+  }
+})
+
 afterEach(() => {
   cleanup()
   window.localStorage.clear()

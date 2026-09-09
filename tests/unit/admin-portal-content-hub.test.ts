@@ -7,7 +7,7 @@ import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/Portal
 import { ContentHub } from '@/admin-portal/modules/website-content/ContentHub'
 import type { ContentSummary } from '@/admin-portal/modules/website-content/getContentSummary'
 
-const navigation = vi.hoisted(() => ({ refresh: vi.fn() }))
+const navigation = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => navigation }))
 
