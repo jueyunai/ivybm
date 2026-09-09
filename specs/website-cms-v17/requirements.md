@@ -1,4 +1,9 @@
-# Website/CMS v1.7 Requirements
+# Website/CMS v1.7 Requirements (Archived Snapshot)
+
+> [!NOTE]
+> **状态：已归档历史规格快照（Archived / Non-executable）**
+> - **实施对应**：本规格已于 2026-09-01 由 **PR #117**（Commit `4bfd0a1`）完整实现并合入 `main`。
+> - **当前基线**：当前唯一最高优先级冲刺计划为 [`docs/plans/2026-08-10-MVP范围冻结与交付冲刺.md`](../../docs/plans/2026-08-10-MVP范围冻结与交付冲刺.md)。本文档作为历史设计快照存档，不作为当前执行合同。
 
 关联基线：[`docs/requirements/2026-08-29-官网与CMS改版及素材上架需求任务书.md`](../../docs/requirements/2026-08-29-官网与CMS改版及素材上架需求任务书.md)
 
