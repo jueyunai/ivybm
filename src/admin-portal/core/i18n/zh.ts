@@ -213,7 +213,7 @@ export const PORTAL_ZH = {
     alreadyProcessing: '该文档正在索引，请等待当前任务完成',
     applyFilters: '筛选',
     arabic: '阿语',
-    credentialsNeverShown: '仅展示模型可用状态；API 密钥等敏感信息已受保护且不在前端显示。',
+    chatReplyRoute: '客服问答',
     customerVisible: '客户可见',
     description:
       '管理 AI 客服与内容生成所依据的业务知识。文档经审核通过并完成索引后，将正式供 AI 调用。',
@@ -309,6 +309,7 @@ export const PORTAL_ZH = {
     },
     startIndex: '开始索引',
     textRoute: '文本生成',
+    translationRoute: '知识翻译',
     title: '知识文档',
     updatedColumn: '更新时间',
     visibilityColumn: '客户可见',

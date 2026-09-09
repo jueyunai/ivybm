@@ -189,15 +189,24 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
       <form className="portal-knowledge__ingestion-form" onSubmit={submit}>
         <div className="portal-knowledge__ingestion-grid">
           <label className="portal-knowledge__ingestion-field">
-            <span>{messages.sourceTitle}</span>
+            <span>
+              <span aria-hidden="true" className="portal-required" />
+              {messages.sourceTitle}
+            </span>
             <input maxLength={500} name="sourceTitle" placeholder={messages.sourceTitle} required />
           </label>
           <label className="portal-knowledge__ingestion-field">
-            <span>{messages.sourceVersion}</span>
+            <span>
+              <span aria-hidden="true" className="portal-required" />
+              {messages.sourceVersion}
+            </span>
             <input defaultValue="1.0" maxLength={100} name="sourceVersion" required />
           </label>
           <div className="portal-knowledge__ingestion-field">
-            <span>{messages.sourceType}</span>
+            <span>
+              <span aria-hidden="true" className="portal-required" />
+              {messages.sourceType}
+            </span>
             <UiSelect
               ariaLabel={messages.sourceType}
               defaultValue="other"
@@ -229,7 +238,10 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
         </div>
         <div className="portal-knowledge__ingestion-row-2">
           <label className="portal-knowledge__ingestion-file-label">
-            <span>{messages.file}</span>
+            <span>
+              <span aria-hidden="true" className="portal-required" />
+              {messages.file}
+            </span>
             <div className="portal-knowledge__file-picker">
               <input
                 accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"

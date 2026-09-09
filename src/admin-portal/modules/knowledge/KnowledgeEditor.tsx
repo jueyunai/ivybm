@@ -299,7 +299,10 @@ export function KnowledgeEditor({
 
       <div className="portal-knowledge-editor__fields" dir={form.locale === 'ar' ? 'rtl' : 'ltr'}>
         <label className="portal-knowledge-editor__field">
-          <span>{text.sourceTitle}</span>
+          <span>
+            <span aria-hidden="true" className="portal-required" />
+            {text.sourceTitle}
+          </span>
           <input
             maxLength={500}
             onChange={(event) => update('sourceTitle', event.target.value)}
@@ -308,7 +311,10 @@ export function KnowledgeEditor({
           />
         </label>
         <label className="portal-knowledge-editor__field">
-          <span>{text.sourceType}</span>
+          <span>
+            <span aria-hidden="true" className="portal-required" />
+            {text.sourceType}
+          </span>
           <UiSelect
             ariaLabel={text.sourceType}
             onChange={(value) => update('sourceType', value as KnowledgeSourceType)}
@@ -317,7 +323,10 @@ export function KnowledgeEditor({
           />
         </label>
         <label className="portal-knowledge-editor__field">
-          <span>{text.locale}</span>
+          <span>
+            <span aria-hidden="true" className="portal-required" />
+            {text.locale}
+          </span>
           <UiSelect
             ariaLabel={text.locale}
             onChange={(value) => update('locale', value as 'ar' | 'en')}
@@ -326,7 +335,10 @@ export function KnowledgeEditor({
           />
         </label>
         <label className="portal-knowledge-editor__field">
-          <span>{text.sourceVersion}</span>
+          <span>
+            <span aria-hidden="true" className="portal-required" />
+            {text.sourceVersion}
+          </span>
           <input
             maxLength={100}
             onChange={(event) => update('sourceVersion', event.target.value)}
@@ -354,7 +366,10 @@ export function KnowledgeEditor({
           />
         </label>
         <label className="portal-knowledge-editor__field is-wide">
-          <span>{text.content}</span>
+          <span>
+            <span aria-hidden="true" className="portal-required" />
+            {text.content}
+          </span>
           <textarea
             maxLength={KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS}
             onChange={(event) => update('content', event.target.value)}

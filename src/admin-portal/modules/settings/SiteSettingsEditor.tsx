@@ -117,7 +117,10 @@ export function SiteSettingsEditor({
             </Button>
           </div>
           <label className="portal-field">
-            <span className="portal-field__label">{messages.settings.siteName}</span>
+            <span className="portal-field__label">
+              <span aria-hidden="true" className="portal-required" />
+              {messages.settings.siteName}
+            </span>
             <span className="portal-field__control">
               <input
                 aria-label={messages.settings.siteName}

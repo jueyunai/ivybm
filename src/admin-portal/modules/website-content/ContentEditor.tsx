@@ -442,15 +442,20 @@ export function ContentEditorNotice({
 function Field({
   children,
   label,
+  required = false,
   wide = false,
 }: {
   children: React.ReactNode
   label: string
+  required?: boolean
   wide?: boolean
 }) {
   return (
     <label className={`portal-content-editor__field${wide ? ' is-wide' : ''}`}>
-      <span>{label}</span>
+      <span>
+        {required ? <span aria-hidden="true" className="portal-required" /> : null}
+        {label}
+      </span>
       {children}
     </label>
   )
@@ -856,7 +861,7 @@ export const ContentEditor = forwardRef<
       {notice && !onNotice ? <ContentEditorNotice notice={notice} /> : null}
 
       <div className="portal-content-editor__fields" dir={form.locale === 'ar' ? 'rtl' : 'ltr'}>
-        <Field label={text.fields.title}>
+        <Field label={text.fields.title} required>
           <input
             maxLength={200}
             onChange={(event) => update('title', event.target.value)}
@@ -864,7 +869,7 @@ export const ContentEditor = forwardRef<
             value={form.title}
           />
         </Field>
-        <Field label={text.fields.slug}>
+        <Field label={text.fields.slug} required>
           <input
             dir="ltr"
             maxLength={120}

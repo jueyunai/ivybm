@@ -161,8 +161,9 @@ describe('Portal UI primitives', () => {
     const onOpenChange = vi.fn()
     const onConfirm = vi.fn()
 
-    const { unmount } = render(
+    const { unmount: unmountConfirm } = render(
       React.createElement(ConfirmDialog, {
+        closeLabel: 'Dismiss deletion',
         description: 'Permanent delete test',
         onConfirm,
         onOpenChange,
@@ -173,9 +174,41 @@ describe('Portal UI primitives', () => {
 
     expect(screen.getByRole('heading', { name: 'Confirm deletion' })).toBeTruthy()
     expect(screen.getByText('Permanent delete test')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Dismiss deletion' })).toBeTruthy()
     const confirmButton = screen.getByRole('button', { name: '确认' })
     fireEvent.click(confirmButton)
     expect(onConfirm).toHaveBeenCalled()
-    unmount()
+    unmountConfirm()
+
+    const { unmount: unmountForm } = render(
+      React.createElement(FormDialog, {
+        children: React.createElement('input', { 'aria-label': 'Entity name', defaultValue: 'Test' }),
+        closeLabel: 'Dismiss form',
+        description: 'Edit entity form',
+        onOpenChange,
+        onSubmit: vi.fn(),
+        open: true,
+        title: 'Edit entity',
+      }),
+    )
+
+    expect(screen.getByRole('heading', { name: 'Edit entity' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Dismiss form' })).toBeTruthy()
+    unmountForm()
+
+    const { unmount: unmountModal } = render(
+      React.createElement(ModalDialog, {
+        children: React.createElement('div', null, 'Inner dialog content'),
+        closeLabel: 'Close generic dialog',
+        description: 'Generic modal content',
+        onOpenChange,
+        open: true,
+        title: 'Generic modal',
+      }),
+    )
+
+    expect(screen.getByRole('heading', { name: 'Generic modal' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Close generic dialog' })).toBeTruthy()
+    unmountModal()
   })
 })

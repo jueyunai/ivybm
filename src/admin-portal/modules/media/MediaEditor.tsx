@@ -193,7 +193,10 @@ export function MediaEditor({
       <div className="portal-media-editor__fields">
         {mode === 'create' ? (
           <label className="portal-media-editor__field">
-            <span>{text.file}</span>
+            <span>
+              <span aria-hidden="true" className="portal-required" />
+              {text.file}
+            </span>
             <input
               accept="image/avif,image/jpeg,image/png,image/webp,application/pdf"
               disabled={busy}
@@ -207,7 +210,10 @@ export function MediaEditor({
           </label>
         ) : null}
         <label className="portal-media-editor__field">
-          <span>{text.alt}</span>
+          <span>
+            <span aria-hidden="true" className="portal-required" />
+            {text.alt}
+          </span>
           <input
             disabled={busy}
             maxLength={500}
@@ -217,7 +223,10 @@ export function MediaEditor({
           />
         </label>
         <label className="portal-media-editor__field">
-          <span>{text.source}</span>
+          <span>
+            <span aria-hidden="true" className="portal-required" />
+            {text.source}
+          </span>
           <textarea
             disabled={busy}
             maxLength={2000}

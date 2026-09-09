@@ -185,6 +185,17 @@ const asContentResult = (document: LooseRecord) => ({
   updatedAt: typeof document.updatedAt === 'string' ? document.updatedAt : '',
 })
 
+const asGeneratedContentResult = (document: LooseRecord) => ({
+  ...asContentResult(document),
+  assets: Array.isArray(document.assets)
+    ? document.assets
+        .map((asset) =>
+          typeof asset === 'object' && asset !== null ? (asset as { id: number }).id : Number(asset),
+        )
+        .filter((id) => Number.isInteger(id) && id > 0)
+    : [],
+})
+
 const internalContext = { ...contentStudioInternalWriteContext }
 
 const findContent = async ({
@@ -711,6 +722,22 @@ const parseGeneratedJSON = (value: string): unknown => {
   try {
     return JSON.parse(trimmed) as unknown
   } catch {
+    const codeBlockMatch = value.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+    if (codeBlockMatch?.[1]) {
+      try {
+        return JSON.parse(codeBlockMatch[1].trim()) as unknown
+      } catch {
+        // Fall through
+      }
+    }
+    const jsonMatch = value.match(/(\{[\s\S]*\})/)?.[1]
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch) as unknown
+      } catch {
+        // Fall through
+      }
+    }
     throw new ContentStudioCommandError(
       'content-studio-ai-invalid-response',
       'The AI response was not a valid structured draft',
@@ -755,6 +782,7 @@ const findExistingGeneratedDraft = async ({
     pagination: false,
     req,
     select: {
+      assets: true,
       createdBy: true,
       creationFingerprint: true,
       id: true,
@@ -776,7 +804,7 @@ const findExistingGeneratedDraft = async ({
       409,
     )
   }
-  return asContentResult(document)
+  return asGeneratedContentResult(document)
 }
 
 export async function generateContentStudioDraft({
@@ -928,7 +956,7 @@ export async function generateContentStudioDraft({
       overrideAccess: false,
       req,
     })
-    return { content: asContentResult(document as LooseRecord), duplicate: false }
+    return { content: asGeneratedContentResult(document as LooseRecord), duplicate: false }
   } catch (error) {
     const concurrentDuplicate = await findExistingGeneratedDraft({
       actorID,

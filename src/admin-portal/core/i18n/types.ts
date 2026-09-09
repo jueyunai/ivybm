@@ -362,7 +362,7 @@ export interface PortalKnowledgeMessages {
   alreadyProcessing: string
   applyFilters: string
   arabic: string
-  credentialsNeverShown: string
+  chatReplyRoute: string
   customerVisible: string
   description: string
   documentColumn: string
@@ -443,6 +443,7 @@ export interface PortalKnowledgeMessages {
   >
   startIndex: string
   textRoute: string
+  translationRoute: string
   title: string
   updatedColumn: string
   visibilityColumn: string

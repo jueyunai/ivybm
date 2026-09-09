@@ -602,7 +602,7 @@ function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { 
       </header>
       {error ? <p role="alert">{error}</p> : null}
       <div className="portal-leads-editor__fields">
-        <Field label={text.name}>
+        <Field label={text.name} required>
           <input maxLength={120} onChange={(event) => update('name', event.target.value)} required value={form.name} />
         </Field>
         <Field label={text.company}>
@@ -620,7 +620,7 @@ function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { 
         <Field label={text.interest}>
           <input maxLength={160} onChange={(event) => update('interest', event.target.value)} value={form.interest} />
         </Field>
-        <Field label={text.status}>
+        <Field label={text.status} required>
           <UiSelect
             ariaLabel={text.status}
             onChange={(val) => update('status', val as any)}
@@ -628,7 +628,7 @@ function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { 
             value={form.status}
           />
         </Field>
-        <Field label={text.intent}>
+        <Field label={text.intent} required>
           <UiSelect
             ariaLabel={text.intent}
             onChange={(val) => update('intentLevel', val as any)}
@@ -637,7 +637,7 @@ function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { 
           />
         </Field>
         {role !== 'sales' ? (
-          <Field label={text.source}>
+          <Field label={text.source} required>
             <UiSelect
               ariaLabel={text.source}
               onChange={(val) => update('sourceId', val)}
@@ -647,7 +647,7 @@ function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { 
           </Field>
         ) : null}
         {mode === 'create' ? (
-          <Field label={text.locale}>
+          <Field label={text.locale} required>
             <UiSelect
               ariaLabel={text.locale}
               onChange={(val) => update('locale', val as any)}
@@ -666,7 +666,7 @@ function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { 
             />
           </Field>
         ) : null}
-        <Field label={text.message} wide>
+        <Field label={text.message} required wide>
           <textarea maxLength={5000} onChange={(event) => update('message', event.target.value)} required rows={6} value={form.message} />
         </Field>
       </div>
@@ -696,10 +696,13 @@ function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { 
   )
 }
 
-function Field({ children, label, wide = false }: { children: ReactNode; label: string; wide?: boolean }) {
+function Field({ children, label, required = false, wide = false }: { children: ReactNode; label: string; required?: boolean; wide?: boolean }) {
   return (
     <label className={wide ? 'is-wide' : undefined}>
-      <span>{label}</span>
+      <span>
+        {required ? <span aria-hidden="true" className="portal-required" /> : null}
+        {label}
+      </span>
       {children}
     </label>
   )

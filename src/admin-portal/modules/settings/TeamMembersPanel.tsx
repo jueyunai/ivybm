@@ -940,7 +940,10 @@ export function TeamMembersPanel({
         {modalFeedback}
         <form className="portal-modal__form" onSubmit={handleAddSubmit}>
           <label className="portal-field">
-            <span className="portal-field__label">{messages.memberEmail}</span>
+            <span className="portal-field__label">
+              <span aria-hidden="true" className="portal-required" />
+              {messages.memberEmail}
+            </span>
             <span className="portal-field__control">
               <input
                 aria-label={messages.memberEmail}
@@ -1033,7 +1036,10 @@ export function TeamMembersPanel({
           </div>
 
           <label className="portal-field">
-            <span className="portal-field__label">{messages.initialPassword}（明文显示，不少于12位）</span>
+            <span className="portal-field__label">
+              <span aria-hidden="true" className="portal-required" />
+              {messages.initialPassword}（明文显示，不少于12位）
+            </span>
             <span className="portal-field__control">
               <input
                 aria-label={messages.initialPassword}
@@ -1203,7 +1209,10 @@ export function TeamMembersPanel({
         {modalFeedback}
         <form className="portal-modal__form" onSubmit={handleResetPasswordSubmit}>
           <label className="portal-field">
-            <span className="portal-field__label">{messages.newPassword}</span>
+            <span className="portal-field__label">
+              <span aria-hidden="true" className="portal-required" />
+              {messages.newPassword}
+            </span>
             <span className="portal-field__control">
               <input
                 aria-label={messages.newPassword}
@@ -1219,7 +1228,10 @@ export function TeamMembersPanel({
           </label>
 
           <label className="portal-field">
-            <span className="portal-field__label">{messages.confirmResetPassword}</span>
+            <span className="portal-field__label">
+              <span aria-hidden="true" className="portal-required" />
+              {messages.confirmResetPassword}
+            </span>
             <span className="portal-field__control">
               <input
                 aria-label={messages.confirmResetPassword}

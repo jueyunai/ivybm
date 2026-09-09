@@ -89,6 +89,7 @@ describe('Portal Content Studio image workspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'AI 生成' }))
     fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
+
     fireEvent.change(screen.getByLabelText('图片提示词'), {
       target: { value: 'Create a premium facade hero image' },
     })
@@ -164,6 +165,7 @@ describe('Portal Content Studio image workspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'AI 生成' }))
     fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
+
     fireEvent.change(screen.getByLabelText('图片提示词'), {
       target: { value: 'Unknown provider result' },
     })
@@ -198,6 +200,7 @@ describe('Portal Content Studio image workspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'AI 生成' }))
     fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
+
     fireEvent.change(screen.getByLabelText('图片提示词'), {
       target: { value: 'Saved without preview' },
     })

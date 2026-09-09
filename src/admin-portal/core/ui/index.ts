@@ -1,9 +1,11 @@
 export { Button, buttonVariants, type ButtonProps } from './Button'
 export {
   ConfirmDialog,
+  DrawerDialog,
   FormDialog,
   ModalDialog,
   type ConfirmDialogProps,
+  type DrawerDialogProps,
   type FormDialogProps,
   type ModalDialogProps,
 } from './Dialog'
