@@ -566,7 +566,7 @@ describe.sequential('Content Studio immediate platform publication', () => {
     expect(audit.docs.length).toBeGreaterThan(0)
   })
 
-  it('rejects an unrelated private asset before creating publication jobs', async () => {
+  it('promotes an approved private upload during publication staging', async () => {
     const privateImage = await sharp({
       create: { background: '#1c2f46', channels: 3, height: 4, width: 4 },
     })
@@ -591,17 +591,31 @@ describe.sequential('Content Studio immediate platform publication', () => {
     const before = await pool().query<{ count: string }>(
       'SELECT COUNT(*)::text AS count FROM publish_jobs',
     )
-    await expect(
-      invoke({
-        content,
-        idempotencyKey: `portal-content-studio:private:${randomUUID()}`,
-        targetAccountIds: [accountIDs[0]!],
-      }),
-    ).rejects.toMatchObject({ code: 'content-studio-publication-asset-private', status: 409 })
+    const result = await invoke({
+      content,
+      idempotencyKey: `portal-content-studio:private:${randomUUID()}`,
+      targetAccountIds: [accountIDs[0]!],
+    })
+    expect(result.jobs).toHaveLength(1)
+    const promoted = await payload.findByID({
+      collection: 'media',
+      depth: 0,
+      id: privateMedia.id,
+      overrideAccess: true,
+    })
+    expect(promoted.isPublic).toBe(true)
     const after = await pool().query<{ count: string }>(
       'SELECT COUNT(*)::text AS count FROM publish_jobs',
     )
-    expect(after.rows[0]?.count).toBe(before.rows[0]?.count)
+    expect(Number(after.rows[0]?.count)).toBe(Number(before.rows[0]?.count) + 1)
+    const jobs = await payload.find({
+      collection: 'publish-jobs',
+      overrideAccess: true,
+      where: { content: { equals: content.id } },
+    })
+    expect(JSON.stringify(jobs.docs[0]?.requestSnapshot)).toContain(
+      `/api/publication-assets/${privateMedia.id}/`,
+    )
     await payload.delete({ collection: 'media', id: privateMedia.id, overrideAccess: true })
   })
 

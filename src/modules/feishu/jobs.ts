@@ -102,10 +102,7 @@ export const findAssociatedLeadAttachments = async (
       ...(req ? { req } : {}),
       sort: 'createdAt',
       where: {
-        and: [
-          { lead: { equals: parsedId } },
-          { status: { equals: 'associated' } },
-        ],
+        and: [{ lead: { equals: parsedId } }, { status: { equals: 'associated' } }],
       },
     })
     return (result.docs ?? []).map((att) => ({
@@ -484,11 +481,17 @@ export const enqueueFeishuLeadSyncForLead = async ({
   previousDoc,
   req,
 }: {
-  doc: Lead | (Record<string, unknown> & { id: number | string; intentLevel?: unknown; status?: unknown })
+  doc:
+    | Lead
+    | (Record<string, unknown> & { id: number | string; intentLevel?: unknown; status?: unknown })
   operation?: 'create' | 'update'
-  previousDoc?: Lead | (Record<string, unknown> & { id?: number | string; intentLevel?: unknown; status?: unknown }) | null
+  previousDoc?:
+    | Lead
+    | (Record<string, unknown> & { id?: number | string; intentLevel?: unknown; status?: unknown })
+    | null
   req: PayloadRequest
 }) => {
+  if (req.context?.skipFeishuSync === true) return doc
   const mapping = await findActiveFeishuMapping(req.payload, req)
   if (!mapping) return doc
 
@@ -1009,7 +1012,11 @@ export const enqueuePendingFeishuJobs = async ({
         })
         .catch(() => null)
       const attachments = await findAssociatedLeadAttachments(payload, source.entityId)
-      if (!currentLead || feishuLeadSyncRevision(currentLead, attachments) !== source.entityRevision) continue
+      if (
+        !currentLead ||
+        feishuLeadSyncRevision(currentLead, attachments) !== source.entityRevision
+      )
+        continue
       const failureCycle = nonNegativeInteger(deadJob.manualRetryCount, 'manualRetryCount')
       const enqueued = await queue.enqueue({
         idempotencyKey: `${mapping.key}:lead-sync-dead:${deadJob.id}:cycle:${failureCycle}`,

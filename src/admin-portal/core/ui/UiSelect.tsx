@@ -20,6 +20,7 @@ export interface UiSelectProps {
   readonly name?: string
   readonly onChange?: (value: string) => void
   readonly options: readonly UiSelectOption[]
+  readonly required?: boolean
   readonly value?: string
 }
 
@@ -32,6 +33,7 @@ export function UiSelect({
   name,
   onChange,
   options,
+  required = false,
   value,
 }: UiSelectProps) {
   const isControlled = value !== undefined
@@ -61,6 +63,7 @@ export function UiSelect({
         disabled={disabled}
         name={name}
         onChange={(e) => handleValueChange(e.target.value)}
+        required={required}
         value={effectiveVal}
       >
         {options.map((option) => (

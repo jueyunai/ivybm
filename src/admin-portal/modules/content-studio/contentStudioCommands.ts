@@ -190,7 +190,9 @@ const asGeneratedContentResult = (document: LooseRecord) => ({
   assets: Array.isArray(document.assets)
     ? document.assets
         .map((asset) =>
-          typeof asset === 'object' && asset !== null ? (asset as { id: number }).id : Number(asset),
+          typeof asset === 'object' && asset !== null
+            ? (asset as { id: number }).id
+            : Number(asset),
         )
         .filter((id) => Number.isInteger(id) && id > 0)
     : [],
@@ -471,24 +473,37 @@ export async function generateContentStudioImage({
       payload: payload as Payload,
       req,
     })
-    const storedBytes = await readStoredMediaBytes(media.filename)
-    if (
-      storedBytes.byteLength > AI_GENERATED_IMAGE_MAX_BYTES ||
-      !mediaBytesMatchMimeType(storedBytes, media.mimeType)
-    ) {
-      throw new ContentStudioCommandError(
-        'content-studio-image-unavailable',
-        'The generated image could not be verified after storage.',
-        503,
-      )
-    }
-    return {
-      media,
-      model: result.model,
-      provider: result.provider,
-      requestId: result.requestId,
-      revisedPrompt: result.revisedPrompt,
-      sha256: createHash('sha256').update(storedBytes).digest('hex'),
+    try {
+      const storedBytes = await readStoredMediaBytes(media.filename)
+      if (
+        storedBytes.byteLength > AI_GENERATED_IMAGE_MAX_BYTES ||
+        !mediaBytesMatchMimeType(storedBytes, media.mimeType)
+      ) {
+        throw new ContentStudioCommandError(
+          'content-studio-image-unavailable',
+          'The generated image could not be verified after storage.',
+          503,
+        )
+      }
+      return {
+        media,
+        model: result.model,
+        provider: result.provider,
+        requestId: result.requestId,
+        revisedPrompt: result.revisedPrompt,
+        sha256: createHash('sha256').update(storedBytes).digest('hex'),
+      }
+    } catch (verificationError) {
+      try {
+        await payload.delete({
+          collection: 'media',
+          id: media.id,
+          overrideAccess: true,
+        })
+      } catch {
+        // Best-effort cleanup preserves the original verification error.
+      }
+      throw verificationError
     }
   } catch (error) {
     if (error instanceof ContentStudioCommandError) throw error

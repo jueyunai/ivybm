@@ -45,7 +45,14 @@ describe('Portal UI primitives', () => {
   })
 
   it('renders loading, empty, error, forbidden, blocked, and dependency states accessibly', () => {
-    const states = ['loading', 'empty', 'error', 'forbidden', 'blocked', 'dependency-gated'] as const
+    const states = [
+      'loading',
+      'empty',
+      'error',
+      'forbidden',
+      'blocked',
+      'dependency-gated',
+    ] as const
 
     for (const state of states) {
       const { unmount } = render(
@@ -62,9 +69,7 @@ describe('Portal UI primitives', () => {
   })
 
   it('uses a semantic element for unframed and framed surfaces', () => {
-    const { rerender } = render(
-      React.createElement(Surface, { as: 'section' }, 'Section content'),
-    )
+    const { rerender } = render(React.createElement(Surface, { as: 'section' }, 'Section content'))
     expect(screen.getByText('Section content').tagName).toBe('SECTION')
 
     rerender(React.createElement(Surface, { as: 'article', variant: 'subtle' }, 'Article content'))
@@ -142,6 +147,26 @@ describe('Portal UI primitives', () => {
     )
     expect(screen.getByText('Facebook')).toBeTruthy()
     unmount()
+  })
+
+  it('passes required semantics to the native UiSelect control', () => {
+    render(
+      React.createElement(UiSelect, {
+        ariaLabel: 'Required selection',
+        options: [
+          { label: '—', value: '' },
+          { label: 'Available option', value: 'available' },
+        ],
+        required: true,
+        value: '',
+      }),
+    )
+
+    const select = screen.getByRole('combobox', {
+      name: 'Required selection',
+    }) as HTMLSelectElement
+    expect(select.required).toBe(true)
+    expect(select.checkValidity()).toBe(false)
   })
 
   it('renders a unified SearchInput component with search icon and search semantics', () => {

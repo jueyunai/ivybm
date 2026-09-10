@@ -13,7 +13,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => navigation,
 }))
 
-const renderEditor = (type: 'pages' | 'products' = 'pages') =>
+const renderEditor = (type: 'downloads' | 'pages' | 'products' = 'pages') =>
   render(
     React.createElement(
       PortalPreferencesProvider,
@@ -114,6 +114,61 @@ describe('Portal website content editor', () => {
     expect(screen.getByRole('alert').textContent).toBe('请先补全必填项，再发布内容。')
   })
 
+  it.each([
+    { field: '产品分类', type: 'products' as const },
+    { field: '下载文件', type: 'downloads' as const },
+  ])('blocks $type submission when required $field is empty', async ({ field, type }) => {
+    const fetcher = vi.mocked(fetch).mockResolvedValueOnce(
+      Response.json({
+        options: {
+          categories: [{ id: 5, label: '幕墙' }],
+          media: [
+            {
+              id: 91,
+              label: 'facade.jpg',
+              meta: 'image/jpeg',
+              previewUrl: '/media/facade.jpg',
+            },
+          ],
+        },
+      }),
+    )
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    const { container } = renderEditor(type)
+    const target = (await screen.findByLabelText(field)) as HTMLSelectElement
+    const requiredFields = Array.from(
+      container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+        '[required]',
+      ),
+    )
+    for (const control of requiredFields) {
+      if (control === target) continue
+      if (control instanceof HTMLInputElement && control.type === 'radio') {
+        if (!container.querySelector<HTMLInputElement>(`input[name="${control.name}"]:checked`)) {
+          fireEvent.click(control)
+        }
+      } else if (control instanceof HTMLSelectElement) {
+        const option = Array.from(control.options).find(({ value }) => value)
+        if (option) fireEvent.change(control, { target: { value: option.value } })
+      } else {
+        fireEvent.change(control, { target: { value: 'valid-value' } })
+      }
+    }
+
+    expect(target.required).toBe(true)
+    expect(target.checkValidity()).toBe(false)
+    const actionLabel = type === 'downloads' ? '保存修改' : '发布'
+    fireEvent.click(screen.getByRole('button', { name: actionLabel }))
+
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(document.activeElement).toBe(target)
+    expect(screen.getByRole('alert').textContent).toBe(
+      type === 'downloads' ? '请先补全必填项，再保存内容。' : '请先补全必填项，再发布内容。',
+    )
+  })
+
   it.each(['保存', '重新发布'])(
     'uses a specific validation message and focuses the invalid field for %s',
     async (actionLabel) => {
@@ -163,9 +218,7 @@ describe('Portal website content editor', () => {
       expect(screen.getByRole('alert').textContent).toBe(
         '固定链接标识只能使用小写英文字母、数字和单个连字符。',
       )
-      expect(slug.validationMessage).toBe(
-        '固定链接标识只能使用小写英文字母、数字和单个连字符。',
-      )
+      expect(slug.validationMessage).toBe('固定链接标识只能使用小写英文字母、数字和单个连字符。')
     },
   )
 

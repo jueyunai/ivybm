@@ -147,14 +147,11 @@ const generatedImageSHA256 = async (
   payload: Payload,
   req: PayloadRequest,
 ): Promise<string | null> => {
-  const actorID = typeof req.user?.id === 'number' ? req.user.id : Number(req.user?.id)
-  if (!Number.isSafeInteger(actorID) || actorID < 1) return null
   const database = await publicationTransactionDatabase(payload, req)
   const result = await database.execute<{ sha256: string }>(sql`
     SELECT result #>> '{sha256}' AS sha256
     FROM portal_command_receipts
-    WHERE actor_id = ${actorID}
-      AND scope = 'portal.content-studio:generate-image'
+    WHERE scope = 'portal.content-studio:generate-image'
       AND status = 'completed'
       AND result #>> '{media,id}' = ${String(mediaID)}
       AND result #>> '{sha256}' ~ '^[a-f0-9]{64}$'
@@ -213,7 +210,8 @@ const loadAssets = async (
       }
       const sha256 = createHash('sha256').update(bytes).digest('hex')
       if (media.isPublic !== true) {
-        if ((await generatedImageSHA256(id, payload, req)) !== sha256) {
+        const generatedSHA256 = await generatedImageSHA256(id, payload, req)
+        if (generatedSHA256 !== null && generatedSHA256 !== sha256) {
           throw new ContentStudioCommandError(
             'content-studio-publication-asset-private',
             'This private generated asset no longer matches its generation receipt. Generate and review it again before publishing.',

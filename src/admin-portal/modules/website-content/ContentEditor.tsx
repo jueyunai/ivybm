@@ -713,12 +713,12 @@ export const ContentEditor = forwardRef<
     action: string,
     { closeAfterCreate = true }: { closeAfterCreate?: boolean } = {},
   ): Promise<ContentEditorSaveResult | null> => {
-    const invalid =
-      action === 'publish' || action === 'unpublish'
-        ? editorRef.current?.querySelector<
-            HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-          >(':invalid')
-        : null
+    const shouldValidate = action === 'publish' || action === 'unpublish' || type === 'downloads'
+    const invalid = shouldValidate
+      ? editorRef.current?.querySelector<
+          HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+        >(':invalid')
+      : null
     if (invalid) {
       const validationMessage =
         invalid instanceof HTMLInputElement && invalid.validity.patternMismatch
@@ -936,11 +936,19 @@ export const ContentEditor = forwardRef<
         ) : null}
 
         {type === 'products' ? (
-          <Field label={text.fields.productCategory}>
+          <Field label={text.fields.productCategory} required>
             <UiSelect
               ariaLabel={text.fields.productCategory}
+              name="categoryId"
               onChange={(val) => update('categoryId', val)}
-              options={[{ label: '—', value: '' }, ...options.categories.map((option) => ({ label: option.label, value: String(option.id) }))]}
+              options={[
+                { label: '—', value: '' },
+                ...options.categories.map((option) => ({
+                  label: option.label,
+                  value: String(option.id),
+                })),
+              ]}
+              required
               value={form.categoryId}
             />
           </Field>
@@ -1022,11 +1030,19 @@ export const ContentEditor = forwardRef<
           />
         ) : null}
         {type === 'downloads' ? (
-          <Field label={text.fields.downloadFile}>
+          <Field label={text.fields.downloadFile} required>
             <UiSelect
               ariaLabel={text.fields.downloadFile}
+              name="fileId"
               onChange={(val) => update('fileId', val)}
-              options={[{ label: '—', value: '' }, ...options.media.map((option) => ({ label: option.label + (option.meta ? ` · ${option.meta}` : ''), value: String(option.id) }))]}
+              options={[
+                { label: '—', value: '' },
+                ...options.media.map((option) => ({
+                  label: option.label + (option.meta ? ` · ${option.meta}` : ''),
+                  value: String(option.id),
+                })),
+              ]}
+              required
               value={form.fileId}
             />
           </Field>
@@ -1055,7 +1071,7 @@ export const ContentEditor = forwardRef<
           <>
             <details className="portal-content-editor__section is-wide">
               <summary>
-                <IconChevronDown aria-hidden="true" size={16} />{" "}
+                <IconChevronDown aria-hidden="true" size={16} />{' '}
                 {portalLocale === 'zh'
                   ? '能力与工程流程（Capabilities & Workflow）'
                   : 'Capabilities & Workflow Blocks'}
@@ -1092,7 +1108,7 @@ export const ContentEditor = forwardRef<
 
             <details className="portal-content-editor__section is-wide">
               <summary>
-                <IconChevronDown aria-hidden="true" size={16} />{" "}
+                <IconChevronDown aria-hidden="true" size={16} />{' '}
                 {portalLocale === 'zh'
                   ? '专业角色与问答专区（For Professionals & FAQ）'
                   : 'For Professionals & FAQ Blocks'}
@@ -1185,7 +1201,7 @@ export const ContentEditor = forwardRef<
         {type === 'projects' ? (
           <details className="portal-content-editor__section is-wide">
             <summary>
-              <IconChevronDown aria-hidden="true" size={16} />{" "}
+              <IconChevronDown aria-hidden="true" size={16} />{' '}
               {portalLocale === 'zh'
                 ? '工程案例四维结构（Case Study 4D Structure）'
                 : 'Four-Dimensional Case Study Structure'}

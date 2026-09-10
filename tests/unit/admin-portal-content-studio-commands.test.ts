@@ -292,6 +292,67 @@ describe('Portal Content Studio draft commands', () => {
     expect(create).toHaveBeenCalledTimes(2)
   })
 
+  it.each([
+    {
+      label: 'stored file read failure',
+      read: () => Promise.reject(new Error('Disk read failed')),
+    },
+    {
+      label: 'stored MIME mismatch',
+      read: () => Promise.resolve(Buffer.from('not-a-png')),
+    },
+    {
+      label: 'stored file over 8 MiB',
+      read: () => Promise.resolve(Buffer.alloc(8 * 1024 * 1024 + 1)),
+    },
+  ])('deletes generated Media after $label', async ({ read }) => {
+    const create = vi.fn(async ({ collection, data, file }) => {
+      if (collection === 'media') {
+        return {
+          ...data,
+          filename: file.name,
+          id: 83,
+          mimeType: file.mimetype,
+          updatedAt: '2026-08-12T10:00:00.000Z',
+          url: '/media/generated.png',
+        }
+      }
+      return { id: 903 }
+    })
+    const deleteMedia = vi.fn().mockResolvedValue({ id: 83 })
+    const generateImage = vi.fn().mockResolvedValue({
+      image: {
+        data: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Wl9sAAAAASUVORK5CYII=',
+          'base64',
+        ),
+        mimeType: 'image/png',
+      },
+      model: 'image-model',
+      provider: 'configured-provider',
+    })
+
+    await expect(
+      generateContentStudioImage({
+        input: {
+          prompt: 'Create a verified facade image',
+          referenceMediaId: null,
+          size: '1024x1024',
+        },
+        payload: { create, delete: deleteMedia } as any,
+        readStoredMediaBytes: read,
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateImage }) as any,
+      }),
+    ).rejects.toMatchObject({ code: 'content-studio-image-unavailable', status: 503 })
+
+    expect(deleteMedia).toHaveBeenCalledWith({
+      collection: 'media',
+      id: 83,
+      overrideAccess: true,
+    })
+  })
+
   it('normalizes a valid provider WebP result to a publishable private PNG', async () => {
     const webp = await sharp({
       create: { background: '#1c2f46', channels: 3, height: 2, width: 2 },
@@ -594,7 +655,9 @@ describe('Portal Content Studio draft commands', () => {
 
     expect(generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        input: expect.stringContaining('Analyze the provided architectural building material images'),
+        input: expect.stringContaining(
+          'Analyze the provided architectural building material images',
+        ),
       }),
     )
     expect(create).toHaveBeenCalledWith(
@@ -610,13 +673,15 @@ describe('Portal Content Studio draft commands', () => {
 
   it('automatically generates an image and attaches it to the draft when autoGenerateImage is true', async () => {
     let stored: Record<string, unknown> | null = null
-    const create = vi.fn(async ({ collection, data }: { collection: string; data: Record<string, unknown> }) => {
-      if (collection === 'media') {
-        return { ...data, filename: 'ai-gen.png', id: 88, mimeType: 'image/png' }
-      }
-      stored = { ...data, id: 76, status: 'draft', updatedAt: '2026-07-30T12:00:00.000Z' }
-      return stored
-    })
+    const create = vi.fn(
+      async ({ collection, data }: { collection: string; data: Record<string, unknown> }) => {
+        if (collection === 'media') {
+          return { ...data, filename: 'ai-gen.png', id: 88, mimeType: 'image/png' }
+        }
+        stored = { ...data, id: 76, status: 'draft', updatedAt: '2026-07-30T12:00:00.000Z' }
+        return stored
+      },
+    )
     const find = vi.fn(async () => ({ docs: [] }))
     const generateText = vi.fn().mockResolvedValue({
       text: JSON.stringify({
@@ -712,18 +777,20 @@ describe('Portal Content Studio draft commands', () => {
       .png()
       .toBuffer()
 
-    const create = vi.fn(async ({ collection, data }: { collection: string; data: Record<string, unknown> }) => {
-      if (collection === 'media') {
-        return { ...data, filename: 'orphan.png', id: 99, mimeType: 'image/png' }
-      }
-      if (collection === 'audit-logs') {
-        return { id: 101 }
-      }
-      if (collection === 'generated-contents') {
-        throw new Error('Database constraint error during draft persistence')
-      }
-      return { id: 102 }
-    })
+    const create = vi.fn(
+      async ({ collection, data }: { collection: string; data: Record<string, unknown> }) => {
+        if (collection === 'media') {
+          return { ...data, filename: 'orphan.png', id: 99, mimeType: 'image/png' }
+        }
+        if (collection === 'audit-logs') {
+          return { id: 101 }
+        }
+        if (collection === 'generated-contents') {
+          throw new Error('Database constraint error during draft persistence')
+        }
+        return { id: 102 }
+      },
+    )
     const find = vi.fn(async () => ({ docs: [] }))
     const generateText = vi.fn().mockResolvedValue({
       text: JSON.stringify({
