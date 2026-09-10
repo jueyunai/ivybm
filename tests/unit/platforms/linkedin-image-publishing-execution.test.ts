@@ -85,6 +85,23 @@ const setup = (input = intent(), fence = lease()) => ({
 })
 
 describe('LinkedIn staged image publication', () => {
+  it('preserves multiline commentary through checkpoint validation', async () => {
+    const commentary = 'First line\nSecond line'
+    const input = intent({ checkpoint: checkpoint({ commentary }) })
+    const state = setup(input)
+    const initializeImageUpload = vi.fn().mockResolvedValue(ticket)
+
+    await expect(
+      executeLinkedInImagePublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: transport({ initializeImageUpload }),
+      }),
+    ).resolves.toMatchObject({ checkpoint: { commentary, stage: 'image_initialized' } })
+    expect(initializeImageUpload).toHaveBeenCalledTimes(1)
+  })
+
   it('initializes and checkpoints an encrypted upload ticket without asset bytes', async () => {
     const state = setup()
     const initializeImageUpload = vi.fn().mockResolvedValue(ticket)

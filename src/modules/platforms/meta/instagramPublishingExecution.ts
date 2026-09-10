@@ -4,6 +4,7 @@ import {
   ProviderPublicationTransportError,
 } from '../publishingResult'
 import type { MetaPublishingTransport } from './publishingOutbound'
+import { normalizeInstagramCaption } from './publishingRequests'
 
 export const INSTAGRAM_PUBLISHING_STAGES = [
   'scheduled',
@@ -125,6 +126,17 @@ const boundedString = (value: unknown, maxLength: number): string | undefined =>
   return normalized
 }
 
+const boundedCaption = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined
+  try {
+    const normalized = normalizeInstagramCaption(value)
+    if (!normalized || normalized !== value) return undefined
+    return normalized
+  } catch {
+    return undefined
+  }
+}
+
 const normalizedProviderId = (value: unknown): string | undefined =>
   typeof value === 'string' && /^[0-9]{1,32}$/.test(value) ? value : undefined
 
@@ -152,7 +164,7 @@ const normalizeCheckpoint = (input: unknown): InstagramPublishingCheckpoint | un
   const accountExternalId = boundedString(checkpoint.accountExternalId, 240)
   const imageUrl = boundedString(checkpoint.imageUrl, 2_000)
   const caption =
-    checkpoint.caption === undefined ? undefined : boundedString(checkpoint.caption, 2_200)
+    checkpoint.caption === undefined ? undefined : boundedCaption(checkpoint.caption)
   const containerId =
     checkpoint.containerId === undefined ? undefined : normalizedProviderId(checkpoint.containerId)
   const mediaId =
