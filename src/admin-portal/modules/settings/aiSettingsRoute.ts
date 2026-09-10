@@ -1,6 +1,6 @@
 import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
-import { getRoleUser } from '@/access/roles'
+import { getRoleUser, hasPortalPermission } from '@/access/roles'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
 import { AiCredentialError } from '@/modules/ai/credentials'
@@ -31,6 +31,9 @@ export const authorizeAiSettingsRequest = async (
     throw new AiSettingsCommandError('ai-settings-unauthenticated', 'Authentication required.', 401)
   }
   if (actor.role !== 'admin') {
+    throw new AiSettingsCommandError('ai-settings-forbidden', 'Administrator access required.', 403)
+  }
+  if (!hasPortalPermission(actor, 'settings', 'edit')) {
     throw new AiSettingsCommandError('ai-settings-forbidden', 'Administrator access required.', 403)
   }
   return { payload, req: await createLocalReq({ user }, payload), user: user as User }

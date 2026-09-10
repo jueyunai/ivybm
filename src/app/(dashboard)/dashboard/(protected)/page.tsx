@@ -35,7 +35,7 @@ export default async function DashboardPage({
   let summary: PortalOverviewSummary | null = null
 
   try {
-    const actor = { ...user, collection: 'users' } as User
+    const actor = { ...user, collection: 'users' } as unknown as User
     const req = await createLocalReq({ user: actor }, payload)
     summary = await getPortalOverview({ payload, req })
   } catch (error) {
@@ -47,5 +47,13 @@ export default async function DashboardPage({
     })
   }
 
-  return <OverviewPage pageState={pageState} query={query} readError={readError} summary={summary} user={user} />
+  return (
+    <OverviewPage
+      pageState={pageState}
+      query={query}
+      readError={readError}
+      summary={summary}
+      user={user}
+    />
+  )
 }

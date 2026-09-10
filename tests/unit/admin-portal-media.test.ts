@@ -204,7 +204,7 @@ describe('Portal media workspace', () => {
         payload,
         query,
         req,
-        role: 'sales',
+        user: { role: 'sales' },
       }),
     ).resolves.toEqual({ state: 'forbidden', summary: null })
 
@@ -214,7 +214,7 @@ describe('Portal media workspace', () => {
         payload,
         query,
         req,
-        role: 'admin',
+        user: { role: 'admin' },
       }),
     ).resolves.toEqual({ state: 'module-disabled', summary: null })
 

@@ -577,11 +577,9 @@ describe.sequential('Task 13 persisted platform conversation delivery', () => {
       accountKind: 'instagram-professional',
       aiAutoReplyEnabled: false,
     })
-    const operator = await payload.create({
-      collection: 'users',
+    const operator = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task13-dm-operator-${suffix}@example.invalid`,
+      draft: true, data: { username: `task13-dm-operator-${suffix}`,
         password: 'task13-dm-operator-integration-password',
         role: 'operator',
       },

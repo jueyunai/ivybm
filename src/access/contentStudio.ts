@@ -7,7 +7,7 @@ const commandContextKey = 'portalContentStudioCommand'
 const canManageContentStudio = (user: unknown): boolean =>
   resolveRoleAccess({
     action: 'read',
-    resource: 'content',
+    resource: 'contentStudio',
     user: getRoleUser(user),
   }) === true
 

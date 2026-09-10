@@ -112,8 +112,7 @@ export interface PortalSettingsMessages {
   changePasswordTitle: string
   chinese: string
   confirmDeleteMember: string
-  confirmEmailPrompt: string
-  confirmInitialPassword: string
+  confirmUsernamePrompt: string
   confirmNewPassword: string
   confirmResetPassword: string
   contactEmail: string
@@ -148,6 +147,7 @@ export interface PortalSettingsMessages {
   memberSaved: string
   memberStale: string
   memberStatus: string
+  memberUsername: string
   memberNotFound: string
   moduleOwner: string
   moduleStatusDescription: string
@@ -159,6 +159,18 @@ export interface PortalSettingsMessages {
   noTeamMembers: string
   passwordLengthHint: string
   passwordMismatch: string
+  copyPassword: string
+  copyPasswordSuccess: string
+  generatePassword: string
+  permissionAll: string
+  permissionCustom: string
+  permissionEdit: string
+  permissionEditable: string
+  permissionMatrix: string
+  permissionNone: string
+  permissionTemplate: string
+  permissionView: string
+  permissionViewOnly: string
   permission: string
   preferencesDescription: string
   preferencesTitle: string
@@ -194,6 +206,7 @@ export interface PortalSettingsMessages {
   statusManuallyLocked: string
   statusNormal: string
   statusSecurityLocked: string
+  username: string
   systemTheme: string
   teamAccountDisabled: string
   teamDescription: string

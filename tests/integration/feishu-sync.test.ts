@@ -520,11 +520,9 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     )
     expect(JSON.stringify(sendText.mock.calls)).not.toContain('sanitized sync failure')
 
-    const retryAdmin = await payload.create({
-      collection: 'users',
+    const retryAdmin = await payload.create({ collection: 'users',
       context,
-      data: {
-        email: `task11-retry-${runID}@example.invalid`,
+      draft: true, data: { username: `task11-retry-${runID}`,
         password: 'task11-review-retry-password',
         role: 'admin',
       },
@@ -684,11 +682,9 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     expect(plan.leadIds).toEqual([leadID])
     expect(plan.planHash).toMatch(/^[a-f0-9]{64}$/u)
 
-    const admin = await payload.create({
-      collection: 'users',
+    const admin = await payload.create({ collection: 'users',
       context,
-      data: {
-        email: `task11-resync-${runID}@example.invalid`,
+      draft: true, data: { username: `task11-resync-${runID}`,
         password: 'task11-resync-password',
         role: 'admin',
       },

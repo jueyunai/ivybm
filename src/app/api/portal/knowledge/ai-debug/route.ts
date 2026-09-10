@@ -14,7 +14,7 @@ export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest): Promise<Response> {
   try {
-    const { payload, req } = await authorizeKnowledgeRequest(request, { adminOnly: true })
+    const { payload, req } = await authorizeKnowledgeRequest(request, { action: 'edit', adminOnly: true })
     const input = await readKnowledgeJSON(request)
     return knowledgeJSON({
       result: await executePortalRouteCommand({

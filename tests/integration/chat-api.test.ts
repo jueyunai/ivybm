@@ -886,37 +886,33 @@ describe.sequential('chat HTTP API', () => {
     const suffix = randomUUID()
     const password = 'task9-http-operator-password'
     const users = await Promise.all([
-      payload.create({
-        collection: 'users',
+      payload.create({ collection: 'users',
         context: { skipAudit: true },
         overrideAccess: true,
-        data: { email: `http-op-1-${suffix}@example.invalid`, password, role: 'operator' },
+        draft: true, data: { username: `http-op-1-${suffix}`, password, role: 'operator' },
       }),
-      payload.create({
-        collection: 'users',
+      payload.create({ collection: 'users',
         context: { skipAudit: true },
         overrideAccess: true,
-        data: { email: `http-op-2-${suffix}@example.invalid`, password, role: 'operator' },
+        draft: true, data: { username: `http-op-2-${suffix}`, password, role: 'operator' },
       }),
-      payload.create({
-        collection: 'users',
+      payload.create({ collection: 'users',
         context: { skipAudit: true },
         overrideAccess: true,
-        data: { email: `http-sales-1-${suffix}@example.invalid`, password, role: 'sales' },
+        draft: true, data: { username: `http-sales-1-${suffix}`, password, role: 'sales' },
       }),
-      payload.create({
-        collection: 'users',
+      payload.create({ collection: 'users',
         context: { skipAudit: true },
         overrideAccess: true,
-        data: { email: `http-sales-2-${suffix}@example.invalid`, password, role: 'sales' },
+        draft: true, data: { username: `http-sales-2-${suffix}`, password, role: 'sales' },
       }),
     ])
-    const authHeader = async (email: string) => {
-      const login = await payload.login({ collection: 'users', data: { email, password } })
+    const authHeader = async (username: string) => {
+      const login = await payload.login({ collection: 'users', data: { password, username } })
       return { authorization: `JWT ${login.token}` }
     }
     const [firstAuth, secondAuth, salesAuth, otherSalesAuth] = await Promise.all(
-      users.map(({ email }) => authHeader(email)),
+      users.map(({ username }) => authHeader(username)),
     )
     const startKey = `operator-start-${suffix}`
     const started = await startSession(

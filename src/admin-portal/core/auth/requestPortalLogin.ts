@@ -19,7 +19,7 @@ const codeForStatus = (status: number): PortalLoginErrorCode => {
 }
 
 export const requestPortalLogin = async ({
-  email,
+  username,
   fetcher = globalThis.fetch,
   password,
 }: PortalLoginCredentials & { fetcher?: typeof fetch }): Promise<void> => {
@@ -27,7 +27,7 @@ export const requestPortalLogin = async ({
 
   try {
     response = await fetcher('/api/users/login', {
-      body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ username, password }),
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',

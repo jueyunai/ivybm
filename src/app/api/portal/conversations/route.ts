@@ -11,7 +11,7 @@ export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest): Promise<Response> {
   try {
-    await authorizePortalConversationRequest(request)
+    await authorizePortalConversationRequest(request, { action: 'view' })
     return listOperatorSessions(request)
   } catch (error) {
     return portalConversationErrorResponse(error)

@@ -19,7 +19,7 @@ const requireEnvironment = (name: string): string => {
 }
 
 const seed = async (): Promise<void> => {
-  const email = requireEnvironment('SEED_ADMIN_EMAIL')
+  const username = requireEnvironment('SEED_ADMIN_USERNAME').trim().toLowerCase()
   const password = requireEnvironment('SEED_ADMIN_PASSWORD')
 
   if (password.length < 12) {
@@ -38,26 +38,27 @@ const seed = async (): Promise<void> => {
       limit: 1,
       overrideAccess: true,
       where: {
-        email: {
-          equals: email,
+        username: {
+          equals: username.toLowerCase(),
         },
       },
     })
 
     if (existing.totalDocs > 0) {
-      payload.logger.info(`Development administrator already exists: ${email}`)
+      payload.logger.info(`Development administrator already exists: ${username}`)
     } else {
       await payload.create({
         collection: 'users',
+        draft: true,
         data: {
-          email,
           password,
           role: 'admin',
+          username,
         },
         overrideAccess: true,
       })
 
-      payload.logger.info(`Created development administrator: ${email}`)
+      payload.logger.info(`Created development administrator: ${username}`)
     }
 
     await seedContent(payload)

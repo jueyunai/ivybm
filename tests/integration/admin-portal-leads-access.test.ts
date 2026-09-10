@@ -27,9 +27,9 @@ describe.sequential('Portal lead command access', () => {
   beforeAll(async () => {
     payload = await getPayload({ config, disableOnInit: true, key: 'admin-portal-leads-access' })
     const suffix = randomUUID()
-    admin = await payload.create({ collection: 'users', context: { skipAudit: true }, data: { email: `lead-admin-${suffix}@example.invalid`, password: 'lead-command-integration-password', role: 'admin' }, overrideAccess: true })
-    operator = await payload.create({ collection: 'users', context: { skipAudit: true }, data: { email: `lead-operator-${suffix}@example.invalid`, password: 'lead-command-integration-password', role: 'operator' }, overrideAccess: true })
-    sales = await payload.create({ collection: 'users', context: { skipAudit: true }, data: { email: `lead-sales-${suffix}@example.invalid`, password: 'lead-command-integration-password', role: 'sales' }, overrideAccess: true })
+    admin = await payload.create({ collection: 'users', context: { skipAudit: true }, draft: true, data: { username: `lead-admin-${suffix}`, password: 'lead-command-integration-password', role: 'admin' }, overrideAccess: true })
+    operator = await payload.create({ collection: 'users', context: { skipAudit: true }, draft: true, data: { username: `lead-operator-${suffix}`, password: 'lead-command-integration-password', role: 'operator' }, overrideAccess: true })
+    sales = await payload.create({ collection: 'users', context: { skipAudit: true }, draft: true, data: { username: `lead-sales-${suffix}`, password: 'lead-command-integration-password', role: 'sales' }, overrideAccess: true })
     const source = await payload.create({ collection: 'lead-sources', context: { skipAudit: true }, data: { channel: 'manual', isActive: true, key: `lead-portal-${suffix}`, name: 'Lead Portal test source' }, overrideAccess: true })
     sourceID = source.id
   })

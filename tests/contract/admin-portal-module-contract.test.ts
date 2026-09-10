@@ -27,7 +27,7 @@ describe('Portal collaborator module contract', () => {
       resolvePortalModule({
         env: { ADMIN_PORTAL_ENABLED: 'true' },
         module: EXAMPLE_MODULE,
-        role: 'operator',
+        user: { role: 'operator' },
       }),
     ).toMatchObject({
       canNavigate: false,
@@ -42,7 +42,7 @@ describe('Portal collaborator module contract', () => {
           ADMIN_PORTAL_EXAMPLE_ENABLED: 'true',
         },
         module: EXAMPLE_MODULE,
-        role: 'operator',
+        user: { role: 'operator' },
       }),
     ).toMatchObject({
       canNavigate: true,
@@ -57,7 +57,7 @@ describe('Portal collaborator module contract', () => {
           ADMIN_PORTAL_EXAMPLE_ENABLED: 'true',
         },
         module: EXAMPLE_MODULE,
-        role: 'sales',
+        user: { role: 'sales' },
       }),
     ).toBeNull()
   })
@@ -67,10 +67,10 @@ describe('Portal collaborator module contract', () => {
       definePortalModule({
         allowedRoles: ['admin'],
         availability: 'dependency-gated',
-        commands: ['unsafe:run'],
+        commands: ['content:run'],
         featureFlag: 'ADMIN_PORTAL_UNSAFE_ENABLED',
         href: '/dashboard/unsafe',
-        id: 'unsafe',
+        id: 'content',
         labelKey: 'unsafe',
         maintenance: { nextStepKey: 'unsafe', responsibleOwner: 'jueyunai' },
         navGroup: 'system',

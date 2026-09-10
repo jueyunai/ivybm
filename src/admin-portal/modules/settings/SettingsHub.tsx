@@ -98,8 +98,8 @@ export function SettingsHub({
           </div>
           <dl className="portal-settings__account">
             <div>
-              <dt>{messages.settings.email}</dt>
-              <dd>{user.email}</dd>
+              <dt>{messages.settings.username}</dt>
+              <dd>{user.username}</dd>
             </div>
             <div>
               <dt>{messages.settings.role}</dt>

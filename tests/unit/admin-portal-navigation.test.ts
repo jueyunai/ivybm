@@ -7,6 +7,7 @@ import { PortalSidebar } from '@/admin-portal/core/navigation/PortalSidebar'
 import { PortalMobileNav } from '@/admin-portal/core/navigation/PortalMobileNav'
 import { PortalShell } from '@/admin-portal/core/navigation/PortalShell'
 import { resolvePortalAvailability } from '@/admin-portal/core/modules/resolvePortalAvailability'
+import { PORTAL_PERMISSION_PRESETS } from '@/access/roles'
 
 const navigationMocks = vi.hoisted(() => ({ pathname: '/dashboard/settings' }))
 
@@ -32,8 +33,8 @@ const enabledEnvironment = {
 
 describe('Portal navigation', () => {
   it('derives role-safe navigation from the registry and marks unavailable modules', () => {
-    const admin = resolvePortalAvailability({ env: enabledEnvironment, role: 'admin' })
-    const sales = resolvePortalAvailability({ env: enabledEnvironment, role: 'sales' })
+    const admin = resolvePortalAvailability({ env: enabledEnvironment, user: { role: 'admin' } })
+    const sales = resolvePortalAvailability({ env: enabledEnvironment, user: { role: 'sales' } })
 
     expect(admin.portalEnabled).toBe(true)
     expect(admin.modules.map((module) => module.id)).toContain('platforms')
@@ -54,14 +55,22 @@ describe('Portal navigation', () => {
   })
 
   it('renders an active Portal link without exposing internal maintenance routes', () => {
-    const resolution = resolvePortalAvailability({ env: enabledEnvironment, role: 'admin' })
+    const resolution = resolvePortalAvailability({
+      env: enabledEnvironment,
+      user: { role: 'admin' },
+    })
 
     const { container } = render(
       React.createElement(PortalSidebar, {
         collapsed: false,
         locale: 'zh',
         modules: resolution.modules,
-        user: { email: 'admin@example.com', id: 1, role: 'admin' },
+        user: {
+          id: 1,
+          permissions: PORTAL_PERMISSION_PRESETS.admin,
+          role: 'admin',
+          username: 'admin.example',
+        },
       }),
     )
 
@@ -73,7 +82,7 @@ describe('Portal navigation', () => {
   })
 
   it('fails closed into a Portal maintenance state when the global flag is disabled', () => {
-    const resolution = resolvePortalAvailability({ env: {}, role: 'admin' })
+    const resolution = resolvePortalAvailability({ env: {}, user: { role: 'admin' } })
 
     expect(resolution.portalEnabled).toBe(false)
     expect(
@@ -89,7 +98,12 @@ describe('Portal navigation', () => {
         {
           availability: resolution,
           environment: 'local',
-          user: { email: 'admin@example.com', id: 1, role: 'admin' },
+          user: {
+            id: 1,
+            permissions: PORTAL_PERMISSION_PRESETS.admin,
+            role: 'admin',
+            username: 'admin.example',
+          },
         },
         React.createElement('p', null, 'must not render'),
       ),
@@ -102,7 +116,10 @@ describe('Portal navigation', () => {
 
   it('keeps Tab and Shift+Tab inside the mobile navigation dialog', async () => {
     const triggerRef = React.createRef<HTMLButtonElement>()
-    const resolution = resolvePortalAvailability({ env: enabledEnvironment, role: 'admin' })
+    const resolution = resolvePortalAvailability({
+      env: enabledEnvironment,
+      user: { role: 'admin' },
+    })
     render(
       React.createElement(
         'div',
@@ -115,7 +132,12 @@ describe('Portal navigation', () => {
           onLocaleToggle: vi.fn(),
           open: true,
           triggerRef,
-          user: { email: 'admin@example.com', id: 1, role: 'admin' },
+          user: {
+            id: 1,
+            permissions: PORTAL_PERMISSION_PRESETS.admin,
+            role: 'admin',
+            username: 'admin.example',
+          },
         }),
       ),
     )

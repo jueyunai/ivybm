@@ -5,18 +5,18 @@ import { selectUiOption } from './support/uiSelect'
 
 import { FacebookE2EHarness } from './admin-portal-facebook.support'
 
-const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
+const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.SEED_ADMIN_USERNAME
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
 const login = async (page: Page, returnTo: string) => {
   test.skip(
-    !adminEmail || !adminPassword,
+    !adminUsername || !adminPassword,
     'Requires local non-production administrator credentials.',
   )
-  if (!adminEmail || !adminPassword) return false
+  if (!adminUsername || !adminPassword) return false
 
   await page.goto(`/dashboard/login?returnTo=${encodeURIComponent(returnTo)}`)
-  await page.getByRole('textbox', { name: '邮箱' }).fill(adminEmail)
+  await page.getByRole('textbox', { name: '账号' }).fill(adminUsername)
   await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
   await page.getByRole('button', { name: '登录后台' }).click()
   await expect(page).toHaveURL(new RegExp(`${returnTo}$`))

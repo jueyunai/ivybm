@@ -21,7 +21,7 @@ export async function PATCH(
 ): Promise<Response> {
   try {
     const id = await mediaID(params)
-    const { payload, req } = await authorizeMediaRequest(request)
+    const { payload, req } = await authorizeMediaRequest(request, { action: 'edit' })
     const input = await readMediaJSON(request)
     return mediaJSON({
       result: await executePortalRouteCommand({
@@ -46,7 +46,7 @@ export async function DELETE(
 ): Promise<Response> {
   try {
     const id = await mediaID(params)
-    const { payload, req } = await authorizeMediaRequest(request)
+    const { payload, req } = await authorizeMediaRequest(request, { action: 'edit' })
     const input = await readMediaJSON(request)
     return mediaJSON({
       result: await executePortalRouteCommand({

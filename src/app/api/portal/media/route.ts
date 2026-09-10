@@ -17,7 +17,7 @@ export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest): Promise<Response> {
   try {
-    const { payload, req } = await authorizeMediaRequest(request)
+    const { payload, req } = await authorizeMediaRequest(request, { action: 'edit' })
     const { file, input } = await readMediaUpload(request)
     const result = await executePortalRouteCommand({
       fingerprintInput: {

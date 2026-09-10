@@ -1,5 +1,5 @@
 import { getVisiblePortalModules } from './getVisiblePortalModules'
-import type { PortalEnvironment, PortalRole, ResolvedPortalModule } from './types'
+import type { PortalEnvironment, PortalPermissionUser, ResolvedPortalModule } from './types'
 
 export interface PortalAvailabilityResolution {
   modules: readonly ResolvedPortalModule[]
@@ -8,11 +8,11 @@ export interface PortalAvailabilityResolution {
 
 export const resolvePortalAvailability = ({
   env,
-  role,
+  user,
 }: {
   env: PortalEnvironment
-  role: PortalRole
+  user: PortalPermissionUser
 }): PortalAvailabilityResolution => ({
-  modules: getVisiblePortalModules({ env, role }),
+  modules: getVisiblePortalModules({ env, user }),
   portalEnabled: env.ADMIN_PORTAL_ENABLED === 'true',
 })

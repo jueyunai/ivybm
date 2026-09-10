@@ -8,21 +8,23 @@ import {
   MANUAL_LOCK_UNTIL,
   selectPortalTeamMemberDTO,
   UserSettingsCommandError,
-  validateEmail,
   validatePassword,
   validateRole,
+  validateUsername,
   validateUpdatedAt,
 } from '@/admin-portal/modules/settings/userSettingsContracts'
+import { PORTAL_PERMISSION_PRESETS } from '@/access/roles'
 
 describe('User settings contracts and DTO sanitization', () => {
   it('sanitizes user documents into safe team member DTOs without sensitive fields', () => {
     const rawUser = {
       collection: 'users' as const,
       createdAt: '2026-08-01T00:00:00.000Z',
-      email: 'member@example.com',
+      username: 'member.example',
       hash: 'argon2$secret-hash-value',
       id: 42,
       loginAttempts: 0,
+      permissions: PORTAL_PERMISSION_PRESETS.operator,
       resetPasswordExpiration: '2026-08-02T00:00:00.000Z',
       resetPasswordToken: 'sensitive-token-12345',
       role: 'operator' as const,
@@ -35,7 +37,8 @@ describe('User settings contracts and DTO sanitization', () => {
 
     expect(dto).toEqual({
       createdAt: '2026-08-01T00:00:00.000Z',
-      email: 'member@example.com',
+      permissions: PORTAL_PERMISSION_PRESETS.operator,
+      username: 'member.example',
       id: 42,
       lockedUntil: null,
       role: 'operator',
@@ -55,10 +58,11 @@ describe('User settings contracts and DTO sanitization', () => {
     const futureDate = new Date(Date.now() + 5 * 60 * 1000).toISOString()
     const securityLockedUser = {
       createdAt: '2026-08-01T00:00:00.000Z',
-      email: 'locked@example.com',
+      username: 'locked.example',
       id: 10,
       lockUntil: futureDate,
       loginAttempts: 5,
+      permissions: PORTAL_PERMISSION_PRESETS.sales,
       role: 'sales' as const,
       updatedAt: '2026-08-10T12:00:00.000Z',
     }
@@ -69,9 +73,10 @@ describe('User settings contracts and DTO sanitization', () => {
 
     const manuallyLockedUser = {
       createdAt: '2026-08-01T00:00:00.000Z',
-      email: 'manually_locked@example.com',
+      username: 'manually-locked.example',
       id: 11,
       lockUntil: MANUAL_LOCK_UNTIL,
+      permissions: PORTAL_PERMISSION_PRESETS.sales,
       role: 'sales' as const,
       updatedAt: '2026-08-10T12:00:00.000Z',
     }
@@ -82,9 +87,10 @@ describe('User settings contracts and DTO sanitization', () => {
 
     const expiredLockUser = {
       createdAt: '2026-08-01T00:00:00.000Z',
-      email: 'expired@example.com',
+      username: 'expired.example',
       id: 12,
       lockUntil: '2020-01-01T00:00:00.000Z',
+      permissions: PORTAL_PERMISSION_PRESETS.sales,
       role: 'sales' as const,
       updatedAt: '2026-08-10T12:00:00.000Z',
     }
@@ -93,13 +99,13 @@ describe('User settings contracts and DTO sanitization', () => {
     expect(expiredDto.lockedUntil).toBeNull()
   })
 
-  it('validates email addresses with trimming and lowercase normalization', () => {
-    expect(validateEmail('  User@Example.COM  ')).toBe('user@example.com')
-    expect(() => validateEmail('invalid-email')).toThrowError(
+  it('validates usernames with trimming and lowercase normalization', () => {
+    expect(validateUsername('  Valid.Username  ')).toBe('valid.username')
+    expect(() => validateUsername('invalid username')).toThrowError(
       expect.objectContaining({ code: 'invalid-input', status: 400 }) as UserSettingsCommandError,
     )
-    expect(() => validateEmail('')).toThrow()
-    expect(() => validateEmail(null)).toThrow()
+    expect(() => validateUsername('')).toThrow()
+    expect(() => validateUsername(null)).toThrow()
   })
 
   it('validates password length between 12 and 128 characters without trimming', () => {
@@ -133,7 +139,7 @@ describe('User settings contracts and DTO sanitization', () => {
   })
 
   it('generates HMAC-backed password command fingerprints preventing plaintext or plain sha256 leakage', () => {
-    const nonSensitive = { action: 'create_team_member', email: 'test@example.com', role: 'operator' }
+    const nonSensitive = { action: 'create_team_member', username: 'test.example', role: 'operator' }
     const passA = 'SecretPassword123!'
     const passB = 'DifferentPassword456!'
 

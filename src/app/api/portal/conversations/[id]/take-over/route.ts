@@ -14,7 +14,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   try {
-    await authorizePortalConversationRequest(request)
+    await authorizePortalConversationRequest(request, { action: 'edit' })
     return takeOverSession(request, { params })
   } catch (error) {
     return portalConversationErrorResponse(error)

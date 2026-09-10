@@ -1,18 +1,18 @@
 import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
 
-const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
+const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.SEED_ADMIN_USERNAME
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
 const login = async (page: import('@playwright/test').Page, returnTo: string) => {
   test.skip(
-    !adminEmail || !adminPassword,
+    !adminUsername || !adminPassword,
     'Requires dedicated non-production E2E or local seed administrator credentials.',
   )
-  if (!adminEmail || !adminPassword) return
+  if (!adminUsername || !adminPassword) return
 
   await page.goto(`/dashboard/login?returnTo=${encodeURIComponent(returnTo)}`)
-  await page.getByRole('textbox', { name: '邮箱' }).fill(adminEmail)
+  await page.getByRole('textbox', { name: '账号' }).fill(adminUsername)
   await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
   await page.getByRole('button', { name: '登录后台' }).click()
   await expect(page).toHaveURL(new RegExp(`${returnTo.replaceAll('/', '\\/')}$`))
@@ -23,12 +23,12 @@ test('desktop Portal Shell exposes role-safe business navigation and settings', 
 }, testInfo) => {
   await page.setViewportSize({ height: 900, width: 1440 })
   await login(page, '/dashboard/settings')
-  if (!adminEmail || !adminPassword) return
+  if (!adminUsername || !adminPassword) return
 
   await expect(page.getByRole('navigation', { name: '运营门户导航' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 2, name: '基础设置' })).toBeVisible()
   await expect(page.getByRole('link', { name: '基础设置' })).toHaveAttribute('aria-current', 'page')
-  await expect(page.locator('#account').getByText(adminEmail, { exact: true })).toBeVisible()
+  await expect(page.locator('#account').getByText(adminUsername, { exact: true })).toBeVisible()
   await expect(page.locator('.portal-sidebar')).toHaveCSS('width', '260px')
   await page.screenshot({
     fullPage: true,
@@ -48,7 +48,7 @@ test('mobile Portal Shell uses an accessible navigation drawer without horizonta
 }, testInfo) => {
   await page.setViewportSize({ height: 844, width: 390 })
   await login(page, '/dashboard/settings')
-  if (!adminEmail || !adminPassword) return
+  if (!adminUsername || !adminPassword) return
 
   const trigger = page.getByRole('button', { name: '打开导航' })
   await expect(trigger).toBeVisible()

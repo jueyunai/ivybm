@@ -1,6 +1,6 @@
 import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
-import { getRoleUser } from '@/access/roles'
+import { getRoleUser, hasPortalPermission, type UserRole } from '@/access/roles'
 import config from '@/payload.config'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
@@ -11,12 +11,12 @@ import { KnowledgeCommandError } from './knowledgeCommands'
 export interface AuthorizedKnowledgeRequest {
   payload: Payload
   req: PayloadRequest
-  role: 'admin' | 'operator'
+  role: UserRole
 }
 
 export async function authorizeKnowledgeRequest(
   request: Request,
-  options: { adminOnly?: boolean } = {},
+  options: { action?: 'view' | 'edit'; adminOnly?: boolean } = {},
 ): Promise<AuthorizedKnowledgeRequest> {
   if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
     throw new KnowledgeCommandError('portal-disabled', 'The Portal is disabled', 503)
@@ -34,7 +34,7 @@ export async function authorizeKnowledgeRequest(
   if (!user || !actor || (user as { collection?: string }).collection !== 'users') {
     throw new KnowledgeCommandError('knowledge-unauthenticated', 'Authentication required', 401)
   }
-  if (actor.role !== 'admin' && actor.role !== 'operator') {
+  if (!hasPortalPermission(actor, 'knowledge', options.action ?? 'view')) {
     throw new KnowledgeCommandError('knowledge-forbidden', 'Knowledge access denied', 403)
   }
   if (options.adminOnly && actor.role !== 'admin') {

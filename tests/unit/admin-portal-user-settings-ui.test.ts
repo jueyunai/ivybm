@@ -9,12 +9,14 @@ import { SettingsHub } from '@/admin-portal/modules/settings/SettingsHub'
 import { ChangePasswordPanel } from '@/admin-portal/modules/settings/ChangePasswordPanel'
 import { TeamMembersPanel } from '@/admin-portal/modules/settings/TeamMembersPanel'
 import { portalAiSettingsAdminOnly } from '@/admin-portal/modules/settings/getPortalAiSettings'
+import { PORTAL_PERMISSION_PRESETS } from '@/access/roles'
 import type { PortalTeamMemberDTO } from '@/admin-portal/modules/settings/userSettingsContracts'
 
 const mockMembers: PortalTeamMemberDTO[] = [
   {
     createdAt: '2026-08-01T00:00:00.000Z',
-    email: 'admin@example.com',
+    permissions: PORTAL_PERMISSION_PRESETS.admin,
+    username: 'admin.example',
     id: 1,
     lockedUntil: null,
     role: 'admin',
@@ -23,7 +25,8 @@ const mockMembers: PortalTeamMemberDTO[] = [
   },
   {
     createdAt: '2026-08-02T00:00:00.000Z',
-    email: 'operator@example.com',
+    permissions: PORTAL_PERMISSION_PRESETS.operator,
+    username: 'operator.example',
     id: 2,
     lockedUntil: null,
     role: 'operator',
@@ -32,7 +35,8 @@ const mockMembers: PortalTeamMemberDTO[] = [
   },
   {
     createdAt: '2026-08-03T00:00:00.000Z',
-    email: 'sales@example.com',
+    permissions: PORTAL_PERMISSION_PRESETS.sales,
+    username: 'sales.example',
     id: 3,
     lockedUntil: '2026-08-25T12:00:00.000Z',
     role: 'sales',
@@ -140,10 +144,10 @@ describe('Portal TeamMembersPanel UI', () => {
     )
 
     expect(screen.getByRole('heading', { name: '团队成员管理' })).toBeTruthy()
-    expect(screen.getByText('admin@example.com')).toBeTruthy()
+    expect(screen.getByText('admin.example')).toBeTruthy()
     expect(screen.getByText('(本人)')).toBeTruthy()
-    expect(screen.getByText('operator@example.com')).toBeTruthy()
-    expect(screen.getByText('sales@example.com')).toBeTruthy()
+    expect(screen.getByText('operator.example')).toBeTruthy()
+    expect(screen.getByText('sales.example')).toBeTruthy()
     expect(screen.getByText('登录失败临时锁定')).toBeTruthy()
     expect(
       screen.getByText(
@@ -176,13 +180,43 @@ describe('Portal TeamMembersPanel UI', () => {
     expect(screen.queryByRole('heading', { name: '新增团队成员' })).toBeNull()
   })
 
+  it('keeps view permission when edit is unchecked and removes edit when view is unchecked', () => {
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(TeamMembersPanel, {
+          currentUserId: 1,
+          initialMembers: mockMembers,
+        }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /新增成员/ }))
+    const dialog = screen.getByRole('dialog', { name: '新增团队成员' })
+    const leadCard = within(dialog).getByText('线索管理').closest('article')
+    expect(leadCard).toBeTruthy()
+    const [viewCheckbox, editCheckbox] = within(leadCard as HTMLElement).getAllByRole('checkbox')
+
+    expect((viewCheckbox as HTMLInputElement).checked).toBe(true)
+    expect((editCheckbox as HTMLInputElement).checked).toBe(true)
+
+    fireEvent.click(editCheckbox)
+    expect((viewCheckbox as HTMLInputElement).checked).toBe(true)
+    expect((editCheckbox as HTMLInputElement).checked).toBe(false)
+
+    fireEvent.click(viewCheckbox)
+    expect((viewCheckbox as HTMLInputElement).checked).toBe(false)
+    expect((editCheckbox as HTMLInputElement).checked).toBe(false)
+  })
+
   it('exposes dialog semantics, closes with Escape, and keeps API errors visible inside the dialog', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       json: () =>
         Promise.resolve({
           error: {
-            code: 'email-already-exists',
-            message: 'A user with this email address already exists.',
+            code: 'username-already-exists',
+            message: 'A user with this username already exists.',
           },
         }),
       ok: false,
@@ -205,7 +239,7 @@ describe('Portal TeamMembersPanel UI', () => {
     fireEvent.click(trigger)
     expect(screen.getByRole('dialog', { name: '新增团队成员' })).toBeTruthy()
     const dialog = screen.getByRole('dialog', { name: '新增团队成员' })
-    expect(document.activeElement).toBe(screen.getByLabelText('登录邮箱'))
+    expect(document.activeElement).toBe(screen.getByLabelText('登录用户名'))
     fireEvent.keyDown(dialog, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: '新增团队成员' })).toBeNull()
     await waitFor(() => {
@@ -213,28 +247,26 @@ describe('Portal TeamMembersPanel UI', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: /新增成员/ }))
-    fireEvent.change(screen.getByLabelText('登录邮箱'), {
-      target: { value: 'duplicate@example.com' },
+    fireEvent.change(screen.getByLabelText('登录用户名'), {
+      target: { value: 'duplicate.example' },
     })
     fireEvent.change(screen.getByLabelText('初始密码'), {
-      target: { value: 'InitialPassword123!' },
-    })
-    fireEvent.change(screen.getByLabelText('确认初始密码'), {
       target: { value: 'InitialPassword123!' },
     })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {
       const dialog = screen.getByRole('dialog', { name: '新增团队成员' })
-      expect(dialog.textContent).toContain('该邮箱已被使用，请更换邮箱后重试。')
-      expect(dialog.textContent).not.toContain('A user with this email address already exists.')
+      expect(dialog.textContent).toContain('该用户名已被使用，请更换用户名后重试。')
+      expect(dialog.textContent).not.toContain('A user with this username already exists.')
     })
   })
 
   it('keeps the idempotency key and refreshes without replaying after an unknown response', async () => {
     const createdMember: PortalTeamMemberDTO = {
       createdAt: '2026-08-26T00:00:00.000Z',
-      email: 'unknown-result@example.com',
+      permissions: PORTAL_PERMISSION_PRESETS.sales,
+      username: 'unknown-result.example',
       id: 4,
       lockedUntil: null,
       role: 'sales',
@@ -264,13 +296,10 @@ describe('Portal TeamMembersPanel UI', () => {
 
     const submitSameMember = () => {
       fireEvent.click(screen.getByRole('button', { name: /新增成员/ }))
-      fireEvent.change(screen.getByLabelText('登录邮箱'), {
-        target: { value: createdMember.email },
+      fireEvent.change(screen.getByLabelText('登录用户名'), {
+        target: { value: createdMember.username },
       })
       fireEvent.change(screen.getByLabelText('初始密码'), {
-        target: { value: 'InitialPassword123!' },
-      })
-      fireEvent.change(screen.getByLabelText('确认初始密码'), {
         target: { value: 'InitialPassword123!' },
       })
       fireEvent.click(screen.getByRole('button', { name: '保存' }))
@@ -290,7 +319,7 @@ describe('Portal TeamMembersPanel UI', () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(3)
-      expect(screen.getByText(createdMember.email)).toBeTruthy()
+      expect(screen.getByText(createdMember.username)).toBeTruthy()
     })
     const retriedKey = (fetchMock.mock.calls[2]?.[1] as RequestInit).headers as Record<
       string,
@@ -329,10 +358,10 @@ describe('Portal TeamMembersPanel UI', () => {
       ),
     )
 
-    const operatorRow = screen.getByText('operator@example.com').closest('article')
+    const operatorRow = screen.getByText('operator.example').closest('article')
     fireEvent.click(within(operatorRow as HTMLElement).getByRole('button', { name: '删除成员' }))
-    fireEvent.change(screen.getByLabelText('登录邮箱'), {
-      target: { value: 'operator@example.com' },
+    fireEvent.change(screen.getByLabelText('登录用户名'), {
+      target: { value: 'operator.example' },
     })
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
 
@@ -375,7 +404,7 @@ describe('Portal TeamMembersPanel UI', () => {
       ),
     )
 
-    const operatorRow = screen.getByText('operator@example.com').closest('article')
+    const operatorRow = screen.getByText('operator.example').closest('article')
     fireEvent.click(within(operatorRow as HTMLElement).getByRole('button', { name: '编辑' }))
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
@@ -416,11 +445,11 @@ describe('Portal TeamMembersPanel UI', () => {
 
     await waitFor(() => {
       expect(screen.queryByRole('alert')).toBeNull()
-      expect(screen.getByText('operator@example.com')).toBeTruthy()
+      expect(screen.getByText('operator.example')).toBeTruthy()
     })
   })
 
-  it('requires typing matching confirmation email before deleting member', async () => {
+  it('requires typing matching confirmation username before deleting member', async () => {
     render(
       React.createElement(
         PortalPreferencesProvider,
@@ -433,19 +462,19 @@ describe('Portal TeamMembersPanel UI', () => {
     )
 
     const deleteButtons = screen.getAllByRole('button', { name: /删除/ })
-    fireEvent.click(deleteButtons[0]) // delete operator@example.com
+    fireEvent.click(deleteButtons[0]) // delete operator.example
 
     expect(screen.getByRole('heading', { name: '删除成员' })).toBeTruthy()
     const confirmDeleteBtn = screen.getByRole('button', { name: '确认删除' })
     expect((confirmDeleteBtn as HTMLButtonElement).disabled).toBe(true)
 
-    // Type non-matching email
-    const emailInput = screen.getByLabelText('登录邮箱')
-    fireEvent.change(emailInput, { target: { value: 'wrong@example.com' } })
+    // Type non-matching username
+    const usernameInput = screen.getByLabelText('登录用户名')
+    fireEvent.change(usernameInput, { target: { value: 'wrong.example' } })
     expect((confirmDeleteBtn as HTMLButtonElement).disabled).toBe(true)
 
-    // Type exact matching email
-    fireEvent.change(emailInput, { target: { value: 'operator@example.com' } })
+    // Type exact matching username
+    fireEvent.change(usernameInput, { target: { value: 'operator.example' } })
     expect((confirmDeleteBtn as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -467,16 +496,16 @@ describe('Portal TeamMembersPanel UI', () => {
       ),
     )
 
-    const operatorRow = screen.getByText('operator@example.com').closest('article')
+    const operatorRow = screen.getByText('operator.example').closest('article')
     expect(operatorRow).toBeTruthy()
     fireEvent.click(within(operatorRow as HTMLElement).getByRole('button', { name: '删除成员' }))
-    fireEvent.change(screen.getByLabelText('登录邮箱'), {
-      target: { value: 'operator@example.com' },
+    fireEvent.change(screen.getByLabelText('登录用户名'), {
+      target: { value: 'operator.example' },
     })
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
 
     await waitFor(() => {
-      expect(screen.queryByText('operator@example.com')).toBeNull()
+      expect(screen.queryByText('operator.example')).toBeNull()
       expect(screen.getByText('成员已成功删除。')).toBeTruthy()
     })
   })
@@ -490,7 +519,7 @@ describe('Portal SettingsHub role visibility for team management', () => {
         ADMIN_PORTAL_SETTINGS_ENABLED: 'true',
         ADMIN_PORTAL_TEAM_MANAGEMENT_ENABLED: 'true',
       },
-      role: 'sales',
+      user: { role: 'sales' },
     }).modules
 
     render(
@@ -507,7 +536,12 @@ describe('Portal SettingsHub role visibility for team management', () => {
           },
           teamManagementEnabled: true,
           teamMembers: mockMembers,
-          user: { email: 'sales@example.com', id: 3, role: 'sales' },
+          user: {
+            username: 'sales.example',
+            id: 3,
+            permissions: PORTAL_PERMISSION_PRESETS.sales,
+            role: 'sales',
+          },
         }),
       ),
     )
@@ -523,7 +557,7 @@ describe('Portal SettingsHub role visibility for team management', () => {
         ADMIN_PORTAL_SETTINGS_ENABLED: 'true',
         ADMIN_PORTAL_TEAM_MANAGEMENT_ENABLED: 'true',
       },
-      role: 'admin',
+      user: { role: 'admin' },
     }).modules
 
     render(
@@ -540,12 +574,17 @@ describe('Portal SettingsHub role visibility for team management', () => {
           },
           teamManagementEnabled: true,
           teamMembers: mockMembers,
-          user: { email: 'admin@example.com', id: 1, role: 'admin' },
+          user: {
+            username: 'admin.example',
+            id: 1,
+            permissions: PORTAL_PERMISSION_PRESETS.admin,
+            role: 'admin',
+          },
         }),
       ),
     )
 
     expect(screen.getByRole('heading', { name: '团队成员管理' })).toBeTruthy()
-    expect(screen.getByText('operator@example.com')).toBeTruthy()
+    expect(screen.getByText('operator.example')).toBeTruthy()
   })
 })

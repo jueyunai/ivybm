@@ -18,7 +18,7 @@ export async function POST(
 ): Promise<Response> {
   try {
     const id = requireOperationsJobID((await params).id)
-    const { payload, req, user } = await authorizeOperationsRequest(request)
+    const { payload, req, user } = await authorizeOperationsRequest(request, { action: 'edit' })
     return operationsJSON({
       result: await retryPortalJob({
         id,

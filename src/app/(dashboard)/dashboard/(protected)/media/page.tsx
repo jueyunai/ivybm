@@ -20,14 +20,14 @@ export default async function MediaPage({ searchParams }: { searchParams: Promis
 
   try {
     const payload = await getPayload({ config })
-    const actor = { ...user, collection: 'users' } as User
+    const actor = { ...user, collection: 'users' } as unknown as User
     const req = await createLocalReq({ user: actor }, payload)
     data = await loadMediaPageData({
       env: process.env,
       payload,
       query,
       req,
-      role: user.role,
+      user,
     })
   } catch (error) {
     console.error('[admin-portal] media read failed', {

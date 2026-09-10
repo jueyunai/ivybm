@@ -168,7 +168,7 @@ describe('Portal leads page read model with attachments', () => {
       payload: { find } as never,
       query: parseLeadQuery({}),
       req,
-      role: 'admin',
+      user: { role: 'admin' },
     })
 
     expect(result.state).toBe('available')
@@ -256,7 +256,7 @@ describe('Portal leads page read model with attachments', () => {
       payload: { find } as never,
       query: parseLeadQuery({}),
       req: { user: { id: 9, role: 'sales' } } as never,
-      role: 'sales',
+      user: { role: 'sales' },
     })
 
     const items = result.summary?.items ?? []
@@ -584,7 +584,7 @@ describe('Portal leads query and deep-link selection with lead parameter', () =>
       payload: { find, findByID } as never,
       query: parseLeadQuery({ lead: '42' }),
       req,
-      role: 'admin',
+      user: { role: 'admin' },
     })
 
     expect(findByID).toHaveBeenCalledWith(expect.objectContaining({ collection: 'leads', id: 42 }))

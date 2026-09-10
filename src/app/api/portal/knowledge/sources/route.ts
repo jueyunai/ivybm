@@ -17,7 +17,7 @@ export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest): Promise<Response> {
   try {
-    const { payload, req } = await authorizeKnowledgeSourceRequest(request)
+    const { payload, req } = await authorizeKnowledgeSourceRequest(request, { action: 'view' })
     const page = parseKnowledgeSourcePage(request.nextUrl.searchParams.get('page'))
     return knowledgeSourceJSON(await listKnowledgeSources({ page, payload, req }))
   } catch (error) {
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 export async function POST(request: NextRequest): Promise<Response> {
   try {
-    const { payload, req } = await authorizeKnowledgeSourceRequest(request)
+    const { payload, req } = await authorizeKnowledgeSourceRequest(request, { action: 'edit' })
     const { file, input } = await readKnowledgeSourceUpload(request)
     const result = await executePortalRouteCommand({
       fingerprintInput: {

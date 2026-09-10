@@ -1,7 +1,8 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
 import { getMediaPreviewUrl, safeMediaUrl } from '@/admin-portal/core/media'
-import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
+import type { PortalEnvironment, PortalPermissionUser } from '@/admin-portal/core/modules/types'
+import { hasPortalPermission } from '@/access/roles'
 import { MEDIA_IMAGE_MAX_BYTES, MEDIA_MIME_TYPES, MEDIA_PDF_MAX_BYTES } from '@/collections/Media'
 
 import { MEDIA_MODULE } from './manifest'
@@ -239,15 +240,15 @@ export async function loadMediaPageData({
   payload,
   query,
   req,
-  role,
+  user,
 }: {
   env: PortalEnvironment
   payload: Payload
   query: MediaQuery
   req: PayloadRequest
-  role: PortalRole
+  user: PortalPermissionUser
 }): Promise<MediaPageData> {
-  if (!(MEDIA_MODULE.allowedRoles as readonly PortalRole[]).includes(role)) {
+  if (!hasPortalPermission(user, 'media', 'view')) {
     return { state: 'forbidden', summary: null }
   }
   if (!isExplicitlyEnabled(env.ADMIN_PORTAL_ENABLED)) {

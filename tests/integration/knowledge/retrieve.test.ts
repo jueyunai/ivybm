@@ -588,21 +588,17 @@ describe.sequential('knowledge retrieval', () => {
 
   it('allows operators to manage knowledge while denying sales and enforces prompt versions', async () => {
     const suffix = randomUUID()
-    const operator = await payload.create({
-      collection: 'users',
+    const operator = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task8-operator-${suffix}@example.invalid`,
+      draft: true, data: { username: `task8-operator-${suffix}`,
         password: 'task8-operator-integration-password',
         role: 'operator',
       },
       overrideAccess: true,
     })
-    const sales = await payload.create({
-      collection: 'users',
+    const sales = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task8-sales-${suffix}@example.invalid`,
+      draft: true, data: { username: `task8-sales-${suffix}`,
         password: 'task8-sales-integration-password',
         role: 'sales',
       },

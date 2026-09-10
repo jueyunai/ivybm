@@ -38,11 +38,9 @@ describe.sequential('Portal V1 required relationship deletes', () => {
       key: 'admin-portal-content-studio-relations',
     })
     const suffix = randomUUID()
-    admin = await payload.create({
-      collection: 'users',
+    admin = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `portal-relations-${suffix}@example.invalid`,
+      draft: true, data: { username: `portal-relations-${suffix}`,
         password: 'portal-content-relations-password',
         role: 'admin',
       },

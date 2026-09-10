@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer'
 
 import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
-import { getRoleUser } from '@/access/roles'
+import { getRoleUser, hasPortalPermission, type UserRole } from '@/access/roles'
 import config from '@/payload.config'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
@@ -19,12 +19,12 @@ const MAX_UPLOAD_REQUEST_BYTES = KNOWLEDGE_SOURCE_MAX_BYTES + 1_048_576
 export type AuthorizedKnowledgeSourceRequest = {
   payload: Payload
   req: PayloadRequest
-  role: 'admin' | 'operator'
+  role: UserRole
 }
 
 export const authorizeKnowledgeSourceRequest = async (
   request: Request,
-  options: { adminOnly?: boolean } = {},
+  options: { action?: 'view' | 'edit'; adminOnly?: boolean } = {},
 ): Promise<AuthorizedKnowledgeSourceRequest> => {
   if (process.env.ADMIN_PORTAL_ENABLED !== 'true') throw new KnowledgeSourceCommandError('portal-disabled', 'The Portal is disabled', 503)
   if (process.env.ADMIN_PORTAL_KNOWLEDGE_ENABLED !== 'true') throw new KnowledgeSourceCommandError('knowledge-module-disabled', 'The knowledge module is disabled', 503)
@@ -32,7 +32,7 @@ export const authorizeKnowledgeSourceRequest = async (
   const { user } = await payload.auth({ headers: request.headers })
   const actor = getRoleUser(user)
   if (!user || !actor || (user as { collection?: string }).collection !== 'users') throw new KnowledgeSourceCommandError('knowledge-unauthenticated', 'Authentication required', 401)
-  if (actor.role !== 'admin' && actor.role !== 'operator') throw new KnowledgeSourceCommandError('knowledge-forbidden', 'Knowledge access denied', 403)
+  if (!hasPortalPermission(actor, 'knowledge', options.action ?? 'view')) throw new KnowledgeSourceCommandError('knowledge-forbidden', 'Knowledge access denied', 403)
   if (options.adminOnly && actor.role !== 'admin') throw new KnowledgeSourceCommandError('knowledge-admin-required', 'Administrator access required', 403)
   return { payload, req: await createLocalReq({ user }, payload), role: actor.role }
 }

@@ -37,31 +37,25 @@ describe.sequential('Operations Dashboard access', () => {
     })
 
     const suffix = randomUUID()
-    admin = await payload.create({
-      collection: 'users',
+    admin = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `admin-dashboard-admin-${suffix}@example.invalid`,
+      draft: true, data: { username: `admin-dashboard-admin-${suffix}`,
         password: 'admin-dashboard-integration-password',
         role: 'admin',
       },
       overrideAccess: true,
     })
-    operator = await payload.create({
-      collection: 'users',
+    operator = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `admin-dashboard-operator-${suffix}@example.invalid`,
+      draft: true, data: { username: `admin-dashboard-operator-${suffix}`,
         password: 'admin-dashboard-integration-password',
         role: 'operator',
       },
       overrideAccess: true,
     })
-    sales = await payload.create({
-      collection: 'users',
+    sales = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `admin-dashboard-sales-${suffix}@example.invalid`,
+      draft: true, data: { username: `admin-dashboard-sales-${suffix}`,
         password: 'admin-dashboard-integration-password',
         role: 'sales',
       },

@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Payload, PayloadRequest } from 'payload'
 
+import { PERMISSION_MODULE_IDS, type PortalUserPermissions } from '@/access/roles'
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import { formatJobTypeLabel } from '@/admin-portal/core/jobLabels'
 import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
@@ -257,7 +258,7 @@ describe('Portal operations', () => {
         payload: { find } as unknown as Payload,
         query: { page: 1, status: 'dead' },
         req: {} as PayloadRequest,
-        role: 'admin',
+        user: { role: 'admin' },
       }),
     ).resolves.toMatchObject({ state: 'available' })
     expect(find).toHaveBeenCalledWith(
@@ -280,7 +281,7 @@ describe('Portal operations', () => {
         payload: { find } as unknown as Payload,
         query,
         req: {} as PayloadRequest,
-        role: 'admin',
+        user: { role: 'admin' },
       }),
     ).resolves.toMatchObject({
       state: 'available',
@@ -291,7 +292,7 @@ describe('Portal operations', () => {
     )
   })
 
-  it('does not query jobs for a non-admin role, even with a target id', async () => {
+  it('does not query jobs without operations view permission, even with a target id', async () => {
     const find = vi.fn()
 
     await expect(
@@ -303,7 +304,17 @@ describe('Portal operations', () => {
         payload: { find } as unknown as Payload,
         query: { job: 17, page: 1, status: 'all' },
         req: {} as PayloadRequest,
-        role: 'operator',
+        user: {
+          permissions: Object.fromEntries(
+            PERMISSION_MODULE_IDS.map((moduleId) => [
+              moduleId,
+              moduleId === 'operations'
+                ? { edit: false, view: false }
+                : { edit: false, view: true },
+            ]),
+          ) as PortalUserPermissions,
+          role: 'operator',
+        },
       }),
     ).resolves.toEqual({ state: 'forbidden', summary: null })
     expect(find).not.toHaveBeenCalled()

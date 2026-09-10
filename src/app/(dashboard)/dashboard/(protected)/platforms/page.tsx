@@ -19,18 +19,21 @@ export default async function PlatformsPage() {
 
   try {
     const payload = await getPayload({ config })
-    const req = await createLocalReq({ user: { ...user, collection: 'users' } as User }, payload)
+    const req = await createLocalReq(
+      { user: { ...user, collection: 'users' } as unknown as User },
+      payload,
+    )
     accountsData = await loadPlatformAccountsPageData({
       env: process.env,
       payload,
       req,
-      role: user.role,
+      user,
     })
     readinessData = await loadPlatformReadinessPageData({
       env: process.env,
       payload,
       req,
-      role: user.role,
+      user,
     })
   } catch (error) {
     console.error('portal_platform_readiness_failed', {

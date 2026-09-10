@@ -8,7 +8,7 @@ import { PortalShell } from '@/admin-portal/core/navigation/PortalShell'
 
 export default async function ProtectedPortalLayout({ children }: { children: ReactNode }) {
   const user = await requirePortalUser({ returnTo: getPortalRequestPath(await headers()) })
-  const availability = resolvePortalAvailability({ env: process.env, role: user.role })
+  const availability = resolvePortalAvailability({ env: process.env, user })
 
   return (
     <PortalShell

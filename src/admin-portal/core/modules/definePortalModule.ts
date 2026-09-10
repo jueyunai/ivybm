@@ -7,7 +7,7 @@ import {
 
 const PORTAL_ROLES = new Set(['admin', 'operator', 'sales'])
 const FEATURE_FLAG_PATTERN = /^ADMIN_PORTAL_[A-Z0-9_]+_ENABLED$/
-const MODULE_ID_PATTERN = /^[a-z][a-z0-9-]*$/
+const MODULE_ID_PATTERN = /^[a-z][a-zA-Z0-9-]*$/
 
 export const validatePortalModule = (module: PortalModuleDefinition): void => {
   if (!MODULE_ID_PATTERN.test(module.id)) {
@@ -38,7 +38,10 @@ export const validatePortalModule = (module: PortalModuleDefinition): void => {
     throw new Error(`Portal module ${module.id} must declare an explicit feature flag`)
   }
 
-  if (module.allowedRoles.length === 0 || module.allowedRoles.some((role) => !PORTAL_ROLES.has(role))) {
+  if (
+    module.allowedRoles.length === 0 ||
+    module.allowedRoles.some((role) => !PORTAL_ROLES.has(role))
+  ) {
     throw new Error(`Portal module ${module.id} must declare valid roles`)
   }
 

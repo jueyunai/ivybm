@@ -26,7 +26,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   try {
-    const { payload, req, role } = await authorizeKnowledgeRequest(request)
+    const { payload, req, role } = await authorizeKnowledgeRequest(request, { action: 'edit' })
     const documentId = requireKnowledgeID((await params).id)
     const actorID = Number(req.user?.id)
     if (!Number.isSafeInteger(actorID) || actorID < 1) {

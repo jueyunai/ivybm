@@ -82,9 +82,9 @@ export const createE2EEnvironment = ({
   for (const key of providerEnvironmentKeys()) environment[key] = ''
 
   for (const key of [
-    'E2E_ADMIN_EMAIL',
+    'E2E_ADMIN_USERNAME',
     'E2E_ADMIN_PASSWORD',
-    'SEED_ADMIN_EMAIL',
+    'SEED_ADMIN_USERNAME',
     'SEED_ADMIN_PASSWORD',
     'SEED_KNOWLEDGE_DEMO',
   ])

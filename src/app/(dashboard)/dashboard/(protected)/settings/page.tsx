@@ -24,7 +24,7 @@ import {
 
 export default async function PortalSettingsPage() {
   const user = await requirePortalUser()
-  const availability = resolvePortalAvailability({ env: process.env, role: user.role })
+  const availability = resolvePortalAvailability({ env: process.env, user })
   const featureState = getPortalFeatureState({ env: process.env, module: SETTINGS_MODULE })
   const pageState = featureState.enabled
     ? 'available'
@@ -53,7 +53,10 @@ export default async function PortalSettingsPage() {
 
   try {
     const payload = await getPayload({ config })
-    const req = await createLocalReq({ user: { ...user, collection: 'users' } as User }, payload)
+    const req = await createLocalReq(
+      { user: { ...user, collection: 'users' } as unknown as User },
+      payload,
+    )
     summary = await getPortalSettingsSummary({ payload, req, user })
     if (summary.canUpdate) {
       siteSettings = await getPortalSiteSettingsEditor({ payload, req })

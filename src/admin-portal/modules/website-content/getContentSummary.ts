@@ -1,6 +1,7 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
-import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
+import type { PortalEnvironment, PortalPermissionUser } from '@/admin-portal/core/modules/types'
+import { hasPortalPermission } from '@/access/roles'
 
 import { WEBSITE_CONTENT_MODULE } from './manifest'
 
@@ -599,15 +600,15 @@ export async function loadWebsiteContentPageData({
   payload,
   query,
   req,
-  role,
+  user,
 }: {
   env: PortalEnvironment
   payload: Payload
   query: ContentQuery
   req: PayloadRequest
-  role: PortalRole
+  user: PortalPermissionUser
 }): Promise<WebsiteContentPageData> {
-  if (!(WEBSITE_CONTENT_MODULE.allowedRoles as readonly PortalRole[]).includes(role)) {
+  if (!hasPortalPermission(user, 'content', 'view')) {
     return { state: 'forbidden', summary: null }
   }
 

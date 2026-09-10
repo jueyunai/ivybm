@@ -1,31 +1,39 @@
-import { USER_ROLES, type UserRole } from '@/access/roles'
+import {
+  normalizePortalPermissions,
+  USER_ROLES,
+  type PortalUserPermissions,
+  type UserRole,
+} from '@/access/roles'
 import type { User } from '@/payload-types'
 
 export type PortalTeamMemberRole = UserRole
+export type { PortalUserPermissions }
 
 export type PortalTeamMemberStatus = 'normal' | 'security_locked' | 'manually_locked'
 
 export interface PortalTeamMemberDTO {
   createdAt: string
-  email: string
   id: number | string
   lockedUntil: string | null
+  permissions: PortalUserPermissions
   role: PortalTeamMemberRole
   status: PortalTeamMemberStatus
   updatedAt: string
+  username: string
 }
 
 export interface CreateTeamMemberInput {
-  confirmPassword: string
-  email: string
+  permissions: PortalUserPermissions
   password: string
   role: PortalTeamMemberRole
+  username: string
 }
 
 export interface UpdateTeamMemberInput {
-  email?: string
+  permissions?: PortalUserPermissions
   role?: PortalTeamMemberRole
   updatedAt: string
+  username?: string
 }
 
 export interface ResetMemberPasswordInput {
@@ -49,13 +57,13 @@ export interface UnlockTeamMemberInput {
 }
 
 export interface DeleteTeamMemberInput {
-  confirmEmail: string
+  confirmUsername: string
   updatedAt: string
 }
 
 export const MANUAL_LOCK_UNTIL = '2099-12-31T23:59:59.999Z'
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const USERNAME_PATTERN = /^[a-z0-9](?:[a-z0-9._-]{1,62})[a-z0-9]$/
 
 export class UserSettingsCommandError extends Error {
   constructor(
@@ -69,13 +77,13 @@ export class UserSettingsCommandError extends Error {
   }
 }
 
-export const validateEmail = (value: unknown): string => {
+export const validateUsername = (value: unknown): string => {
   if (typeof value !== 'string') {
-    throw new UserSettingsCommandError('invalid-input', 'A valid email address is required.', 400)
+    throw new UserSettingsCommandError('invalid-input', 'A valid username is required.', 400)
   }
   const normalized = value.trim().toLowerCase()
-  if (!normalized || normalized.length > 320 || !EMAIL_PATTERN.test(normalized)) {
-    throw new UserSettingsCommandError('invalid-input', 'A valid email address is required.', 400)
+  if (!USERNAME_PATTERN.test(normalized)) {
+    throw new UserSettingsCommandError('invalid-input', 'A valid username is required.', 400)
   }
   return normalized
 }
@@ -120,8 +128,13 @@ export const validateUpdatedAt = (value: unknown): string => {
   return value.trim()
 }
 
+export const validatePermissions = (
+  value: unknown,
+  role: PortalTeamMemberRole,
+): PortalUserPermissions => normalizePortalPermissions(value, role)
+
 export const selectPortalTeamMemberDTO = (
-  user: Pick<User, 'createdAt' | 'email' | 'id' | 'role' | 'updatedAt'> & {
+  user: Pick<User, 'createdAt' | 'id' | 'permissions' | 'role' | 'updatedAt' | 'username'> & {
     lockUntil?: string | null
     loginAttempts?: number | null
   },
@@ -145,11 +158,12 @@ export const selectPortalTeamMemberDTO = (
 
   return {
     createdAt: typeof user.createdAt === 'string' ? user.createdAt : new Date().toISOString(),
-    email: user.email,
     id: user.id,
     lockedUntil,
+    permissions: normalizePortalPermissions(user.permissions, user.role),
     role: user.role,
     status,
     updatedAt: typeof user.updatedAt === 'string' ? user.updatedAt : new Date().toISOString(),
+    username: user.username,
   }
 }

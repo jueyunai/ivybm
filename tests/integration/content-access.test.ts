@@ -29,31 +29,25 @@ describe.sequential('CMS content access integration', () => {
     })
 
     const suffix = randomUUID()
-    admin = await payload.create({
-      collection: 'users',
+    admin = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task5-admin-${suffix}@example.invalid`,
+      draft: true, data: { username: `task5-admin-${suffix}`,
         password: 'task5-admin-integration-password',
         role: 'admin',
       },
       overrideAccess: true,
     })
-    operator = await payload.create({
-      collection: 'users',
+    operator = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task5-operator-${suffix}@example.invalid`,
+      draft: true, data: { username: `task5-operator-${suffix}`,
         password: 'task5-operator-integration-password',
         role: 'operator',
       },
       overrideAccess: true,
     })
-    sales = await payload.create({
-      collection: 'users',
+    sales = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task5-sales-${suffix}@example.invalid`,
+      draft: true, data: { username: `task5-sales-${suffix}`,
         password: 'task5-sales-integration-password',
         role: 'sales',
       },

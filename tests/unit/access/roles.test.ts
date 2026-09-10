@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  hasPortalPermission,
+  normalizePortalPermissions,
+  PERMISSION_MODULE_IDS,
+  PORTAL_PERMISSION_PRESETS,
   resolveRoleAccess,
   type AccessAction,
   type AccessResource,
@@ -98,5 +102,88 @@ describe('role access matrix', () => {
     expectDenied(sales, 'platformAccounts', allActions)
     expectDenied(sales, 'conversations', ['create', 'delete'])
     expectDenied(sales, 'leads', ['create', 'delete'])
+  })
+
+  it('uses role presets with edit implying view for every module', () => {
+    const expectedPresets = {
+      admin: Object.fromEntries(
+        PERMISSION_MODULE_IDS.map((moduleId) => [moduleId, { edit: true, view: true }]),
+      ),
+      operator: Object.fromEntries(
+        PERMISSION_MODULE_IDS.map((moduleId) => [
+          moduleId,
+          {
+            edit: [
+              'conversations',
+              'leads',
+              'content',
+              'media',
+              'contentStudio',
+              'knowledge',
+              'settings',
+            ].includes(moduleId),
+            view: true,
+          },
+        ]),
+      ),
+      sales: Object.fromEntries(
+        PERMISSION_MODULE_IDS.map((moduleId) => [
+          moduleId,
+          {
+            edit: ['conversations', 'leads', 'settings'].includes(moduleId),
+            view: ['conversations', 'leads', 'settings'].includes(moduleId),
+          },
+        ]),
+      ),
+    }
+
+    expect(PORTAL_PERMISSION_PRESETS.admin).toEqual(expectedPresets.admin)
+    expect(PORTAL_PERMISSION_PRESETS.operator).toEqual(expectedPresets.operator)
+    expect(PORTAL_PERMISSION_PRESETS.sales).toEqual(expectedPresets.sales)
+  })
+
+  it('normalizes granular permissions and rejects edit without view', () => {
+    expect(
+      normalizePortalPermissions(
+        {
+          conversations: { edit: true, view: true },
+          leads: { edit: true, view: false },
+          content: 'not-a-module-permission',
+        },
+        'sales',
+      ),
+    ).toEqual({
+      conversations: { edit: true, view: true },
+      content: { edit: false, view: false },
+      contentStudio: { edit: false, view: false },
+      knowledge: { edit: false, view: false },
+      leads: { edit: false, view: false },
+      media: { edit: false, view: false },
+      operations: { edit: false, view: false },
+      platforms: { edit: false, view: false },
+      settings: { edit: true, view: true },
+    })
+
+    expect(normalizePortalPermissions(undefined, 'operator').conversations).toEqual({
+      edit: true,
+      view: true,
+    })
+  })
+
+  it('checks portal permissions from a stored role user', () => {
+    const user: RoleUser = {
+      id: 4,
+      role: 'sales',
+      permissions: {
+        conversations: { edit: false, view: true },
+        leads: { edit: true, view: true },
+      },
+    }
+
+    expect(hasPortalPermission(user, 'conversations', 'view')).toBe(true)
+    expect(hasPortalPermission(user, 'conversations', 'edit')).toBe(false)
+    expect(hasPortalPermission(user, 'leads', 'edit')).toBe(true)
+    expect(hasPortalPermission(user, 'media', 'view')).toBe(false)
+    expect(hasPortalPermission(null, 'leads', 'view')).toBe(false)
   })
 })

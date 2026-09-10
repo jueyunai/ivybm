@@ -16,7 +16,7 @@ export const runtime = 'nodejs'
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   try {
     const id = requireKnowledgeSourceID((await params).id)
-    const { payload, req } = await authorizeKnowledgeSourceRequest(request)
+    const { payload, req } = await authorizeKnowledgeSourceRequest(request, { action: 'view' })
     const [source, outputs, assets] = await Promise.all([
       payload.findByID({ collection: 'knowledge-source-documents', depth: 0, id, overrideAccess: false, req }),
       payload.find({ collection: 'knowledge-documents', depth: 0, limit: 10, overrideAccess: false, pagination: false, req, select: { customerVisible: true, id: true, indexStatus: true, locale: true, reviewStatus: true, riskTopics: true, sourceTitle: true }, where: { ingestionSource: { equals: id } } }),

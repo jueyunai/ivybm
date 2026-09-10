@@ -71,11 +71,9 @@ describe.sequential('Portal knowledge access', () => {
     queryToken = `P08B-${suffix}`
 
     for (const role of ['admin', 'operator', 'sales'] as const) {
-      const user = await payload.create({
-        collection: 'users',
+      const user = await payload.create({ collection: 'users',
         context: { skipAudit: true },
-        data: {
-          email: `portal-knowledge-${role}-${suffix}@example.invalid`,
+        draft: true, data: { username: `portal-knowledge-${role}-${suffix}`,
           password: 'portal-knowledge-integration-password',
           role,
         },
@@ -472,7 +470,7 @@ describe.sequential('Portal knowledge access', () => {
         payload,
         query: query(),
         req: await requestFor(sales),
-        role: 'sales',
+        user: { role: 'sales' },
       }),
     ).resolves.toEqual({ state: 'forbidden', summary: null })
     await expect(
@@ -481,7 +479,7 @@ describe.sequential('Portal knowledge access', () => {
         payload,
         query: query(),
         req: await requestFor(admin),
-        role: 'admin',
+        user: { role: 'admin' },
       }),
     ).resolves.toEqual({ state: 'module-disabled', summary: null })
 

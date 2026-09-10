@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { WebsiteChatE2EHarness } from './website-chat.support'
 
-const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
+const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.SEED_ADMIN_USERNAME
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
 type Scenario = {
@@ -91,7 +91,7 @@ const completeWebsiteChat = async (
 test('WEB-CHAT-01 closes EN and AR website AI qualification, Lead, handoff, Portal, and fake Feishu', async ({
   page,
 }) => {
-  if (!adminEmail || !adminPassword) {
+  if (!adminUsername || !adminPassword) {
     throw new Error('WEB-CHAT-01 requires non-production E2E administrator credentials')
   }
 
@@ -149,7 +149,7 @@ test('WEB-CHAT-01 closes EN and AR website AI qualification, Lead, handoff, Port
     ).toHaveLength(2)
 
     await page.goto('/dashboard/login?returnTo=%2Fdashboard%2Fconversations')
-    await page.getByRole('textbox', { name: '邮箱' }).fill(adminEmail)
+    await page.getByRole('textbox', { name: '账号' }).fill(adminUsername)
     await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
     await page.getByRole('button', { name: '登录后台' }).click()
     await expect(page).toHaveURL(/\/dashboard\/conversations$/)

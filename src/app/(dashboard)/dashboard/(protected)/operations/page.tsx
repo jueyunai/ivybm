@@ -13,7 +13,11 @@ import config from '@/payload.config'
 
 type SearchParams = Record<string, string | string[] | undefined>
 
-export default async function OperationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+export default async function OperationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>
+}) {
   const user = await requirePortalUser({ returnTo: '/dashboard/operations' })
   let data: SafeJobPageData = { state: 'available', summary: null }
 
@@ -23,8 +27,11 @@ export default async function OperationsPage({ searchParams }: { searchParams: P
       env: process.env,
       payload,
       query: parseSafeJobQuery(await searchParams),
-      req: await createLocalReq({ user: { ...user, collection: 'users' } as User }, payload),
-      role: user.role,
+      req: await createLocalReq(
+        { user: { ...user, collection: 'users' } as unknown as User },
+        payload,
+      ),
+      user,
     })
   } catch (error) {
     console.error('portal_operations_read_failed', {

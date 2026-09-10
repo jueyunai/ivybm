@@ -8,6 +8,7 @@ import {
 } from '@/admin-portal/modules/settings/userSettingsCommands'
 import type {
   CreateTeamMemberInput,
+  PortalUserPermissions,
   PortalTeamMemberRole,
 } from '@/admin-portal/modules/settings/userSettingsContracts'
 import {
@@ -39,19 +40,19 @@ export async function POST(request: Request): Promise<Response> {
     })
     const raw = await readUserSettingsJSON(request)
     const input: CreateTeamMemberInput = {
-      confirmPassword: typeof raw.confirmPassword === 'string' ? raw.confirmPassword : '',
-      email: typeof raw.email === 'string' ? raw.email : '',
+      permissions: raw.permissions as PortalUserPermissions,
       password: typeof raw.password === 'string' ? raw.password : '',
       role: raw.role as PortalTeamMemberRole,
+      username: typeof raw.username === 'string' ? raw.username : '',
     }
 
     const fingerprintInput = portalPasswordCommandFingerprint({
       nonSensitivePayload: {
         action: 'create_team_member',
-        email: input.email.trim().toLowerCase(),
+        username: input.username.trim().toLowerCase(),
         role: input.role,
       },
-      sensitiveInputs: [input.password, input.confirmPassword],
+      sensitiveInputs: [input.password],
     })
 
     const member = await executePortalRouteCommand({

@@ -6,9 +6,9 @@ import { expect, test } from '@playwright/test'
 import { E2E_META_PAGE_ID } from './admin-portal-facebook.constants'
 import { createSignedFacebookMessage, FacebookE2EHarness } from './admin-portal-facebook.support'
 
-const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
+const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.SEED_ADMIN_USERNAME
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
-if (!adminEmail?.trim() || !adminPassword?.trim()) {
+if (!adminUsername?.trim() || !adminPassword?.trim()) {
   throw new Error('Facebook Messenger E2E requires launcher-validated administrator credentials')
 }
 
@@ -164,7 +164,7 @@ test.describe.serial('FB-IN-01 Facebook Messenger durable closure', () => {
 
     const leadsPath = `/dashboard/leads?q=${encodeURIComponent(senderExternalId)}`
     await page.goto(`/dashboard/login?returnTo=${encodeURIComponent(leadsPath)}`)
-    await page.getByRole('textbox', { name: '邮箱' }).fill(adminEmail)
+    await page.getByRole('textbox', { name: '账号' }).fill(adminUsername)
     await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
     await page.getByRole('button', { name: '登录后台' }).click()
     await expect(page).toHaveURL(new RegExp(`/dashboard/leads\\?q=${senderExternalId}$`))
@@ -263,7 +263,7 @@ test.describe.serial('FB-IN-01 Facebook Messenger durable closure', () => {
     await page.goto(
       `/dashboard/login?returnTo=${encodeURIComponent(`/dashboard/conversations?conversation=${state.conversation.publicId}`)}`,
     )
-    await page.getByRole('textbox', { name: '邮箱' }).fill(adminEmail)
+    await page.getByRole('textbox', { name: '账号' }).fill(adminUsername)
     await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
     await page.getByRole('button', { name: '登录后台' }).click()
     await expect(page).toHaveURL(

@@ -36,31 +36,25 @@ describe.sequential('Portal overview access', () => {
     })
 
     const suffix = randomUUID()
-    admin = await payload.create({
-      collection: 'users',
+    admin = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `portal-overview-admin-${suffix}@example.invalid`,
+      draft: true, data: { username: `portal-overview-admin-${suffix}`,
         password: 'portal-overview-integration-password',
         role: 'admin',
       },
       overrideAccess: true,
     })
-    operator = await payload.create({
-      collection: 'users',
+    operator = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `portal-overview-operator-${suffix}@example.invalid`,
+      draft: true, data: { username: `portal-overview-operator-${suffix}`,
         password: 'portal-overview-integration-password',
         role: 'operator',
       },
       overrideAccess: true,
     })
-    sales = await payload.create({
-      collection: 'users',
+    sales = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `portal-overview-sales-${suffix}@example.invalid`,
+      draft: true, data: { username: `portal-overview-sales-${suffix}`,
         password: 'portal-overview-integration-password',
         role: 'sales',
       },

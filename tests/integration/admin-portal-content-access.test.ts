@@ -45,11 +45,9 @@ describe.sequential('Portal website content access', () => {
     const suffix = randomUUID()
     queryToken = `P06-${suffix}`
     for (const role of ['admin', 'operator', 'sales'] as const) {
-      const user = await payload.create({
-        collection: 'users',
+      const user = await payload.create({ collection: 'users',
         context: { skipAudit: true },
-        data: {
-          email: `portal-content-${role}-${suffix}@example.invalid`,
+        draft: true, data: { username: `portal-content-${role}-${suffix}`,
           password: 'portal-content-integration-password',
           role,
         },
@@ -177,7 +175,7 @@ describe.sequential('Portal website content access', () => {
       payload,
       query: { page: 1, q: queryToken, status: 'all', type: 'pages' },
       req: await requestFor(sales),
-      role: 'sales',
+      user: { role: 'sales' },
     })
 
     expect(result).toEqual({ state: 'forbidden', summary: null })

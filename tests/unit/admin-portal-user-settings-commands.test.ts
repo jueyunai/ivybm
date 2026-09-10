@@ -18,6 +18,7 @@ import {
   MANUAL_LOCK_UNTIL,
   UserSettingsCommandError,
 } from '@/admin-portal/modules/settings/userSettingsContracts'
+import { PORTAL_PERMISSION_PRESETS } from '@/access/roles'
 
 const mockReq = {
   transactionID: Promise.resolve('test-tx-1'),
@@ -31,14 +32,14 @@ describe('Portal team account and user settings commands', () => {
         docs: [
           {
             createdAt: '2026-08-01T00:00:00.000Z',
-            email: 'admin@example.com',
+            username: 'admin.example',
             id: 1,
             role: 'admin',
             updatedAt: '2026-08-01T00:00:00.000Z',
           },
           {
             createdAt: '2026-08-02T00:00:00.000Z',
-            email: 'sales@example.com',
+            username: 'sales.example',
             id: 2,
             role: 'sales',
             updatedAt: '2026-08-02T00:00:00.000Z',
@@ -49,7 +50,7 @@ describe('Portal team account and user settings commands', () => {
 
     const members = await getPortalTeamMembers({ payload, req: mockReq })
     expect(members).toHaveLength(2)
-    expect(members[0].email).toBe('admin@example.com')
+    expect(members[0].username).toBe('admin.example')
     expect(members[1].role).toBe('sales')
   })
 
@@ -57,7 +58,7 @@ describe('Portal team account and user settings commands', () => {
     const payload = {
       create: vi.fn().mockResolvedValue({
         createdAt: '2026-08-25T00:00:00.000Z',
-        email: 'newuser@example.com',
+        username: 'newuser.example',
         id: 3,
         role: 'operator',
         updatedAt: '2026-08-25T00:00:00.000Z',
@@ -68,8 +69,8 @@ describe('Portal team account and user settings commands', () => {
     const member = await createTeamMember({
       actor: { id: 1, role: 'admin' },
       input: {
-        confirmPassword: 'InitialPassword123!',
-        email: '  NewUser@example.com  ',
+        permissions: PORTAL_PERMISSION_PRESETS.operator,
+        username: 'newuser.example',
         password: 'InitialPassword123!',
         role: 'operator',
       },
@@ -80,18 +81,19 @@ describe('Portal team account and user settings commands', () => {
     expect(payload.create).toHaveBeenCalledWith({
       collection: 'users',
       data: {
-        email: 'newuser@example.com',
+        permissions: PORTAL_PERMISSION_PRESETS.operator,
+        username: 'newuser.example',
         password: 'InitialPassword123!',
         role: 'operator',
       },
       overrideAccess: false,
       req: mockReq,
     })
-    expect(member.email).toBe('newuser@example.com')
+    expect(member.username).toBe('newuser.example')
     expect(member.role).toBe('operator')
   })
 
-  it('rejects creating a team member when email already exists', async () => {
+  it('rejects creating a team member when username already exists', async () => {
     const payload = {
       find: vi.fn().mockResolvedValue({ totalDocs: 1 }),
     } as unknown as Payload
@@ -100,8 +102,8 @@ describe('Portal team account and user settings commands', () => {
       createTeamMember({
         actor: { id: 1, role: 'admin' },
         input: {
-          confirmPassword: 'InitialPassword123!',
-          email: 'existing@example.com',
+        permissions: PORTAL_PERMISSION_PRESETS.sales,
+          username: 'existing.example',
           password: 'InitialPassword123!',
           role: 'sales',
         },
@@ -110,18 +112,18 @@ describe('Portal team account and user settings commands', () => {
       }),
     ).rejects.toEqual(
       expect.objectContaining<Partial<UserSettingsCommandError>>({
-        code: 'email-already-exists',
+        code: 'username-already-exists',
         status: 409,
       }),
     )
   })
 
-  it('maps a concurrent database email conflict to email-already-exists', async () => {
+  it('maps a concurrent database username conflict to username-already-exists', async () => {
     const payload = {
       create: vi.fn().mockRejectedValue(
         new ValidationError({
           collection: 'users',
-          errors: [{ message: 'localized unique error', path: 'email', tableName: 'users' }],
+          errors: [{ message: 'localized unique error', path: 'username', tableName: 'users' }],
         }),
       ),
       find: vi.fn().mockResolvedValue({ totalDocs: 0 }),
@@ -131,8 +133,8 @@ describe('Portal team account and user settings commands', () => {
       createTeamMember({
         actor: { id: 1, role: 'admin' },
         input: {
-          confirmPassword: 'InitialPassword123!',
-          email: 'raced@example.com',
+        permissions: PORTAL_PERMISSION_PRESETS.sales,
+          username: 'raced.example',
           password: 'InitialPassword123!',
           role: 'sales',
         },
@@ -141,7 +143,7 @@ describe('Portal team account and user settings commands', () => {
       }),
     ).rejects.toEqual(
       expect.objectContaining<Partial<UserSettingsCommandError>>({
-        code: 'email-already-exists',
+        code: 'username-already-exists',
         status: 409,
       }),
     )
@@ -175,11 +177,11 @@ describe('Portal team account and user settings commands', () => {
     )
   })
 
-  it('maps a concurrent email update conflict to email-already-exists', async () => {
+  it('maps a concurrent username update conflict to username-already-exists', async () => {
     const payload = {
       find: vi.fn().mockResolvedValue({ totalDocs: 0 }),
       findByID: vi.fn().mockResolvedValue({
-        email: 'before@example.com',
+        username: 'before.example',
         id: 2,
         role: 'sales',
         updatedAt: '2026-08-25T00:00:00.000Z',
@@ -192,7 +194,7 @@ describe('Portal team account and user settings commands', () => {
         actor: { id: 1, role: 'admin' },
         id: 2,
         input: {
-          email: 'raced@example.com',
+          username: 'raced.example',
           updatedAt: '2026-08-25T00:00:00.000Z',
         },
         payload,
@@ -200,7 +202,7 @@ describe('Portal team account and user settings commands', () => {
       }),
     ).rejects.toEqual(
       expect.objectContaining<Partial<UserSettingsCommandError>>({
-        code: 'email-already-exists',
+        code: 'username-already-exists',
         status: 409,
       }),
     )
@@ -217,7 +219,7 @@ describe('Portal team account and user settings commands', () => {
         },
       },
       findByID: vi.fn().mockResolvedValue({
-        email: 'lastadmin@example.com',
+        username: 'lastadmin.example',
         id: 1,
         role: 'admin',
         updatedAt: '2026-08-25T00:00:00.000Z',
@@ -248,7 +250,7 @@ describe('Portal team account and user settings commands', () => {
   it('prevents self-password-reset, self-lock, and self-deletion', async () => {
     const payload = {
       findByID: vi.fn().mockResolvedValue({
-        email: 'admin@example.com',
+        username: 'admin.example',
         id: 1,
         role: 'admin',
         updatedAt: '2026-08-25T00:00:00.000Z',
@@ -293,7 +295,7 @@ describe('Portal team account and user settings commands', () => {
       deleteTeamMember({
         actor: { id: 1, role: 'admin' },
         id: 1,
-        input: { confirmEmail: 'admin@example.com', updatedAt: '2026-08-25T00:00:00.000Z' },
+        input: { confirmUsername: 'admin.example', updatedAt: '2026-08-25T00:00:00.000Z' },
         payload,
         req: mockReq,
       }),
@@ -308,7 +310,7 @@ describe('Portal team account and user settings commands', () => {
   it('rejects stale updatedAt concurrency conflict on update, reset password, lock, unlock, and delete', async () => {
     const payload = {
       findByID: vi.fn().mockResolvedValue({
-        email: 'user@example.com',
+        username: 'user.example',
         id: 2,
         role: 'operator',
         updatedAt: '2026-08-25T12:00:00.000Z',
@@ -370,7 +372,7 @@ describe('Portal team account and user settings commands', () => {
       deleteTeamMember({
         actor: { id: 1, role: 'admin' },
         id: 2,
-        input: { confirmEmail: 'user@example.com', updatedAt: staleVersion },
+        input: { confirmUsername: 'user.example', updatedAt: staleVersion },
         payload,
         req: mockReq,
       }),
@@ -479,13 +481,13 @@ describe('Portal team account and user settings commands', () => {
       },
       payload,
       req: mockReq,
-      user: { email: 'self@example.com', id: 3, role: 'sales' },
+      user: { username: 'self.example', id: 3, role: 'sales' },
     })
 
     expect(result).toEqual({ success: true })
     expect(payload.login).toHaveBeenCalledWith({
       collection: 'users',
-      data: { email: 'self@example.com', password: 'OldPassword123!' },
+      data: { username: 'self.example', password: 'OldPassword123!' },
       req: mockReq,
     })
     expect(payload.update).toHaveBeenCalledWith({
@@ -512,7 +514,7 @@ describe('Portal team account and user settings commands', () => {
         },
         payload,
         req: mockReq,
-        user: { email: 'self@example.com', id: 3, role: 'sales' },
+        user: { username: 'self.example', id: 3, role: 'sales' },
       }),
     ).rejects.toEqual(
       expect.objectContaining<Partial<UserSettingsCommandError>>({
@@ -530,7 +532,7 @@ describe('Portal team account and user settings commands', () => {
         },
         payload,
         req: mockReq,
-        user: { email: 'self@example.com', id: 3, role: 'sales' },
+        user: { username: 'self.example', id: 3, role: 'sales' },
       }),
     ).rejects.toEqual(
       expect.objectContaining<Partial<UserSettingsCommandError>>({
@@ -562,7 +564,7 @@ describe('Portal team account and user settings commands', () => {
         },
         payload,
         req: mockReq,
-        user: { email: 'self@example.com', id: 3, role: 'sales' },
+        user: { username: 'self.example', id: 3, role: 'sales' },
       }),
     ).rejects.toThrow('database unavailable')
   })
@@ -586,7 +588,7 @@ describe('Portal team account and user settings commands', () => {
         .fn()
         .mockResolvedValueOnce({
           createdAt: '2026-08-25T00:00:00.000Z',
-          email: 'op@example.com',
+          username: 'op.example',
           id: 2,
           lockUntil: MANUAL_LOCK_UNTIL,
           role: 'operator',
@@ -594,7 +596,7 @@ describe('Portal team account and user settings commands', () => {
         })
         .mockResolvedValueOnce({
           createdAt: '2026-08-25T00:00:00.000Z',
-          email: 'op@example.com',
+          username: 'op.example',
           id: 2,
           lockUntil: null,
           role: 'operator',

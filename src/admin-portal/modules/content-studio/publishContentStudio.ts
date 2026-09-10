@@ -5,7 +5,7 @@ import { sql, type PostgresAdapter } from '@payloadcms/db-postgres'
 import type { Payload, PayloadRequest } from 'payload'
 
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
-import { getRoleUser } from '@/access/roles'
+import { getRoleUser, hasPortalPermission } from '@/access/roles'
 import { getSiteOrigin } from '@/lib/seo'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import {
@@ -394,7 +394,7 @@ export const publishContentStudioNow = async ({
     )
   }
   const actor = getRoleUser(req.user)
-  if (!actor || (actor.role !== 'admin' && actor.role !== 'operator')) {
+  if (!actor || !hasPortalPermission(actor, 'contentStudio', 'edit')) {
     throw new ContentStudioCommandError(
       'content-studio-forbidden',
       'Content Studio access denied',

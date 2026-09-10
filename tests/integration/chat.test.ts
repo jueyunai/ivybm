@@ -39,31 +39,25 @@ describe.sequential('Task 9 conversation persistence', () => {
 
   it('stores a conversation, message and handoff while enforcing assigned sales access', async () => {
     const suffix = randomUUID()
-    const operator = await payload.create({
-      collection: 'users',
+    const operator = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task9-operator-${suffix}@example.invalid`,
+      draft: true, data: { username: `task9-operator-${suffix}`,
         password: 'task9-operator-integration-password',
         role: 'operator',
       },
       overrideAccess: true,
     })
-    const assignedSales = await payload.create({
-      collection: 'users',
+    const assignedSales = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task9-sales-${suffix}@example.invalid`,
+      draft: true, data: { username: `task9-sales-${suffix}`,
         password: 'task9-assigned-sales-password',
         role: 'sales',
       },
       overrideAccess: true,
     })
-    const otherSales = await payload.create({
-      collection: 'users',
+    const otherSales = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task9-other-${suffix}@example.invalid`,
+      draft: true, data: { username: `task9-other-${suffix}`,
         password: 'task9-other-sales-password',
         role: 'sales',
       },
@@ -181,21 +175,17 @@ describe.sequential('Task 9 conversation persistence', () => {
 
   it('runs the real repository with high-intent lead creation and one concurrent takeover winner', async () => {
     const suffix = randomUUID()
-    const firstOperator = await payload.create({
-      collection: 'users',
+    const firstOperator = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task9-first-${suffix}@example.invalid`,
+      draft: true, data: { username: `task9-first-${suffix}`,
         password: 'task9-first-operator-password',
         role: 'operator',
       },
       overrideAccess: true,
     })
-    const secondOperator = await payload.create({
-      collection: 'users',
+    const secondOperator = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task9-second-${suffix}@example.invalid`,
+      draft: true, data: { username: `task9-second-${suffix}`,
         password: 'task9-second-operator-password',
         role: 'operator',
       },

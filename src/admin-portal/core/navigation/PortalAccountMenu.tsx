@@ -36,7 +36,7 @@ export function PortalAccountMenu({
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const itemRefs = useRef<Array<HTMLElement | null>>([])
-  const displayName = user.email.split('@')[0] || user.email
+  const displayName = user.username
   const roleLabel = {
     admin: messages.shell.roleAdmin,
     operator: messages.shell.roleOperator,

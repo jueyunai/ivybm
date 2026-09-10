@@ -93,7 +93,7 @@ describe('Portal Content Studio', () => {
       payload: { find } as unknown as Payload,
       query: { page: 1, platform: 'all', q: '', status: 'all' },
       req,
-      role: 'operator',
+      user: { role: 'operator' },
     })
 
     expect(page.summary?.items[0]?.assets[0]).toMatchObject({

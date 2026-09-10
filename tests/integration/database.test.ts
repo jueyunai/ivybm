@@ -84,14 +84,11 @@ describe('PostgreSQL foundation', () => {
   })
 
   it('writes and reads a minimal Payload record', async () => {
-    const email = `integration-${randomUUID()}@example.invalid`
+    const username = `integration-${randomUUID().slice(0, 8)}`
     const created = await payload.create({
       collection: 'users',
-      data: {
-        email,
-        password: 'integration-test-only-password',
-        role: 'sales',
-      },
+      draft: true,
+      data: { username, password: 'integration-test-only-password', role: 'sales' },
       overrideAccess: true,
     })
 
@@ -102,7 +99,7 @@ describe('PostgreSQL foundation', () => {
         overrideAccess: true,
       })
 
-      expect(found.email).toBe(email)
+      expect(found.username).toBe(username)
     } finally {
       await payload.delete({
         collection: 'users',

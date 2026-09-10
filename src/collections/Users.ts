@@ -1,13 +1,24 @@
 import { ValidationError, type CollectionBeforeValidateHook, type CollectionConfig } from 'payload'
 
-import { admins, adminsOrSelf, authenticated, USER_ROLES } from '../access/roles'
+import {
+  admins,
+  adminsOrSelf,
+  authenticated,
+  normalizePortalPermissions,
+  USER_ROLES,
+} from '../access/roles'
 import {
   writeAuditLogAfterChange,
   writeAuditLogAfterDelete,
   writeLoginAuditLog,
 } from '../hooks/writeAuditLog'
 
-const enforceUserPolicy: CollectionBeforeValidateHook = async ({ data, operation, req }) => {
+const enforceUserPolicy: CollectionBeforeValidateHook = async ({
+  data,
+  operation,
+  originalDoc,
+  req,
+}) => {
   if (!data) {
     return data
   }
@@ -38,6 +49,11 @@ const enforceUserPolicy: CollectionBeforeValidateHook = async ({ data, operation
     }
   }
 
+  const permissions =
+    data.permissions ?? (operation === 'update' ? originalDoc?.permissions : undefined)
+  const role = data.role ?? originalDoc?.role
+  data.permissions = normalizePortalPermissions(permissions, role)
+
   return data
 }
 
@@ -51,7 +67,7 @@ export const Users: CollectionConfig = {
     update: adminsOrSelf,
   },
   admin: {
-    useAsTitle: 'email',
+    useAsTitle: 'username',
   },
   auth: {
     cookies: {
@@ -62,6 +78,11 @@ export const Users: CollectionConfig = {
     maxLoginAttempts: 5,
     tokenExpiration: 2 * 60 * 60,
     useSessions: true,
+    loginWithUsername: {
+      allowEmailLogin: false,
+      requireEmail: false,
+      requireUsername: true,
+    },
   },
   fields: [
     {
@@ -74,6 +95,11 @@ export const Users: CollectionConfig = {
       options: [...USER_ROLES],
       required: true,
       saveToJWT: true,
+    },
+    {
+      name: 'permissions',
+      type: 'json',
+      required: true,
     },
   ],
   hooks: {

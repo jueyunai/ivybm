@@ -1,6 +1,6 @@
 import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
-import { getRoleUser } from '@/access/roles'
+import { getRoleUser, hasPortalPermission } from '@/access/roles'
 import config from '@/payload.config'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
@@ -12,7 +12,10 @@ export interface AuthorizedContentRequest {
   req: PayloadRequest
 }
 
-export async function authorizeContentRequest(request: Request): Promise<AuthorizedContentRequest> {
+export async function authorizeContentRequest(
+  request: Request,
+  options: { action?: 'view' | 'edit' } = {},
+): Promise<AuthorizedContentRequest> {
   if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
     throw new ContentCommandError('portal-disabled', 'The Portal is disabled', 503)
   }
@@ -26,7 +29,7 @@ export async function authorizeContentRequest(request: Request): Promise<Authori
   if (!user || !actor || (user as { collection?: string }).collection !== 'users') {
     throw new ContentCommandError('content-unauthenticated', 'Authentication required', 401)
   }
-  if (actor.role !== 'admin' && actor.role !== 'operator') {
+  if (!hasPortalPermission(actor, 'content', options.action ?? 'view')) {
     throw new ContentCommandError('content-forbidden', 'Website content access denied', 403)
   }
   const req = await createLocalReq({ user }, payload)

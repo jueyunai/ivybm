@@ -116,11 +116,11 @@ const requiresFacebookAdminCredentials = plan.specs.some(
     spec.endsWith('/admin-portal-facebook-publishing.spec.ts'),
 )
 if (requiresFacebookAdminCredentials) {
-  const adminEmail = (process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL)?.trim()
+  const adminUsername = (process.env.E2E_ADMIN_USERNAME ?? process.env.SEED_ADMIN_USERNAME)?.trim()
   const adminPassword = (process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD)?.trim()
-  if (!adminEmail || !adminPassword) {
+  if (!adminUsername || !adminPassword) {
     throw new Error(
-      'Selected Facebook E2E closure requires non-production E2E_ADMIN_EMAIL/E2E_ADMIN_PASSWORD or SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD',
+      'Selected Facebook E2E closure requires non-production E2E_ADMIN_USERNAME/E2E_ADMIN_PASSWORD or SEED_ADMIN_USERNAME/SEED_ADMIN_PASSWORD',
     )
   }
 }

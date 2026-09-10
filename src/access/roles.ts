@@ -6,13 +6,105 @@ export type UserRole = (typeof USER_ROLES)[number]
 
 export type RoleUser = {
   id: number | string
+  permissions?: unknown
   role: UserRole
 }
 
 export type AccessAction = 'create' | 'read' | 'update' | 'delete'
 
 export type AccessResource =
-  'users' | 'content' | 'knowledge' | 'platformAccounts' | 'conversations' | 'leads'
+  | 'users'
+  | 'content'
+  | 'contentStudio'
+  | 'knowledge'
+  | 'platformAccounts'
+  | 'conversations'
+  | 'leads'
+
+export const PERMISSION_MODULE_IDS = [
+  'conversations',
+  'leads',
+  'content',
+  'media',
+  'contentStudio',
+  'knowledge',
+  'platforms',
+  'operations',
+  'settings',
+] as const
+
+export type PermissionModuleId = (typeof PERMISSION_MODULE_IDS)[number]
+
+export interface ModulePermission {
+  edit: boolean
+  view: boolean
+}
+
+export type PortalUserPermissions = Record<PermissionModuleId, ModulePermission>
+
+export type PermissionMatrixInput = Partial<Record<PermissionModuleId, unknown>>
+
+const rolePermissions = (
+  role: UserRole,
+  editableModules: PermissionModuleId[],
+): PortalUserPermissions =>
+  Object.fromEntries(
+    PERMISSION_MODULE_IDS.map((moduleId) => [
+      moduleId,
+      {
+        edit: editableModules.includes(moduleId),
+        view: role === 'sales' ? editableModules.includes(moduleId) : true,
+      },
+    ]),
+  ) as PortalUserPermissions
+
+export const PORTAL_PERMISSION_PRESETS = {
+  admin: rolePermissions('admin', [...PERMISSION_MODULE_IDS]),
+  operator: rolePermissions('operator', [
+    'conversations',
+    'leads',
+    'content',
+    'media',
+    'contentStudio',
+    'knowledge',
+    'settings',
+  ]),
+  sales: rolePermissions('sales', ['conversations', 'leads', 'settings']),
+} as const satisfies Record<UserRole, PortalUserPermissions>
+
+const normalizeModulePermission = (value: unknown): ModulePermission => {
+  if (!value || typeof value !== 'object') return { edit: false, view: false }
+  const candidate = value as { edit?: unknown; view?: unknown }
+  const view = candidate.view === true
+  return { edit: view && candidate.edit === true, view }
+}
+
+export const normalizePortalPermissions = (
+  value: unknown,
+  role: UserRole = 'sales',
+): PortalUserPermissions => {
+  const template = PORTAL_PERMISSION_PRESETS[role]
+  const source = value && typeof value === 'object' ? (value as PermissionMatrixInput) : {}
+
+  return Object.fromEntries(
+    PERMISSION_MODULE_IDS.map((moduleId) => [
+      moduleId,
+      source[moduleId] === undefined
+        ? template[moduleId]
+        : normalizeModulePermission(source[moduleId]),
+    ]),
+  ) as PortalUserPermissions
+}
+
+export const hasPortalPermission = (
+  user: Pick<RoleUser, 'permissions' | 'role'> | null | undefined,
+  moduleId: PermissionModuleId,
+  action: 'view' | 'edit',
+): boolean => {
+  if (!user) return false
+  const matrix = normalizePortalPermissions(user.permissions, user.role)
+  return matrix[moduleId][action]
+}
 
 type ResolveRoleAccessArgs = {
   action: AccessAction
@@ -41,12 +133,31 @@ const assignedToUser = (user: RoleUser): Where => ({
   },
 })
 
+const permissionModuleFor = (resource: AccessResource): PermissionModuleId => {
+  switch (resource) {
+    case 'contentStudio':
+      return 'contentStudio'
+    case 'platformAccounts':
+      return 'platforms'
+    case 'users':
+      return 'settings'
+    default:
+      return resource
+  }
+}
+
 export const resolveRoleAccess = ({
   action,
   resource,
   user,
 }: ResolveRoleAccessArgs): AccessResult => {
   if (!user) {
+    return false
+  }
+
+  if (
+    !hasPortalPermission(user, permissionModuleFor(resource), action === 'read' ? 'view' : 'edit')
+  ) {
     return false
   }
 
