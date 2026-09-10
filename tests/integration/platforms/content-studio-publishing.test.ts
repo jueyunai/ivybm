@@ -468,11 +468,16 @@ describe.sequential('Content Studio immediate platform publication', () => {
       ),
     ).toBe(true)
     const instagramJob = jobs.docs.find((job) => job.platform === 'instagram')
+    const linkedInJob = jobs.docs.find((job) => job.platform === 'linkedin')
     const requestSnapshot = instagramJob?.requestSnapshot as { text?: unknown } | undefined
     const providerCheckpoint = instagramJob?.providerCheckpoint as { caption?: unknown } | undefined
+    const linkedInCheckpoint = linkedInJob?.providerCheckpoint as
+      | { checkpoint?: { commentary?: unknown } }
+      | undefined
     expect(content.body).toBe('Approved facade update fac\u0327ade\r\nsecond line')
     expect(requestSnapshot?.text).toBe('Approved facade update façade\nsecond line')
     expect(providerCheckpoint?.caption).toBe(requestSnapshot?.text)
+    expect(linkedInCheckpoint?.checkpoint?.commentary).toBe(requestSnapshot?.text)
     expect(new Set(jobs.docs.map((job) => job.idempotencyKey)).size).toBe(3)
 
     const queued = await pool().query<{ payload: Record<string, unknown> }>(
@@ -487,6 +492,32 @@ describe.sequential('Content Studio immediate platform publication', () => {
           jobPayload.expectedExecutionRevision === 0,
       ),
     ).toBe(true)
+  })
+
+  it.each([
+    ['tab', 'caption\twith tab'],
+    ['C1 control', 'caption\u0085with control'],
+    ['line separator', 'caption\u2028with separator'],
+    ['paragraph separator', 'caption\u2029with separator'],
+    ['2,200-character platform overflow', 'x'.repeat(2_200)],
+  ])('rejects an Instagram caption containing %s before creating a job', async (_case, text) => {
+    const content = await createApprovedContent(text)
+    const before = await pool().query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM publish_jobs',
+    )
+
+    await expect(
+      invoke({
+        content,
+        idempotencyKey: `portal-content-studio:instagram-caption:${randomUUID()}`,
+        targetAccountIds: [accountIDs[1]!],
+      }),
+    ).rejects.toMatchObject({ code: 'content-studio-invalid-input', status: 400 })
+
+    const after = await pool().query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM publish_jobs',
+    )
+    expect(after.rows[0]?.count).toBe(before.rows[0]?.count)
   })
 
   it('lets an operator publish through the server authority without PlatformAccounts read access', async () => {

@@ -304,7 +304,7 @@ const requirePostUrn = (value: unknown, fieldName: string): string => {
   return `${matchedNamespace}${id}`
 }
 
-const requireCommentary = (value: unknown): string => {
+export const normalizeLinkedInCommentary = (value: unknown): string => {
   if (typeof value !== 'string') {
     throw new Error('LinkedIn commentary must be a string')
   }
@@ -446,7 +446,7 @@ export const buildLinkedInTextPostRequest = (
   input: LinkedInTextPostRequestInput,
 ): LinkedInPublishingHttpRequest => {
   const author = authorUrnFromInput(input?.author)
-  const commentary = requireCommentary(input?.commentary)
+  const commentary = normalizeLinkedInCommentary(input?.commentary)
   const linkedInVersion = requireLinkedInVersion(input?.linkedInVersion)
   const body: LinkedInTextPostBody = {
     author,
@@ -474,7 +474,7 @@ export const buildLinkedInImagePostRequest = (
   input: LinkedInImagePostRequestInput,
 ): LinkedInPublishingHttpRequest => {
   const author = authorUrnFromInput(input?.author)
-  const commentary = requireCommentary(input?.commentary)
+  const commentary = normalizeLinkedInCommentary(input?.commentary)
   const linkedInVersion = requireLinkedInVersion(input?.linkedInVersion)
   const imageUrn = requireImageUrn(input?.image?.imageUrn)
   const altText = normalizeAltText(input?.image?.altText)

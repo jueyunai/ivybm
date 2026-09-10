@@ -6,7 +6,11 @@ import {
   ProviderPublicationTransportError,
 } from '../publishingResult'
 import type { LinkedInImageUploadTicket, LinkedInPublishingTransport } from './publishingOutbound'
-import { linkedInPostPermalink, type LinkedInAuthorUrnInput } from './publishingRequests'
+import {
+  linkedInPostPermalink,
+  normalizeLinkedInCommentary,
+  type LinkedInAuthorUrnInput,
+} from './publishingRequests'
 
 export const LINKEDIN_IMAGE_PUBLISHING_STAGES = [
   'scheduled',
@@ -147,6 +151,15 @@ const boundedString = (value: unknown, maxLength: number): string | undefined =>
   return normalized
 }
 
+const normalizedCommentary = (value: unknown): string | undefined => {
+  try {
+    const commentary = normalizeLinkedInCommentary(value)
+    return commentary === value ? commentary : undefined
+  } catch {
+    return undefined
+  }
+}
+
 const normalizeAuthor = (input: unknown): LinkedInAuthorUrnInput | undefined => {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
   const author = input as Partial<LinkedInAuthorUrnInput>
@@ -210,7 +223,7 @@ const normalizeCheckpoint = (input: unknown): LinkedInImagePublishingCheckpoint 
   if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
   const checkpoint = input as Partial<LinkedInImagePublishingCheckpoint>
   const author = normalizeAuthor(checkpoint.author)
-  const commentary = boundedString(checkpoint.commentary, 3_000)
+  const commentary = normalizedCommentary(checkpoint.commentary)
   const altText =
     checkpoint.altText === undefined ? undefined : boundedString(checkpoint.altText, 300)
   const imageUrn =
