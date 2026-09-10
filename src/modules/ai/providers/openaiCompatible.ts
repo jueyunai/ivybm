@@ -222,11 +222,16 @@ export const createOpenAICompatibleProvider = (options: ProviderOptions): AiProv
       const responseInput =
         input.images && input.images.length > 0
           ? [
-              ...(input.input.trim() ? [{ text: input.input, type: 'input_text' as const }] : []),
-              ...input.images.map((image) => ({
-                image_url: `data:${image.mimeType};base64,${Buffer.from(image.data).toString('base64')}`,
-                type: 'input_image' as const,
-              })),
+              {
+                content: [
+                  ...(input.input.trim() ? [{ text: input.input, type: 'input_text' as const }] : []),
+                  ...input.images.map((image) => ({
+                    image_url: `data:${image.mimeType};base64,${Buffer.from(image.data).toString('base64')}`,
+                    type: 'input_image' as const,
+                  })),
+                ],
+                role: 'user' as const,
+              },
             ]
           : input.input
       const { body, requestId } = await requestJSON(

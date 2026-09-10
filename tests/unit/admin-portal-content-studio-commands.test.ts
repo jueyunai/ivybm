@@ -669,6 +669,103 @@ describe('Portal Content Studio draft commands', () => {
     )
   })
 
+  it('fails closed when autoGenerateImage is true but image generation fails', async () => {
+    const create = vi.fn()
+    const find = vi.fn(async () => ({ docs: [] }))
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        body: 'Post with AI image generation.',
+        imagePrompt: 'Facade rendering',
+        sourceReferences: [],
+        title: 'Facade showcase',
+      }),
+    })
+    const generateImage = vi.fn().mockRejectedValue(new Error('Provider image generation timeout'))
+
+    await expect(
+      generateContentStudioDraft({
+        input: {
+          assets: [],
+          autoGenerateImage: true,
+          brief: 'Promote panels.',
+          contentLocale: 'en',
+          idempotencyKey: 'portal-content-studio:fail-on-image-error',
+          knowledgeSources: [],
+          platform: 'linkedin',
+        },
+        payload: { create, find } as any,
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateImage, generateText }) as any,
+      }),
+    ).rejects.toMatchObject({
+      code: 'content-studio-image-unavailable',
+      status: 503,
+    })
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it('cleans up newly generated orphaned media if draft creation fails', async () => {
+    const deleteMedia = vi.fn().mockResolvedValue({})
+    const validPng = await sharp({
+      create: { background: '#1c2f46', channels: 3, height: 2, width: 2 },
+    })
+      .png()
+      .toBuffer()
+
+    const create = vi.fn(async ({ collection, data }: { collection: string; data: Record<string, unknown> }) => {
+      if (collection === 'media') {
+        return { ...data, filename: 'orphan.png', id: 99, mimeType: 'image/png' }
+      }
+      if (collection === 'audit-logs') {
+        return { id: 101 }
+      }
+      if (collection === 'generated-contents') {
+        throw new Error('Database constraint error during draft persistence')
+      }
+      return { id: 102 }
+    })
+    const find = vi.fn(async () => ({ docs: [] }))
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        body: 'Post with AI image generation.',
+        imagePrompt: 'Facade rendering',
+        sourceReferences: [],
+        title: 'Facade showcase',
+      }),
+    })
+    const generateImage = vi.fn().mockResolvedValue({
+      image: {
+        data: validPng,
+        mimeType: 'image/png',
+      },
+      model: 'dall-e-3',
+    })
+    readFileMock.mockResolvedValue(validPng)
+
+    await expect(
+      generateContentStudioDraft({
+        input: {
+          assets: [],
+          autoGenerateImage: true,
+          brief: 'Promote panels.',
+          contentLocale: 'en',
+          idempotencyKey: 'portal-content-studio:orphan-cleanup',
+          knowledgeSources: [],
+          platform: 'linkedin',
+        },
+        payload: { create, delete: deleteMedia, find } as any,
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateImage, generateText }) as any,
+      }),
+    ).rejects.toThrow('Database constraint error during draft persistence')
+
+    expect(deleteMedia).toHaveBeenCalledWith({
+      collection: 'media',
+      id: 99,
+      overrideAccess: true,
+    })
+  })
+
   it('keeps selected knowledge restricted to reviewed ready documents and exact references', async () => {
     const generationInput = {
       assets: [],

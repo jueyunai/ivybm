@@ -1,7 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import { ValidationError, type Payload, type PayloadRequest } from 'payload'
 
-import { DEFAULT_PERMISSIONS_FOR_ROLE } from './userSettingsContracts'
 import type { User } from '@/payload-types'
 import { getDatabaseForRequest } from '@/admin-portal/core/commands/portalCommandReceipts'
 
@@ -9,7 +8,6 @@ import {
   MANUAL_LOCK_UNTIL,
   selectPortalTeamMemberDTO,
   UserSettingsCommandError,
-  validateAccount,
   validateEmail,
   validatePassword,
   validateRole,
@@ -345,7 +343,7 @@ export const createTeamMember = async ({
   payload: Payload
   req: PayloadRequest
 }): Promise<PortalTeamMemberDTO> => {
-  const email = validateAccount(input.email)
+  const email = validateEmail(input.email)
   const password = validatePassword(input.password, 'Initial password')
   const confirmPassword = validatePassword(input.confirmPassword, 'Confirm initial password')
 
@@ -383,7 +381,6 @@ export const createTeamMember = async ({
       data: {
         email,
         password,
-        ...(input.permissions ? { permissions: input.permissions } : {}),
         role,
       } as never,
       overrideAccess: false,
@@ -423,14 +420,13 @@ export const updateTeamMember = async ({
   req: PayloadRequest
 }): Promise<PortalTeamMemberDTO> => {
   const updatedAt = validateUpdatedAt(input.updatedAt)
-  const email = input.email !== undefined ? validateAccount(input.email) : undefined
+  const email = input.email !== undefined ? validateEmail(input.email) : undefined
   const role = input.role !== undefined ? validateRole(input.role) : undefined
 
-  const permissions = input.permissions !== undefined ? input.permissions : undefined
-  if (email === undefined && role === undefined && permissions === undefined) {
+  if (email === undefined && role === undefined) {
     throw new UserSettingsCommandError(
       'invalid-input',
-      'At least email, role or permissions must be provided.',
+      'At least email or role must be provided.',
       400,
     )
   }

@@ -200,15 +200,6 @@ export interface UserAuthOperations {
 export interface User {
   id: number;
   role: 'admin' | 'operator' | 'sales';
-  permissions?:
-    | {
-        [k: string]: unknown;
-      }
-    | unknown[]
-    | string
-    | number
-    | boolean
-    | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -1844,7 +1835,6 @@ export interface PayloadMigration {
  */
 export interface UsersSelect<T extends boolean = true> {
   role?: T;
-  permissions?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;

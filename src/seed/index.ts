@@ -61,7 +61,9 @@ const seed = async (): Promise<void> => {
     }
 
     await seedContent(payload)
-    await seedPortalDemo(payload)
+    if (process.env.SEED_PORTAL_DEMO === 'true') {
+      await seedPortalDemo(payload)
+    }
     if (process.env.SEED_KNOWLEDGE_DEMO === 'true') {
       await seedKnowledgeDemo(payload)
     }

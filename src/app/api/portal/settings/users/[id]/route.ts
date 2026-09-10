@@ -39,7 +39,6 @@ export async function PATCH(request: Request, { params }: RouteContext): Promise
     const raw = await readUserSettingsJSON(request)
     const input: UpdateTeamMemberInput = {
       email: typeof raw.email === 'string' ? raw.email : undefined,
-      permissions: raw.permissions && typeof raw.permissions === 'object' ? (raw.permissions as any) : undefined,
       role: typeof raw.role === 'string' ? (raw.role as PortalTeamMemberRole) : undefined,
       updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
     }

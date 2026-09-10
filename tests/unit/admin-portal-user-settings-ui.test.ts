@@ -197,7 +197,7 @@ describe('Portal TeamMembersPanel UI', () => {
     fireEvent.click(trigger)
     expect(screen.getByRole('dialog', { name: '新增团队成员' })).toBeTruthy()
     const dialog = screen.getByRole('dialog', { name: '新增团队成员' })
-    expect(document.activeElement).toBe(screen.getByLabelText(/登录(账号|邮箱)/))
+    expect(document.activeElement).toBe(screen.getByLabelText('登录邮箱'))
     fireEvent.keyDown(dialog, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: '新增团队成员' })).toBeNull()
     await waitFor(() => {
@@ -205,7 +205,7 @@ describe('Portal TeamMembersPanel UI', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: /新增成员/ }))
-    fireEvent.change(screen.getByLabelText(/登录(账号|邮箱)/), {
+    fireEvent.change(screen.getByLabelText('登录邮箱'), {
       target: { value: 'duplicate@example.com' },
     })
     fireEvent.change(screen.getByLabelText('初始密码'), {
@@ -256,7 +256,7 @@ describe('Portal TeamMembersPanel UI', () => {
 
     const submitSameMember = () => {
       fireEvent.click(screen.getByRole('button', { name: /新增成员/ }))
-      fireEvent.change(screen.getByLabelText(/登录(账号|邮箱)/), {
+      fireEvent.change(screen.getByLabelText('登录邮箱'), {
         target: { value: createdMember.email },
       })
       fireEvent.change(screen.getByLabelText('初始密码'), {
@@ -323,7 +323,7 @@ describe('Portal TeamMembersPanel UI', () => {
 
     const operatorRow = screen.getByText('operator@example.com').closest('article')
     fireEvent.click(within(operatorRow as HTMLElement).getByRole('button', { name: '删除成员' }))
-    fireEvent.change(screen.getByLabelText(/登录(账号|邮箱)/), {
+    fireEvent.change(screen.getByLabelText('登录邮箱'), {
       target: { value: 'operator@example.com' },
     })
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
@@ -432,7 +432,7 @@ describe('Portal TeamMembersPanel UI', () => {
     expect((confirmDeleteBtn as HTMLButtonElement).disabled).toBe(true)
 
     // Type non-matching email
-    const emailInput = screen.getByLabelText(/登录(账号|邮箱)/)
+    const emailInput = screen.getByLabelText('登录邮箱')
     fireEvent.change(emailInput, { target: { value: 'wrong@example.com' } })
     expect((confirmDeleteBtn as HTMLButtonElement).disabled).toBe(true)
 
@@ -462,7 +462,7 @@ describe('Portal TeamMembersPanel UI', () => {
     const operatorRow = screen.getByText('operator@example.com').closest('article')
     expect(operatorRow).toBeTruthy()
     fireEvent.click(within(operatorRow as HTMLElement).getByRole('button', { name: '删除成员' }))
-    fireEvent.change(screen.getByLabelText(/登录(账号|邮箱)/), {
+    fireEvent.change(screen.getByLabelText('登录邮箱'), {
       target: { value: 'operator@example.com' },
     })
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }))

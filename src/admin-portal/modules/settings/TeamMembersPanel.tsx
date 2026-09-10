@@ -18,22 +18,14 @@ import {
   IconPlus,
   IconTrash,
   IconUsers,
-  IconX,
 } from '@tabler/icons-react'
 
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, StatusBadge, Surface, UiSelect } from '@/admin-portal/core/ui'
+import { Button, StatusBadge, Surface } from '@/admin-portal/core/ui'
 
-import {
-  DEFAULT_PERMISSIONS_FOR_ROLE,
-  PERMISSION_MODULES,
-  type PermissionModuleId,
-  type PortalTeamMemberDTO,
-  type PortalTeamMemberRole,
-  type PortalUserPermissions,
-} from './userSettingsContracts'
+import type { PortalTeamMemberDTO, PortalTeamMemberRole } from './userSettingsContracts'
 
 export interface TeamMembersPanelProps {
   currentUserId: number | string
@@ -164,7 +156,7 @@ function TeamMemberDialog({
         <Dialog.Overlay className="portal-modal-backdrop" />
         <Dialog.Content
           aria-describedby={description ? descriptionId : undefined}
-          className="portal-shell portal-surface portal-modal portal-modal--team"
+          className="portal-surface portal-modal"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
             returnFocusRef.current?.focus()
@@ -176,12 +168,10 @@ function TeamMemberDialog({
           onInteractOutside={(event) => event.preventDefault()}
           onOpenAutoFocus={(event) => {
             event.preventDefault()
-            const target =
-              contentRef.current?.querySelector<HTMLElement>('[data-dialog-initial-focus]') ??
-              contentRef.current?.querySelector<HTMLElement>(
-                'form input:not([disabled]), form select:not([disabled]), form button:not([disabled])',
-              )
-            target?.focus()
+            const firstField = contentRef.current?.querySelector<HTMLElement>(
+              '[data-dialog-initial-focus], input:not([disabled]), select:not([disabled]), button:not([disabled])',
+            )
+            firstField?.focus()
           }}
           ref={contentRef}
         >
@@ -192,18 +182,6 @@ function TeamMemberDialog({
             {description ? (
               <Dialog.Description id={descriptionId}>{description}</Dialog.Description>
             ) : null}
-            <Dialog.Close asChild>
-              <Button
-                aria-label="关闭弹窗"
-                className="portal-modal__close-btn"
-                disabled={busy}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <IconX aria-hidden="true" size={16} stroke={2} />
-              </Button>
-            </Dialog.Close>
           </header>
           {children}
         </Dialog.Content>
@@ -236,10 +214,6 @@ export function TeamMembersPanel({
   const [formPassword, setFormPassword] = useState('')
   const [formConfirmPassword, setFormConfirmPassword] = useState('')
   const [formConfirmEmail, setFormConfirmEmail] = useState('')
-  const [formPermissions, setFormPermissions] = useState<PortalUserPermissions>(
-    DEFAULT_PERMISSIONS_FOR_ROLE.sales,
-  )
-  const [permissionTemplate, setPermissionTemplate] = useState<string>('sales')
 
   const refresh = useCallback(async (): Promise<PortalTeamMemberDTO[]> => {
     const response = await fetch('/api/portal/settings/users', {
@@ -265,10 +239,8 @@ export function TeamMembersPanel({
     setSelectedMember(null)
     setFormEmail('')
     setFormRole('sales')
-    setPermissionTemplate('sales')
-    setFormPermissions(DEFAULT_PERMISSIONS_FOR_ROLE.sales)
-    setFormPassword('Ivybm@2026Pass!')
-    setFormConfirmPassword('Ivybm@2026Pass!')
+    setFormPassword('')
+    setFormConfirmPassword('')
     setFeedback(null)
     setModalMode('add')
   }
@@ -278,12 +250,6 @@ export function TeamMembersPanel({
     setSelectedMember(member)
     setFormEmail(member.email)
     setFormRole(member.role)
-    const perms = member.permissions ?? DEFAULT_PERMISSIONS_FOR_ROLE[member.role] ?? DEFAULT_PERMISSIONS_FOR_ROLE.sales
-    setFormPermissions(perms)
-    const isAdmin = JSON.stringify(perms) === JSON.stringify(DEFAULT_PERMISSIONS_FOR_ROLE.admin)
-    const isOperator = JSON.stringify(perms) === JSON.stringify(DEFAULT_PERMISSIONS_FOR_ROLE.operator)
-    const isSales = JSON.stringify(perms) === JSON.stringify(DEFAULT_PERMISSIONS_FOR_ROLE.sales)
-    setPermissionTemplate(isAdmin ? 'admin' : isOperator ? 'operator' : isSales ? 'sales' : 'custom')
     setFeedback(null)
     setModalMode('edit')
   }
@@ -392,72 +358,6 @@ export function TeamMembersPanel({
     return result
   }
 
-
-  const handleTemplateChange = (val: string) => {
-    setPermissionTemplate(val)
-    if (val === 'admin' || val === 'operator' || val === 'sales') {
-      setFormRole(val)
-      setFormPermissions(DEFAULT_PERMISSIONS_FOR_ROLE[val])
-    }
-  }
-
-  const handlePermissionToggle = (moduleId: PermissionModuleId, action: 'view' | 'edit') => {
-    setPermissionTemplate('custom')
-    setFormPermissions((prev) => {
-      const current = prev[moduleId] ?? { edit: false, view: false }
-      if (action === 'edit') {
-        const nextEdit = !current.edit
-        return {
-          ...prev,
-          [moduleId]: {
-            edit: nextEdit,
-            view: nextEdit ? true : current.view,
-          },
-        }
-      } else {
-        const nextView = !current.view
-        return {
-          ...prev,
-          [moduleId]: {
-            edit: nextView ? current.edit : false,
-            view: nextView,
-          },
-        }
-      }
-    })
-  }
-
-  const handleSelectAllPermissions = (enable: boolean) => {
-    setPermissionTemplate(enable ? 'admin' : 'custom')
-    if (enable) {
-      setFormRole('admin')
-      setFormPermissions(DEFAULT_PERMISSIONS_FOR_ROLE.admin)
-    } else {
-      const empty: Partial<PortalUserPermissions> = {}
-      for (const mod of PERMISSION_MODULES) {
-        empty[mod.id] = { edit: false, view: false }
-      }
-      setFormPermissions(empty as PortalUserPermissions)
-    }
-  }
-
-  const renderPermissionTags = (perms: PortalUserPermissions, role: PortalTeamMemberRole) => {
-    const isAll = PERMISSION_MODULES.every((m) => perms[m.id]?.view && perms[m.id]?.edit)
-    if (isAll) {
-      return <span className="portal-team-members__tag portal-team-members__tag--all">全部权限 (Admin)</span>
-    }
-    const tags = PERMISSION_MODULES.filter((m) => perms[m.id]?.view).map((m) => {
-      const p = perms[m.id]
-      const label = p.edit ? `${m.label}(查/改)` : `${m.label}(只读)`
-      return (
-        <span className="portal-team-members__tag" key={m.id}>
-          {label}
-        </span>
-      )
-    })
-    return tags.length ? tags : <span className="portal-team-members__tag portal-team-members__tag--none">未配置模块权限</span>
-  }
-
   const handleAddSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (formPassword !== formConfirmPassword) {
@@ -481,7 +381,6 @@ export function TeamMembersPanel({
           confirmPassword: formConfirmPassword,
           email: formEmail,
           password: formPassword,
-          permissions: formPermissions,
           role: formRole,
         }),
         credentials: 'same-origin',
@@ -534,7 +433,6 @@ export function TeamMembersPanel({
       const response = await fetch(`/api/portal/settings/users/${selectedMember.id}`, {
         body: JSON.stringify({
           email: formEmail,
-          permissions: formPermissions,
           role: formRole,
           updatedAt: selectedMember.updatedAt,
         }),
@@ -855,11 +753,6 @@ export function TeamMembersPanel({
                         {new Date(member.createdAt).toLocaleDateString()}
                       </span>
                     </div>
-                    {member.permissions ? (
-                      <div className="portal-team-members__perm-tags">
-                        {renderPermissionTags(member.permissions, member.role)}
-                      </div>
-                    ) : null}
                   </div>
 
                   <div className="portal-team-members__status">
@@ -950,118 +843,63 @@ export function TeamMembersPanel({
                 autoComplete="off"
                 data-dialog-initial-focus
                 onChange={(event) => setFormEmail(event.target.value)}
-                placeholder="例如 operator_ivy 或 sales@ivybm.com"
                 required
-                type="text"
+                type="email"
                 value={formEmail}
               />
             </span>
           </label>
 
-          <div className="portal-field">
-            <div className="portal-team-members__perm-header">
-              <span className="portal-field__label">模块与权限点配置</span>
-              <div className="portal-team-members__perm-quick-actions">
-                <Button
-                  onClick={() => handleSelectAllPermissions(true)}
-                  size="compact"
-                  type="button"
-                  variant="ghost"
-                >
-                  全选
-                </Button>
-                <Button
-                  onClick={() => handleSelectAllPermissions(false)}
-                  size="compact"
-                  type="button"
-                  variant="ghost"
-                >
-                  清空
-                </Button>
-              </div>
-            </div>
-
-            <div className="portal-team-members__template-row">
-              <span className="portal-team-members__template-label">预设权限模板:</span>
-              <UiSelect
-                ariaLabel="预设权限模板"
-                onChange={handleTemplateChange}
-                options={[
-                  { label: "业务人员模板 (Sales)", value: "sales" },
-                  { label: "运营人员模板 (Operator)", value: "operator" },
-                  { label: "管理员模板 (Admin 全权)", value: "admin" },
-                  { label: "自定义勾选配置", value: "custom" },
-                ]}
-                value={permissionTemplate}
-              />
-            </div>
-
-                        <div className="portal-team-members__perm-grid">
-              {PERMISSION_MODULES.map((mod) => {
-                const perm = formPermissions[mod.id] ?? { edit: false, view: false };
-                const isChecked = perm.view || perm.edit;
-                return (
-                  <div
-                    className={`portal-team-members__perm-card${isChecked ? " is-active" : ""}`}
-                    key={mod.id}
-                  >
-                    <div className="portal-team-members__perm-card-header">
-                      <strong>{mod.label}</strong>
-                      <small>{mod.description}</small>
-                    </div>
-                    <div className="portal-team-members__perm-card-actions">
-                      <label className="portal-team-members__check-label">
-                        <input
-                          aria-label={`${mod.label} 查看`}
-                          checked={perm.view}
-                          onChange={() => handlePermissionToggle(mod.id, "view")}
-                          type="checkbox"
-                        />
-                        <span>查看</span>
-                      </label>
-                      <label className="portal-team-members__check-label">
-                        <input
-                          aria-label={`${mod.label} 修改`}
-                          checked={perm.edit}
-                          onChange={() => handlePermissionToggle(mod.id, "edit")}
-                          type="checkbox"
-                        />
-                        <span>修改</span>
-                      </label>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <label className="portal-field">
+            <span className="portal-field__label">{messages.memberRole}</span>
+            <span className="portal-field__control">
+              <select
+                aria-label={messages.memberRole}
+                onChange={(event) => setFormRole(event.target.value as PortalTeamMemberRole)}
+                value={formRole}
+              >
+                <option value="sales">{messages.roleSalesOption}</option>
+                <option value="operator">{messages.roleOperatorOption}</option>
+                <option value="admin">{messages.roleAdminOption}</option>
+              </select>
+            </span>
+          </label>
 
           <label className="portal-field">
             <span className="portal-field__label">
               <span aria-hidden="true" className="portal-required" />
-              {messages.initialPassword}（明文显示，不少于12位）
+              {messages.initialPassword}
             </span>
             <span className="portal-field__control">
               <input
                 aria-label={messages.initialPassword}
                 maxLength={128}
                 minLength={12}
-                onChange={(event) => {
-                  setFormPassword(event.target.value);
-                  setFormConfirmPassword(event.target.value);
-                }}
-                placeholder="例如 Ivybm@2026Pass!"
+                onChange={(event) => setFormPassword(event.target.value)}
                 required
-                type="text"
+                type="password"
                 value={formPassword}
               />
             </span>
           </label>
-          <input
-            aria-label={messages.confirmInitialPassword}
-            tabIndex={-1}
-            type="hidden"
-            value={formConfirmPassword}
-          />
+
+          <label className="portal-field">
+            <span className="portal-field__label">
+              <span aria-hidden="true" className="portal-required" />
+              {messages.confirmInitialPassword}
+            </span>
+            <span className="portal-field__control">
+              <input
+                aria-label={messages.confirmInitialPassword}
+                maxLength={128}
+                minLength={12}
+                onChange={(event) => setFormConfirmPassword(event.target.value)}
+                required
+                type="password"
+                value={formConfirmPassword}
+              />
+            </span>
+          </label>
 
           <div className="portal-modal__actions">
             <Button
@@ -1096,90 +934,27 @@ export function TeamMembersPanel({
                 aria-label={messages.memberEmail}
                 data-dialog-initial-focus
                 onChange={(event) => setFormEmail(event.target.value)}
-                placeholder="例如 operator_ivy 或 sales@ivybm.com"
                 required
-                type="text"
+                type="email"
                 value={formEmail}
               />
             </span>
           </label>
 
-          <div className="portal-field">
-            <div className="portal-team-members__perm-header">
-              <span className="portal-field__label">模块与权限点配置</span>
-              <div className="portal-team-members__perm-quick-actions">
-                <Button
-                  onClick={() => handleSelectAllPermissions(true)}
-                  size="compact"
-                  type="button"
-                  variant="ghost"
-                >
-                  全选
-                </Button>
-                <Button
-                  onClick={() => handleSelectAllPermissions(false)}
-                  size="compact"
-                  type="button"
-                  variant="ghost"
-                >
-                  清空
-                </Button>
-              </div>
-            </div>
-
-            <div className="portal-team-members__template-row">
-              <span className="portal-team-members__template-label">预设权限模板:</span>
-              <UiSelect
-                ariaLabel="预设权限模板"
-                onChange={handleTemplateChange}
-                options={[
-                  { label: "业务人员模板 (Sales)", value: "sales" },
-                  { label: "运营人员模板 (Operator)", value: "operator" },
-                  { label: "管理员模板 (Admin 全权)", value: "admin" },
-                  { label: "自定义勾选配置", value: "custom" },
-                ]}
-                value={permissionTemplate}
-              />
-            </div>
-
-                        <div className="portal-team-members__perm-grid">
-              {PERMISSION_MODULES.map((mod) => {
-                const perm = formPermissions[mod.id] ?? { edit: false, view: false };
-                const isChecked = perm.view || perm.edit;
-                return (
-                  <div
-                    className={`portal-team-members__perm-card${isChecked ? " is-active" : ""}`}
-                    key={mod.id}
-                  >
-                    <div className="portal-team-members__perm-card-header">
-                      <strong>{mod.label}</strong>
-                      <small>{mod.description}</small>
-                    </div>
-                    <div className="portal-team-members__perm-card-actions">
-                      <label className="portal-team-members__check-label">
-                        <input
-                          aria-label={`${mod.label} 查看`}
-                          checked={perm.view}
-                          onChange={() => handlePermissionToggle(mod.id, "view")}
-                          type="checkbox"
-                        />
-                        <span>查看</span>
-                      </label>
-                      <label className="portal-team-members__check-label">
-                        <input
-                          aria-label={`${mod.label} 修改`}
-                          checked={perm.edit}
-                          onChange={() => handlePermissionToggle(mod.id, "edit")}
-                          type="checkbox"
-                        />
-                        <span>修改</span>
-                      </label>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <label className="portal-field">
+            <span className="portal-field__label">{messages.memberRole}</span>
+            <span className="portal-field__control">
+              <select
+                aria-label={messages.memberRole}
+                onChange={(event) => setFormRole(event.target.value as PortalTeamMemberRole)}
+                value={formRole}
+              >
+                <option value="sales">{messages.roleSalesOption}</option>
+                <option value="operator">{messages.roleOperatorOption}</option>
+                <option value="admin">{messages.roleAdminOption}</option>
+              </select>
+            </span>
+          </label>
 
           <div className="portal-modal__actions">
             <Button
@@ -1287,7 +1062,7 @@ export function TeamMembersPanel({
                 onChange={(event) => setFormConfirmEmail(event.target.value)}
                 placeholder={selectedMember?.email}
                 required
-                type="text"
+                type="email"
                 value={formConfirmEmail}
               />
             </span>

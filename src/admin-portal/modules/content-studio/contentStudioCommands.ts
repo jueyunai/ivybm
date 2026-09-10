@@ -917,6 +917,7 @@ export async function generateContentStudioDraft({
   })
 
   let finalAssetIDs = input.assets
+  let newlyGeneratedMediaId: number | null = null
   if (shouldAutoGenerateImage) {
     const rawRecord = asRecord(parsedJSON)
     const promptForImage =
@@ -935,9 +936,17 @@ export async function generateContentStudioDraft({
         req,
         resolveGateway,
       })
-      finalAssetIDs = [Number(imageResult.media.id)]
-    } catch {
-      // If auto image generation fails, fallback to draft without generated image
+      newlyGeneratedMediaId = Number(imageResult.media.id)
+      finalAssetIDs = [newlyGeneratedMediaId]
+    } catch (err) {
+      if (err instanceof ContentStudioCommandError) {
+        throw err
+      }
+      throw new ContentStudioCommandError(
+        'content-studio-image-generation-failed',
+        err instanceof Error ? err.message : 'Automatic image generation failed',
+        502,
+      )
     }
   }
 
@@ -958,6 +967,17 @@ export async function generateContentStudioDraft({
     })
     return { content: asGeneratedContentResult(document as LooseRecord), duplicate: false }
   } catch (error) {
+    if (newlyGeneratedMediaId !== null) {
+      try {
+        await payload.delete({
+          collection: 'media',
+          id: newlyGeneratedMediaId,
+          overrideAccess: true,
+        })
+      } catch {
+        // Best effort cleanup of orphaned media
+      }
+    }
     const concurrentDuplicate = await findExistingGeneratedDraft({
       actorID,
       fingerprint,
