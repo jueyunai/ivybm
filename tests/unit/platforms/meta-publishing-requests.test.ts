@@ -165,6 +165,18 @@ describe('Meta publishing request builders', () => {
     ).toThrow('Meta caption must be 2200 characters or fewer')
   })
 
+  it.each([
+    ['line separator', 'Facade\u2028caption'],
+    ['paragraph separator', 'Facade\u2029caption'],
+  ])('rejects an Instagram caption containing a %s', (_label, caption) => {
+    expect(() =>
+      buildInstagramMediaRequest({
+        ...validInstagramMediaInput(),
+        caption,
+      }),
+    ).toThrow('Instagram caption contains unsupported control characters')
+  })
+
   it('builds an Instagram /media container request with the trimmed caption and HTTPS URL', () => {
     const request = buildInstagramMediaRequest(validInstagramMediaInput())
 

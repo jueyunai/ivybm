@@ -4,6 +4,7 @@ import {
   ProviderPublicationTransportError,
 } from '../publishingResult'
 import type { MetaPublishingTransport } from './publishingOutbound'
+import { normalizeInstagramCaption } from './publishingRequests'
 
 export const INSTAGRAM_PUBLISHING_STAGES = [
   'scheduled',
@@ -126,18 +127,14 @@ const boundedString = (value: unknown, maxLength: number): string | undefined =>
 }
 
 const boundedCaption = (value: unknown, maxLength: number): string | undefined => {
-  if (typeof value !== 'string') return undefined
-  const normalized = value.trim()
-  if (
-    !normalized ||
-    normalized !== value ||
-    Array.from(normalized).length > maxLength ||
-    /[\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F]/u.test(normalized) ||
-    /\r(?!\n)/u.test(normalized)
-  ) {
+  if (maxLength !== 2_200 || typeof value !== 'string') return undefined
+  try {
+    const normalized = normalizeInstagramCaption(value)
+    if (!normalized || normalized !== value) return undefined
+    return normalized
+  } catch {
     return undefined
   }
-  return normalized
 }
 
 const normalizedProviderId = (value: unknown): string | undefined =>

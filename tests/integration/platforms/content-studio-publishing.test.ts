@@ -467,6 +467,10 @@ describe.sequential('Content Studio immediate platform publication', () => {
           !('scheduledFor' in job.requestSnapshot),
       ),
     ).toBe(true)
+    const instagramJob = jobs.docs.find((job) => job.platform === 'instagram')
+    const requestSnapshot = instagramJob?.requestSnapshot as { text?: unknown } | undefined
+    const providerCheckpoint = instagramJob?.providerCheckpoint as { caption?: unknown } | undefined
+    expect(providerCheckpoint?.caption).toBe(requestSnapshot?.text)
     expect(new Set(jobs.docs.map((job) => job.idempotencyKey)).size).toBe(3)
 
     const queued = await pool().query<{ payload: Record<string, unknown> }>(

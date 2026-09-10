@@ -542,7 +542,7 @@ export const publishContentStudioNow = async ({
           account,
           asset: assets[0],
           route: executionRoute,
-          text: content.body,
+          text: command.snapshot.text,
         }),
         requestFingerprint: command.requestFingerprint,
         requestSnapshot: command.snapshot,

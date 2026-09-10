@@ -144,6 +144,18 @@ const normalizeCaption = (value: unknown, maxLength: number): string | undefined
   return trimmed
 }
 
+export const normalizeInstagramCaption = (value: unknown): string | undefined => {
+  const caption = normalizeCaption(value, MAX_INSTAGRAM_CAPTION_LENGTH)
+  if (
+    caption !== undefined &&
+    (/[\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F\u2028\u2029]/u.test(caption) ||
+      /\r(?!\n)/u.test(caption))
+  ) {
+    throw new Error('Instagram caption contains unsupported control characters')
+  }
+  return caption
+}
+
 const requirePublishingUrl = (value: unknown, fieldName: string): string => {
   if (typeof value !== 'string') {
     throw new Error(`Meta ${fieldName} must be a string`)
@@ -200,7 +212,7 @@ export const buildInstagramMediaRequest = (
   const igId = requireMetaIdentifier(input?.igId, 'identifier')
   const imageUrl = requirePublishingUrl(input?.imageUrl, 'publishing URL')
   const body: Record<string, unknown> = { image_url: imageUrl }
-  const caption = normalizeCaption(input?.caption, MAX_INSTAGRAM_CAPTION_LENGTH)
+  const caption = normalizeInstagramCaption(input?.caption)
   if (caption !== undefined) body.caption = caption
 
   return {
