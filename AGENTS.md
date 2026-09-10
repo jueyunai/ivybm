@@ -48,12 +48,13 @@ bash scripts/install-git-hooks.sh
 
 - 永久工作区只有 `ivybm`，且必须保持在 `main`、状态干净并与 `origin/main` 同步。功能、修复、文档、PoC 和 PR 审查都在独立 worktree 中进行。
 - 开发目录与分支用途一一对应：`ivybm-task<编号>-<简述>` 对应 `feat/task-<编号>-<简述>`，`ivybm-fix-<简述>` 对应 `fix/<简述>`，`ivybm-docs-<简述>` 对应 `docs/<简述>`；本地分支与远程 upstream 必须同名，禁止把相似名称的远程分支误设为 upstream。
-- 协作者 PR 使用临时 `ivybm-review-pr-<编号>`，默认 detached HEAD，只读审查，不在协作者分支上提交或 push。需要修复时由作者更新原 PR，或经明确授权后另建短分支。
+- 协作者 PR 使用临时 `ivybm-review-pr-<编号>`，默认 detached HEAD，只读审查，不在协作者分支上提交或 push。需要修复时由作者更新原 PR，或经明确授权后另建短分支。作者推送新提交后**复用同一审查 worktree** 更新到最新 head，不删除重建；审查 worktree 保留到 PR 合并或关闭后再清理。
 - PoC 使用临时 `ivybm-poc-<简述>` 和 `poc/<简述>`；PoC 不直接合并，确认采用后从最新 `origin/main` 建正式 Task 分支，只迁移选定改动。
 - 每人本地同时最多保留 1 个主工作区、2 个开发类 worktree（PoC / hotfix 计入）和 2 个审查 worktree。不为 `develop`、integration、release、production 或每条协作者远程分支建立长期 worktree。
 - 每个并行 worktree 必须隔离应用端口、Compose project name 和开发 / 测试数据库；`.env`、`node_modules`、`.next`、media 和其他可变运行时目录不得跨 worktree 共享。无法隔离时，同一时间只运行一个本地栈。
 - PR 合并或审查结束后先确认 worktree 干净；开发分支还要确认提交已进入 `origin/main`，再用 `git worktree remove` 清理。禁止用文件系统强删 Git worktree，禁止自动删除 dirty 或未合并分支。
-- 每周执行 `git fetch --prune origin`、`git worktree list` 和 `git worktree prune --dry-run` 审计。远程分支由 PR 作者或仓库负责人在合并后删除。
+- `refs/review/**` 全部是短生命周期 ref（PR head 与试合并快照），对应 PR 合并或关闭后必须连同审查 worktree 一起清理；需要保留合并结论时写进 PR 评论，不用 ref 归档。只有 `refs/archive/**` 属于谨慎保留的归档。
+- 每周执行 `git fetch --prune origin`、`git worktree list`、`git for-each-ref refs/review/` 和 `git worktree prune --dry-run` 审计。远程分支由 PR 作者或仓库负责人在合并后删除。
 - 完整目录、创建、PR 审查、环境隔离和清理命令见 `CONTRIBUTING.md` 的“本地 worktree 规范”。
 
 ## 提交与 PR

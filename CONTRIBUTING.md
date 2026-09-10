@@ -70,7 +70,19 @@ git worktree add --detach ../ivybm-review-pr-<PR编号> refs/review/pr-<PR编号
 git merge-tree --write-tree origin/main refs/review/pr-<PR编号>-head
 ```
 
-审查 worktree 只用于读取、测试和生成审查证据。默认不提交、不 push、不改写协作者分支；需要修复时由作者更新原 PR，或在明确授权后从 PR head 创建单独短分支。作者推送新提交后，移除并按最新 head 重建审查 worktree，避免使用强制 reset 掩盖本地残留。
+审查 worktree 只用于读取、测试和生成审查证据。默认不提交、不 push、不改写协作者分支；需要修复时由作者更新原 PR，或在明确授权后从 PR head 创建单独短分支。作者推送新提交后**复用同一审查 worktree** 更新到最新 head，不要删除重建——重建会连带丢弃已安装的 `node_modules`，而该仓库依赖体积大，同一 PR 常需多轮审查：
+
+```bash
+cd ../ivybm-review-pr-<PR编号>
+git status --short                 # 必须干净；有残留先查清归属，禁止用 reset 掩盖
+git fetch origin pull/<PR编号>/head:refs/review/pr-<PR编号>-head --force
+git checkout --detach refs/review/pr-<PR编号>-head
+git merge-tree --write-tree origin/main refs/review/pr-<PR编号>-head
+```
+
+强制更新只作用于本地 `refs/review/` ref，不改写协作者分支。复用前必须确认 worktree 干净：就地生成的探针文件、临时 fixture 要先查明归属并删除，不得用 `git reset --hard` 或 `git checkout -- .` 掩盖残留。
+
+审查 worktree 保留到 **PR 合并或关闭**后再清理，不在每轮审查结束时清理。
 
 审查至少核对：PR base/head、完整 diff、共享结构和跨人契约、migration 线性历史、对应测试、CI、回滚边界。涉及 migration 的测试使用一次性数据库，不连接 production 或其他开发 worktree 的数据库。
 
@@ -97,7 +109,7 @@ git worktree prune
 
 任何一步不满足都停止清理并人工确认。禁止用 `rm -rf`、Finder 或文件管理器直接删除已注册 worktree；禁止自动删除 dirty、未 push 或未合并分支。远程分支由 PR 作者或仓库负责人确认 PR 已合并后删除。
 
-PR 审查结束或 PR 关闭后立即清理临时工作区和本地 review ref：
+PR 合并或关闭后清理临时工作区和本地 review ref：
 
 ```bash
 git -C ../ivybm-review-pr-<PR编号> status --short
@@ -106,6 +118,15 @@ git update-ref -d refs/review/pr-<PR编号>-head
 git worktree prune
 ```
 
+`refs/review/` 下还可能存在审查过程中的试合并快照（如 `refs/review/pr-<PR编号>-merge`，记录某次 `git merge-tree` 在特定 base 上的合并结果）。这类 ref 只是可随时重算的审查证据：对应 PR 合并或关闭后必须一并删除，不要当作长期归档。需要保留某次合并结论时，把结论写进 PR 评论，而不是留下 ref：
+
+```bash
+git for-each-ref refs/review/ --format='%(refname)'   # 列出全部，逐条核对归属
+git update-ref -d refs/review/pr-<PR编号>-merge
+```
+
+只有 `refs/archive/**` 下的 ref 属于谨慎保留的归档；`refs/review/**` 全部是短生命周期，禁止长期堆积。
+
 每周从 `ivybm` 执行一次只读审计：
 
 ```bash
@@ -113,10 +134,11 @@ git fetch --prune origin
 git worktree list
 git branch -vv
 git branch --merged origin/main
+git for-each-ref refs/review/ --format='%(refname) %(objectname:short)'
 git worktree prune --dry-run
 ```
 
-审计发现目录用途、分支名和 upstream 不一致时，先停止 push 和清理，核对提交归属后再处理。
+审计发现目录用途、分支名和 upstream 不一致时，先停止 push 和清理，核对提交归属后再处理。`refs/review/` 中对应 PR 已合并或关闭的条目属于陈旧残留，应逐条确认后删除。
 
 ## PR 与 Review
 
