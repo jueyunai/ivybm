@@ -6,7 +6,7 @@ import { IconPlayerPlay, IconSparkles, IconTerminal2 } from '@tabler/icons-react
 
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button } from '@/admin-portal/core/ui'
+import { Button, UiSelect } from '@/admin-portal/core/ui'
 
 import type { KnowledgeAiDebugResult } from './knowledgeAiDebugCommand'
 
@@ -131,14 +131,16 @@ export function KnowledgeAiDebug() {
       </header>
       <label>
         <span>{text.knowledgeLanguage}</span>
-        <select
+        <UiSelect
+          ariaLabel={text.knowledgeLanguage}
           disabled={running}
-          onChange={(event) => setKnowledgeLocale(event.target.value === 'ar' ? 'ar' : 'en')}
+          onChange={(value) => setKnowledgeLocale(value === 'ar' ? 'ar' : 'en')}
+          options={[
+            { label: text.localeEnglish, value: 'en' },
+            { label: text.localeArabic, value: 'ar' },
+          ]}
           value={knowledgeLocale}
-        >
-          <option value="en">{text.localeEnglish}</option>
-          <option value="ar">{text.localeArabic}</option>
-        </select>
+        />
       </label>
       <label>
         <span>{text.input}</span>

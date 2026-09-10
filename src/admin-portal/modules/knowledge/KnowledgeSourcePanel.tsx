@@ -3,7 +3,7 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 
-import { Button, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import { Button, StatusBadge, Surface, UiSelect } from '@/admin-portal/core/ui'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 
@@ -25,7 +25,13 @@ type Source = {
 }
 
 type SourceDetail = {
-  assets: { id: number | string; mimeType: null | string; name: string; previewURL: null | string; sequence: number }[]
+  assets: {
+    id: number | string
+    mimeType: null | string
+    name: string
+    previewURL: null | string
+    sequence: number
+  }[]
   outputs: {
     customerVisible: boolean
     id: number | string
@@ -37,7 +43,9 @@ type SourceDetail = {
   }[]
 }
 
-type RiskTopic = keyof ReturnType<typeof getPortalMessages>['knowledgeWorkspace']['ingestion']['riskTopics']
+type RiskTopic = keyof ReturnType<
+  typeof getPortalMessages
+>['knowledgeWorkspace']['ingestion']['riskTopics']
 
 type SourcePagination = {
   hasNextPage: boolean
@@ -61,7 +69,9 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
   const [sources, setSources] = useState<Source[]>([])
   const [pagination, setPagination] = useState<SourcePagination>(initialPagination)
   const [busy, setBusy] = useState(false)
-  const [feedback, setFeedback] = useState<{ message: string; tone: 'danger' | 'success' } | null>(null)
+  const [feedback, setFeedback] = useState<{ message: string; tone: 'danger' | 'success' } | null>(
+    null,
+  )
   const [detail, setDetail] = useState<{ data: SourceDetail; id: number | string } | null>(null)
   const currentPage = useRef(1)
   const refreshSequence = useRef(0)
@@ -70,24 +80,36 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
     const sequence = ++refreshSequence.current
     const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1
     try {
-      const response = await fetch(`/api/portal/knowledge/sources?page=${page}`, { cache: 'no-store' })
+      const response = await fetch(`/api/portal/knowledge/sources?page=${page}`, {
+        cache: 'no-store',
+      })
       if (!response.ok) return
-      const body = (await response.json()) as { pagination?: Partial<SourcePagination>; sources?: Source[] }
+      const body = (await response.json()) as {
+        pagination?: Partial<SourcePagination>
+        sources?: Source[]
+      }
       if (sequence !== refreshSequence.current) return
-      const totalPages = Number.isSafeInteger(body.pagination?.totalPages) && Number(body.pagination?.totalPages) > 0
-        ? Number(body.pagination?.totalPages)
-        : 1
+      const totalPages =
+        Number.isSafeInteger(body.pagination?.totalPages) && Number(body.pagination?.totalPages) > 0
+          ? Number(body.pagination?.totalPages)
+          : 1
       const nextPagination = {
         hasNextPage: body.pagination?.hasNextPage === true,
-        page: Number.isSafeInteger(body.pagination?.page) && Number(body.pagination?.page) > 0
-          ? Number(body.pagination?.page)
-          : page,
-        pageSize: Number.isSafeInteger(body.pagination?.pageSize) && Number(body.pagination?.pageSize) > 0
-          ? Number(body.pagination?.pageSize)
-          : initialPagination.pageSize,
-        totalDocs: Number.isSafeInteger(body.pagination?.totalDocs) && Number(body.pagination?.totalDocs) >= 0
-          ? Number(body.pagination?.totalDocs)
-          : Array.isArray(body.sources) ? body.sources.length : 0,
+        page:
+          Number.isSafeInteger(body.pagination?.page) && Number(body.pagination?.page) > 0
+            ? Number(body.pagination?.page)
+            : page,
+        pageSize:
+          Number.isSafeInteger(body.pagination?.pageSize) && Number(body.pagination?.pageSize) > 0
+            ? Number(body.pagination?.pageSize)
+            : initialPagination.pageSize,
+        totalDocs:
+          Number.isSafeInteger(body.pagination?.totalDocs) &&
+          Number(body.pagination?.totalDocs) >= 0
+            ? Number(body.pagination?.totalDocs)
+            : Array.isArray(body.sources)
+              ? body.sources.length
+              : 0,
         totalPages,
       }
       currentPage.current = nextPagination.page
@@ -113,7 +135,11 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
     setFeedback(null)
     try {
       const form = event.currentTarget
-      const response = await fetch('/api/portal/knowledge/sources', { body: new FormData(form), headers: { 'Idempotency-Key': `portal-knowledge-source:${crypto.randomUUID()}` }, method: 'POST' })
+      const response = await fetch('/api/portal/knowledge/sources', {
+        body: new FormData(form),
+        headers: { 'Idempotency-Key': `portal-knowledge-source:${crypto.randomUUID()}` },
+        method: 'POST',
+      })
       if (!response.ok) throw new Error('upload')
       setFeedback({ message: messages.uploadSuccess, tone: 'success' })
       form.reset()
@@ -129,7 +155,12 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
     setBusy(true)
     setFeedback(null)
     try {
-      const response = await fetch(`/api/portal/knowledge/sources/${source.id}/retry`, { headers: { 'Idempotency-Key': `portal-knowledge-source-retry:${source.id}:${crypto.randomUUID()}` }, method: 'POST' })
+      const response = await fetch(`/api/portal/knowledge/sources/${source.id}/retry`, {
+        headers: {
+          'Idempotency-Key': `portal-knowledge-source-retry:${source.id}:${crypto.randomUUID()}`,
+        },
+        method: 'POST',
+      })
       if (!response.ok) throw new Error('retry')
       setFeedback({ message: messages.retrySuccess, tone: 'success' })
       await refresh()
@@ -142,7 +173,9 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
 
   const openDetails = async (source: Source) => {
     try {
-      const response = await fetch(`/api/portal/knowledge/sources/${source.id}`, { cache: 'no-store' })
+      const response = await fetch(`/api/portal/knowledge/sources/${source.id}`, {
+        cache: 'no-store',
+      })
       if (!response.ok) return
       const body = (await response.json()) as SourceDetail
       setDetail({ data: body, id: source.id })
@@ -187,26 +220,151 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
         </div>
       </header>
       <form className="portal-knowledge__ingestion-form" onSubmit={submit}>
-        <label><span>{messages.sourceTitle}</span><input maxLength={500} name="sourceTitle" required /></label>
-        <label><span>{messages.sourceVersion}</span><input maxLength={100} name="sourceVersion" required /></label>
-        <label><span>{messages.sourceType}</span><select defaultValue="other" name="sourceType"><option value="faq">{locale === 'zh' ? '常见问答 (FAQ)' : 'FAQ'}</option><option value="product-manual">{locale === 'zh' ? '产品手册' : 'Product manual'}</option><option value="technical-specification">{locale === 'zh' ? '技术规范' : 'Technical specification'}</option><option value="sales-script">{locale === 'zh' ? '销售话术' : 'Sales script'}</option><option value="project-case">{locale === 'zh' ? '项目案例' : 'Project case'}</option><option value="other">{locale === 'zh' ? '其他' : 'Other'}</option></select></label>
-        <label><span>{messages.originalLanguage}</span><select defaultValue="auto" name="originalLanguage"><option value="auto">{locale === 'zh' ? '自动识别' : 'Auto'}</option><option value="en">{messages.english}</option><option value="ar">{messages.arabic}</option><option value="zh">中文</option></select></label>
-        <label><span>{messages.file}</span><input accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" name="file" required type="file" /></label>
-        <Button disabled={busy} type="submit">{busy ? messages.processing : messages.submit}</Button>
+        <div className="portal-knowledge__ingestion-grid">
+          <label className="portal-knowledge__ingestion-field">
+            <span>
+              <span aria-hidden="true" className="portal-required" />
+              {messages.sourceTitle}
+            </span>
+            <input maxLength={500} name="sourceTitle" placeholder={messages.sourceTitle} required />
+          </label>
+          <label className="portal-knowledge__ingestion-field">
+            <span>
+              <span aria-hidden="true" className="portal-required" />
+              {messages.sourceVersion}
+            </span>
+            <input defaultValue="1.0" maxLength={100} name="sourceVersion" required />
+          </label>
+          <div className="portal-knowledge__ingestion-field">
+            <span>
+              <span aria-hidden="true" className="portal-required" />
+              {messages.sourceType}
+            </span>
+            <UiSelect
+              ariaLabel={messages.sourceType}
+              defaultValue="other"
+              name="sourceType"
+              options={[
+                { label: locale === 'zh' ? '常见问答 (FAQ)' : 'FAQ', value: 'faq' },
+                { label: locale === 'zh' ? '产品手册' : 'Product manual', value: 'product-manual' },
+                {
+                  label: locale === 'zh' ? '技术规范' : 'Technical specification',
+                  value: 'technical-specification',
+                },
+                { label: locale === 'zh' ? '销售话术' : 'Sales script', value: 'sales-script' },
+                { label: locale === 'zh' ? '项目案例' : 'Project case', value: 'project-case' },
+                { label: locale === 'zh' ? '其他' : 'Other', value: 'other' },
+              ]}
+              required
+            />
+          </div>
+          <div className="portal-knowledge__ingestion-field">
+            <span>{messages.originalLanguage}</span>
+            <UiSelect
+              ariaLabel={messages.originalLanguage}
+              defaultValue="auto"
+              name="originalLanguage"
+              options={[
+                { label: locale === 'zh' ? '自动识别' : 'Auto', value: 'auto' },
+                { label: messages.english, value: 'en' },
+                { label: messages.arabic, value: 'ar' },
+                { label: '中文', value: 'zh' },
+              ]}
+            />
+          </div>
+        </div>
+        <div className="portal-knowledge__ingestion-row-2">
+          <label className="portal-knowledge__ingestion-file-label">
+            <span>
+              <span aria-hidden="true" className="portal-required" />
+              {messages.file}
+            </span>
+            <div className="portal-knowledge__file-picker">
+              <input
+                accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                name="file"
+                required
+                type="file"
+              />
+            </div>
+          </label>
+          <Button disabled={busy} size="compact" type="submit">
+            {busy ? messages.processing : messages.submit}
+          </Button>
+        </div>
       </form>
-      {feedback ? <p role={feedback.tone === 'danger' ? 'alert' : 'status'}>{feedback.message}</p> : null}
+      {feedback ? (
+        <p
+          className="portal-knowledge__ingestion-feedback"
+          role={feedback.tone === 'danger' ? 'alert' : 'status'}
+        >
+          {feedback.message}
+        </p>
+      ) : null}
       <div className="portal-knowledge__sources" aria-label={messages.title}>
-        {sources.length === 0 ? <p>{messages.noSources}</p> : sources.map((source) => (
-          <article key={source.id}>
-            <div><strong>{source.sourceTitle}</strong><span><a href={`/api/portal/knowledge/sources/${source.id}/file`} rel="noreferrer" target="_blank">{source.filename}</a> · v{source.sourceVersion} · {source.detectedLanguage?.toUpperCase() ?? '—'} · {fileSizeLabel(source.filesize)} · {stageLabel(source.processingStage)} · {messages.imageCount}: {source.imageCount}</span></div>
-            <StatusBadge label={statusLabel(source.processingStatus)} tone={source.processingStatus === 'failed' ? 'danger' : source.processingStatus === 'needs_review' ? 'warning' : source.processingStatus === 'processing' ? 'info' : 'neutral'} />
-            <Button onClick={() => void openDetails(source)} size="compact" variant="ghost">{messages.outputDrafts}</Button>
-            {errorLabel(source) ? <p role="alert">{errorLabel(source)}</p> : null}
-            {source.processingStatus === 'needs_review' ? <span>{messages.outputDrafts}: {messages.english} / {messages.arabic}</span> : null}
-            {source.processingStatus === 'failed' && role === 'admin' ? <Button disabled={busy} onClick={() => void retry(source)} size="compact" variant="secondary">{messages.retry}</Button> : null}
-            {source.processingStatus === 'failed' && role !== 'admin' ? <small>{messages.adminRetry}</small> : null}
-          </article>
-        ))}
+        {sources.length === 0 ? (
+          <p className="portal-knowledge__sources-empty">{messages.noSources}</p>
+        ) : (
+          sources.map((source) => (
+            <article key={source.id}>
+              <div>
+                <strong>{source.sourceTitle}</strong>
+                <span>
+                  <a
+                    href={`/api/portal/knowledge/sources/${source.id}/file`}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {source.filename}
+                  </a>{' '}
+                  · v{source.sourceVersion} · {source.detectedLanguage?.toUpperCase() ?? '—'} ·{' '}
+                  {fileSizeLabel(source.filesize)} · {stageLabel(source.processingStage)} ·{' '}
+                  {messages.imageCount}: {source.imageCount}
+                </span>
+              </div>
+              <div className="portal-knowledge__source-actions">
+                <StatusBadge
+                  label={statusLabel(source.processingStatus)}
+                  tone={
+                    source.processingStatus === 'failed'
+                      ? 'danger'
+                      : source.processingStatus === 'needs_review'
+                        ? 'warning'
+                        : source.processingStatus === 'processing'
+                          ? 'info'
+                          : 'neutral'
+                  }
+                />
+                <Button onClick={() => void openDetails(source)} size="compact" variant="ghost">
+                  {messages.outputDrafts}
+                </Button>
+                {source.processingStatus === 'failed' && role === 'admin' ? (
+                  <Button
+                    disabled={busy}
+                    onClick={() => void retry(source)}
+                    size="compact"
+                    variant="secondary"
+                  >
+                    {messages.retry}
+                  </Button>
+                ) : null}
+              </div>
+              {errorLabel(source) ? (
+                <p className="portal-knowledge__source-error" role="alert">
+                  {errorLabel(source)}
+                </p>
+              ) : null}
+              {source.processingStatus === 'needs_review' ? (
+                <span className="portal-knowledge__source-draft-note">
+                  {messages.outputDrafts}: {messages.english} / {messages.arabic}
+                </span>
+              ) : null}
+              {source.processingStatus === 'failed' && role !== 'admin' ? (
+                <small>{messages.adminRetry}</small>
+              ) : null}
+            </article>
+          ))
+        )}
       </div>
       {pagination.totalDocs > 0 ? (
         <nav aria-label={messages.sourcePagination} className="portal-knowledge__source-pagination">
@@ -232,16 +390,18 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
           </Button>
         </nav>
       ) : null}
-      {detail ? <div className="portal-knowledge__source-detail">
-        <strong>{messages.outputDrafts}</strong>
-        <div className="portal-knowledge__source-outputs">
-          {detail.data.outputs.length
-            ? detail.data.outputs.map((output) => (
+      {detail ? (
+        <div className="portal-knowledge__source-detail">
+          <strong>{messages.outputDrafts}</strong>
+          <div className="portal-knowledge__source-outputs">
+            {detail.data.outputs.length ? (
+              detail.data.outputs.map((output) => (
                 <div key={output.id}>
                   <a
                     href={`/dashboard/knowledge?locale=${output.locale}&q=${encodeURIComponent(output.sourceTitle)}`}
                   >
-                    {output.locale === 'ar' ? messages.arabic : messages.english} · {output.reviewStatus}
+                    {output.locale === 'ar' ? messages.arabic : messages.english} ·{' '}
+                    {output.reviewStatus}
                   </a>
                   {output.riskTopics.length ? (
                     <span>
@@ -251,10 +411,21 @@ export function KnowledgeSourcePanel({ role }: { role: 'admin' | 'operator' }) {
                   ) : null}
                 </div>
               ))
-            : <span>{messages.noSources}</span>}
+            ) : (
+              <span>{messages.noSources}</span>
+            )}
+          </div>
+          {detail.data.assets.length ? (
+            <div className="portal-knowledge__source-assets">
+              {detail.data.assets.map((asset) =>
+                asset.previewURL ? (
+                  <img alt={asset.name} key={asset.id} src={asset.previewURL} />
+                ) : null,
+              )}
+            </div>
+          ) : null}
         </div>
-        {detail.data.assets.length ? <div className="portal-knowledge__source-assets">{detail.data.assets.map((asset) => asset.previewURL ? <img alt={asset.name} key={asset.id} src={asset.previewURL} /> : null)}</div> : null}
-      </div> : null}
+      ) : null}
     </Surface>
   )
 }

@@ -7935,6 +7935,7 @@
 
   .portal-knowledge__ingestion-grid {
     display: grid;
+    grid-column: 1 / -1;
     grid-template-columns: minmax(200px, 2fr) minmax(90px, 0.8fr) minmax(140px, 1.2fr) minmax(120px, 1fr);
     gap: 10px;
     align-items: flex-end;
@@ -8000,6 +8001,19 @@
     gap: 10px;
   }
 
+  .portal-knowledge__file-picker input {
+    width: 100%;
+    min-width: 0;
+    height: var(--portal-control-height, 36px);
+    padding: 4px 8px;
+    border: 1px dashed var(--portal-border);
+    border-radius: var(--portal-radius-control);
+    background: var(--portal-canvas);
+    color: var(--portal-ink);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
   .portal-knowledge__ingestion-file-label {
     flex: 1;
     display: grid;
@@ -8045,6 +8059,26 @@
     gap: 3px;
     min-width: 0;
     overflow-wrap: anywhere;
+  }
+
+  .portal-knowledge__sources article > .portal-knowledge__source-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .portal-knowledge__source-error,
+  .portal-knowledge__source-draft-note,
+  .portal-knowledge__ingestion-feedback,
+  .portal-knowledge__sources-empty {
+    margin: 0;
+  }
+
+  .portal-knowledge__source-error {
+    flex-basis: 100%;
+    color: var(--portal-danger);
   }
 
   .portal-knowledge__sources article span,

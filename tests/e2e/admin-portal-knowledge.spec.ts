@@ -79,8 +79,10 @@ test('knowledge workspace shows review/index truth and submits an idempotent ind
   try {
     await page.goto('/dashboard/knowledge')
     await expect(page.getByRole('heading', { level: 2, name: '知识文档' })).toBeVisible()
+    await page.getByRole('button', { name: '批量解析入库' }).click()
     await expect(page.getByRole('heading', { level: 3, name: '自动解析与翻译' })).toBeVisible()
     await expect(page.getByRole('button', { name: '上传并生成草稿' })).toBeEnabled()
+    await page.getByRole('button', { name: '关闭抽屉' }).click()
     await expect(page.getByLabel('知识库状态指标').locator('article')).toHaveCount(4)
     await expect(page.getByRole('region', { name: '知识文档双状态列表' })).toBeVisible()
 
@@ -131,7 +133,7 @@ test('mobile knowledge workspace keeps filters and dual-state content within the
   try {
     await page.goto('/dashboard/knowledge')
     await expect(page.getByRole('heading', { level: 2, name: '知识文档' })).toBeVisible()
-    await expect(page.getByRole('heading', { level: 3, name: '自动解析与翻译' })).toBeVisible()
+    await expect(page.getByRole('tab', { name: /知识文档库/ })).toBeVisible()
     await expect(page.getByRole('searchbox', { name: '搜索文档' })).toBeVisible()
     await expect(page.locator('.portal-knowledge__workspace')).toBeVisible()
     await expect(page.locator('tr').filter({ hasText: documents[0].title })).toBeVisible()
@@ -231,11 +233,13 @@ test('knowledge editor completes draft, review, AI debug, and delete in the Port
         status: 200,
       })
     })
+    await page.getByRole('tab', { name: /AI 调试与底座/ }).click()
     await page.getByLabel('调试输入').fill('Use reviewed knowledge only')
     await page.getByRole('button', { name: '运行调试' }).click()
     await expect(page.getByText('Safe local debug result', { exact: false })).toBeVisible()
     await page.unroute('**/api/portal/knowledge/ai-debug')
 
+    await page.getByRole('tab', { name: /知识文档库/ }).click()
     await rowButton.click()
     await page.getByRole('button', { name: '编辑文档' }).click()
     await editor.getByRole('button', { name: '保存草稿' }).click()

@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Payload, PayloadRequest } from 'payload'
@@ -382,5 +382,19 @@ describe('Portal knowledge workspace', () => {
     expect(screen.getByRole('button', { name: '开始索引' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '新增文档' }).hasAttribute('disabled')).toBe(false)
     expect(screen.getByRole('button', { name: '编辑文档' })).toBeTruthy()
+
+    const documentTab = screen.getByRole('tab', { name: /知识文档库/ })
+    const debugTab = screen.getByRole('tab', { name: /AI 调试与底座/ })
+    expect(documentTab.getAttribute('aria-selected')).toBe('true')
+    expect(documentTab.getAttribute('tabindex')).toBe('0')
+
+    fireEvent.keyDown(documentTab, { key: 'ArrowRight' })
+    expect(debugTab.getAttribute('aria-selected')).toBe('true')
+    expect(debugTab.getAttribute('tabindex')).toBe('0')
+    expect(document.activeElement).toBe(debugTab)
+
+    fireEvent.keyDown(debugTab, { key: 'Home' })
+    expect(documentTab.getAttribute('aria-selected')).toBe('true')
+    expect(document.activeElement).toBe(documentTab)
   })
 })

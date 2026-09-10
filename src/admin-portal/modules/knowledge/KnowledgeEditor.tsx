@@ -15,7 +15,7 @@ import {
 
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, StatusBadge } from '@/admin-portal/core/ui'
+import { Button, StatusBadge, UiSelect } from '@/admin-portal/core/ui'
 
 import type { KnowledgeDocumentSummary, KnowledgeSourceType } from './getKnowledgePage'
 import type { KnowledgeEditorOption, KnowledgeEditorRecord } from './knowledgeCommands'
@@ -212,9 +212,7 @@ export function KnowledgeEditor({
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key':
-            mode === 'create' && createKey
-              ? createKey
-              : `portal-knowledge:${crypto.randomUUID()}`,
+            mode === 'create' && createKey ? createKey : `portal-knowledge:${crypto.randomUUID()}`,
         },
         method: mode === 'edit' ? 'PATCH' : 'POST',
       })
@@ -299,7 +297,10 @@ export function KnowledgeEditor({
 
       <div className="portal-knowledge-editor__fields" dir={form.locale === 'ar' ? 'rtl' : 'ltr'}>
         <label className="portal-knowledge-editor__field">
-          <span>{text.sourceTitle}</span>
+          <span>
+            <span aria-hidden="true" className="portal-required" />
+            {text.sourceTitle}
+          </span>
           <input
             maxLength={500}
             onChange={(event) => update('sourceTitle', event.target.value)}
@@ -308,30 +309,39 @@ export function KnowledgeEditor({
           />
         </label>
         <label className="portal-knowledge-editor__field">
-          <span>{text.sourceType}</span>
-          <select
-            onChange={(event) => update('sourceType', event.target.value as KnowledgeSourceType)}
+          <span>
+            <span aria-hidden="true" className="portal-required" />
+            {text.sourceType}
+          </span>
+          <UiSelect
+            ariaLabel={text.sourceType}
+            onChange={(value) => update('sourceType', value as KnowledgeSourceType)}
+            options={Object.entries(sourceLabels).map(([value, label]) => ({ label, value }))}
+            required
             value={form.sourceType}
-          >
-            {Object.entries(sourceLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+          />
         </label>
         <label className="portal-knowledge-editor__field">
-          <span>{text.locale}</span>
-          <select
-            onChange={(event) => update('locale', event.target.value as 'ar' | 'en')}
+          <span>
+            <span aria-hidden="true" className="portal-required" />
+            {text.locale}
+          </span>
+          <UiSelect
+            ariaLabel={text.locale}
+            onChange={(value) => update('locale', value as 'ar' | 'en')}
+            options={[
+              { label: 'English', value: 'en' },
+              { label: 'العربية', value: 'ar' },
+            ]}
+            required
             value={form.locale}
-          >
-            <option value="en">English</option>
-            <option value="ar">العربية</option>
-          </select>
+          />
         </label>
         <label className="portal-knowledge-editor__field">
-          <span>{text.sourceVersion}</span>
+          <span>
+            <span aria-hidden="true" className="portal-required" />
+            {text.sourceVersion}
+          </span>
           <input
             maxLength={100}
             onChange={(event) => update('sourceVersion', event.target.value)}
@@ -351,21 +361,24 @@ export function KnowledgeEditor({
         </label>
         <label className="portal-knowledge-editor__field is-wide">
           <span>{text.file}</span>
-          <select
-            onChange={(event) => update('sourceFileId', event.target.value)}
+          <UiSelect
+            ariaLabel={text.file}
+            onChange={(value) => update('sourceFileId', value)}
+            options={[
+              { label: '—', value: '' },
+              ...options.media.map((option) => ({
+                label: `${option.label}${option.meta ? ` · ${option.meta}` : ''}`,
+                value: String(option.id),
+              })),
+            ]}
             value={form.sourceFileId}
-          >
-            <option value="">—</option>
-            {options.media.map((option) => (
-              <option key={option.id} value={String(option.id)}>
-                {option.label}
-                {option.meta ? ` · ${option.meta}` : ''}
-              </option>
-            ))}
-          </select>
+          />
         </label>
         <label className="portal-knowledge-editor__field is-wide">
-          <span>{text.content}</span>
+          <span>
+            <span aria-hidden="true" className="portal-required" />
+            {text.content}
+          </span>
           <textarea
             maxLength={KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS}
             onChange={(event) => update('content', event.target.value)}
@@ -435,7 +448,7 @@ export function KnowledgeEditor({
 export function KnowledgeEditButton({ onClick }: { onClick: () => void }) {
   const { locale } = usePortalPreferences()
   return (
-    <Button onClick={onClick} variant="secondary">
+    <Button onClick={onClick} size="compact" variant="secondary">
       <IconEdit aria-hidden="true" size={16} />
       {copy[locale].edit}
     </Button>
