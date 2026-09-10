@@ -961,6 +961,19 @@ function DraftEditor({
             value={form.contentLocale}
           />
         </Field>
+        <Field label={copy.type}>
+          <UiSelect
+            ariaLabel={copy.type}
+            onChange={(val) =>
+              update('contentType', val as typeof form.contentType)
+            }
+            options={(['post', 'carousel', 'long-form'] as const).map((type) => ({
+              label: copy.typeLabels[type],
+              value: type,
+            }))}
+            value={form.contentType}
+          />
+        </Field>
         <Field label={copy.body} required wide>
           <textarea
             dir={form.contentLocale === 'ar' ? 'rtl' : undefined}

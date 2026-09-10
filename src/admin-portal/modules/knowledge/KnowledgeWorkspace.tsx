@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -9,12 +9,8 @@ import {
   IconArrowLeft,
   IconArrowRight,
   IconBook2,
-  IconCpu,
-  IconEdit,
-  IconFileUpload,
-  IconFilter,
+  IconFilePlus,
   IconLock,
-  IconPlus,
   IconRefresh,
   IconSearch,
   IconSettings,
@@ -23,15 +19,7 @@ import {
 
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import {
-  Button,
-  DrawerDialog,
-  PortalState,
-  SearchInput,
-  StatusBadge,
-  Surface,
-  UiSelect,
-} from '@/admin-portal/core/ui'
+import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
 
 import type {
   KnowledgeDocumentSummary,
@@ -49,7 +37,7 @@ import type {
 } from './getKnowledgePage'
 import { KnowledgeIndexClientError, requestKnowledgeIndex } from './requestKnowledgeIndex'
 import { KnowledgeAiDebug } from './KnowledgeAiDebug'
-import { KnowledgeEditor } from './KnowledgeEditor'
+import { KnowledgeEditor, KnowledgeEditButton } from './KnowledgeEditor'
 import { KnowledgeSourcePanel } from './KnowledgeSourcePanel'
 
 export interface KnowledgeWorkspaceProps {
@@ -102,22 +90,6 @@ export function KnowledgeWorkspace({ pageState, summary }: KnowledgeWorkspacePro
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).knowledgeWorkspace
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'documents' | 'debug'>('documents')
-  const [ingestDrawerOpen, setIngestDrawerOpen] = useState(false)
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    const tabParam = params.get('tab')
-    const drawerParam = params.get('drawer')
-    if (tabParam === 'debug' || drawerParam === 'ingest') {
-      queueMicrotask(() => {
-        if (tabParam === 'debug') setActiveTab('debug')
-        if (drawerParam === 'ingest') setIngestDrawerOpen(true)
-      })
-    }
-  }, [])
-  const [showMoreFilters, setShowMoreFilters] = useState(false)
   const [selectedId, setSelectedId] = useState<null | number | string>(null)
   const [indexing, setIndexing] = useState(false)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
@@ -268,57 +240,6 @@ export function KnowledgeWorkspace({ pageState, summary }: KnowledgeWorkspacePro
     },
   ]
 
-  const hasSecondaryFilters = Boolean(
-    (summary.query.locale && summary.query.locale !== 'all') ||
-    (summary.query.visibility && summary.query.visibility !== 'all') ||
-    (summary.query.sourceType && summary.query.sourceType !== 'all'),
-  )
-
-  const secondaryFilterCount = [
-    summary.query.locale && summary.query.locale !== 'all',
-    summary.query.visibility && summary.query.visibility !== 'all',
-    summary.query.sourceType && summary.query.sourceType !== 'all',
-  ].filter(Boolean).length
-
-  const switchTab = (tab: 'documents' | 'debug') => {
-    setActiveTab(tab)
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search)
-      if (tab === 'debug') {
-        params.set('tab', 'debug')
-      } else {
-        params.delete('tab')
-      }
-      const newSearch = params.toString()
-      const newUrl = newSearch ? `/dashboard/knowledge?${newSearch}` : '/dashboard/knowledge'
-      window.history.replaceState(null, '', newUrl)
-    }
-  }
-
-  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-      event.preventDefault()
-      switchTab('debug')
-      const target = event.currentTarget.querySelector<HTMLButtonElement>('[aria-controls="panel-debug"]')
-      target?.focus()
-    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      event.preventDefault()
-      switchTab('documents')
-      const target = event.currentTarget.querySelector<HTMLButtonElement>('[aria-controls="panel-documents"]')
-      target?.focus()
-    } else if (event.key === 'Home') {
-      event.preventDefault()
-      switchTab('documents')
-      const target = event.currentTarget.querySelector<HTMLButtonElement>('[aria-controls="panel-documents"]')
-      target?.focus()
-    } else if (event.key === 'End') {
-      event.preventDefault()
-      switchTab('debug')
-      const target = event.currentTarget.querySelector<HTMLButtonElement>('[aria-controls="panel-debug"]')
-      target?.focus()
-    }
-  }
-
   return (
     <main className="portal-page portal-knowledge">
       <header className="portal-page__intro portal-knowledge__intro">
@@ -326,22 +247,26 @@ export function KnowledgeWorkspace({ pageState, summary }: KnowledgeWorkspacePro
           <h2>{messages.title}</h2>
           <p>{messages.description}</p>
         </div>
-        <div className="portal-knowledge__header-actions">
-          <Button
-            onClick={() => setIngestDrawerOpen(true)}
-            size="default"
-            variant="secondary"
-          >
-            <IconFileUpload aria-hidden="true" size={16} stroke={1.8} />
-            {locale === 'zh' ? '批量解析入库' : 'Batch Ingestion'}
-          </Button>
-          <Button
-            onClick={() => {
-              setEditor('create')
-              setFeedback(null)
-            }}
-          >
-            <IconPlus aria-hidden="true" size={16} stroke={1.8} />
+        <div className="portal-knowledge__actions">
+          {hasIndexCommand ? (
+            <Button
+              disabled={!canIndex || indexing}
+              onClick={indexSelectedDocument}
+              title={indexDisabledTitle}
+              variant="secondary"
+            >
+              <IconRefresh
+                aria-hidden="true"
+                className={indexing ? 'is-spinning' : undefined}
+                size={16}
+                stroke={1.8}
+              />
+              {indexing ? messages.indexing : messages.startIndex}
+            </Button>
+          ) : null}
+          {selected ? <KnowledgeEditButton onClick={() => setEditor('edit')} /> : null}
+          <Button onClick={() => setEditor('create')}>
+            <IconFilePlus aria-hidden="true" size={16} stroke={1.8} />
             {messages.addDocument}
           </Button>
         </div>
@@ -356,497 +281,290 @@ export function KnowledgeWorkspace({ pageState, summary }: KnowledgeWorkspacePro
         </div>
       ) : null}
 
-      <div
-        aria-label={locale === 'zh' ? '知识库工作模式' : 'Knowledge workspace tabs'}
-        className="portal-segmented portal-knowledge__tabs"
-        onKeyDown={handleTabKeyDown}
-        role="tablist"
-      >
-        <Button
-          aria-controls="panel-documents"
-          aria-selected={activeTab === 'documents'}
-          onClick={() => switchTab('documents')}
-          role="tab"
-          size="compact"
-          tabIndex={activeTab === 'documents' ? 0 : -1}
-          variant={activeTab === 'documents' ? 'primary' : 'ghost'}
-        >
-          <IconBook2 aria-hidden="true" size={15} stroke={1.8} />
-          {locale === 'zh' ? '知识文档库' : 'Knowledge Documents'}
-          <span className="portal-knowledge__tab-badge">{summary.pagination.totalDocs}</span>
-        </Button>
-        <Button
-          aria-controls="panel-debug"
-          aria-selected={activeTab === 'debug'}
-          onClick={() => switchTab('debug')}
-          role="tab"
-          size="compact"
-          tabIndex={activeTab === 'debug' ? 0 : -1}
-          variant={activeTab === 'debug' ? 'primary' : 'ghost'}
-        >
-          <IconCpu aria-hidden="true" size={15} stroke={1.8} />
-          {locale === 'zh' ? 'AI 调试与底座' : 'AI Debug & Foundation'}
-        </Button>
-      </div>
+      {editor ? (
+        <Surface as="section" className="portal-knowledge__editor-panel">
+          <KnowledgeEditor
+            key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
+            item={editor === 'edit' ? selected : null}
+            mode={editor}
+            onClose={() => setEditor(null)}
+          />
+        </Surface>
+      ) : null}
 
-      {/* Tab 1: 知识文档库 */}
-      <div
-        className={`portal-knowledge__tab-panel${activeTab !== 'documents' ? ' is-hidden' : ''}`}
-        hidden={activeTab !== 'documents'}
-        id="panel-documents"
-        role="tabpanel"
-      >
-        <section aria-label={messages.metricsLabel} className="portal-knowledge__metrics">
-          {metrics.map((metric) => (
-            <Surface as="article" className="portal-knowledge__metric" key={metric.label}>
+      <KnowledgeSourcePanel role={summary.role} />
+
+      <section aria-label={messages.metricsLabel} className="portal-knowledge__metrics">
+        {metrics.map((metric) => (
+          <Surface as="article" className="portal-knowledge__metric" key={metric.label}>
+            <div>
+              <span>{metric.label}</span>
+              <StatusBadge label={metric.caption} tone={metric.tone} />
+            </div>
+            <strong>{metric.value}</strong>
+          </Surface>
+        ))}
+      </section>
+
+      <Surface as="section" className="portal-knowledge__filters">
+        <form action="/dashboard/knowledge" className="portal-knowledge__filter-form" method="get">
+          <label className="portal-knowledge__field portal-knowledge__search">
+            <span className="portal-field__label">{messages.searchLabel}</span>
+            <span className="portal-field__control">
+              <IconSearch aria-hidden="true" size={16} stroke={1.8} />
+              <input
+                defaultValue={summary.query.q}
+                maxLength={80}
+                name="q"
+                placeholder={messages.searchPlaceholder}
+                type="search"
+              />
+            </span>
+          </label>
+          <KnowledgeSelect
+            label={messages.reviewLabel}
+            name="review"
+            options={reviewLabels}
+            value={summary.query.review}
+          />
+          <KnowledgeSelect
+            label={messages.indexLabel}
+            name="index"
+            options={indexLabels}
+            value={summary.query.index}
+          />
+          <KnowledgeSelect
+            label={messages.localeLabel}
+            name="locale"
+            options={localeLabels}
+            value={summary.query.locale}
+          />
+          <KnowledgeSelect
+            label={messages.visibilityLabel}
+            name="visibility"
+            options={visibilityLabels}
+            value={summary.query.visibility}
+          />
+          <KnowledgeSelect
+            label={messages.sourceTypeLabel}
+            name="sourceType"
+            options={sourceLabels}
+            value={summary.query.sourceType}
+          />
+          <Button className="portal-knowledge__filter-submit" type="submit">
+            <IconSearch aria-hidden="true" size={16} stroke={1.8} />
+            {messages.applyFilters}
+          </Button>
+          <Button asChild variant="ghost">
+            <Link href="/dashboard/knowledge">{messages.resetFilters}</Link>
+          </Button>
+        </form>
+      </Surface>
+
+      <div className="portal-knowledge__workspace">
+        <Surface as="section" className="portal-knowledge__documents">
+          <header className="portal-knowledge__panel-heading">
+            <div>
+              <IconBook2 aria-hidden="true" size={18} stroke={1.8} />
               <div>
-                <span>{metric.label}</span>
-                <StatusBadge label={metric.caption} tone={metric.tone} />
-              </div>
-              <strong>{metric.value}</strong>
-            </Surface>
-          ))}
-        </section>
-
-        <Surface as="section" className="portal-knowledge__filters">
-          <form action="/dashboard/knowledge" className="portal-knowledge__filter-form" method="get">
-            <div className="portal-knowledge__filter-row">
-              <div className="portal-knowledge__filter-item portal-knowledge__search">
-                <span className="portal-knowledge__filter-label">{messages.searchLabel}</span>
-                <SearchInput
-                  defaultValue={summary.query.q}
-                  maxLength={80}
-                  name="q"
-                  placeholder={messages.searchPlaceholder}
-                />
-              </div>
-              <KnowledgeSelect
-                label={messages.reviewLabel}
-                name="review"
-                options={reviewLabels}
-                value={summary.query.review}
-                onChange={(val) => {
-                  const p = new URLSearchParams(window.location.search)
-                  if (val !== 'all') p.set('review', val); else p.delete('review')
-                  router.push(p.toString() ? `/dashboard/knowledge?${p}` : '/dashboard/knowledge')
-                }}
-              />
-              <KnowledgeSelect
-                label={messages.indexLabel}
-                name="index"
-                options={indexLabels}
-                value={summary.query.index}
-                onChange={(val) => {
-                  const p = new URLSearchParams(window.location.search)
-                  if (val !== 'all') p.set('index', val); else p.delete('index')
-                  router.push(p.toString() ? `/dashboard/knowledge?${p}` : '/dashboard/knowledge')
-                }}
-              />
-              <div className="portal-knowledge__filter-actions">
-                <Button
-                  aria-expanded={showMoreFilters || hasSecondaryFilters}
-                  className={`portal-knowledge__more-filters-btn${hasSecondaryFilters ? ' is-active' : ''}`}
-                  onClick={() => setShowMoreFilters((prev) => !prev)}
-                  size="compact"
-                  type="button"
-                  variant={showMoreFilters || hasSecondaryFilters ? 'secondary' : 'ghost'}
-                >
-                  <IconFilter aria-hidden="true" size={14} stroke={1.8} />
-                  {locale === 'zh' ? '更多筛选' : 'More filters'}
-                  {secondaryFilterCount > 0 ? (
-                    <span className="portal-knowledge__filter-badge">{secondaryFilterCount}</span>
-                  ) : null}
-                </Button>
-                <Button className="portal-knowledge__filter-submit" size="compact" type="submit">
-                  <IconSearch aria-hidden="true" size={15} stroke={1.8} />
-                  {messages.applyFilters}
-                </Button>
-                <Button asChild size="compact" variant="ghost">
-                  <Link href="/dashboard/knowledge">{messages.resetFilters}</Link>
-                </Button>
+                <h3>{messages.documentListTitle}</h3>
+                <p>
+                  {summary.pagination.totalDocs} {messages.documentCount}
+                </p>
               </div>
             </div>
+            <span>
+              {summary.pagination.page} / {Math.max(summary.pagination.totalPages, 1)}
+            </span>
+          </header>
 
+          {summary.documents.length === 0 ? (
+            <PortalState
+              className="portal-knowledge__empty"
+              description={messages.emptyDescription}
+              title={messages.emptyTitle}
+              type="empty"
+            />
+          ) : (
             <div
-              className="portal-knowledge__filter-row portal-knowledge__filter-row--secondary"
-              style={{ display: showMoreFilters || hasSecondaryFilters ? 'flex' : 'none' }}
+              aria-label={messages.documentTableLabel}
+              className="portal-knowledge__table-wrap"
+              role="region"
             >
-              <KnowledgeSelect
-                label={messages.localeLabel}
-                name="locale"
-                options={localeLabels}
-                value={summary.query.locale}
-                onChange={(val) => {
-                  const p = new URLSearchParams(window.location.search)
-                  if (val !== 'all') p.set('locale', val); else p.delete('locale')
-                  router.push(p.toString() ? `/dashboard/knowledge?${p}` : '/dashboard/knowledge')
-                }}
-              />
-              <KnowledgeSelect
-                label={messages.visibilityLabel}
-                name="visibility"
-                options={visibilityLabels}
-                value={summary.query.visibility}
-                onChange={(val) => {
-                  const p = new URLSearchParams(window.location.search)
-                  if (val !== 'all') p.set('visibility', val); else p.delete('visibility')
-                  router.push(p.toString() ? `/dashboard/knowledge?${p}` : '/dashboard/knowledge')
-                }}
-              />
-              <KnowledgeSelect
-                label={messages.sourceTypeLabel}
-                name="sourceType"
-                options={sourceLabels}
-                value={summary.query.sourceType}
-                onChange={(val) => {
-                  const p = new URLSearchParams(window.location.search)
-                  if (val !== 'all') p.set('sourceType', val); else p.delete('sourceType')
-                  router.push(p.toString() ? `/dashboard/knowledge?${p}` : '/dashboard/knowledge')
-                }}
-              />
+              <table className="portal-knowledge__table">
+                <thead>
+                  <tr>
+                    <th>{messages.documentColumn}</th>
+                    <th>{messages.localeColumn}</th>
+                    <th>{messages.visibilityColumn}</th>
+                    <th>{messages.reviewColumn}</th>
+                    <th>{messages.indexColumn}</th>
+                    <th>{messages.updatedColumn}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.documents.map((document) => (
+                    <KnowledgeDocumentRow
+                      document={document}
+                      indexLabel={indexLabels[document.indexStatus]}
+                      isSelected={String(document.id) === String(selected?.id)}
+                      key={document.id}
+                      locale={locale}
+                      messages={messages}
+                      onSelect={() => {
+                        setSelectedId(document.id)
+                        setFeedback(null)
+                      }}
+                      reviewLabel={reviewLabels[document.reviewStatus]}
+                      sourceLabel={sourceLabels[document.sourceType as KnowledgeSourceType]}
+                    />
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </form>
+          )}
+
+          {summary.pagination.totalPages > 1 ? (
+            <nav aria-label={messages.paginationLabel} className="portal-content__pagination">
+              {summary.pagination.page > 1 ? (
+                <Button asChild size="compact" variant="secondary">
+                  <Link
+                    href={buildKnowledgeHref({
+                      ...summary.query,
+                      page: summary.pagination.page - 1,
+                    })}
+                  >
+                    <IconArrowLeft aria-hidden="true" size={15} stroke={1.8} />
+                    {messages.previousPage}
+                  </Link>
+                </Button>
+              ) : (
+                <span />
+              )}
+              <span>
+                {summary.pagination.page} / {summary.pagination.totalPages}
+              </span>
+              {summary.pagination.page < summary.pagination.totalPages ? (
+                <Button asChild size="compact" variant="secondary">
+                  <Link
+                    href={buildKnowledgeHref({
+                      ...summary.query,
+                      page: summary.pagination.page + 1,
+                    })}
+                  >
+                    {messages.nextPage}
+                    <IconArrowRight aria-hidden="true" size={15} stroke={1.8} />
+                  </Link>
+                </Button>
+              ) : (
+                <span />
+              )}
+            </nav>
+          ) : null}
         </Surface>
 
-        <div className="portal-knowledge__workspace">
-          <Surface as="section" className="portal-knowledge__documents">
-            <header className="portal-knowledge__panel-heading">
+        <aside className="portal-knowledge__aside">
+          <Surface as="section" className="portal-knowledge__side-panel">
+            <header className="portal-knowledge__side-heading">
               <div>
-                <IconBook2 aria-hidden="true" size={18} stroke={1.8} />
-                <div>
-                  <h3>{messages.documentListTitle}</h3>
-                  <p>
-                    {summary.pagination.totalDocs} {messages.documentCount}
-                  </p>
-                </div>
+                <IconSparkles aria-hidden="true" size={17} stroke={1.8} />
+                <h3>{messages.promptsTitle}</h3>
               </div>
-              <span>
-                {summary.pagination.page} / {Math.max(summary.pagination.totalPages, 1)}
-              </span>
+              <span>{messages.operatorMaintainable}</span>
             </header>
-
-            {summary.documents.length === 0 ? (
-              <PortalState
-                className="portal-knowledge__empty"
-                description={messages.emptyDescription}
-                title={messages.emptyTitle}
-                type="empty"
-              />
+            {summary.prompts.length === 0 ? (
+              <p className="portal-knowledge__side-empty">{messages.noPrompts}</p>
             ) : (
-              <div
-                aria-label={messages.documentTableLabel}
-                className="portal-knowledge__table-wrap"
-                role="region"
-              >
-                <table className="portal-knowledge__table">
-                  <thead>
-                    <tr>
-                      <th>{messages.documentColumn}</th>
-                      <th>{messages.localeColumn}</th>
-                      <th>{messages.visibilityColumn}</th>
-                      <th>{messages.reviewColumn}</th>
-                      <th>{messages.indexColumn}</th>
-                      <th>{messages.updatedColumn}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {summary.documents.map((document) => (
-                      <KnowledgeDocumentRow
-                        document={document}
-                        indexLabel={indexLabels[document.indexStatus]}
-                        isSelected={editor !== 'create' && String(document.id) === String(selected?.id)}
-                        key={document.id}
-                        locale={locale}
-                        messages={messages}
-                        onSelect={() => {
-                          setSelectedId(document.id)
-                          if (editor === 'create') setEditor(null)
-                          setFeedback(null)
-                        }}
-                        reviewLabel={reviewLabels[document.reviewStatus]}
-                        sourceLabel={sourceLabels[document.sourceType as KnowledgeSourceType]}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="portal-knowledge__prompt-list">
+                {summary.prompts.map((prompt) => (
+                  <li key={prompt.id}>
+                    <div>
+                      <strong>{prompt.key}</strong>
+                      <span>
+                        {messages.promptPurposes[prompt.purpose]} · {prompt.locale.toUpperCase()}
+                      </span>
+                    </div>
+                    <StatusBadge
+                      label={`v${prompt.version} · ${messages.promptStatuses[prompt.status]}`}
+                      tone={
+                        prompt.status === 'active'
+                          ? 'success'
+                          : prompt.status === 'draft'
+                            ? 'warning'
+                            : 'neutral'
+                      }
+                    />
+                  </li>
+                ))}
+              </ul>
             )}
-
-            {summary.pagination.totalPages > 1 ? (
-              <nav aria-label={messages.paginationLabel} className="portal-content__pagination">
-                {summary.pagination.page > 1 ? (
-                  <Button asChild size="compact" variant="secondary">
-                    <Link
-                      href={buildKnowledgeHref({
-                        ...summary.query,
-                        page: summary.pagination.page - 1,
-                      })}
-                    >
-                      <IconArrowLeft aria-hidden="true" size={15} stroke={1.8} />
-                      {messages.previousPage}
-                    </Link>
-                  </Button>
-                ) : (
-                  <span />
-                )}
-                <span>
-                  {summary.pagination.page} / {summary.pagination.totalPages}
-                </span>
-                {summary.pagination.page < summary.pagination.totalPages ? (
-                  <Button asChild size="compact" variant="secondary">
-                    <Link
-                      href={buildKnowledgeHref({
-                        ...summary.query,
-                        page: summary.pagination.page + 1,
-                      })}
-                    >
-                      {messages.nextPage}
-                      <IconArrowRight aria-hidden="true" size={15} stroke={1.8} />
-                    </Link>
-                  </Button>
-                ) : (
-                  <span />
-                )}
-              </nav>
-            ) : null}
+            <div className="portal-knowledge__immutable-note">
+              <strong>{messages.promptImmutableTitle}</strong>
+              <p>{messages.promptImmutableDescription}</p>
+            </div>
           </Surface>
 
-          <Surface as="aside" className={`portal-knowledge__detail${editor ? ' portal-knowledge__detail--editor' : ''}`}>
-            {editor ? (
-              <KnowledgeEditor
-                item={editor === 'edit' ? selected : null}
-                key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
-                mode={editor}
-                onClose={() => setEditor(null)}
-              />
-            ) : selected ? (
-              <>
-                <header className="portal-knowledge__detail-header">
-                  <div>
-                    <span className="portal-knowledge__detail-type">
-                      {sourceLabels[selected.sourceType as KnowledgeSourceType]} · v{selected.sourceVersion}
-                    </span>
-                    <h3>{selected.sourceTitle}</h3>
-                  </div>
-                  <div className="portal-knowledge__detail-actions">
-                    {hasIndexCommand ? (
-                      <Button
-                        disabled={!canIndex || indexing}
-                        onClick={indexSelectedDocument}
-                        size="compact"
-                        title={indexDisabledTitle}
-                        variant="secondary"
-                      >
-                        <IconRefresh
-                          aria-hidden="true"
-                          className={indexing ? 'is-spinning' : undefined}
-                          size={15}
-                          stroke={1.8}
-                        />
-                        {indexing ? messages.indexing : messages.startIndex}
-                      </Button>
-                    ) : null}
-                    <Button onClick={() => setEditor('edit')} size="compact" variant="secondary">
-                      <IconEdit aria-hidden="true" size={15} stroke={1.8} />
-                      {locale === 'zh' ? '编辑文档' : 'Edit document'}
-                    </Button>
-                  </div>
-                </header>
-
-                <dl className="portal-knowledge__detail-meta">
-                  <div>
-                    <dt>{messages.localeColumn}</dt>
-                    <dd>{selected.locale.toUpperCase()}</dd>
-                  </div>
-                  <div>
-                    <dt>{messages.visibilityColumn}</dt>
-                    <dd>{selected.customerVisible ? messages.yes : messages.no}</dd>
-                  </div>
-                  <div>
-                    <dt>{messages.reviewColumn}</dt>
-                    <dd>
-                      <StatusBadge
-                        label={reviewLabels[selected.reviewStatus]}
-                        tone={reviewTone[selected.reviewStatus]}
-                      />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{messages.indexColumn}</dt>
-                    <dd>
-                      <StatusBadge
-                        label={indexLabels[selected.indexStatus]}
-                        tone={indexTone[selected.indexStatus]}
-                      />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{messages.updatedColumn}</dt>
-                    <dd>{formatTimestamp(selected.updatedAt, locale)}</dd>
-                  </div>
-                </dl>
-              </>
-            ) : (
-              <PortalState description={messages.emptyDescription} title={messages.emptyTitle} type="empty" />
-            )}
-          </Surface>
-        </div>
-      </div>
-
-      {/* Tab 2: AI 调试与底座 */}
-      <div
-        className={`portal-knowledge__tab-panel${activeTab !== 'debug' ? ' is-hidden' : ''}`}
-        hidden={activeTab !== 'debug'}
-        id="panel-debug"
-        role="tabpanel"
-      >
-        <div className="portal-knowledge__debug-layout">
-          <Surface as="section" className="portal-knowledge__debug-sandbox">
-            <header className="portal-knowledge__debug-sandbox-header">
+          <Surface as="section" className="portal-knowledge__side-panel">
+            <header className="portal-knowledge__side-heading">
               <div>
-                <IconSparkles aria-hidden="true" size={18} stroke={1.8} />
-                <div>
-                  <h3>{locale === 'zh' ? 'AI 客服问答调试沙盒' : 'AI Assistant Debug Sandbox'}</h3>
-                  <p>
-                    {locale === 'zh'
-                      ? '输入真实访客咨询，测试知识切片召回、相似度评分及安全回答。'
-                      : 'Test customer prompts, RAG chunk retrieval, and safe response output.'}
-                  </p>
-                </div>
+                <IconSettings aria-hidden="true" size={17} stroke={1.8} />
+                <h3>{messages.aiRoutesTitle}</h3>
               </div>
+              <span className="is-admin-only">{messages.adminOnly}</span>
             </header>
-
-            {summary.ai.access === 'admin' && summary.commands.includes('knowledge:ai-debug') ? (
-              <KnowledgeAiDebug />
-            ) : (
-              <div className="portal-knowledge__admin-only portal-knowledge__admin-only--sandbox">
-                <IconLock aria-hidden="true" size={20} stroke={1.8} />
+            {summary.ai.access === 'admin-only' ? (
+              <div className="portal-knowledge__admin-only">
+                <IconLock aria-hidden="true" size={18} stroke={1.8} />
                 <div>
-                  <strong>{locale === 'zh' ? '仅管理员可使用 AI 客服调试' : 'AI debugging requires administrator access'}</strong>
+                  <strong>{messages.aiAdminOnlyTitle}</strong>
                   <p>{messages.aiAdminOnlyDescription}</p>
                 </div>
               </div>
+            ) : (
+              <ul className="portal-knowledge__route-list">
+                {summary.ai.routes.map((route) => (
+                  <li key={route.usageKey}>
+                    <div>
+                      <span>
+                        {route.operation === 'embedding'
+                          ? messages.embeddingRoute
+                          : messages.textRoute}
+                      </span>
+                      <strong>
+                        {[route.provider, route.model, route.dimensions]
+                          .filter(Boolean)
+                          .join(' · ') || messages.routeUnconfigured}
+                      </strong>
+                    </div>
+                    <StatusBadge
+                      label={
+                        route.status === 'ready'
+                          ? messages.routeReady
+                          : messages.routeActionRequired
+                      }
+                      tone={route.status === 'ready' ? 'success' : 'warning'}
+                    />
+                  </li>
+                ))}
+              </ul>
             )}
+            {summary.ai.access === 'admin' && summary.commands.includes('knowledge:ai-debug') ? (
+              <KnowledgeAiDebug />
+            ) : null}
+            <p className="portal-knowledge__credential-note">{messages.credentialsNeverShown}</p>
           </Surface>
 
-          <div className="portal-knowledge__debug-side">
-            <Surface as="section" className="portal-knowledge__side-panel">
-              <header className="portal-knowledge__side-heading">
-                <div>
-                  <IconSettings aria-hidden="true" size={17} stroke={1.8} />
-                  <h3>{messages.aiRoutesTitle}</h3>
-                </div>
-                <span className="is-admin-only">{messages.adminOnly}</span>
-              </header>
-              {summary.ai.access === 'admin-only' ? (
-                <div className="portal-knowledge__admin-only">
-                  <IconLock aria-hidden="true" size={18} stroke={1.8} />
-                  <div>
-                    <strong>{messages.aiAdminOnlyTitle}</strong>
-                    <p>{messages.aiAdminOnlyDescription}</p>
-                  </div>
-                </div>
-              ) : (
-                <ul className="portal-knowledge__route-list">
-                  {summary.ai.routes.map((route) => {
-                    let routeLabel = messages.textRoute
-                    if (route.usageKey === 'knowledge.embedding' || route.operation === 'embedding') {
-                      routeLabel = messages.embeddingRoute
-                    } else if (route.usageKey === 'chat.reply') {
-                      routeLabel = messages.chatReplyRoute
-                    } else if (route.usageKey === 'knowledge.translation') {
-                      routeLabel = messages.translationRoute
-                    }
-
-                    return (
-                      <li key={route.usageKey}>
-                        <div>
-                          <span>{routeLabel}</span>
-                          <strong>
-                            {[route.provider, route.model, route.dimensions]
-                              .filter(Boolean)
-                              .join(' · ') || messages.routeUnconfigured}
-                          </strong>
-                        </div>
-                        <StatusBadge
-                          label={
-                            route.status === 'ready'
-                              ? messages.routeReady
-                              : messages.routeActionRequired
-                          }
-                          tone={route.status === 'ready' ? 'success' : 'warning'}
-                        />
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </Surface>
-
-            <Surface as="section" className="portal-knowledge__side-panel">
-              <header className="portal-knowledge__side-heading">
-                <div>
-                  <IconBook2 aria-hidden="true" size={17} stroke={1.8} />
-                  <h3>{messages.promptsTitle}</h3>
-                </div>
-                <span>{messages.operatorMaintainable}</span>
-              </header>
-              {summary.prompts.length === 0 ? (
-                <p className="portal-knowledge__side-empty">{messages.noPrompts}</p>
-              ) : (
-                <ul className="portal-knowledge__prompt-list">
-                  {summary.prompts.map((prompt) => (
-                    <li key={prompt.id}>
-                      <div>
-                        <strong>{prompt.key}</strong>
-                        <span>
-                          {messages.promptPurposes[prompt.purpose]} · {prompt.locale.toUpperCase()}
-                        </span>
-                      </div>
-                      <StatusBadge
-                        label={`v${prompt.version} · ${messages.promptStatuses[prompt.status]}`}
-                        tone={
-                          prompt.status === 'active'
-                            ? 'success'
-                            : prompt.status === 'draft'
-                              ? 'warning'
-                              : 'neutral'
-                        }
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="portal-knowledge__immutable-note">
-                <strong>{messages.promptImmutableTitle}</strong>
-                <p>{messages.promptImmutableDescription}</p>
+          {summary.counts.failed > 0 ? (
+            <section className="portal-knowledge__recovery" role="status">
+              <IconAlertTriangle aria-hidden="true" size={18} stroke={1.8} />
+              <div>
+                <strong>{messages.recoveryTitle}</strong>
+                <p>{messages.recoveryDescription}</p>
               </div>
-            </Surface>
-
-            {summary.counts.failed > 0 ? (
-              <section className="portal-knowledge__recovery" role="status">
-                <IconAlertTriangle aria-hidden="true" size={18} stroke={1.8} />
-                <div>
-                  <strong>{messages.recoveryTitle}</strong>
-                  <p>{messages.recoveryDescription}</p>
-                </div>
-              </section>
-            ) : null}
-          </div>
-        </div>
+            </section>
+          ) : null}
+        </aside>
       </div>
-
-      {/* 批量解析入库抽屉 */}
-      <DrawerDialog
-        closeLabel={locale === 'zh' ? '关闭抽屉' : 'Close drawer'}
-        description={messages.ingestion.uploadDescription}
-        maxWidth="760px"
-        onOpenChange={setIngestDrawerOpen}
-        open={ingestDrawerOpen}
-        title={messages.ingestion.title}
-      >
-        <KnowledgeSourcePanel role={summary.role} />
-      </DrawerDialog>
     </main>
   )
 }
@@ -856,25 +574,23 @@ function KnowledgeSelect<T extends string>({
   name,
   options,
   value,
-  onChange,
 }: {
   label: string
   name: string
   options: Record<T, string>
   value: T
-  onChange?: (val: string) => void
 }) {
   return (
-    <div className="portal-knowledge__filter-item">
-      <span className="portal-knowledge__filter-label">{label}</span>
-      <UiSelect
-        ariaLabel={label}
-        name={name}
-        options={Object.entries(options).map(([v, l]) => ({ value: v, label: String(l) }))}
-        value={value}
-        onChange={onChange}
-      />
-    </div>
+    <label className="portal-knowledge__field">
+      <span className="portal-field__label">{label}</span>
+      <select defaultValue={value} name={name}>
+        {Object.entries(options).map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>
+            {String(optionLabel)}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
 
@@ -898,28 +614,9 @@ function KnowledgeDocumentRow({
   sourceLabel: string
 }) {
   return (
-    <tr
-      aria-selected={isSelected}
-      className={isSelected ? 'is-selected' : undefined}
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onSelect()
-        }
-      }}
-      tabIndex={0}
-    >
+    <tr className={isSelected ? 'is-selected' : undefined}>
       <td data-label={messages.documentColumn}>
-        <button
-          aria-pressed={isSelected}
-          onClick={(event) => {
-            event.stopPropagation()
-            onSelect()
-          }}
-          tabIndex={-1}
-          type="button"
-        >
+        <button aria-pressed={isSelected} onClick={onSelect} type="button">
           <strong>{document.sourceTitle}</strong>
           <span>
             {sourceLabel} · v{document.sourceVersion}

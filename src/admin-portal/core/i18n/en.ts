@@ -247,7 +247,8 @@ export const PORTAL_EN = {
     alreadyProcessing: 'This document is being indexed. Wait for the current job to finish.',
     applyFilters: 'Filter',
     arabic: 'Arabic',
-    chatReplyRoute: 'Customer chat',
+    credentialsNeverShown:
+      'Only safe readiness is shown. API keys, base URLs, and internal job fields are never returned.',
     customerVisible: 'Customer visible',
     description:
       'Review and index states stay independent. Only reviewed and indexed content can power production AI.',
@@ -348,7 +349,6 @@ export const PORTAL_EN = {
     },
     startIndex: 'Start indexing',
     textRoute: 'Text generation',
-    translationRoute: 'Translation',
     title: 'Knowledge documents',
     updatedColumn: 'Updated',
     visibilityColumn: 'Customer visible',

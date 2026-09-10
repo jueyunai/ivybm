@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Payload, PayloadRequest } from 'payload'
@@ -376,56 +376,11 @@ describe('Portal knowledge workspace', () => {
     )
 
     expect(screen.getByRole('heading', { name: '知识文档' })).toBeTruthy()
-    expect(screen.getAllByText('通过').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('待检索').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('审核通过').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('等待索引').length).toBeGreaterThan(0)
     expect(screen.getByText('仅管理员可查看模型配置')).toBeTruthy()
     expect(screen.getByRole('button', { name: '开始索引' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '新增文档' }).hasAttribute('disabled')).toBe(false)
     expect(screen.getByRole('button', { name: '编辑文档' })).toBeTruthy()
-  })
-
-  it('supports keyboard arrow navigation and roving tabindex across workspace tabs', () => {
-    render(
-      React.createElement(
-        PortalPreferencesProvider,
-        null,
-        React.createElement(KnowledgeWorkspace, {
-          pageState: 'available',
-          summary: {
-            ai: { access: 'admin-only', routes: [] },
-            commands: ['knowledge:index'],
-            counts: { draft: 0, failed: 0, processing: 0, ready: 1 },
-            documents: [],
-            editor: { status: 'available' },
-            pagination: { page: 1, totalDocs: 0, totalPages: 1 },
-            prompts: [],
-            query: baseQuery,
-            role: 'operator',
-          },
-        }),
-      ),
-    )
-
-    const docTab = screen.getByRole('tab', { name: /知识文档库/ })
-    const debugTab = screen.getByRole('tab', { name: /AI 调试与底座/ })
-
-    expect(docTab.getAttribute('aria-selected')).toBe('true')
-    expect(docTab.getAttribute('tabindex')).toBe('0')
-    expect(debugTab.getAttribute('aria-selected')).toBe('false')
-    expect(debugTab.getAttribute('tabindex')).toBe('-1')
-
-    // Navigate right with ArrowRight
-    fireEvent.keyDown(docTab, { key: 'ArrowRight' })
-    expect(debugTab.getAttribute('aria-selected')).toBe('true')
-    expect(debugTab.getAttribute('tabindex')).toBe('0')
-    expect(docTab.getAttribute('aria-selected')).toBe('false')
-    expect(docTab.getAttribute('tabindex')).toBe('-1')
-
-    // Navigate back with ArrowLeft
-    fireEvent.keyDown(debugTab, { key: 'ArrowLeft' })
-    expect(docTab.getAttribute('aria-selected')).toBe('true')
-    expect(docTab.getAttribute('tabindex')).toBe('0')
-    expect(debugTab.getAttribute('aria-selected')).toBe('false')
-    expect(debugTab.getAttribute('tabindex')).toBe('-1')
   })
 })
