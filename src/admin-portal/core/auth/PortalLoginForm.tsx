@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react'
 
-import { IconLock, IconUser } from '@tabler/icons-react'
+import { IconLock, IconMail } from '@tabler/icons-react'
 import { useRouter } from 'next/navigation'
 
 import { Button } from '../ui'
@@ -10,7 +10,7 @@ import { requestPortalLogin, PortalLoginError } from './requestPortalLogin'
 
 const loginErrorMessages: Record<PortalLoginError['code'], string> = {
   'account-locked': '登录尝试次数过多，请稍后再试。',
-  'invalid-credentials': '账号或密码不正确，请重新输入。',
+  'invalid-credentials': '邮箱或密码不正确，请重新输入。',
   'network-failure': '网络连接失败，请检查连接后重试。',
   'service-unavailable': '登录服务暂不可用，请稍后重试。',
 }
@@ -51,16 +51,16 @@ export function PortalLoginForm({
   return (
     <form className="portal-login-form" method="post" noValidate onSubmit={submit}>
       <label className="portal-field">
-        <span className="portal-field__label">账号</span>
+        <span className="portal-field__label">邮箱</span>
         <span className="portal-field__control">
-          <IconUser aria-hidden="true" size={16} stroke={1.8} />
+          <IconMail aria-hidden="true" size={16} stroke={1.8} />
           <input
-            aria-label="账号"
             autoComplete="username"
+            inputMode="email"
             name="email"
-            placeholder="例如 admin 或 operator_content"
+            placeholder="operator@ivybm.com"
             required
-            type="text"
+            type="email"
           />
         </span>
       </label>
