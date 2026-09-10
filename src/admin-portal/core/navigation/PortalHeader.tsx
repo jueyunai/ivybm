@@ -31,7 +31,6 @@ const resolveCurrentModule = (
     )
 
 export function PortalHeader({
-  environment,
   locale,
   menuButtonRef,
   modules,
