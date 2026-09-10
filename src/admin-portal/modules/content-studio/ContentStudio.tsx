@@ -1118,16 +1118,19 @@ function GenerateDraftEditor({
       return { ...current, [key]: nextValues }
     })
   }
+  const [platformsExplicitlyCleared, setPlatformsExplicitlyCleared] = useState(false)
   const togglePlatform = (platform: ContentStudioItem['platform']) => {
     setForm((current) => {
       const exists = current.platforms.includes(platform)
       const nextPlatforms = exists
         ? current.platforms.filter((p) => p !== platform)
         : [...current.platforms, platform]
+      setPlatformsExplicitlyCleared(nextPlatforms.length === 0)
       return { ...current, platforms: nextPlatforms }
     })
   }
   const selectAllPlatforms = () => {
+    setPlatformsExplicitlyCleared(false)
     const all: Array<ContentStudioItem['platform']> = ['facebook', 'instagram', 'linkedin']
     setForm((current) => ({
       ...current,
@@ -1135,22 +1138,26 @@ function GenerateDraftEditor({
     }))
   }
   const clearPlatforms = () => {
+    setPlatformsExplicitlyCleared(true)
     setForm((current) => ({
       ...current,
       platforms: [],
     }))
   }
   const canGenerate =
-    (form.assets.length > 0 || form.brief.trim().length > 0) && form.platforms.length > 0
+    (form.assets.length > 0 || form.brief.trim().length > 0) &&
+    (form.platforms.length > 0 || !platformsExplicitlyCleared)
   const generate = async () => {
     if (!canGenerate || busy) return
     setBusy(true)
     setError(null)
     try {
-      const total = form.platforms.length
+      const targetPlatforms =
+        form.platforms.length > 0 ? form.platforms : (['linkedin'] as const)
+      const total = targetPlatforms.length
       let generatedAssets = form.assets
       for (let i = 0; i < total; i++) {
-        const platform = form.platforms[i]
+        const platform = targetPlatforms[i]
         const label = copy.platformLabels[platform]
         if (total > 1) {
           setGenerationProgress(
