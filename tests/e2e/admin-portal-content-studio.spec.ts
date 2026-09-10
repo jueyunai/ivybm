@@ -79,7 +79,7 @@ const readPublishingSideEffectCounts = async (suffix: string) => {
   }
 }
 
-test('Content Studio creates, edits, reviews, and schedules a draft through Portal commands', async ({
+test('Content Studio creates, edits, and reviews a draft through Portal commands', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ height: 960, width: 1440 })
@@ -187,7 +187,7 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
     await page.getByLabel('阿语已校对或不适用').check()
     await page.getByRole('button', { exact: true, name: '批准' }).click()
     await expect(page.getByText('审核结果已保存')).toBeVisible()
-    await expect(page.getByRole('button', { name: '创建内部排期' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '创建内部排期' })).toHaveCount(0)
 
     const immediatePublish = page.getByRole('button', { name: '立即发布' })
     await expect(immediatePublish).toBeDisabled()
@@ -206,12 +206,6 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
     const afterDisabledPublish = await readPublishingSideEffectCounts(`${suffix}-after`)
     expect(afterDisabledPublish).toEqual(beforeDisabledPublish)
 
-    await page.getByRole('button', { name: '创建内部排期' }).click()
-    const schedule = page.locator('.portal-content-studio__form').first()
-    const futureSchedule = new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString().slice(0, 16)
-    await schedule.getByLabel('计划时间').fill(futureSchedule)
-    await schedule.getByRole('button', { name: '创建内部排期' }).click()
-    await expect(page.getByText('已创建内部排期')).toBeVisible()
     expect(hydrationErrors).toEqual([])
 
     await expect(page.getByRole('button', { name: '删除' })).toHaveCount(0)
