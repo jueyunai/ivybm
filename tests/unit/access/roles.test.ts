@@ -142,7 +142,7 @@ describe('role access matrix', () => {
     expect(PORTAL_PERMISSION_PRESETS.sales).toEqual(expectedPresets.sales)
   })
 
-  it('normalizes granular permissions and rejects edit without view', () => {
+  it('normalizes granular permissions and makes edit imply view', () => {
     expect(
       normalizePortalPermissions(
         {
@@ -157,7 +157,7 @@ describe('role access matrix', () => {
       content: { edit: false, view: false },
       contentStudio: { edit: false, view: false },
       knowledge: { edit: false, view: false },
-      leads: { edit: false, view: false },
+      leads: { edit: true, view: true },
       media: { edit: false, view: false },
       operations: { edit: false, view: false },
       platforms: { edit: false, view: false },

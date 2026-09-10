@@ -16,6 +16,7 @@ export type AccessResource =
   | 'users'
   | 'content'
   | 'contentStudio'
+  | 'media'
   | 'knowledge'
   | 'platformAccounts'
   | 'conversations'
@@ -75,8 +76,9 @@ export const PORTAL_PERMISSION_PRESETS = {
 const normalizeModulePermission = (value: unknown): ModulePermission => {
   if (!value || typeof value !== 'object') return { edit: false, view: false }
   const candidate = value as { edit?: unknown; view?: unknown }
-  const view = candidate.view === true
-  return { edit: view && candidate.edit === true, view }
+  const edit = candidate.edit === true
+  const view = candidate.view === true || edit
+  return { edit, view }
 }
 
 export const normalizePortalPermissions = (
@@ -199,6 +201,16 @@ export const accessFor =
       resource,
       user: getRoleUser(req.user),
     })
+
+export const portalPermissionAccess =
+  (moduleId: PermissionModuleId, action: 'view' | 'edit'): Access =>
+  ({ req }): boolean =>
+    hasPortalPermission(getRoleUser(req.user), moduleId, action)
+
+export const portalPermissionAdminAccess =
+  (moduleId: PermissionModuleId, action: 'view' | 'edit') =>
+  ({ req }: { req: PayloadRequest }): boolean =>
+    hasPortalPermission(getRoleUser(req.user), moduleId, action)
 
 type AdminAccess = ({ req }: { req: PayloadRequest }) => boolean | Promise<boolean>
 

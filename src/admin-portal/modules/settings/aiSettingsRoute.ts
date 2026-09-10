@@ -17,6 +17,7 @@ export interface AuthorizedAiSettingsRequest {
 
 export const authorizeAiSettingsRequest = async (
   request: Request,
+  options: { action?: 'view' | 'edit' } = {},
 ): Promise<AuthorizedAiSettingsRequest> => {
   if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
     throw new AiSettingsCommandError('portal-disabled', 'The Portal is disabled.', 503)
@@ -33,7 +34,7 @@ export const authorizeAiSettingsRequest = async (
   if (actor.role !== 'admin') {
     throw new AiSettingsCommandError('ai-settings-forbidden', 'Administrator access required.', 403)
   }
-  if (!hasPortalPermission(actor, 'settings', 'edit')) {
+  if (!hasPortalPermission(actor, 'settings', options.action ?? 'edit')) {
     throw new AiSettingsCommandError('ai-settings-forbidden', 'Administrator access required.', 403)
   }
   return { payload, req: await createLocalReq({ user }, payload), user: user as User }

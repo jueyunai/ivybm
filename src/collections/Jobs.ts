@@ -1,6 +1,6 @@
 import type { Access, CollectionConfig } from 'payload'
 
-import { admins } from '../access/roles'
+import { admins, portalPermissionAccess } from '../access/roles'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 import { JOB_STATUSES } from '../modules/jobs/contracts'
 
@@ -12,7 +12,7 @@ export const Jobs: CollectionConfig = {
     admin: admins,
     create: jobInternalWrite,
     delete: jobInternalWrite,
-    read: admins,
+    read: portalPermissionAccess('operations', 'view'),
     update: jobInternalWrite,
   },
   admin: {

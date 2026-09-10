@@ -1,6 +1,6 @@
 import type { Access, AccessResult, PayloadRequest } from 'payload'
 
-import { getRoleUser, resolveRoleAccess } from './roles'
+import { getRoleUser, hasPortalPermission, resolveRoleAccess } from './roles'
 
 const canManageContent = (user: unknown): boolean =>
   resolveRoleAccess({
@@ -39,7 +39,7 @@ export const activeDownloadsRead: Access = ({ req }): AccessResult => {
 }
 
 export const publicMediaRead: Access = ({ req }): AccessResult => {
-  if (canManageContent(req.user)) {
+  if (hasPortalPermission(getRoleUser(req.user), 'media', 'view')) {
     return true
   }
 

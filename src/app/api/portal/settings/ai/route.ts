@@ -12,7 +12,7 @@ export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest): Promise<Response> {
   try {
-    const { payload, req } = await authorizeAiSettingsRequest(request)
+    const { payload, req } = await authorizeAiSettingsRequest(request, { action: 'view' })
     return aiSettingsJSON(await getPortalAiSettings({ payload, req }))
   } catch (error) {
     return aiSettingsErrorResponse(error)

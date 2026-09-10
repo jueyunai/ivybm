@@ -8,7 +8,7 @@ import {
 } from 'payload'
 
 import { platformCredentialRead } from '../access/platformCredentials'
-import { accessFor, admins } from '../access/roles'
+import { admins, portalPermissionAccess } from '../access/roles'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 import {
   decryptPlatformCredential,
@@ -394,10 +394,10 @@ export const PlatformAccounts: CollectionConfig = {
   slug: 'platform-accounts',
   access: {
     admin: admins,
-    create: accessFor('platformAccounts', 'create'),
-    delete: accessFor('platformAccounts', 'delete'),
-    read: accessFor('platformAccounts', 'read'),
-    update: accessFor('platformAccounts', 'update'),
+    create: portalPermissionAccess('platforms', 'edit'),
+    delete: portalPermissionAccess('platforms', 'edit'),
+    read: portalPermissionAccess('platforms', 'view'),
+    update: portalPermissionAccess('platforms', 'edit'),
   },
   admin: {
     components: {
