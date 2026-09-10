@@ -1,6 +1,8 @@
 import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
 
+import { selectUiOption } from './support/uiSelect'
+
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
@@ -79,8 +81,17 @@ test('knowledge workspace shows review/index truth and submits an idempotent ind
   try {
     await page.goto('/dashboard/knowledge')
     await expect(page.getByRole('heading', { level: 2, name: '知识文档' })).toBeVisible()
+    const moreFilters = page.getByRole('button', { name: '更多筛选' })
+    const secondaryFilters = page.locator('.portal-knowledge__filter-row--secondary')
+    await expect(moreFilters).toHaveAttribute('aria-expanded', 'false')
+    await expect(secondaryFilters).toBeHidden()
+    await moreFilters.click()
+    await expect(moreFilters).toHaveAttribute('aria-expanded', 'true')
+    await expect(secondaryFilters).toBeVisible()
+    await moreFilters.click()
+    await expect(secondaryFilters).toBeHidden()
     await page.getByRole('button', { name: '批量解析入库' }).click()
-    await expect(page.getByRole('heading', { level: 3, name: '自动解析与翻译' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 4, name: '自动解析与翻译' })).toBeVisible()
     await expect(page.getByRole('button', { name: '上传并生成草稿' })).toBeEnabled()
     await page.getByRole('button', { name: '关闭抽屉' }).click()
     await expect(page.getByLabel('知识库状态指标').locator('article')).toHaveCount(4)
@@ -164,8 +175,8 @@ test('knowledge editor completes draft, review, AI debug, and delete in the Port
     await expect(page.getByRole('heading', { name: '新增文档' })).toBeVisible()
     const editor = page.locator('.portal-knowledge-editor')
     await editor.getByLabel('来源标题').fill(title)
-    await editor.getByLabel('来源类型').selectOption('faq')
-    await editor.getByLabel('语言').selectOption('en')
+    await selectUiOption(editor.getByLabel('来源类型'), 'faq')
+    await selectUiOption(editor.getByLabel('语言'), 'en')
     await editor.getByLabel('来源版本').fill('1.0')
     await editor.getByLabel('来源 URL').fill('https://docs.example.invalid/e2e')
     await editor.getByLabel('知识正文').fill('Initial Portal knowledge content.')

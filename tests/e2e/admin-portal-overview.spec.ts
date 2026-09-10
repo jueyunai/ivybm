@@ -18,7 +18,7 @@ const login = async (page: import('@playwright/test').Page) => {
   await expect(page).toHaveURL(/\/dashboard$/)
 }
 
-test('admin overview renders real queues and dependency-gated work without internal links', async ({
+test('admin overview renders real queues and priority work without internal links', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ height: 900, width: 1440 })
@@ -30,7 +30,8 @@ test('admin overview renders real queues and dependency-gated work without inter
   await expect(page.getByRole('heading', { level: 3, name: '人工服务中' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 3, name: '新增 A 类线索' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 3, name: '执行失败任务' })).toBeVisible()
-  await expect(page.getByText('功能接入中')).toBeVisible()
+  await expect(page.getByText('功能接入中')).toHaveCount(0)
+  await expect(page.getByText('权限决定可见范围')).toHaveCount(0)
   await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
   await expect(page.locator('.portal-overview__queue-card')).toHaveCount(4)
   await expect(page.getByRole('link', { name: /待接管会话/ })).toHaveAttribute(

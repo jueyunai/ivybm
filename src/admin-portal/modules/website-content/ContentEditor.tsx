@@ -720,6 +720,12 @@ export const ContentEditor = forwardRef<
         >(':invalid')
       : null
     if (invalid) {
+      const focusTarget =
+        invalid.matches('[data-ui-select-control]')
+          ? (invalid
+              .closest('.portal-ui-select')
+              ?.querySelector<HTMLButtonElement>('[role="combobox"]') ?? invalid)
+          : invalid
       const validationMessage =
         invalid instanceof HTMLInputElement && invalid.validity.patternMismatch
           ? errorMessages[portalLocale]['content-invalid-slug']
@@ -729,11 +735,15 @@ export const ContentEditor = forwardRef<
       showNotice({ tone: 'danger', value: validationMessage })
       invalid.setCustomValidity(validationMessage)
       invalid.reportValidity()
-      invalid.focus({ preventScroll: true })
-      if (typeof invalid.scrollIntoView === 'function') {
-        invalid.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      focusTarget.setAttribute('aria-invalid', 'true')
+      focusTarget.focus({ preventScroll: true })
+      if (typeof focusTarget.scrollIntoView === 'function') {
+        focusTarget.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
-      const clearCustomValidity = () => invalid.setCustomValidity('')
+      const clearCustomValidity = () => {
+        invalid.setCustomValidity('')
+        focusTarget.removeAttribute('aria-invalid')
+      }
       invalid.addEventListener('input', clearCustomValidity, { once: true })
       invalid.addEventListener('change', clearCustomValidity, { once: true })
       return null

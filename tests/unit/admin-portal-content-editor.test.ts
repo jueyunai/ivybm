@@ -137,14 +137,17 @@ describe('Portal website content editor', () => {
     HTMLElement.prototype.scrollIntoView = scrollIntoView
 
     const { container } = renderEditor(type)
-    const target = (await screen.findByLabelText(field)) as HTMLSelectElement
+    const target = await screen.findByLabelText(field)
+    const formControl = target
+      .closest('.portal-ui-select')
+      ?.querySelector('[data-ui-select-control]') as HTMLInputElement
     const requiredFields = Array.from(
       container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
         '[required]',
       ),
     )
     for (const control of requiredFields) {
-      if (control === target) continue
+      if (control === formControl) continue
       if (control instanceof HTMLInputElement && control.type === 'radio') {
         if (!container.querySelector<HTMLInputElement>(`input[name="${control.name}"]:checked`)) {
           fireEvent.click(control)
@@ -157,8 +160,9 @@ describe('Portal website content editor', () => {
       }
     }
 
-    expect(target.required).toBe(true)
-    expect(target.checkValidity()).toBe(false)
+    expect(target.getAttribute('aria-required')).toBe('true')
+    expect(formControl.required).toBe(true)
+    expect(formControl.checkValidity()).toBe(false)
     const actionLabel = type === 'downloads' ? '保存修改' : '发布'
     fireEvent.click(screen.getByRole('button', { name: actionLabel }))
 

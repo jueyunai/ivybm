@@ -1,6 +1,8 @@
 import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
 
+import { selectUiOption } from './support/uiSelect'
+
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
@@ -26,11 +28,16 @@ test('media workspace filters safe assets and exposes grid/list detail views', a
   if (!adminEmail || !adminPassword) return
 
   await expect(page.getByRole('heading', { level: 2, name: '媒体素材' })).toBeVisible()
+  await expect(page.getByRole('searchbox', { name: '搜索素材' })).toHaveAttribute(
+    'placeholder',
+    '搜索文件名、描述或来源',
+  )
+  await expect(page.locator('#media-source-input')).toHaveCount(0)
   await expect(page.locator('.portal-media__asset')).not.toHaveCount(0)
   await expect(page.getByRole('button', { name: '上传素材' })).toBeEnabled()
   await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
 
-  await page.getByLabel('类型').selectOption('pdf')
+  await selectUiOption(page.getByLabel('类型'), 'pdf')
   await page.getByRole('button', { name: '筛选' }).click()
   await expect(page).toHaveURL(/kind=pdf/)
   await expect(page.locator('.portal-media__asset')).not.toHaveCount(0)

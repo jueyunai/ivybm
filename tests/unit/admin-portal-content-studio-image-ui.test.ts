@@ -7,6 +7,8 @@ import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/Portal
 import { ContentStudio } from '@/admin-portal/modules/content-studio/ContentStudio'
 import type { ContentStudioSummary } from '@/admin-portal/modules/content-studio/getContentStudioPage'
 
+import { selectUiOption } from './support/uiSelect'
+
 const router = { refresh: vi.fn() }
 vi.mock('next/navigation', () => ({ useRouter: () => router }))
 
@@ -93,8 +95,8 @@ describe('Portal Content Studio image workspace', () => {
     fireEvent.change(screen.getByLabelText('图片提示词'), {
       target: { value: 'Create a premium facade hero image' },
     })
-    fireEvent.change(screen.getByLabelText('图片尺寸'), { target: { value: '1536x1024' } })
-    fireEvent.change(screen.getByLabelText('参考素材'), { target: { value: '21' } })
+    selectUiOption(screen.getByLabelText('图片尺寸'), '1536x1024')
+    selectUiOption(screen.getByLabelText('参考素材'), '21')
     expect(screen.getByRole('img', { name: '参考图预览' }).getAttribute('src')).toContain(
       '/media/reference.webp',
     )
@@ -127,7 +129,7 @@ describe('Portal Content Studio image workspace', () => {
       size: '1536x1024',
     })
 
-    expect((screen.getByLabelText('目标草稿') as HTMLSelectElement).value).toBe('71')
+    expect(screen.getByLabelText('目标草稿').textContent).toContain('Target draft')
     fireEvent.click(screen.getByRole('button', { name: '采用为草稿资产' }))
     await screen.findByText('图片已采用为草稿资产。')
     const adoptionBody = JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body)) as Record<

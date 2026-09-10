@@ -176,7 +176,6 @@ describe.sequential('Portal media access', () => {
           kind: 'all',
           page: 1,
           q: queryToken,
-          source: '',
           view: 'grid',
           visibility: 'all',
         },
@@ -197,7 +196,6 @@ describe.sequential('Portal media access', () => {
         kind: 'pdf',
         page: 1,
         q: queryToken,
-        source: '',
         view: 'list',
         visibility: 'private',
       },
@@ -206,6 +204,26 @@ describe.sequential('Portal media access', () => {
 
     expect(summary.items).toHaveLength(1)
     expect(summary.items[0]).toMatchObject({ isPublic: false, kind: 'pdf' })
+  })
+
+  it('matches the unified keyword against media source metadata', async () => {
+    const summary = await getMediaPage({
+      payload,
+      query: {
+        kind: 'all',
+        page: 1,
+        q: 'owned photography',
+        view: 'grid',
+        visibility: 'all',
+      },
+      req: await requestFor(operator),
+    })
+
+    expect(summary.items).toHaveLength(1)
+    expect(summary.items[0]).toMatchObject({
+      kind: 'image',
+      source: `${queryToken} owned photography`,
+    })
   })
 
   it('lets an operator upload, edit, audit, and delete an unreferenced asset', async () => {
@@ -347,7 +365,6 @@ describe.sequential('Portal media access', () => {
         kind: 'all',
         page: 1,
         q: queryToken,
-        source: '',
         view: 'grid',
         visibility: 'all',
       },

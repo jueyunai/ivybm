@@ -15,6 +15,8 @@ import {
 import { safeMediaUrl } from '@/modules/media'
 import { MediaWorkspace } from '@/admin-portal/modules/media/MediaWorkspace'
 
+import { selectUiOption } from './support/uiSelect'
+
 const req = {
   user: { collection: 'users', email: 'operator@example.invalid', id: 2, role: 'operator' },
 } as unknown as PayloadRequest
@@ -51,7 +53,6 @@ describe('Portal media workspace', () => {
         kind: 'pdf',
         page: '3',
         q: '  Facade  ',
-        source: '  IVYBM  ',
         view: 'list',
         visibility: 'private',
       }),
@@ -59,7 +60,6 @@ describe('Portal media workspace', () => {
       kind: 'pdf',
       page: 3,
       q: 'Facade',
-      source: 'IVYBM',
       view: 'list',
       visibility: 'private',
     })
@@ -69,7 +69,6 @@ describe('Portal media workspace', () => {
         kind: 'video',
         page: '-2',
         q: 'x'.repeat(120),
-        source: 'y'.repeat(120),
         view: 'table',
         visibility: 'unknown',
       }),
@@ -77,10 +76,11 @@ describe('Portal media workspace', () => {
       kind: 'all',
       page: 1,
       q: 'x'.repeat(80),
-      source: 'y'.repeat(80),
       view: 'grid',
       visibility: 'all',
     })
+
+    expect(parseMediaQuery({ source: '  legacy source link  ' }).q).toBe('legacy source link')
   })
 
   it('uses an access-controlled bounded query and returns safe media metadata', async () => {
@@ -125,8 +125,7 @@ describe('Portal media workspace', () => {
       query: {
         kind: 'all',
         page: 1,
-        q: '',
-        source: '',
+        q: 'IVYBM',
         view: 'grid',
         visibility: 'all',
       },
@@ -144,6 +143,13 @@ describe('Portal media workspace', () => {
         pagination: true,
         req,
         sort: '-updatedAt',
+        where: {
+          or: [
+            { alt: { contains: 'IVYBM' } },
+            { filename: { contains: 'IVYBM' } },
+            { source: { contains: 'IVYBM' } },
+          ],
+        },
       }),
     )
     expect(summary.items[0]).toMatchObject({
@@ -172,7 +178,6 @@ describe('Portal media workspace', () => {
           kind: 'all',
           page: 1,
           q: '',
-          source: '',
           view: 'grid',
           visibility: 'all',
         },
@@ -189,7 +194,6 @@ describe('Portal media workspace', () => {
       kind: 'all' as const,
       page: 1,
       q: '',
-      source: '',
       view: 'grid' as const,
       visibility: 'all' as const,
     }
@@ -269,7 +273,6 @@ describe('Portal media workspace', () => {
               kind: 'all',
               page: 1,
               q: '',
-              source: '',
               view: 'grid',
               visibility: 'all',
             },
@@ -280,6 +283,10 @@ describe('Portal media workspace', () => {
 
     expect(screen.getByRole('heading', { name: '媒体素材' })).toBeTruthy()
     expect(screen.queryByText('上传与编辑可用')).toBeNull()
+    expect(screen.getAllByRole('searchbox')).toHaveLength(1)
+    expect(screen.getByRole('searchbox', { name: '搜索素材' }).getAttribute('placeholder')).toBe(
+      '搜索文件名、描述或来源',
+    )
     expect(screen.getByRole('link', { name: '网格视图' }).getAttribute('aria-current')).toBe('page')
     expect(screen.getByRole('link', { name: '列表视图' }).getAttribute('href')).toContain(
       'view=list',
@@ -290,9 +297,7 @@ describe('Portal media workspace', () => {
     expect(screen.getByRole('button', { name: '上传素材' }).hasAttribute('disabled')).toBe(false)
     expect(screen.getByRole('button', { name: '编辑元数据' })).toBeTruthy()
 
-    fireEvent.change(screen.getByRole('combobox', { name: '类型' }), {
-      target: { value: 'image' },
-    })
+    selectUiOption(screen.getByRole('combobox', { name: '类型' }), 'image')
     expect(router.push).toHaveBeenCalledWith('/dashboard/media?kind=image')
     expect(screen.getByRole('link', { name: '清除筛选' }).getAttribute('href')).toBe(
       '/dashboard/media',

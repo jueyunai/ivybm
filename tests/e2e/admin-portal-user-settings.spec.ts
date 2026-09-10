@@ -1,6 +1,8 @@
 import './require-mutation-launch'
 import { expect, test, type Page } from '@playwright/test'
 
+import { selectUiOption } from './support/uiSelect'
+
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 let cleanupMemberEmail: string | null = null
@@ -72,7 +74,7 @@ test('admin manages team member lifecycle and personal password change in Portal
   const addModal = page.locator('.portal-modal')
   await expect(addModal.getByRole('heading', { name: '新增团队成员' })).toBeVisible()
   await addModal.getByLabel('登录邮箱').fill(memberEmail)
-  await addModal.getByLabel('分配角色').selectOption('sales')
+  await selectUiOption(addModal.getByLabel('分配角色'), 'sales')
   await addModal.getByLabel('初始密码', { exact: true }).fill(initialPassword)
   await addModal.getByLabel('确认初始密码', { exact: true }).fill(initialPassword)
   await addModal.getByRole('button', { name: '保存' }).click()

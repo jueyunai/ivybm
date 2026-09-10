@@ -1,6 +1,8 @@
 import './require-mutation-launch'
 import { expect, test, type Page } from '@playwright/test'
 
+import { selectUiOption } from './support/uiSelect'
+
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
@@ -98,8 +100,8 @@ test('admin configures shared AI providers, models, and routes without exposing 
     await page.getByRole('button', { name: '新建模型' }).click()
     const textForm = page.locator('form').filter({ hasText: '新建模型' })
     await textForm.getByLabel('模型名称').fill(textProfileName)
-    await textForm.getByLabel('供应商').selectOption({ label: providerName })
-    await textForm.getByLabel('能力').selectOption('text')
+    await selectUiOption(textForm.getByLabel('供应商'), { label: providerName })
+    await selectUiOption(textForm.getByLabel('能力'), 'text')
     await textForm.getByLabel('模型 ID').fill('portal-text-model')
     const [textProfileResponse] = await Promise.all([
       waitForCreate(page, 'profiles'),
@@ -111,8 +113,8 @@ test('admin configures shared AI providers, models, and routes without exposing 
     await page.getByRole('button', { name: '新建模型' }).click()
     const embeddingForm = page.locator('form').filter({ hasText: '新建模型' })
     await embeddingForm.getByLabel('模型名称').fill(embeddingProfileName)
-    await embeddingForm.getByLabel('供应商').selectOption({ label: providerName })
-    await embeddingForm.getByLabel('能力').selectOption('embedding')
+    await selectUiOption(embeddingForm.getByLabel('供应商'), { label: providerName })
+    await selectUiOption(embeddingForm.getByLabel('能力'), 'embedding')
     await embeddingForm.getByLabel('模型 ID').fill('portal-embedding-model')
     await embeddingForm.getByLabel('向量维度').fill('1536')
     const [embeddingProfileResponse] = await Promise.all([
@@ -125,42 +127,50 @@ test('admin configures shared AI providers, models, and routes without exposing 
     await page.getByRole('button', { name: '用途路由' }).click()
     await page.getByRole('button', { name: '新建路由' }).click()
     const textRouteForm = page.locator('form').filter({ hasText: '新建路由' })
-    await textRouteForm.getByLabel('用途键').selectOption('chat.reply')
-    await textRouteForm
-      .getByLabel('模型配置')
-      .selectOption({ label: `${textProfileName} · portal-text-model` })
+    await selectUiOption(textRouteForm.getByLabel('用途键'), 'chat.reply')
+    await selectUiOption(textRouteForm.getByLabel('模型配置'), {
+      label: `${textProfileName} · portal-text-model`,
+    })
     const [textRouteResponse] = await Promise.all([
       waitForCreate(page, 'routes'),
       textRouteForm.getByRole('button', { name: '保存' }).click(),
     ])
     created.push(await readCreatedItem(textRouteResponse, 'routes'))
-    await expect(page.getByText('chat.reply')).toBeVisible()
+    await expect(
+      page.locator('.portal-ai-settings__list article').filter({ hasText: 'chat.reply' }),
+    ).toBeVisible()
 
     await page.getByRole('button', { name: '新建路由' }).click()
     const embeddingRouteForm = page.locator('form').filter({ hasText: '新建路由' })
-    await embeddingRouteForm.getByLabel('用途键').selectOption('knowledge.embedding')
-    await embeddingRouteForm
-      .getByLabel('模型配置')
-      .selectOption({ label: `${embeddingProfileName} · portal-embedding-model` })
+    await selectUiOption(embeddingRouteForm.getByLabel('用途键'), 'knowledge.embedding')
+    await selectUiOption(embeddingRouteForm.getByLabel('模型配置'), {
+      label: `${embeddingProfileName} · portal-embedding-model`,
+    })
     const [embeddingRouteResponse] = await Promise.all([
       waitForCreate(page, 'routes'),
       embeddingRouteForm.getByRole('button', { name: '保存' }).click(),
     ])
     created.push(await readCreatedItem(embeddingRouteResponse, 'routes'))
-    await expect(page.getByText('knowledge.embedding')).toBeVisible()
+    await expect(
+      page.locator('.portal-ai-settings__list article').filter({ hasText: 'knowledge.embedding' }),
+    ).toBeVisible()
 
     await page.getByRole('button', { name: '新建路由' }).click()
     const translationRouteForm = page.locator('form').filter({ hasText: '新建路由' })
-    await translationRouteForm.getByLabel('用途键').selectOption('knowledge.translation')
-    await translationRouteForm
-      .getByLabel('模型配置')
-      .selectOption({ label: `${textProfileName} · portal-text-model` })
+    await selectUiOption(translationRouteForm.getByLabel('用途键'), 'knowledge.translation')
+    await selectUiOption(translationRouteForm.getByLabel('模型配置'), {
+      label: `${textProfileName} · portal-text-model`,
+    })
     const [translationRouteResponse] = await Promise.all([
       waitForCreate(page, 'routes'),
       translationRouteForm.getByRole('button', { name: '保存' }).click(),
     ])
     created.push(await readCreatedItem(translationRouteResponse, 'routes'))
-    await expect(page.getByText('knowledge.translation')).toBeVisible()
+    await expect(
+      page
+        .locator('.portal-ai-settings__list article')
+        .filter({ hasText: 'knowledge.translation' }),
+    ).toBeVisible()
 
     for (const label of ['AI 客服', '内容工作台', '知识索引', '知识翻译']) {
       await expect(

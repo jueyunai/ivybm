@@ -332,7 +332,7 @@ describe('Portal knowledge workspace', () => {
   })
 
   it('renders review/index states, safe configuration, and a guarded index action', async () => {
-    render(
+    const { container } = render(
       React.createElement(
         PortalPreferencesProvider,
         null,
@@ -383,6 +383,19 @@ describe('Portal knowledge workspace', () => {
     expect(screen.getByRole('button', { name: '开始索引' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '新增文档' }).hasAttribute('disabled')).toBe(false)
     expect(screen.getByRole('button', { name: '编辑文档' })).toBeTruthy()
+
+    const moreFilters = screen.getByRole('button', { name: '更多筛选' })
+    const secondaryFilters = container.querySelector<HTMLElement>(
+      '.portal-knowledge__filter-row--secondary',
+    )
+    expect(moreFilters.getAttribute('aria-expanded')).toBe('false')
+    expect(secondaryFilters?.hidden).toBe(true)
+    fireEvent.click(moreFilters)
+    expect(moreFilters.getAttribute('aria-expanded')).toBe('true')
+    expect(secondaryFilters?.hidden).toBe(false)
+    fireEvent.click(moreFilters)
+    expect(moreFilters.getAttribute('aria-expanded')).toBe('false')
+    expect(secondaryFilters?.hidden).toBe(true)
 
     const documentTab = screen.getByRole('tab', { name: /知识文档库/ })
     const debugTab = screen.getByRole('tab', { name: /AI 调试与底座/ })

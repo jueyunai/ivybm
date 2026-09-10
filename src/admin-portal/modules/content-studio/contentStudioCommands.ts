@@ -42,6 +42,14 @@ export type ContentStudioType = (typeof GENERATED_CONTENT_TYPES)[number]
 export type PublishJobMode = (typeof PUBLISH_JOB_MODES)[number]
 export type PublishJobStatus = (typeof PUBLISH_JOB_STATUSES)[number]
 
+export interface ApprovedAssetDigest {
+  byteLength: number
+  filename: string
+  id: number
+  mimeType: string
+  sha256: string
+}
+
 export class ContentStudioCommandError extends Error {
   constructor(
     readonly code: string,
@@ -1176,11 +1184,13 @@ export async function reviewContentStudioDraft({
   id,
   input,
   payload,
+  readStoredMediaBytes = async (filename) => readFile(await resolveManagedMediaPath(filename)),
   req,
 }: {
   id: number
   input: unknown
   payload: ContentStudioPayload
+  readStoredMediaBytes?: (filename: string) => Promise<Uint8Array>
   req: PayloadRequest
 }) {
   const review = parseReview(input)
@@ -1198,6 +1208,63 @@ export async function reviewContentStudioDraft({
       'content-studio-incomplete-checklist',
       'Every review check is required before approval',
       409,
+    )
+  }
+  let approvedAssets: ApprovedAssetDigest[] | undefined
+  if (review.decision === 'approved') {
+    const assetIDs = [
+      ...new Set(
+        (Array.isArray(content.assets) ? content.assets : []).flatMap((asset) => {
+          const assetID = asRelationID(asset)
+          return assetID === null ? [] : [assetID]
+        }),
+      ),
+    ]
+    approvedAssets = await Promise.all(
+      assetIDs.map(async (assetID) => {
+        let media: LooseRecord
+        let bytes: Uint8Array
+        try {
+          media = await payload.findByID({
+            collection: 'media',
+            depth: 0,
+            id: assetID,
+            overrideAccess: false,
+            req,
+          })
+          const filename = typeof media.filename === 'string' ? media.filename : ''
+          if (!filename) throw new Error('Missing media filename')
+          bytes = await readStoredMediaBytes(filename)
+        } catch {
+          throw new ContentStudioCommandError(
+            'content-studio-review-assets-invalid',
+            'A selected media file is unavailable and cannot be approved',
+            409,
+          )
+        }
+        const filename = typeof media.filename === 'string' ? media.filename : ''
+        const mimeType = typeof media.mimeType === 'string' ? media.mimeType : ''
+        if (
+          !filename ||
+          !mimeType ||
+          bytes.byteLength > AI_GENERATED_IMAGE_MAX_BYTES ||
+          (typeof media.filesize === 'number' && bytes.byteLength !== media.filesize) ||
+          !mediaBytesMatchMimeType(bytes, mimeType)
+        ) {
+          throw new ContentStudioCommandError(
+            'content-studio-review-assets-invalid',
+            'A selected media file does not match its stored metadata',
+            409,
+          )
+        }
+        return {
+          byteLength: bytes.byteLength,
+          filename,
+          id: assetID,
+          mimeType,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+        }
+      }),
     )
   }
   await payload.create({
@@ -1218,7 +1285,10 @@ export async function reviewContentStudioDraft({
     overrideAccess: false,
     req,
   })
-  return asContentResult(document as unknown as LooseRecord)
+  return {
+    ...asContentResult(document as unknown as LooseRecord),
+    ...(approvedAssets ? { approvedAssets } : {}),
+  }
 }
 
 const scheduledDate = (value: unknown, now: () => Date): string => {

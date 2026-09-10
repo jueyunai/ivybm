@@ -174,15 +174,20 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
       overrideAccess: true,
       where: { publicId: { equals: data.publicId } },
     })
-    return (
-      existing.docs[0] ??
-      (await payload.create({
-        collection: 'visitor-sessions',
-        context: portalDemoContext,
-        data,
-        overrideAccess: true,
-      }))
-    )
+    return existing.docs[0]
+      ? await payload.update({
+          collection: 'visitor-sessions',
+          context: portalDemoContext,
+          data,
+          id: existing.docs[0].id,
+          overrideAccess: true,
+        })
+      : await payload.create({
+          collection: 'visitor-sessions',
+          context: portalDemoContext,
+          data,
+          overrideAccess: true,
+        })
   }
   const ensureConversation = async (data: RequiredDataFromCollectionSlug<'conversations'>) => {
     const existing = await payload.find({
@@ -191,15 +196,20 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
       overrideAccess: true,
       where: { publicId: { equals: data.publicId } },
     })
-    return (
-      existing.docs[0] ??
-      (await payload.create({
-        collection: 'conversations',
-        context: portalDemoContext,
-        data,
-        overrideAccess: true,
-      }))
-    )
+    return existing.docs[0]
+      ? await payload.update({
+          collection: 'conversations',
+          context: portalDemoContext,
+          data,
+          id: existing.docs[0].id,
+          overrideAccess: true,
+        })
+      : await payload.create({
+          collection: 'conversations',
+          context: portalDemoContext,
+          data,
+          overrideAccess: true,
+        })
   }
   const ensureMessage = async (data: RequiredDataFromCollectionSlug<'messages'>) => {
     const existing = await payload.find({
@@ -208,7 +218,15 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
       overrideAccess: true,
       where: { idempotencyKey: { equals: data.idempotencyKey } },
     })
-    if (existing.totalDocs === 0) {
+    if (existing.docs[0]) {
+      await payload.update({
+        collection: 'messages',
+        context: portalDemoContext,
+        data,
+        id: existing.docs[0].id,
+        overrideAccess: true,
+      })
+    } else {
       await payload.create({
         collection: 'messages',
         context: portalDemoContext,
@@ -228,7 +246,7 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
     sessionTokenHash: 'hash-vs-1',
   })
   const session2 = await ensureVisitorSession({
-    channel: 'facebook',
+    channel: 'website',
     expiresAt,
     idempotencyKey: 'idemp-vs-2',
     lastSeenAt: now,
@@ -237,7 +255,7 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
     sessionTokenHash: 'hash-vs-2',
   })
   const session3 = await ensureVisitorSession({
-    channel: 'instagram',
+    channel: 'website',
     expiresAt,
     idempotencyKey: 'idemp-vs-3',
     lastSeenAt: now,
@@ -256,8 +274,8 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
     visitorSession: session1.id,
   })
   const conv2 = await ensureConversation({
-    channel: 'facebook',
-    handoffStatus: 'ai_active',
+    channel: 'website',
+    handoffStatus: 'handoff_requested',
     intentLevel: 'a',
     locale: 'en',
     publicId: 'conv-002',
@@ -265,9 +283,9 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
     revision: 1,
     visitorSession: session2.id,
   })
-  await ensureConversation({
-    channel: 'instagram',
-    handoffStatus: 'ai_active',
+  const conv3 = await ensureConversation({
+    channel: 'website',
+    handoffStatus: 'resolved',
     intentLevel: 'b',
     locale: 'ar',
     publicId: 'conv-003',
@@ -282,6 +300,23 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
     conversation: conv1.id,
     idempotencyKey: 'idemp-msg-1-1',
     requestId: 'req-msg-001-1',
+    status: 'sent',
+  })
+  await ensureMessage({
+    author: 'visitor',
+    content: 'Could you arrange aluminum honeycomb panel samples for our facade review?',
+    conversation: conv3.id,
+    idempotencyKey: 'idemp-msg-3-1',
+    requestId: 'req-msg-003-1',
+    status: 'sent',
+  })
+  await ensureMessage({
+    author: 'ai',
+    content:
+      'The sample request has been recorded and the completed conversation is available for reference.',
+    conversation: conv3.id,
+    idempotencyKey: 'idemp-msg-3-2',
+    requestId: 'req-msg-003-2',
     status: 'sent',
   })
   await ensureMessage({
@@ -490,17 +525,32 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
       overrideAccess: true,
       where: { externalAccountId: { equals: account.externalAccountId } },
     })
-    if (existing.totalDocs === 0) {
-      try {
+    try {
+      if (existing.docs[0]) {
+        await payload.update({
+          collection: 'platform-accounts',
+          context: { ...portalDemoContext, __platformMessagingIdentityWrite: true },
+          data: {
+            ...account,
+            authorization: {
+              ...account.authorization,
+              clearAccessToken: true,
+              clearRefreshToken: true,
+            },
+          },
+          id: existing.docs[0].id,
+          overrideAccess: true,
+        })
+      } else {
         await payload.create({
           collection: 'platform-accounts',
           context: { ...portalDemoContext, __platformMessagingIdentityWrite: true },
           data: account,
           overrideAccess: true,
         })
-      } catch (err) {
-        payload.logger.warn(`Failed to seed platform account ${account.name}: ${err}`)
       }
+    } catch (err) {
+      payload.logger.warn(`Failed to seed platform account ${account.name}: ${err}`)
     }
   }
   payload.logger.info(`Ensured ${demoPlatformAccounts.length} demo platform accounts.`)

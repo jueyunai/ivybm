@@ -150,9 +150,11 @@ const selectFirstImage = async (page: Page, label: '封面图' | '特色图') =>
 
 const selectFirstProductCategory = async (page: Page) => {
   const category = editor(page).getByRole('combobox', { name: '产品分类' })
-  await expect(category.locator('option')).toHaveCount(4)
-  await category.selectOption({ index: 1 }, { force: true })
-  await expect(category).not.toHaveValue('')
+  await category.click()
+  const options = page.getByRole('listbox').getByRole('option')
+  await expect(options).toHaveCount(4)
+  await options.nth(1).click()
+  await expect(category).not.toContainText('—')
 }
 
 const openContentEditor = async (page: Page, fixture: CmsFixture) => {

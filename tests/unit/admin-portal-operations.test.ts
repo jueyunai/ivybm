@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Payload, PayloadRequest } from 'payload'
 
@@ -25,6 +25,8 @@ import {
   parsePublicationRecoveryIdempotencyKey,
 } from '@/modules/jobs/compensation/contracts'
 import type { Job, User } from '@/payload-types'
+
+import { selectUiOption } from './support/uiSelect'
 
 const navigation = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }))
 
@@ -234,9 +236,7 @@ describe('Portal operations', () => {
     expect(target).toBeTruthy()
     expect(target?.classList.contains('is-target')).toBe(true)
 
-    fireEvent.change(screen.getByRole('combobox', { name: '筛选' }), {
-      target: { value: 'failed' },
-    })
+    selectUiOption(screen.getByRole('combobox', { name: '筛选' }), 'failed')
     expect(navigation.push).toHaveBeenCalledWith('/dashboard/operations?status=failed')
   })
 

@@ -174,7 +174,7 @@
     padding: 0 10px;
     border: 1px solid var(--portal-border);
     border-radius: var(--portal-radius-control);
-    background: var(--portal-surface);
+    background: var(--portal-canvas);
     color: var(--portal-muted);
     transition: border-color 150ms ease, box-shadow 150ms ease;
   }
@@ -186,7 +186,7 @@
   .portal-search:focus-within {
     border-color: var(--portal-accent);
     box-shadow: 0 0 0 1px var(--portal-accent);
-    background: var(--portal-surface);
+    background: var(--portal-canvas);
   }
 
   .portal-search__icon {
@@ -213,69 +213,6 @@
   }
 
   .portal-search.is-disabled {
-    opacity: 0.52;
-    cursor: not-allowed;
-  }
-
-  .portal-select {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    min-width: 0;
-    height: var(--portal-control-height, 36px);
-  }
-
-  .portal-select__control {
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    width: 100%;
-    height: var(--portal-control-height, 36px);
-    padding: 0 30px 0 10px;
-    border: 1px solid var(--portal-border);
-    border-radius: var(--portal-radius-control);
-    background: var(--portal-surface);
-    color: var(--portal-ink);
-    font: inherit;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: border-color 150ms ease, box-shadow 150ms ease;
-  }
-
-  .portal-select__control.has-leading-icon {
-    padding-left: 30px;
-  }
-
-  .portal-select__leading-icon {
-    position: absolute;
-    left: 9px;
-    display: flex;
-    align-items: center;
-    pointer-events: none;
-    color: var(--portal-muted);
-  }
-
-  .portal-select__chevron {
-    position: absolute;
-    right: 9px;
-    pointer-events: none;
-    color: var(--portal-muted);
-    transition: transform 150ms ease;
-  }
-
-  .portal-select__control:hover:not(:disabled) {
-    border-color: var(--portal-accent-soft);
-  }
-
-  .portal-select__control:focus-visible {
-    outline: none;
-    border-color: var(--portal-accent);
-    box-shadow: 0 0 0 1px var(--portal-accent);
-  }
-
-  .portal-select.is-disabled,
-  .portal-select__control:disabled {
     opacity: 0.52;
     cursor: not-allowed;
   }
@@ -318,6 +255,24 @@
     outline: none;
     border-color: var(--portal-accent);
     box-shadow: 0 0 0 1px var(--portal-accent);
+  }
+
+  .portal-ui-select__trigger[aria-invalid="true"] {
+    border-color: var(--portal-danger);
+    box-shadow: 0 0 0 1px var(--portal-danger);
+  }
+
+  .portal-ui-select__form-control {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+    pointer-events: none;
   }
 
   .portal-ui-select__value {
@@ -402,13 +357,22 @@
     font-weight: 600;
   }
 
+  .portal-ui-select__option[data-selected="true"] {
+    background: var(--portal-accent);
+    color: #ffffff;
+    font-weight: 600;
+  }
+
   .portal-ui-select__option[data-state="checked"][data-highlighted],
-  .portal-ui-select__option[data-state="checked"]:hover {
+  .portal-ui-select__option[data-state="checked"]:hover,
+  .portal-ui-select__option[data-selected="true"][data-highlighted],
+  .portal-ui-select__option[data-selected="true"]:hover {
     background: var(--portal-accent);
     color: #ffffff;
   }
 
-  .portal-ui-select__option[data-state="checked"] svg {
+  .portal-ui-select__option[data-state="checked"] svg,
+  .portal-ui-select__option[data-selected="true"] svg {
     color: #ffffff;
   }
 
@@ -2052,9 +2016,7 @@
     gap: 16px;
   }
 
-  .portal-overview__priority,
-  .portal-overview__dependencies,
-  .portal-overview__role-notice {
+  .portal-overview__priority {
     overflow: hidden;
   }
 
@@ -2084,8 +2046,7 @@
     font-size: 12px;
   }
 
-  .portal-overview__priority-list,
-  .portal-overview__dependencies ul {
+  .portal-overview__priority-list {
     padding: 0;
     margin: 0;
     list-style: none;
@@ -2165,52 +2126,6 @@
     border-top: 1px solid var(--portal-border);
     border-radius: 0;
     background: transparent;
-  }
-
-  .portal-overview__aside-stack {
-    display: grid;
-    gap: 14px;
-  }
-
-  .portal-overview__dependencies li {
-    display: grid;
-    gap: 3px;
-    padding: 10px 16px;
-    border-top: 1px solid var(--portal-border);
-  }
-
-  .portal-overview__dependencies li strong {
-    color: var(--portal-ink-2);
-    font-size: 12px;
-  }
-
-  .portal-overview__dependencies li span {
-    color: var(--portal-muted);
-    font-size: 12px;
-  }
-
-  .portal-overview__role-notice {
-    display: grid;
-    gap: 8px;
-    padding: 16px;
-    border-color: var(--portal-info-soft);
-    background: var(--portal-info-soft);
-    color: var(--portal-info);
-  }
-
-  .portal-overview__role-notice h3,
-  .portal-overview__role-notice p {
-    margin: 0;
-  }
-
-  .portal-overview__role-notice h3 {
-    color: var(--portal-ink);
-    font-size: 13px;
-  }
-
-  .portal-overview__role-notice p {
-    color: var(--portal-ink-2);
-    font-size: 12px;
   }
 
   .portal-content {
@@ -3109,7 +3024,7 @@
 
   .portal-media__filter-form {
     display: grid;
-    grid-template-columns: minmax(200px, 1.35fr) 132px 150px minmax(132px, 0.8fr) auto;
+    grid-template-columns: minmax(240px, 1fr) 132px 150px auto;
     align-items: end;
     gap: 8px;
   }
@@ -3975,6 +3890,10 @@
     padding-top: 10px;
     border-top: 1px dashed var(--portal-border);
     animation: portalFadeIn 0.15s ease;
+  }
+
+  .portal-knowledge__filter-row--secondary[hidden] {
+    display: none !important;
   }
 
   .portal-knowledge__filter-item {
@@ -6882,10 +6801,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .portal-overview__aside-stack {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .portal-content__filter-form {
     grid-template-columns: minmax(220px, 1fr) 170px auto;
   }
@@ -6908,7 +6823,7 @@
   }
 
   .portal-media__filter-form {
-    grid-template-columns: minmax(220px, 1fr) 132px 150px minmax(132px, 0.8fr) auto;
+    grid-template-columns: minmax(220px, 1fr) 132px 150px auto;
   }
 
   .portal-media__filter-form > :last-child {
@@ -7019,10 +6934,6 @@
     text-align: left;
   }
 
-  .portal-overview__aside-stack {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .portal-content__intro {
     align-items: flex-start;
     flex-direction: column;
@@ -7070,8 +6981,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .portal-media__search,
-  .portal-media__filter-form .portal-media__source {
+  .portal-media__search {
     grid-column: 1 / -1;
   }
 

@@ -46,7 +46,6 @@ export const buildMediaHref = (query: Partial<MediaQuery>): string => {
   if (query.q) params.set('q', query.q)
   if (query.kind && query.kind !== 'all') params.set('kind', query.kind)
   if (query.visibility && query.visibility !== 'all') params.set('visibility', query.visibility)
-  if (query.source) params.set('source', query.source)
   if (query.view && query.view !== 'grid') params.set('view', query.view)
   if (query.page && query.page > 1) params.set('page', String(query.page))
   const search = params.toString()
@@ -130,7 +129,7 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
         <form
           action="/dashboard/media"
           className="portal-media__filter-form"
-          key={`${summary.query.q}:${summary.query.kind}:${summary.query.visibility}:${summary.query.source}:${summary.query.view}`}
+          key={`${summary.query.q}:${summary.query.kind}:${summary.query.visibility}:${summary.query.view}`}
           method="get"
         >
           <input name="view" type="hidden" value={summary.query.view} />
@@ -177,19 +176,6 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
               }
               options={Object.entries(visibilityLabels).map(([value, label]) => ({ label, value }))}
               value={summary.query.visibility}
-            />
-          </div>
-          <div className="portal-media__filter-item portal-media__source">
-            <label className="portal-media__filter-label" htmlFor="media-source-input">
-              {messages.sourceLabel}
-            </label>
-            <input
-              defaultValue={summary.query.source}
-              id="media-source-input"
-              maxLength={80}
-              name="source"
-              placeholder={messages.sourcePlaceholder}
-              type="text"
             />
           </div>
           <div className="portal-media__filter-actions">

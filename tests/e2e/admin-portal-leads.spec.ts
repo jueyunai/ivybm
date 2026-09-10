@@ -1,6 +1,8 @@
 import './require-mutation-launch'
 import { expect, test, type Page } from '@playwright/test'
 
+import { selectUiOption } from './support/uiSelect'
+
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
@@ -46,7 +48,7 @@ test('lead workspace creates, edits, and deletes an ACL-aware Portal lead', asyn
     await page.getByLabel('国家 / 地区').fill('United Arab Emirates')
     await page.getByLabel('关注产品 / 需求').fill('Aluminum facade panels')
     await page.getByLabel('需求说明').fill('Portal E2E lead needs tender specification.')
-    await page.getByLabel('来源').selectOption(String(sourceID))
+    await selectUiOption(page.getByLabel('来源'), String(sourceID))
     const [createResponse] = await Promise.all([
       page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/api/portal/leads')),
       page.getByRole('button', { name: '创建线索' }).click(),
@@ -58,7 +60,7 @@ test('lead workspace creates, edits, and deletes an ACL-aware Portal lead', asyn
     await page.getByRole('button', { name: '编辑线索' }).click()
     const editor = page.locator('.portal-leads-editor')
     await expect(editor).toBeVisible()
-    await editor.getByLabel('状态').selectOption('contacted')
+    await selectUiOption(editor.getByLabel('状态'), 'contacted')
     await expect(editor.getByRole('button', { name: '保存修改' })).toBeEnabled()
     const [updateResponse] = await Promise.all([
       page.waitForResponse((response) => response.request().method() === 'PATCH' && leadID !== null && response.url().endsWith(`/api/portal/leads/${leadID}`)),

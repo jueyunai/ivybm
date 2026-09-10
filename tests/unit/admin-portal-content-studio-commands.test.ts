@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import sharp from 'sharp'
 
@@ -1150,6 +1152,69 @@ describe('Portal Content Studio draft commands', () => {
         data: { reviewedAt: null, reviewedBy: null, status: 'draft' },
       }),
     )
+  })
+
+  it('returns authoritative asset digests when approving content', async () => {
+    const image = await sharp({
+      create: { background: '#1c2f46', channels: 3, height: 4, width: 4 },
+    })
+      .png()
+      .toBuffer()
+    const content = {
+      assets: [4],
+      id: 71,
+      status: 'review',
+      title: input.title,
+      updatedAt: '2026-07-30T12:00:00.000Z',
+    }
+    const findByID = vi.fn(async ({ collection }: { collection: string }) =>
+      collection === 'media'
+        ? {
+            filename: 'reviewed-asset.png',
+            filesize: image.byteLength,
+            id: 4,
+            mimeType: 'image/png',
+          }
+        : content,
+    )
+    const payload = {
+      create: vi.fn().mockResolvedValue({ id: 91 }),
+      findByID,
+      update: vi.fn().mockResolvedValue({ ...content, status: 'approved' }),
+    } as any
+
+    await expect(
+      reviewContentStudioDraft({
+        id: 71,
+        input: {
+          checklist: {
+            arabicProofread: true,
+            factsTraceable: true,
+            noCommercialCommitment: true,
+            platformFormatChecked: true,
+            technicalClaimsChecked: true,
+          },
+          comments: 'Reviewed asset bytes.',
+          decision: 'approved',
+          updatedAt: content.updatedAt,
+        },
+        payload,
+        readStoredMediaBytes: async () => image,
+        req,
+      }),
+    ).resolves.toMatchObject({
+      approvedAssets: [
+        {
+          byteLength: image.byteLength,
+          filename: 'reviewed-asset.png',
+          id: 4,
+          mimeType: 'image/png',
+          sha256: createHash('sha256').update(image).digest('hex'),
+        },
+      ],
+      id: 71,
+      status: 'approved',
+    })
   })
 
   it('preserves publication history instead of deleting a draft that has a job', async () => {

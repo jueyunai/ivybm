@@ -7,6 +7,8 @@ import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/Portal
 import { ContentHub } from '@/admin-portal/modules/website-content/ContentHub'
 import type { ContentSummary } from '@/admin-portal/modules/website-content/getContentSummary'
 
+import { selectUiOption } from './support/uiSelect'
+
 const navigation = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => navigation }))
@@ -165,9 +167,7 @@ describe('Portal content hub editing transitions', () => {
       ),
     )
 
-    fireEvent.change(screen.getByRole('combobox', { name: '状态' }), {
-      target: { value: 'draft' },
-    })
+    selectUiOption(screen.getByRole('combobox', { name: '状态' }), 'draft')
 
     expect(navigation.push).toHaveBeenCalledWith(
       '/dashboard/content?type=products&status=draft',
