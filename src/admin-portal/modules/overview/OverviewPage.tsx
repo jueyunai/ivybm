@@ -3,9 +3,9 @@
 import {
   IconAlertTriangle,
   IconArrowRight,
+  IconChevronRight,
   IconHeadset,
   IconMessageCircle,
-  IconShieldCheck,
   IconUserCheck,
   type Icon as TablerIcon,
 } from '@tabler/icons-react'
@@ -63,13 +63,34 @@ const formatTimestamp = (value: string, locale: 'en' | 'zh'): string => {
   }).format(date)
 }
 
-const formatReference = (kind: PortalOverviewPriorityKind, reference: string, locale: 'en' | 'zh'): string => {
+const formatReference = (
+  kind: PortalOverviewPriorityKind,
+  reference: string,
+  locale: 'en' | 'zh',
+): string => {
   if (kind === 'active-conversation' || kind === 'handoff-request') {
     const shortId = reference.slice(-6)
     return locale === 'zh' ? `客户会话 #${shortId}` : `Customer conversation #${shortId}`
   }
   if (kind === 'job') return formatJobTypeLabel(reference, locale)
   return reference
+}
+
+export const priorityHref = (
+  kind: PortalOverviewPriorityItem['kind'],
+  id: PortalOverviewPriorityItem['id'],
+): string => {
+  const encodedId = encodeURIComponent(String(id))
+
+  switch (kind) {
+    case 'active-conversation':
+    case 'handoff-request':
+      return `/dashboard/conversations?conversation=${encodedId}`
+    case 'lead':
+      return `/dashboard/leads?lead=${encodedId}`
+    case 'job':
+      return `/dashboard/operations?job=${encodedId}#portal-job-${encodedId}`
+  }
 }
 
 function PriorityItem({ item, locale }: { item: PortalOverviewPriorityItem; locale: 'en' | 'zh' }) {
@@ -81,23 +102,33 @@ function PriorityItem({ item, locale }: { item: PortalOverviewPriorityItem; loca
       : item.status
 
   return (
-    <li className="portal-overview__priority-item">
-      <StatusBadge label={kind.label} tone={priorityTone[item.kind]} />
-      <div className="portal-overview__priority-copy">
-        <strong>{formatReference(item.kind, item.reference, locale)}</strong>
-        <span>{kind.description}</span>
-      </div>
-      <div className="portal-overview__priority-meta">
-        <strong>{status}</strong>
-        <time dateTime={item.updatedAt}>
-          {messages.updatedAt} {formatTimestamp(item.updatedAt, locale)}
-        </time>
-      </div>
+    <li>
+      <Link className="portal-overview__priority-item" href={priorityHref(item.kind, item.id)}>
+        <StatusBadge label={kind.label} tone={priorityTone[item.kind]} />
+        <div className="portal-overview__priority-copy">
+          <strong>{formatReference(item.kind, item.reference, locale)}</strong>
+          <span>{kind.description}</span>
+        </div>
+        <div className="portal-overview__priority-meta">
+          <strong>{status}</strong>
+          <time dateTime={item.updatedAt}>
+            {messages.updatedAt} {formatTimestamp(item.updatedAt, locale)}
+          </time>
+        </div>
+        <span aria-hidden="true" className="portal-overview__priority-arrow">
+          <IconChevronRight size={16} stroke={1.8} />
+        </span>
+      </Link>
     </li>
   )
 }
 
-export function OverviewPage({ pageState = 'available', query, readError = false, summary, user }: OverviewPageProps) {
+export function OverviewPage({
+  pageState = 'available',
+  query,
+  readError = false,
+  summary,
+}: OverviewPageProps) {
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).overview
 
@@ -234,34 +265,6 @@ export function OverviewPage({ pageState = 'available', query, readError = false
               )}
             </Surface>
 
-            <div className="portal-overview__aside-stack">
-              <Surface as="aside" className="portal-overview__dependencies">
-                <div className="portal-overview__section-heading">
-                  <div>
-                    <h3>{messages.dependencyTitle}</h3>
-                    <p>{messages.dependencyDescription}</p>
-                  </div>
-                  <StatusBadge label={messages.dependencyStatus} tone="warning" />
-                </div>
-                <ul>
-                  {summary.dependencies.map((dependency) => {
-                    const copy = messages.dependencyItems[dependency.id]
-                    return (
-                      <li key={dependency.id}>
-                        <strong>{copy.label}</strong>
-                        <span>{copy.description}</span>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </Surface>
-
-              <Surface as="aside" className="portal-overview__role-notice" variant="subtle">
-                <IconShieldCheck aria-hidden="true" size={22} stroke={1.8} />
-                <h3>{messages.roleNoticeTitle}</h3>
-                <p>{messages.roleNotice[user.role]}</p>
-              </Surface>
-            </div>
           </div>
         </>
       )}

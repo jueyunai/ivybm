@@ -135,7 +135,6 @@ export const PORTAL_EN = {
       'Inspect website content types, publishing state, and English/Arabic completeness in one workspace.',
     editorDescription:
       'Create, edit, manage state, preview, and safely delete English and Arabic content.',
-    editorStatus: 'Create and edit available',
     editorTitle: 'Content detail',
     emptyDescription: 'No content matches the current type, status, and search filters.',
     emptyTitle: 'No matching content',
@@ -185,8 +184,7 @@ export const PORTAL_EN = {
     description: 'Find website and content-production assets by file type, visibility, and source.',
     detailTitle: 'Asset detail',
     dimensions: 'Dimensions',
-    editorStatus: 'Upload and editing available',
-    emptyDescription: 'No assets match the current type, visibility, source, and search filters.',
+    emptyDescription: 'No assets match the current type, visibility, and search filters.',
     emptyTitle: 'No matching assets',
     eyebrow: 'CONTENT / MEDIA',
     filename: 'Filename',
@@ -217,7 +215,7 @@ export const PORTAL_EN = {
     readErrorTitle: 'Media is unavailable',
     resetFilters: 'Clear filters',
     searchLabel: 'Search assets',
-    searchPlaceholder: 'Search English filename or alt text',
+    searchPlaceholder: 'Search filename, alt text, or source',
     searchSubmit: 'Filter',
     selectAsset: 'Select asset',
     sourceLabel: 'Source',
@@ -247,8 +245,6 @@ export const PORTAL_EN = {
     alreadyProcessing: 'This document is being indexed. Wait for the current job to finish.',
     applyFilters: 'Filter',
     arabic: 'Arabic',
-    credentialsNeverShown:
-      'Only safe readiness is shown. API keys, base URLs, and internal job fields are never returned.',
     customerVisible: 'Customer visible',
     description:
       'Review and index states stay independent. Only reviewed and indexed content can power production AI.',
@@ -271,8 +267,8 @@ export const PORTAL_EN = {
     indexLabel: 'Index status',
     indexRateLimited: 'Too many indexing requests. Try again later.',
     indexStatuses: {
-      failed: 'Index failed',
-      pending: 'Awaiting index',
+      failed: 'Failed',
+      pending: 'Pending retrieval',
       processing: 'Indexing',
       ready: 'Ready',
     },
@@ -329,14 +325,19 @@ export const PORTAL_EN = {
     reviewRequired: 'Only reviewed documents can be indexed',
     reviewStatuses: {
       archived: 'Archived',
-      draft: 'Awaiting review',
-      reviewed: 'Reviewed',
+      draft: 'Draft',
+      reviewed: 'Approved',
     },
     routeActionRequired: 'Action required',
     routeReady: 'Ready',
     routeUnconfigured: 'Not configured',
     searchLabel: 'Search documents',
     searchPlaceholder: 'Search source title',
+    usageLabels: {
+      'chat.reply': 'Assistant chat',
+      'knowledge.embedding': 'Vector index',
+      'knowledge.translation': 'Document translation',
+    },
     selectDocument: 'Select a document first',
     sourceTypeLabel: 'Source type',
     sourceTypes: {

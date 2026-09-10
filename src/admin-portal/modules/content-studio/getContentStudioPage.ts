@@ -31,7 +31,7 @@ export type ContentStudioOption = {
   previewUrl?: string
   reference?: string
 }
-export type ContentStudioSourceReference = { claim: string; source: string }
+export type ContentStudioSourceReference = { claim: string; id?: string; source: string }
 export type ContentStudioReview = {
   comments: string | null
   createdAt: string
@@ -349,12 +349,13 @@ export const loadContentStudioPageData = async ({
           publishJobs: jobsByContent.get(content.id) ?? [],
           reviews: reviewsByContent.get(content.id) ?? [],
           sourceReferences: Array.isArray(content.sourceReferences)
-            ? content.sourceReferences
-                .map((source) => ({
-                  claim: stringValue(source.claim) ?? '',
-                  source: stringValue(source.source) ?? '',
-                }))
-                .filter((source) => source.claim && source.source)
+            ? content.sourceReferences.flatMap((source) => {
+                const claim = stringValue(source.claim)
+                const id = stringValue(source.id)
+                const sourceValue = stringValue(source.source)
+                if (!claim || !sourceValue) return []
+                return [{ claim, ...(id ? { id } : {}), source: sourceValue }]
+              })
             : [],
           status: content.status as ContentStudioStatus,
           title: String(content.title),

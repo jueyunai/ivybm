@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from 'vitest'
+import React from 'react'
+
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Payload, PayloadRequest } from 'payload'
 
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import { formatJobTypeLabel } from '@/admin-portal/core/jobLabels'
+import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
 import {
   loadSafeJobPageData,
   parseSafeJobQuery,
@@ -13,10 +17,25 @@ import {
   retryPortalJob,
 } from '@/admin-portal/modules/operations/operationsCommands'
 import {
+  formatOperationsTimestamp,
+  OperationsWorkspace,
+} from '@/admin-portal/modules/operations/OperationsWorkspace'
+import {
   getJobCompensation,
   parsePublicationRecoveryIdempotencyKey,
 } from '@/modules/jobs/compensation/contracts'
 import type { Job, User } from '@/payload-types'
+
+import { selectUiOption } from './support/uiSelect'
+
+const navigation = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }))
+
+vi.mock('next/navigation', () => ({ useRouter: () => navigation }))
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
 
 const job = (overrides: Partial<Job> = {}): Job => ({
   attempts: 5,
@@ -167,9 +186,58 @@ describe('Portal operations', () => {
     expect(formatJobTypeLabel('feishu.handoff.notify', 'zh')).toBe('飞书接管提醒通知')
   })
 
+  it('formats operation timestamps with the selected Portal locale', () => {
+    const value = '2026-07-30T00:00:00.000Z'
+    expect(formatOperationsTimestamp(value, 'zh')).toBe(
+      new Intl.DateTimeFormat('zh-CN', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(new Date(value)),
+    )
+    expect(formatOperationsTimestamp(value, 'en')).toBe(
+      new Intl.DateTimeFormat('en', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(new Date(value)),
+    )
+  })
+
   it('bounds operations query parameters', () => {
-    expect(parseSafeJobQuery({ page: '3', status: 'dead' })).toEqual({ page: 3, status: 'dead' })
+    expect(parseSafeJobQuery({ job: '17', page: '3', status: 'dead' })).toEqual({
+      job: 17,
+      page: 3,
+      status: 'dead',
+    })
     expect(parseSafeJobQuery({ page: '-1', status: 'outside' })).toEqual({ page: 1, status: 'all' })
+    for (const invalid of ['', '0', '-1', '1.5', 'not-a-number']) {
+      expect(parseSafeJobQuery({ job: invalid })).toEqual({ page: 1, status: 'all' })
+    }
+  })
+
+  it('marks a deep-linked job and clears the target when the filter changes', () => {
+    const item = toSafeJobSummary(job())
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(OperationsWorkspace, {
+          pageState: 'available',
+          summary: {
+            items: [item],
+            pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+            query: { job: item.id, page: 1, status: 'all' },
+          },
+        }),
+      ),
+    )
+
+    const target = document.getElementById(`portal-job-${item.id}`)
+    expect(target).toBeTruthy()
+    expect(target?.classList.contains('is-target')).toBe(true)
+
+    selectUiOption(screen.getByRole('combobox', { name: '筛选' }), 'failed')
+    expect(navigation.push).toHaveBeenCalledWith('/dashboard/operations?status=failed')
   })
 
   it('loads Portal job summaries without selecting the stored payload', async () => {
@@ -197,6 +265,48 @@ describe('Portal operations', () => {
         select: expect.not.objectContaining({ payload: expect.anything() }),
       }),
     )
+  })
+
+  it('queries an authorized job by id and returns a normal empty result when it is missing', async () => {
+    const find = vi.fn().mockResolvedValue({ docs: [], page: 1, totalDocs: 0, totalPages: 1 })
+    const query = { job: 17, page: 1, status: 'all' } as const
+
+    await expect(
+      loadSafeJobPageData({
+        env: {
+          ADMIN_PORTAL_ENABLED: 'true',
+          ADMIN_PORTAL_OPERATIONS_ENABLED: 'true',
+        } as never,
+        payload: { find } as unknown as Payload,
+        query,
+        req: {} as PayloadRequest,
+        role: 'admin',
+      }),
+    ).resolves.toMatchObject({
+      state: 'available',
+      summary: { items: [], query },
+    })
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({ overrideAccess: false, where: { id: { equals: 17 } } }),
+    )
+  })
+
+  it('does not query jobs for a non-admin role, even with a target id', async () => {
+    const find = vi.fn()
+
+    await expect(
+      loadSafeJobPageData({
+        env: {
+          ADMIN_PORTAL_ENABLED: 'true',
+          ADMIN_PORTAL_OPERATIONS_ENABLED: 'true',
+        } as never,
+        payload: { find } as unknown as Payload,
+        query: { job: 17, page: 1, status: 'all' },
+        req: {} as PayloadRequest,
+        role: 'operator',
+      }),
+    ).resolves.toEqual({ state: 'forbidden', summary: null })
+    expect(find).not.toHaveBeenCalled()
   })
 
   it('executes only the registered knowledge compensation with the authenticated admin', async () => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 
 import Image from 'next/image'
 import Link from 'next/link'
@@ -8,26 +8,46 @@ import { useRouter } from 'next/navigation'
 import {
   IconArrowLeft,
   IconArrowRight,
-  IconCalendar,
+  IconBox,
+  IconBrandFacebook,
+  IconBrandInstagram,
+  IconBrandLinkedin,
+  IconBuilding,
+  IconCheck,
   IconChecks,
+  IconExternalLink,
   IconFile,
   IconFileDownload,
   IconFileTypePdf,
   IconPhoto,
   IconPlus,
+  IconSearch,
   IconRefresh,
   IconSend,
+  IconShieldCheck,
   IconSparkles,
+  IconTool,
   IconTrash,
+  IconTruckDelivery,
   IconUpload,
+  IconZoomIn,
 } from '@tabler/icons-react'
 
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import {
+  Button,
+  ModalDialog,
+  PortalState,
+  SearchInput,
+  StatusBadge,
+  Surface,
+  UiSelect,
+} from '@/admin-portal/core/ui'
 
 import type {
   ContentStudioItem,
+  ContentStudioOption,
   ContentStudioPageData,
   ContentStudioQuery,
   ContentStudioSourceReference,
@@ -96,6 +116,18 @@ export function ContentStudio({
     startRefresh(() => router.refresh())
   }
 
+  const updateFilters = (name: 'status' | 'platform', value: string) => {
+    const params = new URLSearchParams()
+    if (summary?.query.q) params.set('q', summary.query.q)
+    const nextStatus = name === 'status' ? value : (summary?.query.status ?? 'all')
+    const nextPlatform = name === 'platform' ? value : (summary?.query.platform ?? 'all')
+    if (nextStatus && nextStatus !== 'all') params.set('status', nextStatus)
+    if (nextPlatform && nextPlatform !== 'all') params.set('platform', nextPlatform)
+    router.push(
+      params.toString() ? `/dashboard/content-studio?${params}` : '/dashboard/content-studio',
+    )
+  }
+
   return (
     <main className="portal-page portal-content-studio">
       <header className="portal-page__intro portal-content-studio__intro">
@@ -132,33 +164,51 @@ export function ContentStudio({
       ) : null}
       <Surface as="section" className="portal-content-studio__filters">
         <form action="/dashboard/content-studio" method="get">
-          <label>
-            <span>{copy.titleField}</span>
-            <input defaultValue={summary.query.q} name="q" type="search" />
-          </label>
-          <label>
-            <span>{copy.status}</span>
-            <select defaultValue={summary.query.status} name="status">
-              <option value="all">{copy.status}</option>
-              {(['draft', 'review', 'approved'] as const).map((status) => (
-                <option key={status} value={status}>
-                  {copy.statusLabels[status]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{copy.platform}</span>
-            <select defaultValue={summary.query.platform} name="platform">
-              <option value="all">{copy.platform}</option>
-              {(['facebook', 'instagram', 'linkedin'] as const).map((platform) => (
-                <option key={platform} value={platform}>
-                  {copy.platformLabels[platform]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button type="submit">{copy.filter}</Button>
+          <div className="portal-content-studio__filter-item">
+            <span className="portal-content-studio__filter-label">{copy.titleField}</span>
+            <SearchInput defaultValue={summary.query.q} name="q" placeholder={copy.titleField} />
+          </div>
+          <div className="portal-content-studio__filter-item">
+            <span className="portal-content-studio__filter-label">{copy.status}</span>
+            <UiSelect
+              ariaLabel={copy.status}
+              name="status"
+              onChange={(val) => updateFilters('status', val)}
+              options={[
+                { value: 'all', label: copy.allStatus },
+                ...(['draft', 'review', 'approved'] as const).map((status) => ({
+                  value: status,
+                  label: copy.statusLabels[status],
+                })),
+              ]}
+              value={summary.query.status}
+            />
+          </div>
+          <div className="portal-content-studio__filter-item">
+            <span className="portal-content-studio__filter-label">{copy.platform}</span>
+            <UiSelect
+              ariaLabel={copy.platform}
+              name="platform"
+              onChange={(val) => updateFilters('platform', val)}
+              options={[
+                { value: 'all', label: copy.allPlatforms },
+                ...(['facebook', 'instagram', 'linkedin'] as const).map((platform) => ({
+                  value: platform,
+                  label: copy.platformLabels[platform],
+                })),
+              ]}
+              value={summary.query.platform}
+            />
+          </div>
+          <div className="portal-content-studio__filter-actions">
+            <Button size="compact" type="submit">
+              <IconSearch aria-hidden="true" size={15} stroke={1.8} />
+              {copy.filter}
+            </Button>
+            <Button asChild size="compact" variant="ghost">
+              <Link href="/dashboard/content-studio">{copy.resetFilters}</Link>
+            </Button>
+          </div>
         </form>
       </Surface>
       <div className="portal-content-studio__workspace">
@@ -174,8 +224,12 @@ export function ContentStudio({
               {summary.items.map((item) => (
                 <li key={item.id}>
                   <button
-                    aria-pressed={selected?.id === item.id}
-                    className={selected?.id === item.id ? 'is-selected' : undefined}
+                    aria-pressed={activeAction !== 'create' && selected?.id === item.id}
+                    className={
+                      activeAction !== 'create' && selected?.id === item.id
+                        ? 'is-selected'
+                        : undefined
+                    }
                     onClick={() => {
                       setSelectedId(item.id)
                       setFeedback(null)
@@ -205,18 +259,24 @@ export function ContentStudio({
         </Surface>
 
         {activeAction === 'generator' ? (
-          <Surface as="section" className="portal-content-studio__editor portal-content-studio__editor--drawer">
+          <Surface
+            as="section"
+            className="portal-content-studio__editor portal-content-studio__editor--drawer"
+          >
             <GenerateDraftEditor
               copy={copy}
               drafts={summary.items.filter((item) => item.status === 'draft')}
-              options={summary.options}
               onClose={closeAction}
               onDone={onDone}
+              options={summary.options}
               selectedDraftId={selected?.status === 'draft' ? selected.id : null}
             />
           </Surface>
         ) : activeAction === 'create' || (activeAction === 'edit' && selected) ? (
-          <Surface as="section" className="portal-content-studio__editor portal-content-studio__editor--drawer">
+          <Surface
+            as="section"
+            className="portal-content-studio__editor portal-content-studio__editor--drawer"
+          >
             <DraftEditor
               key={`${activeAction}:${activeAction === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
               copy={copy}
@@ -227,25 +287,24 @@ export function ContentStudio({
             />
           </Surface>
         ) : activeAction === 'review' && selected ? (
-          <Surface as="section" className="portal-content-studio__editor portal-content-studio__editor--drawer">
-            <ReviewEditor
-              copy={copy}
-              item={selected}
-              onClose={closeAction}
-              onDone={onDone}
-            />
+          <Surface
+            as="section"
+            className="portal-content-studio__editor portal-content-studio__editor--drawer"
+          >
+            <ReviewEditor copy={copy} item={selected} onClose={closeAction} onDone={onDone} />
           </Surface>
         ) : activeAction === 'schedule' && selected ? (
-          <Surface as="section" className="portal-content-studio__editor portal-content-studio__editor--drawer">
-            <ScheduleEditor
-              copy={copy}
-              item={selected}
-              onClose={closeAction}
-              onDone={onDone}
-            />
+          <Surface
+            as="section"
+            className="portal-content-studio__editor portal-content-studio__editor--drawer"
+          >
+            <ScheduleEditor copy={copy} item={selected} onClose={closeAction} onDone={onDone} />
           </Surface>
         ) : activeAction === 'publish-now' && selected ? (
-          <Surface as="section" className="portal-content-studio__editor portal-content-studio__editor--drawer">
+          <Surface
+            as="section"
+            className="portal-content-studio__editor portal-content-studio__editor--drawer"
+          >
             <PublishNowEditor
               copy={copy}
               item={selected}
@@ -278,10 +337,6 @@ export function ContentStudio({
                 publishingAvailable={
                   summary.publishingEnabled && summary.options.platformAccounts.length > 0
                 }
-                onSchedule={() => {
-                  setActiveAction('schedule')
-                  setFeedback(null)
-                }}
                 onSubmitToReview={() => onDone(copy.readyForReview)}
               />
             ) : (
@@ -295,6 +350,13 @@ export function ContentStudio({
 }
 
 type Copy = ReturnType<typeof getContentStudioMessages>
+
+const QUICK_INTENT_ICONS = {
+  craft: IconTool,
+  product: IconBox,
+  project: IconBuilding,
+  shipment: IconTruckDelivery,
+} as const
 
 const tone = (status: ContentStudioItem['status']): 'info' | 'neutral' | 'success' | 'warning' =>
   status === 'approved' ? 'success' : status === 'review' ? 'info' : 'warning'
@@ -374,7 +436,6 @@ function ContentDetail({
   onPublish,
   onRefresh,
   publishingAvailable,
-  onSchedule,
   onSubmitToReview,
 }: {
   copy: Copy
@@ -386,12 +447,12 @@ function ContentDetail({
   onPublish: () => void
   onRefresh: () => void
   publishingAvailable: boolean
-  onSchedule: () => void
   onSubmitToReview: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [previewAsset, setPreviewAsset] = useState<ContentStudioItem['assets'][number] | null>(null)
   const canDelete =
     item.status === 'draft' && item.publishJobs.length === 0 && item.reviews.length === 0
   const submit = async () => {
@@ -484,12 +545,30 @@ function ContentDetail({
           <h4>{copy.assets}</h4>
           {item.assets.length ? (
             <ul className="portal-content-studio__asset-relations">
-              {item.assets.map((asset) => (
-                <li key={asset.id}>
-                  <AssetThumbnail option={asset} />
-                  <span>{asset.label}</span>
-                </li>
-              ))}
+              {item.assets.map((asset) => {
+                const canPreview = Boolean(asset.previewUrl)
+                return (
+                  <li key={asset.id}>
+                    {canPreview ? (
+                      <button
+                        aria-label={`${copy.zoomAsset}: ${asset.label}`}
+                        className="portal-content-studio__asset-thumb-btn"
+                        onClick={() => setPreviewAsset(asset)}
+                        title={copy.zoomAsset}
+                        type="button"
+                      >
+                        <AssetThumbnail option={asset} />
+                        <span className="portal-content-studio__asset-zoom-badge">
+                          <IconZoomIn aria-hidden="true" size={16} stroke={2} />
+                        </span>
+                      </button>
+                    ) : (
+                      <AssetThumbnail option={asset} />
+                    )}
+                    <span title={asset.label}>{asset.label}</span>
+                  </li>
+                )
+              })}
             </ul>
           ) : (
             <p>—</p>
@@ -520,7 +599,7 @@ function ContentDetail({
       </section>
       <section>
         <div className="portal-content-studio__section-heading">
-          <h4>{copy.schedule}</h4>
+          <h4>{copy.publishJobsTitle}</h4>
           <Button disabled={disabled} onClick={onRefresh} size="compact" variant="ghost">
             <IconRefresh aria-hidden="true" size={15} />
             {copy.refreshPublicationResults}
@@ -567,11 +646,7 @@ function ContentDetail({
             <Button disabled={busy || disabled} onClick={onEdit} size="compact" variant="secondary">
               {copy.edit}
             </Button>
-            <Button
-              disabled={busy || disabled || item.sourceReferences.length === 0}
-              onClick={() => void submit()}
-              size="compact"
-            >
+            <Button disabled={busy || disabled} onClick={() => void submit()} size="compact">
               <IconSend aria-hidden="true" size={15} />
               {copy.sendReview}
             </Button>
@@ -593,10 +668,6 @@ function ContentDetail({
             >
               <IconSend aria-hidden="true" size={15} />
               {copy.immediatePublish}
-            </Button>
-            <Button disabled={busy || disabled} onClick={onSchedule} size="compact">
-              <IconCalendar aria-hidden="true" size={15} />
-              {copy.schedule}
             </Button>
             {item.platform === 'linkedin' ? (
               <Button
@@ -636,7 +707,7 @@ function ContentDetail({
               disabled={busy || disabled}
               onClick={() => setConfirmDelete(true)}
               size="compact"
-              variant="ghost"
+              variant="danger"
             >
               <IconTrash aria-hidden="true" size={15} />
               {copy.delete}
@@ -644,8 +715,163 @@ function ContentDetail({
           )
         ) : null}
       </footer>
+      {previewAsset ? (
+        <ModalDialog
+          closeLabel={copy.close}
+          maxWidth="760px"
+          onOpenChange={(open) => {
+            if (!open) setPreviewAsset(null)
+          }}
+          open={Boolean(previewAsset)}
+          title={previewAsset.label || copy.assets}
+        >
+          <div className="portal-content-studio__asset-lightbox">
+            {previewAsset.previewUrl && previewAsset.meta?.startsWith('image/') ? (
+              <div className="portal-content-studio__asset-lightbox-img-wrap">
+                <Image
+                  alt={previewAsset.label}
+                  className="portal-content-studio__asset-lightbox-img"
+                  height={800}
+                  src={previewAsset.previewUrl}
+                  unoptimized
+                  width={1200}
+                />
+              </div>
+            ) : previewAsset.previewUrl && previewAsset.meta === 'application/pdf' ? (
+              <div className="portal-content-studio__asset-lightbox-doc">
+                <IconFileTypePdf aria-hidden="true" size={48} stroke={1.5} />
+                <p>{previewAsset.label}</p>
+              </div>
+            ) : (
+              <p className="portal-muted">—</p>
+            )}
+            {previewAsset.previewUrl ? (
+              <footer className="portal-content-studio__asset-lightbox-footer">
+                <Button asChild size="compact" variant="secondary">
+                  <a href={previewAsset.previewUrl} rel="noreferrer" target="_blank">
+                    <IconExternalLink aria-hidden="true" size={14} stroke={1.8} />
+                    {copy.openOriginal}
+                  </a>
+                </Button>
+              </footer>
+            ) : null}
+          </div>
+        </ModalDialog>
+      ) : null}
     </>
   )
+}
+
+const MAX_UPLOAD_FILE_COUNT = 1
+const MAX_UPLOAD_FILE_SIZE = 8 * 1024 * 1024
+const UPLOAD_IMAGE_MIME_TYPES = new Set(['image/avif', 'image/jpeg', 'image/png', 'image/webp'])
+const UPLOAD_IMAGE_EXTENSION = /\.(?:avif|jpe?g|png|webp)$/i
+
+async function uploadMediaAsset(file: File): Promise<ContentStudioOption> {
+  const form = new FormData()
+  form.set('alt', file.name.replace(/\.[^/.]+$/, ''))
+  form.set('source', 'Content Studio')
+  form.set('isPublic', 'false')
+  form.set('file', file)
+  const createKey = `portal-media:content-studio:${crypto.randomUUID()}`
+  const response = await fetch('/api/portal/media', {
+    body: form,
+    headers: { 'Idempotency-Key': createKey },
+    method: 'POST',
+  })
+  if (!response.ok) {
+    let msg = 'Failed to upload media'
+    try {
+      const errJson = (await response.json()) as { error?: { message?: unknown } }
+      if (typeof errJson.error?.message === 'string') msg = errJson.error.message
+    } catch {}
+    throw new Error(msg)
+  }
+  const body = (await response.json()) as {
+    result?: {
+      alt?: string
+      filename?: string
+      id: number | string
+      mimeType?: null | string
+      previewUrl?: null | string
+    }
+  }
+  if (!body.result || !body.result.id) {
+    throw new Error('Invalid media upload response')
+  }
+  return {
+    id: Number(body.result.id),
+    label: body.result.alt || body.result.filename || `#${body.result.id}`,
+    meta: body.result.mimeType ?? undefined,
+    previewUrl: body.result.previewUrl ?? undefined,
+  }
+}
+
+function useAssetUploader({
+  copy,
+  initialAssets,
+  onAssetsUploaded,
+}: {
+  copy: Copy
+  initialAssets: ContentStudioOption[]
+  onAssetsUploaded: (newIds: string[]) => void
+}) {
+  const [uploadedAssets, setUploadedAssets] = useState<ContentStudioOption[]>([])
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+
+  const combinedAssets = useMemo(() => {
+    const existingIds = new Set(initialAssets.map((a) => a.id))
+    const extras = uploadedAssets.filter((a) => !existingIds.has(a.id))
+    return [...extras, ...initialAssets]
+  }, [initialAssets, uploadedAssets])
+
+  const handleUpload = async (files: FileList | File[]) => {
+    if (files.length > MAX_UPLOAD_FILE_COUNT) {
+      setUploadError(copy.uploadCountExceeded)
+      return
+    }
+    const list = Array.from(files).filter(
+      (file) => UPLOAD_IMAGE_MIME_TYPES.has(file.type) || UPLOAD_IMAGE_EXTENSION.test(file.name),
+    )
+    if (list.length === 0) return
+
+    if (list.length > MAX_UPLOAD_FILE_COUNT) {
+      setUploadError(copy.uploadCountExceeded)
+      return
+    }
+
+    for (const f of list) {
+      if (f.size > MAX_UPLOAD_FILE_SIZE) {
+        setUploadError(copy.uploadSizeExceeded)
+        return
+      }
+    }
+
+    setUploadBusy(true)
+    setUploadError(null)
+    try {
+      const newItems: ContentStudioOption[] = []
+      for (const f of list) {
+        const item = await uploadMediaAsset(f)
+        newItems.push(item)
+      }
+      setUploadedAssets((curr) => [...newItems, ...curr])
+      const newIds = newItems.map((item) => String(item.id))
+      onAssetsUploaded(newIds)
+    } catch (caught) {
+      setUploadError(caught instanceof Error ? caught.message : copy.uploadFailed)
+    } finally {
+      setUploadBusy(false)
+    }
+  }
+
+  return {
+    combinedAssets,
+    handleUpload,
+    uploadBusy,
+    uploadError,
+  }
 }
 
 function DraftEditor({
@@ -661,7 +887,16 @@ function DraftEditor({
   onDone: (message: string) => void
   options: ContentStudioSummary['options']
 }) {
-  const initial = useMemo(
+  const initial = useMemo<{
+    assets: string[]
+    body: string
+    contentLocale: 'ar' | 'en'
+    contentType: ContentStudioItem['contentType']
+    knowledgeSources: string[]
+    platform: ContentStudioItem['platform']
+    sourceReferences: ContentStudioSourceReference[]
+    title: string
+  }>(
     () => ({
       assets: item?.assets.map((asset) => String(asset.id)) ?? [],
       body: item?.body ?? '',
@@ -669,7 +904,10 @@ function DraftEditor({
       contentType: item?.contentType ?? 'post',
       knowledgeSources: item?.knowledgeSources.map((source) => String(source.id)) ?? [],
       platform: item?.platform ?? 'linkedin',
-      sourceReferences: item?.sourceReferences ?? [],
+      sourceReferences: (item?.sourceReferences ?? []).map((reference, index) => ({
+        ...reference,
+        id: reference.id ?? `existing:${index}`,
+      })),
       title: item?.title ?? '',
     }),
     [item],
@@ -680,11 +918,24 @@ function DraftEditor({
   const [error, setError] = useState<string | null>(null)
   const update = <Key extends keyof typeof form>(key: Key, value: (typeof form)[Key]) =>
     setForm((current) => ({ ...current, [key]: value }))
-  const toggle = (key: 'assets' | 'knowledgeSources', value: string) =>
-    update(
-      key,
-      form[key].includes(value) ? form[key].filter((id) => id !== value) : [...form[key], value],
-    )
+
+  const toggleAsset = (value: string) => {
+    setForm((current) => {
+      const nextAssets = current.assets.includes(value) ? [] : [value]
+      return { ...current, assets: nextAssets, contentType: 'post' }
+    })
+  }
+
+  const { combinedAssets, handleUpload, uploadBusy, uploadError } = useAssetUploader({
+    copy,
+    initialAssets: options.assets,
+    onAssetsUploaded: (newIds) => {
+      setForm((current) => {
+        const nextAssets = newIds.slice(0, 1)
+        return { ...current, assets: nextAssets, contentType: 'post' }
+      })
+    },
+  })
   const save = async () => {
     setBusy(true)
     setError(null)
@@ -723,51 +974,47 @@ function DraftEditor({
       </header>
       {error ? <p role="alert">{error}</p> : null}
       <div className="portal-content-studio__form-grid">
-        <Field label={copy.titleField}>
+        <Field label={copy.titleField} required>
           <input
             maxLength={180}
             onChange={(event) => update('title', event.target.value)}
             value={form.title}
           />
         </Field>
-        <Field label={copy.platform}>
-          <select
-            onChange={(event) => update('platform', event.target.value as typeof form.platform)}
+        <Field label={copy.platform} required>
+          <UiSelect
+            ariaLabel={copy.platform}
+            onChange={(val) => update('platform', val as typeof form.platform)}
+            options={(['facebook', 'instagram', 'linkedin'] as const).map((platform) => ({
+              label: copy.platformLabels[platform],
+              value: platform,
+            }))}
             value={form.platform}
-          >
-            {(['facebook', 'instagram', 'linkedin'] as const).map((platform) => (
-              <option key={platform} value={platform}>
-                {copy.platformLabels[platform]}
-              </option>
-            ))}
-          </select>
+          />
         </Field>
-        <Field label={copy.locale}>
-          <select
-            onChange={(event) =>
-              update('contentLocale', event.target.value as typeof form.contentLocale)
-            }
+        <Field label={copy.locale} required>
+          <UiSelect
+            ariaLabel={copy.locale}
+            onChange={(val) => update('contentLocale', val as typeof form.contentLocale)}
+            options={[
+              { label: 'EN', value: 'en' },
+              { label: 'AR', value: 'ar' },
+            ]}
             value={form.contentLocale}
-          >
-            <option value="en">EN</option>
-            <option value="ar">AR</option>
-          </select>
+          />
         </Field>
         <Field label={copy.type}>
-          <select
-            onChange={(event) =>
-              update('contentType', event.target.value as typeof form.contentType)
-            }
+          <UiSelect
+            ariaLabel={copy.type}
+            onChange={(val) => update('contentType', val as typeof form.contentType)}
+            options={(['post', 'carousel', 'long-form'] as const).map((type) => ({
+              label: copy.typeLabels[type],
+              value: type,
+            }))}
             value={form.contentType}
-          >
-            {(['post', 'carousel', 'long-form'] as const).map((type) => (
-              <option key={type} value={type}>
-                {copy.typeLabels[type]}
-              </option>
-            ))}
-          </select>
+          />
         </Field>
-        <Field label={copy.body} wide>
+        <Field label={copy.body} required wide>
           <textarea
             dir={form.contentLocale === 'ar' ? 'rtl' : undefined}
             maxLength={30_000}
@@ -779,24 +1026,41 @@ function DraftEditor({
         <Field label={copy.assets} wide>
           <MultiOptions
             assetPreviews
-            options={options.assets}
+            onUpload={handleUpload}
+            options={combinedAssets}
             selected={form.assets}
-            toggle={(value) => toggle('assets', value)}
+            toggle={toggleAsset}
+            uploadBusy={uploadBusy}
+            uploadPrompt={copy.uploadPrompt}
+            uploadTitle={uploadBusy ? copy.uploadingMedia : copy.uploadMedia}
           />
+          {uploadError ? (
+            <p className="portal-content-studio__upload-error" role="alert">
+              {uploadError}
+            </p>
+          ) : null}
         </Field>
         <Field label={copy.knowledge} wide>
           <MultiOptions
+            emptyMessage={copy.noKnowledgeOptions}
             options={options.knowledgeSources}
             selected={form.knowledgeSources}
-            toggle={(value) => toggle('knowledgeSources', value)}
+            toggle={(id) =>
+              setForm((current) => ({
+                ...current,
+                knowledgeSources: current.knowledgeSources.includes(id)
+                  ? current.knowledgeSources.filter((item) => item !== id)
+                  : [...current.knowledgeSources, id],
+              }))
+            }
           />
         </Field>
       </div>
       <FactEditor
         copy={copy}
+        onChange={(sourceReferences) => update('sourceReferences', sourceReferences)}
         sources={selectedSources}
         value={form.sourceReferences}
-        onChange={(sourceReferences) => update('sourceReferences', sourceReferences)}
       />
       <footer>
         <Button disabled={busy} onClick={() => void save()}>
@@ -805,6 +1069,97 @@ function DraftEditor({
       </footer>
     </div>
   )
+}
+
+function FactEditor({
+  copy,
+  onChange,
+  sources,
+  value,
+}: {
+  copy: Copy
+  onChange: (value: ContentStudioSourceReference[]) => void
+  sources: string[]
+  value: ContentStudioSourceReference[]
+}) {
+  const update = (index: number, key: 'claim' | 'source', next: string) =>
+    onChange(value.map((item, current) => (current === index ? { ...item, [key]: next } : item)))
+  return (
+    <section className="portal-content-studio__facts-editor">
+      <header>
+        <h4>{copy.facts}</h4>
+        <Button
+          disabled={sources.length === 0}
+          onClick={() =>
+            onChange([...value, { claim: '', id: crypto.randomUUID(), source: sources[0] ?? '' }])
+          }
+          size="compact"
+          variant="secondary"
+        >
+          <IconPlus aria-hidden="true" size={14} />
+          {copy.addFact}
+        </Button>
+      </header>
+      {value.map((fact, index) => {
+        const available =
+          fact.source && !sources.includes(fact.source) ? [fact.source, ...sources] : sources
+        return (
+          <div key={fact.id ?? `existing:${index}`}>
+            <input
+              maxLength={500}
+              onChange={(event) => update(index, 'claim', event.target.value)}
+              placeholder={copy.claim}
+              value={fact.claim}
+            />
+            <UiSelect
+              ariaLabel={copy.source}
+              onChange={(next) => update(index, 'source', next)}
+              options={[
+                { label: copy.source, value: '' },
+                ...available.map((source) => ({ label: source, value: source })),
+              ]}
+              value={fact.source}
+            />
+            <Button
+              onClick={() => onChange(value.filter((_, current) => current !== index))}
+              size="compact"
+              variant="ghost"
+            >
+              {copy.remove}
+            </Button>
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
+const PLATFORMS_STORAGE_KEY = 'ivybm:content-studio:selected-platforms'
+const VALID_PLATFORMS: Array<ContentStudioItem['platform']> = ['facebook', 'instagram', 'linkedin']
+const DEFAULT_PLATFORMS: Array<ContentStudioItem['platform']> = ['linkedin']
+
+function readStoredPlatforms(): Array<ContentStudioItem['platform']> | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(PLATFORMS_STORAGE_KEY)
+    if (raw === null) return null
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return null
+    return parsed.filter((item): item is ContentStudioItem['platform'] =>
+      VALID_PLATFORMS.includes(item as ContentStudioItem['platform']),
+    )
+  } catch {
+    return null
+  }
+}
+
+function persistPlatforms(platforms: Array<ContentStudioItem['platform']>): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(PLATFORMS_STORAGE_KEY, JSON.stringify(platforms))
+  } catch {
+    // ignore storage quota / access errors
+  }
 }
 
 function GenerateDraftEditor({
@@ -823,40 +1178,161 @@ function GenerateDraftEditor({
   selectedDraftId: null | number
 }) {
   const [mode, setMode] = useState<'copy' | 'image'>('copy')
-  const command = usePortalCommandKey('portal-content-studio:generate')
-  const [form, setForm] = useState({
+  const batchRef = useRef<{
+    fingerprint: string
+    generatedAssets: string[]
+    id: string
+    succeededPlatforms: Array<ContentStudioItem['platform']>
+  } | null>(null)
+  const [form, setForm] = useState(() => ({
     assets: [] as string[],
+    autoGenerateImage: false,
     brief: '',
     contentLocale: 'en' as 'ar' | 'en',
     contentType: 'post' as ContentStudioItem['contentType'],
     knowledgeSources: [] as string[],
-    platform: 'linkedin' as ContentStudioItem['platform'],
-  })
+    platforms: readStoredPlatforms() ?? [...DEFAULT_PLATFORMS],
+  }))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [generationProgress, setGenerationProgress] = useState<string | null>(null)
+
+  useEffect(() => {
+    persistPlatforms(form.platforms)
+  }, [form.platforms])
+
+  const { combinedAssets, handleUpload, uploadBusy, uploadError } = useAssetUploader({
+    copy,
+    initialAssets: options.assets,
+    onAssetsUploaded: (newIds) => {
+      setForm((current) => {
+        const nextAssets = newIds.slice(0, 1)
+        return { ...current, assets: nextAssets, contentType: 'post' }
+      })
+    },
+  })
+
   const update = <Key extends keyof typeof form>(key: Key, value: (typeof form)[Key]) =>
     setForm((current) => ({ ...current, [key]: value }))
-  const toggle = (key: 'assets' | 'knowledgeSources', value: string) =>
-    update(
-      key,
-      form[key].includes(value) ? form[key].filter((id) => id !== value) : [...form[key], value],
-    )
+  const toggle = (key: 'assets' | 'knowledgeSources', value: string) => {
+    setForm((current) => {
+      if (key === 'assets') {
+        const nextAssets = current.assets.includes(value) ? [] : [value]
+        return {
+          ...current,
+          assets: nextAssets,
+          contentType: 'post',
+        }
+      }
+      const nextValues = current[key].includes(value)
+        ? current[key].filter((id) => id !== value)
+        : [...current[key], value]
+      return { ...current, [key]: nextValues }
+    })
+  }
+  const togglePlatform = (platform: ContentStudioItem['platform']) => {
+    setForm((current) => {
+      const exists = current.platforms.includes(platform)
+      const nextPlatforms = exists
+        ? current.platforms.filter((p) => p !== platform)
+        : [...current.platforms, platform]
+      return { ...current, platforms: nextPlatforms }
+    })
+  }
+  const selectAllPlatforms = () => {
+    const all: Array<ContentStudioItem['platform']> = ['facebook', 'instagram', 'linkedin']
+    setForm((current) => ({
+      ...current,
+      platforms: all,
+    }))
+  }
+  const clearPlatforms = () => {
+    setForm((current) => ({
+      ...current,
+      platforms: [],
+    }))
+  }
+  const canGenerate =
+    (form.assets.length > 0 || form.brief.trim().length > 0) && form.platforms.length > 0
   const generate = async () => {
+    if (!canGenerate || busy) return
     setBusy(true)
     setError(null)
     try {
-      const idempotencyKey = command.key(JSON.stringify(form))
-      await request(
-        '/api/portal/content-studio/generate',
-        'POST',
-        { ...form, idempotencyKey },
-        () => command.receivedResponse(idempotencyKey),
+      const targetPlatforms = form.platforms
+      const total = targetPlatforms.length
+      const fingerprint = JSON.stringify({
+        assets: form.assets,
+        autoGenerateImage: form.autoGenerateImage,
+        brief: form.brief.trim(),
+        contentLocale: form.contentLocale,
+        contentType: form.contentType,
+        knowledgeSources: form.knowledgeSources,
+        platforms: targetPlatforms,
+      })
+      let batch = batchRef.current
+      if (!batch || batch.fingerprint !== fingerprint) {
+        batch = {
+          fingerprint,
+          generatedAssets: form.assets,
+          id: crypto.randomUUID(),
+          succeededPlatforms: [],
+        }
+        batchRef.current = batch
+      }
+      let generatedAssets = batch.generatedAssets
+      for (let i = 0; i < total; i++) {
+        const platform = targetPlatforms[i]
+        if (batch.succeededPlatforms.includes(platform)) continue
+        const label = copy.platformLabels[platform]
+        if (total > 1) {
+          setGenerationProgress(
+            copy.generatingProgress
+              .replace('{current}', String(i + 1))
+              .replace('{total}', String(total))
+              .replace('{platform}', label),
+          )
+        }
+        const payload = {
+          ...form,
+          assets: generatedAssets,
+          autoGenerateImage: generatedAssets.length > 0 ? false : form.autoGenerateImage,
+          platform,
+        }
+        const idempotencyKey = `portal-content-studio:generate:${batch.id}:${platform}`
+        const res = await request('/api/portal/content-studio/generate', 'POST', {
+          ...payload,
+          idempotencyKey,
+        })
+        batch.succeededPlatforms.push(platform)
+        if (
+          generatedAssets.length === 0 &&
+          res &&
+          typeof res === 'object' &&
+          'content' in res &&
+          res.content &&
+          typeof res.content === 'object' &&
+          'assets' in res.content &&
+          Array.isArray(res.content.assets) &&
+          res.content.assets.length > 0
+        ) {
+          generatedAssets = (res.content.assets as unknown[])
+            .map((id) => (typeof id === 'number' || typeof id === 'string' ? String(id) : ''))
+            .filter(Boolean)
+          batch.generatedAssets = generatedAssets
+        }
+      }
+      batchRef.current = null
+      onDone(
+        total > 1
+          ? copy.generationMultiComplete.replace('{count}', String(total))
+          : copy.generationComplete,
       )
-      onDone(copy.generationComplete)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
       setBusy(false)
+      setGenerationProgress(null)
     }
   }
   return (
@@ -886,7 +1362,6 @@ function GenerateDraftEditor({
           size="compact"
           variant={mode === 'image' ? 'primary' : 'ghost'}
         >
-          <IconPhoto aria-hidden="true" size={15} />
           {copy.imageGeneration}
         </Button>
       </div>
@@ -901,72 +1376,156 @@ function GenerateDraftEditor({
       ) : (
         <>
           <p className="portal-content-studio__generation-note">{copy.generationDescription}</p>
+          <div className="portal-content-studio__intent-section">
+            <div className="portal-content-studio__intent-meta">
+              <span className="portal-content-studio__intent-label">{copy.quickIntentsLabel}</span>
+              <span className="portal-content-studio__intent-hint">{copy.quickIntentsHint}</span>
+            </div>
+            <div className="portal-content-studio__intent-capsules">
+              {(['shipment', 'project', 'craft', 'product'] as const).map((intentKey) =>
+                (() => {
+                  const IntentIcon = QUICK_INTENT_ICONS[intentKey]
+                  return (
+                    <button
+                      className="portal-content-studio__capsule"
+                      key={intentKey}
+                      onClick={() => update('brief', copy.quickIntentDescriptions[intentKey])}
+                      type="button"
+                    >
+                      <IntentIcon aria-hidden="true" size={15} stroke={1.8} />
+                      {copy.quickIntents[intentKey]}
+                    </button>
+                  )
+                })(),
+              )}
+            </div>
+          </div>
           <div className="portal-content-studio__form-grid">
-            <Field label={copy.brief} wide>
+            <Field label={copy.brief} required wide>
               <textarea
                 maxLength={2000}
                 onChange={(event) => update('brief', event.target.value)}
-                rows={5}
+                placeholder={
+                  form.assets.length > 0
+                    ? copy.briefPlaceholderWithImages
+                    : copy.briefPlaceholderGeneral
+                }
+                rows={4}
                 value={form.brief}
               />
             </Field>
-            <Field label={copy.platform}>
-              <select
-                onChange={(event) => update('platform', event.target.value as typeof form.platform)}
-                value={form.platform}
-              >
-                {(['facebook', 'instagram', 'linkedin'] as const).map((platform) => (
-                  <option key={platform} value={platform}>
-                    {copy.platformLabels[platform]}
-                  </option>
-                ))}
-              </select>
+            <Field as="div" label={copy.platforms} required wide>
+              <div className="portal-content-studio__platform-header">
+                <span className="portal-content-studio__platform-hint">{copy.platformsHint}</span>
+                <div className="portal-content-studio__platform-actions">
+                  <button
+                    className="portal-content-studio__platform-link"
+                    onClick={selectAllPlatforms}
+                    type="button"
+                  >
+                    {copy.platformsSelectAll}
+                  </button>
+                  <span>·</span>
+                  <button
+                    className="portal-content-studio__platform-link"
+                    onClick={clearPlatforms}
+                    type="button"
+                  >
+                    {copy.platformsClear}
+                  </button>
+                </div>
+              </div>
+              <div className="portal-content-studio__platform-grid">
+                {[
+                  { icon: IconBrandFacebook, key: 'facebook' as const },
+                  { icon: IconBrandInstagram, key: 'instagram' as const },
+                  { icon: IconBrandLinkedin, key: 'linkedin' as const },
+                ].map(({ icon: BrandIcon, key }) => {
+                  const selected = form.platforms.includes(key)
+                  return (
+                    <button
+                      aria-pressed={selected}
+                      className={`portal-content-studio__platform-card ${selected ? 'is-selected' : ''}`}
+                      key={key}
+                      onClick={() => togglePlatform(key)}
+                      type="button"
+                    >
+                      <BrandIcon aria-hidden="true" size={18} />
+                      <span className="portal-content-studio__platform-card-name">
+                        {copy.platformLabels[key]}
+                      </span>
+                      {selected ? (
+                        <span className="portal-content-studio__platform-card-check">
+                          <IconCheck aria-hidden="true" size={14} />
+                        </span>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
             </Field>
-            <Field label={copy.locale}>
-              <select
-                onChange={(event) =>
-                  update('contentLocale', event.target.value as typeof form.contentLocale)
-                }
+            <Field label={copy.locale} required>
+              <UiSelect
+                ariaLabel={copy.locale}
+                onChange={(val) => update('contentLocale', val as typeof form.contentLocale)}
+                options={[
+                  { label: 'English (EN)', value: 'en' },
+                  { label: 'Arabic / العربية (AR)', value: 'ar' },
+                ]}
                 value={form.contentLocale}
-              >
-                <option value="en">EN</option>
-                <option value="ar">AR</option>
-              </select>
-            </Field>
-            <Field label={copy.type}>
-              <select
-                onChange={(event) =>
-                  update('contentType', event.target.value as typeof form.contentType)
-                }
-                value={form.contentType}
-              >
-                {(['post', 'carousel', 'long-form'] as const).map((type) => (
-                  <option key={type} value={type}>
-                    {copy.typeLabels[type]}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={copy.knowledge} wide>
-              <MultiOptions
-                options={options.knowledgeSources}
-                selected={form.knowledgeSources}
-                toggle={(value) => toggle('knowledgeSources', value)}
               />
             </Field>
             <Field label={copy.assets} wide>
               <MultiOptions
                 assetPreviews
-                options={options.assets}
+                onUpload={handleUpload}
+                options={combinedAssets}
                 selected={form.assets}
                 toggle={(value) => toggle('assets', value)}
+                uploadBusy={uploadBusy}
+                uploadPrompt={copy.uploadPrompt}
+                uploadTitle={uploadBusy ? copy.uploadingMedia : copy.uploadMedia}
+              />
+              {uploadError ? (
+                <p className="portal-content-studio__upload-error" role="alert">
+                  {uploadError}
+                </p>
+              ) : null}
+              {form.assets.length === 0 ? (
+                <label className="portal-content-studio__auto-image-toggle">
+                  <input
+                    checked={form.autoGenerateImage}
+                    onChange={(event) => update('autoGenerateImage', event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>{copy.autoGenerateImage}</span>
+                </label>
+              ) : (
+                <p className="portal-content-studio__format-notice">{copy.inferredFormatNotice}</p>
+              )}
+            </Field>
+            <Field label={copy.knowledge} wide>
+              <span className="portal-content-studio__field-hint">{copy.knowledgeHint}</span>
+              <MultiOptions
+                emptyMessage={copy.noKnowledgeOptions}
+                options={options.knowledgeSources}
+                selected={form.knowledgeSources}
+                toggle={(value) => toggle('knowledgeSources', value)}
               />
             </Field>
           </div>
           <footer>
-            <Button disabled={busy || !form.brief.trim()} onClick={() => void generate()}>
+            <div className="portal-content-studio__safety-notice">
+              <IconShieldCheck aria-hidden="true" size={15} />
+              <span>{copy.generationSafetyNotice}</span>
+            </div>
+            <Button disabled={busy || !canGenerate} onClick={() => void generate()}>
               <IconSparkles aria-hidden="true" size={16} />
-              {copy.generate}
+              {busy
+                ? (generationProgress ?? copy.generating)
+                : form.platforms.length > 0
+                  ? copy.generateForPlatforms(form.platforms.length)
+                  : copy.generate}
             </Button>
           </footer>
         </>
@@ -1148,39 +1707,39 @@ function ImageGenerationEditor({
           />
         </Field>
         <Field label={copy.imageSize}>
-          <select
-            onChange={(event) => {
-              setSize(event.target.value as typeof size)
+          <UiSelect
+            ariaLabel={copy.imageSize}
+            onChange={(val) => {
+              setSize(val as typeof size)
               setGenerated(null)
             }}
+            options={[
+              { label: '1024 × 1024', value: '1024x1024' },
+              { label: '1536 × 1024', value: '1536x1024' },
+              { label: '1024 × 1536', value: '1024x1536' },
+            ]}
             value={size}
-          >
-            <option value="1024x1024">1024 × 1024</option>
-            <option value="1536x1024">1536 × 1024</option>
-            <option value="1024x1536">1024 × 1536</option>
-          </select>
+          />
         </Field>
         <Field label={copy.referenceAsset}>
-          <select
-            onChange={(event) => {
-              setReferenceMediaId(event.target.value ? Number(event.target.value) : null)
+          <UiSelect
+            ariaLabel={copy.referenceAsset}
+            onChange={(val) => {
+              setReferenceMediaId(val ? Number(val) : null)
               setGenerated(null)
             }}
-            value={referenceMediaId ?? ''}
-          >
-            <option value="">{copy.noReference}</option>
-            {references.map((asset) => (
-              <option key={asset.id} value={asset.id}>
-                {asset.label}
-              </option>
-            ))}
-          </select>
+            options={[
+              { label: copy.noReference, value: '' },
+              ...references.map((asset) => ({ label: asset.label, value: String(asset.id) })),
+            ]}
+            value={referenceMediaId ? String(referenceMediaId) : ''}
+          />
         </Field>
         <div className="portal-content-studio__upload-field is-wide">
           <label htmlFor="content-studio-reference-upload">{copy.uploadReference}</label>
           <div className="portal-content-studio__image-upload">
             <input
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/avif,image/jpeg,image/png,image/webp"
               disabled={busy !== null}
               id="content-studio-reference-upload"
               onChange={(event) => setReferenceFile(event.target.files?.[0] ?? null)}
@@ -1228,19 +1787,15 @@ function ImageGenerationEditor({
           </div>
           {generated.revisedPrompt ? <p>{generated.revisedPrompt}</p> : null}
           <Field label={copy.targetDraft}>
-            <select
-              onChange={(event) =>
-                setTargetDraftId(event.target.value ? Number(event.target.value) : null)
-              }
-              value={targetDraftId ?? ''}
-            >
-              <option value="">{copy.selectDraft}</option>
-              {drafts.map((draft) => (
-                <option key={draft.id} value={draft.id}>
-                  {draft.title}
-                </option>
-              ))}
-            </select>
+            <UiSelect
+              ariaLabel={copy.targetDraft}
+              onChange={(val) => setTargetDraftId(val ? Number(val) : null)}
+              options={[
+                { label: copy.selectDraft, value: '' },
+                ...drafts.map((draft) => ({ label: draft.title, value: String(draft.id) })),
+              ]}
+              value={targetDraftId ? String(targetDraftId) : ''}
+            />
           </Field>
           <Button disabled={busy !== null || !targetDraft} onClick={() => void adopt()}>
             {copy.adoptImage}
@@ -1502,69 +2057,6 @@ export function PublishNowEditor({
   )
 }
 
-function FactEditor({
-  copy,
-  onChange,
-  sources,
-  value,
-}: {
-  copy: Copy
-  onChange: (value: ContentStudioSourceReference[]) => void
-  sources: string[]
-  value: ContentStudioSourceReference[]
-}) {
-  const update = (index: number, key: keyof ContentStudioSourceReference, next: string) =>
-    onChange(value.map((item, current) => (current === index ? { ...item, [key]: next } : item)))
-  return (
-    <section className="portal-content-studio__facts-editor">
-      <header>
-        <h4>{copy.facts}</h4>
-        <Button
-          disabled={sources.length === 0}
-          onClick={() => onChange([...value, { claim: '', source: sources[0] ?? '' }])}
-          size="compact"
-          variant="secondary"
-        >
-          <IconPlus aria-hidden="true" size={14} />
-          {copy.addFact}
-        </Button>
-      </header>
-      {value.map((fact, index) => {
-        const available =
-          fact.source && !sources.includes(fact.source) ? [fact.source, ...sources] : sources
-        return (
-          <div key={`${index}:${fact.claim}`}>
-            <input
-              maxLength={500}
-              onChange={(event) => update(index, 'claim', event.target.value)}
-              placeholder={copy.claim}
-              value={fact.claim}
-            />
-            <select
-              aria-label={copy.source}
-              onChange={(event) => update(index, 'source', event.target.value)}
-              value={fact.source}
-            >
-              <option value="">{copy.source}</option>
-              {available.map((source) => (
-                <option key={source} value={source}>
-                  {source}
-                </option>
-              ))}
-            </select>
-            <Button
-              onClick={() => onChange(value.filter((_, current) => current !== index))}
-              size="compact"
-              variant="ghost"
-            >
-              {copy.remove}
-            </Button>
-          </div>
-        )
-      })}
-    </section>
-  )
-}
 function AssetThumbnail({ option }: { option: ContentStudioSummary['options']['assets'][number] }) {
   const [failed, setFailed] = useState(false)
   const isImage = option.meta?.startsWith('image/') === true
@@ -1594,19 +2086,91 @@ function AssetThumbnail({ option }: { option: ContentStudioSummary['options']['a
     </span>
   )
 }
+
 function MultiOptions({
   assetPreviews = false,
+  emptyMessage,
+  onUpload,
   options,
   selected,
   toggle,
+  uploadBusy = false,
+  uploadPrompt,
+  uploadTitle,
 }: {
   assetPreviews?: boolean
-  options: ContentStudioSummary['options']['assets']
+  emptyMessage?: string
+  onUpload?: (files: FileList | File[]) => Promise<void>
+  options:
+    ContentStudioSummary['options']['assets'] | ContentStudioSummary['options']['knowledgeSources']
   selected: string[]
   toggle: (value: string) => void
+  uploadBusy?: boolean
+  uploadPrompt?: string
+  uploadTitle?: string
 }) {
+  const [isDragOver, setIsDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!uploadBusy) setIsDragOver(true)
+  }
+
+  const handleDragLeave = (event: React.DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDragOver(false)
+  }
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDragOver(false)
+    if (uploadBusy || !onUpload) return
+    const files = event.dataTransfer.files
+    if (files && files.length > 0) {
+      void onUpload(files)
+    }
+  }
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (files && files.length > 0 && onUpload) {
+      void onUpload(files)
+    }
+    event.target.value = ''
+  }
+
   return (
     <div className={`portal-content-studio__multi-options${assetPreviews ? ' is-assets' : ''}`}>
+      {assetPreviews && onUpload ? (
+        <label
+          className={`portal-content-studio__asset-upload-card${uploadBusy ? ' is-busy' : ''}${isDragOver ? ' is-drag-over' : ''}`}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          <input
+            accept="image/avif,image/jpeg,image/png,image/webp"
+            disabled={uploadBusy}
+            onChange={handleFileChange}
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            type="file"
+          />
+          <div className="portal-content-studio__asset-upload-inner">
+            <IconUpload aria-hidden="true" size={20} stroke={1.8} />
+            {uploadTitle ? (
+              <span className="portal-content-studio__asset-upload-title">{uploadTitle}</span>
+            ) : null}
+            {uploadPrompt ? (
+              <small className="portal-content-studio__asset-upload-prompt">{uploadPrompt}</small>
+            ) : null}
+          </div>
+        </label>
+      ) : null}
       {options.length ? (
         options.map((option) => {
           const checked = selected.includes(String(option.id))
@@ -1622,32 +2186,47 @@ function MultiOptions({
                 type="checkbox"
               />
               {assetPreviews ? <AssetThumbnail option={option} /> : null}
-              <span className={assetPreviews ? 'portal-content-studio__asset-copy' : undefined}>
+              <span
+                className={
+                  assetPreviews
+                    ? 'portal-content-studio__asset-copy'
+                    : 'portal-content-studio__option-text'
+                }
+              >
                 <span title={option.label}>{option.label}</span>
                 {option.meta ? <small>{option.meta}</small> : null}
               </span>
             </label>
           )
         })
-      ) : (
-        <span>—</span>
+      ) : assetPreviews && onUpload ? null : (
+        <span className="portal-content-studio__empty-options">{emptyMessage ?? '—'}</span>
       )}
     </div>
   )
 }
 function Field({
+  as: Component = 'label',
   children,
+  className,
   label,
+  required = false,
   wide = false,
 }: {
+  as?: 'div' | 'label'
   children: React.ReactNode
+  className?: string
   label: string
+  required?: boolean
   wide?: boolean
 }) {
   return (
-    <label className={wide ? 'is-wide' : undefined}>
-      <span>{label}</span>
+    <Component className={`portal-field ${wide ? 'is-wide' : ''} ${className ?? ''}`.trim()}>
+      <span>
+        {required ? <span aria-hidden="true" className="portal-required" /> : null}
+        {label}
+      </span>
       {children}
-    </label>
+    </Component>
   )
 }

@@ -42,6 +42,14 @@ export type ContentStudioType = (typeof GENERATED_CONTENT_TYPES)[number]
 export type PublishJobMode = (typeof PUBLISH_JOB_MODES)[number]
 export type PublishJobStatus = (typeof PUBLISH_JOB_STATUSES)[number]
 
+export interface ApprovedAssetDigest {
+  byteLength: number
+  filename: string
+  id: number
+  mimeType: string
+  sha256: string
+}
+
 export class ContentStudioCommandError extends Error {
   constructor(
     readonly code: string,
@@ -183,6 +191,19 @@ const asContentResult = (document: LooseRecord) => ({
   status: (typeof document.status === 'string' ? document.status : 'draft') as ContentStudioStatus,
   title: typeof document.title === 'string' ? document.title : '',
   updatedAt: typeof document.updatedAt === 'string' ? document.updatedAt : '',
+})
+
+const asGeneratedContentResult = (document: LooseRecord) => ({
+  ...asContentResult(document),
+  assets: Array.isArray(document.assets)
+    ? document.assets
+        .map((asset) =>
+          typeof asset === 'object' && asset !== null
+            ? (asset as { id: number }).id
+            : Number(asset),
+        )
+        .filter((id) => Number.isInteger(id) && id > 0)
+    : [],
 })
 
 const internalContext = { ...contentStudioInternalWriteContext }
@@ -373,6 +394,27 @@ const mediaReference = async ({
   return { data, mimeType: mimeType as AiImageMimeType }
 }
 
+const loadAssetImages = async ({
+  assetIDs,
+  payload,
+  req,
+}: {
+  assetIDs: number[]
+  payload: ContentStudioPayload
+  req: PayloadRequest
+}): Promise<Array<{ data: Uint8Array; mimeType: AiImageMimeType }>> => {
+  const images: Array<{ data: Uint8Array; mimeType: AiImageMimeType }> = []
+  for (const id of assetIDs.slice(0, 3)) {
+    try {
+      const ref = await mediaReference({ id, payload, req })
+      images.push(ref)
+    } catch {
+      // Non-image or unavailable media is ignored for vision prompt
+    }
+  }
+  return images
+}
+
 const imageExtension = (mimeType: AiImageMimeType): string => {
   if (mimeType === 'image/jpeg') return 'jpg'
   if (mimeType === 'image/webp') return 'webp'
@@ -439,24 +481,37 @@ export async function generateContentStudioImage({
       payload: payload as Payload,
       req,
     })
-    const storedBytes = await readStoredMediaBytes(media.filename)
-    if (
-      storedBytes.byteLength > AI_GENERATED_IMAGE_MAX_BYTES ||
-      !mediaBytesMatchMimeType(storedBytes, media.mimeType)
-    ) {
-      throw new ContentStudioCommandError(
-        'content-studio-image-unavailable',
-        'The generated image could not be verified after storage.',
-        503,
-      )
-    }
-    return {
-      media,
-      model: result.model,
-      provider: result.provider,
-      requestId: result.requestId,
-      revisedPrompt: result.revisedPrompt,
-      sha256: createHash('sha256').update(storedBytes).digest('hex'),
+    try {
+      const storedBytes = await readStoredMediaBytes(media.filename)
+      if (
+        storedBytes.byteLength > AI_GENERATED_IMAGE_MAX_BYTES ||
+        !mediaBytesMatchMimeType(storedBytes, media.mimeType)
+      ) {
+        throw new ContentStudioCommandError(
+          'content-studio-image-unavailable',
+          'The generated image could not be verified after storage.',
+          503,
+        )
+      }
+      return {
+        media,
+        model: result.model,
+        provider: result.provider,
+        requestId: result.requestId,
+        revisedPrompt: result.revisedPrompt,
+        sha256: createHash('sha256').update(storedBytes).digest('hex'),
+      }
+    } catch (verificationError) {
+      try {
+        await payload.delete({
+          collection: 'media',
+          id: media.id,
+          overrideAccess: true,
+        })
+      } catch {
+        // Best-effort cleanup preserves the original verification error.
+      }
+      throw verificationError
     }
   } catch (error) {
     if (error instanceof ContentStudioCommandError) throw error
@@ -543,6 +598,7 @@ export async function adoptContentStudioImage({
 
 type ContentStudioGenerationInput = {
   assets: number[]
+  autoGenerateImage?: boolean
   brief: string
   contentLocale: 'ar' | 'en'
   contentType: ContentStudioType
@@ -554,11 +610,19 @@ type ContentStudioGenerationInput = {
 const parseGenerationInput = (input: unknown): ContentStudioGenerationInput => {
   const record = asRecord(input)
   const knowledgeSources = idList(record.knowledgeSources, 'knowledgeSources', 20)
+  const assets = idList(record.assets, 'assets', 100)
+  const autoGenerateImage = Boolean(record.autoGenerateImage)
+  const briefRequired = assets.length === 0
+  const inferredType: ContentStudioType = assets.length >= 2 ? 'carousel' : 'post'
+  const contentType = record.contentType
+    ? selected(record.contentType, GENERATED_CONTENT_TYPES, 'contentType')
+    : inferredType
   return {
-    assets: idList(record.assets, 'assets', 100),
-    brief: stringValue(record, 'brief', { max: 2_000, required: true }),
+    assets,
+    autoGenerateImage,
+    brief: stringValue(record, 'brief', { max: 2_000, required: briefRequired }),
     contentLocale: selected(record.contentLocale, ['en', 'ar'] as const, 'contentLocale'),
-    contentType: selected(record.contentType, GENERATED_CONTENT_TYPES, 'contentType'),
+    contentType,
     idempotencyKey: idempotencyKey(record.idempotencyKey),
     knowledgeSources,
     platform: selected(record.platform, GENERATED_CONTENT_PLATFORMS, 'platform'),
@@ -681,6 +745,22 @@ const parseGeneratedJSON = (value: string): unknown => {
   try {
     return JSON.parse(trimmed) as unknown
   } catch {
+    const codeBlockMatch = value.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+    if (codeBlockMatch?.[1]) {
+      try {
+        return JSON.parse(codeBlockMatch[1].trim()) as unknown
+      } catch {
+        // Fall through
+      }
+    }
+    const jsonMatch = value.match(/(\{[\s\S]*\})/)?.[1]
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch) as unknown
+      } catch {
+        // Fall through
+      }
+    }
     throw new ContentStudioCommandError(
       'content-studio-ai-invalid-response',
       'The AI response was not a valid structured draft',
@@ -694,6 +774,7 @@ const generationFingerprint = (input: ContentStudioGenerationInput): string =>
     .update(
       JSON.stringify({
         assets: input.assets,
+        autoGenerateImage: input.autoGenerateImage ?? false,
         brief: input.brief,
         contentLocale: input.contentLocale,
         contentType: input.contentType,
@@ -724,6 +805,7 @@ const findExistingGeneratedDraft = async ({
     pagination: false,
     req,
     select: {
+      assets: true,
       createdBy: true,
       creationFingerprint: true,
       id: true,
@@ -745,7 +827,7 @@ const findExistingGeneratedDraft = async ({
       409,
     )
   }
-  return asContentResult(document)
+  return asGeneratedContentResult(document)
 }
 
 export async function generateContentStudioDraft({
@@ -786,29 +868,57 @@ export async function generateContentStudioDraft({
   const sourceContext = sources
     .map(({ content, label }, index) => `SOURCE ${index + 1}: ${label}\n${content.slice(0, 6_000)}`)
     .join('\n\n')
-    .slice(0, 18_000)
+  const images = await loadAssetImages({ assetIDs: input.assets, payload, req })
+  const briefText = input.brief.trim()
+    ? input.brief
+    : 'Analyze the provided architectural building material images and create an engaging, professional social media post highlighting material quality, craft, and application.'
+
+  const visionGuidance =
+    images.length > 0
+      ? 'You are provided with images of architectural building materials or project scenes. Analyze the material type, finish, texture, and application shown, and ensure the social media copy highlights these visual details.'
+      : ''
+
+  const shouldAutoGenerateImage = input.autoGenerateImage && input.assets.length === 0
+  const autoImageShape = shouldAutoGenerateImage
+    ? 'Return JSON only with this exact shape: {"title":"...","body":"...","imagePrompt":"...detailed realistic architectural rendering prompt in English...","sourceReferences":[]}.'
+    : 'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[]}.'
+
+  const instructions = sources.length
+    ? [
+        `Create a ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
+        visionGuidance,
+        'Use only the approved sources supplied in the request. Do not invent facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
+        'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[{"claim":"...","source":"..."}]}.',
+        `Each source value must be exactly one of: ${sources.map(({ label }) => JSON.stringify(label)).join(', ')}.`,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : [
+        `Create a general ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
+        visionGuidance,
+        'No knowledge source was selected. Keep the copy general: do not invent product facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
+        autoImageShape,
+      ]
+        .filter(Boolean)
+        .join('\n')
+
   let generatedText: string
   try {
     const gateway = await resolveGateway({
       payload: payload as unknown as Payload,
-      routes: [{ operation: 'text', usageKey: AI_USAGE_KEYS.chatReply }],
+      routes: [
+        { operation: 'text', usageKey: AI_USAGE_KEYS.chatReply },
+        ...(shouldAutoGenerateImage
+          ? [{ operation: 'image' as const, usageKey: AI_USAGE_KEYS.contentImageGeneration }]
+          : []),
+      ],
     })
     const result = await gateway.generateText({
+      images: images.length > 0 ? images : undefined,
       input: sources.length
-        ? `Content brief:\n${input.brief}\n\nApproved sources:\n${sourceContext}`
-        : `Content brief:\n${input.brief}`,
-      instructions: sources.length
-        ? [
-            `Create a ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
-            'Use only the approved sources supplied in the request. Do not invent facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
-            'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[{"claim":"...","source":"..."}]}.',
-            `Each source value must be exactly one of: ${sources.map(({ label }) => JSON.stringify(label)).join(', ')}.`,
-          ].join('\n')
-        : [
-            `Create a general ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
-            'No knowledge source was selected. Keep the copy general: do not invent product facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
-            'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[]}.',
-          ].join('\n'),
+        ? `Content brief:\n${briefText}\n\nApproved sources:\n${sourceContext}`
+        : `Content brief:\n${briefText}`,
+      instructions,
       maxOutputTokens: 1_800,
       onDispatch: onProviderDispatch,
       temperature: 0.2,
@@ -822,17 +932,54 @@ export async function generateContentStudioDraft({
       503,
     )
   }
+  const parsedJSON = parseGeneratedJSON(generatedText)
   const draft = normalizeGeneratedDraft({
-    generated: parseGeneratedJSON(generatedText),
+    generated: parsedJSON,
     input,
     sources,
   })
+
+  let finalAssetIDs = input.assets
+  let newlyGeneratedMediaId: number | null = null
+  if (shouldAutoGenerateImage) {
+    const rawRecord = asRecord(parsedJSON)
+    const promptForImage =
+      (typeof rawRecord.imagePrompt === 'string' && rawRecord.imagePrompt.trim()) ||
+      input.brief ||
+      draft.title
+    try {
+      const imageResult = await generateContentStudioImage({
+        input: {
+          idempotencyKey: `${input.idempotencyKey}:auto-image`,
+          prompt: promptForImage,
+          size: input.platform === 'linkedin' ? '1536x1024' : '1024x1024',
+        },
+        onProviderDispatch,
+        payload,
+        req,
+        resolveGateway,
+      })
+      newlyGeneratedMediaId = Number(imageResult.media.id)
+      finalAssetIDs = [newlyGeneratedMediaId]
+    } catch (err) {
+      if (err instanceof ContentStudioCommandError) {
+        throw err
+      }
+      throw new ContentStudioCommandError(
+        'content-studio-image-generation-failed',
+        err instanceof Error ? err.message : 'Automatic image generation failed',
+        502,
+      )
+    }
+  }
+
   try {
     const document = await payload.create({
       collection: 'generated-contents',
       context: internalContext,
       data: {
         ...draft,
+        assets: finalAssetIDs,
         createdBy: actorID,
         creationFingerprint: fingerprint,
         idempotencyKey: input.idempotencyKey,
@@ -841,8 +988,19 @@ export async function generateContentStudioDraft({
       overrideAccess: false,
       req,
     })
-    return { content: asContentResult(document as LooseRecord), duplicate: false }
+    return { content: asGeneratedContentResult(document as LooseRecord), duplicate: false }
   } catch (error) {
+    if (newlyGeneratedMediaId !== null) {
+      try {
+        await payload.delete({
+          collection: 'media',
+          id: newlyGeneratedMediaId,
+          overrideAccess: true,
+        })
+      } catch {
+        // Best effort cleanup of orphaned media
+      }
+    }
     const concurrentDuplicate = await findExistingGeneratedDraft({
       actorID,
       fingerprint,
@@ -972,21 +1130,23 @@ export async function submitContentStudioReview({
     const id = asRelationID(source)
     return id === null ? [] : [id]
   })
-  if (knowledgeSourceIDs.length === 0 || references.length === 0) {
-    throw new ContentStudioCommandError(
-      'content-studio-sources-required',
-      'At least one fact source is required before review',
-      409,
-    )
-  }
-  const reviewedSources = await generationSources({ ids: knowledgeSourceIDs, payload, req })
-  const allowedLabels = new Set(reviewedSources.map(({ label }) => label))
-  if (references.some(({ source }) => !allowedLabels.has(source))) {
-    throw new ContentStudioCommandError(
-      'content-studio-sources-unavailable',
-      'Every fact source must reference a selected, reviewed, and indexed knowledge document',
-      409,
-    )
+  if (knowledgeSourceIDs.length > 0 || references.length > 0) {
+    if (knowledgeSourceIDs.length === 0 || references.length === 0) {
+      throw new ContentStudioCommandError(
+        'content-studio-sources-required',
+        'At least one fact source is required when knowledge sources are selected',
+        409,
+      )
+    }
+    const reviewedSources = await generationSources({ ids: knowledgeSourceIDs, payload, req })
+    const allowedLabels = new Set(reviewedSources.map(({ label }) => label))
+    if (references.some(({ source }) => !allowedLabels.has(source))) {
+      throw new ContentStudioCommandError(
+        'content-studio-sources-unavailable',
+        'Every fact source must reference a selected, reviewed, and indexed knowledge document',
+        409,
+      )
+    }
   }
   const document = await payload.update({
     collection: 'generated-contents',
@@ -1024,11 +1184,13 @@ export async function reviewContentStudioDraft({
   id,
   input,
   payload,
+  readStoredMediaBytes = async (filename) => readFile(await resolveManagedMediaPath(filename)),
   req,
 }: {
   id: number
   input: unknown
   payload: ContentStudioPayload
+  readStoredMediaBytes?: (filename: string) => Promise<Uint8Array>
   req: PayloadRequest
 }) {
   const review = parseReview(input)
@@ -1046,6 +1208,63 @@ export async function reviewContentStudioDraft({
       'content-studio-incomplete-checklist',
       'Every review check is required before approval',
       409,
+    )
+  }
+  let approvedAssets: ApprovedAssetDigest[] | undefined
+  if (review.decision === 'approved') {
+    const assetIDs = [
+      ...new Set(
+        (Array.isArray(content.assets) ? content.assets : []).flatMap((asset) => {
+          const assetID = asRelationID(asset)
+          return assetID === null ? [] : [assetID]
+        }),
+      ),
+    ]
+    approvedAssets = await Promise.all(
+      assetIDs.map(async (assetID) => {
+        let media: LooseRecord
+        let bytes: Uint8Array
+        try {
+          media = await payload.findByID({
+            collection: 'media',
+            depth: 0,
+            id: assetID,
+            overrideAccess: false,
+            req,
+          })
+          const filename = typeof media.filename === 'string' ? media.filename : ''
+          if (!filename) throw new Error('Missing media filename')
+          bytes = await readStoredMediaBytes(filename)
+        } catch {
+          throw new ContentStudioCommandError(
+            'content-studio-review-assets-invalid',
+            'A selected media file is unavailable and cannot be approved',
+            409,
+          )
+        }
+        const filename = typeof media.filename === 'string' ? media.filename : ''
+        const mimeType = typeof media.mimeType === 'string' ? media.mimeType : ''
+        if (
+          !filename ||
+          !mimeType ||
+          bytes.byteLength > AI_GENERATED_IMAGE_MAX_BYTES ||
+          (typeof media.filesize === 'number' && bytes.byteLength !== media.filesize) ||
+          !mediaBytesMatchMimeType(bytes, mimeType)
+        ) {
+          throw new ContentStudioCommandError(
+            'content-studio-review-assets-invalid',
+            'A selected media file does not match its stored metadata',
+            409,
+          )
+        }
+        return {
+          byteLength: bytes.byteLength,
+          filename,
+          id: assetID,
+          mimeType,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+        }
+      }),
     )
   }
   await payload.create({
@@ -1066,7 +1285,10 @@ export async function reviewContentStudioDraft({
     overrideAccess: false,
     req,
   })
-  return asContentResult(document as unknown as LooseRecord)
+  return {
+    ...asContentResult(document as unknown as LooseRecord),
+    ...(approvedAssets ? { approvedAssets } : {}),
+  }
 }
 
 const scheduledDate = (value: unknown, now: () => Date): string => {

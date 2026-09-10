@@ -1,6 +1,8 @@
 import './require-mutation-launch'
 import { expect, test, type Page } from '@playwright/test'
 
+import { selectUiOption } from './support/uiSelect'
+
 import { FacebookE2EHarness } from './admin-portal-facebook.support'
 
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
@@ -156,7 +158,9 @@ test('admin can create and edit a platform account without entering /admin', asy
 
   await page.getByRole('button', { name: '添加账号' }).click()
   await page.getByRole('textbox', { name: '显示名称' }).fill('E2E LinkedIn Member')
-  await page.getByRole('combobox', { name: '平台类型' }).selectOption('linkedin-member')
+  const accountKind = page.getByRole('combobox', { name: '平台类型' })
+  await expect(accountKind).toHaveAttribute('aria-required', 'true')
+  await selectUiOption(accountKind, 'linkedin-member')
   await page.getByRole('textbox', { name: '外部账号 ID' }).fill('e2e-member-001')
   await page.getByRole('textbox', { name: '备注' }).fill('Keep this note while editing')
   await page.getByRole('button', { name: /^保存/ }).click()
@@ -186,7 +190,7 @@ test('admin sees connect action for an unconnected account and no /admin depende
 
   await page.getByRole('button', { name: '添加账号' }).click()
   await page.getByRole('textbox', { name: '显示名称' }).fill('E2E Facebook Page')
-  await page.getByRole('combobox', { name: '平台类型' }).selectOption('facebook-page')
+  await selectUiOption(page.getByRole('combobox', { name: '平台类型' }), 'facebook-page')
   await page.getByRole('textbox', { name: '外部账号 ID' }).fill('123456789012345')
   await page.getByRole('button', { name: /^保存/ }).click()
 
@@ -211,7 +215,10 @@ test('admin can delete a platform account without entering /admin', async ({ pag
 
   await page.getByRole('button', { name: '添加账号' }).click()
   await page.getByRole('textbox', { name: '显示名称' }).fill(accountName)
-  await page.getByRole('combobox', { name: '平台类型' }).selectOption('instagram-professional')
+  await selectUiOption(
+    page.getByRole('combobox', { name: '平台类型' }),
+    'instagram-professional',
+  )
   await page.getByRole('textbox', { name: '外部账号 ID' }).fill(fixtureKey)
   await page.getByRole('button', { name: /^保存/ }).click()
 
@@ -233,10 +240,12 @@ test('platform type options do not include TikTok in the customer flow', async (
 
   await page.getByRole('button', { name: '添加账号' }).click()
   const select = page.getByRole('combobox', { name: '平台类型' })
-  const options = await select.locator('option').allTextContents()
-  const optionValues = await select
-    .locator('option')
-    .evaluateAll((elements) => elements.map((element) => (element as HTMLOptionElement).value))
+  await select.click()
+  const optionsLocator = page.getByRole('listbox').getByRole('option')
+  const options = await optionsLocator.allTextContents()
+  const optionValues = await optionsLocator.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute('data-value') ?? ''),
+  )
 
   expect(options.some((label) => label.toLowerCase().includes('tiktok'))).toBe(false)
   expect(optionValues.some((value) => value.includes('tiktok'))).toBe(false)

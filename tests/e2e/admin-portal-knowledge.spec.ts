@@ -1,6 +1,8 @@
 import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
 
+import { selectUiOption } from './support/uiSelect'
+
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
@@ -79,18 +81,29 @@ test('knowledge workspace shows review/index truth and submits an idempotent ind
   try {
     await page.goto('/dashboard/knowledge')
     await expect(page.getByRole('heading', { level: 2, name: '知识文档' })).toBeVisible()
-    await expect(page.getByRole('heading', { level: 3, name: '自动解析与翻译' })).toBeVisible()
+    const moreFilters = page.getByRole('button', { name: '更多筛选' })
+    const secondaryFilters = page.locator('.portal-knowledge__filter-row--secondary')
+    await expect(moreFilters).toHaveAttribute('aria-expanded', 'false')
+    await expect(secondaryFilters).toBeHidden()
+    await moreFilters.click()
+    await expect(moreFilters).toHaveAttribute('aria-expanded', 'true')
+    await expect(secondaryFilters).toBeVisible()
+    await moreFilters.click()
+    await expect(secondaryFilters).toBeHidden()
+    await page.getByRole('button', { name: '批量解析入库' }).click()
+    await expect(page.getByRole('heading', { level: 4, name: '自动解析与翻译' })).toBeVisible()
     await expect(page.getByRole('button', { name: '上传并生成草稿' })).toBeEnabled()
+    await page.getByRole('button', { name: '关闭抽屉' }).click()
     await expect(page.getByLabel('知识库状态指标').locator('article')).toHaveCount(4)
     await expect(page.getByRole('region', { name: '知识文档双状态列表' })).toBeVisible()
 
     const reviewedRow = page.locator('tr').filter({ hasText: reviewed.title })
-    await expect(reviewedRow).toContainText('审核通过')
-    await expect(reviewedRow).toContainText('等待索引')
+    await expect(reviewedRow).toContainText('通过')
+    await expect(reviewedRow).toContainText('待检索')
 
     const draftRow = page.locator('tr').filter({ hasText: draft.title })
-    await expect(draftRow).toContainText('待审核')
-    await expect(draftRow).toContainText('等待索引')
+    await expect(draftRow).toContainText('草稿')
+    await expect(draftRow).toContainText('待检索')
     await expect(page.getByRole('button', { name: '新增文档' })).toBeEnabled()
     await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
 
@@ -131,7 +144,7 @@ test('mobile knowledge workspace keeps filters and dual-state content within the
   try {
     await page.goto('/dashboard/knowledge')
     await expect(page.getByRole('heading', { level: 2, name: '知识文档' })).toBeVisible()
-    await expect(page.getByRole('heading', { level: 3, name: '自动解析与翻译' })).toBeVisible()
+    await expect(page.getByRole('tab', { name: /知识文档库/ })).toBeVisible()
     await expect(page.getByRole('searchbox', { name: '搜索文档' })).toBeVisible()
     await expect(page.locator('.portal-knowledge__workspace')).toBeVisible()
     await expect(page.locator('tr').filter({ hasText: documents[0].title })).toBeVisible()
@@ -162,8 +175,8 @@ test('knowledge editor completes draft, review, AI debug, and delete in the Port
     await expect(page.getByRole('heading', { name: '新增文档' })).toBeVisible()
     const editor = page.locator('.portal-knowledge-editor')
     await editor.getByLabel('来源标题').fill(title)
-    await editor.getByLabel('来源类型').selectOption('faq')
-    await editor.getByLabel('语言').selectOption('en')
+    await selectUiOption(editor.getByLabel('来源类型'), 'faq')
+    await selectUiOption(editor.getByLabel('语言'), 'en')
     await editor.getByLabel('来源版本').fill('1.0')
     await editor.getByLabel('来源 URL').fill('https://docs.example.invalid/e2e')
     await editor.getByLabel('知识正文').fill('Initial Portal knowledge content.')
@@ -216,7 +229,7 @@ test('knowledge editor completes draft, review, AI debug, and delete in the Port
     if (created && reviewBody.result?.updatedAt) created.updatedAt = reviewBody.result.updatedAt
     await expect(page.getByText('审核状态已更新，可以提交索引。')).toBeVisible()
     await editor.getByRole('button', { name: '取消' }).click()
-    await expect(page.locator('tr').filter({ hasText: title })).toContainText('审核通过')
+    await expect(page.locator('tr').filter({ hasText: title })).toContainText('通过')
 
     await page.route('**/api/portal/knowledge/ai-debug', async (route) => {
       await route.fulfill({
@@ -231,11 +244,13 @@ test('knowledge editor completes draft, review, AI debug, and delete in the Port
         status: 200,
       })
     })
+    await page.getByRole('tab', { name: /AI 调试与底座/ }).click()
     await page.getByLabel('调试输入').fill('Use reviewed knowledge only')
     await page.getByRole('button', { name: '运行调试' }).click()
     await expect(page.getByText('Safe local debug result', { exact: false })).toBeVisible()
     await page.unroute('**/api/portal/knowledge/ai-debug')
 
+    await page.getByRole('tab', { name: /知识文档库/ }).click()
     await rowButton.click()
     await page.getByRole('button', { name: '编辑文档' }).click()
     await editor.getByRole('button', { name: '保存草稿' }).click()

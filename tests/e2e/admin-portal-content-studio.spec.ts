@@ -4,6 +4,8 @@ import { getPayload } from 'payload'
 
 import config from '@/payload.config'
 
+import { selectUiOption } from './support/uiSelect'
+
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
@@ -79,7 +81,7 @@ const readPublishingSideEffectCounts = async (suffix: string) => {
   }
 }
 
-test('Content Studio creates, edits, reviews, and schedules a draft through Portal commands', async ({
+test('Content Studio creates, edits, and reviews a draft through Portal commands', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ height: 960, width: 1440 })
@@ -101,7 +103,7 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
   let updatedAt: string | null = null
 
   try {
-    await page.getByRole('button', { name: '生成草稿' }).click()
+    await page.getByRole('button', { name: 'AI生成' }).click()
     const generator = page.locator('.portal-content-studio__form').first()
     const mediaTile = generator.locator('.portal-content-studio__asset-option:has(img)').first()
     const mediaOption = mediaTile.getByRole('checkbox')
@@ -113,7 +115,7 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
     await mediaOption.check()
     await expect(mediaTile).toHaveClass(/is-selected/)
     await generator.getByLabel('生成需求').fill('Write a general introduction without knowledge.')
-    await expect(generator.getByRole('button', { name: '生成草稿' })).toBeEnabled()
+    await expect(generator.getByRole('button', { name: 'AI生成' })).toBeEnabled()
     await page.screenshot({
       fullPage: true,
       path: testInfo.outputPath('portal-content-studio-assets.png'),
@@ -124,9 +126,9 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
     const editor = page.locator('.portal-content-studio__form').first()
     await expect(editor.getByRole('heading', { name: '新建草稿' })).toBeVisible()
     await editor.getByLabel('草稿标题').fill(title)
-    await editor.getByLabel('平台').selectOption('linkedin')
-    await editor.getByLabel('语言').selectOption('en')
-    await editor.getByLabel('内容格式').selectOption('post')
+    await selectUiOption(editor.getByLabel('平台'), 'linkedin')
+    await selectUiOption(editor.getByLabel('语言'), 'en')
+    await selectUiOption(editor.getByLabel('内容格式'), 'post')
     await editor.getByLabel('文案内容').fill('Initial Portal content studio draft.')
     const knowledgeOption = editor
       .locator('.portal-content-studio__multi-options')
@@ -139,7 +141,7 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
     await editor
       .getByPlaceholder('关键事实 / 论据')
       .fill('Anodized aluminum is available for project facades.')
-    await editor.getByRole('combobox', { name: '来源' }).selectOption(sourceURL)
+    await selectUiOption(editor.getByRole('combobox', { name: '来源' }), sourceURL)
 
     const [createResponse] = await Promise.all([
       page.waitForResponse(
@@ -187,7 +189,7 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
     await page.getByLabel('阿语已校对或不适用').check()
     await page.getByRole('button', { exact: true, name: '批准' }).click()
     await expect(page.getByText('审核结果已保存')).toBeVisible()
-    await expect(page.getByRole('button', { name: '创建内部排期' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '创建内部排期' })).toHaveCount(0)
 
     const immediatePublish = page.getByRole('button', { name: '立即发布' })
     await expect(immediatePublish).toBeDisabled()
@@ -206,12 +208,6 @@ test('Content Studio creates, edits, reviews, and schedules a draft through Port
     const afterDisabledPublish = await readPublishingSideEffectCounts(`${suffix}-after`)
     expect(afterDisabledPublish).toEqual(beforeDisabledPublish)
 
-    await page.getByRole('button', { name: '创建内部排期' }).click()
-    const schedule = page.locator('.portal-content-studio__form').first()
-    const futureSchedule = new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString().slice(0, 16)
-    await schedule.getByLabel('计划时间').fill(futureSchedule)
-    await schedule.getByRole('button', { name: '创建内部排期' }).click()
-    await expect(page.getByText('已创建内部排期')).toBeVisible()
     expect(hydrationErrors).toEqual([])
 
     await expect(page.getByRole('button', { name: '删除' })).toHaveCount(0)
@@ -373,10 +369,10 @@ test('Content Studio generates, previews, and adopts an image through protected 
       }),
     )
 
-    await page.getByRole('button', { name: '生成草稿' }).click()
+    await page.getByRole('button', { name: 'AI生成' }).click()
     await page.getByRole('button', { name: '图片生成' }).click()
     await page.getByLabel('图片提示词').fill('Create an anodized facade hero image')
-    await page.getByLabel('图片尺寸').selectOption('1536x1024')
+    await selectUiOption(page.getByLabel('图片尺寸'), '1536x1024')
     await page.getByLabel('上传参考图').setInputFiles({
       buffer: Buffer.from(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Wl9sAAAAASUVORK5CYII=',
@@ -393,7 +389,7 @@ test('Content Studio generates, previews, and adopts an image through protected 
     await page.getByRole('button', { name: '生成图片' }).click()
     await expect(page.getByRole('img', { name: '生成图片预览' })).toBeVisible()
     await expect(page.getByText('Controlled fixture prompt')).toBeVisible()
-    await page.getByLabel('目标草稿').selectOption(String(contentID))
+    await selectUiOption(page.getByLabel('目标草稿'), String(contentID))
     await page.getByRole('button', { name: '采用为草稿资产' }).click()
     await expect(page.getByText('图片已采用为草稿资产。')).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(

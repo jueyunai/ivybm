@@ -3,6 +3,7 @@
 import { useState } from 'react'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   IconArrowLeft,
   IconArrowRight,
@@ -15,7 +16,13 @@ import {
 
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import {
+  Button,
+  PortalState,
+  SearchInput,
+  Surface,
+  UiSelect,
+} from '@/admin-portal/core/ui'
 
 import type {
   MediaKindFilter,
@@ -39,7 +46,6 @@ export const buildMediaHref = (query: Partial<MediaQuery>): string => {
   if (query.q) params.set('q', query.q)
   if (query.kind && query.kind !== 'all') params.set('kind', query.kind)
   if (query.visibility && query.visibility !== 'all') params.set('visibility', query.visibility)
-  if (query.source) params.set('source', query.source)
   if (query.view && query.view !== 'grid') params.set('view', query.view)
   if (query.page && query.page > 1) params.set('page', String(query.page))
   const search = params.toString()
@@ -58,6 +64,7 @@ const formatTimestamp = (value: string, locale: 'en' | 'zh'): string => {
 export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).mediaWorkspace
+  const router = useRouter()
   const [selectedId, setSelectedId] = useState<null | number | string>(null)
   const [editor, setEditor] = useState<'create' | 'edit' | null>(null)
 
@@ -116,67 +123,72 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
           <h2>{messages.title}</h2>
           <p>{messages.description}</p>
         </div>
-        <StatusBadge label={messages.editorStatus} tone="success" />
       </header>
 
       <Surface as="section" className="portal-media__toolbar">
         <form
           action="/dashboard/media"
           className="portal-media__filter-form"
-          key={`${summary.query.q}:${summary.query.kind}:${summary.query.visibility}:${summary.query.source}:${summary.query.view}`}
+          key={`${summary.query.q}:${summary.query.kind}:${summary.query.visibility}:${summary.query.view}`}
           method="get"
         >
           <input name="view" type="hidden" value={summary.query.view} />
-          <label className="portal-media__field portal-media__search">
-            <span className="portal-field__label">{messages.searchLabel}</span>
-            <span className="portal-field__control">
-              <IconSearch aria-hidden="true" size={16} stroke={1.8} />
-              <input
-                defaultValue={summary.query.q}
-                maxLength={80}
-                name="q"
-                placeholder={messages.searchPlaceholder}
-                type="search"
-              />
-            </span>
-          </label>
-          <label className="portal-media__field">
-            <span className="portal-field__label">{messages.kindLabel}</span>
-            <select defaultValue={summary.query.kind} name="kind">
-              {Object.entries(kindLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="portal-media__field">
-            <span className="portal-field__label">{messages.visibilityLabel}</span>
-            <select defaultValue={summary.query.visibility} name="visibility">
-              {Object.entries(visibilityLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="portal-media__field">
-            <span className="portal-field__label">{messages.sourceLabel}</span>
-            <input
-              defaultValue={summary.query.source}
+          <div className="portal-media__filter-item portal-media__search">
+            <label className="portal-media__filter-label" htmlFor="media-search-input">
+              {messages.searchLabel}
+            </label>
+            <SearchInput
+              aria-label={messages.searchLabel}
+              defaultValue={summary.query.q}
+              id="media-search-input"
               maxLength={80}
-              name="source"
-              placeholder={messages.sourcePlaceholder}
-              type="text"
+              name="q"
+              placeholder={messages.searchPlaceholder}
             />
-          </label>
-          <Button className="portal-media__filter-submit" type="submit">
-            <IconSearch aria-hidden="true" size={16} stroke={1.8} />
-            {messages.searchSubmit}
-          </Button>
-          <Button asChild variant="ghost">
-            <Link href={buildMediaHref({ view: summary.query.view })}>{messages.resetFilters}</Link>
-          </Button>
+          </div>
+          <div className="portal-media__filter-item">
+            <span className="portal-media__filter-label">{messages.kindLabel}</span>
+            <UiSelect
+              ariaLabel={messages.kindLabel}
+              name="kind"
+              onChange={(value) =>
+                router.push(
+                  buildMediaHref({ ...summary.query, kind: value as MediaKindFilter, page: 1 }),
+                )
+              }
+              options={Object.entries(kindLabels).map(([value, label]) => ({ label, value }))}
+              value={summary.query.kind}
+            />
+          </div>
+          <div className="portal-media__filter-item">
+            <span className="portal-media__filter-label">{messages.visibilityLabel}</span>
+            <UiSelect
+              ariaLabel={messages.visibilityLabel}
+              name="visibility"
+              onChange={(value) =>
+                router.push(
+                  buildMediaHref({
+                    ...summary.query,
+                    page: 1,
+                    visibility: value as MediaVisibilityFilter,
+                  }),
+                )
+              }
+              options={Object.entries(visibilityLabels).map(([value, label]) => ({ label, value }))}
+              value={summary.query.visibility}
+            />
+          </div>
+          <div className="portal-media__filter-actions">
+            <Button className="portal-media__filter-submit" size="compact" type="submit">
+              <IconSearch aria-hidden="true" size={16} stroke={1.8} />
+              {messages.searchSubmit}
+            </Button>
+            <Button asChild size="compact" variant="ghost">
+              <Link href={buildMediaHref({ view: summary.query.view })}>
+                {messages.resetFilters}
+              </Link>
+            </Button>
+          </div>
         </form>
 
         <div className="portal-media__actions">

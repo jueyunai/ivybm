@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { expect, test, type Page, type Response } from '@playwright/test'
 
 import { FacebookE2EHarness, type FacebookPublishingFixture } from './admin-portal-facebook.support'
+import { selectUiOption } from './support/uiSelect'
 
 const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
@@ -49,9 +50,9 @@ test.describe.serial('FB-PUB-01 Facebook Page publication closure', () => {
     await page.getByRole('button', { name: '新建草稿' }).click()
     const editor = page.locator('.portal-content-studio__form').first()
     await editor.getByLabel('草稿标题').fill(title)
-    await editor.getByLabel('平台').selectOption('facebook')
-    await editor.getByLabel('语言').selectOption('en')
-    await editor.getByLabel('内容格式').selectOption('post')
+    await selectUiOption(editor.getByLabel('平台'), 'facebook')
+    await selectUiOption(editor.getByLabel('语言'), 'en')
+    await selectUiOption(editor.getByLabel('内容格式'), 'post')
     await editor
       .getByLabel('文案内容')
       .fill('Controlled Facebook Page publication from the Portal E2E checkpoint.')
@@ -66,7 +67,10 @@ test.describe.serial('FB-PUB-01 Facebook Page publication closure', () => {
     await editor
       .getByPlaceholder('关键事实 / 论据')
       .fill('Controlled facade publication is available.')
-    await editor.getByRole('combobox', { name: '来源' }).selectOption(fixture.knowledgeSourceURL)
+    await selectUiOption(
+      editor.getByRole('combobox', { name: '来源' }),
+      fixture.knowledgeSourceURL,
+    )
 
     const [createResponse] = await Promise.all([
       page.waitForResponse(

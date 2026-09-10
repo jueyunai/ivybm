@@ -19,7 +19,6 @@ export interface MediaQuery {
   kind: MediaKindFilter
   page: number
   q: string
-  source: string
   view: MediaView
   visibility: MediaVisibilityFilter
 }
@@ -106,8 +105,7 @@ export function parseMediaQuery(input: Record<string, string | string[] | undefi
       ? (kindValue as MediaKindFilter)
       : 'all',
     page: Number.isSafeInteger(pageValue) && pageValue > 0 ? pageValue : 1,
-    q: (firstValue(input.q) ?? '').trim().slice(0, 80),
-    source: (firstValue(input.source) ?? '').trim().slice(0, 80),
+    q: (firstValue(input.q) ?? firstValue(input.source) ?? '').trim().slice(0, 80),
     view: MEDIA_VIEWS.includes(viewValue as MediaView) ? (viewValue as MediaView) : 'grid',
     visibility: MEDIA_VISIBILITY_FILTERS.includes(visibilityValue as MediaVisibilityFilter)
       ? (visibilityValue as MediaVisibilityFilter)
@@ -119,9 +117,14 @@ const buildWhere = (query: MediaQuery): Where => {
   const clauses: Where[] = []
 
   if (query.q) {
-    clauses.push({ or: [{ alt: { contains: query.q } }, { filename: { contains: query.q } }] })
+    clauses.push({
+      or: [
+        { alt: { contains: query.q } },
+        { filename: { contains: query.q } },
+        { source: { contains: query.q } },
+      ],
+    })
   }
-  if (query.source) clauses.push({ source: { contains: query.source } })
   if (query.kind === 'image') clauses.push({ mimeType: { in: [...IMAGE_MIME_TYPES] } })
   if (query.kind === 'pdf') clauses.push({ mimeType: { equals: 'application/pdf' } })
   if (query.visibility === 'public') clauses.push({ isPublic: { equals: true } })

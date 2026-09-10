@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   IconArrowLeft,
   IconArrowRight,
@@ -15,7 +16,14 @@ import {
 
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import {
+  Button,
+  PortalState,
+  SearchInput,
+  StatusBadge,
+  Surface,
+  UiSelect,
+} from '@/admin-portal/core/ui'
 
 import {
   ContentEditor,
@@ -264,6 +272,7 @@ const statusOptionsFor = (type: ContentTypeId): ContentStatusFilter[] => {
 export function ContentHub({ pageState, summary }: ContentHubProps) {
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).websiteContent
+  const router = useRouter()
   const [selectedId, setSelectedId] = useState<number | string | null>(null)
   const [transientItem, setTransientItem] = useState<ContentSummaryItem | null>(null)
   const [editor, setEditor] = useState<'create' | 'edit' | null>(null)
@@ -293,7 +302,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
     },
     [],
   )
-  const cancelTransition = useCallback(() => setPendingTransition(null), [])
+  const cancelTransition = useCallback(() => setPendingTransition(null), [setPendingTransition])
 
   if (pageState === 'forbidden') {
     return (
@@ -379,10 +388,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
     commit()
   }
 
-  const promoteCreatedItem = (
-    saved: ContentEditorSaveResult,
-    targetLocale: ContentLocale,
-  ) => {
+  const promoteCreatedItem = (saved: ContentEditorSaveResult, targetLocale: ContentLocale) => {
     const item: ContentSummaryItem = {
       ...saved.result,
       localeCompleteness: { ar: 0, en: 0 },
@@ -395,8 +401,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
     setEditor('edit')
   }
 
-  const openCreate = () =>
-    requestTransition(switchCopy[locale].newContent, commitOpenCreate)
+  const openCreate = () => requestTransition(switchCopy[locale].newContent, commitOpenCreate)
 
   const requestSelection = (item: ContentSummaryItem) => {
     if (!editor) {
@@ -442,7 +447,6 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
           <p>{messages.description}</p>
         </div>
         <div className="portal-content__intro-actions">
-          <StatusBadge label={messages.editorStatus} tone="success" />
           {PORTAL_CONTENT_TYPE_IDS.includes(
             summary.query.type as (typeof PORTAL_CONTENT_TYPE_IDS)[number],
           ) ? (
@@ -480,38 +484,51 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
           method="get"
         >
           <input name="type" type="hidden" value={summary.query.type} />
-          <label className="portal-content__search">
-            <span className="portal-field__label">{messages.searchLabel}</span>
-            <span className="portal-field__control">
+          <div className="portal-content__filter-item portal-content__search">
+            <label className="portal-content__filter-label" htmlFor="content-search-input">
+              {messages.searchLabel}
+            </label>
+            <SearchInput
+              aria-label={messages.searchLabel}
+              defaultValue={summary.query.q}
+              id="content-search-input"
+              maxLength={80}
+              name="q"
+              placeholder={messages.searchPlaceholder}
+            />
+          </div>
+          <div className="portal-content__filter-item portal-content__status-filter">
+            <span className="portal-content__filter-label">{messages.filterLabel}</span>
+            <UiSelect
+              ariaLabel={messages.filterLabel}
+              name="status"
+              onChange={(value) =>
+                router.push(
+                  buildContentHref({
+                    ...summary.query,
+                    page: 1,
+                    status: value as ContentStatusFilter,
+                  }),
+                )
+              }
+              options={statusOptions.map((status) => ({
+                label: statusLabel[status],
+                value: status,
+              }))}
+              value={summary.query.status}
+            />
+          </div>
+          <div className="portal-content__filter-actions">
+            <Button className="portal-content__submit" size="compact" type="submit">
               <IconSearch aria-hidden="true" size={16} stroke={1.8} />
-              <input
-                defaultValue={summary.query.q}
-                maxLength={80}
-                name="q"
-                placeholder={messages.searchPlaceholder}
-                type="search"
-              />
-            </span>
-          </label>
-          <label className="portal-content__status-filter">
-            <span className="portal-field__label">{messages.filterLabel}</span>
-            <select defaultValue={summary.query.status} name="status">
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {statusLabel[status]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button className="portal-content__submit" type="submit">
-            <IconSearch aria-hidden="true" size={16} stroke={1.8} />
-            {messages.searchSubmit}
-          </Button>
-          <Button asChild variant="ghost">
-            <Link href={buildContentHref({ type: summary.query.type })}>
-              {messages.resetFilters}
-            </Link>
-          </Button>
+              {messages.searchSubmit}
+            </Button>
+            <Button asChild size="compact" variant="ghost">
+              <Link href={buildContentHref({ type: summary.query.type })}>
+                {messages.resetFilters}
+              </Link>
+            </Button>
+          </div>
         </form>
       </Surface>
 
@@ -547,7 +564,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
               {summary.items.map((item) => (
                 <li key={item.id}>
                   <ItemButton
-                    active={String(item.id) === String(selected?.id)}
+                    active={editor !== 'create' && String(item.id) === String(selected?.id)}
                     item={item}
                     locale={locale}
                     onSelect={() => requestSelection(item)}

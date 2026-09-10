@@ -20,7 +20,7 @@ import {
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import type { PortalRole } from '@/admin-portal/core/modules/types'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import { Button, PortalState, SearchInput, StatusBadge, Surface, UiSelect } from '@/admin-portal/core/ui'
 
 import { FeishuRegistrationPanel } from './FeishuRegistrationPanel'
 import { formatByteSize, type LeadSummaryItem, type LeadsSummary } from './getLeadsPage'
@@ -81,6 +81,7 @@ const copy = {
     phone: '电话',
     previous: '上一页',
     related: '关联会话',
+    resetFilters: '清除筛选',
     save: '保存修改',
     saved: '线索已保存。',
     source: '来源',
@@ -143,6 +144,7 @@ const copy = {
     phone: 'Phone',
     previous: 'Previous',
     related: 'Related conversations',
+    resetFilters: 'Reset filters',
     save: 'Save changes',
     saved: 'Lead saved.',
     source: 'Source',
@@ -171,7 +173,7 @@ type LeadMutation = {
   values?: Partial<LeadSummaryItem>
 }
 
-const blank = (sourceId = ""): LeadForm => ({ assignedToId: '', company: '', country: '', email: '', idempotencyKey: '', interest: '', intentLevel: 'unscored', locale: 'en', message: '', name: '', phone: '', sourceId, status: 'new', updatedAt: '' })
+const blank = (sourceId = ''): LeadForm => ({ assignedToId: '', company: '', country: '', email: '', idempotencyKey: '', interest: '', intentLevel: 'unscored', locale: 'en', message: '', name: '', phone: '', sourceId, status: 'new', updatedAt: '' })
 
 const leadForm = (lead: LeadSummaryItem): LeadForm => ({ assignedToId: lead.assignedTo ? String(lead.assignedTo) : '', company: lead.company ?? '', country: lead.country ?? '', email: lead.email ?? '', id: lead.id, idempotencyKey: '', interest: lead.interest ?? '', intentLevel: lead.intentLevel, locale: lead.locale, message: lead.message, name: lead.name, phone: lead.phone ?? '', sourceId: String(lead.source), status: lead.status, updatedAt: lead.updatedAt })
 
@@ -238,37 +240,318 @@ export function LeadsHub({ feishuRegistrationEnabled = false, pageState, role, s
     return <main className="portal-page portal-leads"><PortalState description={isForbidden ? text.forbidden : pageState === 'read-failed' ? text.error : text.blocked} title={isForbidden ? text.forbidden : pageState === 'read-failed' ? text.error : text.blocked} type={isForbidden ? 'forbidden' : pageState === 'read-failed' ? 'error' : 'blocked'} /></main>
   }
 
-  const updateFilters = (name: string, value: string) => {
+  const updateFilters = (name: 'status' | 'intent', value: string) => {
     const params = new URLSearchParams()
     if (summary.query.q) params.set('q', summary.query.q)
-    if (summary.query.status !== 'all') params.set('status', summary.query.status)
-    if (summary.query.intent !== 'all') params.set('intent', summary.query.intent)
-    if (value !== 'all') params.set(name, value)
-    router.push(`/dashboard/leads?${params}`)
+    const nextStatus = name === 'status' ? value : summary.query.status
+    const nextIntent = name === 'intent' ? value : summary.query.intent
+    if (nextStatus && nextStatus !== 'all') params.set('status', nextStatus)
+    if (nextIntent && nextIntent !== 'all') params.set('intent', nextIntent)
+    router.push(params.toString() ? `/dashboard/leads?${params}` : '/dashboard/leads')
   }
 
-  return <main className="portal-page portal-leads">
-    <header className="portal-page__intro portal-leads__intro"><div><h2>{text.title}</h2><p>{text.description}</p></div>{role === 'admin' ? <Button onClick={() => { setEditor('create'); setFeedback(null) }}><IconPlus aria-hidden="true" size={16} />{text.add}</Button> : null}</header>
-    {role === 'admin' ? <FeishuRegistrationPanel enabled={feishuRegistrationEnabled} /> : null}
-    {feedback ? <p className="portal-leads__feedback" role="status">{feedback}</p> : null}
-    {editor ? <Surface as="section" className="portal-leads__editor"><LeadEditor key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`} mode={editor} onClose={() => setEditor(null)} onDone={(message, mutation) => { setEditor(null); setFeedback(message); if (mutation.deleted) { setItems((current) => current.filter((item) => String(item.id) !== String(mutation.id))); setSelectedID(null) } else if (mutation.values) { setItems((current) => current.map((item) => String(item.id) === String(mutation.id) ? { ...item, ...mutation.values, updatedAt: mutation.updatedAt ?? item.updatedAt } : item)) } else { setSelectedID(mutation.id) }; router.refresh() }} options={summary.options} role={role} selected={editor === 'edit' ? selected : null} text={text} /></Surface> : null}
-    <Surface as="section" className="portal-leads__filters"><form action="/dashboard/leads" method="get"><label><span>{text.filter}</span><span className="portal-field__control"><IconSearch aria-hidden="true" size={16} /><input defaultValue={summary.query.q} name="q" placeholder={`${text.name} / ${text.company} / ${text.email}`} type="search" /></span></label><label><span>{text.status}</span><select name="status" value={summary.query.status} onChange={(event) => updateFilters('status', event.target.value)}><option value="all">{text.allStatus}</option>{Object.entries(text.state).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label><span>{text.intent}</span><select name="intent" value={summary.query.intent} onChange={(event) => updateFilters('intent', event.target.value)}><option value="all">{text.allIntent}</option>{Object.entries(text.intentState).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><Button type="submit"><IconSearch aria-hidden="true" size={16} />{text.filter}</Button></form><span>{summary.pagination.totalDocs} {text.total}</span></Surface>
-    <div className="portal-leads__workspace"><Surface as="section" className="portal-leads__list"><header><div><IconUsers aria-hidden="true" size={18} /><h3>{text.title}</h3></div><span>{summary.pagination.page} / {Math.max(1, summary.pagination.totalPages)}</span></header>{items.length ? <ul>{items.map((lead) => {
-      const count = lead.attachmentCount ?? lead.attachments?.length ?? 0
-      return <li key={String(lead.id)}><button aria-pressed={String(selectedID) === String(lead.id)} className={String(selectedID) === String(lead.id) ? 'is-selected' : undefined} onClick={() => { setSelectedID(lead.id); setFeedback(null) }} type="button"><strong>{lead.name}</strong><span>{leadSecondaryLabel(lead)}</span><div><StatusBadge label={text.state[lead.status]} tone={lead.status === 'qualified' ? 'success' : lead.status === 'disqualified' ? 'neutral' : lead.status === 'contacted' ? 'info' : 'warning'} /><StatusBadge label={text.intentState[lead.intentLevel]} tone={lead.intentLevel === 'a' ? 'success' : lead.intentLevel === 'unscored' ? 'neutral' : 'info'} />{count > 0 ? <span className="portal-leads__attachment-badge" title={text.attachmentBadge(count)}><IconPaperclip aria-hidden="true" size={12} /><span>{count}</span></span> : null}</div></button></li>
-    })}</ul> : <PortalState description={text.emptyDescription} title={text.empty} type="empty" />}{summary.pagination.totalPages > 1 ? <nav><Button asChild disabled={summary.pagination.page <= 1} size="compact" variant="secondary"><Link href={href(summary.query, summary.pagination.page - 1)}>{text.previous}</Link></Button><span>{summary.pagination.page} / {summary.pagination.totalPages}</span><Button asChild disabled={summary.pagination.page >= summary.pagination.totalPages} size="compact" variant="secondary"><Link href={href(summary.query, summary.pagination.page + 1)}>{text.next}</Link></Button></nav> : null}</Surface>
-      <Surface as="section" className="portal-leads__detail">{selected ? <><header><div><h3>{selected.name}</h3><p>{leadSecondaryLabel(selected)}</p></div><div><StatusBadge label={text.state[selected.status]} tone={selected.status === 'qualified' ? 'success' : selected.status === 'disqualified' ? 'neutral' : selected.status === 'contacted' ? 'info' : 'warning'} /><Button aria-label={text.edit} onClick={() => { setEditor('edit'); setFeedback(null) }} size="icon" variant="ghost"><IconEdit aria-hidden="true" size={16} /></Button></div></header><dl><div><dt>{text.email}</dt><dd>{selected.email || '—'}</dd></div><div><dt>{text.phone}</dt><dd>{selected.phone || '—'}</dd></div><div><dt>{text.messagingContact}</dt><dd>{messagingContactLabel(selected) || '—'}</dd></div><div><dt>{text.country}</dt><dd>{selected.country || '—'}</dd></div><div><dt>{text.interest}</dt><dd>{selected.interest || '—'}</dd></div><div><dt>{text.source}</dt><dd>{summary.options.sources.find((option) => String(option.id) === String(selected.source))?.label ?? text.unknown}</dd></div><div><dt>{text.assignment}</dt><dd>{selected.assignedTo ? summary.options.users.find((option) => String(option.id) === String(selected.assignedTo))?.label ?? text.unknown : text.unknown}</dd></div><div><dt>{text.updated}</dt><dd>{formatDate(selected.updatedAt, locale)}</dd></div><div><dt>{text.locale}</dt><dd>{selected.locale.toUpperCase()}</dd></div></dl><section className="portal-leads__message"><h4>{qualificationText.details}</h4><dl><div><dt>{qualificationText.projectStage}</dt><dd>{selected.projectStage || qualificationText.unknown}</dd></div><div><dt>{qualificationText.quantity}</dt><dd>{selected.quantitySquareMeters ?? qualificationText.unknown}</dd></div><div><dt>{qualificationText.drawings}</dt><dd>{selected.hasDrawings === null ? qualificationText.unknown : selected.hasDrawings ? qualificationText.yes : qualificationText.no}</dd></div><div><dt>{qualificationText.budget}</dt><dd>{selected.budget || qualificationText.unknown}</dd></div><div><dt>{qualificationText.procurementPlan}</dt><dd>{selected.procurementPlan || qualificationText.unknown}</dd></div><div><dt>{qualificationText.timeline}</dt><dd>{selected.timeline || qualificationText.unknown}</dd></div></dl></section><section className="portal-leads__message"><h4>{text.message}</h4><p>{selected.message}</p></section><section className="portal-leads__attachments"><h4>{text.attachments}</h4>{(selected.attachmentsAccess ?? (role === 'sales' ? 'unauthorized' : 'authorized')) === 'unauthorized' ? <div className="portal-leads__attachments-empty is-unauthorized"><IconLock aria-hidden="true" size={16} /><p>{text.attachmentsForbidden}</p></div> : (selected.attachments ?? []).length > 0 ? <ul className="portal-leads__attachment-list">{(selected.attachments ?? []).map((attachment) => {
-        const isAssociated = attachment.status === 'associated'
-        const isMissing = attachment.status === 'missing'
-        const isExpired = attachment.status === 'expired'
-        const tone = isAssociated ? 'success' : isMissing ? 'danger' : isExpired ? 'neutral' : 'warning'
-        return <li key={attachment.id} className="portal-leads__attachment-item"><div className="portal-leads__attachment-info">{isMissing ? <IconFileOff aria-hidden="true" className="portal-leads__attachment-icon is-missing" size={20} /> : isExpired ? <IconFileAlert aria-hidden="true" className="portal-leads__attachment-icon is-expired" size={20} /> : <IconFile aria-hidden="true" className="portal-leads__attachment-icon" size={20} />}<div className="portal-leads__attachment-meta"><strong title={attachment.filename}>{attachment.filename}</strong><span>{formatByteSize(attachment.byteSize)}{attachment.createdAt ? ` · ${formatDate(attachment.createdAt, locale)}` : ''}</span></div></div><div className="portal-leads__attachment-actions"><StatusBadge label={text.attachmentStatus[attachment.status] ?? attachment.status} tone={tone} />{isAssociated ? <Button asChild size="compact" variant="secondary"><a download={attachment.filename} href={attachment.downloadUrl} rel="noopener noreferrer" target="_blank"><IconDownload aria-hidden="true" size={14} /><span>{text.download}</span></a></Button> : <span className="portal-leads__attachment-unavailable" title={text.attachmentStatusDesc[attachment.status]}>{text.attachmentStatusDesc[attachment.status]}</span>}</div></li>
-      })}</ul> : <div className="portal-leads__attachments-empty"><p>{selected.hasDrawings ? text.noAttachmentsWithDrawings : text.noAttachments}</p></div>}</section><section className="portal-leads__related"><h4>{text.related}</h4>{selected.relatedConversations.length ? <ul>{selected.relatedConversations.map((conversation) => <li key={conversation.id}><Link href={`/dashboard/conversations?conversation=${encodeURIComponent(conversation.id)}`}>{relatedConversationLabel(conversation.id, locale)}</Link><StatusBadge label={relatedConversationStatus(conversation.handoffStatus, locale)} tone={conversation.handoffStatus === 'human_active' ? 'success' : conversation.handoffStatus === 'handoff_requested' ? 'warning' : 'neutral'} /></li>)}</ul> : <p>{text.noRelated}</p>}</section></> : <PortalState description={text.emptyDescription} title={text.empty} type="empty" />}</Surface>
-    </div>
-  </main>
+  const hasActiveFilters = Boolean(summary.query.q || summary.query.status !== 'all' || summary.query.intent !== 'all')
+
+  return (
+    <main className="portal-page portal-leads">
+      <header className="portal-page__intro portal-leads__intro">
+        <div>
+          <h2>{text.title}</h2>
+          <p>{text.description}</p>
+        </div>
+        {role === 'admin' ? (
+          <Button onClick={() => { setEditor('create'); setFeedback(null) }}>
+            <IconPlus aria-hidden="true" size={16} stroke={1.8} />
+            {text.add}
+          </Button>
+        ) : null}
+      </header>
+      {role === 'admin' ? <FeishuRegistrationPanel enabled={feishuRegistrationEnabled} /> : null}
+      {feedback ? <p className="portal-leads__feedback" role="status">{feedback}</p> : null}
+      <Surface as="section" className="portal-leads__filters">
+        <form action="/dashboard/leads" method="get">
+          <label className="portal-leads__filter-item portal-leads__search">
+            <span className="portal-leads__filter-label">{text.filter}</span>
+            <SearchInput
+              defaultValue={summary.query.q}
+              name="q"
+              placeholder={`${text.name} / ${text.company} / ${text.email}`}
+            />
+          </label>
+          <div className="portal-leads__filter-item portal-leads__status-select">
+            <span className="portal-leads__filter-label">{text.status}</span>
+            <UiSelect
+              ariaLabel={text.status}
+              name="status"
+              options={[
+                { value: 'all', label: text.allStatus },
+                ...Object.entries(text.state).map(([key, label]) => ({ value: key, label })),
+              ]}
+              value={summary.query.status}
+              onChange={(val) => updateFilters('status', val)}
+            />
+          </div>
+          <div className="portal-leads__filter-item portal-leads__intent-select">
+            <span className="portal-leads__filter-label">{text.intent}</span>
+            <UiSelect
+              ariaLabel={text.intent}
+              name="intent"
+              options={[
+                { value: 'all', label: text.allIntent },
+                ...Object.entries(text.intentState).map(([key, label]) => ({ value: key, label })),
+              ]}
+              value={summary.query.intent}
+              onChange={(val) => updateFilters('intent', val)}
+            />
+          </div>
+          <div className="portal-leads__filter-actions">
+            <Button size="compact" type="submit">
+              <IconSearch aria-hidden="true" size={15} stroke={1.8} />
+              {text.filter}
+            </Button>
+            <Button asChild size="compact" variant="ghost">
+              <Link href="/dashboard/leads">
+                {text.resetFilters}
+              </Link>
+            </Button>
+          </div>
+        </form>
+        <span className="portal-leads__total">{summary.pagination.totalDocs} {text.total}</span>
+      </Surface>
+      <div className="portal-leads__workspace">
+        <Surface as="section" className="portal-leads__list">
+          <header>
+            <div>
+              <IconUsers aria-hidden="true" size={18} stroke={1.8} />
+              <h3>{text.title}</h3>
+            </div>
+            <span>{summary.pagination.page} / {Math.max(1, summary.pagination.totalPages)}</span>
+          </header>
+          {items.length ? (
+            <ul>
+              {items.map((lead) => {
+                const count = lead.attachmentCount ?? lead.attachments?.length ?? 0
+                return (
+                  <li key={String(lead.id)}>
+                    <button
+                      aria-pressed={editor !== 'create' && String(selectedID) === String(lead.id)}
+                      className={editor !== 'create' && String(selectedID) === String(lead.id) ? 'is-selected' : undefined}
+                      onClick={() => {
+                        setSelectedID(lead.id)
+                        if (editor === 'create') setEditor(null)
+                        setFeedback(null)
+                      }}
+                      type="button"
+                    >
+                      <strong>{lead.name}</strong>
+                      <span>{leadSecondaryLabel(lead)}</span>
+                      <div>
+                        <StatusBadge
+                          label={text.state[lead.status]}
+                          tone={lead.status === 'qualified' ? 'success' : lead.status === 'disqualified' ? 'neutral' : lead.status === 'contacted' ? 'info' : 'warning'}
+                        />
+                        <StatusBadge
+                          label={text.intentState[lead.intentLevel]}
+                          tone={lead.intentLevel === 'a' ? 'success' : lead.intentLevel === 'unscored' ? 'neutral' : 'info'}
+                        />
+                        {count > 0 ? (
+                          <span className="portal-leads__attachment-badge" title={text.attachmentBadge(count)}>
+                            <IconPaperclip aria-hidden="true" size={12} />
+                            <span>{count}</span>
+                          </span>
+                        ) : null}
+                      </div>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <PortalState description={text.emptyDescription} title={text.empty} type="empty" />
+          )}
+          {summary.pagination.totalPages > 1 ? (
+            <nav>
+              <Button asChild disabled={summary.pagination.page <= 1} size="compact" variant="secondary">
+                <Link href={href(summary.query, summary.pagination.page - 1)}>{text.previous}</Link>
+              </Button>
+              <span>{summary.pagination.page} / {summary.pagination.totalPages}</span>
+              <Button asChild disabled={summary.pagination.page >= summary.pagination.totalPages} size="compact" variant="secondary">
+                <Link href={href(summary.query, summary.pagination.page + 1)}>{text.next}</Link>
+              </Button>
+            </nav>
+          ) : null}
+        </Surface>
+        <Surface as="section" className={`portal-leads__detail${editor ? ' portal-leads__detail--editor' : ''}`}>
+          {editor ? (
+            <LeadEditor
+              key={`${editor}:${editor === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
+              mode={editor}
+              onClose={() => setEditor(null)}
+              onDone={(message, mutation) => {
+                setEditor(null)
+                setFeedback(message)
+                if (mutation.deleted) {
+                  setItems((current) => current.filter((item) => String(item.id) !== String(mutation.id)))
+                  setSelectedID(null)
+                } else if (mutation.values) {
+                  setItems((current) =>
+                    current.map((item) =>
+                      String(item.id) === String(mutation.id)
+                        ? { ...item, ...mutation.values, updatedAt: mutation.updatedAt ?? item.updatedAt }
+                        : item,
+                    ),
+                  )
+                } else {
+                  setSelectedID(mutation.id)
+                }
+                router.refresh()
+              }}
+              options={summary.options}
+              role={role}
+              selected={editor === 'edit' ? selected : null}
+              text={text}
+            />
+          ) : selected ? (
+            <>
+              <header>
+                <div>
+                  <h3>{selected.name}</h3>
+                  <p>{leadSecondaryLabel(selected)}</p>
+                </div>
+                <div>
+                  <StatusBadge
+                    label={text.state[selected.status]}
+                    tone={selected.status === 'qualified' ? 'success' : selected.status === 'disqualified' ? 'neutral' : selected.status === 'contacted' ? 'info' : 'warning'}
+                  />
+                  <Button
+                    aria-label={text.edit}
+                    onClick={() => { setEditor('edit'); setFeedback(null) }}
+                    size="icon"
+                    variant="ghost"
+                  >
+                    <IconEdit aria-hidden="true" size={16} stroke={1.8} />
+                  </Button>
+                </div>
+              </header>
+              <dl>
+                <div><dt>{text.email}</dt><dd>{selected.email || '—'}</dd></div>
+                <div><dt>{text.phone}</dt><dd>{selected.phone || '—'}</dd></div>
+                <div><dt>{text.messagingContact}</dt><dd>{messagingContactLabel(selected) || '—'}</dd></div>
+                <div><dt>{text.country}</dt><dd>{selected.country || '—'}</dd></div>
+                <div><dt>{text.interest}</dt><dd>{selected.interest || '—'}</dd></div>
+                <div><dt>{text.source}</dt><dd>{summary.options.sources.find((option) => String(option.id) === String(selected.source))?.label ?? text.unknown}</dd></div>
+                <div><dt>{text.assignment}</dt><dd>{selected.assignedTo ? summary.options.users.find((option) => String(option.id) === String(selected.assignedTo))?.label ?? text.unknown : text.unknown}</dd></div>
+                <div><dt>{text.updated}</dt><dd>{formatDate(selected.updatedAt, locale)}</dd></div>
+                <div><dt>{text.locale}</dt><dd>{selected.locale.toUpperCase()}</dd></div>
+              </dl>
+              <section className="portal-leads__message">
+                <h4>{qualificationText.details}</h4>
+                <dl>
+                  <div><dt>{qualificationText.projectStage}</dt><dd>{selected.projectStage || qualificationText.unknown}</dd></div>
+                  <div><dt>{qualificationText.quantity}</dt><dd>{selected.quantitySquareMeters ?? qualificationText.unknown}</dd></div>
+                  <div><dt>{qualificationText.drawings}</dt><dd>{selected.hasDrawings === null ? qualificationText.unknown : selected.hasDrawings ? qualificationText.yes : qualificationText.no}</dd></div>
+                  <div><dt>{qualificationText.budget}</dt><dd>{selected.budget || qualificationText.unknown}</dd></div>
+                  <div><dt>{qualificationText.procurementPlan}</dt><dd>{selected.procurementPlan || qualificationText.unknown}</dd></div>
+                  <div><dt>{qualificationText.timeline}</dt><dd>{selected.timeline || qualificationText.unknown}</dd></div>
+                </dl>
+              </section>
+              <section className="portal-leads__message">
+                <h4>{text.message}</h4>
+                <p>{selected.message}</p>
+              </section>
+              <section className="portal-leads__attachments">
+                <h4>{text.attachments}</h4>
+                {(selected.attachmentsAccess ?? (role === 'sales' ? 'unauthorized' : 'authorized')) === 'unauthorized' ? (
+                  <div className="portal-leads__attachments-empty is-unauthorized">
+                    <IconLock aria-hidden="true" size={16} />
+                    <p>{text.attachmentsForbidden}</p>
+                  </div>
+                ) : (selected.attachments ?? []).length > 0 ? (
+                  <ul className="portal-leads__attachment-list">
+                    {(selected.attachments ?? []).map((attachment) => {
+                      const isAssociated = attachment.status === 'associated'
+                      const isMissing = attachment.status === 'missing'
+                      const isExpired = attachment.status === 'expired'
+                      const tone = isAssociated ? 'success' : isMissing ? 'danger' : isExpired ? 'neutral' : 'warning'
+                      return (
+                        <li className="portal-leads__attachment-item" key={attachment.id}>
+                          <div className="portal-leads__attachment-info">
+                            {isMissing ? (
+                              <IconFileOff aria-hidden="true" className="portal-leads__attachment-icon is-missing" size={20} />
+                            ) : isExpired ? (
+                              <IconFileAlert aria-hidden="true" className="portal-leads__attachment-icon is-expired" size={20} />
+                            ) : (
+                              <IconFile aria-hidden="true" className="portal-leads__attachment-icon" size={20} />
+                            )}
+                            <div className="portal-leads__attachment-meta">
+                              <strong title={attachment.filename}>{attachment.filename}</strong>
+                              <span>{formatByteSize(attachment.byteSize)}{attachment.createdAt ? ` · ${formatDate(attachment.createdAt, locale)}` : ''}</span>
+                            </div>
+                          </div>
+                          <div className="portal-leads__attachment-actions">
+                            <StatusBadge label={text.attachmentStatus[attachment.status] ?? attachment.status} tone={tone} />
+                            {isAssociated ? (
+                              <Button asChild size="compact" variant="secondary">
+                                <a download={attachment.filename} href={attachment.downloadUrl} rel="noopener noreferrer" target="_blank">
+                                  <IconDownload aria-hidden="true" size={14} />
+                                  <span>{text.download}</span>
+                                </a>
+                              </Button>
+                            ) : (
+                              <span className="portal-leads__attachment-unavailable" title={text.attachmentStatusDesc[attachment.status]}>
+                                {text.attachmentStatusDesc[attachment.status]}
+                              </span>
+                            )}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : (
+                  <div className="portal-leads__attachments-empty">
+                    <p>{selected.hasDrawings ? text.noAttachmentsWithDrawings : text.noAttachments}</p>
+                  </div>
+                )}
+              </section>
+              <section className="portal-leads__related">
+                <h4>{text.related}</h4>
+                {selected.relatedConversations.length ? (
+                  <ul>
+                    {selected.relatedConversations.map((conversation) => (
+                      <li key={conversation.id}>
+                        <Link href={`/dashboard/conversations?conversation=${encodeURIComponent(conversation.id)}`}>
+                          {relatedConversationLabel(conversation.id, locale)}
+                        </Link>
+                        <StatusBadge
+                          label={relatedConversationStatus(conversation.handoffStatus, locale)}
+                          tone={conversation.handoffStatus === 'human_active' ? 'success' : conversation.handoffStatus === 'handoff_requested' ? 'warning' : 'neutral'}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>{text.noRelated}</p>
+                )}
+              </section>
+            </>
+          ) : (
+            <PortalState description={text.emptyDescription} title={text.empty} type="empty" />
+          )}
+        </Surface>
+      </div>
+    </main>
+  )
 }
 
-function href(query: LeadsSummary['query'], page: number) { const params = new URLSearchParams(); if (query.q) params.set('q', query.q); if (query.status !== 'all') params.set('status', query.status); if (query.intent !== 'all') params.set('intent', query.intent); if (query.lead) params.set('lead', String(query.lead)); if (page > 1) params.set('page', String(page)); return `/dashboard/leads?${params}` }
+function href(query: LeadsSummary['query'], page: number) {
+  const params = new URLSearchParams()
+  if (query.q) params.set('q', query.q)
+  if (query.status !== 'all') params.set('status', query.status)
+  if (query.intent !== 'all') params.set('intent', query.intent)
+  if (query.lead) params.set('lead', String(query.lead))
+  if (page > 1) params.set('page', String(page))
+  return `/dashboard/leads?${params}`
+}
 
 function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { mode: EditorMode; onClose: () => void; onDone: (message: string, mutation: LeadMutation) => void; options: LeadsSummary['options']; role: PortalRole; selected: LeadSummaryItem | null; text: typeof copy['zh'] | typeof copy['en'] }) {
   const [form, setForm] = useState<LeadForm>(() => selected ? leadForm(selected) : blank(String(options.sources[0]?.id ?? '')))
@@ -278,7 +561,8 @@ function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { 
   const [error, setError] = useState<string | null>(null)
   const update = (key: keyof LeadForm, value: string) => setForm((current) => ({ ...current, [key]: value }))
   const save = async () => {
-    setBusy(true); setError(null)
+    setBusy(true)
+    setError(null)
     try {
       const mutation = getLeadMutationPayload(form, mode, role)
       const { idempotencyKey: _formKey, ...commandInput } = mutation
@@ -299,10 +583,127 @@ function LeadEditor({ mode, onClose, onDone, options, role, selected, text }: { 
   }
   const remove = async () => {
     if (!form.id) return
-    setBusy(true); setError(null)
-    try { const response = await fetch(`/api/portal/leads/${form.id}`, { body: JSON.stringify({ updatedAt: form.updatedAt }), credentials: 'same-origin', headers: { 'content-type': 'application/json', 'Idempotency-Key': `portal-leads:${crypto.randomUUID()}` }, method: 'DELETE' }); const body = await response.json() as { error?: { message?: string } }; if (!response.ok) throw new Error(body.error?.message || text.formError); onDone(text.deleted, { deleted: true, id: form.id }) } catch (caught) { setError(caught instanceof Error ? caught.message : text.formError) } finally { setBusy(false) }
+    setBusy(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/portal/leads/${form.id}`, { body: JSON.stringify({ updatedAt: form.updatedAt }), credentials: 'same-origin', headers: { 'content-type': 'application/json', 'Idempotency-Key': `portal-leads:${crypto.randomUUID()}` }, method: 'DELETE' })
+      const body = await response.json() as { error?: { message?: string } }
+      if (!response.ok) throw new Error(body.error?.message || text.formError)
+      onDone(text.deleted, { deleted: true, id: form.id })
+    } catch (caught) { setError(caught instanceof Error ? caught.message : text.formError) } finally { setBusy(false) }
   }
-  return <div className="portal-leads-editor"><header><h3>{mode === 'create' ? text.add : text.edit}</h3><Button onClick={onClose} size="compact" variant="ghost">{text.cancel}</Button></header>{error ? <p role="alert">{error}</p> : null}<div className="portal-leads-editor__fields"><Field label={text.name}><input maxLength={120} onChange={(event) => update('name', event.target.value)} required value={form.name} /></Field><Field label={text.company}><input maxLength={160} onChange={(event) => update('company', event.target.value)} value={form.company} /></Field><Field label={text.email}><input maxLength={254} onChange={(event) => update('email', event.target.value)} type="email" value={form.email} /></Field><Field label={text.phone}><input maxLength={32} onChange={(event) => update('phone', event.target.value)} value={form.phone} /></Field><Field label={text.country}><input maxLength={120} onChange={(event) => update('country', event.target.value)} value={form.country} /></Field><Field label={text.interest}><input maxLength={160} onChange={(event) => update('interest', event.target.value)} value={form.interest} /></Field><Field label={text.status}><select onChange={(event) => update('status', event.target.value)} value={form.status}>{Object.entries(text.state).map(([key,label]) => <option key={key} value={key}>{label}</option>)}</select></Field><Field label={text.intent}><select onChange={(event) => update('intentLevel', event.target.value)} value={form.intentLevel}>{Object.entries(text.intentState).map(([key,label]) => <option key={key} value={key}>{label}</option>)}</select></Field>{role !== 'sales' ? <Field label={text.source}><select onChange={(event) => update('sourceId', event.target.value)} value={form.sourceId}>{options.sources.map((source) => <option key={source.id} value={String(source.id)}>{source.label}</option>)}</select></Field> : null}{mode === 'create' ? <Field label={text.locale}><select onChange={(event) => update('locale', event.target.value)} value={form.locale}><option value="en">EN</option><option value="ar">AR</option></select></Field> : null}{role === 'admin' ? <Field label={text.assignment}><select onChange={(event) => update('assignedToId', event.target.value)} value={form.assignedToId}><option value="">{text.unknown}</option>{options.users.map((user) => <option key={user.id} value={String(user.id)}>{user.label}</option>)}</select></Field> : null}<Field label={text.message} wide><textarea maxLength={5000} onChange={(event) => update('message', event.target.value)} required rows={6} value={form.message} /></Field></div><footer><Button disabled={busy} onClick={() => void save()}>{mode === 'create' ? text.create : text.save}</Button>{mode === 'edit' && role === 'admin' ? confirmDelete ? <><Button disabled={busy} onClick={() => void remove()} variant="danger">{text.deleteConfirm}</Button><Button disabled={busy} onClick={() => setConfirmDelete(false)} variant="ghost">{text.cancel}</Button></> : <Button disabled={busy} onClick={() => setConfirmDelete(true)} variant="ghost"><IconTrash aria-hidden="true" size={16} />{text.delete}</Button> : null}</footer></div>
+  return (
+    <div className="portal-leads-editor">
+      <header>
+        <h3>{mode === 'create' ? text.add : text.edit}</h3>
+        <Button onClick={onClose} size="compact" variant="ghost">
+          {text.cancel}
+        </Button>
+      </header>
+      {error ? <p role="alert">{error}</p> : null}
+      <div className="portal-leads-editor__fields">
+        <Field label={text.name} required>
+          <input maxLength={120} onChange={(event) => update('name', event.target.value)} required value={form.name} />
+        </Field>
+        <Field label={text.company}>
+          <input maxLength={160} onChange={(event) => update('company', event.target.value)} value={form.company} />
+        </Field>
+        <Field label={text.email}>
+          <input maxLength={254} onChange={(event) => update('email', event.target.value)} type="email" value={form.email} />
+        </Field>
+        <Field label={text.phone}>
+          <input maxLength={32} onChange={(event) => update('phone', event.target.value)} value={form.phone} />
+        </Field>
+        <Field label={text.country}>
+          <input maxLength={120} onChange={(event) => update('country', event.target.value)} value={form.country} />
+        </Field>
+        <Field label={text.interest}>
+          <input maxLength={160} onChange={(event) => update('interest', event.target.value)} value={form.interest} />
+        </Field>
+        <Field label={text.status} required>
+          <UiSelect
+            ariaLabel={text.status}
+            onChange={(val) => update('status', val as any)}
+            options={Object.entries(text.state).map(([key, label]) => ({ label, value: key }))}
+            value={form.status}
+          />
+        </Field>
+        <Field label={text.intent} required>
+          <UiSelect
+            ariaLabel={text.intent}
+            onChange={(val) => update('intentLevel', val as any)}
+            options={Object.entries(text.intentState).map(([key, label]) => ({ label, value: key }))}
+            value={form.intentLevel}
+          />
+        </Field>
+        {role !== 'sales' ? (
+          <Field label={text.source} required>
+            <UiSelect
+              ariaLabel={text.source}
+              onChange={(val) => update('sourceId', val)}
+              options={options.sources.map((source) => ({ label: source.label, value: String(source.id) }))}
+              value={form.sourceId}
+            />
+          </Field>
+        ) : null}
+        {mode === 'create' ? (
+          <Field label={text.locale} required>
+            <UiSelect
+              ariaLabel={text.locale}
+              onChange={(val) => update('locale', val as any)}
+              options={[{ label: 'EN', value: 'en' }, { label: 'AR', value: 'ar' }]}
+              value={form.locale}
+            />
+          </Field>
+        ) : null}
+        {role === 'admin' ? (
+          <Field label={text.assignment}>
+            <UiSelect
+              ariaLabel={text.assignment}
+              onChange={(val) => update('assignedToId', val)}
+              options={[{ label: text.unknown, value: '' }, ...options.users.map((user) => ({ label: user.label, value: String(user.id) }))]}
+              value={form.assignedToId}
+            />
+          </Field>
+        ) : null}
+        <Field label={text.message} required wide>
+          <textarea maxLength={5000} onChange={(event) => update('message', event.target.value)} required rows={6} value={form.message} />
+        </Field>
+      </div>
+      <footer>
+        <Button disabled={busy} onClick={() => void save()}>
+          {mode === 'create' ? text.create : text.save}
+        </Button>
+        {mode === 'edit' && role === 'admin' ? (
+          confirmDelete ? (
+            <>
+              <Button disabled={busy} onClick={() => void remove()} variant="danger">
+                {text.deleteConfirm}
+              </Button>
+              <Button disabled={busy} onClick={() => setConfirmDelete(false)} variant="ghost">
+                {text.cancel}
+              </Button>
+            </>
+          ) : (
+            <Button disabled={busy} onClick={() => setConfirmDelete(true)} variant="ghost">
+              <IconTrash aria-hidden="true" size={16} />
+              {text.delete}
+            </Button>
+          )
+        ) : null}
+      </footer>
+    </div>
+  )
 }
 
-function Field({ children, label, wide = false }: { children: ReactNode; label: string; wide?: boolean }) { return <label className={wide ? 'is-wide' : undefined}><span>{label}</span>{children}</label> }
+function Field({ children, label, required = false, wide = false }: { children: ReactNode; label: string; required?: boolean; wide?: boolean }) {
+  return (
+    <label className={wide ? 'is-wide' : undefined}>
+      <span>
+        {required ? <span aria-hidden="true" className="portal-required" /> : null}
+        {label}
+      </span>
+      {children}
+    </label>
+  )
+}

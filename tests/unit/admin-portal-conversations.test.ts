@@ -17,6 +17,8 @@ import {
 } from '@/admin-portal/modules/conversations/conversationClient'
 import type { ChatSession } from '@/modules/conversations/contracts'
 
+import { selectUiOption } from './support/uiSelect'
+
 let currentSearchParams = new URLSearchParams()
 
 vi.mock('next/navigation', () => ({
@@ -570,7 +572,7 @@ describe('Portal conversations module', () => {
     fireEvent.click(screen.getByRole('button', { name: '解决会话' }))
 
     const listRequestCountBeforeFilter = listUrls.length
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'resolved' } })
+    selectUiOption(screen.getByRole('combobox'), 'resolved')
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Facebook客户 #conv-2' })).toBeDefined()
       expect(screen.getAllByText('已解决').length).toBeGreaterThan(0)

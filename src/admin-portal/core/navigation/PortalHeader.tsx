@@ -8,7 +8,6 @@ import { IconBell, IconLanguage, IconMenu2 } from '@tabler/icons-react'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import type { PortalLocale } from '@/admin-portal/core/i18n/types'
 import type { ResolvedPortalModule } from '@/admin-portal/core/modules/types'
-import { StatusBadge } from '@/admin-portal/core/ui'
 
 export interface PortalHeaderProps {
   environment: 'local' | 'production'
@@ -32,7 +31,6 @@ const resolveCurrentModule = (
     )
 
 export function PortalHeader({
-  environment,
   locale,
   menuButtonRef,
   modules,
@@ -63,14 +61,6 @@ export function PortalHeader({
       </div>
 
       <div className="portal-header__actions">
-        <StatusBadge
-          label={
-            environment === 'production'
-              ? messages.shell.productionEnvironment
-              : messages.shell.localEnvironment
-          }
-          tone={environment === 'production' ? 'success' : 'info'}
-        />
         <button
           aria-label={messages.shell.noNotifications}
           className="portal-header__icon-button"

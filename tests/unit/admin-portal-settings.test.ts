@@ -15,6 +15,8 @@ import {
 } from '@/admin-portal/modules/settings/getPortalSettingsSummary'
 import { portalAiSettingsAdminOnly } from '@/admin-portal/modules/settings/getPortalAiSettings'
 
+import { selectUiOption } from './support/uiSelect'
+
 const readyAiSettings = {
   access: 'admin' as const,
   encryptionKeyConfigured: true,
@@ -201,7 +203,6 @@ describe('Portal settings hub', () => {
 
     expect(screen.getByRole('heading', { name: '基础设置' })).toBeTruthy()
     expect(screen.getByText('sales@example.com')).toBeTruthy()
-    expect(screen.getByText('只读摘要')).toBeTruthy()
     expect(screen.getByText('邮箱')).toBeTruthy()
     expect(screen.getByText('角色')).toBeTruthy()
 
@@ -252,7 +253,9 @@ describe('Portal settings hub', () => {
     expect(screen.getByText(/图片生成/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '用途路由' }))
     fireEvent.click(screen.getByRole('button', { name: /新建路由/ }))
-    expect(screen.getByRole('option', { name: /内容工作台·图片生成/ })).toBeTruthy()
+    const usageKey = screen.getByRole('combobox', { name: '用途键' })
+    selectUiOption(usageKey, 'content.image-generation')
+    expect(usageKey.textContent).toContain('内容工作台·图片生成')
     expect(container.textContent).not.toContain('stored-secret')
     expect(container.innerHTML).not.toContain('/admin')
   })
@@ -281,16 +284,16 @@ describe('Portal settings hub', () => {
     const provider = screen.getByText('Primary provider').closest('article')
     expect(provider).not.toBeNull()
     fireEvent.click(provider!.querySelector('button[aria-label="编辑"]')!)
-    expect(
-      (screen.getByRole('combobox', { name: /文本接口契约/ }) as HTMLSelectElement).value,
-    ).toBe('responses')
-    expect(screen.getByRole('option', { name: 'Chat Completions' })).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: /文本接口契约/ }).textContent).toContain(
+      'Responses',
+    )
+    const contract = screen.getByRole('combobox', { name: /文本接口契约/ })
+    selectUiOption(contract, 'chat-completions')
+    expect(contract.textContent).toContain('Chat Completions')
 
     fireEvent.click(screen.getByRole('button', { name: '模型' }))
     fireEvent.click(screen.getByRole('button', { name: /新建模型/ }))
-    fireEvent.change(screen.getByRole('combobox', { name: '能力' }), {
-      target: { value: 'image' },
-    })
+    selectUiOption(screen.getByRole('combobox', { name: '能力' }), 'image')
     expect(
       (screen.getByRole('spinbutton', { name: '超时（毫秒）' }) as HTMLInputElement).value,
     ).toBe('120000')

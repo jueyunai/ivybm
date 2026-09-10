@@ -28,7 +28,7 @@ import {
 
 import type { PortalRole } from '@/admin-portal/core/modules/types'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, PortalState, StatusBadge, Surface, cn } from '@/admin-portal/core/ui'
+import { Button, PortalState, StatusBadge, Surface, UiSelect, cn } from '@/admin-portal/core/ui'
 import type {
   ChatMessage,
   ChatMessageStatus,
@@ -713,25 +713,26 @@ export function ConversationWorkspace({
       </section>
 
       <Surface as="section" className="portal-conversations__toolbar">
-        <label className="portal-conversations__toolbar-filter">
-          <IconFilter aria-hidden="true" className="portal-conversations__toolbar-icon" size={15} />
-          <span>{copy.filterLabel}</span>
-          <select
-            onChange={(event) => {
-              setStatus(event.target.value as StatusFilter)
+        <div className="portal-conversations__toolbar-filter">
+          <span className="portal-conversations__filter-label">{copy.filterLabel}</span>
+          <UiSelect
+            ariaLabel={copy.filterLabel}
+            leadingIcon={<IconFilter aria-hidden="true" className="portal-conversations__toolbar-icon" size={14} />}
+            onChange={(val) => {
+              setStatus(val as StatusFilter)
               setPage(1)
               setFeedback(null)
             }}
+            options={[
+              { value: 'all', label: copy.all },
+              ...(Object.keys(copy.status) as HandoffStatus[]).map((key) => ({
+                value: key,
+                label: copy.status[key],
+              })),
+            ]}
             value={status}
-          >
-            <option value="all">{copy.all}</option>
-            {(Object.keys(copy.status) as HandoffStatus[]).map((key) => (
-              <option key={key} value={key}>
-                {copy.status[key]}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </div>
         <div className="portal-conversations__toolbar-meta">
           <span className="portal-conversations__count-badge">
             {list?.totalDocs ?? 0} {copy.total}

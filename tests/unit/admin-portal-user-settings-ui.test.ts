@@ -145,6 +145,11 @@ describe('Portal TeamMembersPanel UI', () => {
     expect(screen.getByText('operator@example.com')).toBeTruthy()
     expect(screen.getByText('sales@example.com')).toBeTruthy()
     expect(screen.getByText('登录失败临时锁定')).toBeTruthy()
+    expect(
+      screen.getByText(
+        `创建时间: ${new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(mockMembers[0].createdAt))}`,
+      ),
+    ).toBeTruthy()
   })
 
   it('opens and cancels the Add Member modal', () => {
@@ -163,6 +168,9 @@ describe('Portal TeamMembersPanel UI', () => {
     trigger.focus()
     fireEvent.click(trigger)
     expect(screen.getByRole('heading', { name: '新增团队成员' })).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: '分配角色' }).getAttribute('aria-required')).toBe(
+      'true',
+    )
 
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
     expect(screen.queryByRole('heading', { name: '新增团队成员' })).toBeNull()

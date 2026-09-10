@@ -6,6 +6,7 @@ import config from '../payload.config'
 import { seedContent } from './content'
 import { seedKnowledgeDemo } from './knowledgeDemo'
 import { seedWebsiteKnowledgeDemo } from './websiteKnowledgeDemo'
+import { seedPortalDemo } from './portalDemo'
 
 const requireEnvironment = (name: string): string => {
   const value = process.env[name]
@@ -60,6 +61,9 @@ const seed = async (): Promise<void> => {
     }
 
     await seedContent(payload)
+    if (process.env.SEED_PORTAL_DEMO === 'true') {
+      await seedPortalDemo(payload)
+    }
     if (process.env.SEED_KNOWLEDGE_DEMO === 'true') {
       await seedKnowledgeDemo(payload)
     }

@@ -604,7 +604,7 @@ describe.sequential('Content Studio immediate platform publication', () => {
     expect(audit.docs.length).toBeGreaterThan(0)
   })
 
-  it('rejects an unrelated private asset before creating publication jobs', async () => {
+  it('rejects publication and keeps private media unchanged without an approved review digest', async () => {
     const privateImage = await sharp({
       create: { background: '#1c2f46', channels: 3, height: 4, width: 4 },
     })
@@ -636,6 +636,13 @@ describe.sequential('Content Studio immediate platform publication', () => {
         targetAccountIds: [accountIDs[0]!],
       }),
     ).rejects.toMatchObject({ code: 'content-studio-publication-asset-private', status: 409 })
+    const unchanged = await payload.findByID({
+      collection: 'media',
+      depth: 0,
+      id: privateMedia.id,
+      overrideAccess: true,
+    })
+    expect(unchanged.isPublic).toBe(false)
     const after = await pool().query<{ count: string }>(
       'SELECT COUNT(*)::text AS count FROM publish_jobs',
     )
@@ -643,7 +650,51 @@ describe.sequential('Content Studio immediate platform publication', () => {
     await payload.delete({ collection: 'media', id: privateMedia.id, overrideAccess: true })
   })
 
-  it('rejects a replaced private AI image even when the media ID still has a completed receipt', async () => {
+  it('promotes a private upload whose bytes match its approved review digest', async () => {
+    const privateImage = await sharp({
+      create: { background: '#1c2f46', channels: 3, height: 4, width: 4 },
+    })
+      .png()
+      .toBuffer()
+    const privateMedia = await payload.create({
+      collection: 'media',
+      data: { alt: 'Reviewed private source', isPublic: false, source: 'Operator upload' },
+      file: {
+        data: privateImage,
+        mimetype: 'image/png',
+        name: `reviewed-private-${randomUUID()}.png`,
+        size: privateImage.length,
+      },
+      overrideAccess: true,
+    })
+    const draft = await createApprovedContent('reviewed private asset', [], 'draft')
+    const req = await createLocalReq({ user: admin }, payload)
+    const content = await adoptAndApproveGeneratedImage({ draft, mediaID: privateMedia.id, req })
+    const result = await invoke({
+      content,
+      idempotencyKey: `portal-content-studio:reviewed-private:${randomUUID()}`,
+      targetAccountIds: [accountIDs[0]!],
+    })
+    expect(result.jobs).toHaveLength(1)
+    const promoted = await payload.findByID({
+      collection: 'media',
+      depth: 0,
+      id: privateMedia.id,
+      overrideAccess: true,
+    })
+    expect(promoted.isPublic).toBe(true)
+    const jobs = await payload.find({
+      collection: 'publish-jobs',
+      overrideAccess: true,
+      where: { content: { equals: content.id } },
+    })
+    expect(JSON.stringify(jobs.docs[0]?.requestSnapshot)).toContain(
+      `/api/publication-assets/${privateMedia.id}/`,
+    )
+    await payload.delete({ collection: 'media', id: privateMedia.id, overrideAccess: true })
+  })
+
+  it('rejects a private image whose bytes were replaced after review approval', async () => {
     const draft = await createApprovedContent('replaced generated private asset', [], 'draft')
     const req = await createLocalReq({ user: admin }, payload)
     const generated = await generatePrivateImage(req)

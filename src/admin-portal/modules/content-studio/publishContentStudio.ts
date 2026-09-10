@@ -144,23 +144,33 @@ const lockPublicationMedia = async (
   await database.execute(sql`SELECT id FROM media WHERE id = ${mediaID} FOR UPDATE`)
 }
 
-const generatedImageSHA256 = async (
-  mediaID: number,
-  payload: Payload,
-  req: PayloadRequest,
-): Promise<string | null> => {
-  const actorID = typeof req.user?.id === 'number' ? req.user.id : Number(req.user?.id)
-  if (!Number.isSafeInteger(actorID) || actorID < 1) return null
+const approvedReviewAssetSHA256 = async ({
+  contentID,
+  mediaID,
+  payload,
+  req,
+}: {
+  contentID: number
+  mediaID: number
+  payload: Payload
+  req: PayloadRequest
+}): Promise<string | null> => {
   const database = await publicationTransactionDatabase(payload, req)
   const result = await database.execute<{ sha256: string }>(sql`
-    SELECT result #>> '{sha256}' AS sha256
-    FROM portal_command_receipts
-    WHERE actor_id = ${actorID}
-      AND scope = 'portal.content-studio:generate-image'
-      AND status = 'completed'
-      AND result #>> '{media,id}' = ${String(mediaID)}
-      AND result #>> '{sha256}' ~ '^[a-f0-9]{64}$'
-    ORDER BY updated_at DESC, id DESC
+    SELECT approved_asset.value->>'sha256' AS sha256
+    FROM portal_command_receipts AS receipt
+    CROSS JOIN LATERAL jsonb_array_elements(
+      CASE
+        WHEN jsonb_typeof(receipt.result->'approvedAssets') = 'array'
+          THEN receipt.result->'approvedAssets'
+        ELSE '[]'::jsonb
+      END
+    ) AS approved_asset(value)
+    WHERE receipt.scope = ${`portal.content-studio:review:${contentID}`}
+      AND receipt.status = 'completed'
+      AND approved_asset.value->>'id' = ${String(mediaID)}
+      AND approved_asset.value->>'sha256' ~ '^[a-f0-9]{64}$'
+    ORDER BY receipt.updated_at DESC, receipt.id DESC
     LIMIT 1
   `)
   return result.rows[0]?.sha256 ?? null
@@ -215,19 +225,26 @@ const loadAssets = async (
       }
       const sha256 = createHash('sha256').update(bytes).digest('hex')
       if (media.isPublic !== true) {
-        if ((await generatedImageSHA256(id, payload, req)) !== sha256) {
+        const approvedSHA256 = await approvedReviewAssetSHA256({
+          contentID: content.id,
+          mediaID: id,
+          payload,
+          req,
+        })
+        if (!approvedSHA256 || approvedSHA256 !== sha256) {
           throw new ContentStudioCommandError(
             'content-studio-publication-asset-private',
-            'This private generated asset no longer matches its generation receipt. Generate and review it again before publishing.',
+            'This private asset does not match an approved review. Review it again before publishing.',
             409,
           )
         }
         await updatePortalMedia({
           id,
           input: {
-            alt: typeof media.alt === 'string' ? media.alt : 'AI generated image',
+            alt: typeof media.alt === 'string' ? media.alt : 'Reviewed publication asset',
             isPublic: true,
-            source: typeof media.source === 'string' ? media.source : 'AI generated image',
+            source:
+              typeof media.source === 'string' ? media.source : 'Approved Content Studio asset',
             updatedAt: typeof media.updatedAt === 'string' ? media.updatedAt : '',
           },
           payload,

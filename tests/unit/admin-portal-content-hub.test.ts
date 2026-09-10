@@ -7,7 +7,9 @@ import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/Portal
 import { ContentHub } from '@/admin-portal/modules/website-content/ContentHub'
 import type { ContentSummary } from '@/admin-portal/modules/website-content/getContentSummary'
 
-const navigation = vi.hoisted(() => ({ refresh: vi.fn() }))
+import { selectUiOption } from './support/uiSelect'
+
+const navigation = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => navigation }))
 
@@ -93,6 +95,7 @@ const hiddenContentSummary: ContentSummary = {
 
 describe('Portal content hub editing transitions', () => {
   beforeEach(() => {
+    navigation.push.mockReset()
     navigation.refresh.mockReset()
     window.localStorage.clear()
     vi.stubGlobal(
@@ -143,9 +146,35 @@ describe('Portal content hub editing transitions', () => {
     )
 
     const navigation = screen.getByRole('navigation', { name: '官网内容' })
+    expect(screen.queryByText('新增与编辑可用')).toBeNull()
     expect(within(navigation).queryByText('页面')).toBeNull()
     expect(within(navigation).queryByText('下载资料')).toBeNull()
     expect(screen.queryByRole('button', { name: '新增内容' })).toBeTruthy()
+  })
+
+  it('updates the URL when the status filter changes and resets pagination', () => {
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentHub, {
+          pageState: 'available',
+          summary: {
+            ...summary,
+            query: { ...summary.query, type: 'products' },
+          },
+        }),
+      ),
+    )
+
+    selectUiOption(screen.getByRole('combobox', { name: '状态' }), 'draft')
+
+    expect(navigation.push).toHaveBeenCalledWith(
+      '/dashboard/content?type=products&status=draft',
+    )
+    expect(screen.getByRole('link', { name: '清除筛选' }).getAttribute('href')).toBe(
+      '/dashboard/content?type=products',
+    )
   })
 
   it('clears the previous list selection when creating new content', async () => {

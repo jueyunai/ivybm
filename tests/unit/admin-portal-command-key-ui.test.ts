@@ -18,6 +18,8 @@ import type { LeadsSummary } from '@/admin-portal/modules/leads/getLeadsPage'
 import { MediaEditor } from '@/admin-portal/modules/media/MediaEditor'
 import { KNOWLEDGE_DOCUMENT_MAX_CONTENT_CHARACTERS } from '@/modules/knowledge/limits'
 
+import { selectUiOption } from './support/uiSelect'
+
 const router = { refresh: vi.fn(), replace: vi.fn() }
 
 vi.mock('next/navigation', () => ({
@@ -203,7 +205,7 @@ describe('Portal create command keys', () => {
     fireEvent.change(screen.getByLabelText('调试输入'), { target: { value: 'same prompt' } })
     fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
     await waitFor(() => expect(request).toHaveBeenCalledTimes(1))
-    fireEvent.change(screen.getByLabelText('知识语言'), { target: { value: 'ar' } })
+    selectUiOption(screen.getByLabelText('知识语言'), 'ar')
     fireEvent.click(screen.getByRole('button', { name: '运行调试' }))
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
 
@@ -271,7 +273,7 @@ describe('Portal create command keys', () => {
     )
 
     const input = screen.getByLabelText('调试输入')
-    fireEvent.change(screen.getByLabelText('知识语言'), { target: { value: 'ar' } })
+    selectUiOption(screen.getByLabelText('知识语言'), 'ar')
     fireEvent.change(input, { target: { value: 'اختبار' } })
     expect(input.getAttribute('dir')).toBe('rtl')
     fireEvent.click(screen.getByRole('button', { name: '运行调试' }))

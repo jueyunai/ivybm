@@ -133,7 +133,10 @@ export function ChangePasswordPanel() {
           ) : null}
 
           <label className="portal-field">
-            <span className="portal-field__label">{messages.currentPassword}</span>
+            <span className="portal-field__label">
+              <span aria-hidden="true" className="portal-required" />
+              {messages.currentPassword}
+            </span>
             <span className="portal-field__control">
               <input
                 aria-label={messages.currentPassword}
@@ -147,7 +150,10 @@ export function ChangePasswordPanel() {
           </label>
 
           <label className="portal-field">
-            <span className="portal-field__label">{messages.newPassword}</span>
+            <span className="portal-field__label">
+              <span aria-hidden="true" className="portal-required" />
+              {messages.newPassword}
+            </span>
             <span className="portal-field__control">
               <input
                 aria-label={messages.newPassword}
@@ -163,7 +169,10 @@ export function ChangePasswordPanel() {
           </label>
 
           <label className="portal-field">
-            <span className="portal-field__label">{messages.confirmNewPassword}</span>
+            <span className="portal-field__label">
+              <span aria-hidden="true" className="portal-required" />
+              {messages.confirmNewPassword}
+            </span>
             <span className="portal-field__control">
               <input
                 aria-label={messages.confirmNewPassword}

@@ -26,7 +26,7 @@ import {
 
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, StatusBadge } from '@/admin-portal/core/ui'
+import { Button, StatusBadge, UiSelect } from '@/admin-portal/core/ui'
 
 import {
   parseWorkflow,
@@ -442,15 +442,20 @@ export function ContentEditorNotice({
 function Field({
   children,
   label,
+  required = false,
   wide = false,
 }: {
   children: React.ReactNode
   label: string
+  required?: boolean
   wide?: boolean
 }) {
   return (
     <label className={`portal-content-editor__field${wide ? ' is-wide' : ''}`}>
-      <span>{label}</span>
+      <span>
+        {required ? <span aria-hidden="true" className="portal-required" /> : null}
+        {label}
+      </span>
       {children}
     </label>
   )
@@ -708,13 +713,19 @@ export const ContentEditor = forwardRef<
     action: string,
     { closeAfterCreate = true }: { closeAfterCreate?: boolean } = {},
   ): Promise<ContentEditorSaveResult | null> => {
-    const invalid =
-      action === 'publish' || action === 'unpublish'
-        ? editorRef.current?.querySelector<
-            HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-          >(':invalid')
-        : null
+    const shouldValidate = action === 'publish' || action === 'unpublish' || type === 'downloads'
+    const invalid = shouldValidate
+      ? editorRef.current?.querySelector<
+          HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+        >(':invalid')
+      : null
     if (invalid) {
+      const focusTarget =
+        invalid.matches('[data-ui-select-control]')
+          ? (invalid
+              .closest('.portal-ui-select')
+              ?.querySelector<HTMLButtonElement>('[role="combobox"]') ?? invalid)
+          : invalid
       const validationMessage =
         invalid instanceof HTMLInputElement && invalid.validity.patternMismatch
           ? errorMessages[portalLocale]['content-invalid-slug']
@@ -724,11 +735,15 @@ export const ContentEditor = forwardRef<
       showNotice({ tone: 'danger', value: validationMessage })
       invalid.setCustomValidity(validationMessage)
       invalid.reportValidity()
-      invalid.focus({ preventScroll: true })
-      if (typeof invalid.scrollIntoView === 'function') {
-        invalid.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      focusTarget.setAttribute('aria-invalid', 'true')
+      focusTarget.focus({ preventScroll: true })
+      if (typeof focusTarget.scrollIntoView === 'function') {
+        focusTarget.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
-      const clearCustomValidity = () => invalid.setCustomValidity('')
+      const clearCustomValidity = () => {
+        invalid.setCustomValidity('')
+        focusTarget.removeAttribute('aria-invalid')
+      }
       invalid.addEventListener('input', clearCustomValidity, { once: true })
       invalid.addEventListener('change', clearCustomValidity, { once: true })
       return null
@@ -856,7 +871,7 @@ export const ContentEditor = forwardRef<
       {notice && !onNotice ? <ContentEditorNotice notice={notice} /> : null}
 
       <div className="portal-content-editor__fields" dir={form.locale === 'ar' ? 'rtl' : 'ltr'}>
-        <Field label={text.fields.title}>
+        <Field label={text.fields.title} required>
           <input
             maxLength={200}
             onChange={(event) => update('title', event.target.value)}
@@ -864,7 +879,7 @@ export const ContentEditor = forwardRef<
             value={form.title}
           />
         </Field>
-        <Field label={text.fields.slug}>
+        <Field label={text.fields.slug} required>
           <input
             dir="ltr"
             maxLength={120}
@@ -931,58 +946,66 @@ export const ContentEditor = forwardRef<
         ) : null}
 
         {type === 'products' ? (
-          <Field label={text.fields.productCategory}>
-            <select
-              onChange={(event) => update('categoryId', event.target.value)}
+          <Field label={text.fields.productCategory} required>
+            <UiSelect
+              ariaLabel={text.fields.productCategory}
+              name="categoryId"
+              onChange={(val) => update('categoryId', val)}
+              options={[
+                { label: '—', value: '' },
+                ...options.categories.map((option) => ({
+                  label: option.label,
+                  value: String(option.id),
+                })),
+              ]}
               required
               value={form.categoryId}
-            >
-              <option value="">—</option>
-              {options.categories.map((option) => (
-                <option key={option.id} value={String(option.id)}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            />
           </Field>
         ) : null}
         {type === 'posts' ? (
           <Field label={text.fields.postCategory}>
-            <select
-              onChange={(event) => update('category', event.target.value)}
+            <UiSelect
+              ariaLabel={text.fields.postCategory}
+              onChange={(val) => update('category', val)}
+              options={[
+                { label: text.options.industry, value: 'industry' },
+                { label: text.options.products, value: 'products' },
+                { label: text.options.projects, value: 'projects' },
+                { label: text.options.company, value: 'company' },
+              ]}
               value={form.category}
-            >
-              <option value="industry">{text.options.industry}</option>
-              <option value="products">{text.options.products}</option>
-              <option value="projects">{text.options.projects}</option>
-              <option value="company">{text.options.company}</option>
-            </select>
+            />
           </Field>
         ) : null}
         {type === 'knowledge' ? (
           <Field label={text.fields.knowledgeCategory}>
-            <select
-              onChange={(event) => update('category', event.target.value)}
+            <UiSelect
+              ariaLabel={text.fields.knowledgeCategory}
+              onChange={(val) => update('category', val)}
+              options={[
+                { label: text.options.technicalGuide, value: 'technical-guide' },
+                { label: text.options.materialComparison, value: 'material-comparison' },
+                { label: text.options.procurement, value: 'procurement' },
+                { label: text.options.qualityLogistics, value: 'quality-logistics' },
+              ]}
               value={form.category}
-            >
-              <option value="technical-guide">{text.options.technicalGuide}</option>
-              <option value="material-comparison">{text.options.materialComparison}</option>
-              <option value="procurement">{text.options.procurement}</option>
-              <option value="quality-logistics">{text.options.qualityLogistics}</option>
-            </select>
+            />
           </Field>
         ) : null}
         {type === 'downloads' ? (
           <Field label={text.fields.downloadType}>
-            <select
-              onChange={(event) => update('downloadType', event.target.value)}
+            <UiSelect
+              ariaLabel={text.fields.downloadType}
+              onChange={(val) => update('downloadType', val)}
+              options={[
+                { label: text.options.catalog, value: 'catalog' },
+                { label: text.options.technicalData, value: 'technical-data' },
+                { label: text.options.certificate, value: 'certificate' },
+                { label: text.options.other, value: 'other' },
+              ]}
               value={form.downloadType}
-            >
-              <option value="catalog">{text.options.catalog}</option>
-              <option value="technical-data">{text.options.technicalData}</option>
-              <option value="certificate">{text.options.certificate}</option>
-              <option value="other">{text.options.other}</option>
-            </select>
+            />
           </Field>
         ) : null}
 
@@ -1017,20 +1040,21 @@ export const ContentEditor = forwardRef<
           />
         ) : null}
         {type === 'downloads' ? (
-          <Field label={text.fields.downloadFile}>
-            <select
-              onChange={(event) => update('fileId', event.target.value)}
+          <Field label={text.fields.downloadFile} required>
+            <UiSelect
+              ariaLabel={text.fields.downloadFile}
+              name="fileId"
+              onChange={(val) => update('fileId', val)}
+              options={[
+                { label: '—', value: '' },
+                ...options.media.map((option) => ({
+                  label: option.label + (option.meta ? ` · ${option.meta}` : ''),
+                  value: String(option.id),
+                })),
+              ]}
               required
               value={form.fileId}
-            >
-              <option value="">—</option>
-              {options.media.map((option) => (
-                <option key={option.id} value={String(option.id)}>
-                  {option.label}
-                  {option.meta ? ` · ${option.meta}` : ''}
-                </option>
-              ))}
-            </select>
+            />
           </Field>
         ) : null}
         {type === 'downloads' ? (
@@ -1057,7 +1081,7 @@ export const ContentEditor = forwardRef<
           <>
             <details className="portal-content-editor__section is-wide">
               <summary>
-                <IconChevronDown aria-hidden="true" size={16} />{" "}
+                <IconChevronDown aria-hidden="true" size={16} />{' '}
                 {portalLocale === 'zh'
                   ? '能力与工程流程（Capabilities & Workflow）'
                   : 'Capabilities & Workflow Blocks'}
@@ -1094,7 +1118,7 @@ export const ContentEditor = forwardRef<
 
             <details className="portal-content-editor__section is-wide">
               <summary>
-                <IconChevronDown aria-hidden="true" size={16} />{" "}
+                <IconChevronDown aria-hidden="true" size={16} />{' '}
                 {portalLocale === 'zh'
                   ? '专业角色与问答专区（For Professionals & FAQ）'
                   : 'For Professionals & FAQ Blocks'}
@@ -1187,7 +1211,7 @@ export const ContentEditor = forwardRef<
         {type === 'projects' ? (
           <details className="portal-content-editor__section is-wide">
             <summary>
-              <IconChevronDown aria-hidden="true" size={16} />{" "}
+              <IconChevronDown aria-hidden="true" size={16} />{' '}
               {portalLocale === 'zh'
                 ? '工程案例四维结构（Case Study 4D Structure）'
                 : 'Four-Dimensional Case Study Structure'}

@@ -151,13 +151,19 @@ describe('Portal Content Studio', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
     const form = screen
-      .getByRole('heading', { name: '生成草稿' })
+      .getByRole('heading', { name: /AI生成/ })
       .closest('.portal-content-studio__form')
     expect(form).toBeTruthy()
+    expect(screen.getByRole('button', { name: '社媒内容' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    )
     const assetOptions = container.querySelectorAll('.portal-content-studio__asset-option')
     expect(assetOptions).toHaveLength(3)
+    expect(container.querySelector('.portal-content-studio__asset-upload-card')).toBeTruthy()
+    expect(screen.getByText('上传配图')).toBeTruthy()
+    expect(screen.getByText('点击或拖拽上传 1 张图片')).toBeTruthy()
 
     const imageOption = screen.getByRole('checkbox', { name: 'Curved facade hero' })
     expect(imageOption.closest('label')?.querySelector('img')?.getAttribute('src')).toContain(
@@ -176,17 +182,72 @@ describe('Portal Content Studio', () => {
         ?.querySelector('.portal-content-studio__asset-thumb.is-pdf svg'),
     ).toBeTruthy()
 
+    expect(screen.getByText('知识来源')).toBeTruthy()
+    expect(screen.getByText('暂无已审核且已就绪的知识库文档。')).toBeTruthy()
+
+    // Before selecting an image or typing brief, generation button is disabled
+    const generateBtn = within(form as HTMLElement).getByRole('button', {
+      name: /AI生成/,
+    })
+    expect(generateBtn.hasAttribute('disabled')).toBe(true)
+
+    // The real default is visible instead of being submitted as hidden state.
+    const facebookCard = within(form as HTMLElement).getByRole('button', { name: /Facebook/ })
+    const instagramCard = within(form as HTMLElement).getByRole('button', { name: /Instagram/ })
+    const linkedinCard = within(form as HTMLElement).getByRole('button', { name: /LinkedIn/ })
+
+    expect(facebookCard.getAttribute('aria-pressed')).toBe('false')
+    expect(instagramCard.getAttribute('aria-pressed')).toBe('false')
+    expect(linkedinCard.getAttribute('aria-pressed')).toBe('true')
+
+    // Selecting another platform still leaves button disabled without brief or image
+    fireEvent.click(facebookCard)
+    expect(facebookCard.getAttribute('aria-pressed')).toBe('true')
+    expect(generateBtn.hasAttribute('disabled')).toBe(true)
+
+    // Clicking intent capsule populates the brief
+    const shipmentCapsule = screen.getByRole('button', { name: /工厂出货/ })
+    fireEvent.click(shipmentCapsule)
+    const brief = screen.getByLabelText('生成需求') as HTMLTextAreaElement
+    expect(brief.value).toContain('集装箱装柜出海')
+    expect(generateBtn.hasAttribute('disabled')).toBe(false)
+    expect(generateBtn.textContent).toContain('2 个平台')
+
+    // Clear brief, but select an image: generation remains enabled (vision analysis flow)
+    fireEvent.change(brief, { target: { value: '' } })
+    expect(generateBtn.hasAttribute('disabled')).toBe(true)
+
     fireEvent.click(imageOption)
     expect((imageOption as HTMLInputElement).checked).toBe(true)
     expect(imageOption.closest('label')?.classList.contains('is-selected')).toBe(true)
+    expect(generateBtn.hasAttribute('disabled')).toBe(false)
 
-    const brief = screen.getByLabelText('生成需求')
-    fireEvent.change(brief, { target: { value: 'Write a general introduction.' } })
-    expect(
-      within(form as HTMLElement)
-        .getByRole('button', { name: '生成草稿' })
-        .hasAttribute('disabled'),
-    ).toBe(false)
+    // Deselect LinkedIn: only the explicitly selected Facebook target remains.
+    fireEvent.click(linkedinCard)
+    expect(linkedinCard.getAttribute('aria-pressed')).toBe('false')
+    expect(generateBtn.textContent).toContain('1 个平台')
+    expect(window.localStorage.getItem('ivybm:content-studio:selected-platforms')).toContain(
+      'facebook',
+    )
+
+    // Clear platforms: button becomes disabled again
+    const clearBtn = within(form as HTMLElement).getByRole('button', { name: '清空' })
+    fireEvent.click(clearBtn)
+    expect(facebookCard.getAttribute('aria-pressed')).toBe('false')
+    expect(linkedinCard.getAttribute('aria-pressed')).toBe('false')
+    expect(generateBtn.hasAttribute('disabled')).toBe(true)
+
+    // Select all platforms: button shows 3 platforms
+    const selectAllBtn = within(form as HTMLElement).getByRole('button', { name: '全选' })
+    fireEvent.click(selectAllBtn)
+    expect(facebookCard.getAttribute('aria-pressed')).toBe('true')
+    expect(instagramCard.getAttribute('aria-pressed')).toBe('true')
+    expect(linkedinCard.getAttribute('aria-pressed')).toBe('true')
+    expect(generateBtn.hasAttribute('disabled')).toBe(false)
+    expect(generateBtn.textContent).toContain('3 个平台')
+    expect(window.localStorage.getItem('ivybm:content-studio:selected-platforms')).toContain(
+      'instagram',
+    )
   })
 
   it('maintains draft list visibility side-by-side and uses drawer overlay container', () => {
@@ -247,10 +308,10 @@ describe('Portal Content Studio', () => {
     expect(screen.getByRole('heading', { name: 'First Draft Post' })).toBeTruthy()
 
     // 1. Open New Draft Editor
-    fireEvent.click(screen.getByRole('button', { name: '新建草稿' }))
+    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
 
     // Editor is open and has drawer class
-    const editorHeading = screen.getByRole('heading', { name: '新建草稿' })
+    const editorHeading = screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })
     expect(editorHeading).toBeTruthy()
     const editorContainer = editorHeading.closest('.portal-content-studio__editor--drawer')
     expect(editorContainer).toBeTruthy()
@@ -261,14 +322,14 @@ describe('Portal Content Studio', () => {
 
     // Cancel editor
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.queryByRole('heading', { name: '新建草稿' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
     expect(screen.getByRole('heading', { name: 'First Draft Post' })).toBeTruthy()
 
     // 2. Open Draft Generator
-    fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
 
     // Generator is open and has drawer class
-    const generatorHeading = screen.getByRole('heading', { name: '生成草稿' })
+    const generatorHeading = screen.getByRole('heading', { name: /AI生成/ })
     expect(generatorHeading).toBeTruthy()
     expect(generatorHeading.closest('.portal-content-studio__editor--drawer')).toBeTruthy()
 
@@ -278,8 +339,48 @@ describe('Portal Content Studio', () => {
 
     // Cancel generator
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.queryByRole('heading', { name: '生成草稿' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
     expect(screen.getByRole('heading', { name: 'First Draft Post' })).toBeTruthy()
+  })
+
+  it('keeps the fact claim input mounted and focused across consecutive edits', () => {
+    const summary: ContentStudioSummary = {
+      items: [],
+      options: {
+        assets: [],
+        knowledgeSources: [
+          {
+            id: 9,
+            label: 'Facade specification v1',
+            reference: 'Facade specification v1',
+          },
+        ],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Facade specification v1' }))
+    fireEvent.click(screen.getByRole('button', { name: '添加事实' }))
+
+    const claim = screen.getByPlaceholderText('关键事实 / 论据') as HTMLInputElement
+    claim.focus()
+    fireEvent.change(claim, { target: { value: 'A' } })
+    expect(document.activeElement).toBe(claim)
+    fireEvent.change(claim, { target: { value: 'AB' } })
+    expect(screen.getByPlaceholderText('关键事实 / 论据')).toBe(claim)
+    expect(document.activeElement).toBe(claim)
   })
 
   it('enforces mutual exclusivity between actions and never revives older action panels on cancel', () => {
@@ -319,17 +420,17 @@ describe('Portal Content Studio', () => {
       ),
     )
 
-    // 1. Generator -> Create switch: clicking "新建草稿" while "生成草稿" is open immediately shows "新建草稿"
-    fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
-    expect(screen.getByRole('heading', { name: '生成草稿' })).toBeTruthy()
+    // 1. Generator -> Create switch: clicking "新建草稿" while "AI生成" is open immediately shows "新建草稿"
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: '新建草稿' }))
-    expect(screen.getByRole('heading', { name: '新建草稿' })).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: '生成草稿' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
+    expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
 
     // 2. Close Create and verify detail view
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.queryByRole('heading', { name: '新建草稿' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
     expect(screen.getByRole('heading', { name: 'Approved Post' })).toBeTruthy()
 
     // 3. Open Publish Now from detail view
@@ -337,24 +438,390 @@ describe('Portal Content Studio', () => {
     expect(screen.getByRole('heading', { name: '立即发布' })).toBeTruthy()
 
     // 4. Switch from Publish Now to Generator via top button
-    fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
-    expect(screen.getByRole('heading', { name: '生成草稿' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: '立即发布' })).toBeNull()
 
-    // 5. Switch from Generator to Schedule via Detail button (cancel generator first)
+    // 5. Cancel generator: returns to ContentDetail
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.queryByRole('heading', { name: '生成草稿' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
     expect(screen.getByRole('heading', { name: 'Approved Post' })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: '创建内部排期' }))
-    expect(screen.getByRole('heading', { level: 3, name: '创建内部排期' })).toBeTruthy()
-
-    // 6. Cancel Schedule: should return to ContentDetail and never revive Publish Now or Generator
-    fireEvent.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.queryByRole('heading', { level: 3, name: '创建内部排期' })).toBeNull()
+    // 6. Transitional schedule button is hidden from UI
+    expect(screen.queryByRole('button', { name: '创建内部排期' })).toBeNull()
+    expect(screen.getByRole('button', { name: '立即发布' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: '立即发布' })).toBeNull()
-    expect(screen.queryByRole('heading', { name: '新建草稿' })).toBeNull()
-    expect(screen.queryByRole('heading', { name: '生成草稿' })).toBeNull()
-    expect(screen.getByRole('heading', { name: 'Approved Post' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
+  })
+
+  it('restores previously selected platforms from localStorage when opening generator', () => {
+    window.localStorage.setItem(
+      'ivybm:content-studio:selected-platforms',
+      JSON.stringify(['instagram', 'linkedin']),
+    )
+
+    const summary: ContentStudioSummary = {
+      items: [],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const form = screen
+      .getByRole('heading', { name: /AI生成/ })
+      .closest('.portal-content-studio__form')
+    expect(form).toBeTruthy()
+
+    const facebookCard = within(form as HTMLElement).getByRole('button', { name: /Facebook/ })
+    const instagramCard = within(form as HTMLElement).getByRole('button', { name: /Instagram/ })
+    const linkedinCard = within(form as HTMLElement).getByRole('button', { name: /LinkedIn/ })
+
+    expect(facebookCard.getAttribute('aria-pressed')).toBe('false')
+    expect(instagramCard.getAttribute('aria-pressed')).toBe('true')
+    expect(linkedinCard.getAttribute('aria-pressed')).toBe('true')
+
+    const brief = screen.getByLabelText('生成需求') as HTMLTextAreaElement
+    fireEvent.change(brief, { target: { value: 'Custom requirement' } })
+    const generateBtn = within(form as HTMLElement).getByRole('button', {
+      name: /AI生成/,
+    })
+    expect(generateBtn.hasAttribute('disabled')).toBe(false)
+    expect(generateBtn.textContent).toContain('2 个平台')
+  })
+
+  it('reuses auto-generated image asset from the first platform for subsequent platforms', async () => {
+    const fetchCalls: Array<{ body: Record<string, unknown>; url: string }> = []
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const parsedBody = JSON.parse((init?.body as string) || '{}')
+      fetchCalls.push({ body: parsedBody, url: String(url) })
+      return {
+        json: async () => ({
+          content: {
+            assets: [88],
+            id: fetchCalls.length === 1 ? 101 : 102,
+            status: 'draft',
+            title: 'Draft',
+            updatedAt: '2026-09-09T00:00:00.000Z',
+          },
+        }),
+        ok: true,
+        status: 201,
+      } as Response
+    })
+
+    const summary: ContentStudioSummary = {
+      items: [],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const form = screen
+      .getByRole('heading', { name: /AI生成/ })
+      .closest('.portal-content-studio__form')
+    expect(form).toBeTruthy()
+
+    // LinkedIn is selected by default; add Instagram for a two-platform batch.
+    const instagramCard = within(form as HTMLElement).getByRole('button', { name: /Instagram/ })
+    fireEvent.click(instagramCard)
+
+    // Check auto generate image
+    const autoImageCheckbox = screen.getByRole('checkbox', { name: /手头无图/ })
+    fireEvent.click(autoImageCheckbox)
+
+    const brief = screen.getByLabelText('生成需求') as HTMLTextAreaElement
+    fireEvent.change(brief, { target: { value: 'Curtain wall engineering showcase' } })
+
+    const generateBtn = within(form as HTMLElement).getByRole('button', {
+      name: /AI生成/,
+    })
+    fireEvent.click(generateBtn)
+
+    // Wait for the two requests
+    await vi.waitFor(() => expect(fetchCalls.length).toBe(2))
+
+    // First call: initial assets are empty, autoGenerateImage is true
+    expect(fetchCalls[0].body.assets).toEqual([])
+    expect(fetchCalls[0].body.autoGenerateImage).toBe(true)
+
+    // Second call: reused image asset 88, autoGenerateImage is turned false
+    expect(fetchCalls[1].body.assets).toEqual(['88'])
+    expect(fetchCalls[1].body.autoGenerateImage).toBe(false)
+
+    globalThis.fetch = originalFetch
+  })
+
+  it('opens lightbox preview when clicking an asset thumbnail in the detail pane', () => {
+    const summary: ContentStudioSummary = {
+      items: [
+        {
+          assets: [
+            {
+              id: 99,
+              label: 'facade-concept.jpg',
+              meta: 'image/jpeg',
+              previewUrl: '/api/media/file/facade-concept.jpg',
+            },
+          ],
+          body: 'Draft body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 42,
+          knowledgeSources: [],
+          platform: 'linkedin',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'draft',
+          title: 'Facade Engineering Excellence',
+          updatedAt: '2026-09-09T00:00:00.000Z',
+        },
+      ],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    // Select the draft to view its details
+    fireEvent.click(screen.getByRole('button', { name: /Facade Engineering Excellence/ }))
+
+    // Locate the zoom button for the asset
+    const zoomBtn = screen.getByRole('button', { name: /facade-concept\.jpg/ })
+    expect(zoomBtn).toBeTruthy()
+    fireEvent.click(zoomBtn)
+
+    // Verify lightbox dialog opened
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeTruthy()
+    expect(within(dialog).getByRole('heading', { name: 'facade-concept.jpg' })).toBeTruthy()
+    const img = within(dialog).getByAltText('facade-concept.jpg') as HTMLImageElement
+    expect(img.src).toContain('/api/media/file/facade-concept.jpg')
+    const openOriginalLink = within(dialog).getByRole('link', { name: /新标签查看原图/ })
+    expect(openOriginalLink.getAttribute('href')).toBe('/api/media/file/facade-concept.jpg')
+  })
+
+  it('retries only failed platforms with stable per-platform idempotency keys', async () => {
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ idempotencyKey: string; platform: string }> = []
+    let instagramAttempts = 0
+    globalThis.fetch = vi.fn(async (input, init) => {
+      if (String(input) !== '/api/portal/content-studio/generate') {
+        return originalFetch(input, init)
+      }
+      const body = JSON.parse(String(init?.body)) as {
+        idempotencyKey: string
+        platform: string
+      }
+      requests.push(body)
+      if (body.platform === 'instagram' && instagramAttempts++ === 0) {
+        return Response.json({ error: { message: 'Instagram failed' } }, { status: 500 })
+      }
+      return Response.json({ content: { assets: [88], id: requests.length } })
+    })
+
+    const summary: ContentStudioSummary = {
+      items: [],
+      options: { assets: [], knowledgeSources: [], platformAccounts: [] },
+      pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const form = screen
+      .getByRole('heading', { name: /AI生成/ })
+      .closest('.portal-content-studio__form') as HTMLElement
+    fireEvent.click(within(form).getByRole('button', { name: /LinkedIn/ }))
+    fireEvent.click(within(form).getByRole('button', { name: /Facebook/ }))
+    fireEvent.click(within(form).getByRole('button', { name: /Instagram/ }))
+    fireEvent.change(within(form).getByLabelText('生成需求'), {
+      target: { value: 'Prepare a platform post.' },
+    })
+    const generate = within(form).getByRole('button', { name: /AI生成/ })
+    fireEvent.click(generate)
+
+    expect((await screen.findByRole('alert')).textContent).toBe('Instagram failed')
+    fireEvent.click(generate)
+    await vi.waitFor(() => expect(requests).toHaveLength(3))
+
+    expect(requests.map(({ platform }) => platform)).toEqual(['facebook', 'instagram', 'instagram'])
+    expect(requests[1]?.idempotencyKey).toBe(requests[2]?.idempotencyKey)
+    expect(requests.filter(({ platform }) => platform === 'facebook')).toHaveLength(1)
+    globalThis.fetch = originalFetch
+  })
+
+  it('persists an explicit platform clear without restoring a hidden default', () => {
+    const summary: ContentStudioSummary = {
+      items: [],
+      options: { assets: [], knowledgeSources: [], platformAccounts: [] },
+      pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+    const renderStudio = () =>
+      render(
+        React.createElement(
+          PortalPreferencesProvider,
+          null,
+          React.createElement(ContentStudio, { pageState: 'available', summary }),
+        ),
+      )
+
+    const first = renderStudio()
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const firstForm = screen
+      .getByRole('heading', { name: /AI生成/ })
+      .closest('.portal-content-studio__form') as HTMLElement
+    expect(
+      within(firstForm)
+        .getByRole('button', { name: /LinkedIn/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('true')
+    fireEvent.click(within(firstForm).getByRole('button', { name: '清空' }))
+    expect(window.localStorage.getItem('ivybm:content-studio:selected-platforms')).toBe('[]')
+    first.unmount()
+
+    renderStudio()
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const secondForm = screen
+      .getByRole('heading', { name: /AI生成/ })
+      .closest('.portal-content-studio__form') as HTMLElement
+    fireEvent.change(within(secondForm).getByLabelText('生成需求'), {
+      target: { value: 'This must not choose a platform implicitly.' },
+    })
+    expect(
+      within(secondForm)
+        .getByRole('button', { name: /LinkedIn/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('false')
+    expect(
+      within(secondForm)
+        .getByRole('button', { name: /AI生成/ })
+        .hasAttribute('disabled'),
+    ).toBe(true)
+  })
+
+  it('keeps direct uploads private and limits drafts to one publishable image', async () => {
+    const originalFetch = globalThis.fetch
+    let uploadedCount = 0
+    globalThis.fetch = vi.fn((input, init) => {
+      const url = String(input)
+      if (url === '/api/portal/media' && init?.method === 'POST') {
+        uploadedCount++
+        expect((init.body as FormData).get('isPublic')).toBe('false')
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              result: {
+                alt: `Uploaded image ${uploadedCount}`,
+                id: 100 + uploadedCount,
+                mimeType: 'image/jpeg',
+                previewUrl: `/api/media/file/img-${uploadedCount}.jpg`,
+              },
+            }),
+            { headers: { 'content-type': 'application/json' }, status: 201 },
+          ),
+        )
+      }
+      return originalFetch(input, init)
+    })
+
+    const summary: ContentStudioSummary = {
+      items: [],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    expect(fileInput).toBeTruthy()
+
+    const file1 = new File(['pic1'], 'pic1.jpg', { type: 'image/jpeg' })
+    const file2 = new File(['pic2'], 'pic2.jpg', { type: 'image/jpeg' })
+
+    fireEvent.change(fileInput, { target: { files: [file1, file2] } })
+
+    expect((await screen.findByRole('alert')).textContent).toBe('每次请选择 1 张图片。')
+    expect(uploadedCount).toBe(0)
+
+    fireEvent.change(fileInput, { target: { files: [file1] } })
+
+    await vi.waitFor(() => {
+      const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
+      const assetCheckboxes = checkboxes.filter((cb) =>
+        cb.getAttribute('aria-label')?.startsWith('Uploaded image'),
+      )
+      expect(assetCheckboxes.length).toBe(1)
+      expect(assetCheckboxes.every((cb) => cb.checked)).toBe(true)
+    })
+
+    expect(screen.getByText('当前平台发布链路每篇草稿支持 1 张配图。')).toBeTruthy()
+
+    globalThis.fetch = originalFetch
   })
 })

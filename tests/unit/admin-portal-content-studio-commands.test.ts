@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import sharp from 'sharp'
 
@@ -292,6 +294,67 @@ describe('Portal Content Studio draft commands', () => {
     expect(create).toHaveBeenCalledTimes(2)
   })
 
+  it.each([
+    {
+      label: 'stored file read failure',
+      read: () => Promise.reject(new Error('Disk read failed')),
+    },
+    {
+      label: 'stored MIME mismatch',
+      read: () => Promise.resolve(Buffer.from('not-a-png')),
+    },
+    {
+      label: 'stored file over 8 MiB',
+      read: () => Promise.resolve(Buffer.alloc(8 * 1024 * 1024 + 1)),
+    },
+  ])('deletes generated Media after $label', async ({ read }) => {
+    const create = vi.fn(async ({ collection, data, file }) => {
+      if (collection === 'media') {
+        return {
+          ...data,
+          filename: file.name,
+          id: 83,
+          mimeType: file.mimetype,
+          updatedAt: '2026-08-12T10:00:00.000Z',
+          url: '/media/generated.png',
+        }
+      }
+      return { id: 903 }
+    })
+    const deleteMedia = vi.fn().mockResolvedValue({ id: 83 })
+    const generateImage = vi.fn().mockResolvedValue({
+      image: {
+        data: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Wl9sAAAAASUVORK5CYII=',
+          'base64',
+        ),
+        mimeType: 'image/png',
+      },
+      model: 'image-model',
+      provider: 'configured-provider',
+    })
+
+    await expect(
+      generateContentStudioImage({
+        input: {
+          prompt: 'Create a verified facade image',
+          referenceMediaId: null,
+          size: '1024x1024',
+        },
+        payload: { create, delete: deleteMedia } as any,
+        readStoredMediaBytes: read,
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateImage }) as any,
+      }),
+    ).rejects.toMatchObject({ code: 'content-studio-image-unavailable', status: 503 })
+
+    expect(deleteMedia).toHaveBeenCalledWith({
+      collection: 'media',
+      id: 83,
+      overrideAccess: true,
+    })
+  })
+
   it('normalizes a valid provider WebP result to a publishable private PNG', async () => {
     const webp = await sharp({
       create: { background: '#1c2f46', channels: 3, height: 2, width: 2 },
@@ -561,6 +624,217 @@ describe('Portal Content Studio draft commands', () => {
     )
   })
 
+  it('generates a draft when brief is empty but images are provided', async () => {
+    let stored: Record<string, unknown> | null = null
+    const create = vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      stored = { ...data, id: 75, status: 'draft', updatedAt: '2026-07-30T12:00:00.000Z' }
+      return stored
+    })
+    const find = vi.fn(async () => ({ docs: [] }))
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        body: 'A vision-derived post highlighting modern architectural facade panels.',
+        sourceReferences: [],
+        title: 'Architectural facade panels',
+      }),
+    })
+
+    await expect(
+      generateContentStudioDraft({
+        input: {
+          assets: [4],
+          brief: '',
+          contentLocale: 'en',
+          idempotencyKey: 'portal-content-studio:generate-from-images-only',
+          knowledgeSources: [],
+          platform: 'linkedin',
+        },
+        payload: { create, find } as any,
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateText }) as any,
+      }),
+    ).resolves.toMatchObject({ content: { id: 75, status: 'draft' }, duplicate: false })
+
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.stringContaining(
+          'Analyze the provided architectural building material images',
+        ),
+      }),
+    )
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          assets: [4],
+          contentType: 'post',
+          status: 'draft',
+        }),
+      }),
+    )
+  })
+
+  it('automatically generates an image and attaches it to the draft when autoGenerateImage is true', async () => {
+    let stored: Record<string, unknown> | null = null
+    const create = vi.fn(
+      async ({ collection, data }: { collection: string; data: Record<string, unknown> }) => {
+        if (collection === 'media') {
+          return { ...data, filename: 'ai-gen.png', id: 88, mimeType: 'image/png' }
+        }
+        stored = { ...data, id: 76, status: 'draft', updatedAt: '2026-07-30T12:00:00.000Z' }
+        return stored
+      },
+    )
+    const find = vi.fn(async () => ({ docs: [] }))
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        body: 'Post with AI image generation.',
+        imagePrompt: 'Modern architectural rendering of perforated facade panels.',
+        sourceReferences: [],
+        title: 'Perforated panels showcase',
+      }),
+    })
+    const generateImage = vi.fn().mockResolvedValue({
+      image: {
+        data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        mimeType: 'image/png',
+      },
+      model: 'dall-e-3',
+    })
+
+    readFileMock.mockResolvedValue(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+
+    await expect(
+      generateContentStudioDraft({
+        input: {
+          assets: [],
+          autoGenerateImage: true,
+          brief: 'Promote our perforated panels.',
+          contentLocale: 'en',
+          idempotencyKey: 'portal-content-studio:generate-with-auto-image',
+          knowledgeSources: [],
+          platform: 'linkedin',
+        },
+        payload: { create, find } as any,
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateImage, generateText }) as any,
+      }),
+    ).resolves.toMatchObject({ content: { id: 76, status: 'draft' }, duplicate: false })
+
+    expect(generateImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: 'Modern architectural rendering of perforated facade panels.',
+        size: '1536x1024',
+      }),
+    )
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          assets: [88],
+          status: 'draft',
+        }),
+      }),
+    )
+  })
+
+  it('fails closed when autoGenerateImage is true but image generation fails', async () => {
+    const create = vi.fn()
+    const find = vi.fn(async () => ({ docs: [] }))
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        body: 'Post with AI image generation.',
+        imagePrompt: 'Facade rendering',
+        sourceReferences: [],
+        title: 'Facade showcase',
+      }),
+    })
+    const generateImage = vi.fn().mockRejectedValue(new Error('Provider image generation timeout'))
+
+    await expect(
+      generateContentStudioDraft({
+        input: {
+          assets: [],
+          autoGenerateImage: true,
+          brief: 'Promote panels.',
+          contentLocale: 'en',
+          idempotencyKey: 'portal-content-studio:fail-on-image-error',
+          knowledgeSources: [],
+          platform: 'linkedin',
+        },
+        payload: { create, find } as any,
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateImage, generateText }) as any,
+      }),
+    ).rejects.toMatchObject({
+      code: 'content-studio-image-unavailable',
+      status: 503,
+    })
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it('cleans up newly generated orphaned media if draft creation fails', async () => {
+    const deleteMedia = vi.fn().mockResolvedValue({})
+    const validPng = await sharp({
+      create: { background: '#1c2f46', channels: 3, height: 2, width: 2 },
+    })
+      .png()
+      .toBuffer()
+
+    const create = vi.fn(
+      async ({ collection, data }: { collection: string; data: Record<string, unknown> }) => {
+        if (collection === 'media') {
+          return { ...data, filename: 'orphan.png', id: 99, mimeType: 'image/png' }
+        }
+        if (collection === 'audit-logs') {
+          return { id: 101 }
+        }
+        if (collection === 'generated-contents') {
+          throw new Error('Database constraint error during draft persistence')
+        }
+        return { id: 102 }
+      },
+    )
+    const find = vi.fn(async () => ({ docs: [] }))
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        body: 'Post with AI image generation.',
+        imagePrompt: 'Facade rendering',
+        sourceReferences: [],
+        title: 'Facade showcase',
+      }),
+    })
+    const generateImage = vi.fn().mockResolvedValue({
+      image: {
+        data: validPng,
+        mimeType: 'image/png',
+      },
+      model: 'dall-e-3',
+    })
+    readFileMock.mockResolvedValue(validPng)
+
+    await expect(
+      generateContentStudioDraft({
+        input: {
+          assets: [],
+          autoGenerateImage: true,
+          brief: 'Promote panels.',
+          contentLocale: 'en',
+          idempotencyKey: 'portal-content-studio:orphan-cleanup',
+          knowledgeSources: [],
+          platform: 'linkedin',
+        },
+        payload: { create, delete: deleteMedia, find } as any,
+        req,
+        resolveGateway: vi.fn().mockResolvedValue({ generateImage, generateText }) as any,
+      }),
+    ).rejects.toThrow('Database constraint error during draft persistence')
+
+    expect(deleteMedia).toHaveBeenCalledWith({
+      collection: 'media',
+      id: 99,
+      overrideAccess: true,
+    })
+  })
+
   it('keeps selected knowledge restricted to reviewed ready documents and exact references', async () => {
     const generationInput = {
       assets: [],
@@ -748,6 +1022,35 @@ describe('Portal Content Studio draft commands', () => {
     })
   })
 
+  it('allows general drafts without knowledge sources to be submitted for review', async () => {
+    const generalContent = {
+      id: 72,
+      knowledgeSources: [],
+      sourceReferences: [],
+      status: 'draft',
+      updatedAt: '2026-07-30T12:00:00.000Z',
+    }
+    const update = vi.fn().mockResolvedValue({ ...generalContent, status: 'review' })
+    const find = vi.fn().mockResolvedValue({ docs: [] })
+
+    await expect(
+      submitContentStudioReview({
+        id: 72,
+        input: { updatedAt: generalContent.updatedAt },
+        payload: { find, findByID: vi.fn().mockResolvedValue(generalContent), update } as any,
+        req,
+      }),
+    ).resolves.toMatchObject({ id: 72, status: 'review' })
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collection: 'generated-contents',
+        data: { status: 'review' },
+        id: 72,
+      }),
+    )
+  })
+
   it('requires a complete checklist and persists each review decision before changing status', async () => {
     const content = {
       id: 71,
@@ -849,6 +1152,69 @@ describe('Portal Content Studio draft commands', () => {
         data: { reviewedAt: null, reviewedBy: null, status: 'draft' },
       }),
     )
+  })
+
+  it('returns authoritative asset digests when approving content', async () => {
+    const image = await sharp({
+      create: { background: '#1c2f46', channels: 3, height: 4, width: 4 },
+    })
+      .png()
+      .toBuffer()
+    const content = {
+      assets: [4],
+      id: 71,
+      status: 'review',
+      title: input.title,
+      updatedAt: '2026-07-30T12:00:00.000Z',
+    }
+    const findByID = vi.fn(async ({ collection }: { collection: string }) =>
+      collection === 'media'
+        ? {
+            filename: 'reviewed-asset.png',
+            filesize: image.byteLength,
+            id: 4,
+            mimeType: 'image/png',
+          }
+        : content,
+    )
+    const payload = {
+      create: vi.fn().mockResolvedValue({ id: 91 }),
+      findByID,
+      update: vi.fn().mockResolvedValue({ ...content, status: 'approved' }),
+    } as any
+
+    await expect(
+      reviewContentStudioDraft({
+        id: 71,
+        input: {
+          checklist: {
+            arabicProofread: true,
+            factsTraceable: true,
+            noCommercialCommitment: true,
+            platformFormatChecked: true,
+            technicalClaimsChecked: true,
+          },
+          comments: 'Reviewed asset bytes.',
+          decision: 'approved',
+          updatedAt: content.updatedAt,
+        },
+        payload,
+        readStoredMediaBytes: async () => image,
+        req,
+      }),
+    ).resolves.toMatchObject({
+      approvedAssets: [
+        {
+          byteLength: image.byteLength,
+          filename: 'reviewed-asset.png',
+          id: 4,
+          mimeType: 'image/png',
+          sha256: createHash('sha256').update(image).digest('hex'),
+        },
+      ],
+      id: 71,
+      status: 'approved',
+    })
   })
 
   it('preserves publication history instead of deleting a draft that has a job', async () => {

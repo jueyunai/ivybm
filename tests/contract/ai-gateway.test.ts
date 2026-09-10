@@ -57,6 +57,39 @@ describe('AI gateway contract', () => {
     expect(invalidDispatch).not.toHaveBeenCalled()
   })
 
+  it('allows image input without text and rejects invalid images in generateText', async () => {
+    const generateText = vi.fn(fakeProvider.generateText)
+    const gateway = createAiGateway({
+      models: { text: 'fake-text' },
+      provider: { ...fakeProvider, generateText },
+    })
+
+    const samplePng = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    await expect(
+      gateway.generateText({
+        images: [{ data: samplePng, mimeType: 'image/png' }],
+        input: '',
+      }),
+    ).resolves.toMatchObject({
+      text: 'Reviewed answer',
+    })
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        images: [{ data: samplePng, mimeType: 'image/png' }],
+        input: '',
+      }),
+    )
+
+    await expect(
+      gateway.generateText({
+        images: [{ data: Uint8Array.from([0x00]), mimeType: 'image/png' }],
+        input: '',
+      }),
+    ).rejects.toMatchObject({
+      code: 'invalid_request',
+    })
+  })
+
   it('marks embedding dispatch only when the provider call is about to start', async () => {
     const onDispatch = vi.fn()
     const embed = vi.fn(async () => {
@@ -588,6 +621,106 @@ describe('AI gateway contract', () => {
       temperature: 0.2,
       top_p: 0.9,
     })
+  })
+
+  it('formats multimodal images into user message content parts', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: 'Multimodal answer.' } }],
+          model: 'fixture-vision-model',
+          usage: { completion_tokens: 5, prompt_tokens: 15, total_tokens: 20 },
+        }),
+        {
+          headers: { 'content-type': 'application/json', 'x-request-id': 'req_vision_fixture' },
+          status: 200,
+        },
+      ),
+    )
+    const provider = createOpenAICompatibleProvider({
+      apiKey: 'fixture-key-never-sent-to-network',
+      baseURL: 'https://ai.example.invalid/v1',
+      fetch: fetchMock,
+      textGenerationContract: 'chat-completions',
+    })
+
+    const samplePng = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    await expect(
+      provider.generateText({
+        images: [{ data: samplePng, mimeType: 'image/png' }],
+        input: 'describe this image',
+        model: 'fixture-vision-model',
+      }),
+    ).resolves.toMatchObject({
+      text: 'Multimodal answer.',
+    })
+
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    expect(requestBody.messages).toEqual([
+      {
+        content: [
+          { text: 'describe this image', type: 'text' },
+          {
+            image_url: {
+              url: `data:image/png;base64,${Buffer.from(samplePng).toString('base64')}`,
+            },
+            type: 'image_url',
+          },
+        ],
+        role: 'user',
+      },
+    ])
+  })
+
+  it('formats multimodal images into OpenAI Responses API message structure', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          output: [
+            {
+              content: [{ text: 'Responses multimodal answer.', type: 'output_text' }],
+              type: 'message',
+            },
+          ],
+          usage: { input_tokens: 15, output_tokens: 5, total_tokens: 20 },
+        }),
+        {
+          headers: { 'content-type': 'application/json', 'x-request-id': 'req_responses_vision' },
+          status: 200,
+        },
+      ),
+    )
+    const provider = createOpenAICompatibleProvider({
+      apiKey: 'fixture-key-never-sent-to-network',
+      baseURL: 'https://ai.example.invalid/v1',
+      fetch: fetchMock,
+      textGenerationContract: 'responses',
+    })
+
+    const samplePng = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    await expect(
+      provider.generateText({
+        images: [{ data: samplePng, mimeType: 'image/png' }],
+        input: 'describe this image',
+        model: 'fixture-vision-model',
+      }),
+    ).resolves.toMatchObject({
+      text: 'Responses multimodal answer.',
+    })
+
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
+    expect(requestBody.input).toEqual([
+      {
+        content: [
+          { text: 'describe this image', type: 'input_text' },
+          {
+            image_url: `data:image/png;base64,${Buffer.from(samplePng).toString('base64')}`,
+            type: 'input_image',
+          },
+        ],
+        role: 'user',
+      },
+    ])
   })
 
   it('fails closed for a malformed Chat Completions response', async () => {

@@ -257,7 +257,6 @@ export interface PortalWebsiteContentMessages {
   >
   description: string
   editorDescription: string
-  editorStatus: string
   editorTitle: string
   emptyDescription: string
   emptyTitle: string
@@ -301,7 +300,6 @@ export interface PortalMediaMessages {
   description: string
   detailTitle: string
   dimensions: string
-  editorStatus: string
   emptyDescription: string
   emptyTitle: string
   eyebrow: string
@@ -362,7 +360,6 @@ export interface PortalKnowledgeMessages {
   alreadyProcessing: string
   applyFilters: string
   arabic: string
-  credentialsNeverShown: string
   customerVisible: string
   description: string
   documentColumn: string
@@ -432,6 +429,7 @@ export interface PortalKnowledgeMessages {
   searchPlaceholder: string
   selectDocument: string
   sourceTypeLabel: string
+  usageLabels: Record<'chat.reply' | 'knowledge.embedding' | 'knowledge.translation', string>
   sourceTypes: Record<
     | 'faq'
     | 'other'
