@@ -12,6 +12,7 @@ import {
   OperationsCommandError,
   retryPortalJob,
 } from '@/admin-portal/modules/operations/operationsCommands'
+import { formatOperationsTimestamp } from '@/admin-portal/modules/operations/OperationsWorkspace'
 import {
   getJobCompensation,
   parsePublicationRecoveryIdempotencyKey,
@@ -165,6 +166,22 @@ describe('Portal operations', () => {
     expect(formatJobTypeLabel('SOME.INTERNAL.EVENT', 'zh')).toBe('后台任务')
     expect(formatJobTypeLabel('SOME.INTERNAL.EVENT', 'en')).toBe('Background task')
     expect(formatJobTypeLabel('feishu.handoff.notify', 'zh')).toBe('飞书接管提醒通知')
+  })
+
+  it('formats operation timestamps with the selected Portal locale', () => {
+    const value = '2026-07-30T00:00:00.000Z'
+    expect(formatOperationsTimestamp(value, 'zh')).toBe(
+      new Intl.DateTimeFormat('zh-CN', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(new Date(value)),
+    )
+    expect(formatOperationsTimestamp(value, 'en')).toBe(
+      new Intl.DateTimeFormat('en', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(new Date(value)),
+    )
   })
 
   it('bounds operations query parameters', () => {

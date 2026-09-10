@@ -145,6 +145,11 @@ describe('Portal TeamMembersPanel UI', () => {
     expect(screen.getByText('operator@example.com')).toBeTruthy()
     expect(screen.getByText('sales@example.com')).toBeTruthy()
     expect(screen.getByText('登录失败临时锁定')).toBeTruthy()
+    expect(
+      screen.getByText(
+        `创建时间: ${new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(mockMembers[0].createdAt))}`,
+      ),
+    ).toBeTruthy()
   })
 
   it('opens and cancels the Add Member modal', () => {

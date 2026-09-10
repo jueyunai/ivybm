@@ -103,6 +103,22 @@ const assignmentDetailKeys = [
   'publishJobs',
 ] as const
 
+const formatMemberDate = (value: string, locale: 'en' | 'zh'): string => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en', {
+    dateStyle: 'medium',
+  }).format(date)
+}
+
+const formatMemberTime = (value: string, locale: 'en' | 'zh'): string => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en', {
+    timeStyle: 'short',
+  }).format(date)
+}
+
 const resolveTeamMembersError = (
   error: unknown,
   messages: ReturnType<typeof getPortalMessages>['settings'],
@@ -665,7 +681,7 @@ export function TeamMembersPanel({
         return {
           label: messages.statusSecurityLocked,
           sub: lockedUntil
-            ? `${messages.memberLockedUntil}: ${new Date(lockedUntil).toLocaleTimeString()}`
+            ? `${messages.memberLockedUntil}: ${formatMemberTime(lockedUntil, locale)}`
             : null,
           tone: 'warning' as const,
         }
@@ -765,7 +781,7 @@ export function TeamMembersPanel({
                       <span>·</span>
                       <span>
                         {messages.memberCreatedAt}:{' '}
-                        {new Date(member.createdAt).toLocaleDateString()}
+                        {formatMemberDate(member.createdAt, locale)}
                       </span>
                     </div>
                   </div>

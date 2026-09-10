@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Payload, PayloadRequest } from 'payload'
@@ -330,7 +330,7 @@ describe('Portal knowledge workspace', () => {
     ).rejects.toMatchObject({ code: 'knowledge_index_invalid_response', status: 202 })
   })
 
-  it('renders review/index states, safe configuration, and a guarded index action', () => {
+  it('renders review/index states, safe configuration, and a guarded index action', async () => {
     render(
       React.createElement(
         PortalPreferencesProvider,
@@ -396,5 +396,10 @@ describe('Portal knowledge workspace', () => {
     fireEvent.keyDown(debugTab, { key: 'Home' })
     expect(documentTab.getAttribute('aria-selected')).toBe('true')
     expect(document.activeElement).toBe(documentTab)
+
+    const ingestionTrigger = screen.getByRole('button', { name: '批量解析入库' })
+    fireEvent.click(ingestionTrigger)
+    fireEvent.click(screen.getByRole('button', { name: '关闭抽屉' }))
+    await waitFor(() => expect(document.activeElement).toBe(ingestionTrigger))
   })
 })

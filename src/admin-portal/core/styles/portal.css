@@ -4071,6 +4071,7 @@
   .portal-knowledge__detail {
     padding: 16px;
     display: grid;
+    align-content: start;
     gap: 14px;
     min-height: 560px;
     max-height: 600px;
@@ -4083,11 +4084,17 @@
 
   .portal-knowledge__detail-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
+    flex-direction: column;
     justify-content: space-between;
     gap: 12px;
     padding-bottom: 12px;
     border-bottom: 1px solid var(--portal-border);
+  }
+
+  .portal-knowledge__detail-header > div:first-child {
+    width: 100%;
+    min-width: 0;
   }
 
   .portal-knowledge__detail-type {
@@ -4100,11 +4107,14 @@
     margin: 2px 0 0;
     font-size: 16px;
     font-weight: 700;
+    overflow-wrap: anywhere;
   }
 
   .portal-knowledge__detail-actions {
     display: inline-flex;
     align-items: center;
+    width: 100%;
+    flex-wrap: wrap;
     gap: 8px;
   }
 
@@ -7108,6 +7118,15 @@
 
   .portal-knowledge__aside {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-knowledge__documents,
+  .portal-knowledge__detail {
+    min-height: 0;
+  }
+
+  .portal-knowledge__detail {
+    max-height: none;
   }
 
   .portal-conversations__intro {

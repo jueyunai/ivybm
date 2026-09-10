@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -101,6 +101,7 @@ export function KnowledgeWorkspace({ pageState, summary }: KnowledgeWorkspacePro
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).knowledgeWorkspace
   const router = useRouter()
+  const ingestionTriggerRef = useRef<HTMLButtonElement>(null)
   const [activeTab, setActiveTab] = useState<'debug' | 'documents'>('documents')
   const [ingestDrawerOpen, setIngestDrawerOpen] = useState(false)
   const [showMoreFilters, setShowMoreFilters] = useState(false)
@@ -319,7 +320,11 @@ export function KnowledgeWorkspace({ pageState, summary }: KnowledgeWorkspacePro
           <p>{messages.description}</p>
         </div>
         <div className="portal-knowledge__header-actions">
-          <Button onClick={() => setIngestDrawerOpen(true)} variant="secondary">
+          <Button
+            onClick={() => setIngestDrawerOpen(true)}
+            ref={ingestionTriggerRef}
+            variant="secondary"
+          >
             <IconFileUpload aria-hidden="true" size={16} stroke={1.8} />
             {locale === 'zh' ? '批量解析入库' : 'Batch ingestion'}
           </Button>
@@ -814,7 +819,10 @@ export function KnowledgeWorkspace({ pageState, summary }: KnowledgeWorkspacePro
         closeLabel={locale === 'zh' ? '关闭抽屉' : 'Close drawer'}
         description={messages.ingestion.uploadDescription}
         maxWidth="760px"
-        onOpenChange={setIngestDrawerOpen}
+        onOpenChange={(open) => {
+          setIngestDrawerOpen(open)
+          if (!open) queueMicrotask(() => ingestionTriggerRef.current?.focus())
+        }}
         open={ingestDrawerOpen}
         title={messages.ingestion.title}
       >

@@ -96,6 +96,15 @@ const errorLabelForStatus = (status: SafeJobSummary['status'], copy: OperationsC
 const formatJobReference = (item: SafeJobSummary, locale: 'en' | 'zh'): string =>
   locale === 'zh' ? `任务 #${item.id}` : `Task #${item.id}`
 
+export const formatOperationsTimestamp = (value: string, locale: 'en' | 'zh'): string => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
+}
+
 const hrefFor = (query: SafeJobQuery, status: string) => {
   const params = new URLSearchParams()
   if (status !== 'all') params.set('status', status)
@@ -162,11 +171,11 @@ function JobCard({
         </div>
         <div>
           <dt>{copy.nextRun}</dt>
-          <dd>{item.nextRunAt ? new Date(item.nextRunAt).toLocaleString() : '—'}</dd>
+          <dd>{item.nextRunAt ? formatOperationsTimestamp(item.nextRunAt, locale) : '—'}</dd>
         </div>
         <div>
           <dt>{copy.updated}</dt>
-          <dd>{new Date(item.updatedAt).toLocaleString()}</dd>
+          <dd>{formatOperationsTimestamp(item.updatedAt, locale)}</dd>
         </div>
       </dl>
       {item.lastErrorSummary ? (
