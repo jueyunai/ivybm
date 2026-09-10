@@ -393,17 +393,21 @@ describe('Portal Content Studio', () => {
     expect(screen.getByRole('heading', { name: /(生成草稿|AI 生成)/ })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: '立即发布' })).toBeNull()
 
-    // 5. Cancel generator: returns to ContentDetail
+    // 5. Switch from Generator to Schedule via Detail button (cancel generator first)
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
     expect(screen.queryByRole('heading', { name: /(生成草稿|AI 生成)/ })).toBeNull()
     expect(screen.getByRole('heading', { name: 'Approved Post' })).toBeTruthy()
 
-    // 6. Transitional schedule button is hidden from UI
-    expect(screen.queryByRole('button', { name: '创建内部排期' })).toBeNull()
-    expect(screen.getByRole('button', { name: '立即发布' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '创建内部排期' }))
+    expect(screen.getByRole('heading', { level: 3, name: '创建内部排期' })).toBeTruthy()
+
+    // 6. Cancel Schedule: should return to ContentDetail and never revive Publish Now or Generator
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.queryByRole('heading', { level: 3, name: '创建内部排期' })).toBeNull()
     expect(screen.queryByRole('heading', { name: '立即发布' })).toBeNull()
     expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
     expect(screen.queryByRole('heading', { name: /(生成草稿|AI 生成)/ })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Approved Post' })).toBeTruthy()
   })
 
   it('restores previously selected platforms from localStorage when opening generator', () => {

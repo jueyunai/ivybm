@@ -11,6 +11,7 @@ import {
   IconBrandFacebook,
   IconBrandInstagram,
   IconBrandLinkedin,
+  IconCalendar,
   IconCheck,
   IconChecks,
   IconExternalLink,
@@ -314,6 +315,10 @@ export function ContentStudio({
                 publishingAvailable={
                   summary.publishingEnabled && summary.options.platformAccounts.length > 0
                 }
+                onSchedule={() => {
+                  setActiveAction('schedule')
+                  setFeedback(null)
+                }}
                 onSubmitToReview={() => onDone(copy.readyForReview)}
               />
             ) : (
@@ -406,6 +411,7 @@ function ContentDetail({
   onPublish,
   onRefresh,
   publishingAvailable,
+  onSchedule,
   onSubmitToReview,
 }: {
   copy: Copy
@@ -417,6 +423,7 @@ function ContentDetail({
   onPublish: () => void
   onRefresh: () => void
   publishingAvailable: boolean
+  onSchedule: () => void
   onSubmitToReview: () => void
 }) {
   const [busy, setBusy] = useState(false)
@@ -642,6 +649,10 @@ function ContentDetail({
             >
               <IconSend aria-hidden="true" size={15} />
               {copy.immediatePublish}
+            </Button>
+            <Button disabled={busy || disabled} onClick={onSchedule} size="compact">
+              <IconCalendar aria-hidden="true" size={15} />
+              {copy.schedule}
             </Button>
             {item.platform === 'linkedin' ? (
               <Button
