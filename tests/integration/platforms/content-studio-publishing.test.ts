@@ -500,7 +500,7 @@ describe.sequential('Content Studio immediate platform publication', () => {
     ['C1 control', 'caption\u0085with control'],
     ['line separator', 'caption\u2028with separator'],
     ['paragraph separator', 'caption\u2029with separator'],
-    ['2,200-character platform overflow', 'x'.repeat(2_200)],
+    ['2,201-character platform overflow', 'x'.repeat(2_201)],
   ])('rejects an Instagram caption containing %s before creating a job', async (_case, text) => {
     const content = await createApprovedContent(`instagram-invalid-${_case}`, undefined, undefined, text)
     const before = await pool().query<{ count: string }>(
