@@ -80,13 +80,14 @@ const createApprovedContent = async (
   label: string,
   assetIDs: number[] = [media.id],
   status: 'approved' | 'draft' = 'approved',
+  body = `Approved facade update ${label}`,
 ): Promise<GeneratedContent> => {
   const content = await payload.create({
     collection: 'generated-contents',
     context: contentStudioInternalWriteContext,
     data: {
       assets: assetIDs,
-      body: `Approved facade update ${label}`,
+      body,
       contentLocale: 'en',
       contentType: 'post',
       createdBy: admin.id,
@@ -501,7 +502,7 @@ describe.sequential('Content Studio immediate platform publication', () => {
     ['paragraph separator', 'caption\u2029with separator'],
     ['2,200-character platform overflow', 'x'.repeat(2_200)],
   ])('rejects an Instagram caption containing %s before creating a job', async (_case, text) => {
-    const content = await createApprovedContent(text)
+    const content = await createApprovedContent(`instagram-invalid-${_case}`, undefined, undefined, text)
     const before = await pool().query<{ count: string }>(
       'SELECT COUNT(*)::text AS count FROM publish_jobs',
     )
