@@ -38,6 +38,7 @@ import type {
   ContentStudioOption,
   ContentStudioPageData,
   ContentStudioQuery,
+  ContentStudioSourceReference,
   ContentStudioSummary,
 } from './getContentStudioPage'
 import { formatScheduledAt } from './formatScheduledAt'
@@ -917,6 +918,9 @@ function DraftEditor({
       setBusy(false)
     }
   }
+  const selectedSources = options.knowledgeSources
+    .filter((option) => form.knowledgeSources.includes(String(option.id)))
+    .flatMap((option) => (option.reference ? [option.reference] : []))
   return (
     <div className="portal-content-studio__form">
       <header>
@@ -1016,12 +1020,82 @@ function DraftEditor({
           />
         </Field>
       </div>
+      <FactEditor
+        copy={copy}
+        onChange={(sourceReferences) => update('sourceReferences', sourceReferences)}
+        sources={selectedSources}
+        value={form.sourceReferences}
+      />
       <footer>
         <Button disabled={busy} onClick={() => void save()}>
           {item ? copy.save : copy.create}
         </Button>
       </footer>
     </div>
+  )
+}
+
+function FactEditor({
+  copy,
+  onChange,
+  sources,
+  value,
+}: {
+  copy: Copy
+  onChange: (value: ContentStudioSourceReference[]) => void
+  sources: string[]
+  value: ContentStudioSourceReference[]
+}) {
+  const update = (index: number, key: keyof ContentStudioSourceReference, next: string) =>
+    onChange(value.map((item, current) => (current === index ? { ...item, [key]: next } : item)))
+  return (
+    <section className="portal-content-studio__facts-editor">
+      <header>
+        <h4>{copy.facts}</h4>
+        <Button
+          disabled={sources.length === 0}
+          onClick={() => onChange([...value, { claim: '', source: sources[0] ?? '' }])}
+          size="compact"
+          variant="secondary"
+        >
+          <IconPlus aria-hidden="true" size={14} />
+          {copy.addFact}
+        </Button>
+      </header>
+      {value.map((fact, index) => {
+        const available =
+          fact.source && !sources.includes(fact.source) ? [fact.source, ...sources] : sources
+        return (
+          <div key={`${index}:${fact.claim}`}>
+            <input
+              maxLength={500}
+              onChange={(event) => update(index, 'claim', event.target.value)}
+              placeholder={copy.claim}
+              value={fact.claim}
+            />
+            <select
+              aria-label={copy.source}
+              onChange={(event) => update(index, 'source', event.target.value)}
+              value={fact.source}
+            >
+              <option value="">{copy.source}</option>
+              {available.map((source) => (
+                <option key={source} value={source}>
+                  {source}
+                </option>
+              ))}
+            </select>
+            <Button
+              onClick={() => onChange(value.filter((_, current) => current !== index))}
+              size="compact"
+              variant="ghost"
+            >
+              {copy.remove}
+            </Button>
+          </div>
+        )
+      })}
+    </section>
   )
 }
 
