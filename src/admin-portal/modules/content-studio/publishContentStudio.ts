@@ -20,6 +20,8 @@ import {
   type MultiPlatformPublishTarget,
 } from '@/modules/platforms/multiPlatformPublishing'
 import { enqueuePublicationExecution } from '@/modules/platforms/publicationJobs'
+import { normalizeLinkedInCommentary } from '@/modules/platforms/linkedin/publishingRequests'
+import { normalizeInstagramCaption } from '@/modules/platforms/meta/publishingRequests'
 import { PayloadPublishingAccountResolver } from '@/modules/platforms/publishingAccountResolver'
 import type { ResolvedPublishingAccount } from '@/modules/platforms/publishingAccountResolver'
 import type { GeneratedContent, PublishJob } from '@/payload-types'
@@ -315,15 +317,18 @@ const checkpointFor = ({
   text: string
 }) => {
   if (route === 'instagram-image-staged' && asset?.sourceUrl) {
+    const caption = normalizeInstagramCaption(text)
+    if (!caption) throw new Error('Instagram caption is required')
     return {
       accountExternalId: account.externalAccountId,
       authorizationRevision: account.authorizationRevision,
-      caption: text,
+      caption,
       imageUrl: asset.sourceUrl,
       stage: 'scheduled',
     }
   }
   if (route === 'linkedin-image-staged' && asset?.sha256) {
+    const commentary = normalizeLinkedInCommentary(text)
     return {
       asset: {
         byteLength: asset.byteLength,
@@ -335,7 +340,7 @@ const checkpointFor = ({
         altText: asset.fileName,
         author: linkedInAuthor(account),
         authorizationRevision: account.authorizationRevision,
-        commentary: text,
+        commentary,
         stage: 'scheduled',
       },
     }
@@ -524,6 +529,21 @@ export const publishContentStudioNow = async ({
       )
     }
     const executionRoute = routeFor(target)
+    let providerCheckpoint: ReturnType<typeof checkpointFor>
+    try {
+      providerCheckpoint = checkpointFor({
+        account,
+        asset: assets[0],
+        route: executionRoute,
+        text: command.snapshot.text,
+      })
+    } catch {
+      throw new ContentStudioCommandError(
+        'content-studio-invalid-input',
+        `Publication text is invalid for ${command.snapshot.platform}`,
+        400,
+      )
+    }
     const created = await payload.create({
       collection: 'publish-jobs',
       context: internalContext,
@@ -538,12 +558,7 @@ export const publishContentStudioNow = async ({
         mode: 'automatic',
         platform: command.snapshot.platform,
         platformAccount: positiveID(command.snapshot.platformAccountId, 'platformAccountId'),
-        providerCheckpoint: checkpointFor({
-          account,
-          asset: assets[0],
-          route: executionRoute,
-          text: content.body,
-        }),
+        providerCheckpoint,
         requestFingerprint: command.requestFingerprint,
         requestSnapshot: command.snapshot,
         // PublishJobs predates immediate API publication and keeps this required legacy field.
