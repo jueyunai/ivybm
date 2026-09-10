@@ -6,7 +6,7 @@ import { IconPlus, IconRefresh } from '@tabler/icons-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
-import { Button, PortalState, StatusBadge, Surface } from '@/admin-portal/core/ui'
+import { Button, PortalState, StatusBadge, Surface, UiSelect } from '@/admin-portal/core/ui'
 import { isPortalSupportedAccountKind } from '@/modules/platforms/accountPortalDto'
 import {
   getPlatformReadinessAction,
@@ -995,14 +995,18 @@ export function PlatformReadinessPage({
             </label>
             <label>
               {copy.accountKind}
-              <select name="accountKind" required>
-                <option value="">{copy.accountKindPlaceholder}</option>
-                {accountKindOptions.map((option) => (
-                  <option key={option.kind} value={option.kind}>
-                    {locale === 'zh' ? option.labelZh : option.labelEn}
-                  </option>
-                ))}
-              </select>
+              <UiSelect
+                ariaLabel={copy.accountKind}
+                name="accountKind"
+                options={[
+                  { label: copy.accountKindPlaceholder, value: '' },
+                  ...accountKindOptions.map((option) => ({
+                    label: locale === 'zh' ? option.labelZh : option.labelEn,
+                    value: option.kind,
+                  })),
+                ]}
+                required
+              />
             </label>
             <label>
               {copy.externalAccountId}
@@ -1119,18 +1123,17 @@ export function PlatformReadinessPage({
                               <label>
                                 {readableCapability('messaging-inbound', copy)}{' '}
                                 {copy.approvalStatus}
-                                <select
+                                <UiSelect
+                                  ariaLabel={`${readableCapability('messaging-inbound', copy)} ${copy.approvalStatus}`}
                                   defaultValue={capabilityApprovalValue(
                                     account.capabilities.messagingInbound,
                                   )}
                                   name="messagingInbound"
-                                >
-                                  {capabilityApprovalOptions.map((status) => (
-                                    <option key={status} value={status}>
-                                      {copy.approvalStatuses[status]}
-                                    </option>
-                                  ))}
-                                </select>
+                                  options={capabilityApprovalOptions.map((status) => ({
+                                    label: copy.approvalStatuses[status],
+                                    value: status,
+                                  }))}
+                                />
                               </label>
                             ) : (
                               <input
@@ -1143,18 +1146,17 @@ export function PlatformReadinessPage({
                             )}
                             <label>
                               {readableCapability('publishing', copy)} {copy.approvalStatus}
-                              <select
+                              <UiSelect
+                                ariaLabel={`${readableCapability('publishing', copy)} ${copy.approvalStatus}`}
                                 defaultValue={capabilityApprovalValue(
                                   account.capabilities.publishing,
                                 )}
                                 name="publishing"
-                              >
-                                {capabilityApprovalOptions.map((status) => (
-                                  <option key={status} value={status}>
-                                    {copy.approvalStatuses[status]}
-                                  </option>
-                                ))}
-                              </select>
+                                options={capabilityApprovalOptions.map((status) => ({
+                                  label: copy.approvalStatuses[status],
+                                  value: status,
+                                }))}
+                              />
                               <small>{copy.approvalHelp}</small>
                             </label>
                           </>
