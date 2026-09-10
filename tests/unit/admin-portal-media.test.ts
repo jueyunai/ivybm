@@ -32,6 +32,7 @@ vi.mock('next/navigation', async (importOriginal) => {
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
+  vi.clearAllMocks()
 })
 
 describe('Portal media workspace', () => {
@@ -288,6 +289,14 @@ describe('Portal media workspace', () => {
     expect(screen.getByText('图片 ≤ 8 MB · PDF ≤ 20 MB')).toBeTruthy()
     expect(screen.getByRole('button', { name: '上传素材' }).hasAttribute('disabled')).toBe(false)
     expect(screen.getByRole('button', { name: '编辑元数据' })).toBeTruthy()
+
+    fireEvent.change(screen.getByRole('combobox', { name: '类型' }), {
+      target: { value: 'image' },
+    })
+    expect(router.push).toHaveBeenCalledWith('/dashboard/media?kind=image')
+    expect(screen.getByRole('link', { name: '清除筛选' }).getAttribute('href')).toBe(
+      '/dashboard/media',
+    )
 
     fireEvent.click(screen.getByRole('button', { name: /pricing-reference\.pdf/ }))
     expect(screen.getByRole('heading', { name: 'pricing-reference.pdf' })).toBeTruthy()

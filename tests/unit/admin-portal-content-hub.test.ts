@@ -93,6 +93,7 @@ const hiddenContentSummary: ContentSummary = {
 
 describe('Portal content hub editing transitions', () => {
   beforeEach(() => {
+    navigation.push.mockReset()
     navigation.refresh.mockReset()
     window.localStorage.clear()
     vi.stubGlobal(
@@ -147,6 +148,33 @@ describe('Portal content hub editing transitions', () => {
     expect(within(navigation).queryByText('页面')).toBeNull()
     expect(within(navigation).queryByText('下载资料')).toBeNull()
     expect(screen.queryByRole('button', { name: '新增内容' })).toBeTruthy()
+  })
+
+  it('updates the URL when the status filter changes and resets pagination', () => {
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentHub, {
+          pageState: 'available',
+          summary: {
+            ...summary,
+            query: { ...summary.query, type: 'products' },
+          },
+        }),
+      ),
+    )
+
+    fireEvent.change(screen.getByRole('combobox', { name: '状态' }), {
+      target: { value: 'draft' },
+    })
+
+    expect(navigation.push).toHaveBeenCalledWith(
+      '/dashboard/content?type=products&status=draft',
+    )
+    expect(screen.getByRole('link', { name: '清除筛选' }).getAttribute('href')).toBe(
+      '/dashboard/content?type=products',
+    )
   })
 
   it('clears the previous list selection when creating new content', async () => {

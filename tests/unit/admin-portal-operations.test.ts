@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from 'vitest'
+import React from 'react'
+
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Payload, PayloadRequest } from 'payload'
 
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import { formatJobTypeLabel } from '@/admin-portal/core/jobLabels'
+import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
 import {
   loadSafeJobPageData,
   parseSafeJobQuery,
@@ -12,12 +16,24 @@ import {
   OperationsCommandError,
   retryPortalJob,
 } from '@/admin-portal/modules/operations/operationsCommands'
-import { formatOperationsTimestamp } from '@/admin-portal/modules/operations/OperationsWorkspace'
+import {
+  formatOperationsTimestamp,
+  OperationsWorkspace,
+} from '@/admin-portal/modules/operations/OperationsWorkspace'
 import {
   getJobCompensation,
   parsePublicationRecoveryIdempotencyKey,
 } from '@/modules/jobs/compensation/contracts'
 import type { Job, User } from '@/payload-types'
+
+const navigation = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }))
+
+vi.mock('next/navigation', () => ({ useRouter: () => navigation }))
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
 
 const job = (overrides: Partial<Job> = {}): Job => ({
   attempts: 5,
@@ -194,6 +210,34 @@ describe('Portal operations', () => {
     for (const invalid of ['', '0', '-1', '1.5', 'not-a-number']) {
       expect(parseSafeJobQuery({ job: invalid })).toEqual({ page: 1, status: 'all' })
     }
+  })
+
+  it('marks a deep-linked job and clears the target when the filter changes', () => {
+    const item = toSafeJobSummary(job())
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(OperationsWorkspace, {
+          pageState: 'available',
+          summary: {
+            items: [item],
+            pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+            query: { job: item.id, page: 1, status: 'all' },
+          },
+        }),
+      ),
+    )
+
+    const target = document.getElementById(`portal-job-${item.id}`)
+    expect(target).toBeTruthy()
+    expect(target?.classList.contains('is-target')).toBe(true)
+
+    fireEvent.change(screen.getByRole('combobox', { name: '筛选' }), {
+      target: { value: 'failed' },
+    })
+    expect(navigation.push).toHaveBeenCalledWith('/dashboard/operations?status=failed')
   })
 
   it('loads Portal job summaries without selecting the stored payload', async () => {

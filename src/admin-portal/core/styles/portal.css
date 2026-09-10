@@ -7462,7 +7462,7 @@
     grid-template-columns: 82px minmax(0, 1fr);
   }
 
-  .portal-knowledge__actions {
+  .portal-knowledge__header-actions {
     align-items: stretch;
     flex-direction: column;
   }

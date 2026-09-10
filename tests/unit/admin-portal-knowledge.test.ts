@@ -29,6 +29,7 @@ const req = {
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
+  window.history.replaceState({}, '', '/')
 })
 
 const baseQuery = {
@@ -522,5 +523,39 @@ describe('Portal knowledge workspace', () => {
     expect(screen.getByText('客服问答')).toBeTruthy()
     expect(screen.getByText('文档翻译')).toBeTruthy()
     expect(screen.queryByText('仅展示模型可用状态；API 密钥等敏感信息已受保护且不在前端显示。')).toBeNull()
+  })
+
+  it('opens the requested tab and ingestion drawer from a deep link', async () => {
+    window.history.replaceState({}, '', '/dashboard/knowledge?tab=debug&drawer=ingest')
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(KnowledgeWorkspace, {
+          pageState: 'available',
+          summary: {
+            ai: { access: 'admin', routes: [] },
+            commands: ['knowledge:create'],
+            counts: { draft: 0, failed: 0, processing: 0, ready: 0 },
+            documents: [],
+            editor: { status: 'available' },
+            pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+            prompts: [],
+            query: baseQuery,
+            role: 'admin',
+          },
+        }),
+      ),
+    )
+
+    await waitFor(() => {
+      expect(
+        screen
+          .getByRole('tab', { hidden: true, name: /AI 调试与底座/ })
+          .getAttribute('aria-selected'),
+      ).toBe('true')
+      expect(screen.getByRole('dialog')).toBeTruthy()
+    })
   })
 })

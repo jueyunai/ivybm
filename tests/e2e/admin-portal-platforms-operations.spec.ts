@@ -156,7 +156,9 @@ test('admin can create and edit a platform account without entering /admin', asy
 
   await page.getByRole('button', { name: '添加账号' }).click()
   await page.getByRole('textbox', { name: '显示名称' }).fill('E2E LinkedIn Member')
-  await page.getByRole('combobox', { name: '平台类型' }).selectOption('linkedin-member')
+  const accountKind = page.getByRole('combobox', { name: '平台类型' })
+  await expect(accountKind).toHaveAttribute('required', '')
+  await accountKind.selectOption('linkedin-member')
   await page.getByRole('textbox', { name: '外部账号 ID' }).fill('e2e-member-001')
   await page.getByRole('textbox', { name: '备注' }).fill('Keep this note while editing')
   await page.getByRole('button', { name: /^保存/ }).click()

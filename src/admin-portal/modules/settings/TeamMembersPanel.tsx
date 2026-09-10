@@ -891,6 +891,7 @@ export function TeamMembersPanel({
                 { label: messages.roleOperatorOption, value: 'operator' },
                 { label: messages.roleAdminOption, value: 'admin' },
               ]}
+              required
               value={formRole}
             />
           </label>
@@ -981,6 +982,7 @@ export function TeamMembersPanel({
                 { label: messages.roleOperatorOption, value: 'operator' },
                 { label: messages.roleAdminOption, value: 'admin' },
               ]}
+              required
               value={formRole}
             />
           </label>
