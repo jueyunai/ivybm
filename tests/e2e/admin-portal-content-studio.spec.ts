@@ -101,7 +101,7 @@ test('Content Studio creates, edits, and reviews a draft through Portal commands
   let updatedAt: string | null = null
 
   try {
-    await page.getByRole('button', { name: '生成草稿' }).click()
+    await page.getByRole('button', { name: 'AI生成' }).click()
     const generator = page.locator('.portal-content-studio__form').first()
     const mediaTile = generator.locator('.portal-content-studio__asset-option:has(img)').first()
     const mediaOption = mediaTile.getByRole('checkbox')
@@ -113,7 +113,7 @@ test('Content Studio creates, edits, and reviews a draft through Portal commands
     await mediaOption.check()
     await expect(mediaTile).toHaveClass(/is-selected/)
     await generator.getByLabel('生成需求').fill('Write a general introduction without knowledge.')
-    await expect(generator.getByRole('button', { name: '生成草稿' })).toBeEnabled()
+    await expect(generator.getByRole('button', { name: 'AI生成' })).toBeEnabled()
     await page.screenshot({
       fullPage: true,
       path: testInfo.outputPath('portal-content-studio-assets.png'),
@@ -367,7 +367,7 @@ test('Content Studio generates, previews, and adopts an image through protected 
       }),
     )
 
-    await page.getByRole('button', { name: '生成草稿' }).click()
+    await page.getByRole('button', { name: 'AI生成' }).click()
     await page.getByRole('button', { name: '图片生成' }).click()
     await page.getByLabel('图片提示词').fill('Create an anodized facade hero image')
     await page.getByLabel('图片尺寸').selectOption('1536x1024')

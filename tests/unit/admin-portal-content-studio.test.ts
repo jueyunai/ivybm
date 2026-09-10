@@ -151,11 +151,14 @@ describe('Portal Content Studio', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
     const form = screen
-      .getByRole('heading', { name: /(生成草稿|AI 生成)/ })
+      .getByRole('heading', { name: /AI生成/ })
       .closest('.portal-content-studio__form')
     expect(form).toBeTruthy()
+    expect(screen.getByRole('button', { name: '社媒内容' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    )
     const assetOptions = container.querySelectorAll('.portal-content-studio__asset-option')
     expect(assetOptions).toHaveLength(3)
     expect(container.querySelector('.portal-content-studio__asset-upload-card')).toBeTruthy()
@@ -184,7 +187,7 @@ describe('Portal Content Studio', () => {
 
     // Before selecting an image or typing brief, generation button is disabled
     const generateBtn = within(form as HTMLElement).getByRole('button', {
-      name: /(生成草稿|AI 生成)/,
+      name: /AI生成/,
     })
     expect(generateBtn.hasAttribute('disabled')).toBe(true)
 
@@ -323,10 +326,10 @@ describe('Portal Content Studio', () => {
     expect(screen.getByRole('heading', { name: 'First Draft Post' })).toBeTruthy()
 
     // 2. Open Draft Generator
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
 
     // Generator is open and has drawer class
-    const generatorHeading = screen.getByRole('heading', { name: /(生成草稿|AI 生成)/ })
+    const generatorHeading = screen.getByRole('heading', { name: /AI生成/ })
     expect(generatorHeading).toBeTruthy()
     expect(generatorHeading.closest('.portal-content-studio__editor--drawer')).toBeTruthy()
 
@@ -336,7 +339,7 @@ describe('Portal Content Studio', () => {
 
     // Cancel generator
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.queryByRole('heading', { name: /(生成草稿|AI 生成)/ })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
     expect(screen.getByRole('heading', { name: 'First Draft Post' })).toBeTruthy()
   })
 
@@ -417,13 +420,13 @@ describe('Portal Content Studio', () => {
       ),
     )
 
-    // 1. Generator -> Create switch: clicking "新建草稿" while "生成草稿" is open immediately shows "新建草稿"
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
-    expect(screen.getByRole('heading', { name: /(生成草稿|AI 生成)/ })).toBeTruthy()
+    // 1. Generator -> Create switch: clicking "新建草稿" while "AI生成" is open immediately shows "新建草稿"
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
     expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: /(生成草稿|AI 生成)/ })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
 
     // 2. Close Create and verify detail view
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
@@ -435,13 +438,13 @@ describe('Portal Content Studio', () => {
     expect(screen.getByRole('heading', { name: '立即发布' })).toBeTruthy()
 
     // 4. Switch from Publish Now to Generator via top button
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
-    expect(screen.getByRole('heading', { name: /(生成草稿|AI 生成)/ })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: '立即发布' })).toBeNull()
 
     // 5. Cancel generator: returns to ContentDetail
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.queryByRole('heading', { name: /(生成草稿|AI 生成)/ })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
     expect(screen.getByRole('heading', { name: 'Approved Post' })).toBeTruthy()
 
     // 6. Transitional schedule button is hidden from UI
@@ -449,7 +452,7 @@ describe('Portal Content Studio', () => {
     expect(screen.getByRole('button', { name: '立即发布' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: '立即发布' })).toBeNull()
     expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
-    expect(screen.queryByRole('heading', { name: /(生成草稿|AI 生成)/ })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
   })
 
   it('restores previously selected platforms from localStorage when opening generator', () => {
@@ -478,9 +481,9 @@ describe('Portal Content Studio', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
     const form = screen
-      .getByRole('heading', { name: /(生成草稿|AI 生成)/ })
+      .getByRole('heading', { name: /AI生成/ })
       .closest('.portal-content-studio__form')
     expect(form).toBeTruthy()
 
@@ -495,7 +498,7 @@ describe('Portal Content Studio', () => {
     const brief = screen.getByLabelText('生成需求') as HTMLTextAreaElement
     fireEvent.change(brief, { target: { value: 'Custom requirement' } })
     const generateBtn = within(form as HTMLElement).getByRole('button', {
-      name: /(生成草稿|AI 生成)/,
+      name: /AI生成/,
     })
     expect(generateBtn.hasAttribute('disabled')).toBe(false)
     expect(generateBtn.textContent).toContain('2 个平台')
@@ -542,9 +545,9 @@ describe('Portal Content Studio', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
     const form = screen
-      .getByRole('heading', { name: /(生成草稿|AI 生成)/ })
+      .getByRole('heading', { name: /AI生成/ })
       .closest('.portal-content-studio__form')
     expect(form).toBeTruthy()
 
@@ -560,7 +563,7 @@ describe('Portal Content Studio', () => {
     fireEvent.change(brief, { target: { value: 'Curtain wall engineering showcase' } })
 
     const generateBtn = within(form as HTMLElement).getByRole('button', {
-      name: /(生成草稿|AI 生成)/,
+      name: /AI生成/,
     })
     fireEvent.click(generateBtn)
 
@@ -674,9 +677,9 @@ describe('Portal Content Studio', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
     const form = screen
-      .getByRole('heading', { name: /(生成草稿|AI 生成)/ })
+      .getByRole('heading', { name: /AI生成/ })
       .closest('.portal-content-studio__form') as HTMLElement
     fireEvent.click(within(form).getByRole('button', { name: /LinkedIn/ }))
     fireEvent.click(within(form).getByRole('button', { name: /Facebook/ }))
@@ -684,7 +687,7 @@ describe('Portal Content Studio', () => {
     fireEvent.change(within(form).getByLabelText('生成需求'), {
       target: { value: 'Prepare a platform post.' },
     })
-    const generate = within(form).getByRole('button', { name: /(生成草稿|AI 生成)/ })
+    const generate = within(form).getByRole('button', { name: /AI生成/ })
     fireEvent.click(generate)
 
     expect((await screen.findByRole('alert')).textContent).toBe('Instagram failed')
@@ -715,9 +718,9 @@ describe('Portal Content Studio', () => {
       )
 
     const first = renderStudio()
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
     const firstForm = screen
-      .getByRole('heading', { name: /(生成草稿|AI 生成)/ })
+      .getByRole('heading', { name: /AI生成/ })
       .closest('.portal-content-studio__form') as HTMLElement
     expect(
       within(firstForm)
@@ -729,9 +732,9 @@ describe('Portal Content Studio', () => {
     first.unmount()
 
     renderStudio()
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
     const secondForm = screen
-      .getByRole('heading', { name: /(生成草稿|AI 生成)/ })
+      .getByRole('heading', { name: /AI生成/ })
       .closest('.portal-content-studio__form') as HTMLElement
     fireEvent.change(within(secondForm).getByLabelText('生成需求'), {
       target: { value: 'This must not choose a platform implicitly.' },
@@ -743,7 +746,7 @@ describe('Portal Content Studio', () => {
     ).toBe('false')
     expect(
       within(secondForm)
-        .getByRole('button', { name: /(生成草稿|AI 生成)/ })
+        .getByRole('button', { name: /AI生成/ })
         .hasAttribute('disabled'),
     ).toBe(true)
   })
@@ -793,7 +796,7 @@ describe('Portal Content Studio', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
 
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
     expect(fileInput).toBeTruthy()

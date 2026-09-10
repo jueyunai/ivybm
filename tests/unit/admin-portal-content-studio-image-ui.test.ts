@@ -87,7 +87,7 @@ describe('Portal Content Studio image workspace', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
     fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
 
     fireEvent.change(screen.getByLabelText('图片提示词'), {
@@ -163,7 +163,7 @@ describe('Portal Content Studio image workspace', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
     fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
 
     fireEvent.change(screen.getByLabelText('图片提示词'), {
@@ -198,7 +198,7 @@ describe('Portal Content Studio image workspace', () => {
       ),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /(生成草稿|AI 生成)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
     fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
 
     fireEvent.change(screen.getByLabelText('图片提示词'), {
