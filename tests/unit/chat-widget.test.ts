@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ChatWidget } from '@/components/chat/ChatWidget'
 import { createBrowserChatService } from '@/components/chat/service'
-import { ChatServiceError, type ChatService, type ChatSession } from '@/modules/conversations/contracts'
+import {
+  ChatServiceError,
+  type ChatService,
+  type ChatSession,
+} from '@/modules/conversations/contracts'
 
 import { FakeChatService } from '../fakes/chatService'
 
@@ -71,8 +75,16 @@ const createQualificationService = (
         })
         next.qualificationState =
           visitorRound === 1
-            ? { askedFields: ['quantity', 'timeline'], awaitingFields: ['quantity', 'timeline'], roundCount: 1 }
-            : { askedFields: ['quantity', 'timeline', 'contact'], awaitingFields: ['contact'], roundCount: 2 }
+            ? {
+                askedFields: ['quantity', 'timeline'],
+                awaitingFields: ['quantity', 'timeline'],
+                roundCount: 1,
+              }
+            : {
+                askedFields: ['quantity', 'timeline', 'contact'],
+                awaitingFields: ['contact'],
+                roundCount: 2,
+              }
       } else {
         next.allowedActions = []
         next.handoffStatus = 'handoff_requested'
@@ -97,7 +109,7 @@ afterEach(() => {
 })
 
 describe('ChatWidget', () => {
-  it('uses the frozen service contract to send a message and render reviewed citations', async () => {
+  it('uses the frozen service contract without exposing reviewed citations to visitors', async () => {
     renderWidget(new FakeChatService())
     await openWidget()
 
@@ -106,8 +118,8 @@ describe('ChatWidget', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
-    expect(screen.getByText('Reviewed sources')).not.toBeNull()
-    expect(screen.getByText(/Fixture knowledge source/)).not.toBeNull()
+    expect(screen.queryByText('Reviewed sources')).toBeNull()
+    expect(screen.queryByText(/Fixture knowledge source/)).toBeNull()
     expect(screen.getByText('Can you explain curved panel options?')).not.toBeNull()
   })
 
@@ -121,18 +133,15 @@ describe('ChatWidget', () => {
     expect((await screen.findByTestId('chat-handoff-pending')).textContent).toContain(
       'تمت مشاركة طلبك مع فريق المشروع',
     )
-    expect(screen.getByLabelText('اسأل عن الألواح أو مشروعك…')).toHaveProperty(
-      'disabled', true,
-    )
+    expect(screen.getByLabelText('اسأل عن الألواح أو مشروعك…')).toHaveProperty('disabled', true)
   })
 
   it.each([
     {
-      contactQuestion:
-        'What work email address should our team use to follow up? You may also share a phone number.',
+      contactQuestion: 'What is the best work email or phone number for follow-up?',
       firstAnswer: 'We are at tender stage in UAE. I work at Acme Facades.',
       firstQuestion:
-        'What approximate area or quantity do you need? When do you expect to purchase or start the project?',
+        'Roughly how much area or how many panels do you need? When are you hoping to purchase or start the project?',
       handoffCopy: 'Your request has been shared with our project team',
       inputLabel: 'Ask about panels, drawings, finishes, or your project…',
       locale: 'en' as const,
@@ -142,11 +151,9 @@ describe('ChatWidget', () => {
       thirdAnswer: 'Contact buyer@example.invalid.',
     },
     {
-      contactQuestion:
-        'ما عنوان البريد الإلكتروني للعمل الذي يستخدمه فريقنا للمتابعة؟ ويمكنكم أيضاً مشاركة رقم هاتف.',
+      contactQuestion: 'ما أفضل بريد إلكتروني للعمل أو رقم هاتف للمتابعة؟',
       firstAnswer: 'اسم الشركة: شركة النور. المشروع في السعودية ومرحلة مناقصة.',
-      firstQuestion:
-        'ما المساحة أو الكمية التقريبية المطلوبة؟ متى تتوقعون الشراء أو بدء المشروع؟',
+      firstQuestion: 'ما المساحة أو الكمية التقريبية المطلوبة؟ متى تتوقعون الشراء أو بدء المشروع؟',
       handoffCopy: 'تمت مشاركة طلبك مع فريق المشروع',
       inputLabel: 'اسأل عن الألواح أو مشروعك…',
       locale: 'ar' as const,
@@ -194,7 +201,11 @@ describe('ChatWidget', () => {
 
     expect(dialog.getAttribute('aria-modal')).toBe('true')
     expect(dialog.getAttribute('aria-labelledby')).toBe('chat-panel-en-title')
-    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Close chat' })))
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(dialog).getByRole('button', { name: 'Close chat' }),
+      ),
+    )
     expect(launcher.getAttribute('aria-controls')).toBe('chat-panel-en')
 
     fireEvent.keyDown(dialog, { key: 'Escape' })
@@ -224,12 +235,17 @@ describe('ChatWidget', () => {
     renderWidget(service)
     await openWidget()
 
-    fireEvent.change(screen.getByLabelText('Ask about panels, drawings, finishes, or your project…'), {
-      target: { value: 'Please share panel finish options.' },
-    })
+    fireEvent.change(
+      screen.getByLabelText('Ask about panels, drawings, finishes, or your project…'),
+      {
+        target: { value: 'Please share panel finish options.' },
+      },
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
-    expect((await screen.findByRole('alert')).textContent).toContain('Chat is temporarily unavailable')
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Chat is temporarily unavailable',
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
     expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
@@ -308,13 +324,15 @@ describe('ChatWidget', () => {
       ...browserSession,
       allowedActions: ['retry_message'],
       id: 'failed-session',
-      messages: [{
-        author: 'visitor',
-        content: 'Please retry this question.',
-        createdAt: '2026-07-20T00:00:00.000Z',
-        id: 'failed-message',
-        status: 'failed',
-      }],
+      messages: [
+        {
+          author: 'visitor',
+          content: 'Please retry this question.',
+          createdAt: '2026-07-20T00:00:00.000Z',
+          id: 'failed-message',
+          status: 'failed',
+        },
+      ],
       requestId: 'failed-request',
     }
     const commandKeys: string[] = []
@@ -349,7 +367,9 @@ describe('ChatWidget', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('Storage unavailable', 'SecurityError')
     })
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(browserSession), { status: 201 }))
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify(browserSession), { status: 201 }))
     vi.stubGlobal('fetch', fetchMock)
 
     render(React.createElement(ChatWidget, { locale: 'en' }))
@@ -377,9 +397,12 @@ describe('ChatWidget', () => {
     renderWidget(service)
     await openWidget()
 
-    fireEvent.change(screen.getByLabelText('Ask about panels, drawings, finishes, or your project…'), {
-      target: { value: 'Please share panel finish options.' },
-    })
+    fireEvent.change(
+      screen.getByLabelText('Ask about panels, drawings, finishes, or your project…'),
+      {
+        target: { value: 'Please share panel finish options.' },
+      },
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     const alert = await screen.findByRole('alert')
@@ -388,10 +411,14 @@ describe('ChatWidget', () => {
 
   it('keeps a recoverable stored session after a transient restore error', async () => {
     window.sessionStorage.setItem('ivybm_chat_session_id_en', 'restored-session')
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () =>
-      new Response(JSON.stringify({
-        error: { code: 'ai_unavailable', message: 'Provider unavailable', retryable: true },
-      }), { status: 503 }),
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: 'ai_unavailable', message: 'Provider unavailable', retryable: true },
+          }),
+          { status: 503 },
+        ),
     )
     vi.stubGlobal('fetch', fetchMock)
 
@@ -400,9 +427,12 @@ describe('ChatWidget', () => {
 
     expect(await screen.findByRole('alert')).not.toBeNull()
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock).toHaveBeenCalledWith('/api/chat/sessions/restored-session', expect.objectContaining({
-      credentials: 'same-origin',
-    }))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/chat/sessions/restored-session',
+      expect.objectContaining({
+        credentials: 'same-origin',
+      }),
+    )
     expect(window.sessionStorage.getItem('ivybm_chat_session_id_en')).toBe('restored-session')
   })
 
@@ -451,9 +481,10 @@ describe('ChatWidget', () => {
     const fakeGetSession = fake.getSession.bind(fake)
     const pollResolvers: Array<(session: ChatSession) => void> = []
     const service: ChatService = {
-      getSession: () => new Promise((resolve) => {
-        pollResolvers.push(resolve)
-      }),
+      getSession: () =>
+        new Promise((resolve) => {
+          pollResolvers.push(resolve)
+        }),
       requestHandoff: fake.requestHandoff.bind(fake),
       resolve: fake.resolve.bind(fake),
       retryMessage: fake.retryMessage.bind(fake),
@@ -486,13 +517,17 @@ describe('ChatWidget', () => {
       pollResolvers[1](humanActive)
       await Promise.resolve()
     })
-    expect(screen.getAllByText('A project specialist has joined this conversation.')).not.toHaveLength(0)
+    expect(
+      screen.getAllByText('A project specialist has joined this conversation.'),
+    ).not.toHaveLength(0)
 
     await act(async () => {
       pollResolvers[0](handoffRequested)
       await Promise.resolve()
     })
-    expect(screen.getAllByText('A project specialist has joined this conversation.')).not.toHaveLength(0)
+    expect(
+      screen.getAllByText('A project specialist has joined this conversation.'),
+    ).not.toHaveLength(0)
   })
 
   it('renders one startup error surface instead of duplicating the same failure', async () => {
@@ -518,9 +553,9 @@ describe('ChatWidget', () => {
 
 describe('browser ChatService adapter', () => {
   it('uses same-origin credentials and serializes the complete public command surface', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () =>
-      new Response(JSON.stringify(browserSession), { status: 200 }),
-    )
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => new Response(JSON.stringify(browserSession), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     const service = createBrowserChatService()
 
@@ -530,14 +565,22 @@ describe('browser ChatService adapter', () => {
       locale: 'en',
       sourceURL: 'https://example.invalid/en',
     })
-    await service.sendMessage({ idempotencyKey: 'chat-message-1', sessionId: 'session-1', text: 'Need panels.' })
+    await service.sendMessage({
+      idempotencyKey: 'chat-message-1',
+      sessionId: 'session-1',
+      text: 'Need panels.',
+    })
     await service.requestHandoff({
       idempotencyKey: 'chat-handoff-1',
       reason: 'visitor_requested_assistance',
       sessionId: 'session-1',
       source: 'visitor',
     })
-    await service.retryMessage({ idempotencyKey: 'chat-retry-1', messageId: 'message-1', sessionId: 'session-1' })
+    await service.retryMessage({
+      idempotencyKey: 'chat-retry-1',
+      messageId: 'message-1',
+      sessionId: 'session-1',
+    })
 
     const [startPath, startOptions] = fetchMock.mock.calls[0]
     expect(startPath).toBe('/api/chat/sessions')
@@ -572,9 +615,22 @@ describe('browser ChatService adapter', () => {
   })
 
   it('maps an API error to the shared stable error code', async () => {
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
-      error: { code: 'rate_limited', message: 'Slow down', retryAfterSeconds: 30, retryable: true },
-    }), { status: 429 })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'rate_limited',
+              message: 'Slow down',
+              retryAfterSeconds: 30,
+              retryable: true,
+            },
+          }),
+          { status: 429 },
+        ),
+      ),
+    )
 
     await expect(createBrowserChatService().getSession('session-1')).rejects.toMatchObject({
       code: 'rate_limited',
@@ -585,19 +641,30 @@ describe('browser ChatService adapter', () => {
 
   it('restores only a public session id and revalidates it through the same-origin API', async () => {
     window.sessionStorage.setItem('ivybm_chat_session_id_en', 'restored-session')
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () =>
-      new Response(JSON.stringify({ ...browserSession, id: 'restored-session', requestId: 'request-restored' }), {
-        status: 200,
-      }),
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ...browserSession,
+            id: 'restored-session',
+            requestId: 'request-restored',
+          }),
+          {
+            status: 200,
+          },
+        ),
     )
     vi.stubGlobal('fetch', fetchMock)
 
     render(React.createElement(ChatWidget, { locale: 'en' }))
     await openWidget()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/chat/sessions/restored-session', expect.objectContaining({
-      credentials: 'same-origin',
-    }))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/chat/sessions/restored-session',
+      expect.objectContaining({
+        credentials: 'same-origin',
+      }),
+    )
     expect(fetchMock).not.toHaveBeenCalledWith('/api/chat/sessions', expect.anything())
     expect(window.sessionStorage.getItem('ivybm_chat_session_id_en')).toBe('restored-session')
   })

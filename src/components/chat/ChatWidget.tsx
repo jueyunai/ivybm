@@ -1,12 +1,6 @@
 'use client'
 
-import {
-  IconArrowUp,
-  IconMessageCircle2,
-  IconRefresh,
-  IconUser,
-  IconX,
-} from '@tabler/icons-react'
+import { IconArrowUp, IconMessageCircle2, IconRefresh, IconUser, IconX } from '@tabler/icons-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { chatCommandKey, createBrowserChatService } from '@/components/chat/service'
@@ -117,20 +111,19 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
   const startCommandKeyRef = useRef<string | null>(null)
   const startPromiseRef = useRef<Promise<ChatSession | null> | null>(null)
 
-  const commitSession = useCallback((next: ChatSession) => {
-    const current = sessionRef.current
-    if (
-      current &&
-      String(current.id) === String(next.id) &&
-      current.revision > next.revision
-    ) {
-      return false
-    }
-    sessionRef.current = next
-    setSession(next)
-    if (persistSession) writePersistedSessionID(sessionStorageKey, next.id)
-    return true
-  }, [persistSession, sessionStorageKey])
+  const commitSession = useCallback(
+    (next: ChatSession) => {
+      const current = sessionRef.current
+      if (current && String(current.id) === String(next.id) && current.revision > next.revision) {
+        return false
+      }
+      sessionRef.current = next
+      setSession(next)
+      if (persistSession) writePersistedSessionID(sessionStorageKey, next.id)
+      return true
+    },
+    [persistSession, sessionStorageKey],
+  )
 
   const discardSession = useCallback(() => {
     handoffCommandKeyRef.current = null
@@ -169,67 +162,73 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
       !isOpen ||
       !session ||
       (session.handoffStatus !== 'handoff_requested' && session.handoffStatus !== 'human_active')
-    ) return undefined
+    )
+      return undefined
     const timer = window.setInterval(() => {
-      void activeService.getSession(session.id).then((next) => {
-        if (commitSession(next)) setError('')
-      }).catch((caught: unknown) => {
-        if (shouldDiscardPersistedSession(caught)) discardSession()
-        setError(getErrorMessage(caught, copy))
-      })
+      void activeService
+        .getSession(session.id)
+        .then((next) => {
+          if (commitSession(next)) setError('')
+        })
+        .catch((caught: unknown) => {
+          if (shouldDiscardPersistedSession(caught)) discardSession()
+          setError(getErrorMessage(caught, copy))
+        })
     }, 5_000)
     return () => window.clearInterval(timer)
   }, [activeService, commitSession, copy, discardSession, isOpen, session])
 
-  const startSession = useCallback((forceNew = false): Promise<ChatSession | null> => {
-    if (!forceNew && session) return Promise.resolve(session)
-    if (startPromiseRef.current) return startPromiseRef.current
+  const startSession = useCallback(
+    (forceNew = false): Promise<ChatSession | null> => {
+      if (!forceNew && session) return Promise.resolve(session)
+      if (startPromiseRef.current) return startPromiseRef.current
 
-    const pending = (async (): Promise<ChatSession | null> => {
-      setError('')
-      setStatus('loading')
-      try {
-        if (!forceNew && persistSession) {
-          const persistedID = readPersistedSessionID(sessionStorageKey)
-          if (persistedID) {
-            try {
-              const restored = await activeService.getSession(persistedID)
-              commitSession(restored)
-              return restored
-            } catch (caught) {
-              if (!shouldDiscardPersistedSession(caught)) throw caught
-              removePersistedSessionID(sessionStorageKey)
+      const pending = (async (): Promise<ChatSession | null> => {
+        setError('')
+        setStatus('loading')
+        try {
+          if (!forceNew && persistSession) {
+            const persistedID = readPersistedSessionID(sessionStorageKey)
+            if (persistedID) {
+              try {
+                const restored = await activeService.getSession(persistedID)
+                commitSession(restored)
+                return restored
+              } catch (caught) {
+                if (!shouldDiscardPersistedSession(caught)) throw caught
+                removePersistedSessionID(sessionStorageKey)
+              }
             }
           }
+          const idempotencyKey =
+            forceNew || !startCommandKeyRef.current ? chatCommandKey() : startCommandKeyRef.current
+          startCommandKeyRef.current = idempotencyKey
+          const input: StartChatSessionInput = {
+            channel: 'website',
+            idempotencyKey,
+            locale,
+            sourceURL: typeof window === 'undefined' ? undefined : window.location.href,
+          }
+          const next = await activeService.startSession(input)
+          commitSession(next)
+          startCommandKeyRef.current = null
+          return next
+        } catch (caught) {
+          setError(getErrorMessage(caught, copy))
+          return null
+        } finally {
+          setStatus('idle')
         }
-        const idempotencyKey = forceNew || !startCommandKeyRef.current
-          ? chatCommandKey()
-          : startCommandKeyRef.current
-        startCommandKeyRef.current = idempotencyKey
-        const input: StartChatSessionInput = {
-          channel: 'website',
-          idempotencyKey,
-          locale,
-          sourceURL: typeof window === 'undefined' ? undefined : window.location.href,
-        }
-        const next = await activeService.startSession(input)
-        commitSession(next)
-        startCommandKeyRef.current = null
-        return next
-      } catch (caught) {
-        setError(getErrorMessage(caught, copy))
-        return null
-      } finally {
-        setStatus('idle')
-      }
-    })()
+      })()
 
-    startPromiseRef.current = pending
-    void pending.finally(() => {
-      if (startPromiseRef.current === pending) startPromiseRef.current = null
-    })
-    return pending
-  }, [activeService, commitSession, copy, locale, persistSession, session, sessionStorageKey])
+      startPromiseRef.current = pending
+      void pending.finally(() => {
+        if (startPromiseRef.current === pending) startPromiseRef.current = null
+      })
+      return pending
+    },
+    [activeService, commitSession, copy, locale, persistSession, session, sessionStorageKey],
+  )
 
   const open = (): void => {
     setIsOpen(true)
@@ -315,7 +314,8 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
   }
 
   const retryFailedMessage = async () => {
-    if (!session || !lastFailedAttempt || !lastFailedAttempt.retryable || operationPending(status)) return
+    if (!session || !lastFailedAttempt || !lastFailedAttempt.retryable || operationPending(status))
+      return
     setStatus('sending')
     setError('')
     try {
@@ -335,14 +335,17 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
         setError(getErrorMessage(caught, copy))
         return
       }
-      setLastFailedAttempt((previous) => previous && {
-        ...previous,
-        message: {
-          ...previous.message,
-          errorCode: caught instanceof ChatServiceError ? caught.code : 'internal_error',
-        },
-        retryable: isRetryableError(caught),
-      })
+      setLastFailedAttempt(
+        (previous) =>
+          previous && {
+            ...previous,
+            message: {
+              ...previous.message,
+              errorCode: caught instanceof ChatServiceError ? caught.code : 'internal_error',
+            },
+            retryable: isRetryableError(caught),
+          },
+      )
       setError(getErrorMessage(caught, copy))
     } finally {
       setStatus('idle')
@@ -410,9 +413,11 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
     }
     if (event.key !== 'Tab') return
 
-    const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
-    ))
+    const focusable = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+      ),
+    )
     const first = focusable[0]
     const last = focusable.at(-1)
     if (!first || !last) return
@@ -438,13 +443,23 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
           onKeyDown={trapDialogFocus}
           role="dialog"
         >
-          <span aria-live="polite" className="sr-only" role="status">{liveStatus}</span>
+          <span aria-live="polite" className="sr-only" role="status">
+            {liveStatus}
+          </span>
           <header className="chat-panel-header">
             <div className="chat-title-wrap">
-              <span aria-hidden className="chat-title-icon"><IconMessageCircle2 size={20} stroke={1.8} /></span>
+              <span aria-hidden className="chat-title-icon">
+                <IconMessageCircle2 size={20} stroke={1.8} />
+              </span>
               <strong id={`${dialogID}-title`}>{copy.title}</strong>
             </div>
-            <button aria-label={copy.close} className="chat-close" onClick={closeChat} ref={closeButtonRef} type="button">
+            <button
+              aria-label={copy.close}
+              className="chat-close"
+              onClick={closeChat}
+              ref={closeButtonRef}
+              type="button"
+            >
               <IconX aria-hidden size={20} />
             </button>
           </header>
@@ -482,11 +497,15 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
               />
             ))}
             {session?.handoffStatus === 'handoff_requested' ? (
-              <p className="chat-state-note" data-testid="chat-handoff-pending">{copy.handoffPending}</p>
+              <p className="chat-state-note" data-testid="chat-handoff-pending">
+                {copy.handoffPending}
+              </p>
             ) : null}
             {session?.handoffStatus === 'resolved' ? (
               <div className="chat-resolved-wrap">
-                <p className="chat-state-note" data-testid="chat-resolved">{copy.resolved}</p>
+                <p className="chat-state-note" data-testid="chat-resolved">
+                  {copy.resolved}
+                </p>
                 <button className="chat-restart" onClick={startNewConversation} type="button">
                   <IconMessageCircle2 aria-hidden size={15} />
                   {copy.newConversation}
@@ -509,14 +528,25 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
           ) : null}
 
           {showHandoff ? (
-            <button className="chat-handoff" disabled={operationPending(status)} onClick={requestHandoff} type="button">
+            <button
+              className="chat-handoff"
+              disabled={operationPending(status)}
+              onClick={requestHandoff}
+              type="button"
+            >
               <IconUser aria-hidden size={16} />
               {copy.requestHuman}
             </button>
           ) : null}
 
-          <form aria-busy={operationPending(status)} className="chat-composer" onSubmit={submitMessage}>
-            <label className="sr-only" htmlFor={`chat-message-${locale}`}>{copy.inputPlaceholder}</label>
+          <form
+            aria-busy={operationPending(status)}
+            className="chat-composer"
+            onSubmit={submitMessage}
+          >
+            <label className="sr-only" htmlFor={`chat-message-${locale}`}>
+              {copy.inputPlaceholder}
+            </label>
             <textarea
               disabled={!inputEnabled}
               id={`chat-message-${locale}`}
@@ -533,7 +563,11 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
               value={draft}
             />
             <button aria-label={copy.send} disabled={!inputEnabled || !draft.trim()} type="submit">
-              {status === 'sending' ? <IconRefresh aria-hidden className="chat-spin" size={18} /> : <IconArrowUp aria-hidden size={18} />}
+              {status === 'sending' ? (
+                <IconRefresh aria-hidden className="chat-spin" size={18} />
+              ) : (
+                <IconArrowUp aria-hidden size={18} />
+              )}
               <span>{status === 'sending' ? copy.sending : copy.send}</span>
             </button>
           </form>
@@ -552,7 +586,11 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
         }}
         type="button"
       >
-        {isOpen ? <IconX aria-hidden size={24} /> : <IconMessageCircle2 aria-hidden size={24} stroke={1.8} />}
+        {isOpen ? (
+          <IconX aria-hidden size={24} />
+        ) : (
+          <IconMessageCircle2 aria-hidden size={24} stroke={1.8} />
+        )}
         <span>{copy.title}</span>
       </button>
     </aside>
@@ -577,16 +615,6 @@ function ChatBubble({
     <article className="chat-message" data-author={author} data-status={message.status}>
       <div className="chat-message-content">
         <p>{message.content}</p>
-        {message.citations?.length ? (
-          <div className="chat-citations">
-            <span>{copy.sources}</span>
-            {message.citations.map((citation) => (
-              <span className="chat-citation" key={`${citation.documentId}-${citation.version}`}>
-                {citation.title} · v{citation.version}
-              </span>
-            ))}
-          </div>
-        ) : null}
         {retryAllowed ? (
           <button className="chat-message-retry" onClick={onRetry} type="button">
             <IconRefresh aria-hidden size={14} />

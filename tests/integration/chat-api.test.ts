@@ -484,7 +484,7 @@ describe.sequential('chat HTTP API', () => {
       author: 'ai',
       status: 'sent',
     })
-    expect(snapshot.messages.at(-1)?.citations).toHaveLength(1)
+    expect(snapshot.messages.at(-1)).not.toHaveProperty('citations')
     expect(snapshot.messages.at(-1)).not.toHaveProperty('estimatedCostUSD')
     expect(snapshot.messages.at(-1)).not.toHaveProperty('model')
     expect(snapshot.messages.at(-1)).not.toHaveProperty('promptVersion')
@@ -508,6 +508,13 @@ describe.sequential('chat HTTP API', () => {
       },
     })
     expect(stored.docs.find(({ author }) => author === 'ai')).toMatchObject({
+      citations: [
+        expect.objectContaining({
+          documentId: expect.any(String),
+          title: expect.stringContaining('Finish manual'),
+          version: '1.0',
+        }),
+      ],
       model: 'fake-text-model',
       promptVersion: 1,
       tokenUsage: { inputTokens: 20, outputTokens: 10, totalTokens: 30 },

@@ -94,10 +94,7 @@ export const shouldCreateConversationLead = (
   handoffReason?: string,
 ): boolean => {
   if (
-    isWebsiteSilentRecoveryHandoff(
-      contact?.channel,
-      handoffReason ?? evaluation?.handoffReason,
-    )
+    isWebsiteSilentRecoveryHandoff(contact?.channel, handoffReason ?? evaluation?.handoffReason)
   ) {
     return false
   }
@@ -172,15 +169,16 @@ export const truncateLeadTranscript = (transcript: string, maxLength = 5_000): s
 
 const mapMessage = (message: Message, includeInternalMetadata: boolean): ChatMessage => ({
   author: message.author,
-  citations: message.citations?.map((citation) => ({
-    documentId: citation.documentId,
-    title: citation.title,
-    // Knowledge source URLs are frequently internal authoring locations. Visitors
-    // receive a stable title/version citation, while only authenticated operators
-    // can see the source URL needed for review and correction.
-    ...(includeInternalMetadata && citation.url ? { url: citation.url } : {}),
-    version: citation.version,
-  })),
+  ...(includeInternalMetadata && message.citations?.length
+    ? {
+        citations: message.citations.map((citation) => ({
+          documentId: citation.documentId,
+          title: citation.title,
+          ...(citation.url ? { url: citation.url } : {}),
+          version: citation.version,
+        })),
+      }
+    : {}),
   content: message.content,
   createdAt: message.createdAt,
   ...(message.errorCode ? { errorCode: message.errorCode as ChatErrorCode } : {}),

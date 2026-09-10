@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createKnowledgeConversationResponder, requiresHumanReview } from '@/modules/conversations/responder'
+import {
+  createKnowledgeConversationResponder,
+  requiresHumanReview,
+} from '@/modules/conversations/responder'
 import type { ChatSession } from '@/modules/conversations/contracts'
 
 const session: ChatSession = {
@@ -40,17 +43,30 @@ describe('knowledge conversation responder', () => {
     ['warranty', 'What warranty do you provide?', '质保多久？', 'ما مدة الضمان؟'],
     ['lifespan', 'What is the product lifespan?', '产品寿命是多少？', 'ما العمر الافتراضي للمنتج؟'],
     ['certification', 'Do you have certification?', '有认证证书吗？', 'هل توجد شهادة معتمدة؟'],
-    ['structural-performance', 'What is the structural performance?', '结构性能如何？', 'ما الأداء الإنشائي؟'],
-    ['fire-performance', 'What is the fire resistance rating?', '防火性能如何？', 'ما مقاومة الحريق؟'],
+    [
+      'structural-performance',
+      'What is the structural performance?',
+      '结构性能如何？',
+      'ما الأداء الإنشائي؟',
+    ],
+    [
+      'fire-performance',
+      'What is the fire resistance rating?',
+      '防火性能如何？',
+      'ما مقاومة الحريق؟',
+    ],
     ['customs', 'How do customs duties work?', '海关和关税怎么办？', 'كيف تكون إجراءات الجمارك؟'],
     ['freight', 'How much is freight and shipping?', '运费和运输怎么计算？', 'كم تكلفة الشحن؟'],
     ['insurance', 'Can you arrange insurance?', '可以购买保险吗？', 'هل يشمل التأمين؟'],
     ['liability', 'Who accepts liability?', '责任归属是谁？', 'من يتحمل المسؤولية؟'],
-  ])('uses the authoritative policy for %s in English, Chinese, and Arabic', (_topic, en, zh, ar) => {
-    expect(requiresHumanReview(en)).toBe(true)
-    expect(requiresHumanReview(zh)).toBe(true)
-    expect(requiresHumanReview(ar)).toBe(true)
-  })
+  ])(
+    'uses the authoritative policy for %s in English, Chinese, and Arabic',
+    (_topic, en, zh, ar) => {
+      expect(requiresHumanReview(en)).toBe(true)
+      expect(requiresHumanReview(zh)).toBe(true)
+      expect(requiresHumanReview(ar)).toBe(true)
+    },
+  )
 
   it.each([
     ['quote', 'Please quote the panels.'],
@@ -87,6 +103,112 @@ describe('knowledge conversation responder', () => {
     })
   })
 
+  it('removes only valid inline citation markers while preserving internal citation metadata', async () => {
+    const generateText = vi.fn(async () => ({
+      cost: { estimated: 0 },
+      model: 'fake-text-model',
+      text: 'Single-curved panels bend in one direction [1]. Double-curved panels change in two directions [1, 3]. A [2024] drawing reference remains.',
+      usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+    }))
+    const knowledge = [1, 2, 3].map((documentId) => ({
+      citation: { documentId, title: `Manual ${documentId}`, version: '1.0' },
+      content: `Reviewed content ${documentId}.`,
+    }))
+    const responder = createKnowledgeConversationResponder({
+      generateText,
+      getPrompt: async () => ({ template: 'Answer accurately.', version: 4 }),
+      retrieve: async () => knowledge,
+    })
+
+    await expect(
+      responder.generateReply({ message: 'How do curved panels differ?', session }),
+    ).resolves.toMatchObject({
+      citations: knowledge.map(({ citation }) => citation),
+      content:
+        'Single-curved panels bend in one direction. Double-curved panels change in two directions. A [2024] drawing reference remains.',
+    })
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instructions: expect.stringContaining('Do not ask follow-up questions'),
+      }),
+    )
+  })
+
+  it('preserves newlines and non-citation whitespace while removing Arabic citation markers', async () => {
+    const text =
+      'الألواح المنحنية تُصنّع حسب متطلبات المشروع.\n[1]\n\nهل لديكم رسومات؟ [1, 2]\nمسافة\u00a0[2024] تبقى.'
+    const responder = createKnowledgeConversationResponder({
+      generateText: async () => ({
+        cost: { estimated: 0 },
+        model: 'fake-text-model',
+        text,
+        usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+      }),
+      getPrompt: async () => ({ template: 'أجب بإيجاز.', version: 1 }),
+      retrieve: async () =>
+        [1, 2].map((documentId) => ({
+          citation: { documentId, title: `الدليل ${documentId}`, version: '1.0' },
+          content: `محتوى مراجع ${documentId}.`,
+        })),
+    })
+
+    await expect(
+      responder.generateReply({
+        message: 'ما الفرق بين الألواح المنحنية؟',
+        session: { ...session, locale: 'ar' },
+      }),
+    ).resolves.toMatchObject({
+      content:
+        'الألواح المنحنية تُصنّع حسب متطلبات المشروع.\n\n\nهل لديكم رسومات؟\nمسافة\u00a0[2024] تبقى.',
+    })
+  })
+
+  it('does not trim customer text while removing an inline citation marker', async () => {
+    const responder = createKnowledgeConversationResponder({
+      generateText: async () => ({
+        cost: { estimated: 0 },
+        model: 'fake-text-model',
+        text: '\nPanels can be customized [1].\n',
+        usage: { inputTokens: 5, totalTokens: 5 },
+      }),
+      getPrompt: async () => ({ template: 'Answer naturally.', version: 1 }),
+      retrieve: async () => [
+        {
+          citation: { documentId: 1, title: 'Manual', version: '1.0' },
+          content: 'Custom panels are available.',
+        },
+      ],
+    })
+
+    await expect(
+      responder.generateReply({ message: 'Can panels be customized?', session }),
+    ).resolves.toMatchObject({ content: '\nPanels can be customized.\n' })
+  })
+
+  it('hands off instead of sending an empty reply after citation cleanup', async () => {
+    const responder = createKnowledgeConversationResponder({
+      generateText: async () => ({
+        cost: { estimated: 0 },
+        model: 'fake-text-model',
+        text: '[1]',
+        usage: { inputTokens: 1, totalTokens: 1 },
+      }),
+      getPrompt: async () => ({ template: 'fixture', version: 1 }),
+      retrieve: async () => [
+        {
+          citation: { documentId: 1, title: 'Manual', version: '1.0' },
+          content: 'Reviewed content.',
+        },
+      ],
+    })
+
+    await expect(
+      responder.generateReply({ message: 'Tell me about the product.', session }),
+    ).resolves.toEqual({
+      handoff: { reason: 'reviewed_knowledge_unavailable', source: 'ai_policy' },
+    })
+  })
+
   it('requests handoff when reviewed knowledge or an active prompt is unavailable', async () => {
     const responder = createKnowledgeConversationResponder({
       generateText: async () => ({
@@ -108,55 +230,132 @@ describe('knowledge conversation responder', () => {
 
   it('appends a deterministic qualification question and advances explicit state', async () => {
     const responder = createKnowledgeConversationResponder({
-      generateText: async () => ({ cost: { estimated: 0 }, model: 'fixture', text: 'We can help.', usage: { inputTokens: 1, totalTokens: 1 } }),
+      generateText: async () => ({
+        cost: { estimated: 0 },
+        model: 'fixture',
+        text: 'We can help.',
+        usage: { inputTokens: 1, totalTokens: 1 },
+      }),
       getPrompt: async () => ({ template: 'fixture', version: 1 }),
-      retrieve: async () => [{ citation: { documentId: 1, title: 'Manual', version: '1' }, content: 'Reviewed.' }],
+      retrieve: async () => [
+        { citation: { documentId: 1, title: 'Manual', version: '1' }, content: 'Reviewed.' },
+      ],
     })
-    await expect(responder.generateReply({ message: 'Tell me about your panels.', session, missingFields: ['country', 'company'], qualificationState: { awaitingFields: [], roundCount: 0, askedFields: [] } })).resolves.toMatchObject({
-      content: 'We can help.\n\nWhich country or market is the project for? What is your company name? Please reply “Company: your company name”, or say you prefer not to share.',
-      qualificationState: { awaitingFields: ['country', 'company'], roundCount: 1, askedFields: ['country', 'company'] },
+    await expect(
+      responder.generateReply({
+        message: 'Tell me about your panels.',
+        session,
+        missingFields: ['country', 'company'],
+        qualificationState: { awaitingFields: [], roundCount: 0, askedFields: [] },
+      }),
+    ).resolves.toMatchObject({
+      content: 'We can help.\n\nWhich country is the project in? What company are you with?',
+      qualificationState: {
+        awaitingFields: ['country', 'company'],
+        roundCount: 1,
+        askedFields: ['country', 'company'],
+      },
     })
   })
 
   it('asks no more than two qualification questions in one round', async () => {
     const responder = createKnowledgeConversationResponder({
-      generateText: async () => ({ cost: { estimated: 0 }, model: 'fixture', text: 'We can help.', usage: { inputTokens: 1, totalTokens: 1 } }),
+      generateText: async () => ({
+        cost: { estimated: 0 },
+        model: 'fixture',
+        text: 'We can help.',
+        usage: { inputTokens: 1, totalTokens: 1 },
+      }),
       getPrompt: async () => ({ template: 'fixture', version: 1 }),
-      retrieve: async () => [{ citation: { documentId: 1, title: 'Manual', version: '1' }, content: 'Reviewed.' }],
+      retrieve: async () => [
+        { citation: { documentId: 1, title: 'Manual', version: '1' }, content: 'Reviewed.' },
+      ],
     })
-    await expect(responder.generateReply({ message: 'We need facade panels.', session, missingFields: ['quantity', 'drawings', 'budget', 'timeline'], qualificationState: { awaitingFields: [], roundCount: 0, askedFields: [] } })).resolves.toMatchObject({
-      content: 'We can help.\n\nWhat approximate area or quantity do you need? When do you expect to purchase or start the project?',
-      qualificationState: { awaitingFields: ['quantity', 'timeline'], roundCount: 1, askedFields: ['quantity', 'timeline'] },
+    await expect(
+      responder.generateReply({
+        message: 'We need facade panels.',
+        session,
+        missingFields: ['quantity', 'drawings', 'budget', 'timeline'],
+        qualificationState: { awaitingFields: [], roundCount: 0, askedFields: [] },
+      }),
+    ).resolves.toMatchObject({
+      content:
+        'We can help.\n\nRoughly how much area or how many panels do you need? When are you hoping to purchase or start the project?',
+      qualificationState: {
+        awaitingFields: ['quantity', 'timeline'],
+        roundCount: 1,
+        askedFields: ['quantity', 'timeline'],
+      },
     })
   })
 
   it('asks Arabic missing fields without repeating fields already requested', async () => {
     const responder = createKnowledgeConversationResponder({
-      generateText: async () => ({ cost: { estimated: 0 }, model: 'fixture', text: 'يمكننا المساعدة.', usage: { inputTokens: 1, totalTokens: 1 } }),
+      generateText: async () => ({
+        cost: { estimated: 0 },
+        model: 'fixture',
+        text: 'يمكننا المساعدة.',
+        usage: { inputTokens: 1, totalTokens: 1 },
+      }),
       getPrompt: async () => ({ template: 'fixture', version: 1 }),
-      retrieve: async () => [{ citation: { documentId: 1, title: 'Manual', version: '1' }, content: 'Reviewed.' }],
+      retrieve: async () => [
+        { citation: { documentId: 1, title: 'Manual', version: '1' }, content: 'Reviewed.' },
+      ],
     })
-    await expect(responder.generateReply({ message: 'أحتاج ألواحاً للمشروع.', missingFields: ['country', 'company', 'projectStage'], qualificationState: { askedFields: ['country'], awaitingFields: [], roundCount: 1 }, session: { ...session, locale: 'ar' } })).resolves.toMatchObject({
-      content: 'يمكننا المساعدة.\n\nما اسم شركتكم؟ يرجى الرد بصيغة «الشركة: اسم الشركة»، أو اذكروا أنكم تفضلون عدم المشاركة. ما مرحلة المشروع: فكرة، تصميم، شراء، أم مناقصة؟',
-      qualificationState: { askedFields: ['country', 'company', 'projectStage'], awaitingFields: ['company', 'projectStage'], roundCount: 2 },
+    await expect(
+      responder.generateReply({
+        message: 'أحتاج ألواحاً للمشروع.',
+        missingFields: ['country', 'company', 'projectStage'],
+        qualificationState: { askedFields: ['country'], awaitingFields: [], roundCount: 1 },
+        session: { ...session, locale: 'ar' },
+      }),
+    ).resolves.toMatchObject({
+      content: 'يمكننا المساعدة.\n\nما اسم شركتكم؟ ما مرحلة المشروع: فكرة، تصميم، شراء، أم مناقصة؟',
+      qualificationState: {
+        askedFields: ['country', 'company', 'projectStage'],
+        awaitingFields: ['company', 'projectStage'],
+        roundCount: 2,
+      },
     })
   })
 
   it('hands off after three explicit qualification rounds', async () => {
     const generateText = vi.fn()
     const responder = createKnowledgeConversationResponder({
-      generateText, getPrompt: async () => ({ template: 'fixture', version: 1 }), retrieve: async () => [],
+      generateText,
+      getPrompt: async () => ({ template: 'fixture', version: 1 }),
+      retrieve: async () => [],
     })
-    await expect(responder.generateReply({ message: 'I do not know.', session, missingFields: ['contact'], qualificationState: { awaitingFields: [], roundCount: 3, askedFields: ['country', 'company', 'quantity'] } })).resolves.toEqual({ handoff: { reason: 'qualification_incomplete', source: 'ai_policy' } })
+    await expect(
+      responder.generateReply({
+        message: 'I do not know.',
+        session,
+        missingFields: ['contact'],
+        qualificationState: {
+          awaitingFields: [],
+          roundCount: 3,
+          askedFields: ['country', 'company', 'quantity'],
+        },
+      }),
+    ).resolves.toEqual({ handoff: { reason: 'qualification_incomplete', source: 'ai_policy' } })
     expect(generateText).not.toHaveBeenCalled()
   })
 
   it('hands off instead of repeating a missing field that was already asked', async () => {
     const generateText = vi.fn()
     const responder = createKnowledgeConversationResponder({
-      generateText, getPrompt: async () => ({ template: 'fixture', version: 1 }), retrieve: async () => [],
+      generateText,
+      getPrompt: async () => ({ template: 'fixture', version: 1 }),
+      retrieve: async () => [],
     })
-    await expect(responder.generateReply({ message: 'I do not have anything else to add.', missingFields: ['company'], qualificationState: { askedFields: ['company'], awaitingFields: [], roundCount: 1 }, session })).resolves.toEqual({ handoff: { reason: 'qualification_incomplete', source: 'ai_policy' } })
+    await expect(
+      responder.generateReply({
+        message: 'I do not have anything else to add.',
+        missingFields: ['company'],
+        qualificationState: { askedFields: ['company'], awaitingFields: [], roundCount: 1 },
+        session,
+      }),
+    ).resolves.toEqual({ handoff: { reason: 'qualification_incomplete', source: 'ai_policy' } })
     expect(generateText).not.toHaveBeenCalled()
   })
 })

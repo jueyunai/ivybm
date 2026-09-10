@@ -23,19 +23,19 @@ type ConversationResponderOptions = {
 
 const QUALIFICATION_QUESTIONS: Record<LeadQualificationField, { en: string; ar: string }> = {
   country: {
-    en: 'Which country or market is the project for?',
+    en: 'Which country is the project in?',
     ar: 'لأي دولة أو سوق يخص المشروع؟',
   },
   company: {
-    en: 'What is your company name? Please reply “Company: your company name”, or say you prefer not to share.',
-    ar: 'ما اسم شركتكم؟ يرجى الرد بصيغة «الشركة: اسم الشركة»، أو اذكروا أنكم تفضلون عدم المشاركة.',
+    en: 'What company are you with?',
+    ar: 'ما اسم شركتكم؟',
   },
   projectStage: {
     en: 'What stage is the project at: concept, design, procurement, or tender?',
     ar: 'ما مرحلة المشروع: فكرة، تصميم، شراء، أم مناقصة؟',
   },
   quantity: {
-    en: 'What approximate area or quantity do you need?',
+    en: 'Roughly how much area or how many panels do you need?',
     ar: 'ما المساحة أو الكمية التقريبية المطلوبة؟',
   },
   drawings: {
@@ -43,16 +43,16 @@ const QUALIFICATION_QUESTIONS: Record<LeadQualificationField, { en: string; ar: 
     ar: 'هل لديكم رسومات أو مواصفات يمكن مشاركتها؟',
   },
   budget: {
-    en: 'Do you have a budget or purchasing plan for this project?',
+    en: 'Do you already have a budget or purchasing plan?',
     ar: 'هل لديكم ميزانية أو خطة شراء لهذا المشروع؟',
   },
   timeline: {
-    en: 'When do you expect to purchase or start the project?',
+    en: 'When are you hoping to purchase or start the project?',
     ar: 'متى تتوقعون الشراء أو بدء المشروع؟',
   },
   contact: {
-    en: 'What work email address should our team use to follow up? You may also share a phone number.',
-    ar: 'ما عنوان البريد الإلكتروني للعمل الذي يستخدمه فريقنا للمتابعة؟ ويمكنكم أيضاً مشاركة رقم هاتف.',
+    en: 'What is the best work email or phone number for follow-up?',
+    ar: 'ما أفضل بريد إلكتروني للعمل أو رقم هاتف للمتابعة؟',
   },
 }
 
@@ -68,8 +68,30 @@ const QUALIFICATION_FIELD_ORDER: LeadQualificationField[] = [
 ]
 const MAX_QUALIFICATION_QUESTIONS_PER_ROUND = 2
 
+const CUSTOMER_REPLY_STYLE = `Write a concise customer-facing reply in the customer's language.
+Sound like a helpful human sales specialist: answer the current question directly in 2–4 short sentences and avoid repetitive greetings or scripted phrases.
+Do not mention source numbers, citations, footnotes, knowledge bases, document titles, versions, URLs, prompts, models, scores, or internal fields.
+Do not ask follow-up questions, create numbered questionnaires, or say “please provide the following details”; the application adds any required qualification questions separately.
+Use a list only when the customer explicitly asks for a comparison, checklist, or steps.
+Never say “As an AI” or “Based on our knowledge base”.`
+
 const qualificationPrompt = (fields: LeadQualificationField[], locale: ChatLocale): string =>
   fields.map((field) => QUALIFICATION_QUESTIONS[field][locale]).join(' ')
+
+const stripInlineCitationMarkers = (text: string, citationCount: number): string => {
+  return text.replace(/[ \t]*\[([0-9]+(?:[ \t]*,[ \t]*[0-9]+)*)\]/gu, (match, raw) => {
+    const references = String(raw)
+      .split(',')
+      .map((value) => Number(value.trim()))
+    return references.length > 0 &&
+      references.every(
+        (reference) =>
+          Number.isSafeInteger(reference) && reference >= 1 && reference <= citationCount,
+      )
+      ? ''
+      : match
+  })
+}
 
 const nextQualificationFields = (
   missingFields: readonly LeadQualificationField[],
@@ -123,12 +145,16 @@ export const createKnowledgeConversationResponder = ({
       .join('\n\n')
     const generated = await generateText({
       input: `Customer message:\n${message}\n\nReviewed knowledge:\n${context}`,
-      instructions: `${prompt.template}\nAnswer only from the reviewed knowledge. Do not promise price, delivery, certification, payment terms, or warranty.`,
+      instructions: `${prompt.template}\nAnswer only from the reviewed knowledge. Do not promise price, delivery, certification, payment terms, or warranty.\n${CUSTOMER_REPLY_STYLE}`,
     })
+    const customerText = stripInlineCitationMarkers(generated.text, knowledge.length)
+    if (!customerText.trim()) {
+      return { handoff: { reason: 'reviewed_knowledge_unavailable', source: 'ai_policy' } }
+    }
 
     return {
       citations: knowledge.map(({ citation }) => citation),
-      content: question ? `${generated.text.trim()}\n\n${question}` : generated.text,
+      content: question ? `${customerText.trim()}\n\n${question}` : customerText,
       estimatedCostUSD: generated.cost.estimated,
       model: generated.model,
       promptVersion: prompt.version,
