@@ -125,6 +125,21 @@ const boundedString = (value: unknown, maxLength: number): string | undefined =>
   return normalized
 }
 
+const boundedCaption = (value: unknown, maxLength: number): string | undefined => {
+  if (typeof value !== 'string') return undefined
+  const normalized = value.trim()
+  if (
+    !normalized ||
+    normalized !== value ||
+    Array.from(normalized).length > maxLength ||
+    /[\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F]/u.test(normalized) ||
+    /\r(?!\n)/u.test(normalized)
+  ) {
+    return undefined
+  }
+  return normalized
+}
+
 const normalizedProviderId = (value: unknown): string | undefined =>
   typeof value === 'string' && /^[0-9]{1,32}$/.test(value) ? value : undefined
 
@@ -152,7 +167,7 @@ const normalizeCheckpoint = (input: unknown): InstagramPublishingCheckpoint | un
   const accountExternalId = boundedString(checkpoint.accountExternalId, 240)
   const imageUrl = boundedString(checkpoint.imageUrl, 2_000)
   const caption =
-    checkpoint.caption === undefined ? undefined : boundedString(checkpoint.caption, 2_200)
+    checkpoint.caption === undefined ? undefined : boundedCaption(checkpoint.caption, 2_200)
   const containerId =
     checkpoint.containerId === undefined ? undefined : normalizedProviderId(checkpoint.containerId)
   const mediaId =

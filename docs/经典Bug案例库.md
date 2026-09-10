@@ -1,5 +1,83 @@
 # 经典 Bug 案例库
 
+## P-CONTEXT-SPECIFIC-TEXT-VALIDATION 通用字符串过滤破坏合法业务文本
+
+- Category: test-gap, product-acceptance
+- Applies to: 社交媒体 caption、富文本、邮件正文、会话消息等允许换行和 Unicode 的业务字段
+- Example cases: INSTAGRAM-001
+
+### Invariant
+
+业务文本校验必须按目标字段和提供方契约允许合法格式；用于 ID、URL、Token 的单行字符串过滤器不能直接复用于多行正文。
+
+### Failure Mechanism
+
+通用校验把所有 ASCII/C1 控制字符都判为非法，其中也包含业务正文合法使用的 LF/CRLF。单行 fixture 全部通过，真实多段文案直到 production 发布才在 provider I/O 前失败。若用非标准 Unicode 分隔符绕过，还可能被客户端显示成乱码。
+
+### Early Signals
+
+- 正文与 ID、URL、owner token 共用同一个 `boundedString`。
+- 测试 caption 只有单行 ASCII，没有换行、项目符号或非 ASCII 标点。
+- 为绕过校验而把换行替换成 U+2028/U+2029 等字符。
+
+### Prevention Gate
+
+为业务正文提供字段专用校验器；明确允许 LF 和 CRLF，继续拒绝 NUL、裸 CR、C0/C1 非法控制字符。至少用一份真实多段代表文案验证进入 transport 的字符串保持逐字一致。
+
+### Verification
+
+以包含 `façade`、`•`、`—`、空行和 LF/CRLF 的 caption 执行 Instagram scheduled stage，断言 transport 收到原字符串；对 NUL、Tab、裸 CR 和 C1 控制字符断言 provider I/O 为 0。
+
+### Reuse Prompt
+
+“这个字符串校验器保护的是单行标识符还是业务正文？目标平台允许哪些换行和 Unicode 字符？”
+
+## INSTAGRAM-001 多段正式 caption 被拒绝或显示乱码
+
+- Category: test-gap, product-acceptance
+- Pattern: P-CONTEXT-SPECIFIC-TEXT-VALIDATION
+- Date: 2026-09-10
+- Area: Task 13 Instagram image publishing
+- Environment: production 受控 Instagram Business 账号
+- Severity: P1
+
+### Symptom
+
+正常换行的正式文案在 provider I/O 前报 `Instagram publishing input is invalid`；临时替换为 Unicode 段落分隔符后可以发布，但 Instagram 客户端显示为 `��`。
+
+### Context
+
+同一文案和图片在 Facebook 正常显示；Instagram 账号、发布 Token、`instagram_business_content_publish` 和图片 URL 均验证正常。
+
+### Root Cause
+
+Technical cause: Instagram checkpoint 的 caption 复用了只适合单行标识符的 `boundedString`，其控制字符正则拒绝 `\n` 和 `\r\n`。
+
+Process cause: 既有测试 caption 只有单行 ASCII，没有覆盖正式社交媒体多段文案及客户端可见结果。
+
+### Why Existing Checks Missed It
+
+fixture 和 contract 测试验证了阶段状态机、幂等和 provider fence，但没有验证代表性 caption 的格式保真；真实发布验收只在最后一步暴露问题。
+
+### Fix
+
+新增 caption 专用校验，允许标准 LF/CRLF 及 Unicode 文本，继续拒绝其他 C0/C1 控制字符和裸 CR；回归测试断言 transport 收到的多段 caption 不发生替换。
+
+### Prevention Checklist
+
+- [ ] 多行正文不复用 ID/URL/Token 的单行校验器。
+- [ ] 代表性 fixture 包含换行、项目符号、重音字符和长破折号。
+- [ ] 断言进入 provider transport 的正文逐字一致。
+- [ ] 受控平台验收检查最终客户端呈现，不只检查 provider ID。
+
+### Regression Test
+
+`tests/unit/platforms/instagram-publishing-execution.test.ts`：LF/CRLF 多段 caption 保真，以及 NUL、Tab、裸 CR、C1 控制字符 fail closed。
+
+### Related Workflow Gates
+
+- product-development-workflow Gate 3、Gate 4、Gate 6、Gate 7、Gate 8
+
 ## P-PROXY-ORIGIN-BOUNDARY 反向代理内部 URL 被误作公网安全边界
 
 - Category: deployment-config, test-gap, product-acceptance

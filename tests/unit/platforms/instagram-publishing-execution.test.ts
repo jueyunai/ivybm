@@ -63,6 +63,77 @@ const setup = (input = intent(), fence = lease()) => {
 }
 
 describe('Instagram lease-fenced publishing execution', () => {
+  it.each([
+    [
+      'LF',
+      'A façade mock-up should do more than get approved.\n\n• Does the geometry match?\n• Are the joints consistent?\n\n— Ivy Building Materials',
+    ],
+    [
+      'CRLF',
+      'A façade mock-up should do more than get approved.\r\n\r\n• Does the geometry match?\r\n• Are the joints consistent?\r\n\r\n— Ivy Building Materials',
+    ],
+  ])('preserves a valid multiline caption using %s newlines', async (_label, caption) => {
+    const input = intent({ checkpoint: checkpoint({ caption }) })
+    const state = setup(input)
+    const createInstagramMedia = vi.fn().mockResolvedValue({ creationId: '112233' })
+
+    await expect(
+      executeInstagramPublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: transport({ createInstagramMedia }),
+      }),
+    ).resolves.toMatchObject({ checkpoint: { caption, stage: 'container_created' } })
+    expect(createInstagramMedia).toHaveBeenCalledWith(expect.objectContaining({ caption }))
+  })
+
+  it.each([
+    ['NUL', 'Facade\u0000caption'],
+    ['tab', 'Facade\tcaption'],
+    ['bare CR', 'Facade\rcaption'],
+    ['C1 control', 'Facade\u0085caption'],
+  ])('rejects a caption containing %s before provider I/O', async (_label, caption) => {
+    const input = intent({ checkpoint: checkpoint({ caption }) })
+    const createInstagramMedia = vi.fn()
+
+    await expect(
+      executeInstagramPublishingStage({
+        authority: setup(input).authority,
+        intent: input,
+        leaseFence: lease(),
+        transport: transport({ createInstagramMedia }),
+      }),
+    ).rejects.toThrow('Instagram publishing input is invalid')
+    expect(createInstagramMedia).not.toHaveBeenCalled()
+  })
+
+  it('counts the 2,200 caption limit by Unicode characters', async () => {
+    const caption = '😀'.repeat(2_200)
+    const input = intent({ checkpoint: checkpoint({ caption }) })
+    const state = setup(input)
+    const createInstagramMedia = vi.fn().mockResolvedValue({ creationId: '112233' })
+
+    await expect(
+      executeInstagramPublishingStage({
+        authority: state.authority,
+        intent: input,
+        leaseFence: state.fence,
+        transport: transport({ createInstagramMedia }),
+      }),
+    ).resolves.toMatchObject({ checkpoint: { caption, stage: 'container_created' } })
+
+    const oversized = intent({ checkpoint: checkpoint({ caption: `${caption}😀` }) })
+    await expect(
+      executeInstagramPublishingStage({
+        authority: setup(oversized).authority,
+        intent: oversized,
+        leaseFence: lease(),
+        transport: transport({ createInstagramMedia: vi.fn() }),
+      }),
+    ).rejects.toThrow('Instagram publishing input is invalid')
+  })
+
   it('creates exactly one container and atomically stores its provider ID', async () => {
     const state = setup()
     const createInstagramMedia = vi.fn().mockResolvedValue({ creationId: '112233' })
