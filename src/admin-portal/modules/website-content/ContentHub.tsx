@@ -447,7 +447,6 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
           <p>{messages.description}</p>
         </div>
         <div className="portal-content__intro-actions">
-          <StatusBadge label={messages.editorStatus} tone="success" />
           {PORTAL_CONTENT_TYPE_IDS.includes(
             summary.query.type as (typeof PORTAL_CONTENT_TYPE_IDS)[number],
           ) ? (
@@ -485,8 +484,8 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
           method="get"
         >
           <input name="type" type="hidden" value={summary.query.type} />
-          <div className="portal-content__search">
-            <label className="portal-field__label" htmlFor="content-search-input">
+          <div className="portal-content__filter-item portal-content__search">
+            <label className="portal-content__filter-label" htmlFor="content-search-input">
               {messages.searchLabel}
             </label>
             <SearchInput
@@ -498,8 +497,8 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
               placeholder={messages.searchPlaceholder}
             />
           </div>
-          <div className="portal-content__status-filter">
-            <span className="portal-field__label">{messages.filterLabel}</span>
+          <div className="portal-content__filter-item portal-content__status-filter">
+            <span className="portal-content__filter-label">{messages.filterLabel}</span>
             <UiSelect
               ariaLabel={messages.filterLabel}
               name="status"
@@ -519,15 +518,17 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
               value={summary.query.status}
             />
           </div>
-          <Button className="portal-content__submit" size="compact" type="submit">
-            <IconSearch aria-hidden="true" size={16} stroke={1.8} />
-            {messages.searchSubmit}
-          </Button>
-          <Button asChild size="compact" variant="ghost">
-            <Link href={buildContentHref({ type: summary.query.type })}>
-              {messages.resetFilters}
-            </Link>
-          </Button>
+          <div className="portal-content__filter-actions">
+            <Button className="portal-content__submit" size="compact" type="submit">
+              <IconSearch aria-hidden="true" size={16} stroke={1.8} />
+              {messages.searchSubmit}
+            </Button>
+            <Button asChild size="compact" variant="ghost">
+              <Link href={buildContentHref({ type: summary.query.type })}>
+                {messages.resetFilters}
+              </Link>
+            </Button>
+          </div>
         </form>
       </Surface>
 

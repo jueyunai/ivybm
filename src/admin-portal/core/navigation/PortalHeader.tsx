@@ -8,7 +8,6 @@ import { IconBell, IconLanguage, IconMenu2 } from '@tabler/icons-react'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import type { PortalLocale } from '@/admin-portal/core/i18n/types'
 import type { ResolvedPortalModule } from '@/admin-portal/core/modules/types'
-import { StatusBadge } from '@/admin-portal/core/ui'
 
 export interface PortalHeaderProps {
   environment: 'local' | 'production'

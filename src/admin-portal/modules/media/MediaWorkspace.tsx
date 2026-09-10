@@ -20,7 +20,6 @@ import {
   Button,
   PortalState,
   SearchInput,
-  StatusBadge,
   Surface,
   UiSelect,
 } from '@/admin-portal/core/ui'
@@ -125,7 +124,6 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
           <h2>{messages.title}</h2>
           <p>{messages.description}</p>
         </div>
-        <StatusBadge label={messages.editorStatus} tone="success" />
       </header>
 
       <Surface as="section" className="portal-media__toolbar">
@@ -136,8 +134,8 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
           method="get"
         >
           <input name="view" type="hidden" value={summary.query.view} />
-          <div className="portal-media__field portal-media__search">
-            <label className="portal-field__label" htmlFor="media-search-input">
+          <div className="portal-media__filter-item portal-media__search">
+            <label className="portal-media__filter-label" htmlFor="media-search-input">
               {messages.searchLabel}
             </label>
             <SearchInput
@@ -149,8 +147,8 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
               placeholder={messages.searchPlaceholder}
             />
           </div>
-          <div className="portal-media__field">
-            <span className="portal-field__label">{messages.kindLabel}</span>
+          <div className="portal-media__filter-item">
+            <span className="portal-media__filter-label">{messages.kindLabel}</span>
             <UiSelect
               ariaLabel={messages.kindLabel}
               name="kind"
@@ -163,8 +161,8 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
               value={summary.query.kind}
             />
           </div>
-          <div className="portal-media__field">
-            <span className="portal-field__label">{messages.visibilityLabel}</span>
+          <div className="portal-media__filter-item">
+            <span className="portal-media__filter-label">{messages.visibilityLabel}</span>
             <UiSelect
               ariaLabel={messages.visibilityLabel}
               name="visibility"
@@ -181,23 +179,30 @@ export function MediaWorkspace({ pageState, summary }: MediaWorkspaceProps) {
               value={summary.query.visibility}
             />
           </div>
-          <label className="portal-media__field">
-            <span className="portal-field__label">{messages.sourceLabel}</span>
+          <div className="portal-media__filter-item portal-media__source">
+            <label className="portal-media__filter-label" htmlFor="media-source-input">
+              {messages.sourceLabel}
+            </label>
             <input
               defaultValue={summary.query.source}
+              id="media-source-input"
               maxLength={80}
               name="source"
               placeholder={messages.sourcePlaceholder}
               type="text"
             />
-          </label>
-          <Button className="portal-media__filter-submit" size="compact" type="submit">
-            <IconSearch aria-hidden="true" size={16} stroke={1.8} />
-            {messages.searchSubmit}
-          </Button>
-          <Button asChild size="compact" variant="ghost">
-            <Link href={buildMediaHref({ view: summary.query.view })}>{messages.resetFilters}</Link>
-          </Button>
+          </div>
+          <div className="portal-media__filter-actions">
+            <Button className="portal-media__filter-submit" size="compact" type="submit">
+              <IconSearch aria-hidden="true" size={16} stroke={1.8} />
+              {messages.searchSubmit}
+            </Button>
+            <Button asChild size="compact" variant="ghost">
+              <Link href={buildMediaHref({ view: summary.query.view })}>
+                {messages.resetFilters}
+              </Link>
+            </Button>
+          </div>
         </form>
 
         <div className="portal-media__actions">

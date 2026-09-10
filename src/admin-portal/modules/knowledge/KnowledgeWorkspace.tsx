@@ -737,9 +737,13 @@ export function KnowledgeWorkspace({ pageState, summary }: KnowledgeWorkspacePro
                     <li key={route.usageKey}>
                       <div>
                         <span>
-                          {route.operation === 'embedding'
-                            ? messages.embeddingRoute
-                            : messages.textRoute}
+                          {route.usageKey === 'knowledge.embedding'
+                            ? messages.usageLabels['knowledge.embedding']
+                            : route.usageKey === 'chat.reply'
+                              ? messages.usageLabels['chat.reply']
+                              : route.usageKey === 'knowledge.translation'
+                                ? messages.usageLabels['knowledge.translation']
+                                : messages.textRoute}
                         </span>
                         <strong>
                           {[route.provider, route.model, route.dimensions]
@@ -759,7 +763,6 @@ export function KnowledgeWorkspace({ pageState, summary }: KnowledgeWorkspacePro
                   ))}
                 </ul>
               )}
-              <p className="portal-knowledge__credential-note">{messages.credentialsNeverShown}</p>
             </Surface>
 
             <Surface as="section" className="portal-knowledge__side-panel">

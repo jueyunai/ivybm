@@ -3109,19 +3109,26 @@
 
   .portal-media__filter-form {
     display: grid;
-    grid-template-columns: minmax(200px, 1.35fr) 132px 150px minmax(132px, 0.8fr) auto auto;
+    grid-template-columns: minmax(200px, 1.35fr) 132px 150px minmax(132px, 0.8fr) auto;
     align-items: end;
     gap: 8px;
   }
 
-  .portal-media__field {
+  .portal-media__filter-item {
     display: grid;
     min-width: 0;
     gap: 6px;
   }
 
-  .portal-media__field > input,
-  .portal-media__field > select {
+  .portal-media__filter-label {
+    color: var(--portal-muted);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .portal-media__filter-item > input,
+  .portal-media__filter-item .portal-select__control {
     width: 100%;
     height: 42px;
     min-width: 0;
@@ -3135,14 +3142,20 @@
     font-size: 12px;
   }
 
-  .portal-media__field > select {
+  .portal-media__filter-item .portal-select__control {
     padding-right: 30px;
   }
 
-  .portal-media__field > input:focus,
-  .portal-media__field > select:focus {
+  .portal-media__filter-item > input:focus,
+  .portal-media__filter-item .portal-select__control:focus {
     border-color: var(--portal-accent);
     box-shadow: 0 0 0 1px var(--portal-accent);
+  }
+
+  .portal-media__filter-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .portal-media__filter-submit {
@@ -4476,7 +4489,6 @@
   .portal-knowledge__immutable-note p,
   .portal-knowledge__admin-only p,
   .portal-knowledge__recovery p,
-  .portal-knowledge__credential-note,
   .portal-knowledge__side-empty {
     margin: 0;
     color: var(--portal-ink-2);
@@ -4492,13 +4504,6 @@
 
   .portal-knowledge__admin-only strong {
     color: var(--portal-ink);
-    font-size: 12px;
-  }
-
-  .portal-knowledge__credential-note {
-    padding-top: 2px;
-    color: var(--portal-muted);
-    font-family: var(--portal-font-data);
     font-size: 12px;
   }
 
@@ -7066,7 +7071,7 @@
   }
 
   .portal-media__search,
-  .portal-media__filter-form .portal-media__field:last-of-type {
+  .portal-media__filter-form .portal-media__source {
     grid-column: 1 / -1;
   }
 
@@ -7385,7 +7390,7 @@
   }
 
   .portal-content__submit,
-  .portal-content__filter-form > .portal-button {
+  .portal-content__filter-actions .portal-button {
     width: 100%;
   }
 
@@ -7430,7 +7435,7 @@
   }
 
   .portal-media__filter-submit,
-  .portal-media__filter-form > .portal-button {
+  .portal-media__filter-actions .portal-button {
     width: 100%;
   }
 
