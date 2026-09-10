@@ -92,6 +92,10 @@ const authority = {} as never
 const transport = {} as never
 
 const executors = (): PublicationWorkerExecutors => ({
+  executeMultiImage: vi.fn(async ({ intent }) => ({
+    changed: false,
+    checkpoint: intent.checkpoint,
+  })),
   executeInstagram: vi.fn(async ({ intent }) => ({
     changed: false,
     checkpoint: intent.checkpoint,

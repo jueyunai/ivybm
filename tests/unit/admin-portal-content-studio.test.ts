@@ -163,7 +163,7 @@ describe('Portal Content Studio', () => {
     expect(assetOptions).toHaveLength(3)
     expect(container.querySelector('.portal-content-studio__asset-upload-card')).toBeTruthy()
     expect(screen.getByText('上传配图')).toBeTruthy()
-    expect(screen.getByText('点击或拖拽上传 1 张图片')).toBeTruthy()
+    expect(screen.getByText('点击或拖拽上传 1-3 张图片')).toBeTruthy()
 
     const imageOption = screen.getByRole('checkbox', { name: 'Curved facade hero' })
     expect(imageOption.closest('label')?.querySelector('img')?.getAttribute('src')).toContain(
@@ -751,7 +751,7 @@ describe('Portal Content Studio', () => {
     ).toBe(true)
   })
 
-  it('keeps direct uploads private and limits drafts to one publishable image', async () => {
+    it('keeps direct uploads private and supports 1-3 publishable images', async () => {
     const originalFetch = globalThis.fetch
     let uploadedCount = 0
     globalThis.fetch = vi.fn((input, init) => {
@@ -806,21 +806,16 @@ describe('Portal Content Studio', () => {
 
     fireEvent.change(fileInput, { target: { files: [file1, file2] } })
 
-    expect((await screen.findByRole('alert')).textContent).toBe('每次请选择 1 张图片。')
-    expect(uploadedCount).toBe(0)
-
-    fireEvent.change(fileInput, { target: { files: [file1] } })
-
     await vi.waitFor(() => {
       const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
       const assetCheckboxes = checkboxes.filter((cb) =>
         cb.getAttribute('aria-label')?.startsWith('Uploaded image'),
       )
-      expect(assetCheckboxes.length).toBe(1)
+      expect(assetCheckboxes.length).toBe(2)
       expect(assetCheckboxes.every((cb) => cb.checked)).toBe(true)
     })
 
-    expect(screen.getByText('当前平台发布链路每篇草稿支持 1 张配图。')).toBeTruthy()
+    expect(screen.getByText('当前平台发布链路每篇草稿支持 1-3 张配图。')).toBeTruthy()
 
     globalThis.fetch = originalFetch
   })

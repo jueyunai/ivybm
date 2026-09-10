@@ -36,12 +36,16 @@ const resolver = (
 const metaTransport = (
   overrides: Partial<MetaPublishingTransport> = {},
 ): MetaPublishingTransport => ({
+  createFacebookUnpublishedPhoto: vi.fn(),
   createInstagramMedia: vi.fn(),
+  createInstagramCarouselContainer: vi.fn(),
+  createInstagramCarouselItem: vi.fn(),
   getFacebookPagePostPermalink: vi.fn(async () => ({
     permalinkUrl: 'https://www.facebook.com/129472283584550/posts/7654321',
   })),
   getInstagramContainerStatus: vi.fn(),
   getInstagramMediaPermalink: vi.fn(),
+  publishFacebookPageFeed: vi.fn(),
   publishFacebookPagePhoto: vi.fn(async () => ({
     photoId: '7654321',
     postId: '129472283584550_7654321',
@@ -59,6 +63,7 @@ const linkedInTransport = (
   })),
   initializeImageUpload: vi.fn(),
   publishImagePost: vi.fn(),
+  publishMultiImagePost: vi.fn(),
   publishTextPost: vi.fn(async () => ({ postUrn: 'urn:li:share:123456789' })),
   uploadImage: vi.fn(),
   ...overrides,

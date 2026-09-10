@@ -45,10 +45,14 @@ const lease = (
 })
 
 const transport = (overrides: Partial<MetaPublishingTransport> = {}): MetaPublishingTransport => ({
+  createFacebookUnpublishedPhoto: vi.fn(),
   createInstagramMedia: vi.fn(),
+  createInstagramCarouselContainer: vi.fn(),
+  createInstagramCarouselItem: vi.fn(),
   getFacebookPagePostPermalink: vi.fn(),
   getInstagramContainerStatus: vi.fn(),
   getInstagramMediaPermalink: vi.fn(),
+  publishFacebookPageFeed: vi.fn(),
   publishFacebookPagePhoto: vi.fn(),
   publishInstagramMedia: vi.fn(),
   ...overrides,
