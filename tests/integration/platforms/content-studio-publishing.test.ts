@@ -512,6 +512,7 @@ describe.sequential('Content Studio immediate platform publication', () => {
         data: image,
         mimetype: 'image/png',
         name: `task123-content-studio-${randomUUID()}.png`,
+        size: image.byteLength,
       },
       overrideAccess: true,
     })

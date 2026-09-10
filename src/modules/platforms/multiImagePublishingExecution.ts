@@ -768,10 +768,20 @@ export const executeMultiImagePublishingStage = async ({
       transition = unknown(claim.intent.checkpoint, 'Multi-image publication failed in an unexpected way; resend is disabled.')
     }
   }
-  if (preIOTransportError) {
-    try {
-      await authority.releaseStage(claim)
-    } catch {}
+  let committed = false
+  try {
+    const commit = await authority.commitStage(claim, transition)
+    committed = commit.status === 'committed'
+  } catch {
+    committed = false
   }
+  if (!committed) {
+    return unknown(
+      claim.intent.checkpoint,
+      'Multi-image provider I/O crossed the fence but its checkpoint could not be committed; resend is disabled.',
+    )
+  }
+
+  if (preIOTransportError) throw preIOTransportError
   return transition
 }

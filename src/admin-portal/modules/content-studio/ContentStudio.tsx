@@ -920,16 +920,19 @@ function DraftEditor({
     setForm((current) => ({ ...current, [key]: value }))
 
   const toggleAsset = (value: string) => {
-    setForm((current) => {
-      const nextAssets = current.assets.includes(value)
-        ? current.assets.filter((id) => id !== value)
-        : [...current.assets, value]
-      return {
-        ...current,
-        assets: nextAssets,
-        contentType: nextAssets.length >= 2 ? 'carousel' : 'post',
-      }
-    })
+    const nextAssets = form.assets.includes(value)
+      ? form.assets.filter((id) => id !== value)
+      : [...form.assets, value]
+    if (nextAssets.length > MAX_UPLOAD_FILE_COUNT) {
+      setError(copy.uploadCountExceeded)
+      return
+    }
+    setError(null)
+    setForm((current) => ({
+      ...current,
+      assets: nextAssets,
+      contentType: nextAssets.length >= 2 ? 'carousel' : 'post',
+    }))
   }
 
   const { combinedAssets, handleUpload, uploadBusy, uploadError } = useAssetUploader({
@@ -1227,17 +1230,23 @@ function GenerateDraftEditor({
   const update = <Key extends keyof typeof form>(key: Key, value: (typeof form)[Key]) =>
     setForm((current) => ({ ...current, [key]: value }))
   const toggle = (key: 'assets' | 'knowledgeSources', value: string) => {
-    setForm((current) => {
-      if (key === 'assets') {
-        const nextAssets = current.assets.includes(value)
-          ? current.assets.filter((id) => id !== value)
-          : [...current.assets, value]
-        return {
-          ...current,
-          assets: nextAssets,
-          contentType: nextAssets.length >= 2 ? 'carousel' : 'post',
-        }
+    if (key === 'assets') {
+      const nextAssets = form.assets.includes(value)
+        ? form.assets.filter((id) => id !== value)
+        : [...form.assets, value]
+      if (nextAssets.length > MAX_UPLOAD_FILE_COUNT) {
+        setError(copy.uploadCountExceeded)
+        return
       }
+      setError(null)
+      setForm((current) => ({
+        ...current,
+        assets: nextAssets,
+        contentType: nextAssets.length >= 2 ? 'carousel' : 'post',
+      }))
+      return
+    }
+    setForm((current) => {
       const nextValues = current[key].includes(value)
         ? current[key].filter((id) => id !== value)
         : [...current[key], value]
