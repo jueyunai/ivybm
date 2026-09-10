@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Payload, PayloadRequest } from 'payload'
@@ -376,8 +376,8 @@ describe('Portal knowledge workspace', () => {
     )
 
     expect(screen.getByRole('heading', { name: '知识文档' })).toBeTruthy()
-    expect(screen.getAllByText('审核通过').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('等待索引').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('通过').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('待检索').length).toBeGreaterThan(0)
     expect(screen.getByText('仅管理员可查看模型配置')).toBeTruthy()
     expect(screen.getByRole('button', { name: '开始索引' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '新增文档' }).hasAttribute('disabled')).toBe(false)
@@ -401,5 +401,126 @@ describe('Portal knowledge workspace', () => {
     fireEvent.click(ingestionTrigger)
     fireEvent.click(screen.getByRole('button', { name: '关闭抽屉' }))
     await waitFor(() => expect(document.activeElement).toBe(ingestionTrigger))
+  })
+
+  it('renders concise lifecycle text, business usage routes, and no credential note', () => {
+    const documents = [
+      {
+        customerVisible: true,
+        embeddingModel: null,
+        embeddingSpace: null,
+        id: 21,
+        indexStatus: 'ready' as const,
+        indexedAt: null,
+        locale: 'en' as const,
+        reviewStatus: 'reviewed' as const,
+        reviewedAt: null,
+        sourceTitle: 'Reviewed lifecycle document',
+        sourceType: 'faq' as const,
+        sourceVersion: '1.0',
+        updatedAt: '2026-07-30T09:00:00.000Z',
+      },
+      {
+        customerVisible: false,
+        embeddingModel: null,
+        embeddingSpace: null,
+        id: 22,
+        indexStatus: 'pending' as const,
+        indexedAt: null,
+        locale: 'en' as const,
+        reviewStatus: 'draft' as const,
+        reviewedAt: null,
+        sourceTitle: 'Draft lifecycle document',
+        sourceType: 'faq' as const,
+        sourceVersion: '1.0',
+        updatedAt: '2026-07-30T09:00:00.000Z',
+      },
+      {
+        customerVisible: true,
+        embeddingModel: null,
+        embeddingSpace: null,
+        id: 23,
+        indexStatus: 'failed' as const,
+        indexedAt: null,
+        locale: 'en' as const,
+        reviewStatus: 'reviewed' as const,
+        reviewedAt: null,
+        sourceTitle: 'Failed lifecycle document',
+        sourceType: 'faq' as const,
+        sourceVersion: '1.0',
+        updatedAt: '2026-07-30T09:00:00.000Z',
+      },
+    ]
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(KnowledgeWorkspace, {
+          pageState: 'available',
+          summary: {
+            ai: {
+              access: 'admin',
+              routes: [
+                {
+                  dimensions: 1536,
+                  model: 'text-embedding-3-small',
+                  operation: 'embedding',
+                  provider: 'OpenAI compatible',
+                  status: 'ready',
+                  usageKey: 'knowledge.embedding',
+                },
+                {
+                  dimensions: null,
+                  model: 'gpt-compatible',
+                  operation: 'text',
+                  provider: 'OpenAI compatible',
+                  status: 'ready',
+                  usageKey: 'chat.reply',
+                },
+                {
+                  dimensions: null,
+                  model: 'gpt-compatible',
+                  operation: 'text',
+                  provider: 'OpenAI compatible',
+                  status: 'ready',
+                  usageKey: 'knowledge.translation',
+                },
+              ],
+            },
+            commands: ['knowledge:index'],
+            counts: { draft: 1, failed: 1, processing: 0, ready: 1 },
+            documents,
+            editor: { status: 'available' },
+            pagination: { page: 1, totalDocs: 3, totalPages: 1 },
+            prompts: [],
+            query: baseQuery,
+            role: 'admin',
+          },
+        }),
+      ),
+    )
+
+    const documentTable = screen.getByRole('region', { name: '知识文档双状态列表' })
+    const reviewedRow = within(documentTable).getByRole('row', {
+      name: /Reviewed lifecycle document/,
+    })
+    const draftRow = within(documentTable).getByRole('row', {
+      name: /Draft lifecycle document/,
+    })
+    const failedRow = within(documentTable).getByRole('row', {
+      name: /Failed lifecycle document/,
+    })
+    expect(within(reviewedRow).getByText('通过')).toBeTruthy()
+    expect(within(reviewedRow).getByText('已就绪')).toBeTruthy()
+    expect(within(draftRow).getByText('草稿')).toBeTruthy()
+    expect(within(draftRow).getByText('待检索')).toBeTruthy()
+    expect(within(failedRow).getByText('失败')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('tab', { name: /AI 调试与底座/ }))
+    expect(screen.getByText('向量索引')).toBeTruthy()
+    expect(screen.getByText('客服问答')).toBeTruthy()
+    expect(screen.getByText('文档翻译')).toBeTruthy()
+    expect(screen.queryByText('仅展示模型可用状态；API 密钥等敏感信息已受保护且不在前端显示。')).toBeNull()
   })
 })

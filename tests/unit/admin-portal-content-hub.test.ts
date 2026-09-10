@@ -143,6 +143,7 @@ describe('Portal content hub editing transitions', () => {
     )
 
     const navigation = screen.getByRole('navigation', { name: '官网内容' })
+    expect(screen.queryByText('新增与编辑可用')).toBeNull()
     expect(within(navigation).queryByText('页面')).toBeNull()
     expect(within(navigation).queryByText('下载资料')).toBeNull()
     expect(screen.queryByRole('button', { name: '新增内容' })).toBeTruthy()

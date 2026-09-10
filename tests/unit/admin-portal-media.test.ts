@@ -278,6 +278,7 @@ describe('Portal media workspace', () => {
     )
 
     expect(screen.getByRole('heading', { name: '媒体素材' })).toBeTruthy()
+    expect(screen.queryByText('上传与编辑可用')).toBeNull()
     expect(screen.getByRole('link', { name: '网格视图' }).getAttribute('aria-current')).toBe('page')
     expect(screen.getByRole('link', { name: '列表视图' }).getAttribute('href')).toContain(
       'view=list',

@@ -87,12 +87,12 @@ test('knowledge workspace shows review/index truth and submits an idempotent ind
     await expect(page.getByRole('region', { name: '知识文档双状态列表' })).toBeVisible()
 
     const reviewedRow = page.locator('tr').filter({ hasText: reviewed.title })
-    await expect(reviewedRow).toContainText('审核通过')
-    await expect(reviewedRow).toContainText('等待索引')
+    await expect(reviewedRow).toContainText('通过')
+    await expect(reviewedRow).toContainText('待检索')
 
     const draftRow = page.locator('tr').filter({ hasText: draft.title })
-    await expect(draftRow).toContainText('待审核')
-    await expect(draftRow).toContainText('等待索引')
+    await expect(draftRow).toContainText('草稿')
+    await expect(draftRow).toContainText('待检索')
     await expect(page.getByRole('button', { name: '新增文档' })).toBeEnabled()
     await expect(page.locator('a[href^="/admin"]')).toHaveCount(0)
 
@@ -218,7 +218,7 @@ test('knowledge editor completes draft, review, AI debug, and delete in the Port
     if (created && reviewBody.result?.updatedAt) created.updatedAt = reviewBody.result.updatedAt
     await expect(page.getByText('审核状态已更新，可以提交索引。')).toBeVisible()
     await editor.getByRole('button', { name: '取消' }).click()
-    await expect(page.locator('tr').filter({ hasText: title })).toContainText('审核通过')
+    await expect(page.locator('tr').filter({ hasText: title })).toContainText('通过')
 
     await page.route('**/api/portal/knowledge/ai-debug', async (route) => {
       await route.fulfill({
