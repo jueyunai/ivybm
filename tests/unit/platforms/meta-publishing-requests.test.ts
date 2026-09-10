@@ -168,6 +168,10 @@ describe('Meta publishing request builders', () => {
   it.each([
     ['line separator', 'Facade\u2028caption'],
     ['paragraph separator', 'Facade\u2029caption'],
+    ['leading line separator', '\u2028Facade caption'],
+    ['trailing paragraph separator', 'Facade caption\u2029'],
+    ['leading tab', '\tFacade caption'],
+    ['trailing bare CR', 'Facade caption\r'],
   ])('rejects an Instagram caption containing a %s', (_label, caption) => {
     expect(() =>
       buildInstagramMediaRequest({
@@ -196,7 +200,7 @@ describe('Meta publishing request builders', () => {
   it('omits the Instagram caption key when the trimmed caption is empty', () => {
     const request = buildInstagramMediaRequest({
       ...validInstagramMediaInput(),
-      caption: ' \t  \n ',
+      caption: '   \n ',
     })
 
     expect(request.body).not.toHaveProperty('caption')

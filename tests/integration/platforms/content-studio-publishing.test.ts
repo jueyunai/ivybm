@@ -434,7 +434,7 @@ describe.sequential('Content Studio immediate platform publication', () => {
   })
 
   it('creates three independent immediate jobs and replays one click without duplicates', async () => {
-    const content = await createApprovedContent('happy path')
+    const content = await createApprovedContent('fac\u0327ade\r\nsecond line')
     const idempotencyKey = `portal-content-studio:publish-now:${randomUUID()}`
     const first = await invoke({ content, idempotencyKey })
     const replay = await invoke({ content, idempotencyKey })
@@ -470,6 +470,8 @@ describe.sequential('Content Studio immediate platform publication', () => {
     const instagramJob = jobs.docs.find((job) => job.platform === 'instagram')
     const requestSnapshot = instagramJob?.requestSnapshot as { text?: unknown } | undefined
     const providerCheckpoint = instagramJob?.providerCheckpoint as { caption?: unknown } | undefined
+    expect(content.body).toBe('Approved facade update fac\u0327ade\r\nsecond line')
+    expect(requestSnapshot?.text).toBe('Approved facade update façade\nsecond line')
     expect(providerCheckpoint?.caption).toBe(requestSnapshot?.text)
     expect(new Set(jobs.docs.map((job) => job.idempotencyKey)).size).toBe(3)
 

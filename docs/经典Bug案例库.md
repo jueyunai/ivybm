@@ -22,11 +22,11 @@
 
 ### Prevention Gate
 
-为业务正文提供字段专用校验器；明确允许 LF 和 CRLF，继续拒绝 NUL、裸 CR、C0/C1 非法控制字符，以及已知会在目标客户端显示为乱码的 U+2028/U+2029。至少用一份真实多段代表文案验证审计快照、持久化 checkpoint 与进入 transport 的字符串保持逐字一致。
+为业务正文提供字段专用校验器；在任何 trim/normalize 之前检查原始输入，明确允许 LF 和 CRLF，继续拒绝 NUL、Tab、裸 CR、C0/C1 非法控制字符，以及已知会在目标客户端显示为乱码的 U+2028/U+2029。至少用一份包含 CRLF 与 NFD 字符的真实多段代表文案验证审计快照、持久化 checkpoint 与进入 transport 的字符串保持逐字一致。
 
 ### Verification
 
-以包含 `façade`、`•`、`—`、空行和 LF/CRLF 的 caption 执行 Instagram scheduled stage，断言 transport 收到原字符串；对 NUL、Tab、裸 CR 和 C1 控制字符断言 provider I/O 为 0。
+以包含 `façade`、`•`、`—`、空行和 LF/CRLF 的 caption 执行 Instagram scheduled stage，断言 transport 收到原字符串；对 NUL、Tab、裸 CR、C1 控制字符及位于正文或首尾的 U+2028/U+2029 断言 provider I/O 为 0。Content Studio integration 使用 CRLF 与 NFD 正文，精确断言 request snapshot 完成 LF/NFC 规范化且 provider checkpoint 与其逐字一致。
 
 ### Reuse Prompt
 
@@ -61,7 +61,7 @@ fixture 和 contract 测试验证了阶段状态机、幂等和 provider fence�
 
 ### Fix
 
-新增 caption 专用校验，允许标准 LF/CRLF 及 Unicode 文本，继续拒绝其他 C0/C1 控制字符和裸 CR；回归测试断言 transport 收到的多段 caption 不发生替换。
+新增 caption 专用校验，在 trim 前拒绝 Tab、其他 C0/C1 控制字符、裸 CR 及 U+2028/U+2029，允许标准 LF/CRLF 与其余 Unicode 文本；回归测试断言 transport 收到的多段 caption 不发生替换。
 
 ### Prevention Checklist
 
@@ -72,7 +72,7 @@ fixture 和 contract 测试验证了阶段状态机、幂等和 provider fence�
 
 ### Regression Test
 
-`tests/unit/platforms/instagram-publishing-execution.test.ts`：LF/CRLF 多段 caption 保真，以及 NUL、Tab、裸 CR、C1 控制字符 fail closed。
+`tests/unit/platforms/instagram-publishing-execution.test.ts` 与 `tests/unit/platforms/meta-publishing-requests.test.ts`：LF/CRLF 多段 caption 保真，以及 NUL、Tab、裸 CR、C1、首尾/正文 U+2028/U+2029 fail closed。`tests/integration/platforms/content-studio-publishing.test.ts`：CRLF/NFD 正文的 request snapshot 与 provider checkpoint 一致。
 
 ### Related Workflow Gates
 

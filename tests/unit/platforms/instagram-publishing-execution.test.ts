@@ -95,6 +95,10 @@ describe('Instagram lease-fenced publishing execution', () => {
     ['C1 control', 'Facade\u0085caption'],
     ['line separator', 'Facade\u2028caption'],
     ['paragraph separator', 'Facade\u2029caption'],
+    ['leading line separator', '\u2028Facade caption'],
+    ['trailing paragraph separator', 'Facade caption\u2029'],
+    ['leading tab', '\tFacade caption'],
+    ['trailing bare CR', 'Facade caption\r'],
   ])('rejects a caption containing %s before provider I/O', async (_label, caption) => {
     const input = intent({ checkpoint: checkpoint({ caption }) })
     const createInstagramMedia = vi.fn()
