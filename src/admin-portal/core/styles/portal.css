@@ -7516,6 +7516,16 @@
     background: var(--portal-surface);
   }
 
+  .portal-operations__job {
+    scroll-margin-top: var(--portal-header-height, 64px);
+  }
+
+  .portal-operations__job:target,
+  .portal-operations__job.is-target {
+    border-color: var(--portal-accent);
+    box-shadow: 0 0 0 1px var(--portal-accent);
+  }
+
   .portal-platforms__account-actions,
   .portal-platforms__actions {
     display: flex;

@@ -168,8 +168,15 @@ describe('Portal operations', () => {
   })
 
   it('bounds operations query parameters', () => {
-    expect(parseSafeJobQuery({ page: '3', status: 'dead' })).toEqual({ page: 3, status: 'dead' })
+    expect(parseSafeJobQuery({ job: '17', page: '3', status: 'dead' })).toEqual({
+      job: 17,
+      page: 3,
+      status: 'dead',
+    })
     expect(parseSafeJobQuery({ page: '-1', status: 'outside' })).toEqual({ page: 1, status: 'all' })
+    for (const invalid of ['', '0', '-1', '1.5', 'not-a-number']) {
+      expect(parseSafeJobQuery({ job: invalid })).toEqual({ page: 1, status: 'all' })
+    }
   })
 
   it('loads Portal job summaries without selecting the stored payload', async () => {
@@ -197,6 +204,48 @@ describe('Portal operations', () => {
         select: expect.not.objectContaining({ payload: expect.anything() }),
       }),
     )
+  })
+
+  it('queries an authorized job by id and returns a normal empty result when it is missing', async () => {
+    const find = vi.fn().mockResolvedValue({ docs: [], page: 1, totalDocs: 0, totalPages: 1 })
+    const query = { job: 17, page: 1, status: 'all' } as const
+
+    await expect(
+      loadSafeJobPageData({
+        env: {
+          ADMIN_PORTAL_ENABLED: 'true',
+          ADMIN_PORTAL_OPERATIONS_ENABLED: 'true',
+        } as never,
+        payload: { find } as unknown as Payload,
+        query,
+        req: {} as PayloadRequest,
+        role: 'admin',
+      }),
+    ).resolves.toMatchObject({
+      state: 'available',
+      summary: { items: [], query },
+    })
+    expect(find).toHaveBeenCalledWith(
+      expect.objectContaining({ overrideAccess: false, where: { id: { equals: 17 } } }),
+    )
+  })
+
+  it('does not query jobs for a non-admin role, even with a target id', async () => {
+    const find = vi.fn()
+
+    await expect(
+      loadSafeJobPageData({
+        env: {
+          ADMIN_PORTAL_ENABLED: 'true',
+          ADMIN_PORTAL_OPERATIONS_ENABLED: 'true',
+        } as never,
+        payload: { find } as unknown as Payload,
+        query: { job: 17, page: 1, status: 'all' },
+        req: {} as PayloadRequest,
+        role: 'operator',
+      }),
+    ).resolves.toEqual({ state: 'forbidden', summary: null })
+    expect(find).not.toHaveBeenCalled()
   })
 
   it('executes only the registered knowledge compensation with the authenticated admin', async () => {

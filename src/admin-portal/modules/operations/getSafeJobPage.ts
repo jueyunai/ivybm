@@ -22,6 +22,7 @@ export const SAFE_JOB_STATUS_FILTERS = [
 export type SafeJobStatusFilter = (typeof SAFE_JOB_STATUS_FILTERS)[number]
 
 export interface SafeJobQuery {
+  job?: number
   page: number
   status: SafeJobStatusFilter
 }
@@ -66,8 +67,13 @@ export const parseSafeJobQuery = (
 ): SafeJobQuery => {
   const requestedPage = Number.parseInt(first(input.page) ?? '1', 10)
   const status = first(input.status)
+  const requestedJob = first(input.job)?.trim()
+  const parsedJob =
+    requestedJob && /^[1-9]\d*$/.test(requestedJob) ? Number(requestedJob) : undefined
+  const job = Number.isSafeInteger(parsedJob) ? parsedJob : undefined
 
   return {
+    ...(job === undefined ? {} : { job }),
     page: Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
     status: SAFE_JOB_STATUS_FILTERS.includes(status as SafeJobStatusFilter)
       ? (status as SafeJobStatusFilter)
@@ -146,7 +152,10 @@ export const loadSafeJobPageData = async ({
   if (role !== 'admin') return { state: 'forbidden', summary: null }
 
   try {
-    const where: Where = query.status === 'all' ? {} : { status: { equals: query.status } }
+    const where: Where = {
+      ...(query.job === undefined ? {} : { id: { equals: query.job } }),
+      ...(query.status === 'all' ? {} : { status: { equals: query.status } }),
+    }
     const result = await payload.find({
       collection: 'jobs',
       depth: 0,

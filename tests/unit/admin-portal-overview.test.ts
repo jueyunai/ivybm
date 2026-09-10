@@ -12,7 +12,7 @@ import {
   PortalOverviewReadError,
 } from '@/admin-portal/modules/overview/getPortalOverview'
 import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
-import { OverviewPage } from '@/admin-portal/modules/overview/OverviewPage'
+import { OverviewPage, priorityHref } from '@/admin-portal/modules/overview/OverviewPage'
 
 afterEach(cleanup)
 
@@ -22,6 +22,15 @@ const requestFor = (role: 'admin' | 'operator' | 'sales'): PayloadRequest =>
   }) as unknown as PayloadRequest
 
 describe('Portal overview read model', () => {
+  it('builds exact deep links for every priority kind', () => {
+    expect(priorityHref('active-conversation', 10)).toBe('/dashboard/conversations?conversation=10')
+    expect(priorityHref('handoff-request', 'CNV-0010')).toBe(
+      '/dashboard/conversations?conversation=CNV-0010',
+    )
+    expect(priorityHref('lead', 20)).toBe('/dashboard/leads?lead=20')
+    expect(priorityHref('job', 30)).toBe('/dashboard/operations?job=30#portal-job-30')
+  })
+
   it('renders a blocked state instead of overview data when the module is disabled', () => {
     render(
       React.createElement(
@@ -80,6 +89,10 @@ describe('Portal overview read model', () => {
     expect(screen.getByText('社媒内容发布')).toBeTruthy()
     expect(screen.getByText('后台任务')).toBeTruthy()
     expect(screen.queryByText('SOME.INTERNAL.EVENT')).toBeNull()
+    expect(document.querySelectorAll('.portal-overview__priority-list > li > a')).toHaveLength(2)
+    expect(screen.getByRole('link', { name: /社媒内容发布/ }).getAttribute('href')).toBe(
+      '/dashboard/operations?job=30#portal-job-30',
+    )
   })
 
   it('normalizes reproducible queue filters without placing UI links in the read model', () => {
@@ -167,9 +180,7 @@ describe('Portal overview read model', () => {
       'handoff-request',
       'active-conversation',
     ])
-    expect(summary.dependencies).toEqual([
-      { id: 'feishu-failures', status: 'dependency-gated' },
-    ])
+    expect(summary.dependencies).toEqual([{ id: 'feishu-failures', status: 'dependency-gated' }])
 
     const serialized = JSON.stringify(summary)
     expect(serialized).not.toMatch(/\/admin/i)
