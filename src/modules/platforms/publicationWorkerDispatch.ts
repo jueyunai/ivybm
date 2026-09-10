@@ -20,6 +20,14 @@ import {
 } from './meta/instagramPublishingExecution'
 import type { MetaPublishingTransport } from './meta/publishingOutbound'
 import {
+  executeMultiImagePublishingStage,
+  type MultiImageAssetReader,
+  type MultiImagePublishingAuthorityPort,
+  type MultiImagePublishingIntent,
+  type MultiImagePublishingLeaseFence,
+  type MultiImagePublishingTransition,
+} from './multiImagePublishingExecution'
+import {
   executeLeaseFencedPublication,
   type PlatformPublicationAuthorityPort,
   type PlatformPublicationExecutionResult,
@@ -33,6 +41,9 @@ export const PUBLICATION_WORKER_ROUTES = [
   'instagram-image-staged',
   'linkedin-text-single',
   'linkedin-image-staged',
+  'facebook-photos-multi',
+  'instagram-carousel-staged',
+  'linkedin-multi-image-staged',
 ] as const
 
 export type PublicationWorkerRoute = (typeof PUBLICATION_WORKER_ROUTES)[number]
@@ -75,6 +86,7 @@ export type PublicationWorkerItem =
   | InstagramImagePublicationWorkItem
   | LinkedInImagePublicationWorkItem
   | LinkedInTextPublicationWorkItem
+  | MultiImagePublicationWorkItem
 
 export type PublicationWorkerDispatchResult =
   | {
@@ -83,14 +95,26 @@ export type PublicationWorkerDispatchResult =
     }
   | { result: InstagramPublishingTransition; route: 'instagram-image-staged' }
   | { result: LinkedInImagePublishingTransition; route: 'linkedin-image-staged' }
+  | { result: MultiImagePublishingTransition; route: 'facebook-photos-multi' | 'instagram-carousel-staged' | 'linkedin-multi-image-staged' }
+
+export type MultiImagePublicationWorkItem = {
+  authority: MultiImagePublishingAuthorityPort
+  intent: MultiImagePublishingIntent
+  leaseFence: MultiImagePublishingLeaseFence
+  readAssetBytes?: MultiImageAssetReader
+  route: 'facebook-photos-multi' | 'instagram-carousel-staged' | 'linkedin-multi-image-staged'
+  transport: MetaPublishingTransport | LinkedInPublishingTransport
+}
 
 export type PublicationWorkerExecutors = {
+  executeMultiImage: typeof executeMultiImagePublishingStage
   executeInstagram: typeof executeInstagramPublishingStage
   executeLinkedInImage: typeof executeLinkedInImagePublishingStage
   executeSingle: typeof executeLeaseFencedPublication
 }
 
 const defaultExecutors: PublicationWorkerExecutors = {
+  executeMultiImage: executeMultiImagePublishingStage,
   executeInstagram: executeInstagramPublishingStage,
   executeLinkedInImage: executeLinkedInImagePublishingStage,
   executeSingle: executeLeaseFencedPublication,
@@ -173,6 +197,27 @@ const assertLinkedInImageRoute = (item: LinkedInImagePublicationWorkItem): void 
   }
 }
 
+const assertMultiImageRoute = (item: MultiImagePublicationWorkItem): void => {
+  if (
+    !item.intent ||
+    !item.leaseFence ||
+    item.intent.route !== item.route ||
+    item.intent.platform !== (item.route === 'facebook-photos-multi' ? 'facebook' : item.route === 'instagram-carousel-staged' ? 'instagram' : 'linkedin')
+  ) {
+    invalid('Multi-image publication worker intent is invalid')
+  }
+  const requiresBytes =
+    item.route === 'linkedin-multi-image-staged' &&
+    item.intent.checkpoint.items.some((item) => 'uploadTicket' in item && Boolean(item.uploadTicket))
+  if (requiresBytes !== (typeof item.readAssetBytes === 'function')) {
+    invalid(
+      requiresBytes
+        ? 'LinkedIn multi-image upload stage requires an asset reader'
+        : 'LinkedIn multi-image worker accepts an asset reader only during the upload stage',
+    )
+  }
+}
+
 /**
  * Strict worker boundary for the four MVP publishing shapes. It selects an
  * existing lease-fenced executor only after the persisted route matches the
@@ -187,6 +232,7 @@ export const dispatchPublicationWorkItem = async (
   }
   if (
     !executors ||
+    typeof executors.executeMultiImage !== 'function' ||
     typeof executors.executeInstagram !== 'function' ||
     typeof executors.executeLinkedInImage !== 'function' ||
     typeof executors.executeSingle !== 'function'
@@ -219,15 +265,36 @@ export const dispatchPublicationWorkItem = async (
     }
   }
 
-  assertLinkedInImageRoute(item)
-  return {
-    result: await executors.executeLinkedInImage({
-      authority: item.authority,
-      intent: item.intent,
-      leaseFence: item.leaseFence,
-      ...(item.readAssetBytes ? { readAssetBytes: item.readAssetBytes } : {}),
-      transport: item.transport,
-    }),
-    route: item.route,
+  if (
+    item.route === 'facebook-photos-multi' ||
+    item.route === 'instagram-carousel-staged' ||
+    item.route === 'linkedin-multi-image-staged'
+  ) {
+    assertMultiImageRoute(item)
+    return {
+      result: await executors.executeMultiImage({
+        authority: item.authority,
+        intent: item.intent,
+        leaseFence: item.leaseFence,
+        ...(item.readAssetBytes ? { readAssetBytes: item.readAssetBytes } : {}),
+        transport: item.transport,
+      }),
+      route: item.route,
+    }
   }
+
+  if (item.route === 'linkedin-image-staged') {
+    assertLinkedInImageRoute(item)
+    return {
+      result: await executors.executeLinkedInImage({
+        authority: item.authority,
+        intent: item.intent,
+        leaseFence: item.leaseFence,
+        ...(item.readAssetBytes ? { readAssetBytes: item.readAssetBytes } : {}),
+        transport: item.transport,
+      }),
+      route: item.route,
+    }
+  }
+  return invalid('Publication worker route is invalid')
 }

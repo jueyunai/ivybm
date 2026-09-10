@@ -762,7 +762,7 @@ function ContentDetail({
   )
 }
 
-const MAX_UPLOAD_FILE_COUNT = 1
+const MAX_UPLOAD_FILE_COUNT = 3
 const MAX_UPLOAD_FILE_SIZE = 8 * 1024 * 1024
 const UPLOAD_IMAGE_MIME_TYPES = new Set(['image/avif', 'image/jpeg', 'image/png', 'image/webp'])
 const UPLOAD_IMAGE_EXTENSION = /\.(?:avif|jpe?g|png|webp)$/i
@@ -921,8 +921,14 @@ function DraftEditor({
 
   const toggleAsset = (value: string) => {
     setForm((current) => {
-      const nextAssets = current.assets.includes(value) ? [] : [value]
-      return { ...current, assets: nextAssets, contentType: 'post' }
+      const nextAssets = current.assets.includes(value)
+        ? current.assets.filter((id) => id !== value)
+        : [...current.assets, value]
+      return {
+        ...current,
+        assets: nextAssets,
+        contentType: nextAssets.length >= 2 ? 'carousel' : 'post',
+      }
     })
   }
 
@@ -931,8 +937,11 @@ function DraftEditor({
     initialAssets: options.assets,
     onAssetsUploaded: (newIds) => {
       setForm((current) => {
-        const nextAssets = newIds.slice(0, 1)
-        return { ...current, assets: nextAssets, contentType: 'post' }
+        return {
+          ...current,
+          assets: newIds,
+          contentType: newIds.length >= 2 ? 'carousel' : 'post',
+        }
       })
     },
   })
@@ -1206,8 +1215,11 @@ function GenerateDraftEditor({
     initialAssets: options.assets,
     onAssetsUploaded: (newIds) => {
       setForm((current) => {
-        const nextAssets = newIds.slice(0, 1)
-        return { ...current, assets: nextAssets, contentType: 'post' }
+        return {
+          ...current,
+          assets: newIds,
+          contentType: newIds.length >= 2 ? 'carousel' : 'post',
+        }
       })
     },
   })
@@ -1217,11 +1229,13 @@ function GenerateDraftEditor({
   const toggle = (key: 'assets' | 'knowledgeSources', value: string) => {
     setForm((current) => {
       if (key === 'assets') {
-        const nextAssets = current.assets.includes(value) ? [] : [value]
+        const nextAssets = current.assets.includes(value)
+          ? current.assets.filter((id) => id !== value)
+          : [...current.assets, value]
         return {
           ...current,
           assets: nextAssets,
-          contentType: 'post',
+          contentType: nextAssets.length >= 2 ? 'carousel' : 'post',
         }
       }
       const nextValues = current[key].includes(value)
@@ -2158,6 +2172,7 @@ function MultiOptions({
             onChange={handleFileChange}
             ref={fileInputRef}
             style={{ display: 'none' }}
+            multiple
             type="file"
           />
           <div className="portal-content-studio__asset-upload-inner">

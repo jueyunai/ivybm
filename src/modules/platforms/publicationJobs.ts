@@ -23,6 +23,13 @@ import type {
   InstagramPublishingIntent,
 } from './meta/instagramPublishingExecution'
 import type { MetaPublishingTransport } from './meta/publishingOutbound'
+import type {
+  FacebookPhotosMultiPublishingCheckpoint,
+  InstagramCarouselPublishingCheckpoint,
+  LinkedInMultiImagePublishingCheckpoint,
+  MultiImagePublishingIntent,
+} from './multiImagePublishingExecution'
+import { PayloadMultiImagePublishingAuthority } from './payloadPublishingAuthority'
 import {
   PayloadInstagramPublishingAuthority,
   PayloadLinkedInImagePublishingAuthority,
@@ -115,7 +122,10 @@ const route = (value: unknown): PublicationWorkerRoute => {
     value !== 'facebook-photo-single' &&
     value !== 'instagram-image-staged' &&
     value !== 'linkedin-text-single' &&
-    value !== 'linkedin-image-staged'
+    value !== 'linkedin-image-staged' &&
+    value !== 'facebook-photos-multi' &&
+    value !== 'instagram-carousel-staged' &&
+    value !== 'linkedin-multi-image-staged'
   ) {
     throw new PlatformPublicationJobError('Publication job executionRoute is invalid')
   }
@@ -168,7 +178,10 @@ type PublicationQueueState = Pick<
 const continuationNeeded = (job: PublicationQueueState): boolean =>
   (isDirectRoute(job) && (job.status === 'accepted' || job.status === 'publishing')) ||
   ((job.executionRoute === 'instagram-image-staged' ||
-    job.executionRoute === 'linkedin-image-staged') &&
+    job.executionRoute === 'linkedin-image-staged' ||
+    job.executionRoute === 'facebook-photos-multi' ||
+    job.executionRoute === 'instagram-carousel-staged' ||
+    job.executionRoute === 'linkedin-multi-image-staged') &&
     job.status === 'publishing')
 
 export type PublicationQueueObligation =
@@ -347,7 +360,10 @@ const scheduleContinuation = async (
         ).stage
       : record(job.providerCheckpoint, 'providerCheckpoint').stage
   const nextRunAt =
-    stage === 'container_created' || stage === 'post_created' || stage === 'direct-status'
+    stage === 'container_created' ||
+      stage === 'post_created' ||
+      stage === 'publication_created' ||
+      stage === 'direct-status'
       ? new Date(now().getTime() + 2_000)
       : undefined
   const instant = now()
@@ -530,6 +546,43 @@ const dispatchPersistedPublication = async ({
       leaseFence: lease,
       route: selectedRoute,
       transport: runtime.metaTransport,
+    })
+  }
+
+  if (
+    selectedRoute === 'facebook-photos-multi' ||
+    selectedRoute === 'instagram-carousel-staged' ||
+    selectedRoute === 'linkedin-multi-image-staged'
+  ) {
+    const intent: MultiImagePublishingIntent = {
+      checkpoint: record(
+        job.providerCheckpoint,
+        'providerCheckpoint',
+      ) as FacebookPhotosMultiPublishingCheckpoint &
+        InstagramCarouselPublishingCheckpoint &
+        LinkedInMultiImagePublishingCheckpoint,
+      expectedRevision: job.executionRevision,
+      idempotencyKey: job.idempotencyKey,
+      platform: job.platform,
+      platformAccountId,
+      publishJobId: job.id,
+      route: selectedRoute,
+    }
+    return dispatchPublicationWorkItem({
+      authority: new PayloadMultiImagePublishingAuthority({ payload }),
+      intent,
+      leaseFence: lease,
+      ...(selectedRoute === 'linkedin-multi-image-staged' &&
+      intent.checkpoint.items.some(
+        (item) => 'uploadTicket' in item && Boolean(item.uploadTicket),
+      )
+        ? { readAssetBytes: runtime.readLinkedInAssetBytes }
+        : {}),
+      route: selectedRoute,
+      transport:
+        selectedRoute === 'linkedin-multi-image-staged'
+          ? runtime.linkedInTransport
+          : runtime.metaTransport,
     })
   }
   const state = linkedInImageState(job.providerCheckpoint)

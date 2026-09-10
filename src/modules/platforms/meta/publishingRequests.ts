@@ -37,10 +37,32 @@ export type FacebookPagePhotoRequestInput = {
   url: string
 }
 
+export type FacebookUnpublishedPhotoRequestInput = {
+  pageId: string
+  url: string
+}
+
+export type FacebookPageFeedPostRequestInput = {
+  caption?: string
+  pageId: string
+  photoIds: readonly string[]
+}
+
 export type InstagramMediaRequestInput = {
   caption?: string
   igId: string
   imageUrl: string
+}
+
+export type InstagramCarouselItemRequestInput = {
+  igId: string
+  imageUrl: string
+}
+
+export type InstagramCarouselContainerRequestInput = {
+  caption?: string
+  children: readonly string[]
+  igId: string
 }
 
 export type InstagramMediaPublishRequestInput = {
@@ -62,6 +84,14 @@ export type InstagramPublishedMediaRequestInput = {
 
 export type FacebookPagePhotoResponse =
   { photoId: string; postId?: string } | { photoId?: never; postId: string }
+
+export type FacebookUnpublishedPhotoResponse = {
+  photoId: string
+}
+
+export type FacebookPageFeedPostResponse = {
+  postId: string
+}
 
 export type InstagramMediaResponse = {
   creationId: string
@@ -144,6 +174,9 @@ const normalizeCaption = (value: unknown, maxLength: number): string | undefined
   return trimmed
 }
 
+export const normalizeFacebookCaption = (value: unknown): string | undefined =>
+  normalizeCaption(value, MAX_FACEBOOK_CAPTION_LENGTH)
+
 export const normalizeInstagramCaption = (value: unknown): string | undefined => {
   if (
     typeof value === 'string' &&
@@ -201,6 +234,39 @@ export const buildFacebookPagePhotoRequest = (
   }
 }
 
+export const buildFacebookUnpublishedPhotoRequest = (
+  input: FacebookUnpublishedPhotoRequestInput,
+): MetaPublishingHttpRequest => ({
+  body: {
+    published: false,
+    temporary: true,
+    url: requirePublishingUrl(input?.url, 'publishing URL'),
+  },
+  method: 'POST',
+  path: `/${requireMetaIdentifier(input?.pageId, 'identifier')}/photos`,
+})
+
+export const buildFacebookPageFeedPostRequest = (
+  input: FacebookPageFeedPostRequestInput,
+): MetaPublishingHttpRequest => {
+  const pageId = requireMetaIdentifier(input?.pageId, 'identifier')
+  const photoIds = Array.isArray(input?.photoIds) ? [...input.photoIds] : []
+  if (photoIds.length < 2 || photoIds.length > 3) {
+    throw new Error('Facebook multi-photo post requires two or three persisted photo IDs')
+  }
+  const body: Record<string, unknown> = {
+    attached_media: photoIds.map((photoId) => ({ media_fbid: photoId })),
+  }
+  const caption = normalizeCaption(input?.caption, MAX_FACEBOOK_CAPTION_LENGTH)
+  if (caption !== undefined) body.message = caption
+
+  return {
+    body,
+    method: 'POST',
+    path: `/${pageId}/feed`,
+  }
+}
+
 /**
  * Build a credential-free Instagram Professional media container creation
  * request. The image URL is validated but never fetched.
@@ -211,6 +277,39 @@ export const buildInstagramMediaRequest = (
   const igId = requireMetaIdentifier(input?.igId, 'identifier')
   const imageUrl = requirePublishingUrl(input?.imageUrl, 'publishing URL')
   const body: Record<string, unknown> = { image_url: imageUrl }
+  const caption = normalizeInstagramCaption(input?.caption)
+  if (caption !== undefined) body.caption = caption
+
+  return {
+    body,
+    method: 'POST',
+    path: `/${igId}/media`,
+  }
+}
+
+export const buildInstagramCarouselItemRequest = (
+  input: InstagramCarouselItemRequestInput,
+): MetaPublishingHttpRequest => ({
+  body: {
+    image_url: requirePublishingUrl(input?.imageUrl, 'carousel item URL'),
+    is_carousel_item: true,
+  },
+  method: 'POST',
+  path: `/${requireMetaIdentifier(input?.igId, 'identifier')}/media`,
+})
+
+export const buildInstagramCarouselContainerRequest = (
+  input: InstagramCarouselContainerRequestInput,
+): MetaPublishingHttpRequest => {
+  const igId = requireMetaIdentifier(input?.igId, 'identifier')
+  const children = Array.isArray(input?.children) ? [...input.children] : []
+  if (children.length < 2 || children.length > 3) {
+    throw new Error('Instagram carousel requires two or three child container IDs')
+  }
+  const body: Record<string, unknown> = {
+    children: children.join(','),
+    media_type: 'CAROUSEL',
+  }
   const caption = normalizeInstagramCaption(input?.caption)
   if (caption !== undefined) body.caption = caption
 
@@ -339,6 +438,24 @@ export const parseFacebookPagePhotoResponse = (value: unknown): FacebookPagePhot
   }
   throw new ProviderPublicationResultUnknownError('Meta Facebook page photo result is unknown')
 }
+
+export const parseFacebookUnpublishedPhotoResponse = (
+  value: unknown,
+): FacebookUnpublishedPhotoResponse => {
+  const photoId = requireMetaIdentifier(
+    (value as { id?: unknown } | undefined)?.id,
+    'unpublished photo',
+  )
+  return { photoId }
+}
+
+export const parseFacebookPageFeedPostResponse = (
+  value: unknown,
+): FacebookPageFeedPostResponse => ({
+  postId: requireFacebookPostIdentifier(
+    (value as { id?: unknown } | undefined)?.id,
+  ),
+})
 
 /**
  * Parse an Instagram /media container creation response. The Graph endpoint
