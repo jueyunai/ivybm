@@ -3,7 +3,6 @@
 import {
   IconAlertTriangle,
   IconArrowRight,
-  IconChevronRight,
   IconHeadset,
   IconMessageCircle,
   IconShieldCheck,
@@ -81,38 +80,19 @@ function PriorityItem({ item, locale }: { item: PortalOverviewPriorityItem; loca
       ? messages.statuses[item.status as keyof typeof messages.statuses]
       : item.status
 
-  const priorityHref = (targetKind: PortalOverviewPriorityItem['kind'], targetId: number | string) => {
-    switch (targetKind) {
-      case 'active-conversation':
-      case 'handoff-request':
-        return `/dashboard/conversations?id=${targetId}`
-      case 'lead':
-        return `/dashboard/leads?id=${targetId}`
-      case 'job':
-        return `/dashboard/operations?id=${targetId}`
-      default:
-        return '/dashboard'
-    }
-  }
-
   return (
-    <li>
-      <Link className="portal-overview__priority-item" href={priorityHref(item.kind, item.id)}>
-        <StatusBadge label={kind.label} tone={priorityTone[item.kind]} />
-        <div className="portal-overview__priority-copy">
-          <strong>{formatReference(item.kind, item.reference, locale)}</strong>
-          <span>{kind.description}</span>
-        </div>
-        <div className="portal-overview__priority-meta">
-          <strong>{status}</strong>
-          <time dateTime={item.updatedAt}>
-            {messages.updatedAt} {formatTimestamp(item.updatedAt, locale)}
-          </time>
-        </div>
-        <span aria-hidden="true" className="portal-overview__priority-arrow">
-          <IconChevronRight size={16} stroke={1.8} />
-        </span>
-      </Link>
+    <li className="portal-overview__priority-item">
+      <StatusBadge label={kind.label} tone={priorityTone[item.kind]} />
+      <div className="portal-overview__priority-copy">
+        <strong>{formatReference(item.kind, item.reference, locale)}</strong>
+        <span>{kind.description}</span>
+      </div>
+      <div className="portal-overview__priority-meta">
+        <strong>{status}</strong>
+        <time dateTime={item.updatedAt}>
+          {messages.updatedAt} {formatTimestamp(item.updatedAt, locale)}
+        </time>
+      </div>
     </li>
   )
 }
@@ -254,7 +234,35 @@ export function OverviewPage({ pageState = 'available', query, readError = false
               )}
             </Surface>
 
+            <div className="portal-overview__aside-stack">
+              <Surface as="aside" className="portal-overview__dependencies">
+                <div className="portal-overview__section-heading">
+                  <div>
+                    <h3>{messages.dependencyTitle}</h3>
+                    <p>{messages.dependencyDescription}</p>
+                  </div>
+                  <StatusBadge label={messages.dependencyStatus} tone="warning" />
+                </div>
+                <ul>
+                  {summary.dependencies.map((dependency) => {
+                    const copy = messages.dependencyItems[dependency.id]
+                    return (
+                      <li key={dependency.id}>
+                        <strong>{copy.label}</strong>
+                        <span>{copy.description}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </Surface>
+
+              <Surface as="aside" className="portal-overview__role-notice" variant="subtle">
+                <IconShieldCheck aria-hidden="true" size={22} stroke={1.8} />
+                <h3>{messages.roleNoticeTitle}</h3>
+                <p>{messages.roleNotice[user.role]}</p>
+              </Surface>
             </div>
+          </div>
         </>
       )}
     </main>

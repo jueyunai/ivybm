@@ -10,7 +10,7 @@ export interface SearchInputProps extends InputHTMLAttributes<HTMLInputElement> 
 export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
   ({ className, disabled, wrapperClassName, type = 'search', ...props }, ref) => {
     return (
-      <div className={cn('portal-search', wrapperClassName, disabled && 'is-disabled')}>
+      <div className={cn('portal-search portal-field__control', wrapperClassName, disabled && 'is-disabled')}>
         <IconSearch aria-hidden="true" className="portal-search__icon" size={15} stroke={1.8} />
         <input
           className={cn('portal-search__input', className)}
