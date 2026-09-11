@@ -208,7 +208,7 @@ export const AiModelProfiles: CollectionConfig = {
         {
           name: 'timeoutMs',
           type: 'number',
-          defaultValue: 30_000,
+          defaultValue: 90_000,
           max: 120_000,
           min: 1_000,
           required: true,
@@ -219,6 +219,7 @@ export const AiModelProfiles: CollectionConfig = {
           admin: {
             condition: (data) => data.capability === 'text',
           },
+          defaultValue: 8_192,
           max: 128_000,
           min: 1,
         },

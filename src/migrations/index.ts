@@ -33,6 +33,7 @@ import * as migration_20260830_110000_task13_meta_webhook_identity_replay from '
 import * as migration_20260831_092856_v17_cms_structures from './20260831_092856_v17_cms_structures'
 import * as migration_20260831_100000_posts_content_type from './20260831_100000_posts_content_type'
 import * as migration_20260901_120000_task14_ai_auto_reply_control from './20260901_120000_task14_ai_auto_reply_control'
+import * as migration_20260910_235252_task17_ai_model_profile_defaults from './20260910_235252_task17_ai_model_profile_defaults'
 
 export const migrations = [
   {
@@ -209,5 +210,10 @@ export const migrations = [
     up: migration_20260901_120000_task14_ai_auto_reply_control.up,
     down: migration_20260901_120000_task14_ai_auto_reply_control.down,
     name: '20260901_120000_task14_ai_auto_reply_control',
+  },
+  {
+    up: migration_20260910_235252_task17_ai_model_profile_defaults.up,
+    down: migration_20260910_235252_task17_ai_model_profile_defaults.down,
+    name: '20260910_235252_task17_ai_model_profile_defaults',
   },
 ]
