@@ -18,8 +18,25 @@ const requireEnvironment = (name: string): string => {
   return value
 }
 
+const normalizeSeedUsername = (value: string): string => {
+  const localPart = value.trim().toLowerCase().split('@', 1)[0] ?? ''
+  const normalized = localPart
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '')
+    .slice(0, 64)
+
+  if (normalized.length < 3) {
+    throw new Error('SEED_ADMIN_USERNAME or SEED_ADMIN_EMAIL must produce a username with at least 3 characters')
+  }
+
+  return normalized
+}
+
 const seed = async (): Promise<void> => {
-  const username = requireEnvironment('SEED_ADMIN_USERNAME').trim().toLowerCase()
+  const configuredUsername = process.env.SEED_ADMIN_USERNAME ?? process.env.SEED_ADMIN_EMAIL
+  const username = normalizeSeedUsername(
+    configuredUsername ? configuredUsername : requireEnvironment('SEED_ADMIN_USERNAME'),
+  )
   const password = requireEnvironment('SEED_ADMIN_PASSWORD')
 
   if (password.length < 12) {

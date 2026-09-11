@@ -15,6 +15,7 @@ import {
 import {
   assertE2EEnvironmentDoesNotExposeProviderCredentials,
   createE2EEnvironment,
+  normalizeLegacyAdminUsername,
 } from './environment.mjs'
 import { fullMutationSuiteNames, resolveE2ESuitePlan } from './suite-manifest.mjs'
 
@@ -116,7 +117,11 @@ const requiresFacebookAdminCredentials = plan.specs.some(
     spec.endsWith('/admin-portal-facebook-publishing.spec.ts'),
 )
 if (requiresFacebookAdminCredentials) {
-  const adminUsername = (process.env.E2E_ADMIN_USERNAME ?? process.env.SEED_ADMIN_USERNAME)?.trim()
+  const adminUsername = (
+    process.env.E2E_ADMIN_USERNAME ??
+    process.env.SEED_ADMIN_USERNAME ??
+    normalizeLegacyAdminUsername(process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL)
+  )?.trim()
   const adminPassword = (process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD)?.trim()
   if (!adminUsername || !adminPassword) {
     throw new Error(
