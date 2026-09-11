@@ -197,7 +197,7 @@ function TeamMemberDialog({
         <Dialog.Overlay className="portal-modal-backdrop" />
         <Dialog.Content
           aria-describedby={description ? descriptionId : undefined}
-          className="portal-shell portal-surface portal-modal"
+          className="portal-shell portal-surface portal-modal portal-modal--team"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
             returnFocusRef.current?.focus()
@@ -276,62 +276,81 @@ function PermissionMatrix({
   }
 
   return (
-    <fieldset className="portal-team-members__permissions">
-      <legend>{messages.permissionMatrix}</legend>
-      <div className="portal-team-members__permission-actions">
-        <Button
-          onClick={() => {
-            onChange(
-              Object.fromEntries(
-                PERMISSION_MODULE_IDS.map((moduleId) => [moduleId, { edit: true, view: true }]),
-              ) as PortalUserPermissions,
-            )
-          }}
-          size="compact"
-          type="button"
-          variant="ghost"
-        >
-          {messages.permissionAll}
-        </Button>
-        <Button
-          onClick={() => {
-            onChange(
-              Object.fromEntries(
-                PERMISSION_MODULE_IDS.map((moduleId) => [moduleId, { edit: false, view: false }]),
-              ) as PortalUserPermissions,
-            )
-          }}
-          size="compact"
-          type="button"
-          variant="ghost"
-        >
-          {messages.permissionNone}
-        </Button>
+    <div className="portal-team-members__permissions-section">
+      <div className="portal-team-members__perm-header">
+        <div className="portal-team-members__perm-title-wrap">
+          <span className="portal-field__label">
+            <span aria-hidden="true" className="portal-required" />
+            {messages.permissionMatrix}
+          </span>
+          <span className="portal-team-members__perm-required-badge">必填</span>
+        </div>
+        <div className="portal-team-members__perm-quick-actions">
+          <Button
+            onClick={() => {
+              onChange(
+                Object.fromEntries(
+                  PERMISSION_MODULE_IDS.map((moduleId) => [moduleId, { edit: true, view: true }]),
+                ) as PortalUserPermissions,
+              )
+            }}
+            size="compact"
+            type="button"
+            variant="ghost"
+          >
+            {messages.permissionAll}
+          </Button>
+          <Button
+            onClick={() => {
+              onChange(
+                Object.fromEntries(
+                  PERMISSION_MODULE_IDS.map((moduleId) => [moduleId, { edit: false, view: false }]),
+                ) as PortalUserPermissions,
+              )
+            }}
+            size="compact"
+            type="button"
+            variant="ghost"
+          >
+            {messages.permissionNone}
+          </Button>
+        </div>
       </div>
-      <div className="portal-team-members__permission-grid">
-        {PERMISSION_MODULE_IDS.map((moduleId) => (
-          <article key={moduleId} className="portal-team-members__permission-card">
-            <strong>{moduleMessages[moduleId]}</strong>
-            <label>
-              <input
-                checked={value[moduleId].view}
-                onChange={(event) => updatePermission(moduleId, 'view', event.target.checked)}
-                type="checkbox"
-              />
-              {messages.permissionView}
-            </label>
-            <label>
-              <input
-                checked={value[moduleId].edit}
-                onChange={(event) => updatePermission(moduleId, 'edit', event.target.checked)}
-                type="checkbox"
-              />
-              {messages.permissionEdit}
-            </label>
-          </article>
-        ))}
+      <div className="portal-team-members__perm-grid">
+        {PERMISSION_MODULE_IDS.map((moduleId) => {
+          const perm = value[moduleId]
+          const isActive = perm.view || perm.edit
+          return (
+            <article
+              key={moduleId}
+              className={`portal-team-members__perm-card ${isActive ? 'is-active' : ''}`}
+            >
+              <div className="portal-team-members__perm-card-header">
+                <strong>{moduleMessages[moduleId]}</strong>
+              </div>
+              <div className="portal-team-members__perm-card-actions">
+                <label className="portal-team-members__check-label">
+                  <input
+                    checked={perm.view}
+                    onChange={(event) => updatePermission(moduleId, 'view', event.target.checked)}
+                    type="checkbox"
+                  />
+                  {messages.permissionView}
+                </label>
+                <label className="portal-team-members__check-label">
+                  <input
+                    checked={perm.edit}
+                    onChange={(event) => updatePermission(moduleId, 'edit', event.target.checked)}
+                    type="checkbox"
+                  />
+                  {messages.permissionEdit}
+                </label>
+              </div>
+            </article>
+          )
+        })}
       </div>
-    </fieldset>
+    </div>
   )
 }
 
@@ -1016,8 +1035,14 @@ export function TeamMembersPanel({
             </span>
           </label>
 
-          <label className="portal-field">
-            <span className="portal-field__label">{messages.memberRole}</span>
+          <div className="portal-team-members__template-field">
+            <div className="portal-team-members__template-label-row">
+              <span className="portal-field__label" style={{ marginBottom: 0 }}>
+                <span>{messages.memberRole}</span>
+                <span className="portal-team-members__template-tag">可选权限模板</span>
+              </span>
+              <span className="portal-team-members__template-tip">选择可快速套用预设权限</span>
+            </div>
             <UiSelect
               ariaLabel={messages.memberRole}
               onChange={(value) => handleRoleChange(value as PortalTeamMemberRole)}
@@ -1026,23 +1051,9 @@ export function TeamMembersPanel({
                 { label: messages.roleOperatorOption, value: 'operator' },
                 { label: messages.roleAdminOption, value: 'admin' },
               ]}
-              required
+              required={false}
               value={formRole}
             />
-          </label>
-
-          <div className="portal-team-members__permission-actions">
-            {(['sales', 'operator', 'admin'] as const).map((role) => (
-              <Button
-                key={role}
-                onClick={() => handleRoleChange(role)}
-                size="compact"
-                type="button"
-                variant="ghost"
-              >
-                {roleLabel(role)}
-              </Button>
-            ))}
           </div>
 
           <PermissionMatrix
@@ -1132,20 +1143,26 @@ export function TeamMembersPanel({
             </span>
           </label>
 
-          <label className="portal-field">
-            <span className="portal-field__label">{messages.memberRole}</span>
+          <div className="portal-team-members__template-field">
+            <div className="portal-team-members__template-label-row">
+              <span className="portal-field__label" style={{ marginBottom: 0 }}>
+                <span>{messages.memberRole}</span>
+                <span className="portal-team-members__template-tag">可选权限模板</span>
+              </span>
+              <span className="portal-team-members__template-tip">选择可快速套用预设权限</span>
+            </div>
             <UiSelect
               ariaLabel={messages.memberRole}
-              onChange={(value) => setFormRole(value as PortalTeamMemberRole)}
+              onChange={(value) => handleRoleChange(value as PortalTeamMemberRole)}
               options={[
                 { label: messages.roleSalesOption, value: 'sales' },
                 { label: messages.roleOperatorOption, value: 'operator' },
                 { label: messages.roleAdminOption, value: 'admin' },
               ]}
-              required
+              required={false}
               value={formRole}
             />
-          </label>
+          </div>
 
           <PermissionMatrix
             locale={locale}

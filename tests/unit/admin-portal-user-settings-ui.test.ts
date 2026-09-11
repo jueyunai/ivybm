@@ -172,9 +172,7 @@ describe('Portal TeamMembersPanel UI', () => {
     trigger.focus()
     fireEvent.click(trigger)
     expect(screen.getByRole('heading', { name: '新增团队成员' })).toBeTruthy()
-    expect(screen.getByRole('combobox', { name: '分配角色' }).getAttribute('aria-required')).toBe(
-      'true',
-    )
+    expect(screen.getByRole('combobox', { name: '分配角色' }).getAttribute('aria-required')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
     expect(screen.queryByRole('heading', { name: '新增团队成员' })).toBeNull()
