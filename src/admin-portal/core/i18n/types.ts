@@ -168,6 +168,7 @@ export interface PortalSettingsMessages {
   permissionEditable: string
   permissionMatrix: string
   permissionNone: string
+  permissionRequired: string
   permissionTemplate: string
   permissionView: string
   permissionViewOnly: string
@@ -186,6 +187,8 @@ export interface PortalSettingsMessages {
   roleAdminOption: string
   roleOperatorOption: string
   roleSalesOption: string
+  roleTemplateTag: string
+  roleTemplateTip: string
   saveMember: string
   saveSiteDetails: string
   savingMember: string

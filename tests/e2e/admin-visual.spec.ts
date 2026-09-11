@@ -39,7 +39,7 @@ test('operations dashboard and owned navigation remain available after an Admin 
   await page.setViewportSize({ height: 900, width: 1440 })
   await page.goto('/admin/login')
 
-  const usernameInput = page.locator('input[type="text"][autocomplete="username"]')
+  const usernameInput = page.locator('input[type="text"][name="username"], input[name="username"]')
   const passwordInput = page.locator('input[type="password"]')
   const submitButton = page.locator('button[type="submit"]')
 

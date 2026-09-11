@@ -283,7 +283,7 @@ function PermissionMatrix({
             <span aria-hidden="true" className="portal-required" />
             {messages.permissionMatrix}
           </span>
-          <span className="portal-team-members__perm-required-badge">必填</span>
+          <span className="portal-team-members__perm-required-badge">{messages.permissionRequired}</span>
         </div>
         <div className="portal-team-members__perm-quick-actions">
           <Button
@@ -1039,9 +1039,9 @@ export function TeamMembersPanel({
             <div className="portal-team-members__template-label-row">
               <span className="portal-field__label" style={{ marginBottom: 0 }}>
                 <span>{messages.memberRole}</span>
-                <span className="portal-team-members__template-tag">可选权限模板</span>
+                <span className="portal-team-members__template-tag">{messages.roleTemplateTag}</span>
               </span>
-              <span className="portal-team-members__template-tip">选择可快速套用预设权限</span>
+              <span className="portal-team-members__template-tip">{messages.roleTemplateTip}</span>
             </div>
             <UiSelect
               ariaLabel={messages.memberRole}
@@ -1147,9 +1147,9 @@ export function TeamMembersPanel({
             <div className="portal-team-members__template-label-row">
               <span className="portal-field__label" style={{ marginBottom: 0 }}>
                 <span>{messages.memberRole}</span>
-                <span className="portal-team-members__template-tag">可选权限模板</span>
+                <span className="portal-team-members__template-tag">{messages.roleTemplateTag}</span>
               </span>
-              <span className="portal-team-members__template-tip">选择可快速套用预设权限</span>
+              <span className="portal-team-members__template-tip">{messages.roleTemplateTip}</span>
             </div>
             <UiSelect
               ariaLabel={messages.memberRole}

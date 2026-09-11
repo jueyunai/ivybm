@@ -75,7 +75,6 @@ test('admin manages team member lifecycle and personal password change in Portal
   await expect(addModal.getByRole('heading', { name: '新增团队成员' })).toBeVisible()
   await selectUiOption(addModal.getByLabel('分配角色'), 'sales')
   await addModal.getByLabel('登录用户名').fill(memberUsername)
-  await addModal.getByLabel('分配角色').selectOption('sales')
   await addModal.getByLabel('初始密码', { exact: true }).fill(initialPassword)
   await addModal.getByRole('button', { name: '保存' }).click()
 
