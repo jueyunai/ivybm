@@ -33,9 +33,11 @@ describe('AI model profile timeout and output defaults', () => {
     expect('defaultValue' in timeout ? timeout.defaultValue : undefined).toBe(90_000)
   })
 
-  it('defaults maxOutputTokens so long engineering copy is not truncated', () => {
+  it('does not carry a field-level maxOutputTokens default that would leak onto non-text profiles', () => {
     const maxOutputTokens = parametersField('maxOutputTokens')
-    expect('defaultValue' in maxOutputTokens ? maxOutputTokens.defaultValue : undefined).toBe(8_192)
+    // The default is applied per capability in beforeChange; a field defaultValue
+    // here would be written onto embedding and image profiles and then rejected.
+    expect('defaultValue' in maxOutputTokens ? maxOutputTokens.defaultValue : undefined).toBeUndefined()
   })
 })
 

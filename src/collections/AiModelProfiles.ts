@@ -6,6 +6,9 @@ import { AI_REASONING_EFFORTS } from '../modules/ai/gateway'
 
 export const AI_MODEL_CAPABILITIES = ['text', 'embedding', 'image'] as const
 
+// Long engineering copy can exceed a tighter ceiling and truncate without error.
+export const DEFAULT_TEXT_MAX_OUTPUT_TOKENS = 8_192
+
 const relationshipID = (value: unknown): number | string | undefined => {
   if (typeof value === 'number' || typeof value === 'string') return value
   if (value && typeof value === 'object' && 'id' in value) {
@@ -63,6 +66,14 @@ const profileBeforeChange: CollectionBeforeChangeHook = async ({ data, originalD
     candidate.parameters && typeof candidate.parameters === 'object' ? candidate.parameters : {}
   const parameters = { ...originalParameters, ...submittedParameters } as Record<string, unknown>
   if (Object.keys(parameters).length === 0) return candidate
+
+  // Only text models may carry text-generation settings, so this default is applied
+  // per capability rather than as a field defaultValue: Payload would write a field
+  // default onto embedding and image profiles too, which the checks below reject.
+  if (capability === 'text' && parameters.maxOutputTokens === undefined) {
+    parameters.maxOutputTokens = DEFAULT_TEXT_MAX_OUTPUT_TOKENS
+    candidate.parameters = parameters
+  }
 
   if (!isIntegerInRange(parameters.timeoutMs, 1_000, 120_000)) {
     throw validationError(
@@ -219,7 +230,6 @@ export const AiModelProfiles: CollectionConfig = {
           admin: {
             condition: (data) => data.capability === 'text',
           },
-          defaultValue: 8_192,
           max: 128_000,
           min: 1,
         },
