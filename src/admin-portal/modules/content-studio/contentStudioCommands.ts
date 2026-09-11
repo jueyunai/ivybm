@@ -1,3 +1,4 @@
+// TODO: TikTok social copy prompt engineering is deferred to future video/script tasks.
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -830,6 +831,56 @@ const findExistingGeneratedDraft = async ({
   return asGeneratedContentResult(document)
 }
 
+const CONTENT_STUDIO_PERSONA = [
+  'You write as the technical voice of Ivy Building Materials, a facade-metal fabricator with 15 years of design-and-build experience (established 2011) that does deepened design plus in-house manufacturing for export projects.',
+  'Your readers are facade contractors, facade consultants, and architects. They judge a supplier on tolerance control, joint and node design, and safe on-time delivery, not on lifestyle marketing.',
+].join(' ')
+
+const CONTENT_STUDIO_TONE_RULES = [
+  'Tone: calm, factual, precise. Use process nouns, dimensions, and fabrication constraints instead of adjectives.',
+  'Banned hype vocabulary, never use: groundbreaking, jaw-dropping, luxurious masterpiece, redefining luxury, stunning visuals, elevate, seamless blend, unlock, revolutionize, game-changer, iconic, visionary.',
+  'Emoji: at most one or two across the entire body, used only as a lead-in marker. Never decorate bullet items with emoji; prefer plain text bullets.',
+  'Write from the manufacturer viewpoint: what is verified on the shop floor to remove risk from the job site (DfMA).',
+].join('\n')
+
+const CONTENT_STUDIO_MOCKUP_CHECKS = [
+  'geometry matches design intent',
+  'joints and reveals stay visually consistent',
+  'framing and internal support mate with the facade system',
+  'manufacturing tolerances stay workable for site installation',
+  'adjacent bespoke panels align flush and tight',
+  'the site lifting and installation sequence is practical and economical',
+  'mass production keeps repeatable consistency',
+].join('; ')
+
+const contentStudioPlatformGuidance = (platform: ContentStudioPlatform): string =>
+  platform === 'linkedin'
+    ? [
+        'LinkedIn angle, engineer to engineer: state a concrete installation or tolerance problem, explain the shop-floor mock-up and tolerance correction that resolves it, land on the DfMA value, then invite a drawing review.',
+        'Favour hashtags such as #FacadeEngineering #DryFitMockup #FacadeContractor #ArchitecturalDetail.',
+      ].join('\n')
+    : [
+        'Facebook / Instagram angle, visual craft: lead with a shop-floor detail (dry-fit assembly, CNC punching, PVDF coating sheen), state the panel specification and forming technique, then a short CTA.',
+        'Favour hashtags such as #AluminiumFacade #DoubleCurvedAluminium #MetalCeiling #FoshanManufacturer.',
+      ].join('\n')
+
+const CONTENT_STUDIO_HASHTAG_RULE =
+  'Hashtags: exactly 8, built as 3 product or process terms + 2 quality-control terms + 2 buyer-audience terms + 1 origin term. Avoid generic lifestyle tags.'
+
+const CONTENT_STUDIO_CTA =
+  'Close with a technical CTA in this spirit, adapted to the brief: "Got complex curved or perforated geometry on your drawings? Send your DWG/BIM model to our technical team for a pre-fabrication feasibility review and mock-up consultation." Never write "Contact us for more details" or "DM for price".'
+
+const CONTENT_STUDIO_IMAGE_TEXTURE =
+  'Photorealistic architectural photography, natural daylight, real aluminum panel seams and structural joints, authentic PVDF matte architectural coating texture, no sci-fi floating elements, no plastic CGI rendering, 8k resolution.'
+
+// Lengthy engineering copy needs headroom; keep aligned with the AiModelProfiles default.
+const CONTENT_STUDIO_MAX_OUTPUT_TOKENS = 8_192
+
+const withImageTextureFilter = (prompt: string): string =>
+  prompt.includes(CONTENT_STUDIO_IMAGE_TEXTURE)
+    ? prompt
+    : `${prompt.trim()} ${CONTENT_STUDIO_IMAGE_TEXTURE}`.trim()
+
 export async function generateContentStudioDraft({
   input: rawInput,
   onProviderDispatch,
@@ -882,11 +933,27 @@ export async function generateContentStudioDraft({
   const autoImageShape = shouldAutoGenerateImage
     ? 'Return JSON only with this exact shape: {"title":"...","body":"...","imagePrompt":"...detailed realistic architectural rendering prompt in English...","sourceReferences":[]}.'
     : 'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[]}.'
+  const imagePromptGuidance = shouldAutoGenerateImage
+    ? `The imagePrompt must follow the user's brief for subject and scene without locking it to a fixed setting. Append this physical-realism filter verbatim to the end of imagePrompt: "${CONTENT_STUDIO_IMAGE_TEXTURE}"`
+    : ''
+
+  const craftGuidance = [
+    CONTENT_STUDIO_PERSONA,
+    CONTENT_STUDIO_TONE_RULES,
+    contentStudioPlatformGuidance(input.platform),
+    `Where a mock-up or tolerance topic is relevant, draw on these facade dry-fit quality checks: ${CONTENT_STUDIO_MOCKUP_CHECKS}.`,
+    CONTENT_STUDIO_HASHTAG_RULE,
+    CONTENT_STUDIO_CTA,
+  ]
+    .filter(Boolean)
+    .join('\n')
 
   const instructions = sources.length
     ? [
         `Create a ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
         visionGuidance,
+        craftGuidance,
+        imagePromptGuidance,
         'Use only the approved sources supplied in the request. Do not invent facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
         'Return JSON only with this exact shape: {"title":"...","body":"...","sourceReferences":[{"claim":"...","source":"..."}]}.',
         `Each source value must be exactly one of: ${sources.map(({ label }) => JSON.stringify(label)).join(', ')}.`,
@@ -896,6 +963,8 @@ export async function generateContentStudioDraft({
     : [
         `Create a general ${input.contentType} draft for ${input.platform} in ${input.contentLocale}.`,
         visionGuidance,
+        craftGuidance,
+        imagePromptGuidance,
         'No knowledge source was selected. Keep the copy general: do not invent product facts or make price, delivery, MOQ, certification, payment, warranty, or legal commitments.',
         autoImageShape,
       ]
@@ -919,7 +988,7 @@ export async function generateContentStudioDraft({
         ? `Content brief:\n${briefText}\n\nApproved sources:\n${sourceContext}`
         : `Content brief:\n${briefText}`,
       instructions,
-      maxOutputTokens: 1_800,
+      maxOutputTokens: CONTENT_STUDIO_MAX_OUTPUT_TOKENS,
       onDispatch: onProviderDispatch,
       temperature: 0.2,
     })
@@ -943,10 +1012,11 @@ export async function generateContentStudioDraft({
   let newlyGeneratedMediaId: number | null = null
   if (shouldAutoGenerateImage) {
     const rawRecord = asRecord(parsedJSON)
-    const promptForImage =
+    const promptForImage = withImageTextureFilter(
       (typeof rawRecord.imagePrompt === 'string' && rawRecord.imagePrompt.trim()) ||
-      input.brief ||
-      draft.title
+        input.brief ||
+        draft.title,
+    )
     try {
       const imageResult = await generateContentStudioImage({
         input: {

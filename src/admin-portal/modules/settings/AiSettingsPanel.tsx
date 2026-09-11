@@ -29,6 +29,14 @@ import type {
 type AiResource = 'profiles' | 'providers' | 'routes'
 type Feedback = { message: string; tone: 'error' | 'success' } | null
 
+// Keep these aligned with the AiModelProfiles collection defaults.
+const DEFAULT_TEXT_TIMEOUT_MS = 30_000
+const DEFAULT_IMAGE_TIMEOUT_MS = 120_000
+const DEFAULT_MAX_OUTPUT_TOKENS = 8_192
+
+const defaultTimeoutMs = (capability: PortalAiCapability): number =>
+  capability === 'image' ? DEFAULT_IMAGE_TIMEOUT_MS : DEFAULT_TEXT_TIMEOUT_MS
+
 const toOptionalNumber = (value: string): number | null => {
   if (!value.trim()) return null
   const parsed = Number(value)
@@ -612,7 +620,7 @@ function ProfileForm({
   const [dimensions, setDimensions] = useState(String(profile?.parameters.dimensions ?? 1536))
   const [enabled, setEnabled] = useState(profile?.enabled ?? true)
   const [maxOutputTokens, setMaxOutputTokens] = useState(
-    String(profile?.parameters.maxOutputTokens ?? 2048),
+    String(profile?.parameters.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS),
   )
   const [model, setModel] = useState(profile?.model ?? '')
   const [name, setName] = useState(profile?.name ?? '')
@@ -625,7 +633,7 @@ function ProfileForm({
   )
   const [temperature, setTemperature] = useState(String(profile?.parameters.temperature ?? ''))
   const [timeoutMs, setTimeoutMs] = useState(
-    String(profile?.parameters.timeoutMs ?? (capability === 'image' ? 120000 : 30000)),
+    String(profile?.parameters.timeoutMs ?? defaultTimeoutMs(capability)),
   )
   const [topP, setTopP] = useState(String(profile?.parameters.topP ?? ''))
   const submit = async (event: FormEvent) => {
@@ -686,7 +694,7 @@ function ProfileForm({
             onChange={(val: string) => {
               const nextCapability = val as PortalAiCapability
               setCapability(nextCapability)
-              if (!profile) setTimeoutMs(String(nextCapability === "image" ? 120000 : 30000))
+              if (!profile) setTimeoutMs(String(defaultTimeoutMs(nextCapability)))
             }}
             options={[
               { label: messages.capabilities.text, value: "text" },

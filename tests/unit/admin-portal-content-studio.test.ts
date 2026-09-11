@@ -206,10 +206,10 @@ describe('Portal Content Studio', () => {
     expect(generateBtn.hasAttribute('disabled')).toBe(true)
 
     // Clicking intent capsule populates the brief
-    const shipmentCapsule = screen.getByRole('button', { name: /工厂出货/ })
+    const shipmentCapsule = screen.getByRole('button', { name: /出口海运装箱防护/ })
     fireEvent.click(shipmentCapsule)
     const brief = screen.getByLabelText('生成需求') as HTMLTextAreaElement
-    expect(brief.value).toContain('集装箱装柜出海')
+    expect(brief.value).toContain('集装箱装运')
     expect(generateBtn.hasAttribute('disabled')).toBe(false)
     expect(generateBtn.textContent).toContain('2 个平台')
 

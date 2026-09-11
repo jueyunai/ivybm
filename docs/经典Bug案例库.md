@@ -610,3 +610,40 @@ Process cause: 既有断开 / 重连验收只验证凭据、状态、Base 和 ma
 ### Fix
 
 编制详细的恢复规格契约（`docs/plans/2026-09-10-portal-ui回退功能完整恢复与体验加固方案.md`），基于当前坚固的后端与安全底座，点对点提取并恢复 `4700da6` 的全部 UI 表现层成果，正向更新测试断言并提供 CSS 变量保底。
+
+## ARCH-002 同步长耗时 AI 串行调用与固定命令租约时效冲突风险
+
+- Category: architecture-risk, idempotency-lease-overflow
+- Pattern: P-SYNC-AI-COMMAND-LEASE-OVERFLOW
+- Date: 2026-09-11
+- Area: Portal Content Studio AI Generation / Command Receipts
+- Environment: Next.js Node.js Route + OpenAI-compatible Gateway + PostgreSQL
+- Severity: P2 (潜在时序风险 / 架构演进前置)
+
+### Symptom
+
+在 AI 内容工作台勾选「自动生成配图」生成社媒内容时：
+1. 若文本模型出现长尾排队波动（如第三方代理耗时 40s~50s），在出厂默认配置（30s）下会被系统主动掐断抛出超时异常；
+2. 若简单粗暴将全局模型超时默认值放大（如提升至 90s），当串行执行“文本大模型（最多 90s）+ 生图大模型（最多 60s/120s）”时，极端总耗时将达到 150s~210s，直接击穿 `portalCommandReceipts.ts` 中固定 120 秒（`COMMAND_LEASE_MS = 120_000`）的命令防重锁租约；
+3. 击穿后导致命令在未收敛时被误判过期，用户重试或网络重发会发生同 Key Reclaim 重复派发外部扣费调用，引发数据不一致与重复生成。
+
+### Context
+
+PR #130 改造 AI 内容工作台提示词并支持工业级专业文案生成。在测试生图路径时发现了文本超时问题；初步尝试通过修改全局 Collection 默认超时来掩盖该问题，被架构审查（xuemusi）识别为破坏了全站命令防重租约的数学边界。
+
+### Root Cause
+
+1. **同步长连接反模式**：HTTP 接口设计为阻塞式同步等待，将两个不可控的慢速外部模型调用（写文 + 画图）串联在同一个 HTTP 请求生命周期中；
+2. **命令租约静态固定**：`COMMAND_LEASE_MS` 硬编码为 120 秒且缺乏阶段性心跳续期（Heartbeat Lease Renewal）机制；
+3. **出厂默认安全与外部波动摩擦**：为了保证最坏情况下（30s 文本 + 60s 生图 = 90s）不击穿 120s 租约，出厂默认值必须卡紧在 30s。
+
+### Prevention Gate / Current Mitigation
+
+1. **出厂默认严守数学红线**：`AiModelProfiles` 默认保持 `timeoutMs: 30_000`，确保开箱即用状态下无论如何不会撑破 120 秒租约；
+2. **慢速模型后台单独放宽**：若接入的外部模型排队严重，由管理员在后台按需将该具体模型的超时调整至 60s~90s；
+3. **文本输出额度隔离**：长文案通过调用层 `maxOutputTokens: 8192` 保证充足生成空间，绝不使用全局列默认值避免污染向量与图像模型。
+
+### Long-term Architectural Solution (后续版本演进路线)
+
+1. **生成链路异步化解耦**：将内容工作台“文本+生图”拆解为异步工作流（调用立即返回 Task ID -> 后台 Worker 异步消费 -> 前端轮询状态或通过 SSE/WebSocket 接收草稿就绪通知）；
+2. **阶段租约动态续期**：若保留同步调用，必须在文本生成完毕、进入生图阶段前显式对 `portal_command_receipts` 执行租约延期（Extend Lease）。

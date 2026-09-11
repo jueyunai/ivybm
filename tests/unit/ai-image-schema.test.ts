@@ -19,6 +19,28 @@ const optionValues = (collection: CollectionConfig, name: string): string[] => {
   return field.options.map((option) => (typeof option === 'string' ? option : String(option.value)))
 }
 
+describe('AI model profile timeout and output defaults', () => {
+  const parametersField = (name: string) => {
+    const group = namedField(AiModelProfiles, 'parameters')
+    if (!('fields' in group)) throw new Error('parameters group has no fields')
+    const field = group.fields.find((candidate) => 'name' in candidate && candidate.name === name)
+    if (!field || !('name' in field)) throw new Error(`Missing parameters.${name}`)
+    return field
+  }
+
+  it('defaults the text timeout to 30s to stay within the 120s command lease budget', () => {
+    const timeout = parametersField('timeoutMs')
+    expect('defaultValue' in timeout ? timeout.defaultValue : undefined).toBe(30_000)
+  })
+
+  it('does not carry a field-level maxOutputTokens default that would leak onto non-text profiles', () => {
+    const maxOutputTokens = parametersField('maxOutputTokens')
+    // The default is applied per capability in beforeChange; a field defaultValue
+    // here would be written onto embedding and image profiles and then rejected.
+    expect('defaultValue' in maxOutputTokens ? maxOutputTokens.defaultValue : undefined).toBeUndefined()
+  })
+})
+
 describe('AI image control-plane schema', () => {
   it('registers image capability, route operation and usage telemetry operation', () => {
     expect(optionValues(AiModelProfiles, 'capability')).toContain('image')
