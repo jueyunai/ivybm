@@ -28,9 +28,9 @@ describe('AI model profile timeout and output defaults', () => {
     return field
   }
 
-  it('defaults the text timeout high enough for long-tail provider latency', () => {
+  it('defaults the text timeout to 30s to stay within the 120s command lease budget', () => {
     const timeout = parametersField('timeoutMs')
-    expect('defaultValue' in timeout ? timeout.defaultValue : undefined).toBe(90_000)
+    expect('defaultValue' in timeout ? timeout.defaultValue : undefined).toBe(30_000)
   })
 
   it('does not carry a field-level maxOutputTokens default that would leak onto non-text profiles', () => {

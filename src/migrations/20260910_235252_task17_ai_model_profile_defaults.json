@@ -846,13 +846,14 @@
           "type": "numeric",
           "primaryKey": false,
           "notNull": true,
-          "default": 30000
+          "default": 90000
         },
         "parameters_max_output_tokens": {
           "name": "parameters_max_output_tokens",
           "type": "numeric",
           "primaryKey": false,
-          "notNull": false
+          "notNull": false,
+          "default": 8192
         },
         "parameters_reasoning_enabled": {
           "name": "parameters_reasoning_enabled",

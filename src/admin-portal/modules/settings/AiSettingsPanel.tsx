@@ -30,7 +30,7 @@ type AiResource = 'profiles' | 'providers' | 'routes'
 type Feedback = { message: string; tone: 'error' | 'success' } | null
 
 // Keep these aligned with the AiModelProfiles collection defaults.
-const DEFAULT_TEXT_TIMEOUT_MS = 90_000
+const DEFAULT_TEXT_TIMEOUT_MS = 30_000
 const DEFAULT_IMAGE_TIMEOUT_MS = 120_000
 const DEFAULT_MAX_OUTPUT_TOKENS = 8_192
 

@@ -219,7 +219,7 @@ export const AiModelProfiles: CollectionConfig = {
         {
           name: 'timeoutMs',
           type: 'number',
-          defaultValue: 90_000,
+          defaultValue: 30_000,
           max: 120_000,
           min: 1_000,
           required: true,
