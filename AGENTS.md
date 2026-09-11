@@ -48,12 +48,13 @@ bash scripts/install-git-hooks.sh
 
 - 永久工作区只有 `ivybm`，且必须保持在 `main`、状态干净并与 `origin/main` 同步。功能、修复、文档、PoC 和 PR 审查都在独立 worktree 中进行。
 - 开发目录与分支用途一一对应：`ivybm-task<编号>-<简述>` 对应 `feat/task-<编号>-<简述>`，`ivybm-fix-<简述>` 对应 `fix/<简述>`，`ivybm-docs-<简述>` 对应 `docs/<简述>`；本地分支与远程 upstream 必须同名，禁止把相似名称的远程分支误设为 upstream。
-- 协作者 PR 使用临时 `ivybm-review-pr-<编号>`，默认 detached HEAD，只读审查，不在协作者分支上提交或 push。需要修复时由作者更新原 PR，或经明确授权后另建短分支。
+- 协作者 PR 使用临时 `ivybm-review-pr-<编号>`，默认 detached HEAD，只读审查，不在协作者分支上提交或 push。需要修复时由作者更新原 PR，或经明确授权后另建短分支。作者推送新提交后**复用同一审查 worktree** 更新到最新 head，不删除重建；审查 worktree 保留到 PR 合并或关闭后再清理。
 - PoC 使用临时 `ivybm-poc-<简述>` 和 `poc/<简述>`；PoC 不直接合并，确认采用后从最新 `origin/main` 建正式 Task 分支，只迁移选定改动。
 - 每人本地同时最多保留 1 个主工作区、2 个开发类 worktree（PoC / hotfix 计入）和 2 个审查 worktree。不为 `develop`、integration、release、production 或每条协作者远程分支建立长期 worktree。
 - 每个并行 worktree 必须隔离应用端口、Compose project name 和开发 / 测试数据库；`.env`、`node_modules`、`.next`、media 和其他可变运行时目录不得跨 worktree 共享。无法隔离时，同一时间只运行一个本地栈。
 - PR 合并或审查结束后先确认 worktree 干净；开发分支还要确认提交已进入 `origin/main`，再用 `git worktree remove` 清理。禁止用文件系统强删 Git worktree，禁止自动删除 dirty 或未合并分支。
-- 每周执行 `git fetch --prune origin`、`git worktree list` 和 `git worktree prune --dry-run` 审计。远程分支由 PR 作者或仓库负责人在合并后删除。
+- `refs/review/**` 全部是短生命周期 ref（PR head 与试合并快照），对应 PR 合并或关闭后必须连同审查 worktree 一起清理；需要保留合并结论时写进 PR 评论，不用 ref 归档。只有 `refs/archive/**` 属于谨慎保留的归档。
+- 每周执行 `git fetch --prune origin`、`git worktree list`、`git for-each-ref refs/review/` 和 `git worktree prune --dry-run` 审计。远程分支由 PR 作者或仓库负责人在合并后删除。
 - 完整目录、创建、PR 审查、环境隔离和清理命令见 `CONTRIBUTING.md` 的“本地 worktree 规范”。
 
 ## 提交与 PR
@@ -90,8 +91,10 @@ bash scripts/install-git-hooks.sh
   2. **严禁滥用 skip / xfail**：禁止为掩盖失败或规避门禁而给用例打 `skip`、`todo`、`xfail` 或直接注释；
   3. **严禁特判可见用例 / 硬编码输出**：禁止在实现中针对测试输入做硬编码特判（背答案）；
   4. **严禁篡改测试框架与全局环境**：禁止修改全局 setup、fixture 或异常捕获钩子使错误被吞没；
-  5. **严禁私自放宽门禁**：禁止调低覆盖率阈值、添加 lint 豁免规则或关闭必过检查。
+  5. **严禁私自放宽门禁**：禁止调低覆盖率阈值、添加 lint 豁免规则或关闭必过检查；
+  6. **严禁以回退业务/UI代码迁就测试（反向削足适履，最隐蔽倒退）**：当需求、UI 规范与交互契约发生升级时，测试脚本与断言必须**同进退同步升级**。严禁为了让 CI 快速变绿而通过 `git checkout origin/main --` 或大段删除新特性代码来“迎合旧测试认识的模样”。凡测试因选择器、文案 Label、组件形态变更而报错，必须正向适配测试用例，绝不允许以牺牲生产代码为代价换取全绿门禁。
 - **完整性差异（Integrity Diff）**：PR 评审时，实现改动的 diff 与测试/门禁改动的 diff 必须**分开审视**；对测试与门禁配置的任何放宽都必须受到严格盘问并提供合理解释。
+- **负向 diff 人工确认**：出现大段代码删除或降级（经验阈值：超过 50 行非预期负向 diff，含 `git checkout origin/main -- <path>` 式整文件还原）时，必须触发人工确认：由另一名开发者核实其属于正向重构、死代码清理还是测试同步升级，并记录理由。该阈值只用于触发复核，不直接判定违规；无法说明合理性的负向 diff 按 `blocking` 处理，与“过度设计护栏”的三类阻断并列。
 
 ### 结构化 Review 协议与过度设计护栏
 

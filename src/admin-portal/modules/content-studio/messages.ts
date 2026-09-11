@@ -1,3 +1,4 @@
+// TODO: TikTok social copy prompt engineering is deferred to future video/script tasks.
 import type { PortalLocale } from '@/admin-portal/core/i18n/types'
 
 export const contentStudioMessages = {

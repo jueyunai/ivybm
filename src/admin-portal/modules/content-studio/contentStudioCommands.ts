@@ -1,3 +1,4 @@
+// TODO: TikTok social copy prompt engineering is deferred to future video/script tasks.
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
