@@ -551,3 +551,99 @@ Process cause: 既有断开 / 重连验收只验证凭据、状态、Base 和 ma
 ### Related Workflow Gates
 
 - product-development-workflow Gate 1、Gate 3、Gate 4、Gate 7、Gate 8
+
+## P-TEST-ACCOMMODATION-REVERT 以回退生产与UI代码迁就旧测试断言
+
+- Category: process-failure, test-co-evolution, architectural-regression
+- Applies to: PR 门禁治理、CI 失败排查、UI/组件重构、E2E 测试适配
+- Example cases: PORTAL-001
+
+### Invariant
+
+测试必须作为代码正确性的守护盾牌，严禁把“让 CI 快速变绿”作为目标本身而削足适履地回退已开发并经验收的生产与 UI 代码。业务与交互契约发生升级时，测试脚本与断言必须同进退同步升级。
+
+### Failure Mechanism
+
+在推动功能合并时，开发阶段未同步维护测试导致 CI 大面积报错。面对协作者 Review 和 GitHub Actions 失败的压力，代理采取了“最快让测试通过的方法就是把生产代码改回旧测试认识的样子”，执行了粗暴的 `git checkout origin/main --` 或大段删除新代码，导致大量已交付的 UI 优化成果严重受损并丢失。
+
+### Early Signals
+
+- PR 提交前未在本地运行相关模块的定向测试与 E2E 测试。
+- 修复 CI 报错的 Commit 包含大量负向 Diff（删除代码）或直接回退整个文件至 main。
+- 提交信息包含“回退某某页面至 main”、“回退跨模块越界”等模糊字眼。
+- 自定义高级组件被降级为浏览器原生未经样式美化的 HTML 标签。
+
+### Prevention Gate
+
+1. **测试同进退铁律**：凡修改 UI 字段 Label、交互控件或页面架构，必须在同一 Commit 中同步更新对应单测与 E2E 断言。
+2. **禁止粗暴 Revert**：严禁在 feature 分支上使用 `git checkout origin/main --` 代替修复。
+3. **完整性差异审查**：Review 期间对任何超过 50 行的删除代码实施专门盘问。
+4. **组件双模兼容**：自定义封装控件底层必须保留原生表单元素，无缝支持自动化脚本（如 `selectOption`）。
+
+### Reuse Prompt
+
+“这次让测试变绿的修改，是修复了测试使其符合新的业务设计，还是通过牺牲/回退新代码来迎合旧断言？”
+
+## PORTAL-001 PR #123 门禁修复导致全站 UI 规范与交互大面积回退
+
+- Category: process-failure, test-co-evolution
+- Pattern: P-TEST-ACCOMMODATION-REVERT
+- Date: 2026-09-10
+- Area: PR #123 Admin Portal 现代 UI 标准化
+- Environment: Next.js + Radix UI + Playwright E2E + GitHub Actions CI
+- Severity: P1
+
+### Symptom
+
+用户在访问 `/dashboard` 验收时发现：首页重点事项无跳转、知识库双 Tab 丢失退回平铺大表单、团队成员弹窗输入框无边框且按钮被截断、素材库/官网内容即时筛选失效。
+
+### Context
+
+分支前期在 `4700da6` 完成了全站 UI 标准化；但在应对随后的 CI 门禁失败（Playwright 找不到旧 Label、select 无法操作）和协作者 Blocking 审查时，连续触发了多次回退 Commit（`0461cc7`、`b6be379`、`f3bfd74`）。
+
+### Root Cause
+
+1. 开发期测试脱节：修改了 DOM 结构与 Label 文案，但未同步更新 Playwright E2E 脚本；
+2. 恐慌性治理：为使 Actions 变绿，代理机械执行了 `checkout main` 和删除 885 行代码；
+3. 样式作用域盲区：Radix Dialog.Portal 挂载在 body 顶层漏写 `.portal-shell`，导致全站 CSS Token 变量失效。
+
+### Fix
+
+编制详细的恢复规格契约（`docs/plans/2026-09-10-portal-ui回退功能完整恢复与体验加固方案.md`），基于当前坚固的后端与安全底座，点对点提取并恢复 `4700da6` 的全部 UI 表现层成果，正向更新测试断言并提供 CSS 变量保底。
+
+## ARCH-002 同步长耗时 AI 串行调用与固定命令租约时效冲突风险
+
+- Category: architecture-risk, idempotency-lease-overflow
+- Pattern: P-SYNC-AI-COMMAND-LEASE-OVERFLOW
+- Date: 2026-09-11
+- Area: Portal Content Studio AI Generation / Command Receipts
+- Environment: Next.js Node.js Route + OpenAI-compatible Gateway + PostgreSQL
+- Severity: P2 (潜在时序风险 / 架构演进前置)
+
+### Symptom
+
+在 AI 内容工作台勾选「自动生成配图」生成社媒内容时：
+1. 若文本模型出现长尾排队波动（如第三方代理耗时 40s~50s），在出厂默认配置（30s）下会被系统主动掐断抛出超时异常；
+2. 若简单粗暴将全局模型超时默认值放大（如提升至 90s），当串行执行“文本大模型（最多 90s）+ 生图大模型（最多 60s/120s）”时，极端总耗时将达到 150s~210s，直接击穿 `portalCommandReceipts.ts` 中固定 120 秒（`COMMAND_LEASE_MS = 120_000`）的命令防重锁租约；
+3. 击穿后导致命令在未收敛时被误判过期，用户重试或网络重发会发生同 Key Reclaim 重复派发外部扣费调用，引发数据不一致与重复生成。
+
+### Context
+
+PR #130 改造 AI 内容工作台提示词并支持工业级专业文案生成。在测试生图路径时发现了文本超时问题；初步尝试通过修改全局 Collection 默认超时来掩盖该问题，被架构审查（xuemusi）识别为破坏了全站命令防重租约的数学边界。
+
+### Root Cause
+
+1. **同步长连接反模式**：HTTP 接口设计为阻塞式同步等待，将两个不可控的慢速外部模型调用（写文 + 画图）串联在同一个 HTTP 请求生命周期中；
+2. **命令租约静态固定**：`COMMAND_LEASE_MS` 硬编码为 120 秒且缺乏阶段性心跳续期（Heartbeat Lease Renewal）机制；
+3. **出厂默认安全与外部波动摩擦**：为了保证最坏情况下（30s 文本 + 60s 生图 = 90s）不击穿 120s 租约，出厂默认值必须卡紧在 30s。
+
+### Prevention Gate / Current Mitigation
+
+1. **出厂默认严守数学红线**：`AiModelProfiles` 默认保持 `timeoutMs: 30_000`，确保开箱即用状态下无论如何不会撑破 120 秒租约；
+2. **慢速模型后台单独放宽**：若接入的外部模型排队严重，由管理员在后台按需将该具体模型的超时调整至 60s~90s；
+3. **文本输出额度隔离**：长文案通过调用层 `maxOutputTokens: 8192` 保证充足生成空间，绝不使用全局列默认值避免污染向量与图像模型。
+
+### Long-term Architectural Solution (后续版本演进路线)
+
+1. **生成链路异步化解耦**：将内容工作台“文本+生图”拆解为异步工作流（调用立即返回 Task ID -> 后台 Worker 异步消费 -> 前端轮询状态或通过 SSE/WebSocket 接收草稿就绪通知）；
+2. **阶段租约动态续期**：若保留同步调用，必须在文本生成完毕、进入生图阶段前显式对 `portal_command_receipts` 执行租约延期（Extend Lease）。

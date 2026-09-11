@@ -8,7 +8,6 @@ import { useRouter } from 'next/navigation'
 import {
   IconArrowLeft,
   IconArrowRight,
-  IconBox,
   IconBrandFacebook,
   IconBrandInstagram,
   IconBrandLinkedin,
@@ -19,14 +18,15 @@ import {
   IconFile,
   IconFileDownload,
   IconFileTypePdf,
+  IconGridDots,
   IconPhoto,
   IconPlus,
   IconSearch,
   IconRefresh,
+  IconRuler,
   IconSend,
   IconShieldCheck,
   IconSparkles,
-  IconTool,
   IconTrash,
   IconTruckDelivery,
   IconUpload,
@@ -238,7 +238,8 @@ export function ContentStudio({
                   >
                     <strong>{item.title}</strong>
                     <span>
-                      {copy.platformLabels[item.platform]} · {item.contentLocale.toUpperCase()}
+                      {copy.platformLabels[item.platform]} · {item.contentLocale.toUpperCase()} ·{' '}
+                      {copy.updatedAt} {formatScheduledAt(item.updatedAt)}
                     </span>
                     <StatusBadge label={copy.statusLabels[item.status]} tone={tone(item.status)} />
                   </button>
@@ -352,9 +353,9 @@ export function ContentStudio({
 type Copy = ReturnType<typeof getContentStudioMessages>
 
 const QUICK_INTENT_ICONS = {
-  craft: IconTool,
-  product: IconBox,
-  project: IconBuilding,
+  ceiling: IconBuilding,
+  mockup: IconRuler,
+  perforation: IconGridDots,
   shipment: IconTruckDelivery,
 } as const
 
@@ -1405,7 +1406,7 @@ function GenerateDraftEditor({
               <span className="portal-content-studio__intent-hint">{copy.quickIntentsHint}</span>
             </div>
             <div className="portal-content-studio__intent-capsules">
-              {(['shipment', 'project', 'craft', 'product'] as const).map((intentKey) =>
+              {(['shipment', 'ceiling', 'perforation', 'mockup'] as const).map((intentKey) =>
                 (() => {
                   const IntentIcon = QUICK_INTENT_ICONS[intentKey]
                   return (

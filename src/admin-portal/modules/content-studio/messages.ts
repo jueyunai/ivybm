@@ -1,3 +1,4 @@
+// TODO: TikTok social copy prompt engineering is deferred to future video/script tasks.
 import type { PortalLocale } from '@/admin-portal/core/i18n/types'
 
 export const contentStudioMessages = {
@@ -55,7 +56,7 @@ export const contentStudioMessages = {
       'Generate multi-platform social posts with text and visuals. Supports vision analysis and AI illustration.',
     generationSafetyNotice: 'Saved as draft only. Never published without manual review.',
     quickIntentsLabel: 'Scenario presets',
-    quickIntentsHint: 'Click to populate industry brief',
+    quickIntentsHint: 'Click to populate an industrial facade engineering brief',
     knowledge: 'Knowledge sources',
     knowledgeHint: 'Select enterprise documents to ground facts and claims (optional).',
     noKnowledgeOptions: 'No approved and indexed knowledge documents available.',
@@ -76,20 +77,20 @@ export const contentStudioMessages = {
     allStatus: 'All statuses',
     allPlatforms: 'All platforms',
     quickIntents: {
-      shipment: 'Factory shipment',
-      project: 'Engineering project',
-      craft: 'Material craft',
-      product: 'New product',
+      shipment: 'Export packing & loading',
+      ceiling: 'Custom metal ceiling',
+      perforation: 'Perforated facade',
+      mockup: 'Double-curved mock-up',
     },
     quickIntentDescriptions: {
       shipment:
-        'Container shipment for overseas project, highlighting strict packing and reliable delivery.',
-      project:
-        'Architectural facade and ceiling project showcase, highlighting design aesthetics and quality installation.',
-      craft:
-        'Premium architectural metal panel texture, precision perforation, and durable finish specification.',
-      product:
-        'Innovative building material product launch, featuring modern aesthetics, easy installation, and eco-friendly attributes.',
+        'Container loading for an overseas project order, covering panel protective film, rigid corner guards, reinforced crating against vibration, and carton numbering that follows the drawing installation sequence.',
+      ceiling:
+        'Custom metal ceiling for airports, rail stations, and large commercial spaces, showing long-span suspended flatness, concealed framing, and modular rapid assembly.',
+      perforation:
+        'Custom CNC-perforated facade aluminium panels, showing open-area ratio, backing structure, weather-resistant PVDF coating, and modern solar-shading facade expression.',
+      mockup:
+        'Dry-fit shop assembly of double-curved aluminium panels, focused on curvature accuracy, joint consistency, and pre-shipment tolerance verification.',
     },
     autoGenerateImage: 'Generate AI image if no media uploaded',
     uploadMedia: 'Upload image',
@@ -111,6 +112,7 @@ inferredFormatNotice: 'Drafts support 1-3 images for platform publishing.',
     save: 'Save draft',
     schedule: 'Schedule internal task',
     scheduleAt: 'Scheduled for',
+    updatedAt: 'Updated',
     scheduled: 'Scheduled internally',
     sendReview: 'Send to review',
     source: 'Source',
@@ -210,7 +212,7 @@ inferredFormatNotice: 'Drafts support 1-3 images for platform publishing.',
     generationDescription: '一键生成多平台社媒图文，支持看图出稿与 AI 自动配图。',
     generationSafetyNotice: '仅保存为内部草稿，需人工审核，绝不自动发布',
     quickIntentsLabel: '快捷场景预设',
-    quickIntentsHint: '点击一键注入建材行业标准需求',
+    quickIntentsHint: '点击一键注入幕墙工程工业级标准需求',
     knowledge: '知识来源',
     knowledgeHint: '可选：勾选已审核的企业知识库文档，让 AI 严格基于事实出稿与溯源',
     noKnowledgeOptions: '暂无已审核且已就绪的知识库文档。',
@@ -230,16 +232,20 @@ inferredFormatNotice: 'Drafts support 1-3 images for platform publishing.',
     allStatus: '全部状态',
     allPlatforms: '全部平台',
     quickIntents: {
-      shipment: '工厂出货 / 准时交付',
-      project: '经典工程 / 落地案例',
-      craft: '样品打样 / 工艺细节',
-      product: '新品推介 / 制造实力',
+      shipment: '出口海运装箱防护',
+      ceiling: '公建异型金属吊顶',
+      perforation: '参数化冲孔幕墙',
+      mockup: '双曲打样预拼装',
     },
     quickIntentDescriptions: {
-      shipment: '海外工程集装箱装柜出海，强调专业防撞木箱打包与准时履约交付。',
-      project: '大型商业综合体或交通枢纽外立面与吊顶工程落地实景，突出建筑设计美学与精工品质。',
-      craft: '高端建筑金属装饰板材微距特写，突出表面喷涂质感、数控冲孔精度与耐候性能。',
-      product: '全新建筑装饰金属材料上新推介，突出绿色环保、轻量化与快速模块化安装优势。',
+      shipment:
+        '海外工程订单集装箱装运，覆盖板块覆膜保护、四角硬质护边、加固木箱防震，以及按图纸安装顺序装箱编号。',
+      ceiling:
+        '机场、高铁站与大型商业空间定制金属吊顶，展现大跨度悬吊平整度、暗藏式龙骨与模块化快速拼装结构。',
+      perforation:
+        '定制数控冲孔幕墙铝板，展现穿孔率、背衬结构、耐候氟碳喷涂与现代遮阳立面表现力。',
+      mockup:
+        '异型双曲铝板车间预拼装（Dry-fit mock-up），聚焦几何弧度精度、接缝一致性与出厂前公差校核。',
     },
     autoGenerateImage: '手头无图？由 AI 自动生成概念配图',
     uploadMedia: '上传配图',
@@ -260,6 +266,7 @@ inferredFormatNotice: '当前平台发布链路每篇草稿支持 1-3 张配图�
     save: '保存草稿',
     schedule: '创建内部排期',
     scheduleAt: '计划时间',
+    updatedAt: '更新',
     scheduled: '已创建内部排期',
     sendReview: '提交审核',
     source: '来源',
