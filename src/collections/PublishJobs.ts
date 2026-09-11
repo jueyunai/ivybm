@@ -22,6 +22,9 @@ export const PUBLISH_JOB_ROUTES = [
   'instagram-image-staged',
   'linkedin-text-single',
   'linkedin-image-staged',
+  'facebook-photos-multi',
+  'instagram-carousel-staged',
+  'linkedin-multi-image-staged',
 ] as const
 
 export const PublishJobs: CollectionConfig = {

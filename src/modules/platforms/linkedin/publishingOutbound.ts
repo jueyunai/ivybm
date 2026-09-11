@@ -9,6 +9,7 @@ import {
   buildLinkedInImageBinaryUploadPayload,
   buildLinkedInImageInitializeUploadRequest,
   buildLinkedInImagePostRequest,
+  buildLinkedInMultiImagePostRequest,
   buildLinkedInPostStatusRequest,
   buildLinkedInTextPostRequest,
   parseLinkedInImageInitializeUploadResponse,
@@ -79,6 +80,13 @@ export type LinkedInImagePublishInput = {
   imageUrn: string
 }
 
+export type LinkedInMultiImagePublishInput = {
+  authorization: LinkedInPublishingAuthorization
+  author: LinkedInAuthorUrnInput
+  commentary: string
+  images: ReadonlyArray<{ altText?: string; imageUrn: string }>
+}
+
 export type LinkedInPostStatusInput = {
   authorization: LinkedInPublishingAuthorization
   author: LinkedInAuthorUrnInput
@@ -89,6 +97,7 @@ export interface LinkedInPublishingTransport {
   getPostStatus(input: LinkedInPostStatusInput): Promise<LinkedInPostStatusResponse>
   initializeImageUpload(input: LinkedInImageInitializeInput): Promise<LinkedInImageUploadTicket>
   publishImagePost(input: LinkedInImagePublishInput): Promise<LinkedInPostCreationResponse>
+  publishMultiImagePost(input: LinkedInMultiImagePublishInput): Promise<LinkedInPostCreationResponse>
   publishTextPost(input: LinkedInTextPublishInput): Promise<LinkedInPostCreationResponse>
   uploadImage(input: LinkedInImageUploadInput): Promise<void>
 }
@@ -512,6 +521,25 @@ export const createLinkedInPublishingTransport = ({
     })
   }
 
+  const publishMultiImagePost = async (
+    input: LinkedInMultiImagePublishInput,
+  ): Promise<LinkedInPostCreationResponse> => {
+    const request = buildLinkedInMultiImagePostRequest({
+      author: input.author,
+      commentary: input.commentary,
+      images: input.images,
+      linkedInVersion,
+    })
+    return dispatchJson({
+      authorization: input.authorization,
+      author: input.author,
+      mutation: true,
+      parse: async (response) =>
+        parseLinkedInPostCreationResponse({ xRestliId: response.headers.get('x-restli-id') }),
+      request,
+    })
+  }
+
   const getPostStatus = async (
     input: LinkedInPostStatusInput,
   ): Promise<LinkedInPostStatusResponse> => {
@@ -535,6 +563,7 @@ export const createLinkedInPublishingTransport = ({
     getPostStatus,
     initializeImageUpload,
     publishImagePost,
+    publishMultiImagePost,
     publishTextPost,
     uploadImage,
   }

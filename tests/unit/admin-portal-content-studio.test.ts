@@ -163,7 +163,7 @@ describe('Portal Content Studio', () => {
     expect(assetOptions).toHaveLength(3)
     expect(container.querySelector('.portal-content-studio__asset-upload-card')).toBeTruthy()
     expect(screen.getByText('上传配图')).toBeTruthy()
-    expect(screen.getByText('点击或拖拽上传 1 张图片')).toBeTruthy()
+    expect(screen.getByText('点击或拖拽上传 1-3 张图片')).toBeTruthy()
 
     const imageOption = screen.getByRole('checkbox', { name: 'Curved facade hero' })
     expect(imageOption.closest('label')?.querySelector('img')?.getAttribute('src')).toContain(
@@ -751,7 +751,7 @@ describe('Portal Content Studio', () => {
     ).toBe(true)
   })
 
-  it('keeps direct uploads private and limits drafts to one publishable image', async () => {
+  it('keeps direct uploads private and supports 1-3 publishable images', async () => {
     const originalFetch = globalThis.fetch
     let uploadedCount = 0
     globalThis.fetch = vi.fn((input, init) => {
@@ -806,22 +806,137 @@ describe('Portal Content Studio', () => {
 
     fireEvent.change(fileInput, { target: { files: [file1, file2] } })
 
-    expect((await screen.findByRole('alert')).textContent).toBe('每次请选择 1 张图片。')
-    expect(uploadedCount).toBe(0)
-
-    fireEvent.change(fileInput, { target: { files: [file1] } })
-
     await vi.waitFor(() => {
       const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
       const assetCheckboxes = checkboxes.filter((cb) =>
         cb.getAttribute('aria-label')?.startsWith('Uploaded image'),
       )
-      expect(assetCheckboxes.length).toBe(1)
+      expect(assetCheckboxes.length).toBe(2)
       expect(assetCheckboxes.every((cb) => cb.checked)).toBe(true)
     })
 
-    expect(screen.getByText('当前平台发布链路每篇草稿支持 1 张配图。')).toBeTruthy()
+    expect(screen.getByText('当前平台发布链路每篇草稿支持 1-3 张配图。')).toBeTruthy()
 
+    globalThis.fetch = originalFetch
+  })
+
+  it('blocks a fourth existing asset in the generator with the shared count message', () => {
+    const summary: ContentStudioSummary = {
+      items: [],
+      options: {
+        assets: [21, 22, 23, 24].map((id) => ({ id, label: `Existing image ${id}` })),
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const first = screen.getByRole('checkbox', { name: 'Existing image 21' }) as HTMLInputElement
+    const second = screen.getByRole('checkbox', { name: 'Existing image 22' }) as HTMLInputElement
+    const third = screen.getByRole('checkbox', { name: 'Existing image 23' }) as HTMLInputElement
+    const fourth = screen.getByRole('checkbox', { name: 'Existing image 24' }) as HTMLInputElement
+    fireEvent.click(first)
+    fireEvent.click(second)
+    fireEvent.click(third)
+    expect(screen.queryByRole('alert')).toBeNull()
+
+    fireEvent.click(fourth)
+    expect(screen.getByRole('alert').textContent).toBe('每次请选择 1-3 张图片。')
+    expect(fourth.checked).toBe(false)
+    expect([first, second, third].every((input) => input.checked)).toBe(true)
+  })
+
+  it('blocks a fourth existing asset in the draft editor with the shared count message', () => {
+    const summary: ContentStudioSummary = {
+      items: [
+        {
+          assets: [],
+          body: 'Draft ready for images',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 101,
+          knowledgeSources: [],
+          platform: 'facebook',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'draft',
+          title: 'Fourth Image Draft',
+          updatedAt: '2026-09-11T08:00:00.000Z',
+        },
+      ],
+      options: {
+        assets: [21, 22, 23, 24].map((id) => ({ id, label: `Draft image ${id}` })),
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Fourth Image Draft/ }))
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+    const first = screen.getByRole('checkbox', { name: 'Draft image 21' }) as HTMLInputElement
+    const second = screen.getByRole('checkbox', { name: 'Draft image 22' }) as HTMLInputElement
+    const third = screen.getByRole('checkbox', { name: 'Draft image 23' }) as HTMLInputElement
+    const fourth = screen.getByRole('checkbox', { name: 'Draft image 24' }) as HTMLInputElement
+    fireEvent.click(first)
+    fireEvent.click(second)
+    fireEvent.click(third)
+    expect(screen.queryByRole('alert')).toBeNull()
+
+    fireEvent.click(fourth)
+    expect(screen.getByRole('alert').textContent).toBe('每次请选择 1-3 张图片。')
+    expect(fourth.checked).toBe(false)
+    expect([first, second, third].every((input) => input.checked)).toBe(true)
+  })
+
+  it('rejects a four-file upload without issuing media requests', async () => {
+    const originalFetch = globalThis.fetch
+    const fetchMock = vi.fn()
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch
+    const summary: ContentStudioSummary = {
+      items: [],
+      options: { assets: [], knowledgeSources: [], platformAccounts: [] },
+      pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const files = [1, 2, 3, 4].map(
+      (index) => new File([`image-${index}`], `image-${index}.jpg`, { type: 'image/jpeg' }),
+    )
+    fireEvent.change(fileInput, { target: { files } })
+
+    expect(screen.getByRole('alert').textContent).toBe('每次请选择 1-3 张图片。')
+    expect(fetchMock).not.toHaveBeenCalled()
     globalThis.fetch = originalFetch
   })
 })

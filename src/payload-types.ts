@@ -540,7 +540,16 @@ export interface PublishJob {
   status: 'scheduled' | 'accepted' | 'publishing' | 'published' | 'failed' | 'delivery_unknown';
   scheduledFor: string;
   executionRoute?:
-    ('facebook-photo-single' | 'instagram-image-staged' | 'linkedin-text-single' | 'linkedin-image-staged') | null;
+    | (
+        | 'facebook-photo-single'
+        | 'instagram-image-staged'
+        | 'linkedin-text-single'
+        | 'linkedin-image-staged'
+        | 'facebook-photos-multi'
+        | 'instagram-carousel-staged'
+        | 'linkedin-multi-image-staged'
+      )
+    | null;
   executionRevision: number;
   requestFingerprint?: string | null;
   /**
