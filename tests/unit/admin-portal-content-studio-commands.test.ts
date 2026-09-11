@@ -673,6 +673,65 @@ describe('Portal Content Studio draft commands', () => {
     )
   })
 
+  it('injects the facade-engineering persona and platform-specific rules for a general draft', async () => {
+    const create = vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: 77,
+      status: 'draft',
+      updatedAt: '2026-07-30T12:00:00.000Z',
+    }))
+    const find = vi.fn(async () => ({ docs: [] }))
+    const generateText = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        body: 'Shop-floor dry-fit notes for a double-curved facade.',
+        sourceReferences: [],
+        title: 'Double-curved dry-fit',
+      }),
+    })
+
+    await generateContentStudioDraft({
+      input: {
+        assets: [4],
+        brief: 'Dry-fit mock-up for a double-curved facade.',
+        contentLocale: 'en',
+        idempotencyKey: 'portal-content-studio:generate-with-persona',
+        knowledgeSources: [],
+        platform: 'linkedin',
+      },
+      payload: { create, find } as any,
+      req,
+      resolveGateway: vi.fn().mockResolvedValue({ generateText }) as any,
+    })
+
+    const { instructions } = generateText.mock.calls[0][0]
+    expect(instructions).toContain('Ivy Building Materials')
+    expect(instructions).toContain('facade contractors')
+    expect(instructions).toContain('groundbreaking')
+    expect(instructions).toContain('3 product or process terms')
+    expect(instructions).toContain('#FacadeEngineering')
+    expect(instructions).toContain('DWG/BIM')
+    expect(instructions).not.toContain('#DoubleCurvedAluminium')
+
+    generateText.mockClear()
+    await generateContentStudioDraft({
+      input: {
+        assets: [4],
+        brief: 'Dry-fit mock-up for a double-curved facade.',
+        contentLocale: 'en',
+        idempotencyKey: 'portal-content-studio:generate-with-persona-instagram',
+        knowledgeSources: [],
+        platform: 'instagram',
+      },
+      payload: { create, find } as any,
+      req,
+      resolveGateway: vi.fn().mockResolvedValue({ generateText }) as any,
+    })
+
+    const instagramInstructions = generateText.mock.calls[0][0].instructions
+    expect(instagramInstructions).toContain('#DoubleCurvedAluminium')
+    expect(instagramInstructions).not.toContain('#FacadeEngineering')
+  })
+
   it('automatically generates an image and attaches it to the draft when autoGenerateImage is true', async () => {
     let stored: Record<string, unknown> | null = null
     const create = vi.fn(
@@ -722,9 +781,12 @@ describe('Portal Content Studio draft commands', () => {
 
     expect(generateImage).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: 'Modern architectural rendering of perforated facade panels.',
+        prompt: expect.stringContaining('Modern architectural rendering of perforated facade panels.'),
         size: '1536x1024',
       }),
+    )
+    expect(generateImage.mock.calls[0][0].prompt).toContain(
+      'Photorealistic architectural photography',
     )
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
