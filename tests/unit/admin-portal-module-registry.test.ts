@@ -19,7 +19,7 @@ describe('Portal module registry', () => {
 
     expect(() =>
       definePortalModule({
-        id: 'content',
+        id: 'website-content',
         owner: 'jueyunai',
         navGroup: 'workspace',
         href: '/dashboard/example',
@@ -69,10 +69,16 @@ describe('Portal module registry', () => {
       env: { ADMIN_PORTAL_ENABLED: 'true', ...flags },
       user: { role: 'sales' },
     })
+    const operatorModules = getVisiblePortalModules({
+      env: { ADMIN_PORTAL_ENABLED: 'true', ...flags },
+      user: { role: 'operator' },
+    })
 
     expect(adminModules.map((module) => module.id)).toContain('platforms')
     expect(salesModules.map((module) => module.id)).not.toContain('platforms')
     expect(salesModules.map((module) => module.id)).not.toContain('knowledge')
+    expect(operatorModules.map((module) => module.id)).not.toContain('platforms')
+    expect(operatorModules.map((module) => module.id)).not.toContain('operations')
     expect(
       adminModules
         .filter(
@@ -126,9 +132,9 @@ describe('Portal module registry', () => {
     expect(modules.every((module) => module.href.startsWith('/dashboard'))).toBe(true)
     expect(JSON.stringify(modules)).not.toContain('/admin')
     expect(modules).toHaveLength(10)
-    expect(modules.find((module) => module.id === 'contentStudio')).toMatchObject({
+    expect(modules.find((module) => module.id === 'content-studio')).toMatchObject({
       availability: 'available',
-      commands: expect.arrayContaining(['contentStudio:create', 'contentStudio:schedule']),
+      commands: expect.arrayContaining(['content-studio:create', 'content-studio:schedule']),
       owner: 'jueyunai',
     })
     expect(modules.find((module) => module.id === 'platforms')).toMatchObject({
@@ -161,7 +167,7 @@ describe('Portal module registry', () => {
     ).toBe(true)
 
     const blockedModule = definePortalModule({
-      id: 'content',
+      id: 'website-content',
       owner: 'xuemusi',
       navGroup: 'intelligence',
       href: '/dashboard/blocked-example',
@@ -170,7 +176,7 @@ describe('Portal module registry', () => {
       availability: 'blocked',
       featureFlag: 'ADMIN_PORTAL_BLOCKED_EXAMPLE_ENABLED',
       commands: [],
-      maintenance: { responsibleOwner: 'xuemusi', nextStepKey: 'content' },
+      maintenance: { responsibleOwner: 'xuemusi', nextStepKey: 'website-content' },
     })
     expect(
       getPortalFeatureState({

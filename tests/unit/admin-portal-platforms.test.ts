@@ -4,6 +4,10 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
+import {
+  loadPlatformAccountsPageData,
+  loadPlatformReadinessPageData,
+} from '@/admin-portal/modules/platforms/getPlatformReadiness'
 import { PlatformReadinessPage } from '@/admin-portal/modules/platforms/PlatformReadinessPage'
 
 vi.mock('next/navigation', () => ({
@@ -18,6 +22,23 @@ afterEach(() => {
 })
 
 describe('Portal platform readiness', () => {
+  it('keeps platform data unavailable to non-admin roles even with elevated permissions', async () => {
+    const find = vi.fn()
+    const payload = { find } as never
+    const env = {
+      ADMIN_PORTAL_ENABLED: 'true',
+      ADMIN_PORTAL_PLATFORMS_ENABLED: 'true',
+    } as never
+
+    await expect(
+      loadPlatformAccountsPageData({ env, payload, user: { role: 'operator' } }),
+    ).resolves.toEqual({ accounts: [], state: 'forbidden' })
+    await expect(
+      loadPlatformReadinessPageData({ env, payload, user: { role: 'operator' } }),
+    ).resolves.toEqual({ state: 'forbidden', summary: null })
+    expect(find).not.toHaveBeenCalled()
+  })
+
   it('shows credential-free capability-specific instructions before controlled testing', () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ data: { id: 8, aiAutoReplyEnabled: true } }), {

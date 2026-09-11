@@ -27,9 +27,9 @@ const createdUserIds: Array<number | string> = []
 
 const moduleEnv = (moduleId: string): string => {
   switch (moduleId) {
-    case 'content':
+    case 'website-content':
       return 'ADMIN_PORTAL_WEBSITE_CONTENT_ENABLED'
-    case 'contentStudio':
+    case 'content-studio':
       return 'ADMIN_PORTAL_CONTENT_STUDIO_ENABLED'
     default:
       return `ADMIN_PORTAL_${moduleId.toUpperCase()}_ENABLED`
@@ -82,11 +82,11 @@ const authorizeModule = (
       return authorizePortalConversationRequest(request, { action })
     case 'leads':
       return authorizeLeadRequest(request, { action })
-    case 'content':
+    case 'website-content':
       return authorizeContentRequest(request, { action })
     case 'media':
       return authorizeMediaRequest(request, { action })
-    case 'contentStudio':
+    case 'content-studio':
       return authorizeContentStudioRequest(request, { action })
     case 'knowledge':
       return authorizeKnowledgeRequest(request, { action })
@@ -197,7 +197,13 @@ describe.sequential('Portal granular authorization', () => {
       { expected: PORTAL_PERMISSION_PRESETS.sales, token: tokens[sales.id], user: sales },
       {
         expected: Object.fromEntries(
-          PERMISSION_MODULE_IDS.map((moduleId) => [moduleId, { edit: false, view: true }]),
+          PERMISSION_MODULE_IDS.map((moduleId) => [
+            moduleId,
+            {
+              edit: false,
+              view: !['operations', 'platforms'].includes(moduleId),
+            },
+          ]),
         ),
         token: tokens[viewer.id],
         user: viewer,
@@ -220,7 +226,9 @@ describe.sequential('Portal granular authorization', () => {
           } else {
             await expect(operation()).rejects.toMatchObject({
               code:
-                moduleId === 'contentStudio'
+                moduleId === 'website-content'
+                  ? 'content-forbidden'
+                  : moduleId === 'content-studio'
                   ? 'content-studio-forbidden'
                   : moduleId === 'settings' && action === 'edit'
                     ? 'site-settings-forbidden'

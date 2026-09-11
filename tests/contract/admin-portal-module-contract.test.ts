@@ -67,10 +67,10 @@ describe('Portal collaborator module contract', () => {
       definePortalModule({
         allowedRoles: ['admin'],
         availability: 'dependency-gated',
-        commands: ['content:run'],
+        commands: ['website-content:run'],
         featureFlag: 'ADMIN_PORTAL_UNSAFE_ENABLED',
         href: '/dashboard/unsafe',
-        id: 'content',
+        id: 'website-content',
         labelKey: 'unsafe',
         maintenance: { nextStepKey: 'unsafe', responsibleOwner: 'jueyunai' },
         navGroup: 'system',

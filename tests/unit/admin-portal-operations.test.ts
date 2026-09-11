@@ -320,6 +320,29 @@ describe('Portal operations', () => {
     expect(find).not.toHaveBeenCalled()
   })
 
+  it('does not query jobs for an operator even when the stored matrix is elevated', async () => {
+    const find = vi.fn()
+
+    await expect(
+      loadSafeJobPageData({
+        env: {
+          ADMIN_PORTAL_ENABLED: 'true',
+          ADMIN_PORTAL_OPERATIONS_ENABLED: 'true',
+        } as never,
+        payload: { find } as unknown as Payload,
+        query: { page: 1, status: 'all' },
+        req: {} as PayloadRequest,
+        user: {
+          permissions: {
+            operations: { edit: true, view: true },
+          } as PortalUserPermissions,
+          role: 'operator',
+        },
+      }),
+    ).resolves.toEqual({ state: 'forbidden', summary: null })
+    expect(find).not.toHaveBeenCalled()
+  })
+
   it('executes only the registered knowledge compensation with the authenticated admin', async () => {
     const retry = vi.fn().mockResolvedValue({
       job: { id: 29, status: 'pending' },

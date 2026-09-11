@@ -116,13 +116,13 @@ describe('role access matrix', () => {
             edit: [
               'conversations',
               'leads',
-              'content',
+              'website-content',
               'media',
-              'contentStudio',
+              'content-studio',
               'knowledge',
               'settings',
             ].includes(moduleId),
-            view: true,
+            view: !['operations', 'platforms'].includes(moduleId),
           },
         ]),
       ),
@@ -154,8 +154,8 @@ describe('role access matrix', () => {
       ),
     ).toEqual({
       conversations: { edit: true, view: true },
-      content: { edit: false, view: false },
-      contentStudio: { edit: false, view: false },
+      'website-content': { edit: false, view: false },
+      'content-studio': { edit: false, view: false },
       knowledge: { edit: false, view: false },
       leads: { edit: true, view: true },
       media: { edit: false, view: false },
@@ -185,5 +185,21 @@ describe('role access matrix', () => {
     expect(hasPortalPermission(user, 'leads', 'edit')).toBe(true)
     expect(hasPortalPermission(user, 'media', 'view')).toBe(false)
     expect(hasPortalPermission(null, 'leads', 'view')).toBe(false)
+  })
+
+  it('keeps admin-only modules closed even when a non-admin matrix requests access', () => {
+    const elevatedOperator: RoleUser = {
+      id: 5,
+      role: 'operator',
+      permissions: {
+        operations: { edit: true, view: true },
+        platforms: { edit: true, view: true },
+      },
+    }
+
+    expect(hasPortalPermission(elevatedOperator, 'operations', 'view')).toBe(false)
+    expect(hasPortalPermission(elevatedOperator, 'platforms', 'edit')).toBe(false)
+    expect(hasPortalPermission(elevatedOperator, 'content', 'view')).toBe(true)
+    expect(hasPortalPermission(elevatedOperator, 'contentStudio', 'view')).toBe(true)
   })
 })
