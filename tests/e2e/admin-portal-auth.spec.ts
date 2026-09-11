@@ -6,10 +6,10 @@ const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_P
 
 const fillPortalLogin = async (
   page: import('@playwright/test').Page,
-  email: string,
+  username: string,
   password: string,
 ) => {
-  await page.getByRole('textbox', { name: '账号' }).fill(email)
+  await page.getByRole('textbox', { name: '账号' }).fill(username)
   await page.getByRole('textbox', { name: '密码' }).fill(password)
 }
 
@@ -24,7 +24,7 @@ test('unauthenticated Portal requests preserve a safe return target', async ({ p
 
   await fillPortalLogin(page, 'invalid@example.invalid', 'invalid-password-123')
   await page.getByRole('button', { name: '登录后台' }).click()
-  await expect(page.locator('.portal-login-form__error')).toContainText('邮箱或密码不正确')
+  await expect(page.locator('.portal-login-form__error')).toContainText('账号或密码不正确')
   expect(page.url()).not.toContain('password')
   expect(page.url()).not.toContain('invalid%40example.invalid')
 })
