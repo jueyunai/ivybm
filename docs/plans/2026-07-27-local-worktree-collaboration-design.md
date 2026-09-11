@@ -10,7 +10,7 @@
 
 - `ivybm` 永久绑定干净的 `main`，作为创建和审计其他 worktree 的控制入口。
 - Task、修复和文档改动分别使用与短分支同生命周期的 `ivybm-task<编号>-<简述>`、`ivybm-fix-<简述>` 和 `ivybm-docs-<简述>`。
-- 协作者 PR 使用 detached HEAD 的 `ivybm-review-pr-<编号>`，审查结束立即删除。
+- 协作者 PR 使用 detached HEAD 的 `ivybm-review-pr-<编号>`，保留到 PR 合并或关闭后再删除；同一 PR 的多轮审查复用该 worktree 更新到最新 head，避免重复安装依赖。
 - 有明确退出条件的实验使用 `ivybm-poc-<简述>`；采用实验结果时，从最新 `origin/main` 建正式分支，只迁移选定改动。
 - 每人最多并行保留 2 个开发类 worktree 和 2 个审查 worktree，避免目录数量随远程分支增长。
 
@@ -29,6 +29,6 @@
 3. 在该 worktree 开发、验证、push 并提交 PR。
 4. 协作者在独立临时 review worktree 检查 head、diff、合并风险、测试和共享边界。
 5. PR 合并后确认开发分支已经进入 `origin/main`，再移除 worktree 和本地分支。
-6. 审查完成后立即移除 review worktree 和 review ref；每周审计 worktree、upstream、已合并分支和可 prune 元数据。
+6. PR 合并或关闭后移除 review worktree，并连同 `refs/review/` 下的 head 与试合并快照一并删除；每周审计 worktree、`refs/review/` 残留、upstream、已合并分支和可 prune 元数据。
 
 完整命令和异常处理见仓库根目录的 [`CONTRIBUTING.md`](../../CONTRIBUTING.md)；编码代理的硬约束见 [`AGENTS.md`](../../AGENTS.md)。
