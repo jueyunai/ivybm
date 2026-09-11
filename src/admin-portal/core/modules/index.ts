@@ -8,6 +8,7 @@ export type {
   PortalFeatureFlag,
   PortalFeatureState,
   PortalHref,
+  PortalPermissionUser,
   PortalModuleDefinition,
   PortalModuleManifest,
   PortalModuleOwner,

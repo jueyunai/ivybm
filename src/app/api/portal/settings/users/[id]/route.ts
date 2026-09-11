@@ -5,6 +5,7 @@ import {
 } from '@/admin-portal/modules/settings/userSettingsCommands'
 import type {
   DeleteTeamMemberInput,
+  PortalUserPermissions,
   PortalTeamMemberRole,
   UpdateTeamMemberInput,
 } from '@/admin-portal/modules/settings/userSettingsContracts'
@@ -38,14 +39,16 @@ export async function PATCH(request: Request, { params }: RouteContext): Promise
     })
     const raw = await readUserSettingsJSON(request)
     const input: UpdateTeamMemberInput = {
-      email: typeof raw.email === 'string' ? raw.email : undefined,
+      permissions: raw.permissions as PortalUserPermissions,
       role: typeof raw.role === 'string' ? (raw.role as PortalTeamMemberRole) : undefined,
       updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
+      username: typeof raw.username === 'string' ? raw.username : undefined,
     }
 
     const fingerprintInput = {
       action: 'update_team_member',
-      email: input.email?.trim().toLowerCase(),
+      permissions: input.permissions,
+      username: input.username?.trim().toLowerCase(),
       id,
       role: input.role,
       updatedAt: input.updatedAt,
@@ -84,13 +87,13 @@ export async function DELETE(request: Request, { params }: RouteContext): Promis
     })
     const raw = await readUserSettingsJSON(request)
     const input: DeleteTeamMemberInput = {
-      confirmEmail: typeof raw.confirmEmail === 'string' ? raw.confirmEmail : '',
+      confirmUsername: typeof raw.confirmUsername === 'string' ? raw.confirmUsername : '',
       updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
     }
 
     const fingerprintInput = {
       action: 'delete_team_member',
-      confirmEmail: input.confirmEmail.trim().toLowerCase(),
+      confirmUsername: input.confirmUsername.trim().toLowerCase(),
       id,
       updatedAt: input.updatedAt,
     }

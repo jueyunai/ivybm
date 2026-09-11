@@ -14,6 +14,7 @@ import {
   selectPortalSettingsSummary,
 } from '@/admin-portal/modules/settings/getPortalSettingsSummary'
 import { portalAiSettingsAdminOnly } from '@/admin-portal/modules/settings/getPortalAiSettings'
+import { PORTAL_PERMISSION_PRESETS } from '@/access/roles'
 
 import { selectUiOption } from './support/uiSelect'
 
@@ -105,7 +106,7 @@ describe('Portal settings hub', () => {
   it('does not expose account or setting data when the module is disabled', () => {
     const modules = resolvePortalAvailability({
       env: { ADMIN_PORTAL_ENABLED: 'true' },
-      role: 'admin',
+      user: { role: 'admin' },
     }).modules
 
     render(
@@ -117,13 +118,18 @@ describe('Portal settings hub', () => {
           modules,
           pageState: 'module-disabled',
           summary: null,
-          user: { email: 'admin@example.com', id: 1, role: 'admin' },
+          user: {
+            id: 1,
+            permissions: PORTAL_PERMISSION_PRESETS.admin,
+            role: 'admin',
+            username: 'admin.example',
+          },
         }),
       ),
     )
 
     expect(screen.getAllByText('模块尚未启用')).toHaveLength(2)
-    expect(screen.queryByText('admin@example.com')).toBeNull()
+    expect(screen.queryByText('admin.example')).toBeNull()
   })
 
   it('reduces Site Settings to a safe read-only summary', () => {
@@ -135,7 +141,12 @@ describe('Portal settings hub', () => {
         siteName: 'IVYBM',
         socialLinks: [{ platform: 'facebook', url: 'https://example.com' }],
       },
-      { email: 'sales@example.com', id: 8, role: 'sales' },
+      {
+        id: 8,
+        permissions: PORTAL_PERMISSION_PRESETS.sales,
+        role: 'sales',
+        username: 'sales.example',
+      },
     )
 
     expect(summary).toEqual({
@@ -157,7 +168,12 @@ describe('Portal settings hub', () => {
     const summary = await getPortalSettingsSummary({
       payload: { findGlobal } as unknown as Payload,
       req: { user: { collection: 'users', id: 5 } } as unknown as PayloadRequest,
-      user: { email: 'operator@example.com', id: 5, role: 'operator' },
+      user: {
+        id: 5,
+        permissions: PORTAL_PERMISSION_PRESETS.operator,
+        role: 'operator',
+        username: 'operator@example.com',
+      },
     })
 
     expect(findGlobal).toHaveBeenCalledWith({
@@ -181,7 +197,7 @@ describe('Portal settings hub', () => {
         ADMIN_PORTAL_ENABLED: 'true',
         ADMIN_PORTAL_SETTINGS_ENABLED: 'true',
       },
-      role: 'sales',
+      user: { role: 'sales' },
     }).modules
 
     render(
@@ -196,14 +212,19 @@ describe('Portal settings hub', () => {
             siteDescription: 'Building materials export operations',
             siteName: 'IVYBM',
           },
-          user: { email: 'sales@example.com', id: 8, role: 'sales' },
+          user: {
+            id: 8,
+            permissions: PORTAL_PERMISSION_PRESETS.sales,
+            role: 'sales',
+            username: 'sales.example',
+          },
         }),
       ),
     )
 
     expect(screen.getByRole('heading', { name: '基础设置' })).toBeTruthy()
-    expect(screen.getByText('sales@example.com')).toBeTruthy()
-    expect(screen.getByText('邮箱')).toBeTruthy()
+    expect(screen.getByText('sales.example')).toBeTruthy()
+    expect(screen.getByText('账号')).toBeTruthy()
     expect(screen.getByText('角色')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'English' }))
@@ -229,7 +250,7 @@ describe('Portal settings hub', () => {
         ADMIN_PORTAL_ENABLED: 'true',
         ADMIN_PORTAL_SETTINGS_ENABLED: 'true',
       },
-      role: 'admin',
+      user: { role: 'admin' },
     }).modules
     const { container } = render(
       React.createElement(
@@ -239,7 +260,12 @@ describe('Portal settings hub', () => {
           aiSettings: readyAiSettings,
           modules,
           summary: { canUpdate: true, siteDescription: null, siteName: 'IVYBM' },
-          user: { email: 'admin@example.com', id: 1, role: 'admin' },
+          user: {
+            id: 1,
+            permissions: PORTAL_PERMISSION_PRESETS.admin,
+            role: 'admin',
+            username: 'admin.example',
+          },
         }),
       ),
     )
@@ -266,7 +292,7 @@ describe('Portal settings hub', () => {
         ADMIN_PORTAL_ENABLED: 'true',
         ADMIN_PORTAL_SETTINGS_ENABLED: 'true',
       },
-      role: 'admin',
+      user: { role: 'admin' },
     }).modules
     render(
       React.createElement(
@@ -276,7 +302,12 @@ describe('Portal settings hub', () => {
           aiSettings: readyAiSettings,
           modules,
           summary: { canUpdate: true, siteDescription: null, siteName: 'IVYBM' },
-          user: { email: 'admin@example.com', id: 1, role: 'admin' },
+          user: {
+            id: 1,
+            permissions: PORTAL_PERMISSION_PRESETS.admin,
+            role: 'admin',
+            username: 'admin.example',
+          },
         }),
       ),
     )
@@ -307,7 +338,7 @@ describe('Portal settings hub', () => {
           ADMIN_PORTAL_ENABLED: 'true',
           ADMIN_PORTAL_SETTINGS_ENABLED: 'true',
         },
-        role,
+        user: { role },
       }).modules
 
       render(
@@ -318,7 +349,12 @@ describe('Portal settings hub', () => {
             aiSettings: readyAiSettings,
             modules,
             summary: { canUpdate: false, siteDescription: null, siteName: 'IVYBM' },
-            user: { email: `${role}@example.com`, id: 8, role },
+            user: {
+              id: 8,
+              permissions: PORTAL_PERMISSION_PRESETS[role],
+              role,
+              username: `${role}.example`,
+            },
           }),
         ),
       )
@@ -334,7 +370,7 @@ describe('Portal settings hub', () => {
         ADMIN_PORTAL_ENABLED: 'true',
         ADMIN_PORTAL_SETTINGS_ENABLED: 'true',
       },
-      role: 'admin',
+      user: { role: 'admin' },
     }).modules
 
     render(
@@ -346,7 +382,12 @@ describe('Portal settings hub', () => {
           aiSettings: portalAiSettingsAdminOnly(),
           modules,
           summary: { canUpdate: true, siteDescription: null, siteName: 'IVYBM' },
-          user: { email: 'admin@example.com', id: 1, role: 'admin' },
+          user: {
+            id: 1,
+            permissions: PORTAL_PERMISSION_PRESETS.admin,
+            role: 'admin',
+            username: 'admin.example',
+          },
         }),
       ),
     )

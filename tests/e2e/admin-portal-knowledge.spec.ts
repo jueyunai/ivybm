@@ -3,20 +3,20 @@ import { expect, test } from '@playwright/test'
 
 import { selectUiOption } from './support/uiSelect'
 
-const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
+const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.SEED_ADMIN_USERNAME
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
 type CreatedDocument = { id: number | string; title: string }
 
 const login = async (page: import('@playwright/test').Page) => {
   test.skip(
-    !adminEmail || !adminPassword,
+    !adminUsername || !adminPassword,
     'Requires dedicated non-production E2E or local seed administrator credentials.',
   )
-  if (!adminEmail || !adminPassword) return false
+  if (!adminUsername || !adminPassword) return false
 
   await page.goto('/dashboard/login?returnTo=%2Fdashboard%2Fknowledge')
-  await page.getByRole('textbox', { name: '邮箱' }).fill(adminEmail)
+  await page.getByRole('textbox', { name: '账号' }).fill(adminUsername)
   await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
   await page.getByRole('button', { name: '登录后台' }).click()
   await expect(page).toHaveURL(/\/dashboard\/knowledge$/)

@@ -13,12 +13,13 @@ import {
 } from '@/admin-portal/modules/overview/getPortalOverview'
 import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
 import { OverviewPage, priorityHref } from '@/admin-portal/modules/overview/OverviewPage'
+import { PORTAL_PERMISSION_PRESETS } from '@/access/roles'
 
 afterEach(cleanup)
 
 const requestFor = (role: 'admin' | 'operator' | 'sales'): PayloadRequest =>
   ({
-    user: { collection: 'users', email: `${role}@example.invalid`, id: role, role },
+    user: { collection: 'users', id: role, role, username: `${role}.example` },
   }) as unknown as PayloadRequest
 
 describe('Portal overview read model', () => {
@@ -40,7 +41,12 @@ describe('Portal overview read model', () => {
           pageState: 'module-disabled',
           query: { queue: 'all' },
           summary: null,
-          user: { email: 'admin@example.invalid', id: 1, role: 'admin' },
+          user: {
+            id: 1,
+            permissions: PORTAL_PERMISSION_PRESETS.admin,
+            role: 'admin',
+            username: 'admin@example.invalid',
+          },
         }),
       ),
     )
@@ -81,7 +87,12 @@ describe('Portal overview read model', () => {
               newQualifiedLeads: 0,
             },
           },
-          user: { email: 'admin@example.invalid', id: 1, role: 'admin' },
+          user: {
+            id: 1,
+            permissions: PORTAL_PERMISSION_PRESETS.admin,
+            role: 'admin',
+            username: 'admin@example.invalid',
+          },
         }),
       ),
     )

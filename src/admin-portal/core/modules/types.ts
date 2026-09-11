@@ -1,4 +1,4 @@
-import type { UserRole } from '@/access/roles'
+import type { PermissionModuleId, PortalUserPermissions, UserRole } from '@/access/roles'
 
 export const PORTAL_MODULE_OWNERS = ['jueyunai', 'xuemusi'] as const
 export const PORTAL_NAV_GROUPS = [
@@ -28,10 +28,14 @@ export const PORTAL_STATE_KEYS = [
 ] as const
 
 export type PortalRole = UserRole
+export type PortalPermissionUser = {
+  permissions?: PortalUserPermissions
+  role: PortalRole
+}
 export type PortalModuleOwner = (typeof PORTAL_MODULE_OWNERS)[number]
 export type PortalNavGroup = (typeof PORTAL_NAV_GROUPS)[number]
 export type PortalAvailability = (typeof PORTAL_AVAILABILITY)[number]
-export type PortalModuleId = string
+export type PortalModuleId = PermissionModuleId | 'overview' | 'example'
 export type PortalModuleLabelKey = string
 export type PortalNextStepKey = string
 export type PortalStateKey = (typeof PORTAL_STATE_KEYS)[number]
@@ -61,11 +65,7 @@ export interface PortalModuleDefinition extends PortalModuleManifest {
 }
 
 export type PortalFeatureStateReason =
-  | 'available'
-  | 'portal-disabled'
-  | 'module-disabled'
-  | 'dependency-gated'
-  | 'blocked'
+  'available' | 'portal-disabled' | 'module-disabled' | 'dependency-gated' | 'blocked'
 
 export type PortalFeatureState =
   | { enabled: true; reason: 'available' }

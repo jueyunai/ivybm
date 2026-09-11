@@ -29,11 +29,9 @@ describe.sequential('Lead contact boundary', () => {
   beforeAll(async () => {
     payload = await getPayload({ config, disableOnInit: true, key: 'lead-contact-boundary' })
     const suffix = randomUUID()
-    admin = await payload.create({
-      collection: 'users',
+    admin = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `lead-contact-admin-${suffix}@example.invalid`,
+      draft: true, data: { username: `lead-contact-admin-${suffix}`,
         password: 'lead-contact-boundary-password',
         role: 'admin',
       },

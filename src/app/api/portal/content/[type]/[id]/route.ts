@@ -34,7 +34,7 @@ export async function GET(
 ): Promise<Response> {
   try {
     const { id, type } = await parameters(params)
-    const { payload, req } = await authorizeContentRequest(request)
+    const { payload, req } = await authorizeContentRequest(request, { action: 'view' })
     const [record, options] = await Promise.all([
       getPortalContentEditor({ id, locale: localeFrom(request), payload, req, type }),
       getPortalContentOptions({ payload, req }),
@@ -51,7 +51,7 @@ export async function PATCH(
 ): Promise<Response> {
   try {
     const { id, type } = await parameters(params)
-    const { payload, req } = await authorizeContentRequest(request)
+    const { payload, req } = await authorizeContentRequest(request, { action: 'edit' })
     const input = await readContentJSON(request)
     return contentJSON({
       result: await executePortalRouteCommand({
@@ -76,7 +76,7 @@ export async function DELETE(
 ): Promise<Response> {
   try {
     const { id, type } = await parameters(params)
-    const { payload, req } = await authorizeContentRequest(request)
+    const { payload, req } = await authorizeContentRequest(request, { action: 'edit' })
     const input = await readContentJSON(request)
     const updatedAt = typeof input.updatedAt === 'string' ? input.updatedAt : ''
     const locale = input.locale === 'ar' ? 'ar' : input.locale === 'en' ? 'en' : null

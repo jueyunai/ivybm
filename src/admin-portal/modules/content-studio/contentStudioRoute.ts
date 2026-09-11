@@ -1,6 +1,6 @@
 import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
-import { getRoleUser } from '@/access/roles'
+import { getRoleUser, hasPortalPermission, type UserRole } from '@/access/roles'
 import config from '@/payload.config'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
@@ -10,11 +10,12 @@ import { ContentStudioCommandError, type ContentStudioPayload } from './contentS
 export interface AuthorizedContentStudioRequest {
   payload: Payload & ContentStudioPayload
   req: PayloadRequest
-  role: 'admin' | 'operator'
+  role: UserRole
 }
 
 export async function authorizeContentStudioRequest(
   request: Request,
+  options: { action?: 'view' | 'edit' } = {},
 ): Promise<AuthorizedContentStudioRequest> {
   if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
     throw new ContentStudioCommandError('portal-disabled', 'The Portal is disabled', 503)
@@ -36,7 +37,7 @@ export async function authorizeContentStudioRequest(
       401,
     )
   }
-  if (actor.role !== 'admin' && actor.role !== 'operator') {
+  if (!hasPortalPermission(actor, 'content-studio', options.action ?? 'view')) {
     throw new ContentStudioCommandError(
       'content-studio-forbidden',
       'Content Studio access denied',

@@ -1,7 +1,8 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
 import { getMediaPreviewUrl, type MediaPreviewProjection } from '@/admin-portal/core/media'
-import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
+import type { PortalEnvironment, PortalPermissionUser } from '@/admin-portal/core/modules/types'
+import { hasPortalPermission } from '@/access/roles'
 
 import type {
   ContentStudioPlatform,
@@ -155,18 +156,18 @@ export const loadContentStudioPageData = async ({
   payload,
   query,
   req,
-  role,
+  user,
 }: {
   env: PortalEnvironment
   payload: Payload
   query: ContentStudioQuery
   req: PayloadRequest
-  role: PortalRole
+  user: PortalPermissionUser
 }): Promise<ContentStudioPageData> => {
   if (env.ADMIN_PORTAL_ENABLED !== 'true') return { state: 'portal-disabled', summary: null }
   if (env.ADMIN_PORTAL_CONTENT_STUDIO_ENABLED !== 'true')
     return { state: 'module-disabled', summary: null }
-  if (!(CONTENT_STUDIO_MODULE.allowedRoles as readonly PortalRole[]).includes(role))
+  if (!hasPortalPermission(user, 'content-studio', 'view'))
     return { state: 'forbidden', summary: null }
   const publishingEnabled = env.ADMIN_PORTAL_PUBLISHING_ENABLED === 'true'
   try {

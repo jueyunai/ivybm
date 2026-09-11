@@ -1,6 +1,7 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
-import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
+import type { PortalEnvironment, PortalPermissionUser } from '@/admin-portal/core/modules/types'
+import { hasPortalPermission } from '@/access/roles'
 import {
   getJobCompensation,
   parsePublicationRecoveryIdempotencyKey,
@@ -137,19 +138,21 @@ export const loadSafeJobPageData = async ({
   payload,
   query,
   req,
-  role,
+  user,
 }: {
   env: PortalEnvironment
   payload: Payload
   query: SafeJobQuery
   req: PayloadRequest
-  role: PortalRole
+  user: PortalPermissionUser
 }): Promise<SafeJobPageData> => {
   if (env.ADMIN_PORTAL_ENABLED !== 'true') return { state: 'portal-disabled', summary: null }
   if (env.ADMIN_PORTAL_OPERATIONS_ENABLED !== 'true') {
     return { state: 'module-disabled', summary: null }
   }
-  if (role !== 'admin') return { state: 'forbidden', summary: null }
+  if (user.role !== 'admin' || !hasPortalPermission(user, 'operations', 'view')) {
+    return { state: 'forbidden', summary: null }
+  }
 
   try {
     const where: Where = {

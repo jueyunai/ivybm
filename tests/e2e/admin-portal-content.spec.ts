@@ -4,7 +4,7 @@ import { getPayload, type Where } from 'payload'
 
 import config from '@/payload.config'
 
-const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
+const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.SEED_ADMIN_USERNAME
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
 type CmsContentType = 'posts' | 'products' | 'projects'
@@ -449,13 +449,13 @@ const verifyUnpublishedWebsite = async (
 
 const login = async (page: import('@playwright/test').Page) => {
   test.skip(
-    !adminEmail || !adminPassword,
+    !adminUsername || !adminPassword,
     'Requires dedicated non-production E2E or local seed administrator credentials.',
   )
-  if (!adminEmail || !adminPassword) return
+  if (!adminUsername || !adminPassword) return
 
   await page.goto('/dashboard/login?returnTo=%2Fdashboard%2Fcontent')
-  await page.getByRole('textbox', { name: '邮箱' }).fill(adminEmail)
+  await page.getByRole('textbox', { name: '账号' }).fill(adminUsername)
   await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
   await page.getByRole('button', { name: '登录后台' }).click()
   await expect(page).toHaveURL(/\/dashboard\/content$/)
@@ -466,7 +466,7 @@ test('website content hub exposes five operational content types, filters, detai
 }, testInfo) => {
   await page.setViewportSize({ height: 900, width: 1440 })
   await login(page)
-  if (!adminEmail || !adminPassword) return
+  if (!adminUsername || !adminPassword) return
 
   await page.goto('/dashboard/content?type=products')
   await expect(page.getByRole('heading', { level: 2, name: '官网内容' })).toBeVisible()
@@ -502,7 +502,7 @@ test('mobile website content hub keeps filters and content workspace within the 
 }, testInfo) => {
   await page.setViewportSize({ height: 844, width: 390 })
   await login(page)
-  if (!adminEmail || !adminPassword) return
+  if (!adminUsername || !adminPassword) return
 
   await page.goto('/dashboard/content?type=products')
   await expect(page.getByRole('heading', { level: 2, name: '官网内容' })).toBeVisible()
@@ -521,7 +521,7 @@ test('website content editor completes create, update, and safe delete from the 
 }, testInfo) => {
   await page.setViewportSize({ height: 960, width: 1440 })
   await login(page)
-  if (!adminEmail || !adminPassword) return
+  if (!adminUsername || !adminPassword) return
 
   const suffix = `${Date.now()}-${testInfo.workerIndex}`
   const slug = `portal-e2e-category-${suffix}`
@@ -594,7 +594,7 @@ test('CMS-01 publishes localized product, project, and article lifecycles from t
   test.setTimeout(360_000)
   await page.setViewportSize({ height: 960, width: 1440 })
   await login(page)
-  if (!adminEmail || !adminPassword) return
+  if (!adminUsername || !adminPassword) return
 
   const suffix = `${Date.now()}-${testInfo.workerIndex}`
   const fixtures = cmsFixtures(suffix)
@@ -643,7 +643,7 @@ test('CMS-01 syncs localized site identity and contact details to the public web
   test.setTimeout(180_000)
   await page.setViewportSize({ height: 960, width: 1440 })
   await login(page)
-  if (!adminEmail || !adminPassword) return
+  if (!adminUsername || !adminPassword) return
 
   const suffix = `${Date.now()}-${testInfo.workerIndex}`
   const updates = {

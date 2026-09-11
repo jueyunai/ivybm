@@ -21,7 +21,7 @@ export async function GET(
     const { id: sourceId, assetId: assetValue } = await params
     const id = requireKnowledgeSourceID(sourceId)
     const assetId = requireKnowledgeSourceID(assetValue)
-    const { payload, req } = await authorizeKnowledgeSourceRequest(request)
+    const { payload, req } = await authorizeKnowledgeSourceRequest(request, { action: 'view' })
     const asset = await payload.findByID({ collection: 'knowledge-source-assets', depth: 0, id: assetId, overrideAccess: false, req })
     const relation = asset.source && typeof asset.source === 'object' ? asset.source.id : asset.source
     if (

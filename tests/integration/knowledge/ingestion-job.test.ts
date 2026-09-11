@@ -96,7 +96,7 @@ const assertIsolatedDatabase = () => {
 }
 
 const loginHeader = async (payload: Payload, user: User, password: string): Promise<string> => {
-  const login = await payload.login({ collection: 'users', data: { email: user.email, password } })
+  const login = await payload.login({ collection: 'users', data: { password, username: user.username } })
   return `JWT ${login.token}`
 }
 
@@ -121,11 +121,9 @@ describe.sequential('knowledge source ingestion job', () => {
     })
     const suffix = randomUUID()
     for (const role of ['admin', 'operator', 'sales'] as const) {
-      const user = await payload.create({
-        collection: 'users',
+      const user = await payload.create({ collection: 'users',
         context: { skipAudit: true },
-        data: {
-          email: `knowledge-ingestion-${role}-${suffix}@example.invalid`,
+        draft: true, data: { username: `knowledge-ingestion-${role}-${suffix}`,
           password: 'knowledge-ingestion-test-password',
           role,
         },

@@ -274,21 +274,17 @@ describe.sequential('Content Studio immediate platform publication', () => {
       disableOnInit: true,
       key: 'task13-content-studio-publishing',
     })
-    admin = await payload.create({
-      collection: 'users',
+    admin = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `content-studio-publishing-${randomUUID()}@example.invalid`,
+      draft: true, data: { username: `content-studio-publishing-${randomUUID()}`,
         password: 'content-studio-publishing-test-password',
         role: 'admin',
       },
       overrideAccess: true,
     })
-    operator = await payload.create({
-      collection: 'users',
+    operator = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `content-studio-operator-${randomUUID()}@example.invalid`,
+      draft: true, data: { username: `content-studio-operator-${randomUUID()}`,
         password: 'content-studio-operator-test-password',
         role: 'operator',
       },

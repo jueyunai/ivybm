@@ -136,7 +136,7 @@ describe('Portal lead commands', () => {
       payload: { find } as any,
       query: parseLeadQuery({}),
       req,
-      role: 'admin',
+      user: { role: 'admin' },
     })
 
     expect(result.summary?.items[0]?.country).toBeNull()

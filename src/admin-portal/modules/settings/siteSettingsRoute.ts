@@ -1,6 +1,6 @@
 import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
-import { getRoleUser, resolveRoleAccess } from '@/access/roles'
+import { getRoleUser, hasPortalPermission } from '@/access/roles'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
 import config from '@/payload.config'
@@ -29,7 +29,7 @@ export const authorizeSiteSettingsRequest = async (
     !user ||
     !actor ||
     user.collection !== 'users' ||
-    resolveRoleAccess({ action: 'update', resource: 'content', user: actor }) !== true
+    !hasPortalPermission(actor, 'settings', 'edit')
   ) {
     throw new SiteSettingsCommandError(
       'site-settings-forbidden',

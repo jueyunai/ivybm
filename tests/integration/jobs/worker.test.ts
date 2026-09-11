@@ -26,11 +26,9 @@ describe.sequential('Task 10 durable job worker', () => {
     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
 
     payload = await getPayload({ config, disableOnInit: true, key: 'task10-jobs-integration' })
-    admin = await payload.create({
-      collection: 'users',
+    admin = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task10-admin-${randomUUID()}@example.invalid`,
+      draft: true, data: { username: `task10-admin-${randomUUID()}`,
         password: 'task10-admin-integration-password',
         role: 'admin',
       },

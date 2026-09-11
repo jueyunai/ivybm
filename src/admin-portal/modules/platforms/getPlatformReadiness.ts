@@ -6,7 +6,8 @@ import {
   assessPlatformAccountReadiness,
   type PlatformAccountReadiness,
 } from '@/modules/platforms/readiness'
-import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules/types'
+import type { PortalEnvironment, PortalPermissionUser } from '@/admin-portal/core/modules/types'
+import { hasPortalPermission } from '@/access/roles'
 import type { PlatformAccount } from '@/payload-types'
 
 export type PlatformReadinessPageState =
@@ -199,18 +200,20 @@ export const loadPlatformAccountsPageData = async ({
   env,
   payload,
   req,
-  role,
+  user,
 }: {
   env: PortalEnvironment
   payload: Payload
   req?: PayloadRequest
-  role: PortalRole
+  user: PortalPermissionUser
 }): Promise<PlatformAccountsPageData> => {
   if (env.ADMIN_PORTAL_ENABLED !== 'true') return { accounts: [], state: 'portal-disabled' }
   if (env.ADMIN_PORTAL_PLATFORMS_ENABLED !== 'true') {
     return { accounts: [], state: 'module-disabled' }
   }
-  if (role !== 'admin') return { accounts: [], state: 'forbidden' }
+  if (user.role !== 'admin' || !hasPortalPermission(user, 'platforms', 'view')) {
+    return { accounts: [], state: 'forbidden' }
+  }
 
   try {
     const summary = await listPlatformReadiness({ environment: env, payload, req })
@@ -224,18 +227,20 @@ export const loadPlatformReadinessPageData = async ({
   env,
   payload,
   req,
-  role,
+  user,
 }: {
   env: PortalEnvironment
   payload: Payload
   req?: PayloadRequest
-  role: PortalRole
+  user: PortalPermissionUser
 }): Promise<PlatformReadinessPageData> => {
   if (env.ADMIN_PORTAL_ENABLED !== 'true') return { state: 'portal-disabled', summary: null }
   if (env.ADMIN_PORTAL_PLATFORMS_ENABLED !== 'true') {
     return { state: 'module-disabled', summary: null }
   }
-  if (role !== 'admin') return { state: 'forbidden', summary: null }
+  if (user.role !== 'admin' || !hasPortalPermission(user, 'platforms', 'view')) {
+    return { state: 'forbidden', summary: null }
+  }
 
   try {
     return {

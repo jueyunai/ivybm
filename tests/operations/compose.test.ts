@@ -77,7 +77,7 @@ const requiredEnvironment = {
   POSTGRES_USER: 'operation',
   RUNTIME_IMAGE: 'registry.example.invalid/ivybm-runtime',
   RUNTIME_IMAGE_DIGEST: runtimeDigest,
-  SEED_ADMIN_EMAIL: 'operation-seed@example.invalid',
+  SEED_ADMIN_USERNAME: 'operation-seed',
   SEED_ADMIN_PASSWORD: 'operation-seed-password',
   NEXT_PUBLIC_SERVER_URL: 'https://ivybm.com',
   TRUST_PROXY_HEADERS: 'true',

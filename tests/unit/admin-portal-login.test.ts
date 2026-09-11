@@ -29,12 +29,12 @@ describe('Portal login', () => {
     [429, 'account-locked'],
     [503, 'service-unavailable'],
   ] as const)('maps login HTTP %s to %s without exposing response text', async (status, code) => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response('provider stack or user detail', { status }),
-    )
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('provider stack or user detail', { status }))
 
     await expect(
-      requestPortalLogin({ email: 'a@example.com', fetcher, password: 'not-logged' }),
+      requestPortalLogin({ fetcher, password: 'not-logged', username: 'a' }),
     ).rejects.toMatchObject({ code, status })
   })
 
@@ -42,7 +42,7 @@ describe('Portal login', () => {
     const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error('socket includes secret'))
 
     await expect(
-      requestPortalLogin({ email: 'a@example.com', fetcher, password: 'not-logged' }),
+      requestPortalLogin({ fetcher, password: 'not-logged', username: 'a' }),
     ).rejects.toMatchObject({ code: 'network-failure', status: 0 })
   })
 
@@ -57,7 +57,7 @@ describe('Portal login', () => {
 
     expect(screen.getByRole('button', { name: '登录后台' }).closest('form')?.method).toBe('post')
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'operator@example.com' } })
+    fireEvent.change(screen.getByLabelText('账号'), { target: { value: 'operator' } })
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'local-password-value' } })
     const submit = screen.getByRole('button', { name: '登录后台' }) as HTMLButtonElement
     fireEvent.click(submit)
@@ -66,8 +66,19 @@ describe('Portal login', () => {
     expect(submit.disabled).toBe(true)
     expect(submit.getAttribute('aria-busy')).toBe('true')
     expect(fetcher).toHaveBeenCalledTimes(1)
-    expect(fetcher).toHaveBeenCalledWith('/api/users/login', {
-      body: JSON.stringify({ email: 'operator@example.com', password: 'local-password-value' }),
+    const [loginUrl, loginOptions] = fetcher.mock.calls[0] as [
+      string,
+      NonNullable<Parameters<typeof fetch>[1]>,
+    ]
+    expect(loginUrl).toBe('/api/users/login')
+    if (typeof loginOptions.body !== 'string') {
+      throw new Error('Login request body must be JSON')
+    }
+    expect(JSON.parse(loginOptions.body)).toEqual({
+      password: 'local-password-value',
+      username: 'operator',
+    })
+    expect(loginOptions).toMatchObject({
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
@@ -88,11 +99,11 @@ describe('Portal login', () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 401 }))
     render(React.createElement(PortalLoginForm, { fetcher, returnTo: '/dashboard' }))
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'operator@example.com' } })
+    fireEvent.change(screen.getByLabelText('账号'), { target: { value: 'operator' } })
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'wrong-password' } })
     fireEvent.click(screen.getByRole('button', { name: '登录后台' }))
 
-    expect((await screen.findByRole('alert')).textContent).toBe('邮箱或密码不正确，请重新输入。')
+    expect((await screen.findByRole('alert')).textContent).toBe('账号或密码不正确，请重新输入。')
     expect((screen.getByRole('button', { name: '登录后台' }) as HTMLButtonElement).disabled).toBe(
       false,
     )

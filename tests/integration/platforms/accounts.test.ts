@@ -100,21 +100,17 @@ describe.sequential('platform accounts', () => {
     })
 
     const suffix = randomUUID()
-    admin = await payload.create({
-      collection: 'users',
+    admin = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `platform-admin-${suffix}@example.invalid`,
+      draft: true, data: { username: `platform-admin-${suffix}`,
         password: 'platform-accounts-admin-password',
         role: 'admin',
       },
       overrideAccess: true,
     })
-    operator = await payload.create({
-      collection: 'users',
+    operator = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `platform-operator-${suffix}@example.invalid`,
+      draft: true, data: { username: `platform-operator-${suffix}`,
         password: 'platform-accounts-operator-password',
         role: 'operator',
       },
@@ -417,9 +413,8 @@ describe.sequential('platform accounts', () => {
     expect(auditBody).not.toContain(encryptedAccessToken)
     expect(auditBody).not.toContain(encryptedRefreshToken)
 
-    const login = await payload.login({
-      collection: 'users',
-      data: { email: admin.email, password: 'platform-accounts-admin-password' },
+    const login = await payload.login({ collection: 'users',
+      data: { username: admin.username, password: 'platform-accounts-admin-password' },
     })
     const authorization = `JWT ${login.token}`
     process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS = `other-page,page-${suffix}`
@@ -522,9 +517,8 @@ describe.sequential('platform accounts', () => {
       ]),
     })
 
-    const operatorLogin = await payload.login({
-      collection: 'users',
-      data: { email: operator.email, password: 'platform-accounts-operator-password' },
+    const operatorLogin = await payload.login({ collection: 'users',
+      data: { username: operator.username, password: 'platform-accounts-operator-password' },
     })
     await expect(
       platformReadinessGet(
@@ -724,9 +718,8 @@ describe.sequential('platform accounts', () => {
     process.env.META_WEBHOOK_ALLOWED_ACCOUNT_IDS = externalAccountId
     process.env.META_WEBHOOK_APP_SECRET = `meta-app-secret-${suffix}`
     process.env.META_WEBHOOK_VERIFY_TOKEN = `meta-verify-token-${suffix}`
-    const login = await payload.login({
-      collection: 'users',
-      data: { email: admin.email, password: 'platform-accounts-admin-password' },
+    const login = await payload.login({ collection: 'users',
+      data: { username: admin.username, password: 'platform-accounts-admin-password' },
     })
 
     const response = await platformReadinessGet(

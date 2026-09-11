@@ -1,7 +1,7 @@
 import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
 
-const adminEmail = process.env.E2E_ADMIN_EMAIL
+const adminUsername = process.env.E2E_ADMIN_USERNAME
 const adminPassword = process.env.E2E_ADMIN_PASSWORD
 
 const openTaskNavigation = async ({
@@ -29,25 +29,25 @@ test('operations dashboard and owned navigation remain available after an Admin 
   page,
 }, testInfo) => {
   test.skip(
-    !adminEmail || !adminPassword,
-    'Requires a dedicated non-production E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD.',
+    !adminUsername || !adminPassword,
+    'Requires a dedicated non-production E2E_ADMIN_USERNAME and E2E_ADMIN_PASSWORD.',
   )
 
-  if (!adminEmail || !adminPassword) return
+  if (!adminUsername || !adminPassword) return
 
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ height: 900, width: 1440 })
   await page.goto('/admin/login')
 
-  const emailInput = page.locator('input[type="email"]')
+  const usernameInput = page.locator('input[type="text"][name="username"], input[name="username"]')
   const passwordInput = page.locator('input[type="password"]')
   const submitButton = page.locator('button[type="submit"]')
 
-  await expect(emailInput).toHaveCount(1)
+  await expect(usernameInput).toHaveCount(1)
   await expect(passwordInput).toHaveCount(1)
   await expect(submitButton).toHaveCount(1)
 
-  await emailInput.fill(adminEmail)
+  await usernameInput.fill(adminUsername)
   await passwordInput.fill(adminPassword)
   await Promise.all([page.waitForURL(/\/admin\/?$/), submitButton.click()])
 

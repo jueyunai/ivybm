@@ -25,7 +25,10 @@ vi.mock('@/admin-portal/core/commands/portalCommandReceipts', async (importOrigi
 import { DELETE, PATCH } from '@/app/api/portal/settings/ai/[resource]/[id]/route'
 import { POST } from '@/app/api/portal/settings/ai/[resource]/route'
 import { GET } from '@/app/api/portal/settings/ai/route'
-import { aiSettingsErrorResponse } from '@/admin-portal/modules/settings/aiSettingsRoute'
+import {
+  aiSettingsErrorResponse,
+  authorizeAiSettingsRequest,
+} from '@/admin-portal/modules/settings/aiSettingsRoute'
 
 const request = (body: unknown, method: 'DELETE' | 'PATCH' | 'POST' = 'POST'): NextRequest =>
   new NextRequest('http://localhost/api/portal/settings/ai/providers', {
@@ -80,6 +83,24 @@ describe('Portal AI settings route', () => {
     )
     expect(response.status).toBe(413)
     expect(mocks.executePortalRouteCommand).not.toHaveBeenCalled()
+  })
+
+  it('allows settings view without granting settings edit', async () => {
+    const user = {
+      collection: 'users',
+      id: 1,
+      permissions: {
+        settings: { edit: false, view: true },
+      },
+      role: 'admin',
+    }
+    mocks.getPayload.mockResolvedValue({ auth: vi.fn().mockResolvedValue({ user }) })
+
+    await expect(authorizeAiSettingsRequest(new Request('http://localhost'), { action: 'view' }))
+      .resolves.toMatchObject({ user })
+    await expect(
+      authorizeAiSettingsRequest(new Request('http://localhost'), { action: 'edit' }),
+    ).rejects.toMatchObject({ code: 'ai-settings-forbidden', status: 403 })
   })
 
   it('runs an admin command with no-store response semantics', async () => {

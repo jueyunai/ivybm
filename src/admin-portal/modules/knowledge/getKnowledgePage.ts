@@ -1,7 +1,7 @@
 import type { Payload, PayloadRequest, Where } from 'payload'
 
 import { resolvePortalModule } from '@/admin-portal/core/modules'
-import type { PortalEnvironment, PortalRole } from '@/admin-portal/core/modules'
+import type { PortalEnvironment, PortalPermissionUser, PortalRole } from '@/admin-portal/core/modules'
 
 import { KNOWLEDGE_MODULE } from './manifest'
 
@@ -409,15 +409,15 @@ export async function loadKnowledgePageData({
   payload,
   query,
   req,
-  role,
+  user,
 }: {
   env: PortalEnvironment
   payload: Payload
   query: KnowledgeQuery
   req: PayloadRequest
-  role: PortalRole
+  user: PortalPermissionUser
 }): Promise<KnowledgePageData> {
-  const resolved = resolvePortalModule({ env, module: KNOWLEDGE_MODULE, role })
+  const resolved = resolvePortalModule({ env, module: KNOWLEDGE_MODULE, user })
   if (!resolved) return { state: 'forbidden', summary: null }
   if (!resolved.featureState.enabled) {
     return {
@@ -433,7 +433,7 @@ export async function loadKnowledgePageData({
       payload,
       query,
       req,
-      role: role as 'admin' | 'operator',
+      role: user.role as 'admin' | 'operator',
     }),
   }
 }

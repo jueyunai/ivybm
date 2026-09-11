@@ -8,6 +8,10 @@ import {
 const originalFeishuSecret = process.env.FEISHU_APP_SECRET
 const originalPublishingEnabled = process.env.ADMIN_PORTAL_PUBLISHING_ENABLED
 const originalCI = process.env.CI
+const originalE2EAdminUsername = process.env.E2E_ADMIN_USERNAME
+const originalE2EAdminEmail = process.env.E2E_ADMIN_EMAIL
+const originalSeedAdminUsername = process.env.SEED_ADMIN_USERNAME
+const originalSeedAdminEmail = process.env.SEED_ADMIN_EMAIL
 
 afterEach(() => {
   if (originalFeishuSecret === undefined) delete process.env.FEISHU_APP_SECRET
@@ -16,9 +20,49 @@ afterEach(() => {
   else process.env.ADMIN_PORTAL_PUBLISHING_ENABLED = originalPublishingEnabled
   if (originalCI === undefined) delete process.env.CI
   else process.env.CI = originalCI
+  if (originalE2EAdminUsername === undefined) delete process.env.E2E_ADMIN_USERNAME
+  else process.env.E2E_ADMIN_USERNAME = originalE2EAdminUsername
+  if (originalE2EAdminEmail === undefined) delete process.env.E2E_ADMIN_EMAIL
+  else process.env.E2E_ADMIN_EMAIL = originalE2EAdminEmail
+  if (originalSeedAdminUsername === undefined) delete process.env.SEED_ADMIN_USERNAME
+  else process.env.SEED_ADMIN_USERNAME = originalSeedAdminUsername
+  if (originalSeedAdminEmail === undefined) delete process.env.SEED_ADMIN_EMAIL
+  else process.env.SEED_ADMIN_EMAIL = originalSeedAdminEmail
 })
 
 describe('E2E child environment', () => {
+  it('maps legacy email credentials to username values for child processes', () => {
+    delete process.env.E2E_ADMIN_USERNAME
+    delete process.env.SEED_ADMIN_USERNAME
+    process.env.E2E_ADMIN_EMAIL = 'Sales+West@example.invalid'
+    process.env.SEED_ADMIN_EMAIL = 'Admin@example.invalid'
+
+    const environment = createE2EEnvironment({
+      aiProviderPort: 31_002,
+      baseURL: 'http://127.0.0.1:31001',
+      commitSHA: 'a'.repeat(40),
+      databaseName: 'ivybm_e2e_aaaaaaaaaaaaaaaaaaaaaaaa_test',
+      databaseURL:
+        'postgres://postgres:postgres@127.0.0.1:5432/ivybm_e2e_aaaaaaaaaaaaaaaaaaaaaaaa_test',
+      launchToken: 'b'.repeat(64),
+      mode: 'mutation',
+      planDigest: 'c'.repeat(64),
+      port: 31_001,
+      requestedSuites: ['website'],
+      runID: 'a'.repeat(24),
+      specPaths: ['tests/e2e/website.spec.ts'],
+    })
+
+    expect(environment.E2E_ADMIN_USERNAME).toBe('sales-west')
+    expect(environment.SEED_ADMIN_USERNAME).toBe('admin')
+    expect((environment as Record<string, string | undefined>).E2E_ADMIN_EMAIL).toBe(
+      'Sales+West@example.invalid',
+    )
+    expect((environment as Record<string, string | undefined>).SEED_ADMIN_EMAIL).toBe(
+      'Admin@example.invalid',
+    )
+  })
+
   it('does not inherit real provider credentials or the worker override', () => {
     process.env.FEISHU_APP_SECRET = 'real-provider-secret'
     const environment = createE2EEnvironment({

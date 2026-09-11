@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer'
 
 import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
-import { getRoleUser } from '@/access/roles'
+import { getRoleUser, hasPortalPermission } from '@/access/roles'
 import { MEDIA_PDF_MAX_BYTES } from '@/collections/Media'
 import config from '@/payload.config'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
@@ -45,7 +45,10 @@ export interface AuthorizedMediaRequest {
   req: PayloadRequest
 }
 
-export async function authorizeMediaRequest(request: Request): Promise<AuthorizedMediaRequest> {
+export async function authorizeMediaRequest(
+  request: Request,
+  options: { action?: 'view' | 'edit' } = {},
+): Promise<AuthorizedMediaRequest> {
   if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
     throw new MediaCommandError('portal-disabled', 'The Portal is disabled', 503)
   }
@@ -59,7 +62,7 @@ export async function authorizeMediaRequest(request: Request): Promise<Authorize
   if (!user || !actor || (user as { collection?: string }).collection !== 'users') {
     throw new MediaCommandError('media-unauthenticated', 'Authentication required', 401)
   }
-  if (actor.role !== 'admin' && actor.role !== 'operator') {
+  if (!hasPortalPermission(actor, 'media', options.action ?? 'view')) {
     throw new MediaCommandError('media-forbidden', 'Media access denied', 403)
   }
 

@@ -1,16 +1,17 @@
 import { headers } from 'next/headers'
 import { getPayload } from 'payload'
 
-import { getRoleUser } from '@/access/roles'
+import { getRoleUser, normalizePortalPermissions } from '@/access/roles'
 import config from '@/payload.config'
 
 import type { PortalUser } from './types'
 
 type PortalAuthUser = {
   collection?: string
-  email?: unknown
+  permissions?: unknown
   id?: unknown
   role?: unknown
+  username?: unknown
 }
 
 type PortalAuthPayload = {
@@ -30,14 +31,21 @@ export const getPortalSession = async ({
   const authenticated = await payload.auth({ headers: requestHeaders ?? (await headers()) })
   const candidate = authenticated.user
 
-  if (candidate?.collection !== 'users' || typeof candidate.email !== 'string') return null
+  if (
+    candidate?.collection !== 'users' ||
+    typeof candidate.username !== 'string' ||
+    !candidate.username.trim()
+  ) {
+    return null
+  }
 
   const roleUser = getRoleUser(candidate)
   if (!roleUser) return null
 
   return {
-    email: candidate.email,
+    username: candidate.username,
     id: roleUser.id,
+    permissions: normalizePortalPermissions(candidate.permissions, roleUser.role),
     role: roleUser.role,
   }
 }

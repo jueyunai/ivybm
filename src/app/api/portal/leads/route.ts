@@ -14,7 +14,7 @@ export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest): Promise<Response> {
   try {
-    const { payload, req, role } = await authorizeLeadRequest(request)
+    const { payload, req, role } = await authorizeLeadRequest(request, { action: 'edit' })
     const input = await readLeadJSON(request)
     const result = await executePortalRouteCommand({
       fingerprintInput: input,

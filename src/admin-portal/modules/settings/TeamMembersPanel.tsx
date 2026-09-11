@@ -24,6 +24,11 @@ import {
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
+import {
+  PERMISSION_MODULE_IDS,
+  PORTAL_PERMISSION_PRESETS,
+  type PortalUserPermissions,
+} from '@/access/roles'
 import { Button, StatusBadge, Surface, UiSelect } from '@/admin-portal/core/ui'
 
 import type { PortalTeamMemberDTO, PortalTeamMemberRole } from './userSettingsContracts'
@@ -35,6 +40,25 @@ export interface TeamMembersPanelProps {
 }
 
 type ModalMode = 'add' | 'delete' | 'edit' | 'reset-password' | null
+
+const temporaryPasswordCharacters =
+  'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*'
+
+const generateTemporaryPassword = (): string => {
+  const random = new Uint32Array(16)
+  crypto.getRandomValues(random)
+  return Array.from(random, (value) =>
+    temporaryPasswordCharacters.charAt(value % temporaryPasswordCharacters.length),
+  ).join('')
+}
+
+const clonePermissions = (value: PortalUserPermissions): PortalUserPermissions =>
+  Object.fromEntries(
+    PERMISSION_MODULE_IDS.map((moduleId) => [moduleId, { ...value[moduleId] }]),
+  ) as PortalUserPermissions
+
+const applyPermissionTemplate = (role: 'admin' | 'operator' | 'sales'): PortalUserPermissions =>
+  clonePermissions(PORTAL_PERMISSION_PRESETS[role])
 
 type TeamMembersAPIResult = {
   deletedId?: number | string
@@ -173,7 +197,7 @@ function TeamMemberDialog({
         <Dialog.Overlay className="portal-modal-backdrop" />
         <Dialog.Content
           aria-describedby={description ? descriptionId : undefined}
-          className="portal-shell portal-surface portal-modal"
+          className="portal-shell portal-surface portal-modal portal-modal--team"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
             returnFocusRef.current?.focus()
@@ -221,6 +245,115 @@ function TeamMemberDialog({
   )
 }
 
+function PermissionMatrix({
+  locale,
+  messages,
+  onChange,
+  value,
+}: {
+  locale: 'en' | 'zh'
+  messages: ReturnType<typeof getPortalMessages>['settings']
+  onChange: (permissions: PortalUserPermissions) => void
+  value: PortalUserPermissions
+}) {
+  const moduleMessages = getPortalMessages(locale).modules
+
+  const updatePermission = (
+    moduleId: (typeof PERMISSION_MODULE_IDS)[number],
+    action: 'edit' | 'view',
+    checked: boolean,
+  ) => {
+    const current = value[moduleId]
+    const view = action === 'view' ? checked : checked ? true : current.view
+    const edit = action === 'edit' ? checked : current.edit
+    onChange({
+      ...value,
+      [moduleId]: {
+        edit: view && edit,
+        view,
+      },
+    })
+  }
+
+  return (
+    <div className="portal-team-members__permissions-section">
+      <div className="portal-team-members__perm-header">
+        <div className="portal-team-members__perm-title-wrap">
+          <span className="portal-field__label">
+            <span aria-hidden="true" className="portal-required" />
+            {messages.permissionMatrix}
+          </span>
+          <span className="portal-team-members__perm-required-badge">{messages.permissionRequired}</span>
+        </div>
+        <div className="portal-team-members__perm-quick-actions">
+          <Button
+            onClick={() => {
+              onChange(
+                Object.fromEntries(
+                  PERMISSION_MODULE_IDS.map((moduleId) => [moduleId, { edit: true, view: true }]),
+                ) as PortalUserPermissions,
+              )
+            }}
+            size="compact"
+            type="button"
+            variant="ghost"
+          >
+            {messages.permissionAll}
+          </Button>
+          <Button
+            onClick={() => {
+              onChange(
+                Object.fromEntries(
+                  PERMISSION_MODULE_IDS.map((moduleId) => [moduleId, { edit: false, view: false }]),
+                ) as PortalUserPermissions,
+              )
+            }}
+            size="compact"
+            type="button"
+            variant="ghost"
+          >
+            {messages.permissionNone}
+          </Button>
+        </div>
+      </div>
+      <div className="portal-team-members__perm-grid">
+        {PERMISSION_MODULE_IDS.map((moduleId) => {
+          const perm = value[moduleId]
+          const isActive = perm.view || perm.edit
+          return (
+            <article
+              key={moduleId}
+              className={`portal-team-members__perm-card ${isActive ? 'is-active' : ''}`}
+            >
+              <div className="portal-team-members__perm-card-header">
+                <strong>{moduleMessages[moduleId]}</strong>
+              </div>
+              <div className="portal-team-members__perm-card-actions">
+                <label className="portal-team-members__check-label">
+                  <input
+                    checked={perm.view}
+                    onChange={(event) => updatePermission(moduleId, 'view', event.target.checked)}
+                    type="checkbox"
+                  />
+                  {messages.permissionView}
+                </label>
+                <label className="portal-team-members__check-label">
+                  <input
+                    checked={perm.edit}
+                    onChange={(event) => updatePermission(moduleId, 'edit', event.target.checked)}
+                    type="checkbox"
+                  />
+                  {messages.permissionEdit}
+                </label>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export function TeamMembersPanel({
   currentUserId,
   initialMembers = [],
@@ -228,6 +361,7 @@ export function TeamMembersPanel({
 }: TeamMembersPanelProps) {
   const { locale } = usePortalPreferences()
   const messages = getPortalMessages(locale).settings
+  const moduleMessages = getPortalMessages(locale).modules
   const command = usePortalCommandKey('portal-team-members')
 
   const [members, setMembers] = useState<PortalTeamMemberDTO[]>(initialMembers)
@@ -240,11 +374,14 @@ export function TeamMembersPanel({
   const returnFocusRef = useRef<HTMLElement | null>(null)
 
   // Form states
-  const [formEmail, setFormEmail] = useState('')
+  const [formUsername, setFormUsername] = useState('')
   const [formRole, setFormRole] = useState<PortalTeamMemberRole>('sales')
   const [formPassword, setFormPassword] = useState('')
   const [formConfirmPassword, setFormConfirmPassword] = useState('')
-  const [formConfirmEmail, setFormConfirmEmail] = useState('')
+  const [formPermissions, setFormPermissions] = useState<PortalUserPermissions>(() =>
+    applyPermissionTemplate('sales'),
+  )
+  const [formConfirmUsername, setFormConfirmUsername] = useState('')
 
   const refresh = useCallback(async (): Promise<PortalTeamMemberDTO[]> => {
     const response = await fetch('/api/portal/settings/users', {
@@ -268,10 +405,10 @@ export function TeamMembersPanel({
   const openAddModal = () => {
     rememberTrigger()
     setSelectedMember(null)
-    setFormEmail('')
     setFormRole('sales')
-    setFormPassword('')
-    setFormConfirmPassword('')
+    setFormPassword(generateTemporaryPassword())
+    setFormUsername('')
+    setFormPermissions(applyPermissionTemplate('sales'))
     setFeedback(null)
     setModalMode('add')
   }
@@ -279,8 +416,9 @@ export function TeamMembersPanel({
   const openEditModal = (member: PortalTeamMemberDTO) => {
     rememberTrigger()
     setSelectedMember(member)
-    setFormEmail(member.email)
     setFormRole(member.role)
+    setFormUsername(member.username)
+    setFormPermissions(clonePermissions(member.permissions))
     setFeedback(null)
     setModalMode('edit')
   }
@@ -297,7 +435,7 @@ export function TeamMembersPanel({
   const openDeleteModal = (member: PortalTeamMemberDTO) => {
     rememberTrigger()
     setSelectedMember(member)
-    setFormConfirmEmail('')
+    setFormConfirmUsername('')
     setFeedback(null)
     setModalMode('delete')
   }
@@ -306,10 +444,11 @@ export function TeamMembersPanel({
     const trigger = returnFocusRef.current
     setModalMode(null)
     setSelectedMember(null)
-    setFormEmail('')
+    setFormUsername('')
     setFormPassword('')
+    setFormPermissions(applyPermissionTemplate('sales'))
     setFormConfirmPassword('')
-    setFormConfirmEmail('')
+    setFormConfirmUsername('')
     trigger?.focus()
   }, [])
 
@@ -391,17 +530,12 @@ export function TeamMembersPanel({
 
   const handleAddSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (formPassword !== formConfirmPassword) {
-      setFeedback({ message: messages.passwordMismatch, tone: 'error' })
-      return
-    }
-
     setBusy(true)
     setFeedback(null)
     const idempotencyKey = command.key(
       JSON.stringify({
         action: 'create_team_member',
-        email: formEmail.trim().toLowerCase(),
+        username: formUsername.trim().toLowerCase(),
         role: formRole,
       }),
     )
@@ -409,10 +543,10 @@ export function TeamMembersPanel({
     try {
       const response = await fetch('/api/portal/settings/users', {
         body: JSON.stringify({
-          confirmPassword: formConfirmPassword,
-          email: formEmail,
+          permissions: formPermissions,
           password: formPassword,
           role: formRole,
+          username: formUsername,
         }),
         credentials: 'same-origin',
         headers: {
@@ -453,7 +587,7 @@ export function TeamMembersPanel({
     const idempotencyKey = command.key(
       JSON.stringify({
         action: 'update_team_member',
-        email: formEmail.trim().toLowerCase(),
+        username: formUsername.trim().toLowerCase(),
         id: selectedMember.id,
         role: formRole,
         updatedAt: selectedMember.updatedAt,
@@ -463,9 +597,10 @@ export function TeamMembersPanel({
     try {
       const response = await fetch(`/api/portal/settings/users/${selectedMember.id}`, {
         body: JSON.stringify({
-          email: formEmail,
+          permissions: formPermissions,
           role: formRole,
           updatedAt: selectedMember.updatedAt,
+          username: formUsername,
         }),
         credentials: 'same-origin',
         headers: {
@@ -618,7 +753,7 @@ export function TeamMembersPanel({
     const idempotencyKey = command.key(
       JSON.stringify({
         action: 'delete_team_member',
-        confirmEmail: formConfirmEmail.trim().toLowerCase(),
+        confirmUsername: formConfirmUsername.trim().toLowerCase(),
         id: selectedMember.id,
         updatedAt: selectedMember.updatedAt,
       }),
@@ -627,7 +762,7 @@ export function TeamMembersPanel({
     try {
       const response = await fetch(`/api/portal/settings/users/${selectedMember.id}`, {
         body: JSON.stringify({
-          confirmEmail: formConfirmEmail,
+          confirmUsername: formConfirmUsername,
           updatedAt: selectedMember.updatedAt,
         }),
         credentials: 'same-origin',
@@ -673,6 +808,16 @@ export function TeamMembersPanel({
       default:
         return role
     }
+  }
+
+  const handleRoleChange = (role: PortalTeamMemberRole) => {
+    setFormRole(role)
+    setFormPermissions(applyPermissionTemplate(role))
+  }
+
+  const handleCopyPassword = async () => {
+    await navigator.clipboard.writeText(formPassword)
+    setFeedback({ message: messages.copyPasswordSuccess, tone: 'success' })
   }
 
   const statusLabel = (status: PortalTeamMemberDTO['status'], lockedUntil: string | null) => {
@@ -766,8 +911,8 @@ export function TeamMembersPanel({
               return (
                 <article className="portal-team-members__item" key={member.id}>
                   <div className="portal-team-members__info">
-                    <div className="portal-team-members__email-row">
-                      <strong>{member.email}</strong>
+                    <div className="portal-team-members__username-row">
+                      <strong>{member.username}</strong>
                       {isSelf ? (
                         <span className="portal-team-members__self-tag">
                           ({messages.selfLabel})
@@ -780,9 +925,18 @@ export function TeamMembersPanel({
                       </span>
                       <span>·</span>
                       <span>
-                        {messages.memberCreatedAt}:{' '}
-                        {formatMemberDate(member.createdAt, locale)}
+                        {messages.memberCreatedAt}: {formatMemberDate(member.createdAt, locale)}
                       </span>
+                    </div>
+                    <div className="portal-team-members__permission-tags">
+                      {PERMISSION_MODULE_IDS.map((moduleId) => (
+                        <small key={moduleId}>
+                          {moduleMessages[moduleId]}:{' '}
+                          {member.permissions[moduleId].edit
+                            ? messages.permissionEditable
+                            : messages.permissionViewOnly}
+                        </small>
+                      ))}
                     </div>
                   </div>
 
@@ -866,35 +1020,48 @@ export function TeamMembersPanel({
           <label className="portal-field">
             <span className="portal-field__label">
               <span aria-hidden="true" className="portal-required" />
-              {messages.memberEmail}
+              {messages.memberUsername}
             </span>
             <span className="portal-field__control">
               <input
-                aria-label={messages.memberEmail}
+                aria-label={messages.memberUsername}
                 autoComplete="off"
                 data-dialog-initial-focus
-                onChange={(event) => setFormEmail(event.target.value)}
+                onChange={(event) => setFormUsername(event.target.value)}
                 required
-                type="email"
-                value={formEmail}
+                type="text"
+                value={formUsername}
               />
             </span>
           </label>
 
-          <label className="portal-field">
-            <span className="portal-field__label">{messages.memberRole}</span>
+          <div className="portal-team-members__template-field">
+            <div className="portal-team-members__template-label-row">
+              <span className="portal-field__label" style={{ marginBottom: 0 }}>
+                <span>{messages.memberRole}</span>
+                <span className="portal-team-members__template-tag">{messages.roleTemplateTag}</span>
+              </span>
+              <span className="portal-team-members__template-tip">{messages.roleTemplateTip}</span>
+            </div>
             <UiSelect
               ariaLabel={messages.memberRole}
-              onChange={(value) => setFormRole(value as PortalTeamMemberRole)}
+              onChange={(value) => handleRoleChange(value as PortalTeamMemberRole)}
               options={[
                 { label: messages.roleSalesOption, value: 'sales' },
                 { label: messages.roleOperatorOption, value: 'operator' },
                 { label: messages.roleAdminOption, value: 'admin' },
               ]}
-              required
+              required={false}
               value={formRole}
             />
-          </label>
+          </div>
+
+          <PermissionMatrix
+            locale={locale}
+            messages={messages}
+            onChange={setFormPermissions}
+            value={formPermissions}
+          />
 
           <label className="portal-field">
             <span className="portal-field__label">
@@ -908,29 +1075,32 @@ export function TeamMembersPanel({
                 minLength={12}
                 onChange={(event) => setFormPassword(event.target.value)}
                 required
-                type="password"
+                type="text"
                 value={formPassword}
               />
             </span>
           </label>
 
-          <label className="portal-field">
-            <span className="portal-field__label">
-              <span aria-hidden="true" className="portal-required" />
-              {messages.confirmInitialPassword}
-            </span>
-            <span className="portal-field__control">
-              <input
-                aria-label={messages.confirmInitialPassword}
-                maxLength={128}
-                minLength={12}
-                onChange={(event) => setFormConfirmPassword(event.target.value)}
-                required
-                type="password"
-                value={formConfirmPassword}
-              />
-            </span>
-          </label>
+          <div className="portal-team-members__permission-actions">
+            <Button
+              disabled={busy}
+              onClick={() => setFormPassword(generateTemporaryPassword())}
+              size="compact"
+              type="button"
+              variant="ghost"
+            >
+              {messages.generatePassword}
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={handleCopyPassword}
+              size="compact"
+              type="button"
+              variant="ghost"
+            >
+              {messages.copyPassword}
+            </Button>
+          </div>
 
           <div className="portal-modal__actions">
             <Button
@@ -959,33 +1129,47 @@ export function TeamMembersPanel({
         {modalFeedback}
         <form className="portal-modal__form" onSubmit={handleEditSubmit}>
           <label className="portal-field">
-            <span className="portal-field__label">{messages.memberEmail}</span>
+            <span className="portal-field__label">{messages.memberUsername}</span>
             <span className="portal-field__control">
               <input
-                aria-label={messages.memberEmail}
+                aria-label={messages.memberUsername}
+                autoComplete="username"
                 data-dialog-initial-focus
-                onChange={(event) => setFormEmail(event.target.value)}
+                onChange={(event) => setFormUsername(event.target.value)}
                 required
-                type="email"
-                value={formEmail}
+                type="text"
+                value={formUsername}
               />
             </span>
           </label>
 
-          <label className="portal-field">
-            <span className="portal-field__label">{messages.memberRole}</span>
+          <div className="portal-team-members__template-field">
+            <div className="portal-team-members__template-label-row">
+              <span className="portal-field__label" style={{ marginBottom: 0 }}>
+                <span>{messages.memberRole}</span>
+                <span className="portal-team-members__template-tag">{messages.roleTemplateTag}</span>
+              </span>
+              <span className="portal-team-members__template-tip">{messages.roleTemplateTip}</span>
+            </div>
             <UiSelect
               ariaLabel={messages.memberRole}
-              onChange={(value) => setFormRole(value as PortalTeamMemberRole)}
+              onChange={(value) => handleRoleChange(value as PortalTeamMemberRole)}
               options={[
                 { label: messages.roleSalesOption, value: 'sales' },
                 { label: messages.roleOperatorOption, value: 'operator' },
                 { label: messages.roleAdminOption, value: 'admin' },
               ]}
-              required
+              required={false}
               value={formRole}
             />
-          </label>
+          </div>
+
+          <PermissionMatrix
+            locale={locale}
+            messages={messages}
+            onChange={setFormPermissions}
+            value={formPermissions}
+          />
 
           <div className="portal-modal__actions">
             <Button
@@ -1080,21 +1264,21 @@ export function TeamMembersPanel({
         <form className="portal-modal__form" onSubmit={handleDeleteSubmit}>
           <div className="portal-modal__prompt">
             <p>
-              {messages.confirmEmailPrompt} <strong>{selectedMember?.email ?? ''}</strong>
+              {messages.confirmUsernamePrompt} <strong>{selectedMember?.username ?? ''}</strong>
             </p>
           </div>
           <label className="portal-field">
-            <span className="portal-field__label">{messages.memberEmail}</span>
+            <span className="portal-field__label">{messages.memberUsername}</span>
             <span className="portal-field__control">
               <input
-                aria-label={messages.memberEmail}
+                aria-label={messages.memberUsername}
                 autoComplete="off"
                 data-dialog-initial-focus
-                onChange={(event) => setFormConfirmEmail(event.target.value)}
-                placeholder={selectedMember?.email}
+                onChange={(event) => setFormConfirmUsername(event.target.value)}
+                placeholder={selectedMember?.username}
                 required
-                type="email"
-                value={formConfirmEmail}
+                type="text"
+                value={formConfirmUsername}
               />
             </span>
           </label>
@@ -1113,7 +1297,7 @@ export function TeamMembersPanel({
               disabled={
                 busy ||
                 !selectedMember ||
-                formConfirmEmail.trim().toLowerCase() !== selectedMember.email.toLowerCase()
+                formConfirmUsername.trim().toLowerCase() !== selectedMember.username.toLowerCase()
               }
               size="compact"
               type="submit"

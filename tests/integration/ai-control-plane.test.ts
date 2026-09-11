@@ -68,31 +68,25 @@ describe.sequential('AI control plane', () => {
     })
 
     const suffix = randomUUID()
-    admin = await payload.create({
-      collection: 'users',
+    admin = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `ai-admin-${suffix}@example.invalid`,
+      draft: true, data: { username: `ai-admin-${suffix}`,
         password: 'ai-control-plane-admin-password',
         role: 'admin',
       },
       overrideAccess: true,
     })
-    operator = await payload.create({
-      collection: 'users',
+    operator = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `ai-operator-${suffix}@example.invalid`,
+      draft: true, data: { username: `ai-operator-${suffix}`,
         password: 'ai-control-plane-operator-password',
         role: 'operator',
       },
       overrideAccess: true,
     })
-    sales = await payload.create({
-      collection: 'users',
+    sales = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `ai-sales-${suffix}@example.invalid`,
+      draft: true, data: { username: `ai-sales-${suffix}`,
         password: 'ai-control-plane-sales-password',
         role: 'sales',
       },
@@ -182,10 +176,9 @@ describe.sequential('AI control plane', () => {
     expect(storedProvider.apiKey).not.toContain(`provider-secret-${suffix}`)
 
     const providerSecret = `provider-secret-${suffix}`
-    const login = await payload.login({
-      collection: 'users',
+    const login = await payload.login({ collection: 'users',
       data: {
-        email: admin.email,
+        username: admin.username,
         password: 'ai-control-plane-admin-password',
       },
     })

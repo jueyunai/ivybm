@@ -43,7 +43,7 @@ export const createLeadAttachmentDownloadHandler = ({
         return new Response('Not found', { status: 404 })
       }
 
-      const { payload, req } = await authorizeLeadRequest(request)
+      const { payload, req } = await authorizeLeadRequest(request, { action: 'view' })
 
       // Verify user has access to this lead (e.g. sales user assigned to lead, or operator/admin)
       const lead = await payload.findByID({

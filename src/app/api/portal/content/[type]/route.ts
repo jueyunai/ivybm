@@ -22,7 +22,7 @@ export async function GET(
 ): Promise<Response> {
   try {
     parseContentType((await params).type)
-    const { payload, req } = await authorizeContentRequest(request)
+    const { payload, req } = await authorizeContentRequest(request, { action: 'view' })
     return contentJSON({ options: await getPortalContentOptions({ payload, req }) })
   } catch (error) {
     return contentErrorResponse(error)
@@ -35,7 +35,7 @@ export async function POST(
 ): Promise<Response> {
   try {
     const type = parseContentType((await params).type)
-    const { payload, req } = await authorizeContentRequest(request)
+    const { payload, req } = await authorizeContentRequest(request, { action: 'edit' })
     const input = await readContentJSON(request)
     const result = await executePortalRouteCommand({
       fingerprintInput: { input, type },

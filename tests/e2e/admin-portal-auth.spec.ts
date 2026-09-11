@@ -1,15 +1,15 @@
 import './require-mutation-launch'
 import { expect, test } from '@playwright/test'
 
-const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
+const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.SEED_ADMIN_USERNAME
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
 const fillPortalLogin = async (
   page: import('@playwright/test').Page,
-  email: string,
+  username: string,
   password: string,
 ) => {
-  await page.getByRole('textbox', { name: '邮箱' }).fill(email)
+  await page.getByRole('textbox', { name: '账号' }).fill(username)
   await page.getByRole('textbox', { name: '密码' }).fill(password)
 }
 
@@ -24,7 +24,7 @@ test('unauthenticated Portal requests preserve a safe return target', async ({ p
 
   await fillPortalLogin(page, 'invalid@example.invalid', 'invalid-password-123')
   await page.getByRole('button', { name: '登录后台' }).click()
-  await expect(page.locator('.portal-login-form__error')).toContainText('邮箱或密码不正确')
+  await expect(page.locator('.portal-login-form__error')).toContainText('账号或密码不正确')
   expect(page.url()).not.toContain('password')
   expect(page.url()).not.toContain('invalid%40example.invalid')
 })
@@ -116,13 +116,13 @@ test('Portal login reuses the Payload session and keeps the existing Admin route
   page,
 }) => {
   test.skip(
-    !adminEmail || !adminPassword,
+    !adminUsername || !adminPassword,
     'Requires dedicated non-production E2E or local seed administrator credentials.',
   )
-  if (!adminEmail || !adminPassword) return
+  if (!adminUsername || !adminPassword) return
 
   await page.goto('/dashboard/login?returnTo=%2Fdashboard')
-  await fillPortalLogin(page, adminEmail, adminPassword)
+  await fillPortalLogin(page, adminUsername, adminPassword)
 
   const submit = page.getByRole('button', { name: '登录后台' })
   await submit.click()
@@ -147,13 +147,13 @@ test('the account menu preserves the session when logout fails and allows a succ
   page,
 }) => {
   test.skip(
-    !adminEmail || !adminPassword,
+    !adminUsername || !adminPassword,
     'Requires dedicated non-production E2E or local seed administrator credentials.',
   )
-  if (!adminEmail || !adminPassword) return
+  if (!adminUsername || !adminPassword) return
 
   await page.goto('/dashboard/login?returnTo=%2Fdashboard%2Fsettings')
-  await fillPortalLogin(page, adminEmail, adminPassword)
+  await fillPortalLogin(page, adminUsername, adminPassword)
   await page.getByRole('button', { name: '登录后台' }).click()
   await expect(page).toHaveURL(/\/dashboard\/settings$/)
 

@@ -1,5 +1,6 @@
 import type { Payload, PayloadRequest } from 'payload'
 
+import { hasPortalPermission } from '@/access/roles'
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import {
   getJobCompensation,
@@ -54,7 +55,7 @@ export const retryPortalJob = async ({
   req: PayloadRequest
   user: User
 }) => {
-  if (user.role !== 'admin') {
+  if (user.role !== 'admin' || !hasPortalPermission(user, 'operations', 'edit')) {
     throw new OperationsCommandError('operations-forbidden', 'Administrator access required.', 403)
   }
 

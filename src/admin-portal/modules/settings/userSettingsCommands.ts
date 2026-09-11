@@ -8,10 +8,11 @@ import {
   MANUAL_LOCK_UNTIL,
   selectPortalTeamMemberDTO,
   UserSettingsCommandError,
-  validateEmail,
+  validatePermissions,
   validatePassword,
   validateRole,
   validateUpdatedAt,
+  validateUsername,
   type ChangePersonalPasswordInput,
   type CreateTeamMemberInput,
   type DeleteTeamMemberInput,
@@ -35,7 +36,7 @@ const isUniqueConstraintError = (error: unknown): boolean => {
     error instanceof ValidationError &&
     error.data.collection === 'users' &&
     error.data.errors.some((fieldError) => {
-      return fieldError.path === 'email' && fieldError.tableName === 'users'
+      return fieldError.path === 'username' && fieldError.tableName === 'users'
     })
   )
 }
@@ -343,19 +344,10 @@ export const createTeamMember = async ({
   payload: Payload
   req: PayloadRequest
 }): Promise<PortalTeamMemberDTO> => {
-  const email = validateEmail(input.email)
   const password = validatePassword(input.password, 'Initial password')
-  const confirmPassword = validatePassword(input.confirmPassword, 'Confirm initial password')
-
-  if (password !== confirmPassword) {
-    throw new UserSettingsCommandError(
-      'invalid-input',
-      'Initial password and confirmation must match.',
-      400,
-    )
-  }
-
   const role = validateRole(input.role)
+  const username = validateUsername(input.username)
+  const permissions = validatePermissions(input.permissions, role)
 
   const existing = await payload.find({
     collection: 'users',
@@ -363,13 +355,13 @@ export const createTeamMember = async ({
     limit: 1,
     overrideAccess: true,
     req,
-    where: { email: { equals: email } },
+    where: { username: { equals: username } },
   })
 
   if (existing.totalDocs > 0) {
     throw new UserSettingsCommandError(
-      'email-already-exists',
-      'A user with this email address already exists.',
+      'username-already-exists',
+      'A user with this username already exists.',
       409,
     )
   }
@@ -379,9 +371,10 @@ export const createTeamMember = async ({
     created = await payload.create({
       collection: 'users',
       data: {
-        email,
+        permissions,
         password,
         role,
+        username,
       } as never,
       overrideAccess: false,
       req,
@@ -389,8 +382,8 @@ export const createTeamMember = async ({
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       throw new UserSettingsCommandError(
-        'email-already-exists',
-        'A user with this email address already exists.',
+        'username-already-exists',
+        'A user with this username already exists.',
         409,
       )
     }
@@ -420,13 +413,13 @@ export const updateTeamMember = async ({
   req: PayloadRequest
 }): Promise<PortalTeamMemberDTO> => {
   const updatedAt = validateUpdatedAt(input.updatedAt)
-  const email = input.email !== undefined ? validateEmail(input.email) : undefined
   const role = input.role !== undefined ? validateRole(input.role) : undefined
+  const username = input.username !== undefined ? validateUsername(input.username) : undefined
 
-  if (email === undefined && role === undefined) {
+  if (input.permissions === undefined && role === undefined && username === undefined) {
     throw new UserSettingsCommandError(
       'invalid-input',
-      'At least email or role must be provided.',
+      'At least permissions, role, or username must be provided.',
       400,
     )
   }
@@ -443,6 +436,11 @@ export const updateTeamMember = async ({
   if (!current) {
     throw new UserSettingsCommandError('user-not-found', 'User not found.', 404)
   }
+
+  const permissions =
+    input.permissions !== undefined
+      ? validatePermissions(input.permissions, role ?? current.role)
+      : undefined
 
   if (current.updatedAt !== updatedAt) {
     throw new UserSettingsCommandError(
@@ -464,7 +462,7 @@ export const updateTeamMember = async ({
     await assertRemainingAvailableAdmin({ excludingUserId: current.id, payload, req })
   }
 
-  if (email !== undefined && email !== current.email) {
+  if (username !== undefined && username !== current.username) {
     const existing = await payload.find({
       collection: 'users',
       depth: 0,
@@ -472,21 +470,22 @@ export const updateTeamMember = async ({
       overrideAccess: true,
       req,
       where: {
-        and: [{ email: { equals: email } }, { id: { not_equals: current.id } }],
+        and: [{ id: { not_equals: current.id } }, { username: { equals: username } }],
       },
     })
     if (existing.totalDocs > 0) {
       throw new UserSettingsCommandError(
-        'email-already-exists',
-        'A user with this email address already exists.',
+        'username-already-exists',
+        'A user with this username already exists.',
         409,
       )
     }
   }
 
   const dataToUpdate: Record<string, unknown> = {}
-  if (email !== undefined) dataToUpdate.email = email
+  if (permissions !== undefined) dataToUpdate.permissions = permissions
   if (role !== undefined) dataToUpdate.role = role
+  if (username !== undefined) dataToUpdate.username = username
 
   let updated
   try {
@@ -501,8 +500,8 @@ export const updateTeamMember = async ({
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       throw new UserSettingsCommandError(
-        'email-already-exists',
-        'A user with this email address already exists.',
+        'username-already-exists',
+        'A user with this username already exists.',
         409,
       )
     }
@@ -726,7 +725,7 @@ export const deleteTeamMember = async ({
   payload: Payload
   req: PayloadRequest
 }): Promise<{ deletedId: number | string; success: true }> => {
-  const confirmEmail = validateEmail(input.confirmEmail)
+  const confirmUsername = validateUsername(input.confirmUsername)
   const updatedAt = validateUpdatedAt(input.updatedAt)
 
   const current = await payload.findByID({
@@ -758,10 +757,10 @@ export const deleteTeamMember = async ({
     )
   }
 
-  if (current.email.toLowerCase() !== confirmEmail) {
+  if (current.username.toLowerCase() !== confirmUsername) {
     throw new UserSettingsCommandError(
       'invalid-input',
-      'Confirmation email does not match target user email.',
+      'Confirmation username does not match target user username.',
       400,
     )
   }
@@ -810,7 +809,7 @@ export const changePersonalPassword = async ({
   input: ChangePersonalPasswordInput
   payload: Payload
   req: PayloadRequest
-  user: { email: string; id: number | string; role: string }
+  user: { id: number | string; role: string; username: string }
 }): Promise<{ success: true }> => {
   if (typeof input.currentPassword !== 'string' || !input.currentPassword) {
     throw new UserSettingsCommandError('invalid-input', 'Current password is required.', 400)
@@ -839,7 +838,7 @@ export const changePersonalPassword = async ({
     await payload.login({
       collection: 'users',
       data: {
-        email: user.email,
+        username: user.username,
         password: input.currentPassword,
       },
       req,

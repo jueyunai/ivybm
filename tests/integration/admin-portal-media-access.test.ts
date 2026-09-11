@@ -70,11 +70,9 @@ describe.sequential('Portal media access', () => {
     const suffix = randomUUID()
     queryToken = `P07-${suffix}`
     for (const role of ['admin', 'operator', 'sales'] as const) {
-      const user = await payload.create({
-        collection: 'users',
+      const user = await payload.create({ collection: 'users',
         context: { skipAudit: true },
-        data: {
-          email: `portal-media-${role}-${suffix}@example.invalid`,
+        draft: true, data: { username: `portal-media-${role}-${suffix}`,
           password: 'portal-media-integration-password',
           role,
         },
@@ -350,7 +348,7 @@ describe.sequential('Portal media access', () => {
       payload,
       query: parseContentStudioQuery({ q: queryToken }),
       req,
-      role: 'operator',
+      user: { role: 'operator' },
     })
     const option = page.summary?.options.assets.find((asset) => asset.id === media.id)
     expect(option).toMatchObject({ id: media.id, meta: 'image/png' })
@@ -369,7 +367,7 @@ describe.sequential('Portal media access', () => {
         visibility: 'all',
       },
       req: await requestFor(sales),
-      role: 'sales',
+      user: { role: 'sales' },
     })
 
     expect(result).toEqual({ state: 'forbidden', summary: null })

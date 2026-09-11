@@ -4,13 +4,20 @@ import { getPortalSession } from '@/admin-portal/core/auth/getPortalSession'
 import { getPortalRequestPath } from '@/admin-portal/core/auth/portalRequestPath'
 import { requirePortalUser } from '@/admin-portal/core/auth/requirePortalUser'
 import { requestPortalLogout } from '@/modules/auth/payloadLogout'
+import { PORTAL_PERMISSION_PRESETS } from '@/access/roles'
 
 describe('Portal authentication adapters', () => {
   it.each(['admin', 'operator', 'sales'] as const)(
-    'returns a minimal Portal user for the Payload users collection with the %s role',
+    'returns a permission-aware Portal user for the Payload users collection with the %s role',
     async (role) => {
       const auth = vi.fn().mockResolvedValue({
-        user: { collection: 'users', email: `${role}@example.com`, id: 42, role },
+        user: {
+          collection: 'users',
+          id: 42,
+          permissions: PORTAL_PERMISSION_PRESETS[role],
+          role,
+          username: `${role}`,
+        },
       })
 
       await expect(
@@ -19,8 +26,9 @@ describe('Portal authentication adapters', () => {
           requestHeaders: new Headers({ cookie: 'payload-token=opaque' }),
         }),
       ).resolves.toEqual({
-        email: `${role}@example.com`,
+        username: `${role}`,
         id: 42,
+        permissions: PORTAL_PERMISSION_PRESETS[role],
         role,
       })
       expect(auth).toHaveBeenCalledWith({
@@ -32,8 +40,8 @@ describe('Portal authentication adapters', () => {
   it('fails closed for missing users, another collection, or an invalid role', async () => {
     for (const user of [
       null,
-      { collection: 'api-keys', email: 'admin@example.com', id: 1, role: 'admin' },
-      { collection: 'users', email: 'admin@example.com', id: 1, role: 'owner' },
+      { collection: 'api-keys', id: 1, role: 'admin', username: 'admin' },
+      { collection: 'users', id: 1, role: 'owner', username: 'admin' },
     ]) {
       await expect(
         getPortalSession({
@@ -73,7 +81,12 @@ describe('Portal authentication adapters', () => {
   })
 
   it('returns the existing Payload Portal user without redirecting', async () => {
-    const user = { email: 'sales@example.com', id: 8, role: 'sales' } as const
+    const user = {
+      id: 8,
+      permissions: PORTAL_PERMISSION_PRESETS.sales,
+      role: 'sales',
+      username: 'sales',
+    } as const
     const redirectTo = vi.fn((_path: string): never => {
       throw new Error('should not redirect')
     })

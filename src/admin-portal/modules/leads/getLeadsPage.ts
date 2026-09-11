@@ -1,6 +1,7 @@
 import type { Payload, PayloadRequest, Where } from "payload"
 
-import type { PortalEnvironment, PortalRole } from "@/admin-portal/core/modules/types"
+import type { PortalEnvironment, PortalPermissionUser } from "@/admin-portal/core/modules/types"
+import { hasPortalPermission } from "@/access/roles"
 
 import { LEADS_MODULE } from "./manifest"
 
@@ -117,16 +118,16 @@ export class LeadsPageReadError extends Error {
   }
 }
 
-export const loadLeadsPageData = async ({ env, payload, query, req, role }: {
+export const loadLeadsPageData = async ({ env, payload, query, req, user }: {
   env: PortalEnvironment
   payload: Payload
   query: LeadQuery
   req: PayloadRequest
-  role: PortalRole
+  user: PortalPermissionUser
 }): Promise<LeadsPageData> => {
   if (env.ADMIN_PORTAL_ENABLED !== "true") return { state: "portal-disabled", summary: null }
   if (env.ADMIN_PORTAL_LEADS_ENABLED !== "true") return { state: "module-disabled", summary: null }
-  if (!LEADS_MODULE.allowedRoles.includes(role)) return { state: "forbidden", summary: null }
+  if (!hasPortalPermission(user, "leads", "view")) return { state: "forbidden", summary: null }
   try {
     const leads = await payload.find({
       collection: "leads", depth: 0, limit: 20, overrideAccess: false, page: query.page, req,
@@ -151,12 +152,12 @@ export const loadLeadsPageData = async ({ env, payload, query, req, role }: {
       }
     }
     const ids = docs.map(({ id }) => id)
-    const canAccessAttachments = role === "admin" || role === "operator"
+    const canAccessAttachments = user.role === "admin" || user.role === "operator"
 
     const [sources, users, conversations, attachments] = await Promise.all([
       payload.find({ collection: "lead-sources", depth: 0, limit: 100, overrideAccess: false, pagination: false, req, select: { isActive: true, name: true }, sort: "name", where: { isActive: { equals: true } } }),
-      role === "admin"
-        ? payload.find({ collection: "users", depth: 0, limit: 100, overrideAccess: false, pagination: false, req, select: { email: true }, sort: "email" })
+      user.role === "admin"
+        ? payload.find({ collection: "users", depth: 0, limit: 100, overrideAccess: false, pagination: false, req, select: { username: true }, sort: "username" })
         : Promise.resolve({ docs: [] }),
       ids.length
         ? payload.find({ collection: "conversations", depth: 0, limit: 100, overrideAccess: false, pagination: false, req, select: { handoffStatus: true, lead: true, publicId: true }, where: { lead: { in: ids } } })
@@ -207,7 +208,7 @@ export const loadLeadsPageData = async ({ env, payload, query, req, role }: {
             source: asID(lead.source) ?? 0, status: lead.status as LeadSummaryItem["status"], timeline: stringOrNull(lead.timeline), updatedAt: lead.updatedAt,
           }
         }),
-        options: { sources: sources.docs.map((source) => ({ id: source.id, label: source.name })), users: users.docs.map((user) => ({ id: user.id, label: user.email })) },
+        options: { sources: sources.docs.map((source) => ({ id: source.id, label: source.name })), users: users.docs.map((user) => ({ id: user.id, label: user.username })) },
         pagination: { page: leads.page ?? query.page, totalDocs: leads.totalDocs, totalPages: leads.totalPages ?? 1 }, query,
       },
     }

@@ -6,13 +6,130 @@ export type UserRole = (typeof USER_ROLES)[number]
 
 export type RoleUser = {
   id: number | string
+  permissions?: unknown
   role: UserRole
 }
 
 export type AccessAction = 'create' | 'read' | 'update' | 'delete'
 
 export type AccessResource =
-  'users' | 'content' | 'knowledge' | 'platformAccounts' | 'conversations' | 'leads'
+  | 'users'
+  | 'content'
+  | 'contentStudio'
+  | 'media'
+  | 'knowledge'
+  | 'platformAccounts'
+  | 'conversations'
+  | 'leads'
+
+export const PERMISSION_MODULE_IDS = [
+  'conversations',
+  'leads',
+  'website-content',
+  'media',
+  'content-studio',
+  'knowledge',
+  'platforms',
+  'operations',
+  'settings',
+] as const
+
+export type PermissionModuleId = (typeof PERMISSION_MODULE_IDS)[number]
+type LegacyPermissionModuleId = 'content' | 'contentStudio'
+
+export interface ModulePermission {
+  edit: boolean
+  view: boolean
+}
+
+export type PortalUserPermissions = Record<PermissionModuleId, ModulePermission>
+
+export type PermissionMatrixInput = Partial<Record<PermissionModuleId | LegacyPermissionModuleId, unknown>>
+
+const ADMIN_ONLY_PERMISSION_MODULES = new Set<PermissionModuleId>(['operations', 'platforms'])
+
+const rolePermissions = (
+  role: UserRole,
+  editableModules: PermissionModuleId[],
+): PortalUserPermissions =>
+  Object.fromEntries(
+    PERMISSION_MODULE_IDS.map((moduleId) => [
+      moduleId,
+      {
+        edit: editableModules.includes(moduleId),
+        view:
+          role === 'admin'
+            ? true
+            : role === 'sales'
+              ? editableModules.includes(moduleId)
+              : !ADMIN_ONLY_PERMISSION_MODULES.has(moduleId),
+      },
+    ]),
+  ) as PortalUserPermissions
+
+export const PORTAL_PERMISSION_PRESETS = {
+  admin: rolePermissions('admin', [...PERMISSION_MODULE_IDS]),
+  operator: rolePermissions('operator', [
+    'conversations',
+    'leads',
+    'website-content',
+    'media',
+    'content-studio',
+    'knowledge',
+    'settings',
+  ]),
+  sales: rolePermissions('sales', ['conversations', 'leads', 'settings']),
+} as const satisfies Record<UserRole, PortalUserPermissions>
+
+const normalizeModulePermission = (value: unknown): ModulePermission => {
+  if (!value || typeof value !== 'object') return { edit: false, view: false }
+  const candidate = value as { edit?: unknown; view?: unknown }
+  const edit = candidate.edit === true
+  const view = candidate.view === true || edit
+  return { edit, view }
+}
+
+const canonicalPermissionModule = (
+  moduleId: PermissionModuleId | LegacyPermissionModuleId,
+): PermissionModuleId => {
+  if (moduleId === 'content') return 'website-content'
+  if (moduleId === 'contentStudio') return 'content-studio'
+  return moduleId
+}
+
+export const normalizePortalPermissions = (
+  value: unknown,
+  role: UserRole = 'sales',
+): PortalUserPermissions => {
+  const template = PORTAL_PERMISSION_PRESETS[role]
+  const source = value && typeof value === 'object' ? (value as PermissionMatrixInput) : {}
+
+  return Object.fromEntries(
+    PERMISSION_MODULE_IDS.map((moduleId) => [
+      moduleId,
+      source[moduleId] === undefined &&
+      (moduleId !== 'website-content' || source.content === undefined) &&
+      (moduleId !== 'content-studio' || source.contentStudio === undefined)
+        ? template[moduleId]
+        : normalizeModulePermission(
+            source[moduleId] ??
+              (moduleId === 'website-content' ? source.content : source.contentStudio),
+          ),
+    ]),
+  ) as PortalUserPermissions
+}
+
+export const hasPortalPermission = (
+  user: Pick<RoleUser, 'permissions' | 'role'> | null | undefined,
+  moduleId: PermissionModuleId | LegacyPermissionModuleId,
+  action: 'view' | 'edit',
+): boolean => {
+  if (!user) return false
+  const canonicalModuleId = canonicalPermissionModule(moduleId)
+  if (ADMIN_ONLY_PERMISSION_MODULES.has(canonicalModuleId) && user.role !== 'admin') return false
+  const matrix = normalizePortalPermissions(user.permissions, user.role)
+  return matrix[canonicalModuleId][action]
+}
 
 type ResolveRoleAccessArgs = {
   action: AccessAction
@@ -41,12 +158,33 @@ const assignedToUser = (user: RoleUser): Where => ({
   },
 })
 
+const permissionModuleFor = (resource: AccessResource): PermissionModuleId => {
+  switch (resource) {
+    case 'contentStudio':
+      return 'content-studio'
+    case 'content':
+      return 'website-content'
+    case 'platformAccounts':
+      return 'platforms'
+    case 'users':
+      return 'settings'
+    default:
+      return resource
+  }
+}
+
 export const resolveRoleAccess = ({
   action,
   resource,
   user,
 }: ResolveRoleAccessArgs): AccessResult => {
   if (!user) {
+    return false
+  }
+
+  if (
+    !hasPortalPermission(user, permissionModuleFor(resource), action === 'read' ? 'view' : 'edit')
+  ) {
     return false
   }
 
@@ -88,6 +226,17 @@ export const accessFor =
       resource,
       user: getRoleUser(req.user),
     })
+
+export const portalPermissionAccess =
+  (moduleId: PermissionModuleId, action: 'view' | 'edit'): Access =>
+  ({ req }): boolean =>
+    hasPortalPermission(getRoleUser(req.user), moduleId, action)
+
+export const portalPermissionAdminAccess =
+  (moduleId: PermissionModuleId, action: 'view' | 'edit') =>
+  ({ req }: { req: PayloadRequest }): boolean =>
+    getRoleUser(req.user)?.role === 'admin' &&
+    hasPortalPermission(getRoleUser(req.user), moduleId, action)
 
 type AdminAccess = ({ req }: { req: PayloadRequest }) => boolean | Promise<boolean>
 

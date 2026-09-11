@@ -194,7 +194,7 @@ CLOUDFLARE_API_TOKEN=${token}
   })
 
   it('rejects a production file with demo seed credentials', () => {
-    const result = runPreflight(`${productionEnvironment}SEED_ADMIN_EMAIL=admin@example.invalid\n`)
+    const result = runPreflight(`${productionEnvironment}SEED_ADMIN_USERNAME=admin\n`)
 
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain('must not contain demo seed credentials')

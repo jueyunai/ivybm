@@ -14,7 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   try {
-    await authorizePortalConversationRequest(request)
+    await authorizePortalConversationRequest(request, { action: 'view' })
     return getOperatorSession(request, { params })
   } catch (error) {
     return portalConversationErrorResponse(error)

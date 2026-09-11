@@ -50,7 +50,7 @@ const response = (body: unknown, status = 200): Response =>
 
 const context = { skipAudit: true }
 const suffix = randomUUID()
-const adminEmail = `task11-routes-${suffix}@example.invalid`
+const adminUsername = `task11-routes-${suffix}@example.invalid`
 const adminPassword = 'task11-feishu-routes-password'
 const oauthState = `task11-state-${suffix}`
 const tenantKey = `task11-tenant-${suffix}`
@@ -120,32 +120,27 @@ describe.sequential('Task 11 Feishu OAuth routes and provisioning job', () => {
     process.env.FEISHU_CREDENTIAL_ENCRYPTION_KEY = 'a'.repeat(64)
     process.env.NEXT_PUBLIC_SERVER_URL = 'http://localhost'
     payload = await getPayload({ config, disableOnInit: true, key: 'task11-feishu-routes' })
-    const admin = await payload.create({
-      collection: 'users',
+    const admin = await payload.create({ collection: 'users',
       context,
-      data: { email: adminEmail, password: adminPassword, role: 'admin' },
+      draft: true, data: { username: adminUsername, password: adminPassword, role: 'admin' },
       overrideAccess: true,
     })
     adminID = admin.id
-    const operator = await payload.create({
-      collection: 'users',
+    const operator = await payload.create({ collection: 'users',
       context,
-      data: {
-        email: `task11-routes-operator-${suffix}@example.invalid`,
+      draft: true, data: { username: `task11-routes-operator-${suffix}`,
         password: adminPassword,
         role: 'operator',
       },
       overrideAccess: true,
     })
     operatorID = operator.id
-    const login = await payload.login({
-      collection: 'users',
-      data: { email: adminEmail, password: adminPassword },
+    const login = await payload.login({ collection: 'users',
+      data: { username: adminUsername, password: adminPassword },
     })
     authorization = `JWT ${login.token}`
-    const operatorLogin = await payload.login({
-      collection: 'users',
-      data: { email: operator.email, password: adminPassword },
+    const operatorLogin = await payload.login({ collection: 'users',
+      data: { username: operator.username, password: adminPassword },
     })
     operatorAuthorization = `JWT ${operatorLogin.token}`
   })

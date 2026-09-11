@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  hasPortalPermission,
+  normalizePortalPermissions,
+  PERMISSION_MODULE_IDS,
+  PORTAL_PERMISSION_PRESETS,
   resolveRoleAccess,
   type AccessAction,
   type AccessResource,
@@ -98,5 +102,104 @@ describe('role access matrix', () => {
     expectDenied(sales, 'platformAccounts', allActions)
     expectDenied(sales, 'conversations', ['create', 'delete'])
     expectDenied(sales, 'leads', ['create', 'delete'])
+  })
+
+  it('uses role presets with edit implying view for every module', () => {
+    const expectedPresets = {
+      admin: Object.fromEntries(
+        PERMISSION_MODULE_IDS.map((moduleId) => [moduleId, { edit: true, view: true }]),
+      ),
+      operator: Object.fromEntries(
+        PERMISSION_MODULE_IDS.map((moduleId) => [
+          moduleId,
+          {
+            edit: [
+              'conversations',
+              'leads',
+              'website-content',
+              'media',
+              'content-studio',
+              'knowledge',
+              'settings',
+            ].includes(moduleId),
+            view: !['operations', 'platforms'].includes(moduleId),
+          },
+        ]),
+      ),
+      sales: Object.fromEntries(
+        PERMISSION_MODULE_IDS.map((moduleId) => [
+          moduleId,
+          {
+            edit: ['conversations', 'leads', 'settings'].includes(moduleId),
+            view: ['conversations', 'leads', 'settings'].includes(moduleId),
+          },
+        ]),
+      ),
+    }
+
+    expect(PORTAL_PERMISSION_PRESETS.admin).toEqual(expectedPresets.admin)
+    expect(PORTAL_PERMISSION_PRESETS.operator).toEqual(expectedPresets.operator)
+    expect(PORTAL_PERMISSION_PRESETS.sales).toEqual(expectedPresets.sales)
+  })
+
+  it('normalizes granular permissions and makes edit imply view', () => {
+    expect(
+      normalizePortalPermissions(
+        {
+          conversations: { edit: true, view: true },
+          leads: { edit: true, view: false },
+          content: 'not-a-module-permission',
+        },
+        'sales',
+      ),
+    ).toEqual({
+      conversations: { edit: true, view: true },
+      'website-content': { edit: false, view: false },
+      'content-studio': { edit: false, view: false },
+      knowledge: { edit: false, view: false },
+      leads: { edit: true, view: true },
+      media: { edit: false, view: false },
+      operations: { edit: false, view: false },
+      platforms: { edit: false, view: false },
+      settings: { edit: true, view: true },
+    })
+
+    expect(normalizePortalPermissions(undefined, 'operator').conversations).toEqual({
+      edit: true,
+      view: true,
+    })
+  })
+
+  it('checks portal permissions from a stored role user', () => {
+    const user: RoleUser = {
+      id: 4,
+      role: 'sales',
+      permissions: {
+        conversations: { edit: false, view: true },
+        leads: { edit: true, view: true },
+      },
+    }
+
+    expect(hasPortalPermission(user, 'conversations', 'view')).toBe(true)
+    expect(hasPortalPermission(user, 'conversations', 'edit')).toBe(false)
+    expect(hasPortalPermission(user, 'leads', 'edit')).toBe(true)
+    expect(hasPortalPermission(user, 'media', 'view')).toBe(false)
+    expect(hasPortalPermission(null, 'leads', 'view')).toBe(false)
+  })
+
+  it('keeps admin-only modules closed even when a non-admin matrix requests access', () => {
+    const elevatedOperator: RoleUser = {
+      id: 5,
+      role: 'operator',
+      permissions: {
+        operations: { edit: true, view: true },
+        platforms: { edit: true, view: true },
+      },
+    }
+
+    expect(hasPortalPermission(elevatedOperator, 'operations', 'view')).toBe(false)
+    expect(hasPortalPermission(elevatedOperator, 'platforms', 'edit')).toBe(false)
+    expect(hasPortalPermission(elevatedOperator, 'content', 'view')).toBe(true)
+    expect(hasPortalPermission(elevatedOperator, 'contentStudio', 'view')).toBe(true)
   })
 })

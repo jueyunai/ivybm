@@ -1,6 +1,6 @@
 import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
-import { getRoleUser } from '@/access/roles'
+import { getRoleUser, hasPortalPermission } from '@/access/roles'
 import type { User } from '@/payload-types'
 import config from '@/payload.config'
 import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
@@ -15,6 +15,7 @@ export interface AuthorizedOperationsRequest {
 
 export const authorizeOperationsRequest = async (
   request: Request,
+  options: { action?: 'view' | 'edit' } = {},
 ): Promise<AuthorizedOperationsRequest> => {
   if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
     throw new OperationsCommandError('portal-disabled', 'The Portal is disabled.', 503)
@@ -29,7 +30,7 @@ export const authorizeOperationsRequest = async (
   if (!user || !actor || user.collection !== 'users') {
     throw new OperationsCommandError('operations-unauthenticated', 'Authentication required.', 401)
   }
-  if (actor.role !== 'admin') {
+  if (actor.role !== 'admin' || !hasPortalPermission(actor, 'operations', options.action ?? 'view')) {
     throw new OperationsCommandError('operations-forbidden', 'Administrator access required.', 403)
   }
   return { payload, req: await createLocalReq({ user }, payload), user: user as User }
@@ -58,7 +59,10 @@ export const operationsJSON = (body: unknown, init: ResponseInit = {}): Response
 
 export const operationsErrorResponse = (error: unknown): Response => {
   if (error instanceof OperationsCommandError) {
-    return operationsJSON({ error: { code: error.code, message: error.message } }, { status: error.status })
+    return operationsJSON(
+      { error: { code: error.code, message: error.message } },
+      { status: error.status },
+    )
   }
   console.error('portal_operations_command_failed', {
     error: error instanceof Error ? error.name : typeof error,

@@ -416,7 +416,7 @@ if [[ -n "$linkedin_app_id" || -n "$linkedin_app_secret" || -n "$linkedin_oauth_
   fi
 fi
 
-if grep -Eq '^[[:space:]]*SEED_ADMIN_(EMAIL|PASSWORD)=' "$env_file"; then
+if grep -Eq '^[[:space:]]*SEED_ADMIN_(USERNAME|PASSWORD)=' "$env_file"; then
   echo 'Production environment must not contain demo seed credentials' >&2
   exit 1
 fi

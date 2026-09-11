@@ -28,11 +28,9 @@ describe.sequential('Portal command receipts', () => {
       key: 'admin-portal-command-receipts',
     })
     const suffix = randomUUID()
-    admin = await payload.create({
-      collection: 'users',
+    admin = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `portal-receipt-${suffix}@example.invalid`,
+      draft: true, data: { username: `portal-receipt-${suffix}`,
         password: 'portal-command-receipt-password',
         role: 'admin',
       },

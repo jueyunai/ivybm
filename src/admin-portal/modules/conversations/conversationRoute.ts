@@ -1,6 +1,6 @@
 import { getPayload } from 'payload'
 
-import { getRoleUser } from '@/access/roles'
+import { getRoleUser, hasPortalPermission } from '@/access/roles'
 import config from '@/payload.config'
 
 export class PortalConversationRouteError extends Error {
@@ -14,7 +14,10 @@ export class PortalConversationRouteError extends Error {
   }
 }
 
-export async function authorizePortalConversationRequest(request: Request): Promise<void> {
+export async function authorizePortalConversationRequest(
+  request: Request,
+  options: { action?: 'view' | 'edit' } = {},
+): Promise<void> {
   if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
     throw new PortalConversationRouteError('portal-disabled', 'The Portal is disabled', 503)
   }
@@ -31,6 +34,9 @@ export async function authorizePortalConversationRequest(request: Request): Prom
   const actor = getRoleUser(user)
   if (!user || !actor || (user as { collection?: string }).collection !== 'users') {
     throw new PortalConversationRouteError('authentication-required', 'Authentication required', 401)
+  }
+  if (!hasPortalPermission(actor, 'conversations', options.action ?? 'view')) {
+    throw new PortalConversationRouteError('conversations-forbidden', 'Conversations access denied', 403)
   }
 }
 

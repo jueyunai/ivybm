@@ -19,7 +19,7 @@ export async function GET(
 ): Promise<Response> {
   try {
     const id = requireKnowledgeSourceID((await params).id)
-    const { payload, req } = await authorizeKnowledgeSourceRequest(request)
+    const { payload, req } = await authorizeKnowledgeSourceRequest(request, { action: 'view' })
     const source = await payload.findByID({
       collection: 'knowledge-source-documents',
       depth: 0,

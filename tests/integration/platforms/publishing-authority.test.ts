@@ -207,11 +207,9 @@ describe.sequential('Task 13 Payload publication authority', () => {
     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
     process.env.PLATFORM_CREDENTIAL_ENCRYPTION_KEY = 'e'.repeat(64)
     payload = await getPayload({ config, disableOnInit: true, key: 'task13-publishing-authority' })
-    admin = await payload.create({
-      collection: 'users',
+    admin = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `publishing-authority-${randomUUID()}@example.invalid`,
+      draft: true, data: { username: `publishing-authority-${randomUUID()}`,
         password: 'publishing-authority-test-password',
         role: 'admin',
       },

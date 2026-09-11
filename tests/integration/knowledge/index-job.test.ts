@@ -36,9 +36,8 @@ const jobIDs: number[] = []
 const documentIDs: number[] = []
 
 const loginHeader = async (user: User, password: string): Promise<string> => {
-  const login = await payload.login({
-    collection: 'users',
-    data: { email: user.email, password },
+  const login = await payload.login({ collection: 'users',
+    data: { username: user.username, password },
   })
   return `JWT ${login.token}`
 }
@@ -57,21 +56,17 @@ describe.sequential('knowledge index job', () => {
     })
 
     const suffix = randomUUID()
-    operator = await payload.create({
-      collection: 'users',
+    operator = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `knowledge-operator-${suffix}@example.invalid`,
+      draft: true, data: { username: `knowledge-operator-${suffix}`,
         password: 'knowledge-operator-password',
         role: 'operator',
       },
       overrideAccess: true,
     })
-    sales = await payload.create({
-      collection: 'users',
+    sales = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `knowledge-sales-${suffix}@example.invalid`,
+      draft: true, data: { username: `knowledge-sales-${suffix}`,
         password: 'knowledge-sales-password',
         role: 'sales',
       },

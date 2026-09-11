@@ -234,7 +234,7 @@ describe('Portal knowledge workspace', () => {
         payload,
         query: baseQuery,
         req,
-        role: 'sales',
+        user: { role: 'sales' },
       }),
     ).resolves.toEqual({ state: 'forbidden', summary: null })
 
@@ -244,7 +244,7 @@ describe('Portal knowledge workspace', () => {
         payload,
         query: baseQuery,
         req,
-        role: 'admin',
+        user: { role: 'admin' },
       }),
     ).resolves.toEqual({ state: 'module-disabled', summary: null })
 

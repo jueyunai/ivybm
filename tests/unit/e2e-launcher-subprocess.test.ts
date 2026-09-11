@@ -27,9 +27,9 @@ const suiteLauncherWithoutAdminCredentials = (suite: string) => {
   }
   for (const key of [
     'CI',
-    'E2E_ADMIN_EMAIL',
+    'E2E_ADMIN_USERNAME',
     'E2E_ADMIN_PASSWORD',
-    'SEED_ADMIN_EMAIL',
+    'SEED_ADMIN_USERNAME',
     'SEED_ADMIN_PASSWORD',
   ]) {
     delete environment[key]

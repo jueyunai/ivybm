@@ -2,12 +2,9 @@ import { ValidationError, type CollectionBeforeOperationHook, type CollectionCon
 import path from 'path'
 
 import {
-  contentAdmin,
-  contentCreate,
-  contentDelete,
-  contentUpdate,
   publicMediaRead,
 } from '../access/content'
+import { portalPermissionAccess, portalPermissionAdminAccess } from '../access/roles'
 import { revalidateMediaAfterChange, revalidateMediaAfterDelete } from '../hooks/revalidateContent'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
 import { mediaBytesMatchMimeType } from '../modules/media/files'
@@ -77,11 +74,11 @@ const validateMediaFile: CollectionBeforeOperationHook = ({ operation, req }) =>
 export const Media: CollectionConfig = {
   slug: 'media',
   access: {
-    admin: contentAdmin,
-    create: contentCreate,
-    delete: contentDelete,
+    admin: portalPermissionAdminAccess('media', 'view'),
+    create: portalPermissionAccess('media', 'edit'),
+    delete: portalPermissionAccess('media', 'edit'),
     read: publicMediaRead,
-    update: contentUpdate,
+    update: portalPermissionAccess('media', 'edit'),
   },
   fields: [
     {

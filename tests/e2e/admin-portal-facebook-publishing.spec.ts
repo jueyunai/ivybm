@@ -7,15 +7,15 @@ import { expect, test, type Page, type Response } from '@playwright/test'
 import { FacebookE2EHarness, type FacebookPublishingFixture } from './admin-portal-facebook.support'
 import { selectUiOption } from './support/uiSelect'
 
-const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
+const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.SEED_ADMIN_USERNAME
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
-if (!adminEmail?.trim() || !adminPassword?.trim()) {
+if (!adminUsername?.trim() || !adminPassword?.trim()) {
   throw new Error('Facebook publishing E2E requires launcher-validated administrator credentials')
 }
 
 const login = async (page: Page): Promise<void> => {
   await page.goto('/dashboard/login?returnTo=%2Fdashboard%2Fcontent-studio')
-  await page.getByRole('textbox', { name: '邮箱' }).fill(adminEmail)
+  await page.getByRole('textbox', { name: '账号' }).fill(adminUsername)
   await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
   await page.getByRole('button', { name: '登录后台' }).click()
   await expect(page).toHaveURL(/\/dashboard\/content-studio$/)

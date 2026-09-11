@@ -22,7 +22,7 @@ export async function PATCH(
   try {
     const [id, authorized, input] = await Promise.all([
       leadID(params),
-      authorizeLeadRequest(request),
+      authorizeLeadRequest(request, { action: 'edit' }),
       readLeadJSON(request),
     ])
     return leadJSON({
@@ -49,7 +49,7 @@ export async function DELETE(
   try {
     const [id, authorized, input] = await Promise.all([
       leadID(params),
-      authorizeLeadRequest(request),
+      authorizeLeadRequest(request, { action: 'edit' }),
       readLeadJSON(request),
     ])
     return leadJSON({

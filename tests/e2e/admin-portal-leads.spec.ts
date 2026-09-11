@@ -3,14 +3,17 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { selectUiOption } from './support/uiSelect'
 
-const adminEmail = process.env.E2E_ADMIN_EMAIL ?? process.env.SEED_ADMIN_EMAIL
+const adminUsername = process.env.E2E_ADMIN_USERNAME ?? process.env.SEED_ADMIN_USERNAME
 const adminPassword = process.env.E2E_ADMIN_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD
 
 const login = async (page: Page) => {
-  test.skip(!adminEmail || !adminPassword, 'Requires local non-production administrator credentials.')
-  if (!adminEmail || !adminPassword) return false
+  test.skip(
+    !adminUsername || !adminPassword,
+    'Requires local non-production administrator credentials.',
+  )
+  if (!adminUsername || !adminPassword) return false
   await page.goto('/dashboard/login?returnTo=%2Fdashboard%2Fleads')
-  await page.getByRole('textbox', { name: '邮箱' }).fill(adminEmail)
+  await page.getByRole('textbox', { name: '账号' }).fill(adminUsername)
   await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
   await page.getByRole('button', { name: '登录后台' }).click()
   await expect(page).toHaveURL(/\/dashboard\/leads$/)
@@ -19,7 +22,13 @@ const login = async (page: Page) => {
 
 const createSource = async (page: Page, key: string) => {
   const response = await page.request.post('/api/lead-sources', {
-    data: { channel: 'manual', description: 'Temporary Portal E2E source', isActive: true, key, name: `Portal E2E ${key}` },
+    data: {
+      channel: 'manual',
+      description: 'Temporary Portal E2E source',
+      isActive: true,
+      key,
+      name: `Portal E2E ${key}`,
+    },
   })
   const raw = await response.text()
   expect(response.ok(), raw).toBe(true)
@@ -29,7 +38,9 @@ const createSource = async (page: Page, key: string) => {
   return id as number | string
 }
 
-test('lead workspace creates, edits, and deletes an ACL-aware Portal lead', async ({ page }, testInfo) => {
+test('lead workspace creates, edits, and deletes an ACL-aware Portal lead', async ({
+  page,
+}, testInfo) => {
   await page.setViewportSize({ height: 940, width: 1440 })
   if (!(await login(page))) return
   const suffix = `${Date.now()}-${testInfo.workerIndex}`
@@ -50,10 +61,15 @@ test('lead workspace creates, edits, and deletes an ACL-aware Portal lead', asyn
     await page.getByLabel('需求说明').fill('Portal E2E lead needs tender specification.')
     await selectUiOption(page.getByLabel('来源'), String(sourceID))
     const [createResponse] = await Promise.all([
-      page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/api/portal/leads')),
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' && response.url().endsWith('/api/portal/leads'),
+      ),
       page.getByRole('button', { name: '创建线索' }).click(),
     ])
-    const createBody = await createResponse.json() as { result?: { id?: number | string; updatedAt?: string } }
+    const createBody = (await createResponse.json()) as {
+      result?: { id?: number | string; updatedAt?: string }
+    }
     leadID = createBody.result?.id ?? null
     leadUpdatedAt = createBody.result?.updatedAt ?? null
     await expect(page.getByRole('heading', { name })).toBeVisible()
@@ -63,26 +79,47 @@ test('lead workspace creates, edits, and deletes an ACL-aware Portal lead', asyn
     await selectUiOption(editor.getByLabel('状态'), 'contacted')
     await expect(editor.getByRole('button', { name: '保存修改' })).toBeEnabled()
     const [updateResponse] = await Promise.all([
-      page.waitForResponse((response) => response.request().method() === 'PATCH' && leadID !== null && response.url().endsWith(`/api/portal/leads/${leadID}`)),
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PATCH' &&
+          leadID !== null &&
+          response.url().endsWith(`/api/portal/leads/${leadID}`),
+      ),
       editor.getByRole('button', { name: '保存修改' }).click(),
     ])
-    const updateBody = await updateResponse.json() as { result?: { updatedAt?: string } }
+    const updateBody = (await updateResponse.json()) as { result?: { updatedAt?: string } }
     leadUpdatedAt = updateBody.result?.updatedAt ?? leadUpdatedAt
     await expect(page.getByText('线索已保存。')).toBeVisible()
     await page.getByRole('button', { name: '编辑线索' }).click()
     await expect(editor).toBeVisible()
     await editor.getByRole('button', { name: '删除' }).click()
     await Promise.all([
-      page.waitForResponse((response) => response.request().method() === 'DELETE' && leadID !== null && response.url().endsWith(`/api/portal/leads/${leadID}`)),
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'DELETE' &&
+          leadID !== null &&
+          response.url().endsWith(`/api/portal/leads/${leadID}`),
+      ),
       editor.getByRole('button', { name: '确认永久删除' }).click(),
     ])
     await expect(page.getByRole('heading', { name })).toHaveCount(0)
     leadID = null
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      1440,
+    )
     await page.screenshot({ fullPage: true, path: testInfo.outputPath('portal-leads-desktop.png') })
   } finally {
-    if (leadID && leadUpdatedAt) await page.request.delete(`/api/portal/leads/${leadID}`, { data: { updatedAt: leadUpdatedAt }, headers: { 'Idempotency-Key': `portal-e2e-leads:${crypto.randomUUID()}` }, timeout: 5_000 }).catch(() => undefined)
-    await page.request.delete(`/api/lead-sources/${sourceID}`, { timeout: 5_000 }).catch(() => undefined)
+    if (leadID && leadUpdatedAt)
+      await page.request
+        .delete(`/api/portal/leads/${leadID}`, {
+          data: { updatedAt: leadUpdatedAt },
+          headers: { 'Idempotency-Key': `portal-e2e-leads:${crypto.randomUUID()}` },
+          timeout: 5_000,
+        })
+        .catch(() => undefined)
+    await page.request
+      .delete(`/api/lead-sources/${sourceID}`, { timeout: 5_000 })
+      .catch(() => undefined)
   }
 })
 

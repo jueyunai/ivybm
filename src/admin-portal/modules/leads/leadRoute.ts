@@ -1,6 +1,6 @@
 import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
-import { getRoleUser, type UserRole } from '@/access/roles'
+import { getRoleUser, hasPortalPermission, type UserRole } from '@/access/roles'
 import config from '@/payload.config'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
@@ -13,7 +13,10 @@ export type AuthorizedLeadRequest = {
   role: UserRole
 }
 
-export const authorizeLeadRequest = async (request: Request): Promise<AuthorizedLeadRequest> => {
+export const authorizeLeadRequest = async (
+  request: Request,
+  options: { action?: 'view' | 'edit' } = {},
+): Promise<AuthorizedLeadRequest> => {
   if (process.env.ADMIN_PORTAL_ENABLED !== 'true') {
     throw new LeadCommandError('portal-disabled', 'The Portal is disabled', 503)
   }
@@ -25,6 +28,9 @@ export const authorizeLeadRequest = async (request: Request): Promise<Authorized
   const actor = getRoleUser(user)
   if (!user || !actor || (user as { collection?: string }).collection !== 'users') {
     throw new LeadCommandError('leads-unauthenticated', 'Authentication required', 401)
+  }
+  if (!hasPortalPermission(actor, 'leads', options.action ?? 'view')) {
+    throw new LeadCommandError('leads-forbidden', 'Leads access denied', 403)
   }
   return { payload, req: await createLocalReq({ user }, payload), role: actor.role }
 }

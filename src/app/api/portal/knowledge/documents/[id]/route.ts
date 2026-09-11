@@ -27,7 +27,7 @@ export async function GET(
 ): Promise<Response> {
   try {
     const id = await documentID(params)
-    const { payload, req } = await authorizeKnowledgeRequest(request)
+    const { payload, req } = await authorizeKnowledgeRequest(request, { action: 'view' })
     const [record, options] = await Promise.all([
       getPortalKnowledgeEditor({ id, payload, req }),
       getPortalKnowledgeOptions({ payload, req }),
@@ -44,7 +44,7 @@ export async function PATCH(
 ): Promise<Response> {
   try {
     const id = await documentID(params)
-    const { payload, req } = await authorizeKnowledgeRequest(request)
+    const { payload, req } = await authorizeKnowledgeRequest(request, { action: 'edit' })
     const input = await readKnowledgeDocumentJSON(request)
     return knowledgeJSON({
       result: await executePortalRouteCommand({
@@ -69,7 +69,7 @@ export async function DELETE(
 ): Promise<Response> {
   try {
     const id = await documentID(params)
-    const { payload, req } = await authorizeKnowledgeRequest(request)
+    const { payload, req } = await authorizeKnowledgeRequest(request, { action: 'edit' })
     const input = await readKnowledgeJSON(request)
     return knowledgeJSON({
       result: await executePortalRouteCommand({

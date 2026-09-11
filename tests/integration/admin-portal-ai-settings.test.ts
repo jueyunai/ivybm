@@ -38,11 +38,9 @@ describe.sequential('Portal AI settings', () => {
       key: 'portal-ai-settings-integration',
     })
     const suffix = randomUUID()
-    admin = await payload.create({
-      collection: 'users',
+    admin = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `portal-ai-settings-${suffix}@example.invalid`,
+      draft: true, data: { username: `portal-ai-settings-${suffix}`,
         password: 'portal-ai-settings-password',
         role: 'admin',
       },

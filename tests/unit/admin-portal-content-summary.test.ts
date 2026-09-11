@@ -192,7 +192,7 @@ describe('Portal website content summary', () => {
         payload,
         query: { page: 1, q: '', status: 'all', type: 'pages' },
         req,
-        role: 'sales',
+        user: { role: 'sales' },
       }),
     ).resolves.toEqual({ state: 'forbidden', summary: null })
 
@@ -202,7 +202,7 @@ describe('Portal website content summary', () => {
         payload,
         query: { page: 1, q: '', status: 'all', type: 'pages' },
         req,
-        role: 'admin',
+        user: { role: 'admin' },
       }),
     ).resolves.toEqual({ state: 'module-disabled', summary: null })
 

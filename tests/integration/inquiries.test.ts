@@ -63,11 +63,9 @@ describe.sequential('public inquiry integration', () => {
       ['sales', 'assigned-sales'],
       ['sales', 'other-sales'],
     ] as const) {
-      const user = await payload.create({
-        collection: 'users',
+      const user = await payload.create({ collection: 'users',
         context: { skipAudit: true },
-        data: {
-          email: `task7-${testRunID}-${name}-${randomUUID()}@example.invalid`,
+        draft: true, data: { username: `task7-${testRunID}-${name}-${randomUUID()}`,
           password: `task7-${name}-integration-password`,
           role,
         },

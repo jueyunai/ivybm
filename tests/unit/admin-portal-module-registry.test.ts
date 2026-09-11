@@ -19,7 +19,7 @@ describe('Portal module registry', () => {
 
     expect(() =>
       definePortalModule({
-        id: 'example',
+        id: 'website-content',
         owner: 'jueyunai',
         navGroup: 'workspace',
         href: '/dashboard/example',
@@ -63,16 +63,22 @@ describe('Portal module registry', () => {
 
     const adminModules = getVisiblePortalModules({
       env: { ADMIN_PORTAL_ENABLED: 'true', ...flags },
-      role: 'admin',
+      user: { role: 'admin' },
     })
     const salesModules = getVisiblePortalModules({
       env: { ADMIN_PORTAL_ENABLED: 'true', ...flags },
-      role: 'sales',
+      user: { role: 'sales' },
+    })
+    const operatorModules = getVisiblePortalModules({
+      env: { ADMIN_PORTAL_ENABLED: 'true', ...flags },
+      user: { role: 'operator' },
     })
 
     expect(adminModules.map((module) => module.id)).toContain('platforms')
     expect(salesModules.map((module) => module.id)).not.toContain('platforms')
     expect(salesModules.map((module) => module.id)).not.toContain('knowledge')
+    expect(operatorModules.map((module) => module.id)).not.toContain('platforms')
+    expect(operatorModules.map((module) => module.id)).not.toContain('operations')
     expect(
       adminModules
         .filter(
@@ -120,7 +126,7 @@ describe('Portal module registry', () => {
     )
     const modules = getVisiblePortalModules({
       env: { ADMIN_PORTAL_ENABLED: 'true', ...flags },
-      role: 'admin',
+      user: { role: 'admin' },
     })
 
     expect(modules.every((module) => module.href.startsWith('/dashboard'))).toBe(true)
@@ -142,7 +148,7 @@ describe('Portal module registry', () => {
 
     const disabledModules = getVisiblePortalModules({
       env: { ADMIN_PORTAL_ENABLED: 'true' },
-      role: 'admin',
+      user: { role: 'admin' },
     })
     expect(disabledModules.find((module) => module.id === 'overview')).toMatchObject({
       canNavigate: false,
@@ -150,7 +156,7 @@ describe('Portal module registry', () => {
       featureState: { enabled: false, reason: 'module-disabled' },
     })
 
-    const globalDisabledModules = getVisiblePortalModules({ env: {}, role: 'admin' })
+    const globalDisabledModules = getVisiblePortalModules({ env: {}, user: { role: 'admin' } })
     expect(
       globalDisabledModules.every(
         (portalModule) =>
@@ -161,7 +167,7 @@ describe('Portal module registry', () => {
     ).toBe(true)
 
     const blockedModule = definePortalModule({
-      id: 'blocked-example',
+      id: 'website-content',
       owner: 'xuemusi',
       navGroup: 'intelligence',
       href: '/dashboard/blocked-example',
@@ -170,7 +176,7 @@ describe('Portal module registry', () => {
       availability: 'blocked',
       featureFlag: 'ADMIN_PORTAL_BLOCKED_EXAMPLE_ENABLED',
       commands: [],
-      maintenance: { responsibleOwner: 'xuemusi', nextStepKey: 'blocked-example' },
+      maintenance: { responsibleOwner: 'xuemusi', nextStepKey: 'website-content' },
     })
     expect(
       getPortalFeatureState({

@@ -17,7 +17,7 @@ export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest): Promise<Response> {
   try {
-    const { payload, req } = await authorizeKnowledgeRequest(request)
+    const { payload, req } = await authorizeKnowledgeRequest(request, { action: 'view' })
     return knowledgeJSON({ options: await getPortalKnowledgeOptions({ payload, req }) })
   } catch (error) {
     return knowledgeErrorResponse(error)
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 export async function POST(request: NextRequest): Promise<Response> {
   try {
-    const { payload, req } = await authorizeKnowledgeRequest(request)
+    const { payload, req } = await authorizeKnowledgeRequest(request, { action: 'edit' })
     const input = await readKnowledgeDocumentJSON(request)
     const result = await executePortalRouteCommand({
       fingerprintInput: input,

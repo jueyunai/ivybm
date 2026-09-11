@@ -47,6 +47,7 @@ const MODULE_ICONS: Record<PortalModuleId, TablerIcon> = {
   media: IconPhoto,
   operations: IconAlertTriangle,
   overview: IconHome,
+  example: IconTemplate,
   platforms: IconPlugConnected,
   settings: IconSettings,
   'website-content': IconTemplate,

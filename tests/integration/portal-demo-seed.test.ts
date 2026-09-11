@@ -33,7 +33,9 @@ describe.sequential('Portal demo seed integration', () => {
         email: `portal-demo-seed-${randomUUID()}@example.invalid`,
         password: `Portal-demo-${randomUUID()}`,
         role: 'admin',
+        username: `portal-demo-seed-${randomUUID()}`,
       },
+      draft: true,
       overrideAccess: true,
     })
     adminID = admin.id

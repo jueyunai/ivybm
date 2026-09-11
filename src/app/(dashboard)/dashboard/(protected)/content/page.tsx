@@ -24,14 +24,14 @@ export default async function WebsiteContentPage({
 
   try {
     const payload = await getPayload({ config })
-    const actor = { ...user, collection: 'users' } as User
+    const actor = { ...user, collection: 'users' } as unknown as User
     const req = await createLocalReq({ user: actor }, payload)
     data = await loadWebsiteContentPageData({
       env: process.env,
       payload,
       query,
       req,
-      role: user.role,
+      user,
     })
   } catch (error) {
     console.error('[admin-portal] website content read failed', {

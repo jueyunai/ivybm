@@ -21,6 +21,15 @@ const copyIfPresent = (target, source, key) => {
   if (source[key] !== undefined) target[key] = source[key]
 }
 
+export const normalizeLegacyAdminUsername = (value) => {
+  const localPart = String(value ?? '').trim().toLowerCase().split('@', 1)[0] ?? ''
+  const normalized = localPart
+    .replace(/[^a-z0-9._-]+/gu, '-')
+    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/gu, '')
+    .slice(0, 64)
+  return normalized.length >= 3 ? normalized : ''
+}
+
 const localEnvironmentKeys = () => {
   const keys = new Set()
   for (const file of [
@@ -82,13 +91,22 @@ export const createE2EEnvironment = ({
   for (const key of providerEnvironmentKeys()) environment[key] = ''
 
   for (const key of [
+    'E2E_ADMIN_USERNAME',
     'E2E_ADMIN_EMAIL',
     'E2E_ADMIN_PASSWORD',
+    'SEED_ADMIN_USERNAME',
     'SEED_ADMIN_EMAIL',
     'SEED_ADMIN_PASSWORD',
     'SEED_KNOWLEDGE_DEMO',
   ])
     copyIfPresent(environment, process.env, key)
+
+  if (!environment.E2E_ADMIN_USERNAME?.trim() && environment.E2E_ADMIN_EMAIL) {
+    environment.E2E_ADMIN_USERNAME = normalizeLegacyAdminUsername(environment.E2E_ADMIN_EMAIL)
+  }
+  if (!environment.SEED_ADMIN_USERNAME?.trim() && environment.SEED_ADMIN_EMAIL) {
+    environment.SEED_ADMIN_USERNAME = normalizeLegacyAdminUsername(environment.SEED_ADMIN_EMAIL)
+  }
 
   for (const key of Object.keys(process.env)) {
     if (key.startsWith('ADMIN_PORTAL_')) environment[key] = process.env[key]

@@ -25,7 +25,7 @@ type Context = { params: Promise<{ id: string }> }
 
 export async function PATCH(request: NextRequest, { params }: Context): Promise<Response> {
   try {
-    const { payload, req } = await authorizeContentStudioRequest(request)
+    const { payload, req } = await authorizeContentStudioRequest(request, { action: 'edit' })
     const id = requireContentStudioID((await params).id)
     const input = await readContentStudioJSON(request)
     return contentStudioJSON({
@@ -47,7 +47,7 @@ export async function PATCH(request: NextRequest, { params }: Context): Promise<
 
 export async function DELETE(request: NextRequest, { params }: Context): Promise<Response> {
   try {
-    const { payload, req } = await authorizeContentStudioRequest(request)
+    const { payload, req } = await authorizeContentStudioRequest(request, { action: 'edit' })
     const id = requireContentStudioID((await params).id)
     const input = await readContentStudioJSON(request)
     return contentStudioJSON(
@@ -70,7 +70,7 @@ export async function DELETE(request: NextRequest, { params }: Context): Promise
 export async function POST(request: NextRequest, { params }: Context): Promise<Response> {
   try {
     const input = await readContentStudioJSON(request)
-    const { payload, req } = await authorizeContentStudioRequest(request)
+    const { payload, req } = await authorizeContentStudioRequest(request, { action: 'edit' })
     const id = requireContentStudioID((await params).id)
     const command = <T>(operation: (transactionReq: typeof req) => Promise<T>) =>
       executePortalRouteCommand({

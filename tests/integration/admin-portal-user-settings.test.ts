@@ -20,6 +20,7 @@ import {
   MANUAL_LOCK_UNTIL,
   UserSettingsCommandError,
 } from '@/admin-portal/modules/settings/userSettingsContracts'
+import { PORTAL_PERMISSION_PRESETS } from '@/access/roles'
 
 let payload: Payload
 let adminA: User
@@ -42,41 +43,33 @@ describe.sequential('Portal team account and user settings database integration'
     })
 
     const suffix = randomUUID()
-    adminA = await payload.create({
-      collection: 'users',
+    adminA = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task16-adminA-${suffix}@example.invalid`,
+      draft: true, data: { username: `task16-adminA-${suffix}`,
         password: 'AdminPassword123!',
         role: 'admin',
       },
       overrideAccess: true,
     })
-    adminB = await payload.create({
-      collection: 'users',
+    adminB = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task16-adminB-${suffix}@example.invalid`,
+      draft: true, data: { username: `task16-adminB-${suffix}`,
         password: 'AdminPassword123!',
         role: 'admin',
       },
       overrideAccess: true,
     })
-    operatorUser = await payload.create({
-      collection: 'users',
+    operatorUser = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task16-operator-${suffix}@example.invalid`,
+      draft: true, data: { username: `task16-operator-${suffix}`,
         password: 'OperatorPassword123!',
         role: 'operator',
       },
       overrideAccess: true,
     })
-    salesUser = await payload.create({
-      collection: 'users',
+    salesUser = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task16-sales-${suffix}@example.invalid`,
+      draft: true, data: { username: `task16-sales-${suffix}`,
         password: 'SalesPassword123!',
         role: 'sales',
       },
@@ -119,14 +112,14 @@ describe.sequential('Portal team account and user settings database integration'
     const members = await getPortalTeamMembers({ payload, req })
 
     expect(members.length).toBeGreaterThanOrEqual(4)
-    const memberEmails = members.map((m) => m.email)
-    expect(memberEmails).toContain(adminA.email)
-    expect(memberEmails).toContain(operatorUser.email)
-    expect(memberEmails).toContain(salesUser.email)
+    const memberUsernames = members.map((m) => m.username)
+    expect(memberUsernames).toContain(adminA.username)
+    expect(memberUsernames).toContain(operatorUser.username)
+    expect(memberUsernames).toContain(salesUser.username)
 
     for (const member of members) {
       expect(member).toHaveProperty('id')
-      expect(member).toHaveProperty('email')
+      expect(member).toHaveProperty('username')
       expect(member).toHaveProperty('role')
       expect(member).toHaveProperty('status')
       expect(member).not.toHaveProperty('hash')
@@ -138,14 +131,14 @@ describe.sequential('Portal team account and user settings database integration'
 
   it('creates, modifies, locks, unlocks, resets password, and deletes a member as admin', async () => {
     const req = await createLocalReq({ user: adminA }, payload)
-    const newEmail = `task16-new-${randomUUID()}@example.invalid`
+    const newUsername = `task16-new-${randomUUID()}.example.invalid`
 
     // 1. Create member
     const created = await createTeamMember({
       actor: adminA,
       input: {
-        confirmPassword: 'InitialSecretPassword123!',
-        email: newEmail,
+        permissions: PORTAL_PERMISSION_PRESETS.sales,
+        username: newUsername,
         password: 'InitialSecretPassword123!',
         role: 'sales',
       },
@@ -153,24 +146,24 @@ describe.sequential('Portal team account and user settings database integration'
       req,
     })
     createdUserIds.push(created.id)
-    expect(created.email).toBe(newEmail)
+    expect(created.username).toBe(newUsername)
     expect(created.role).toBe('sales')
     expect(created.status).toBe('normal')
 
-    // 2. Update member email and role
-    const updatedEmail = `task16-updated-${randomUUID()}@example.invalid`
+    // 2. Update member username and role
+    const updatedUsername = `task16-updated-${randomUUID().slice(0, 8)}`
     const updated = await updateTeamMember({
       actor: adminA,
       id: created.id,
       input: {
-        email: updatedEmail,
+        username: updatedUsername,
         role: 'operator',
         updatedAt: created.updatedAt,
       },
       payload,
       req,
     })
-    expect(updated.email).toBe(updatedEmail)
+    expect(updated.username).toBe(updatedUsername)
     expect(updated.role).toBe('operator')
 
     // 3. Reset password
@@ -212,7 +205,7 @@ describe.sequential('Portal team account and user settings database integration'
       actor: adminA,
       id: created.id,
       input: {
-        confirmEmail: updatedEmail,
+        confirmUsername: updatedUsername,
         updatedAt: unlocked.updatedAt,
       },
       payload,
@@ -232,8 +225,8 @@ describe.sequential('Portal team account and user settings database integration'
     expect(verifyResult.totalDocs).toBe(0)
   })
 
-  it('allows only one concurrent create for the same normalized email', async () => {
-    const email = `task16-concurrent-email-${randomUUID()}@example.invalid`
+  it('allows only one concurrent create for the same normalized username', async () => {
+    const username = `task16-concurrent-${randomUUID().slice(0, 8)}`
     const [requestA, requestB] = await Promise.all([
       createLocalReq({ user: adminA }, payload),
       createLocalReq({ user: adminA }, payload),
@@ -242,8 +235,8 @@ describe.sequential('Portal team account and user settings database integration'
       createTeamMember({
         actor: adminA,
         input: {
-          confirmPassword: 'ConcurrentPassword123!',
-          email,
+          permissions: PORTAL_PERMISSION_PRESETS.sales,
+          username,
           password: 'ConcurrentPassword123!',
           role: 'sales',
         },
@@ -265,7 +258,7 @@ describe.sequential('Portal team account and user settings database integration'
     createdUserIds.push(fulfilled[0].value.id)
     expect(rejected[0].reason).toEqual(
       expect.objectContaining<Partial<UserSettingsCommandError>>({
-        code: 'email-already-exists',
+        code: 'username-already-exists',
         status: 409,
       }),
     )
@@ -307,10 +300,9 @@ describe.sequential('Portal team account and user settings database integration'
     expect(result).toEqual({ success: true })
 
     // Verify login with new password succeeds
-    const loginResult = await payload.login({
-      collection: 'users',
+    const loginResult = await payload.login({ collection: 'users',
       data: {
-        email: salesUser.email,
+        username: salesUser.username,
         password: 'NewSalesPassword123!',
       },
       req,
@@ -382,7 +374,7 @@ describe.sequential('Portal team account and user settings database integration'
       deleteTeamMember({
         actor: adminA,
         id: adminA.id,
-        input: { confirmEmail: adminA.email, updatedAt: currentAdmin.updatedAt },
+        input: { confirmUsername: adminA.username, updatedAt: currentAdmin.updatedAt },
         payload,
         req,
       }),
@@ -453,8 +445,10 @@ describe.sequential('Portal team account and user settings database integration'
         const raceAdminA = await racePayload.create({
           collection: 'users',
           context: { skipAudit: true },
+          draft: true,
           data: {
-            email: `task16-race-a-${operationName}-${suffix}@example.invalid`,
+            permissions: PORTAL_PERMISSION_PRESETS.admin,
+            username: `task16-race-a-${operationName}-${suffix.slice(0, 8)}`,
             password: 'AdminPassword123!',
             role: 'admin',
           },
@@ -463,8 +457,10 @@ describe.sequential('Portal team account and user settings database integration'
         const raceAdminB = await racePayload.create({
           collection: 'users',
           context: { skipAudit: true },
+          draft: true,
           data: {
-            email: `task16-race-b-${operationName}-${suffix}@example.invalid`,
+            permissions: PORTAL_PERMISSION_PRESETS.admin,
+            username: `task16-race-b-${operationName}-${suffix.slice(0, 8)}`,
             password: 'AdminPassword123!',
             role: 'admin',
           },
@@ -475,9 +471,9 @@ describe.sequential('Portal team account and user settings database integration'
         const requestA = await createLocalReq({ user: raceAdminA }, racePayload)
         const requestB = await createLocalReq({ user: raceAdminB }, racePayload)
         const inputFor = (user: User) => ({
-          email:
+          username:
             operationName === 'demote'
-              ? `task16-demoted-${String(user.id)}-${suffix}@example.invalid`
+              ? `task16-demoted-${String(user.id)}-${suffix.slice(0, 8)}`
               : undefined,
           role: operationName === 'demote' ? ('operator' as const) : undefined,
           updatedAt: user.updatedAt,
@@ -508,7 +504,7 @@ describe.sequential('Portal team account and user settings database integration'
               return deleteTeamMember({
                 actor: { id: actor.id, role: 'admin' },
                 id: target.id,
-                input: { confirmEmail: target.email, updatedAt: target.updatedAt },
+                input: { confirmUsername: target.username, updatedAt: target.updatedAt },
                 payload: racePayload,
                 req: transactionReq,
               })
@@ -601,11 +597,9 @@ describe.sequential('Portal team account and user settings database integration'
     const req = await createLocalReq({ user: adminA }, payload)
     const suffix = randomUUID()
 
-    const assignedSales = await payload.create({
-      collection: 'users',
+    const assignedSales = await payload.create({ collection: 'users',
       context: { skipAudit: true },
-      data: {
-        email: `task16-assigned-${suffix}@example.invalid`,
+      draft: true, data: { username: `task16-assigned-${suffix}`,
         password: 'SalesPassword123!',
         role: 'sales',
       },
@@ -649,7 +643,7 @@ describe.sequential('Portal team account and user settings database integration'
         actor: adminA,
         id: assignedSales.id,
         input: {
-          confirmEmail: assignedSales.email,
+          confirmUsername: assignedSales.username,
           updatedAt: assignedSales.updatedAt,
         },
         payload,

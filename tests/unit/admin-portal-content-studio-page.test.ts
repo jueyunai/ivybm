@@ -38,7 +38,7 @@ describe('Portal Content Studio read model', () => {
       payload: { find } as unknown as Payload,
       query: parseContentStudioQuery({}),
       req,
-      role: 'operator',
+      user: { role: 'operator' },
     })
 
     expect(find).toHaveBeenCalledWith(
@@ -86,7 +86,7 @@ describe('Portal Content Studio read model', () => {
       payload: { find } as unknown as Payload,
       query: parseContentStudioQuery({}),
       req,
-      role: 'operator',
+      user: { role: 'operator' },
     })
 
     expect(find).toHaveBeenCalledWith(

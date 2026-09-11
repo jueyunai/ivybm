@@ -24,14 +24,14 @@ export default async function KnowledgePage({
 
   try {
     const payload = await getPayload({ config })
-    const actor = { ...user, collection: 'users' } as User
+    const actor = { ...user, collection: 'users' } as unknown as User
     const req = await createLocalReq({ user: actor }, payload)
     data = await loadKnowledgePageData({
       env: process.env,
       payload,
       query,
       req,
-      role: user.role,
+      user,
     })
   } catch (error) {
     console.error('[admin-portal] knowledge read failed', {

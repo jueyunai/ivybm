@@ -1,6 +1,6 @@
 import { createLocalReq, getPayload, type Payload, type PayloadRequest } from 'payload'
 
-import { getRoleUser } from '@/access/roles'
+import { getRoleUser, hasPortalPermission } from '@/access/roles'
 import { PortalCommandReceiptError } from '@/admin-portal/core/commands/portalCommandReceipts'
 import { readLimitedJSONObject } from '@/admin-portal/core/http/readLimitedJSON'
 import config from '@/payload.config'
@@ -12,7 +12,7 @@ export interface AuthorizedUserSettingsRequest {
   actor: { id: number | string; role: 'admin' | 'operator' | 'sales' }
   payload: Payload
   req: PayloadRequest
-  user: { email: string; id: number | string; role: 'admin' | 'operator' | 'sales' }
+  user: { id: number | string; role: 'admin' | 'operator' | 'sales'; username: string }
 }
 
 export const isTeamManagementEnabled = (env: Partial<NodeJS.ProcessEnv> = process.env): boolean =>
@@ -83,7 +83,7 @@ export const authorizeUserSettingsRequest = async (
   const { user } = await payload.auth({ headers: request.headers })
   const actor = getRoleUser(user)
 
-  if (!user || !actor || user.collection !== 'users' || typeof user.email !== 'string') {
+  if (!user || !actor || user.collection !== 'users' || typeof user.username !== 'string') {
     throw new UserSettingsCommandError(
       'authentication-required',
       'Authentication is required.',
@@ -98,13 +98,16 @@ export const authorizeUserSettingsRequest = async (
       403,
     )
   }
+  if (!hasPortalPermission(actor, 'settings', options.requireAdmin ? 'edit' : 'view')) {
+    throw new UserSettingsCommandError('settings-forbidden', 'Settings access denied.', 403)
+  }
 
   return {
     actor,
     payload,
     req: await createLocalReq({ user: user as User }, payload),
     user: {
-      email: user.email,
+      username: user.username,
       id: actor.id,
       role: actor.role,
     },
