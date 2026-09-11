@@ -224,8 +224,17 @@ export class FacebookE2EHarness {
     const accountResolver = new PayloadPublishingAccountResolver({ payload })
     const linkedInTransport = {} as LinkedInPublishingTransport
     const metaTransport: MetaPublishingTransport = {
+      createFacebookUnpublishedPhoto: async () => {
+        throw new Error('Facebook multi-photo publishing is not part of this E2E')
+      },
       createInstagramMedia: async () => {
         throw new Error('Instagram is not part of the Facebook publishing E2E')
+      },
+      createInstagramCarouselContainer: async () => {
+        throw new Error('Instagram carousel publishing is not part of this E2E')
+      },
+      createInstagramCarouselItem: async () => {
+        throw new Error('Instagram carousel publishing is not part of this E2E')
       },
       getFacebookPagePostPermalink: async (input) => {
         publishingPermalinkRequests.push(structuredClone(input))
@@ -241,6 +250,9 @@ export class FacebookE2EHarness {
       },
       getInstagramMediaPermalink: async () => {
         throw new Error('Instagram is not part of the Facebook publishing E2E')
+      },
+      publishFacebookPageFeed: async () => {
+        throw new Error('Facebook multi-photo publishing is not part of this E2E')
       },
       publishFacebookPagePhoto: async (input) => {
         publishingPhotoRequests.push(structuredClone(input))

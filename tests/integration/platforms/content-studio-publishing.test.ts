@@ -495,6 +495,59 @@ describe.sequential('Content Studio immediate platform publication', () => {
     ).toBe(true)
   })
 
+  it('routes two-image drafts to multi-image publishing checkpoints', async () => {
+    const image = await sharp({
+      create: { background: '#274156', channels: 3, height: 600, width: 800 },
+    })
+      .png()
+      .toBuffer()
+    const secondMedia = await payload.create({
+      collection: 'media',
+      data: {
+        alt: 'Second controlled facade publication fixture',
+        isPublic: true,
+        source: 'Integration test generated asset',
+      },
+      file: {
+        data: image,
+        mimetype: 'image/png',
+        name: `task123-content-studio-${randomUUID()}.png`,
+        size: image.byteLength,
+      },
+      overrideAccess: true,
+    })
+    generatedMediaIDs.push(secondMedia.id)
+    const content = await createApprovedContent(
+      'multi-image-routes',
+      [media.id, secondMedia.id],
+      'approved',
+    )
+    await invoke({ content, idempotencyKey: `portal-content-studio:publish-now:${randomUUID()}` })
+
+    const jobs = await payload.find({
+      collection: 'publish-jobs',
+      depth: 0,
+      overrideAccess: true,
+      pagination: false,
+      sort: 'platform',
+      where: { content: { equals: content.id } },
+    })
+    expect(jobs.docs.map((job) => job.executionRoute).sort()).toEqual([
+      'facebook-photos-multi',
+      'instagram-carousel-staged',
+      'linkedin-multi-image-staged',
+    ])
+    const facebookCheckpoint = jobs.docs.find((job) => job.platform === 'facebook')
+      ?.providerCheckpoint as { items?: unknown[] } | undefined
+    const instagramCheckpoint = jobs.docs.find((job) => job.platform === 'instagram')
+      ?.providerCheckpoint as { items?: unknown[] } | undefined
+    const linkedInCheckpoint = jobs.docs.find((job) => job.platform === 'linkedin')
+      ?.providerCheckpoint as { items?: unknown[] } | undefined
+    expect(facebookCheckpoint?.items).toHaveLength(2)
+    expect(instagramCheckpoint?.items).toHaveLength(2)
+    expect(linkedInCheckpoint?.items).toHaveLength(2)
+  })
+
   it.each([
     ['tab', 'caption\twith tab'],
     ['C1 control', 'caption\u0085with control'],

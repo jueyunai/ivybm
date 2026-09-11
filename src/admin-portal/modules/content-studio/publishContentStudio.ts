@@ -21,7 +21,10 @@ import {
 } from '@/modules/platforms/multiPlatformPublishing'
 import { enqueuePublicationExecution } from '@/modules/platforms/publicationJobs'
 import { normalizeLinkedInCommentary } from '@/modules/platforms/linkedin/publishingRequests'
-import { normalizeInstagramCaption } from '@/modules/platforms/meta/publishingRequests'
+import {
+  normalizeFacebookCaption,
+  normalizeInstagramCaption,
+} from '@/modules/platforms/meta/publishingRequests'
 import { PayloadPublishingAccountResolver } from '@/modules/platforms/publishingAccountResolver'
 import type { ResolvedPublishingAccount } from '@/modules/platforms/publishingAccountResolver'
 import type { GeneratedContent, PublishJob } from '@/payload-types'
@@ -287,17 +290,24 @@ const targetForAccount = ({
   text: string
 }): MultiPlatformPublishTarget => {
   if (account.platform === 'facebook' || account.platform === 'instagram') {
-    if (assets.length !== 1 || !META_IMAGE_TYPES.has(assets[0]!.mimeType)) {
+    if (
+      !assets.length ||
+      assets.length > 3 ||
+      !assets.every((asset) => META_IMAGE_TYPES.has(asset.mimeType))
+    ) {
       throw new ContentStudioCommandError(
         'content-studio-publication-format-unsupported',
-        `${account.platform} publishing requires exactly one public JPEG or PNG`,
+        `${account.platform} publishing supports 1-3 public JPEG or PNG images`,
         409,
       )
     }
-  } else if (assets.length > 1 || (assets[0] && !IMAGE_TYPES.has(assets[0].mimeType))) {
+  } else if (
+    assets.length > 3 ||
+    assets.some((asset) => !IMAGE_TYPES.has(asset.mimeType))
+  ) {
     throw new ContentStudioCommandError(
       'content-studio-publication-format-unsupported',
-      'LinkedIn publishing supports text-only or exactly one JPEG, PNG, or GIF',
+      'LinkedIn publishing supports text-only or 1-3 JPEG, PNG, or GIF images',
       409,
     )
   }
@@ -310,9 +320,17 @@ const targetForAccount = ({
 }
 
 const routeFor = (target: MultiPlatformPublishTarget) => {
-  if (target.platform === 'facebook') return 'facebook-photo-single' as const
-  if (target.platform === 'instagram') return 'instagram-image-staged' as const
-  return target.assets.length
+  if (target.platform === 'facebook') {
+    return target.assets.length > 1 ? ('facebook-photos-multi' as const) : ('facebook-photo-single' as const)
+  }
+  if (target.platform === 'instagram') {
+    return target.assets.length > 1
+      ? ('instagram-carousel-staged' as const)
+      : ('instagram-image-staged' as const)
+  }
+  return target.assets.length > 1
+    ? ('linkedin-multi-image-staged' as const)
+    : target.assets.length
     ? ('linkedin-image-staged' as const)
     : ('linkedin-text-single' as const)
 }
@@ -324,37 +342,76 @@ const linkedInAuthor = (account: ResolvedPublishingAccount) =>
 
 const checkpointFor = ({
   account,
-  asset,
+  assets,
   route,
   text,
 }: {
   account: ResolvedPublishingAccount
-  asset: (PublicationAsset & { byteLength: number }) | undefined
+  assets: Array<PublicationAsset & { byteLength: number }>
   route: ReturnType<typeof routeFor>
   text: string
 }) => {
-  if (route === 'instagram-image-staged' && asset?.sourceUrl) {
+  if (route === 'instagram-image-staged' && assets[0]?.sourceUrl) {
     const caption = normalizeInstagramCaption(text)
     if (!caption) throw new Error('Instagram caption is required')
     return {
       accountExternalId: account.externalAccountId,
       authorizationRevision: account.authorizationRevision,
       caption,
-      imageUrl: asset.sourceUrl,
+      imageUrl: assets[0].sourceUrl,
       stage: 'scheduled',
-    }
+    } as const
   }
-  if (route === 'linkedin-image-staged' && asset?.sha256) {
+  if (route === 'facebook-photos-multi' && assets.every((asset) => asset.sourceUrl)) {
+    const caption = normalizeFacebookCaption(text)
+    return {
+      accountExternalId: account.externalAccountId,
+      authorizationRevision: account.authorizationRevision,
+      ...(caption ? { caption } : {}),
+      items: assets.map((asset) => ({ sourceUrl: asset.sourceUrl })),
+      stage: 'scheduled',
+    } as const
+  }
+  if (route === 'instagram-carousel-staged' && assets.every((asset) => asset.sourceUrl)) {
+    const caption = normalizeInstagramCaption(text)
+    if (!caption) throw new Error('Instagram caption is required')
+    return {
+      accountExternalId: account.externalAccountId,
+      authorizationRevision: account.authorizationRevision,
+      caption,
+      items: assets.map((asset) => ({ imageUrl: asset.sourceUrl })),
+      stage: 'scheduled',
+    } as const
+  }
+  if (route === 'linkedin-multi-image-staged' && assets.every((asset) => asset.sha256)) {
+    const commentary = normalizeLinkedInCommentary(text)
+    return {
+      author: linkedInAuthor(account),
+      authorizationRevision: account.authorizationRevision,
+      commentary,
+      ...(assets[0].fileName ? { altText: assets[0].fileName } : {}),
+      items: assets.map((asset) => ({
+        asset: {
+          byteLength: asset.byteLength,
+          contentType: asset.mimeType,
+          id: asset.id,
+          sha256: asset.sha256,
+        },
+      })),
+      stage: 'scheduled',
+    } as const
+  }
+  if (route === 'linkedin-image-staged' && assets[0]?.sha256) {
     const commentary = normalizeLinkedInCommentary(text)
     return {
       asset: {
-        byteLength: asset.byteLength,
-        contentType: asset.mimeType,
-        id: asset.id,
-        sha256: asset.sha256,
+        byteLength: assets[0].byteLength,
+        contentType: assets[0].mimeType,
+        id: assets[0].id,
+        sha256: assets[0].sha256,
       },
       checkpoint: {
-        altText: asset.fileName,
+        altText: assets[0].fileName,
         author: linkedInAuthor(account),
         authorizationRevision: account.authorizationRevision,
         commentary,
@@ -550,7 +607,7 @@ export const publishContentStudioNow = async ({
     try {
       providerCheckpoint = checkpointFor({
         account,
-        asset: assets[0],
+        assets,
         route: executionRoute,
         text: command.snapshot.text,
       })

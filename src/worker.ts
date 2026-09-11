@@ -125,6 +125,7 @@ const unavailableLinkedInTransport = (): LinkedInPublishingTransport => {
     getPostStatus: unavailable,
     initializeImageUpload: unavailable,
     publishImagePost: unavailable,
+    publishMultiImagePost: unavailable,
     publishTextPost: unavailable,
     uploadImage: unavailable,
   }
@@ -136,7 +137,7 @@ const resolvePublicationRuntime = async (
   if (process.env.ADMIN_PORTAL_PUBLISHING_ENABLED !== 'true') {
     throw new Error('Platform publishing is disabled')
   }
-  const requiresLinkedIn = route === 'linkedin-text-single' || route === 'linkedin-image-staged'
+  const requiresLinkedIn = route === 'linkedin-text-single' || route === 'linkedin-image-staged' || route === 'linkedin-multi-image-staged'
   if (requiresLinkedIn && linkedInPublicationRuntime) return linkedInPublicationRuntime
   if (!requiresLinkedIn && metaPublicationRuntime) return metaPublicationRuntime
   const publicOrigin = new URL(requiredEnvironment('NEXT_PUBLIC_SERVER_URL')).origin

@@ -22,6 +22,15 @@ import type {
   InstagramPublishingTransition,
 } from './meta/instagramPublishingExecution'
 import type {
+  MultiImagePublishingClaim,
+  MultiImagePublishingCommitResult,
+  MultiImagePublishingAuthorityPort,
+  MultiImagePublishingIntent,
+  MultiImagePublishingLeaseFence,
+  MultiImagePublishingMarkResult,
+  MultiImagePublishingTransition,
+} from './multiImagePublishingExecution'
+import type {
   PlatformPublicationAuthorityPort,
   PlatformPublicationClaim,
   PlatformPublicationCommitRecovery,
@@ -38,11 +47,20 @@ import {
 } from './publicationJobIdentity'
 
 type PublicationIntent =
-  InstagramPublishingIntent | LinkedInImagePublishingIntent | PlatformPublicationIntent
+  | InstagramPublishingIntent
+  | LinkedInImagePublishingIntent
+  | MultiImagePublishingIntent
+  | PlatformPublicationIntent
 type PublicationLease =
-  InstagramPublishingLeaseFence | LinkedInImagePublishingLeaseFence | PlatformPublicationLeaseFence
+  | InstagramPublishingLeaseFence
+  | LinkedInImagePublishingLeaseFence
+  | MultiImagePublishingLeaseFence
+  | PlatformPublicationLeaseFence
 type PublicationClaim =
-  InstagramPublishingClaim | LinkedInImagePublishingClaim | PlatformPublicationClaim
+  | InstagramPublishingClaim
+  | LinkedInImagePublishingClaim
+  | MultiImagePublishingClaim
+  | PlatformPublicationClaim
 
 type ClaimRow = {
   claim_id: string
@@ -590,5 +608,68 @@ export class PayloadLinkedInImagePublishingAuthority implements LinkedInImagePub
     return (await this.cas.release(claim, true))
       ? { status: 'fenced' }
       : { reason: 'claim_conflict', status: 'blocked' }
+  }
+}
+
+export class PayloadMultiImagePublishingAuthority implements MultiImagePublishingAuthorityPort {
+  private readonly cas: PayloadPublicationCAS
+  constructor(options: { now?: () => Date; payload: Payload }) {
+    this.cas = new PayloadPublicationCAS(options.payload, options.now)
+  }
+  claimStage(intent: MultiImagePublishingIntent, lease: MultiImagePublishingLeaseFence) {
+    return this.cas.claim<MultiImagePublishingClaim>(intent, lease)
+  }
+  markProviderIOStarted(
+    claim: MultiImagePublishingClaim,
+  ): Promise<MultiImagePublishingMarkResult> {
+    return this.cas.mark(claim)
+  }
+  commitStage(
+    claim: MultiImagePublishingClaim,
+    transition: MultiImagePublishingTransition,
+  ): Promise<MultiImagePublishingCommitResult> {
+    if (transition.changed === false && transition.retryable === true) {
+      return this.cas
+        .release(claim, true)
+        .then((released) =>
+          released
+            ? { nextRevision: claim.intent.expectedRevision, status: 'committed' as const }
+            : { reason: 'claim_conflict' as const, status: 'blocked' as const },
+        )
+    }
+    const checkpoint = transition.checkpoint
+    const externalPublicationId =
+      checkpoint.stage === 'published' && 'mediaId' in checkpoint
+        ? checkpoint.mediaId
+        : checkpoint.stage === 'published' && 'postUrn' in checkpoint
+          ? checkpoint.postUrn
+          : checkpoint.stage === 'published' && 'postId' in checkpoint
+            ? checkpoint.postId
+            : undefined
+    const externalPublicationUrl =
+      checkpoint.stage === 'published' && 'permalink' in checkpoint
+        ? checkpoint.permalink
+        : checkpoint.stage === 'published' && 'postUrl' in checkpoint
+          ? checkpoint.postUrl
+          : undefined
+    return this.cas.commit(claim, {
+      checkpoint,
+      errorCode: transition.errorCode,
+      event:
+        transition.event === 'unknown'
+          ? 'delivery-unknown'
+          : transition.event === 'failed'
+            ? 'failed'
+            : 'checkpoint-committed',
+      externalPublicationId,
+      externalPublicationUrl,
+      status: statusForStage(checkpoint.stage),
+      summary: summary(transition.summary, 'Multi-image checkpoint changed.'),
+    })
+  }
+  async releaseStage(claim: MultiImagePublishingClaim): Promise<void> {
+    if (!(await this.cas.release(claim))) {
+      throw new Error('Multi-image claim could not be released')
+    }
   }
 }

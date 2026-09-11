@@ -4,20 +4,28 @@ import {
   ProviderPublicationTransportError,
 } from '../publishingResult'
 import {
+  buildFacebookPageFeedPostRequest,
   buildFacebookPagePhotoRequest,
   buildFacebookPagePostRequest,
+  buildFacebookUnpublishedPhotoRequest,
+  buildInstagramCarouselContainerRequest,
+  buildInstagramCarouselItemRequest,
   buildInstagramContainerStatusRequest,
   buildInstagramMediaPublishRequest,
   buildInstagramMediaRequest,
   buildInstagramPublishedMediaRequest,
+  parseFacebookPageFeedPostResponse,
   parseFacebookPagePhotoResponse,
   parseFacebookPagePostResponse,
+  parseFacebookUnpublishedPhotoResponse,
   parseInstagramContainerStatusResponse,
   parseInstagramMediaPublishResponse,
   parseInstagramMediaResponse,
   parseInstagramPublishedMediaResponse,
+  type FacebookPageFeedPostResponse,
   type FacebookPagePostResponse,
   type FacebookPagePhotoResponse,
+  type FacebookUnpublishedPhotoResponse,
   type InstagramMediaPublishResponse,
   type InstagramMediaResponse,
   type InstagramPublishedMediaResponse,
@@ -55,11 +63,41 @@ export type FacebookPagePhotoPublishInput = {
   url: string
 }
 
+export type FacebookUnpublishedPhotoInput = {
+  accountExternalId: string
+  authorizationRevision: number
+  platformAccountId: PlatformAccountId
+  url: string
+}
+
+export type FacebookPageFeedPostInput = {
+  accountExternalId: string
+  authorizationRevision: number
+  caption?: string
+  photoIds: readonly string[]
+  platformAccountId: PlatformAccountId
+}
+
 export type InstagramMediaCreateInput = {
   accountExternalId: string
   authorizationRevision: number
   caption?: string
   imageUrl: string
+  platformAccountId: PlatformAccountId
+}
+
+export type InstagramCarouselItemInput = {
+  accountExternalId: string
+  authorizationRevision: number
+  imageUrl: string
+  platformAccountId: PlatformAccountId
+}
+
+export type InstagramCarouselContainerInput = {
+  accountExternalId: string
+  authorizationRevision: number
+  caption?: string
+  children: readonly string[]
   platformAccountId: PlatformAccountId
 }
 
@@ -95,6 +133,13 @@ export type InstagramMediaPermalinkInput = {
 }
 
 export interface MetaPublishingTransport {
+  createFacebookUnpublishedPhoto(
+    input: FacebookUnpublishedPhotoInput,
+  ): Promise<FacebookUnpublishedPhotoResponse>
+  createInstagramCarouselContainer(
+    input: InstagramCarouselContainerInput,
+  ): Promise<InstagramMediaResponse>
+  createInstagramCarouselItem(input: InstagramCarouselItemInput): Promise<InstagramMediaResponse>
   createInstagramMedia(input: InstagramMediaCreateInput): Promise<InstagramMediaResponse>
   getFacebookPagePostPermalink(
     input: FacebookPagePostPermalinkInput,
@@ -106,6 +151,7 @@ export interface MetaPublishingTransport {
     input: InstagramMediaPermalinkInput,
   ): Promise<InstagramPublishedMediaResponse>
   publishFacebookPagePhoto(input: FacebookPagePhotoPublishInput): Promise<FacebookPagePhotoResponse>
+  publishFacebookPageFeed(input: FacebookPageFeedPostInput): Promise<FacebookPageFeedPostResponse>
   publishInstagramMedia(input: InstagramMediaPublishInput): Promise<InstagramMediaPublishResponse>
 }
 
@@ -334,6 +380,52 @@ export const createMetaPublishingTransport = ({
     })
   }
 
+  const createFacebookUnpublishedPhoto = async (
+    input: FacebookUnpublishedPhotoInput,
+  ): Promise<FacebookUnpublishedPhotoResponse> => {
+    let providerRequest: MetaPublishingHttpRequest
+    try {
+      requireTrustedMediaUrl(input.url)
+      providerRequest = buildFacebookUnpublishedPhotoRequest({
+        pageId: input.accountExternalId,
+        url: input.url,
+      })
+    } catch {
+      throw invalidRequest()
+    }
+    return dispatch({
+      accountExternalId: input.accountExternalId,
+      authorizationRevision: input.authorizationRevision,
+      parse: parseFacebookUnpublishedPhotoResponse,
+      platform: 'facebook',
+      platformAccountId: input.platformAccountId,
+      providerRequest,
+    })
+  }
+
+  const publishFacebookPageFeed = async (
+    input: FacebookPageFeedPostInput,
+  ): Promise<FacebookPageFeedPostResponse> => {
+    let providerRequest: MetaPublishingHttpRequest
+    try {
+      providerRequest = buildFacebookPageFeedPostRequest({
+        caption: input.caption,
+        pageId: input.accountExternalId,
+        photoIds: input.photoIds,
+      })
+    } catch {
+      throw invalidRequest()
+    }
+    return dispatch({
+      accountExternalId: input.accountExternalId,
+      authorizationRevision: input.authorizationRevision,
+      parse: parseFacebookPageFeedPostResponse,
+      platform: 'facebook',
+      platformAccountId: input.platformAccountId,
+      providerRequest,
+    })
+  }
+
   const createInstagramMedia = async (
     input: InstagramMediaCreateInput,
   ): Promise<InstagramMediaResponse> => {
@@ -344,6 +436,52 @@ export const createMetaPublishingTransport = ({
         caption: input.caption,
         igId: input.accountExternalId,
         imageUrl: input.imageUrl,
+      })
+    } catch {
+      throw invalidRequest()
+    }
+    return dispatch({
+      accountExternalId: input.accountExternalId,
+      authorizationRevision: input.authorizationRevision,
+      parse: parseInstagramMediaResponse,
+      platform: 'instagram',
+      platformAccountId: input.platformAccountId,
+      providerRequest,
+    })
+  }
+
+  const createInstagramCarouselItem = async (
+    input: InstagramCarouselItemInput,
+  ): Promise<InstagramMediaResponse> => {
+    let providerRequest: MetaPublishingHttpRequest
+    try {
+      requireTrustedMediaUrl(input.imageUrl)
+      providerRequest = buildInstagramCarouselItemRequest({
+        igId: input.accountExternalId,
+        imageUrl: input.imageUrl,
+      })
+    } catch {
+      throw invalidRequest()
+    }
+    return dispatch({
+      accountExternalId: input.accountExternalId,
+      authorizationRevision: input.authorizationRevision,
+      parse: parseInstagramMediaResponse,
+      platform: 'instagram',
+      platformAccountId: input.platformAccountId,
+      providerRequest,
+    })
+  }
+
+  const createInstagramCarouselContainer = async (
+    input: InstagramCarouselContainerInput,
+  ): Promise<InstagramMediaResponse> => {
+    let providerRequest: MetaPublishingHttpRequest
+    try {
+      providerRequest = buildInstagramCarouselContainerRequest({
+        caption: input.caption,
+        children: input.children,
+        igId: input.accountExternalId,
       })
     } catch {
       throw invalidRequest()
@@ -449,11 +587,15 @@ export const createMetaPublishingTransport = ({
   }
 
   return {
+    createFacebookUnpublishedPhoto,
+    createInstagramCarouselContainer,
+    createInstagramCarouselItem,
     createInstagramMedia,
     getFacebookPagePostPermalink,
     getInstagramContainerStatus,
     getInstagramMediaPermalink,
     publishFacebookPagePhoto,
+    publishFacebookPageFeed,
     publishInstagramMedia,
   }
 }

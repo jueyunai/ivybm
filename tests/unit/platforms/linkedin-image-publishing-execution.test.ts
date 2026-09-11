@@ -70,6 +70,7 @@ const transport = (
   })),
   initializeImageUpload: vi.fn(),
   publishImagePost: vi.fn(),
+  publishMultiImagePost: vi.fn(),
   publishTextPost: vi.fn(),
   uploadImage: vi.fn(),
   ...overrides,

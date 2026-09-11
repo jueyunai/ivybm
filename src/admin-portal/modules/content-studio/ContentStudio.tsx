@@ -763,7 +763,7 @@ function ContentDetail({
   )
 }
 
-const MAX_UPLOAD_FILE_COUNT = 1
+const MAX_UPLOAD_FILE_COUNT = 3
 const MAX_UPLOAD_FILE_SIZE = 8 * 1024 * 1024
 const UPLOAD_IMAGE_MIME_TYPES = new Set(['image/avif', 'image/jpeg', 'image/png', 'image/webp'])
 const UPLOAD_IMAGE_EXTENSION = /\.(?:avif|jpe?g|png|webp)$/i
@@ -921,10 +921,19 @@ function DraftEditor({
     setForm((current) => ({ ...current, [key]: value }))
 
   const toggleAsset = (value: string) => {
-    setForm((current) => {
-      const nextAssets = current.assets.includes(value) ? [] : [value]
-      return { ...current, assets: nextAssets, contentType: 'post' }
-    })
+    const nextAssets = form.assets.includes(value)
+      ? form.assets.filter((id) => id !== value)
+      : [...form.assets, value]
+    if (nextAssets.length > MAX_UPLOAD_FILE_COUNT) {
+      setError(copy.uploadCountExceeded)
+      return
+    }
+    setError(null)
+    setForm((current) => ({
+      ...current,
+      assets: nextAssets,
+      contentType: nextAssets.length >= 2 ? 'carousel' : 'post',
+    }))
   }
 
   const { combinedAssets, handleUpload, uploadBusy, uploadError } = useAssetUploader({
@@ -932,8 +941,11 @@ function DraftEditor({
     initialAssets: options.assets,
     onAssetsUploaded: (newIds) => {
       setForm((current) => {
-        const nextAssets = newIds.slice(0, 1)
-        return { ...current, assets: nextAssets, contentType: 'post' }
+        return {
+          ...current,
+          assets: newIds,
+          contentType: newIds.length >= 2 ? 'carousel' : 'post',
+        }
       })
     },
   })
@@ -1207,8 +1219,11 @@ function GenerateDraftEditor({
     initialAssets: options.assets,
     onAssetsUploaded: (newIds) => {
       setForm((current) => {
-        const nextAssets = newIds.slice(0, 1)
-        return { ...current, assets: nextAssets, contentType: 'post' }
+        return {
+          ...current,
+          assets: newIds,
+          contentType: newIds.length >= 2 ? 'carousel' : 'post',
+        }
       })
     },
   })
@@ -1216,15 +1231,23 @@ function GenerateDraftEditor({
   const update = <Key extends keyof typeof form>(key: Key, value: (typeof form)[Key]) =>
     setForm((current) => ({ ...current, [key]: value }))
   const toggle = (key: 'assets' | 'knowledgeSources', value: string) => {
-    setForm((current) => {
-      if (key === 'assets') {
-        const nextAssets = current.assets.includes(value) ? [] : [value]
-        return {
-          ...current,
-          assets: nextAssets,
-          contentType: 'post',
-        }
+    if (key === 'assets') {
+      const nextAssets = form.assets.includes(value)
+        ? form.assets.filter((id) => id !== value)
+        : [...form.assets, value]
+      if (nextAssets.length > MAX_UPLOAD_FILE_COUNT) {
+        setError(copy.uploadCountExceeded)
+        return
       }
+      setError(null)
+      setForm((current) => ({
+        ...current,
+        assets: nextAssets,
+        contentType: nextAssets.length >= 2 ? 'carousel' : 'post',
+      }))
+      return
+    }
+    setForm((current) => {
       const nextValues = current[key].includes(value)
         ? current[key].filter((id) => id !== value)
         : [...current[key], value]
@@ -2159,6 +2182,7 @@ function MultiOptions({
             onChange={handleFileChange}
             ref={fileInputRef}
             style={{ display: 'none' }}
+            multiple
             type="file"
           />
           <div className="portal-content-studio__asset-upload-inner">

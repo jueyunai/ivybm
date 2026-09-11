@@ -77,6 +77,18 @@ export type LinkedInImagePostRequestInput = {
   linkedInVersion: string
 }
 
+export type LinkedInMultiImageItemInput = {
+  altText?: string
+  imageUrn: string
+}
+
+export type LinkedInMultiImagePostRequestInput = {
+  author: LinkedInAuthorUrnInput
+  commentary: string
+  images: readonly LinkedInMultiImageItemInput[]
+  linkedInVersion: string
+}
+
 export type LinkedInImageInitializeUploadRequestInput = {
   author: LinkedInAuthorUrnInput
   linkedInVersion: string
@@ -133,6 +145,14 @@ export type LinkedInImagePostBody = LinkedInTextPostBody & {
     media: {
       altText?: string
       id: string
+    }
+  }
+}
+
+export type LinkedInMultiImagePostBody = LinkedInTextPostBody & {
+  content: {
+    multiImage: {
+      images: Array<{ altText?: string; id: string }>
     }
   }
 }
@@ -485,6 +505,42 @@ export const buildLinkedInImagePostRequest = (
     author,
     commentary,
     content: { media },
+    distribution: buildLinkedInPostDistribution(),
+    isReshareDisabledByAuthor: false,
+    lifecycleState: 'PUBLISHED',
+    visibility: 'PUBLIC',
+  }
+
+  return {
+    body: body as unknown as Record<string, unknown>,
+    headers: buildLinkedInJsonHeaders(linkedInVersion),
+    method: 'POST',
+    path: '/rest/posts',
+  }
+}
+
+export const buildLinkedInMultiImagePostRequest = (
+  input: LinkedInMultiImagePostRequestInput,
+): LinkedInPublishingHttpRequest => {
+  const author = authorUrnFromInput(input?.author)
+  const commentary = normalizeLinkedInCommentary(input?.commentary)
+  const linkedInVersion = requireLinkedInVersion(input?.linkedInVersion)
+  const images = Array.isArray(input?.images) ? [...input.images] : []
+  if (images.length < 2 || images.length > 3) {
+    throw new Error('LinkedIn multi-image post requires two or three uploaded images')
+  }
+  const body: LinkedInMultiImagePostBody = {
+    author,
+    commentary,
+    content: {
+      multiImage: {
+        images: images.map((image) => {
+          const id = requireImageUrn(image?.imageUrn)
+          const altText = normalizeAltText(image?.altText)
+          return altText ? { altText, id } : { id }
+        }),
+      },
+    },
     distribution: buildLinkedInPostDistribution(),
     isReshareDisabledByAuthor: false,
     lifecycleState: 'PUBLISHED',
