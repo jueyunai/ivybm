@@ -42,15 +42,42 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   `)
 
   await db.execute(sql`
-    WITH numbered_users AS (
+    WITH normalized_users AS (
       SELECT
         id,
-        lower(split_part(email, '@', 1)) AS username_base,
+        CASE
+          WHEN length(username_base) >= 3 THEN username_base
+          WHEN length(username_base) = 2 THEN username_base || '0'
+          WHEN length(username_base) = 1 THEN username_base || '00'
+          ELSE 'user'
+        END AS username_base
+      FROM (
+        SELECT
+          id,
+          btrim(
+            left(
+              regexp_replace(
+                lower(split_part(coalesce(email, ''), '@', 1)),
+                '[^a-z0-9._-]+',
+                '-',
+                'g'
+              ),
+              40
+            ),
+            '._-'
+          ) AS username_base
+        FROM "users"
+      ) AS cleaned_users
+    ),
+    numbered_users AS (
+      SELECT
+        id,
+        username_base,
         row_number() OVER (
-          PARTITION BY lower(split_part(email, '@', 1))
+          PARTITION BY username_base
           ORDER BY id
         ) AS username_number
-      FROM "users"
+      FROM normalized_users
     )
     UPDATE "users"
     SET "username" =

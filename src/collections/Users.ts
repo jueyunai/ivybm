@@ -99,6 +99,10 @@ export const Users: CollectionConfig = {
     {
       name: 'permissions',
       type: 'json',
+      access: {
+        create: admins,
+        update: admins,
+      },
       required: true,
     },
   ],

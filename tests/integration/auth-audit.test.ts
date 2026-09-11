@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { getPayload, ValidationError, type Payload } from 'payload'
 
 import type { AuditLog, User } from '@/payload-types'
+import { PORTAL_PERMISSION_PRESETS } from '@/access/roles'
 import config from '@/payload.config'
 
 let payload: Payload
@@ -150,6 +151,8 @@ describe.sequential('authentication and audit integration', () => {
   })
 
   it('prevents sales users from managing other users or changing roles', async () => {
+    const originalPermissions = salesUser.permissions
+
     await expect(
       payload.create({ collection: 'users',
         draft: true, data: { username: `task3-forbidden-${randomUUID()}`,
@@ -177,6 +180,7 @@ describe.sequential('authentication and audit integration', () => {
       collection: 'users',
       data: {
         email: `task3-sales-self-${randomUUID()}@example.invalid`,
+        permissions: PORTAL_PERMISSION_PRESETS.admin,
         role: 'operator',
       },
       id: salesUser.id,
@@ -185,6 +189,15 @@ describe.sequential('authentication and audit integration', () => {
     })
 
     expect(selfUpdated.role).toBe('sales')
+
+    const reloadedSalesUser = await payload.findByID({
+      collection: 'users',
+      depth: 0,
+      id: salesUser.id,
+      overrideAccess: true,
+      showHiddenFields: true,
+    })
+    expect(reloadedSalesUser.permissions).toEqual(originalPermissions)
   })
 
   it('keeps audit logs immutable through ordinary access checks', async () => {
