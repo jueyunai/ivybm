@@ -1,6 +1,7 @@
 import type { GlobalConfig } from 'payload'
 
-import { contentUpdate, publicRead } from '../access/content'
+import { portalPermissionAccess } from '../access/roles'
+import { publicRead } from '../access/content'
 import { imageMediaFilter } from '../fields/media'
 import { seoField } from '../fields/seo'
 import { revalidateSiteSettingsAfterChange } from '../hooks/revalidateContent'
@@ -9,7 +10,7 @@ export const SiteSettings: GlobalConfig = {
   slug: 'site-settings',
   access: {
     read: publicRead,
-    update: contentUpdate,
+    update: portalPermissionAccess('settings', 'edit'),
   },
   admin: {
     group: 'Website Settings',

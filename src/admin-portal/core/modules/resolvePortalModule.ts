@@ -16,17 +16,19 @@ export const resolvePortalModule = ({
   module: PortalModuleDefinition
   user: PortalPermissionUser
 }): ResolvedPortalModule | null => {
+  if (!module.allowedRoles.includes(user.role)) {
+    return null
+  }
+
+  if (module.availability === 'admin-only' && user.role !== 'admin') {
+    return null
+  }
+
   if (
     module.id !== 'overview' &&
     module.id !== 'example' &&
     !hasPortalPermission(user, module.id, 'view')
   ) {
-    return null
-  }
-
-  // The collaborator template is not a permission-backed business module, so it
-  // keeps the manifest's demo role boundary instead of the shared matrix.
-  if (module.id === 'example' && !module.allowedRoles.includes(user.role)) {
     return null
   }
 

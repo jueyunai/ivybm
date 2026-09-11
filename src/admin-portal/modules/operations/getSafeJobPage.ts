@@ -150,7 +150,7 @@ export const loadSafeJobPageData = async ({
   if (env.ADMIN_PORTAL_OPERATIONS_ENABLED !== 'true') {
     return { state: 'module-disabled', summary: null }
   }
-  if (!hasPortalPermission(user, 'operations', 'view')) {
+  if (user.role !== 'admin' || !hasPortalPermission(user, 'operations', 'view')) {
     return { state: 'forbidden', summary: null }
   }
 

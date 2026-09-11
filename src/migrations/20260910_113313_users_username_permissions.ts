@@ -2,8 +2,8 @@ import { MigrateDownArgs, MigrateUpArgs, sql } from '@payloadcms/db-postgres'
 
 const adminPermissions = JSON.stringify({
   conversations: { edit: true, view: true },
-  content: { edit: true, view: true },
-  contentStudio: { edit: true, view: true },
+  'website-content': { edit: true, view: true },
+  'content-studio': { edit: true, view: true },
   knowledge: { edit: true, view: true },
   leads: { edit: true, view: true },
   media: { edit: true, view: true },
@@ -14,20 +14,20 @@ const adminPermissions = JSON.stringify({
 
 const operatorPermissions = JSON.stringify({
   conversations: { edit: true, view: true },
-  content: { edit: true, view: true },
-  contentStudio: { edit: true, view: true },
+  'website-content': { edit: true, view: true },
+  'content-studio': { edit: true, view: true },
   knowledge: { edit: true, view: true },
   leads: { edit: true, view: true },
   media: { edit: true, view: true },
-  operations: { edit: false, view: true },
-  platforms: { edit: false, view: true },
+  operations: { edit: false, view: false },
+  platforms: { edit: false, view: false },
   settings: { edit: true, view: true },
 })
 
 const salesPermissions = JSON.stringify({
   conversations: { edit: true, view: true },
-  content: { edit: false, view: false },
-  contentStudio: { edit: false, view: false },
+  'website-content': { edit: false, view: false },
+  'content-studio': { edit: false, view: false },
   knowledge: { edit: false, view: false },
   leads: { edit: true, view: true },
   media: { edit: false, view: false },
@@ -42,52 +42,59 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   `)
 
   await db.execute(sql`
-    WITH normalized_users AS (
-      SELECT
-        id,
-        CASE
-          WHEN length(username_base) >= 3 THEN username_base
-          WHEN length(username_base) = 2 THEN username_base || '0'
-          WHEN length(username_base) = 1 THEN username_base || '00'
-          ELSE 'user'
-        END AS username_base
-      FROM (
+    DO $$
+    DECLARE
+      rec RECORD;
+      candidate text;
+      base text;
+      suffix integer;
+    BEGIN
+      -- Allocate usernames in id order and probe the complete set of already
+      -- assigned values. A partitioned row_number() cannot see cross-base
+      -- collisions such as "alex-2" produced by another user's "alex" base.
+      FOR rec IN
         SELECT
           id,
-          btrim(
-            left(
-              regexp_replace(
-                lower(split_part(coalesce(email, ''), '@', 1)),
-                '[^a-z0-9._-]+',
-                '-',
-                'g'
+          CASE
+            WHEN length(username_base) >= 3 THEN username_base
+            WHEN length(username_base) = 2 THEN username_base || '0'
+            WHEN length(username_base) = 1 THEN username_base || '00'
+            ELSE 'user'
+          END AS username_base
+        FROM (
+          SELECT
+            id,
+            btrim(
+              left(
+                regexp_replace(
+                  lower(split_part(coalesce(email, ''), '@', 1)),
+                  '[^a-z0-9._-]+',
+                  '-',
+                  'g'
+                ),
+                40
               ),
-              40
-            ),
-            '._-'
-          ) AS username_base
-        FROM "users"
-      ) AS cleaned_users
-    ),
-    numbered_users AS (
-      SELECT
-        id,
-        username_base,
-        row_number() OVER (
-          PARTITION BY username_base
-          ORDER BY id
-        ) AS username_number
-      FROM normalized_users
-    )
-    UPDATE "users"
-    SET "username" =
-      CASE
-        WHEN numbered_users.username_number > 1
-          THEN numbered_users.username_base || '-' || "users"."id"::text
-        ELSE numbered_users.username_base
-      END
-    FROM numbered_users
-    WHERE "users"."id" = numbered_users."id";
+              '._-'
+            ) AS username_base
+          FROM "users"
+        ) AS cleaned_users
+        ORDER BY id
+      LOOP
+        base := rec.username_base;
+        candidate := base;
+        suffix := 0;
+
+        WHILE EXISTS (SELECT 1 FROM "users" WHERE "username" = candidate) LOOP
+          suffix := suffix + 1;
+          candidate := base || '-' || rec.id::text;
+          IF suffix > 1 THEN
+            candidate := candidate || '-' || suffix::text;
+          END IF;
+        END LOOP;
+
+        UPDATE "users" SET "username" = candidate WHERE id = rec.id;
+      END LOOP;
+    END $$;
   `)
 
   await db.execute(sql`
@@ -124,22 +131,42 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
   `)
 
   await db.execute(sql`
-    WITH numbered_users AS (
-      SELECT
-        id,
-        "email" AS email_base,
-        row_number() OVER (PARTITION BY "email" ORDER BY id) AS email_number
-      FROM "users"
-    )
-    UPDATE "users"
-    SET "email" =
-      CASE
-        WHEN numbered_users.email_number > 1
-          THEN numbered_users.email_base || '-' || "users"."id"::text
-        ELSE numbered_users.email_base
-      END
-    FROM numbered_users
-    WHERE "users"."id" = numbered_users."id";
+    DO $$
+    DECLARE
+      rec RECORD;
+      local_part text;
+      domain_part text;
+      candidate text;
+      suffix integer;
+    BEGIN
+      FOR rec IN SELECT id, email FROM "users" ORDER BY id LOOP
+        IF EXISTS (
+          SELECT 1
+          FROM "users"
+          WHERE "email" = rec.email AND id <> rec.id
+        ) THEN
+          local_part := split_part(coalesce(rec.email, ''), '@', 1);
+          domain_part := split_part(coalesce(rec.email, ''), '@', 2);
+          IF domain_part = '' THEN
+            domain_part := 'legacy.invalid';
+          END IF;
+
+          candidate := local_part || '-' || rec.id::text || '@' || domain_part;
+          suffix := 0;
+          WHILE EXISTS (
+            SELECT 1
+            FROM "users"
+            WHERE "email" = candidate AND id <> rec.id
+          ) LOOP
+            suffix := suffix + 1;
+            candidate :=
+              local_part || '-' || rec.id::text || '-' || suffix::text || '@' || domain_part;
+          END LOOP;
+
+          UPDATE "users" SET "email" = candidate WHERE id = rec.id;
+        END IF;
+      END LOOP;
+    END $$;
   `)
 
   await db.execute(sql`

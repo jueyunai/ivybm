@@ -30,7 +30,7 @@ export const authorizeOperationsRequest = async (
   if (!user || !actor || user.collection !== 'users') {
     throw new OperationsCommandError('operations-unauthenticated', 'Authentication required.', 401)
   }
-  if (!hasPortalPermission(actor, 'operations', options.action ?? 'view')) {
+  if (actor.role !== 'admin' || !hasPortalPermission(actor, 'operations', options.action ?? 'view')) {
     throw new OperationsCommandError('operations-forbidden', 'Administrator access required.', 403)
   }
   return { payload, req: await createLocalReq({ user }, payload), user: user as User }

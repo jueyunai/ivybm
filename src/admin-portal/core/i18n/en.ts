@@ -5,9 +5,9 @@ export const PORTAL_EN = {
     overview: 'Operations overview',
     conversations: 'Conversations',
     leads: 'Leads',
-    content: 'Website content',
+    'website-content': 'Website content',
     media: 'Media library',
-    contentStudio: 'AI content studio',
+    'content-studio': 'AI content studio',
     knowledge: 'Knowledge and AI testing',
     platforms: 'Platform readiness',
     operations: 'Exceptions and recovery',
@@ -36,9 +36,9 @@ export const PORTAL_EN = {
     overview: 'Role-safe operational queues and priorities are available.',
     conversations: 'View conversations, take over, reply, and resolve them here.',
     leads: 'View, create, edit, and assign leads within the current role scope.',
-    content: 'Maintain six bilingual website content types, their status, and previews.',
+    'website-content': 'Maintain six bilingual website content types, their status, and previews.',
     media: 'Upload media, maintain metadata, preview files, and delete unused assets safely.',
-    contentStudio:
+    'content-studio':
       'Draft, review, and create assisted schedules here; automatic publishing awaits an adapter.',
     knowledge: 'Maintain, review, index knowledge documents, and run AI diagnostics here.',
     platforms:

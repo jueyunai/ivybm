@@ -37,7 +37,7 @@ export async function authorizeContentStudioRequest(
       401,
     )
   }
-  if (!hasPortalPermission(actor, 'contentStudio', options.action ?? 'view')) {
+  if (!hasPortalPermission(actor, 'content-studio', options.action ?? 'view')) {
     throw new ContentStudioCommandError(
       'content-studio-forbidden',
       'Content Studio access denied',

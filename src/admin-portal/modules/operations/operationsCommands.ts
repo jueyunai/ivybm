@@ -55,7 +55,7 @@ export const retryPortalJob = async ({
   req: PayloadRequest
   user: User
 }) => {
-  if (!hasPortalPermission(user, 'operations', 'edit')) {
+  if (user.role !== 'admin' || !hasPortalPermission(user, 'operations', 'edit')) {
     throw new OperationsCommandError('operations-forbidden', 'Administrator access required.', 403)
   }
 

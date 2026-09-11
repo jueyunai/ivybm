@@ -29,7 +29,7 @@ export async function authorizeContentRequest(
   if (!user || !actor || (user as { collection?: string }).collection !== 'users') {
     throw new ContentCommandError('content-unauthenticated', 'Authentication required', 401)
   }
-  if (!hasPortalPermission(actor, 'content', options.action ?? 'view')) {
+  if (!hasPortalPermission(actor, 'website-content', options.action ?? 'view')) {
     throw new ContentCommandError('content-forbidden', 'Website content access denied', 403)
   }
   const req = await createLocalReq({ user }, payload)

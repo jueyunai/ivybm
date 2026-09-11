@@ -25,9 +25,9 @@ export type AccessResource =
 export const PERMISSION_MODULE_IDS = [
   'conversations',
   'leads',
-  'content',
+  'website-content',
   'media',
-  'contentStudio',
+  'content-studio',
   'knowledge',
   'platforms',
   'operations',
@@ -35,6 +35,7 @@ export const PERMISSION_MODULE_IDS = [
 ] as const
 
 export type PermissionModuleId = (typeof PERMISSION_MODULE_IDS)[number]
+type LegacyPermissionModuleId = 'content' | 'contentStudio'
 
 export interface ModulePermission {
   edit: boolean
@@ -43,7 +44,9 @@ export interface ModulePermission {
 
 export type PortalUserPermissions = Record<PermissionModuleId, ModulePermission>
 
-export type PermissionMatrixInput = Partial<Record<PermissionModuleId, unknown>>
+export type PermissionMatrixInput = Partial<Record<PermissionModuleId | LegacyPermissionModuleId, unknown>>
+
+const ADMIN_ONLY_PERMISSION_MODULES = new Set<PermissionModuleId>(['operations', 'platforms'])
 
 const rolePermissions = (
   role: UserRole,
@@ -54,7 +57,12 @@ const rolePermissions = (
       moduleId,
       {
         edit: editableModules.includes(moduleId),
-        view: role === 'sales' ? editableModules.includes(moduleId) : true,
+        view:
+          role === 'admin'
+            ? true
+            : role === 'sales'
+              ? editableModules.includes(moduleId)
+              : !ADMIN_ONLY_PERMISSION_MODULES.has(moduleId),
       },
     ]),
   ) as PortalUserPermissions
@@ -64,9 +72,9 @@ export const PORTAL_PERMISSION_PRESETS = {
   operator: rolePermissions('operator', [
     'conversations',
     'leads',
-    'content',
+    'website-content',
     'media',
-    'contentStudio',
+    'content-studio',
     'knowledge',
     'settings',
   ]),
@@ -81,6 +89,14 @@ const normalizeModulePermission = (value: unknown): ModulePermission => {
   return { edit, view }
 }
 
+const canonicalPermissionModule = (
+  moduleId: PermissionModuleId | LegacyPermissionModuleId,
+): PermissionModuleId => {
+  if (moduleId === 'content') return 'website-content'
+  if (moduleId === 'contentStudio') return 'content-studio'
+  return moduleId
+}
+
 export const normalizePortalPermissions = (
   value: unknown,
   role: UserRole = 'sales',
@@ -91,21 +107,28 @@ export const normalizePortalPermissions = (
   return Object.fromEntries(
     PERMISSION_MODULE_IDS.map((moduleId) => [
       moduleId,
-      source[moduleId] === undefined
+      source[moduleId] === undefined &&
+      (moduleId !== 'website-content' || source.content === undefined) &&
+      (moduleId !== 'content-studio' || source.contentStudio === undefined)
         ? template[moduleId]
-        : normalizeModulePermission(source[moduleId]),
+        : normalizeModulePermission(
+            source[moduleId] ??
+              (moduleId === 'website-content' ? source.content : source.contentStudio),
+          ),
     ]),
   ) as PortalUserPermissions
 }
 
 export const hasPortalPermission = (
   user: Pick<RoleUser, 'permissions' | 'role'> | null | undefined,
-  moduleId: PermissionModuleId,
+  moduleId: PermissionModuleId | LegacyPermissionModuleId,
   action: 'view' | 'edit',
 ): boolean => {
   if (!user) return false
+  const canonicalModuleId = canonicalPermissionModule(moduleId)
+  if (ADMIN_ONLY_PERMISSION_MODULES.has(canonicalModuleId) && user.role !== 'admin') return false
   const matrix = normalizePortalPermissions(user.permissions, user.role)
-  return matrix[moduleId][action]
+  return matrix[canonicalModuleId][action]
 }
 
 type ResolveRoleAccessArgs = {
@@ -138,7 +161,9 @@ const assignedToUser = (user: RoleUser): Where => ({
 const permissionModuleFor = (resource: AccessResource): PermissionModuleId => {
   switch (resource) {
     case 'contentStudio':
-      return 'contentStudio'
+      return 'content-studio'
+    case 'content':
+      return 'website-content'
     case 'platformAccounts':
       return 'platforms'
     case 'users':
@@ -210,6 +235,7 @@ export const portalPermissionAccess =
 export const portalPermissionAdminAccess =
   (moduleId: PermissionModuleId, action: 'view' | 'edit') =>
   ({ req }: { req: PayloadRequest }): boolean =>
+    getRoleUser(req.user)?.role === 'admin' &&
     hasPortalPermission(getRoleUser(req.user), moduleId, action)
 
 type AdminAccess = ({ req }: { req: PayloadRequest }) => boolean | Promise<boolean>

@@ -41,7 +41,7 @@ const GROUP_ORDER: readonly PortalNavGroup[] = [
 
 const MODULE_ICONS: Record<PortalModuleId, TablerIcon> = {
   conversations: IconMessageCircle,
-  contentStudio: IconSparkles,
+  'content-studio': IconSparkles,
   knowledge: IconBrain,
   leads: IconTargetArrow,
   media: IconPhoto,
@@ -50,7 +50,7 @@ const MODULE_ICONS: Record<PortalModuleId, TablerIcon> = {
   example: IconTemplate,
   platforms: IconPlugConnected,
   settings: IconSettings,
-  content: IconTemplate,
+  'website-content': IconTemplate,
 }
 
 const isActiveHref = (pathname: string, href: string): boolean =>

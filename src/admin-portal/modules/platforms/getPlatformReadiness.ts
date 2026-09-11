@@ -211,7 +211,9 @@ export const loadPlatformAccountsPageData = async ({
   if (env.ADMIN_PORTAL_PLATFORMS_ENABLED !== 'true') {
     return { accounts: [], state: 'module-disabled' }
   }
-  if (!hasPortalPermission(user, 'platforms', 'view')) return { accounts: [], state: 'forbidden' }
+  if (user.role !== 'admin' || !hasPortalPermission(user, 'platforms', 'view')) {
+    return { accounts: [], state: 'forbidden' }
+  }
 
   try {
     const summary = await listPlatformReadiness({ environment: env, payload, req })
@@ -236,7 +238,9 @@ export const loadPlatformReadinessPageData = async ({
   if (env.ADMIN_PORTAL_PLATFORMS_ENABLED !== 'true') {
     return { state: 'module-disabled', summary: null }
   }
-  if (!hasPortalPermission(user, 'platforms', 'view')) return { state: 'forbidden', summary: null }
+  if (user.role !== 'admin' || !hasPortalPermission(user, 'platforms', 'view')) {
+    return { state: 'forbidden', summary: null }
+  }
 
   try {
     return {

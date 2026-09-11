@@ -394,7 +394,7 @@ export const publishContentStudioNow = async ({
     )
   }
   const actor = getRoleUser(req.user)
-  if (!actor || !hasPortalPermission(actor, 'contentStudio', 'edit')) {
+  if (!actor || !hasPortalPermission(actor, 'content-studio', 'edit')) {
     throw new ContentStudioCommandError(
       'content-studio-forbidden',
       'Content Studio access denied',

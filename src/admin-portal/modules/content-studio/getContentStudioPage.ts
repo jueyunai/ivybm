@@ -167,7 +167,7 @@ export const loadContentStudioPageData = async ({
   if (env.ADMIN_PORTAL_ENABLED !== 'true') return { state: 'portal-disabled', summary: null }
   if (env.ADMIN_PORTAL_CONTENT_STUDIO_ENABLED !== 'true')
     return { state: 'module-disabled', summary: null }
-  if (!hasPortalPermission(user, 'contentStudio', 'view'))
+  if (!hasPortalPermission(user, 'content-studio', 'view'))
     return { state: 'forbidden', summary: null }
   const publishingEnabled = env.ADMIN_PORTAL_PUBLISHING_ENABLED === 'true'
   try {

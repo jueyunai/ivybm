@@ -608,7 +608,7 @@ export async function loadWebsiteContentPageData({
   req: PayloadRequest
   user: PortalPermissionUser
 }): Promise<WebsiteContentPageData> {
-  if (!hasPortalPermission(user, 'content', 'view')) {
+  if (!hasPortalPermission(user, 'website-content', 'view')) {
     return { state: 'forbidden', summary: null }
   }
 
