@@ -715,6 +715,167 @@ describe('Portal Content Studio', () => {
     expect(screen.getByRole('heading', { name: 'Second Draft Post' })).toBeTruthy()
   })
 
+  it('guards sub-mode switching within generator and preserves composite dirty state across copy and image modes', () => {
+    const summary: ContentStudioSummary = {
+      items: [
+        {
+          assets: [],
+          body: 'First body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 1,
+          knowledgeSources: [],
+          platform: 'instagram',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'approved',
+          title: 'First Approved Post',
+          updatedAt: '2026-08-31T10:00:00.000Z',
+        },
+      ],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    // Open AI generator (defaults to "社媒内容" / copy mode)
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
+
+    // 1. Enter brief in copy mode
+    const briefTextarea = screen.getByRole('textbox', { name: '生成需求' })
+    fireEvent.change(briefTextarea, { target: { value: 'Architectural aluminum cladding' } })
+
+    // Click "图片生成" mode button -> confirmation dialog should appear
+    fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+
+    // Cancel ("继续编辑") -> stays in copy mode, brief intact
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(screen.getByRole('button', { name: '社媒内容' }).getAttribute('aria-pressed')).toBe('true')
+    expect((screen.getByRole('textbox', { name: '生成需求' }) as HTMLTextAreaElement).value).toBe(
+      'Architectural aluminum cladding',
+    )
+
+    // Click "图片生成" again and confirm ("放弃并切换") -> switches to image mode and clears copy brief
+    fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(screen.getByRole('button', { name: '图片生成' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('textbox', { name: '图片提示词' })).toBeTruthy()
+
+    // 2. In image mode, enter an image prompt
+    const promptInput = screen.getByRole('textbox', { name: '图片提示词' })
+    fireEvent.change(promptInput, { target: { value: 'Futuristic facade rendering' } })
+
+    // Click "社媒内容" mode button -> confirmation dialog should appear
+    fireEvent.click(screen.getByRole('button', { name: '社媒内容' }))
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+
+    // Cancel -> stays in image mode, prompt intact
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(screen.getByRole('button', { name: '图片生成' }).getAttribute('aria-pressed')).toBe('true')
+    expect((screen.getByRole('textbox', { name: '图片提示词' }) as HTMLTextAreaElement).value).toBe(
+      'Futuristic facade rendering',
+    )
+
+    // In image mode with prompt entered, clicking draft item in list must also trigger confirmation
+    const firstItemBtn = screen.getByRole('button', { name: /First Approved Post/ })
+    fireEvent.click(firstItemBtn)
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'First Approved Post' })).toBeTruthy()
+  })
+
+  it('guards filter changes and filter form submission when editor has unsaved changes', () => {
+    const summary: ContentStudioSummary = {
+      items: [
+        {
+          assets: [],
+          body: 'First body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 1,
+          knowledgeSources: [],
+          platform: 'instagram',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'approved',
+          title: 'First Approved Post',
+          updatedAt: '2026-08-31T10:00:00.000Z',
+        },
+      ],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    // Open "新建草稿" and type unsaved changes
+    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
+    expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: '草稿标题' }), {
+      target: { value: 'Unsaved draft before filter change' },
+    })
+
+    // Change status filter via combobox
+    const statusSelect = screen.getByRole('combobox', { name: '状态' })
+    fireEvent.click(statusSelect)
+    const draftOption = screen.getByRole('option', { name: '草稿' })
+    fireEvent.click(draftOption)
+
+    // Confirmation dialog must appear and router.push must NOT be called yet
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+    expect(router.push).not.toHaveBeenCalled()
+
+    // Cancel ("继续编辑") -> stays in editor, router.push never called
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
+    expect(router.push).not.toHaveBeenCalled()
+
+    // Change status filter again and confirm ("放弃并切换") -> editor closes and router.push is called
+    fireEvent.click(statusSelect)
+    fireEvent.click(screen.getByRole('option', { name: '草稿' }))
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(router.push).toHaveBeenCalledWith('/dashboard/content-studio?status=draft')
+  })
+
   it('restores previously selected platforms from localStorage when opening generator', () => {
     window.localStorage.setItem(
       'ivybm:content-studio:selected-platforms',

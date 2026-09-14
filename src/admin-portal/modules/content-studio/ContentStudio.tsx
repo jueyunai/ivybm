@@ -190,9 +190,32 @@ export function ContentStudio({
     const nextPlatform = name === 'platform' ? value : (summary?.query.platform ?? 'all')
     if (nextStatus && nextStatus !== 'all') params.set('status', nextStatus)
     if (nextPlatform && nextPlatform !== 'all') params.set('platform', nextPlatform)
-    router.push(
-      params.toString() ? `/dashboard/content-studio?${params}` : '/dashboard/content-studio',
-    )
+    const targetUrl = params.toString()
+      ? `/dashboard/content-studio?${params}`
+      : '/dashboard/content-studio'
+    requestTransition(() => {
+      closeAction()
+      router.push(targetUrl)
+    })
+  }
+
+  const handleFilterSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    const params = new URLSearchParams()
+    const q = formData.get('q')?.toString().trim()
+    const status = formData.get('status')?.toString().trim()
+    const platform = formData.get('platform')?.toString().trim()
+    if (q) params.set('q', q)
+    if (status && status !== 'all') params.set('status', status)
+    if (platform && platform !== 'all') params.set('platform', platform)
+    const targetUrl = params.toString()
+      ? `/dashboard/content-studio?${params}`
+      : '/dashboard/content-studio'
+    requestTransition(() => {
+      closeAction()
+      router.push(targetUrl)
+    })
   }
 
   return (
@@ -236,7 +259,7 @@ export function ContentStudio({
         </p>
       ) : null}
       <Surface as="section" className="portal-content-studio__filters">
-        <form action="/dashboard/content-studio" method="get">
+        <form action="/dashboard/content-studio" method="get" onSubmit={handleFilterSubmit}>
           <div className="portal-content-studio__filter-item">
             <span className="portal-content-studio__filter-label">{copy.titleField}</span>
             <SearchInput defaultValue={summary.query.q} name="q" placeholder={copy.titleField} />
@@ -1341,6 +1364,8 @@ function GenerateDraftEditor({
 }) {
   const [mode, setMode] = useState<'copy' | 'image'>('copy')
   const [imageDirty, setImageDirty] = useState(false)
+  const [pendingModeTransition, setPendingModeTransition] = useState<(() => void) | null>(null)
+  const [imageEditorResetKey, setImageEditorResetKey] = useState(0)
   const batchRef = useRef<{
     fingerprint: string
     generatedAssets: string[]
@@ -1365,7 +1390,35 @@ function GenerateDraftEditor({
     form.assets.length > 0 ||
     form.knowledgeSources.length > 0
 
-  const isDirty = mode === 'image' ? imageDirty : copyDirty
+  const isDirty = copyDirty || imageDirty
+  const currentModeDirty = mode === 'image' ? imageDirty : copyDirty
+  const currentModeDirtyRef = useRef(currentModeDirty)
+  useEffect(() => {
+    currentModeDirtyRef.current = currentModeDirty
+  }, [currentModeDirty])
+
+  const requestModeChange = (targetMode: 'copy' | 'image') => {
+    if (mode === targetMode) return
+    if (currentModeDirtyRef.current) {
+      setPendingModeTransition(() => () => {
+        if (mode === 'copy') {
+          setForm((current) => ({
+            ...current,
+            assets: [],
+            autoGenerateImage: false,
+            brief: '',
+            knowledgeSources: [],
+          }))
+        } else {
+          setImageDirty(false)
+          setImageEditorResetKey((k) => k + 1)
+        }
+        setMode(targetMode)
+      })
+    } else {
+      setMode(targetMode)
+    }
+  }
 
   useEffect(() => {
     onDirtyChange?.(isDirty)
@@ -1537,7 +1590,7 @@ function GenerateDraftEditor({
       <div aria-label={copy.generationMode} className="portal-content-studio__generation-modes">
         <Button
           aria-pressed={mode === 'copy'}
-          onClick={() => setMode('copy')}
+          onClick={() => requestModeChange('copy')}
           size="compact"
           variant={mode === 'copy' ? 'primary' : 'ghost'}
         >
@@ -1545,7 +1598,7 @@ function GenerateDraftEditor({
         </Button>
         <Button
           aria-pressed={mode === 'image'}
-          onClick={() => setMode('image')}
+          onClick={() => requestModeChange('image')}
           size="compact"
           variant={mode === 'image' ? 'primary' : 'ghost'}
         >
@@ -1556,6 +1609,7 @@ function GenerateDraftEditor({
         <ImageGenerationEditor
           copy={copy}
           drafts={drafts}
+          key={imageEditorResetKey}
           onDirtyChange={setImageDirty}
           onDone={onDone}
           options={options}
@@ -1718,6 +1772,22 @@ function GenerateDraftEditor({
           </footer>
         </>
       )}
+      <ConfirmDialog
+        cancelLabel={copy.keepDraft}
+        confirmLabel={copy.discardAndSwitch}
+        description={copy.unsavedChangesDescription}
+        onConfirm={() => {
+          const commit = pendingModeTransition
+          setPendingModeTransition(null)
+          commit?.()
+        }}
+        onOpenChange={(open) => {
+          if (!open) setPendingModeTransition(null)
+        }}
+        open={pendingModeTransition !== null}
+        title={copy.unsavedChangesTitle}
+        variant="danger"
+      />
     </div>
   )
 }
