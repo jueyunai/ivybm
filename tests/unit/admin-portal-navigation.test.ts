@@ -81,6 +81,81 @@ describe('Portal navigation', () => {
     expect(container.innerHTML).not.toContain('/admin')
   })
 
+  it('dispatches portal:navigate-active event when clicking an already-active link', () => {
+    const resolution = resolvePortalAvailability({
+      env: enabledEnvironment,
+      user: { role: 'admin' },
+    })
+
+    const listener = vi.fn()
+    window.addEventListener('portal:navigate-active', listener)
+
+    render(
+      React.createElement(PortalSidebar, {
+        collapsed: false,
+        locale: 'zh',
+        modules: resolution.modules,
+        user: {
+          id: 1,
+          permissions: PORTAL_PERMISSION_PRESETS.admin,
+          role: 'admin',
+          username: 'admin.example',
+        },
+      }),
+    )
+
+    const activeLink = screen.getByRole('link', { name: '基础设置' })
+    expect(activeLink.getAttribute('aria-current')).toBe('page')
+
+    fireEvent.click(activeLink)
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(listener.mock.calls[0]?.[0]).toMatchObject({
+      detail: { href: '/dashboard/settings' },
+    })
+
+    window.removeEventListener('portal:navigate-active', listener)
+  })
+
+  it('dispatches cancelable portal:sidebar-navigate event on clicking any sidebar link and respects preventDefault', () => {
+    const resolution = resolvePortalAvailability({
+      env: enabledEnvironment,
+      user: { role: 'admin' },
+    })
+
+    const listener = vi.fn((event: Event) => {
+      event.preventDefault()
+    })
+    window.addEventListener('portal:sidebar-navigate', listener)
+
+    render(
+      React.createElement(PortalSidebar, {
+        collapsed: false,
+        locale: 'zh',
+        modules: resolution.modules,
+        user: {
+          id: 1,
+          permissions: PORTAL_PERMISSION_PRESETS.admin,
+          role: 'admin',
+          username: 'admin.example',
+        },
+      }),
+    )
+
+    const inactiveLink = screen.getByRole('link', { name: '素材库' })
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true })
+    inactiveLink.dispatchEvent(clickEvent)
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(listener.mock.calls[0]?.[0]).toMatchObject({
+      cancelable: true,
+      detail: { href: '/dashboard/media' },
+    })
+    expect(clickEvent.defaultPrevented).toBe(true)
+
+    window.removeEventListener('portal:sidebar-navigate', listener)
+  })
+
   it('fails closed into a Portal maintenance state when the global flag is disabled', () => {
     const resolution = resolvePortalAvailability({ env: {}, user: { role: 'admin' } })
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 
 import Image from 'next/image'
 import Link from 'next/link'
@@ -37,6 +37,7 @@ import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalComma
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
 import {
   Button,
+  ConfirmDialog,
   ModalDialog,
   PortalState,
   SearchInput,
@@ -70,6 +71,20 @@ export function ContentStudio({
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [activeAction, setActiveAction] = useState<ActiveAction>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [isDirty, setIsDirty] = useState(false)
+  const [pendingTransition, setPendingTransition] = useState<(() => void) | null>(null)
+  const isDirtyRef = useRef(isDirty)
+  useEffect(() => {
+    isDirtyRef.current = isDirty
+  }, [isDirty])
+
+  const requestTransition = useCallback((action: () => void) => {
+    if (isDirtyRef.current) {
+      setPendingTransition(() => action)
+    } else {
+      action()
+    }
+  }, [setPendingTransition])
   const [isRefreshing, startRefresh] = useTransition()
   const hasActivePublication =
     summary?.items.some((item) =>
@@ -91,6 +106,54 @@ export function ContentStudio({
     return () => window.clearInterval(interval)
   }, [hasActivePublication, router])
 
+  useEffect(() => {
+    if (!isDirty) return
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isDirty])
+
+  useEffect(() => {
+    const handleSidebarNavigate = (event: Event) => {
+      const customEvent = event as CustomEvent<{ href: string }>
+      const targetHref = customEvent.detail?.href
+      if (!targetHref) return
+
+      if (isDirtyRef.current) {
+        event.preventDefault()
+        setPendingTransition(() => () => {
+          setIsDirty(false)
+          setActiveAction(null)
+          if (targetHref === '/dashboard/content-studio') {
+            setFeedback(null)
+          } else {
+            router.push(targetHref)
+          }
+        })
+      } else if (targetHref === '/dashboard/content-studio') {
+        setActiveAction(null)
+        setFeedback(null)
+      }
+    }
+
+    window.addEventListener('portal:sidebar-navigate', handleSidebarNavigate)
+    return () => window.removeEventListener('portal:sidebar-navigate', handleSidebarNavigate)
+  }, [router])
+
+  useEffect(() => {
+    const handleActiveNav = (event: Event) => {
+      const customEvent = event as CustomEvent<{ href: string }>
+      if (customEvent.detail?.href === '/dashboard/content-studio' && !isDirtyRef.current) {
+        setActiveAction(null)
+        setFeedback(null)
+      }
+    }
+    window.addEventListener('portal:navigate-active', handleActiveNav)
+    return () => window.removeEventListener('portal:navigate-active', handleActiveNav)
+  }, [])
+
   if (pageState !== 'available' || !summary)
     return (
       <main className="portal-page portal-content-studio">
@@ -109,8 +172,12 @@ export function ContentStudio({
     )
   const selected = summary.items.find((item) => item.id === selectedId) ?? summary.items[0] ?? null
   const refreshPublicationResults = () => startRefresh(() => router.refresh())
-  const closeAction = () => setActiveAction(null)
+  const closeAction = () => {
+    setActiveAction(null)
+    setIsDirty(false)
+  }
   const onDone = (message: string) => {
+    setIsDirty(false)
     setActiveAction(null)
     setFeedback(message)
     startRefresh(() => router.refresh())
@@ -138,8 +205,11 @@ export function ContentStudio({
         <div className="portal-content-studio__intro-actions">
           <Button
             onClick={() => {
-              setActiveAction('generator')
-              setFeedback(null)
+              if (activeAction === 'generator') return
+              requestTransition(() => {
+                setActiveAction('generator')
+                setFeedback(null)
+              })
             }}
             variant="secondary"
           >
@@ -148,8 +218,11 @@ export function ContentStudio({
           </Button>
           <Button
             onClick={() => {
-              setActiveAction('create')
-              setFeedback(null)
+              if (activeAction === 'create') return
+              requestTransition(() => {
+                setActiveAction('create')
+                setFeedback(null)
+              })
             }}
           >
             <IconPlus aria-hidden="true" size={16} />
@@ -206,7 +279,22 @@ export function ContentStudio({
               {copy.filter}
             </Button>
             <Button asChild size="compact" variant="ghost">
-              <Link href="/dashboard/content-studio">{copy.resetFilters}</Link>
+              <Link
+                href="/dashboard/content-studio"
+                onClick={(event) => {
+                  if (isDirtyRef.current) {
+                    event.preventDefault()
+                    requestTransition(() => {
+                      closeAction()
+                      router.push('/dashboard/content-studio')
+                    })
+                  } else {
+                    closeAction()
+                  }
+                }}
+              >
+                {copy.resetFilters}
+              </Link>
             </Button>
           </div>
         </form>
@@ -224,15 +312,24 @@ export function ContentStudio({
               {summary.items.map((item) => (
                 <li key={item.id}>
                   <button
-                    aria-pressed={activeAction !== 'create' && selected?.id === item.id}
+                    aria-pressed={
+                      activeAction !== 'create' &&
+                      activeAction !== 'generator' &&
+                      selected?.id === item.id
+                    }
                     className={
-                      activeAction !== 'create' && selected?.id === item.id
+                      activeAction !== 'create' &&
+                      activeAction !== 'generator' &&
+                      selected?.id === item.id
                         ? 'is-selected'
                         : undefined
                     }
                     onClick={() => {
-                      setSelectedId(item.id)
-                      setFeedback(null)
+                      requestTransition(() => {
+                        setSelectedId(item.id)
+                        closeAction()
+                        setFeedback(null)
+                      })
                     }}
                     type="button"
                   >
@@ -267,7 +364,8 @@ export function ContentStudio({
             <GenerateDraftEditor
               copy={copy}
               drafts={summary.items.filter((item) => item.status === 'draft')}
-              onClose={closeAction}
+              onClose={() => requestTransition(closeAction)}
+              onDirtyChange={setIsDirty}
               onDone={onDone}
               options={summary.options}
               selectedDraftId={selected?.status === 'draft' ? selected.id : null}
@@ -283,7 +381,8 @@ export function ContentStudio({
               copy={copy}
               item={activeAction === 'edit' ? selected : null}
               options={summary.options}
-              onClose={closeAction}
+              onClose={() => requestTransition(closeAction)}
+              onDirtyChange={setIsDirty}
               onDone={onDone}
             />
           </Surface>
@@ -346,6 +445,23 @@ export function ContentStudio({
           </Surface>
         )}
       </div>
+      <ConfirmDialog
+        cancelLabel={copy.keepDraft}
+        confirmLabel={copy.discardAndSwitch}
+        description={copy.unsavedChangesDescription}
+        onConfirm={() => {
+          setIsDirty(false)
+          const commit = pendingTransition
+          setPendingTransition(null)
+          commit?.()
+        }}
+        onOpenChange={(open) => {
+          if (!open) setPendingTransition(null)
+        }}
+        open={pendingTransition !== null}
+        title={copy.unsavedChangesTitle}
+        variant="danger"
+      />
     </main>
   )
 }
@@ -879,12 +995,14 @@ function DraftEditor({
   copy,
   item,
   onClose,
+  onDirtyChange,
   onDone,
   options,
 }: {
   copy: Copy
   item: ContentStudioItem | null
   onClose: () => void
+  onDirtyChange?: (dirty: boolean) => void
   onDone: (message: string) => void
   options: ContentStudioSummary['options']
 }) {
@@ -949,6 +1067,34 @@ function DraftEditor({
       })
     },
   })
+
+  const isDirty = useMemo(() => {
+    if (!item) {
+      return (
+        form.title.trim().length > 0 ||
+        form.body.trim().length > 0 ||
+        form.assets.length > 0 ||
+        form.knowledgeSources.length > 0 ||
+        form.sourceReferences.some((r) => r.claim.trim().length > 0)
+      )
+    }
+    return (
+      form.title !== initial.title ||
+      form.body !== initial.body ||
+      form.platform !== initial.platform ||
+      form.contentLocale !== initial.contentLocale ||
+      form.contentType !== initial.contentType ||
+      JSON.stringify(form.assets) !== JSON.stringify(initial.assets) ||
+      JSON.stringify(form.knowledgeSources) !== JSON.stringify(initial.knowledgeSources) ||
+      JSON.stringify(form.sourceReferences) !== JSON.stringify(initial.sourceReferences)
+    )
+  }, [form, initial, item])
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+    return () => onDirtyChange?.(false)
+  }, [isDirty, onDirtyChange])
+
   const save = async () => {
     setBusy(true)
     setError(null)
@@ -964,6 +1110,7 @@ function DraftEditor({
         createKey ? { ...body, idempotencyKey: createKey } : body,
         createKey ? () => createCommand.receivedResponse(createKey) : undefined,
       )
+      onDirtyChange?.(false)
       onDone(copy.feedback)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : copy.unknown)
@@ -1179,6 +1326,7 @@ function GenerateDraftEditor({
   copy,
   drafts,
   onClose,
+  onDirtyChange,
   onDone,
   options,
   selectedDraftId,
@@ -1186,11 +1334,13 @@ function GenerateDraftEditor({
   copy: Copy
   drafts: ContentStudioItem[]
   onClose: () => void
+  onDirtyChange?: (dirty: boolean) => void
   onDone: (message: string) => void
   options: ContentStudioSummary['options']
   selectedDraftId: null | number
 }) {
   const [mode, setMode] = useState<'copy' | 'image'>('copy')
+  const [imageDirty, setImageDirty] = useState(false)
   const batchRef = useRef<{
     fingerprint: string
     generatedAssets: string[]
@@ -1209,6 +1359,18 @@ function GenerateDraftEditor({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generationProgress, setGenerationProgress] = useState<string | null>(null)
+
+  const copyDirty =
+    form.brief.trim().length > 0 ||
+    form.assets.length > 0 ||
+    form.knowledgeSources.length > 0
+
+  const isDirty = mode === 'image' ? imageDirty : copyDirty
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+    return () => onDirtyChange?.(false)
+  }, [isDirty, onDirtyChange])
 
   useEffect(() => {
     persistPlatforms(form.platforms)
@@ -1347,6 +1509,7 @@ function GenerateDraftEditor({
         }
       }
       batchRef.current = null
+      onDirtyChange?.(false)
       onDone(
         total > 1
           ? copy.generationMultiComplete.replace('{count}', String(total))
@@ -1393,6 +1556,7 @@ function GenerateDraftEditor({
         <ImageGenerationEditor
           copy={copy}
           drafts={drafts}
+          onDirtyChange={setImageDirty}
           onDone={onDone}
           options={options}
           selectedDraftId={selectedDraftId}
@@ -1567,12 +1731,14 @@ type GeneratedImage = {
 function ImageGenerationEditor({
   copy,
   drafts,
+  onDirtyChange,
   onDone,
   options,
   selectedDraftId,
 }: {
   copy: Copy
   drafts: ContentStudioItem[]
+  onDirtyChange?: (dirty: boolean) => void
   onDone: (message: string) => void
   options: ContentStudioSummary['options']
   selectedDraftId: null | number
@@ -1594,6 +1760,14 @@ function ImageGenerationEditor({
   const [generated, setGenerated] = useState<GeneratedImage | null>(null)
   const [busy, setBusy] = useState<'adopt' | 'generate' | 'upload' | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const isDirty = prompt.trim().length > 0 || referenceFile !== null || generated !== null
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+    return () => onDirtyChange?.(false)
+  }, [isDirty, onDirtyChange])
+
   const references = uploadedReference
     ? [uploadedReference, ...imageOptions.filter((asset) => asset.id !== uploadedReference.id)]
     : imageOptions
@@ -1706,6 +1880,7 @@ function ImageGenerationEditor({
         () => adoptCommand.receivedResponse(key),
         key,
       )
+      onDirtyChange?.(false)
       onDone(copy.imageAdopted)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : copy.unknown)

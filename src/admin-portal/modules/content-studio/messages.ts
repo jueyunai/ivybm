@@ -127,6 +127,11 @@ inferredFormatNotice: 'Drafts support 1-3 images for platform publishing.',
       'Use Publish now for an explicit official API request. Internal scheduling and LinkedIn package downloads never contact a platform.',
     assistedNotice:
       'This creates an internal assisted task. Downloading the package never publishes to LinkedIn.',
+    unsavedChangesTitle: 'Discard unsaved changes?',
+    unsavedChangesDescription:
+      'You have unsaved edits or generated content. Leaving now will discard these changes.',
+    discardAndSwitch: 'Discard & switch',
+    keepDraft: 'Keep editing',
     reviewChecks: {
       factsTraceable: 'Facts are traceable (or not applicable)',
       technicalClaimsChecked: 'Technical claims checked',
@@ -279,6 +284,10 @@ inferredFormatNotice: '当前平台发布链路每篇草稿支持 1-3 张配图�
     workflow: '流程状态',
     automaticNotice: '点击“立即发布”才会调用官方 API；内部排期和 LinkedIn 素材包都不会访问平台。',
     assistedNotice: '这会创建内部辅助任务；下载素材包不会自动发布到 LinkedIn，需人工前往平台发布。',
+    unsavedChangesTitle: '放弃未保存的内容？',
+    unsavedChangesDescription: '当前草稿已有输入或生成的内容，离开后未保存的改动将会丢失。',
+    discardAndSwitch: '放弃并切换',
+    keepDraft: '继续编辑',
     reviewChecks: {
       factsTraceable: '事实可追溯（常规内容不适用）',
       technicalClaimsChecked: '技术表述已核对',

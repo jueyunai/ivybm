@@ -137,7 +137,27 @@ export function PortalSidebar({
                           aria-label={collapsed ? label : undefined}
                           className={`portal-sidebar__link${active ? ' is-active' : ''}`}
                           href={portalModule.href}
-                          onClick={onClose}
+                          onClick={(event) => {
+                            if (typeof window !== 'undefined') {
+                              const navEvent = new CustomEvent('portal:sidebar-navigate', {
+                                cancelable: true,
+                                detail: { href: portalModule.href },
+                              })
+                              const allowed = window.dispatchEvent(navEvent)
+                              if (!allowed) {
+                                event.preventDefault()
+                                return
+                              }
+                            }
+                            onClose?.()
+                            if (active && typeof window !== 'undefined') {
+                              window.dispatchEvent(
+                                new CustomEvent('portal:navigate-active', {
+                                  detail: { href: portalModule.href },
+                                }),
+                              )
+                            }
+                          }}
                           title={collapsed ? label : undefined}
                         >
                           {content}

@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Payload, PayloadRequest } from 'payload'
@@ -12,7 +12,7 @@ import {
   type ContentStudioSummary,
 } from '@/admin-portal/modules/content-studio/getContentStudioPage'
 
-const router = { refresh: vi.fn() }
+const router = { push: vi.fn(), refresh: vi.fn() }
 
 vi.mock('next/navigation', () => ({
   useRouter: () => router,
@@ -25,6 +25,7 @@ const req = {
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
+  router.push.mockReset()
   router.refresh.mockReset()
 })
 
@@ -453,6 +454,265 @@ describe('Portal Content Studio', () => {
     expect(screen.queryByRole('heading', { name: '立即发布' })).toBeNull()
     expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
     expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
+  })
+
+  it('switches to draft details and closes drawer when clicking a draft item in the list while in create or generator mode', () => {
+    const summary: ContentStudioSummary = {
+      items: [
+        {
+          assets: [],
+          body: 'First body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 1,
+          knowledgeSources: [],
+          platform: 'instagram',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'approved',
+          title: 'First Approved Post',
+          updatedAt: '2026-08-31T10:00:00.000Z',
+        },
+        {
+          assets: [],
+          body: 'Second body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 2,
+          knowledgeSources: [],
+          platform: 'linkedin',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'draft',
+          title: 'Second Draft Post',
+          updatedAt: '2026-08-31T11:00:00.000Z',
+        },
+      ],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 2, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    // 1. Enter create mode
+    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
+    expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
+
+    // During create mode, list items should not be marked as selected
+    const firstItemBtn = screen.getByRole('button', { name: /First Approved Post/ })
+    const secondItemBtn = screen.getByRole('button', { name: /Second Draft Post/ })
+    expect(firstItemBtn.getAttribute('aria-pressed')).toBe('false')
+    expect(secondItemBtn.getAttribute('aria-pressed')).toBe('false')
+
+    // Clicking an existing draft item closes create mode and switches to that draft's details
+    fireEvent.click(firstItemBtn)
+    expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'First Approved Post' })).toBeTruthy()
+    expect(firstItemBtn.getAttribute('aria-pressed')).toBe('true')
+
+    // 2. Enter generator mode
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
+
+    // During generator mode, list items should also not be marked as selected
+    expect(firstItemBtn.getAttribute('aria-pressed')).toBe('false')
+    expect(secondItemBtn.getAttribute('aria-pressed')).toBe('false')
+
+    // Clicking a draft item closes generator mode and switches to that draft's details
+    fireEvent.click(secondItemBtn)
+    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Second Draft Post' })).toBeTruthy()
+    expect(secondItemBtn.getAttribute('aria-pressed')).toBe('true')
+
+    // 3. Re-enter create mode, then trigger portal:navigate-active (simulating clicking active sidebar nav)
+    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
+    expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('portal:navigate-active', {
+          detail: { href: '/dashboard/content-studio' },
+        }),
+      )
+    })
+    expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Second Draft Post' })).toBeTruthy()
+
+    // 4. Re-enter generator mode, then trigger portal:navigate-active
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('portal:navigate-active', {
+          detail: { href: '/dashboard/content-studio' },
+        }),
+      )
+    })
+    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Second Draft Post' })).toBeTruthy()
+  })
+
+  it('shows confirmation dialog when switching list items or clicking sidebar with unsaved draft edits', () => {
+    const summary: ContentStudioSummary = {
+      items: [
+        {
+          assets: [],
+          body: 'First body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 1,
+          knowledgeSources: [],
+          platform: 'instagram',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'approved',
+          title: 'First Approved Post',
+          updatedAt: '2026-08-31T10:00:00.000Z',
+        },
+        {
+          assets: [],
+          body: 'Second body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 2,
+          knowledgeSources: [],
+          platform: 'linkedin',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'draft',
+          title: 'Second Draft Post',
+          updatedAt: '2026-08-31T11:00:00.000Z',
+        },
+      ],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 2, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    // 1. Open "新建草稿"
+    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
+    expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
+
+    // Enter draft content
+    const titleInput = screen.getByRole('textbox', { name: '草稿标题' })
+    fireEvent.change(titleInput, { target: { value: 'My Unsaved Draft Title' } })
+
+    // 2. Click another item in list -> confirmation dialog appears
+    const secondItemBtn = screen.getByRole('button', { name: /Second Draft Post/ })
+    fireEvent.click(secondItemBtn)
+
+    // Verify confirmation dialog is visible
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+    expect(screen.getByText(/当前草稿已有输入或生成的内容/)).toBeTruthy()
+
+    // Click "继续编辑" -> stays in draft editor with input intact
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
+    expect((screen.getByRole('textbox', { name: '草稿标题' }) as HTMLInputElement).value).toBe(
+      'My Unsaved Draft Title',
+    )
+
+    // Click another item in list again -> choose "放弃并切换" -> switches and closes editor
+    fireEvent.click(secondItemBtn)
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Second Draft Post' })).toBeTruthy()
+
+    // 3. Test with "AI生成": enter brief and trigger sidebar navigation to another module
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
+
+    const briefTextarea = screen.getByRole('textbox', { name: '生成需求' })
+    fireEvent.change(briefTextarea, { target: { value: 'Brief requirements here' } })
+
+    // Trigger sidebar navigation to another route (e.g. /dashboard/media)
+    let navEvent = new CustomEvent('portal:sidebar-navigate', {
+      cancelable: true,
+      detail: { href: '/dashboard/media' },
+    })
+    act(() => {
+      window.dispatchEvent(navEvent)
+    })
+
+    // Verify navigation was prevented and confirmation dialog appears
+    expect(navEvent.defaultPrevented).toBe(true)
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+
+    // Cancel ("继续编辑") -> stays in generator, router.push was not called
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
+    expect(router.push).not.toHaveBeenCalled()
+
+    // Trigger sidebar navigation again and confirm ("放弃并切换") -> navigates to /dashboard/media
+    navEvent = new CustomEvent('portal:sidebar-navigate', {
+      cancelable: true,
+      detail: { href: '/dashboard/media' },
+    })
+    act(() => {
+      window.dispatchEvent(navEvent)
+    })
+    expect(navEvent.defaultPrevented).toBe(true)
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(router.push).toHaveBeenCalledWith('/dashboard/media')
+
+    // 4. Test clicking active sidebar link (/dashboard/content-studio) while dirty
+    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
+    expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: '草稿标题' }), {
+      target: { value: 'Another Unsaved Draft' },
+    })
+
+    const activeNavEvent = new CustomEvent('portal:sidebar-navigate', {
+      cancelable: true,
+      detail: { href: '/dashboard/content-studio' },
+    })
+    act(() => {
+      window.dispatchEvent(activeNavEvent)
+    })
+    expect(activeNavEvent.defaultPrevented).toBe(true)
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Second Draft Post' })).toBeTruthy()
   })
 
   it('restores previously selected platforms from localStorage when opening generator', () => {
