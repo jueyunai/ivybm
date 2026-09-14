@@ -128,7 +128,6 @@ export const runChatWorkflow = async ({
 
     // 3 rounds of qualification
     const assistantMessages = widget.locator('[data-author="assistant"]')
-    const reviewedSources = locale === 'ar' ? 'مصادر مراجَعة' : 'Reviewed sources'
     for (let index = 0; index < 3; index += 1) {
       const message = data.chatMessages[index]
       const assistantCountBefore = await assistantMessages.count()
@@ -154,7 +153,7 @@ export const runChatWorkflow = async ({
           await expect(assistantMessages).toHaveCount(assistantCountBefore + 1, { timeout: 45_000 })
           const assistantMessage = assistantMessages.last()
           await expect(assistantMessage.locator('.chat-message-content > p')).not.toHaveText('')
-          await expect(assistantMessage.locator('.chat-citations')).toContainText(reviewedSources)
+          await expect(assistantMessage.locator('.chat-citations')).toHaveCount(0)
         } catch (error) {
           if (await captureLocatorEvidence({ locator: widget, path: screenshotPaths.visitor })) {
             screenshots.visitor = screenshotPaths.visitor

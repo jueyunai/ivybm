@@ -417,7 +417,7 @@ test.describe('live-workflow browser runner with synthetic server', () => {
                 if (round < 3) {
                   const aiMsg = document.createElement('article');
                   aiMsg.setAttribute('data-author', 'assistant');
-                  aiMsg.innerHTML = '<div class="chat-message-content"><p>Answer for round ' + round + '</p><div class="chat-citations">${isAr ? 'مصادر مراجَعة' : 'Reviewed sources'}</div></div>';
+                  aiMsg.innerHTML = '<div class="chat-message-content"><p>Answer for round ' + round + '</p></div>';
                   msgBox.appendChild(aiMsg);
                 } else {
                   document.getElementById('handoff-box').style.display = 'block';
