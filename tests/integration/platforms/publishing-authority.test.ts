@@ -7,7 +7,10 @@ import { getPayload, type Payload } from 'payload'
 import { contentStudioInternalWriteContext } from '@/access/contentStudio'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import { JobWorker } from '@/modules/jobs/worker'
-import { PayloadPlatformPublicationAuthority } from '@/modules/platforms/payloadPublishingAuthority'
+import {
+  PayloadMultiImagePublishingAuthority,
+  PayloadPlatformPublicationAuthority,
+} from '@/modules/platforms/payloadPublishingAuthority'
 import { PayloadPublishingAccountResolver } from '@/modules/platforms/publishingAccountResolver'
 import {
   createPlatformPublicationJobHandler,
@@ -17,6 +20,12 @@ import type {
   PlatformPublicationIntent,
   PlatformPublicationLeaseFence,
 } from '@/modules/platforms/publishingAuthority'
+import {
+  executeMultiImagePublishingStage,
+  type InstagramCarouselPublishingCheckpoint,
+  type MultiImagePublishingIntent,
+  type MultiImagePublishingLeaseFence,
+} from '@/modules/platforms/multiImagePublishingExecution'
 import { createPlatformPublishingService } from '@/modules/platforms/publishingServiceAdapter'
 import { retryPortalJob } from '@/admin-portal/modules/operations/operationsCommands'
 import type { PlatformAccount, User } from '@/payload-types'
@@ -25,6 +34,7 @@ import config from '@/payload.config'
 let payload: Payload
 let admin: User
 let account: PlatformAccount
+let instagramAccount: PlatformAccount
 const contentIDs: number[] = []
 const jobIDs: number[] = []
 const publishJobIDs: number[] = []
@@ -241,6 +251,32 @@ describe.sequential('Task 13 Payload publication authority', () => {
       },
       overrideAccess: true,
     })
+    instagramAccount = await payload.create({
+      collection: 'platform-accounts',
+      data: {
+        accountKind: 'instagram-professional',
+        authorization: {
+          accessToken: 'test-instagram-token',
+          accessTokenConfigured: false,
+          appId: null,
+          clearAccessToken: false,
+          clearRefreshToken: false,
+          expiresAt: null,
+          refreshToken: null,
+          refreshTokenConfigured: false,
+          scopes: [{ scope: 'instagram_business_content_publish' }],
+          state: 'connected',
+        },
+        authorizationRevision: 0,
+        capabilities: { messagingInbound: 'not_started', publishing: 'approved' },
+        connectionKey: null,
+        externalAccountId: '17841400000000001',
+        name: `Authority Instagram ${randomUUID()}`,
+        notes: null,
+        platformFamily: 'meta',
+      },
+      overrideAccess: true,
+    })
   })
 
   afterAll(async () => {
@@ -255,6 +291,7 @@ describe.sequential('Task 13 Payload publication authority', () => {
     )
     await pool().query('DELETE FROM publish_jobs WHERE id = ANY($1::int[])', [publishJobIDs])
     await pool().query('DELETE FROM generated_contents WHERE id = ANY($1::int[])', [contentIDs])
+    await payload.delete({ collection: 'platform-accounts', id: instagramAccount.id, overrideAccess: true })
     await payload.delete({ collection: 'platform-accounts', id: account.id, overrideAccess: true })
     await payload.delete({
       collection: 'users',
@@ -328,6 +365,144 @@ describe.sequential('Task 13 Payload publication authority', () => {
       }),
     ])
     jobIDs.push(obligation.rows[0]!.id)
+  })
+
+  it('persists the official Instagram carousel permalink with the published media ID', async () => {
+    const suffix = randomUUID()
+    const content = await payload.create({
+      collection: 'generated-contents',
+      context: contentStudioInternalWriteContext,
+      data: {
+        body: 'Instagram carousel publication',
+        contentLocale: 'en',
+        contentType: 'carousel',
+        createdBy: admin.id,
+        creationFingerprint: 'f'.repeat(64),
+        idempotencyKey: `publishing-authority-instagram-carousel-content:${suffix}`,
+        platform: 'instagram',
+        status: 'approved',
+        title: 'Instagram carousel publication fixture',
+      },
+      overrideAccess: true,
+    })
+    contentIDs.push(content.id)
+    const idempotencyKey = `publish:v1:${suffix.replaceAll('-', '')}:instagram`
+    const checkpoint: InstagramCarouselPublishingCheckpoint = {
+      accountExternalId: '17841400000000001',
+      authorizationRevision: instagramAccount.authorizationRevision,
+      carouselContainerId: 'carousel-container-1',
+      items: [
+        { containerId: 'child-1', imageUrl: 'https://media.example.invalid/1.jpg' },
+        { containerId: 'child-2', imageUrl: 'https://media.example.invalid/2.jpg' },
+      ],
+      stage: 'publication_created',
+    }
+    const publishJob = await payload.create({
+      collection: 'publish-jobs',
+      context: contentStudioInternalWriteContext,
+      data: {
+        authorizationRevision: instagramAccount.authorizationRevision,
+        content: content.id,
+        createdBy: admin.id,
+        executionRevision: 0,
+        executionRoute: 'instagram-carousel-staged',
+        fencingGeneration: 0,
+        idempotencyKey,
+        mode: 'automatic',
+        platform: 'instagram',
+        platformAccount: instagramAccount.id,
+        providerCheckpoint: checkpoint,
+        requestFingerprint: '1'.repeat(64),
+        requestSnapshot: {
+          assets: [],
+          idempotencyKey,
+          platform: 'instagram',
+          platformAccountId: instagramAccount.id,
+          status: 'publishing',
+          text: 'Instagram carousel publication',
+        },
+        scheduledFor: new Date().toISOString(),
+        status: 'publishing',
+      },
+      overrideAccess: true,
+    })
+    publishJobIDs.push(publishJob.id)
+    const queue = new PayloadJobQueue({ payload })
+    const queued = await queue.enqueue({
+      idempotencyKey: `publication-execute:${publishJob.id}:0`,
+      maxAttempts: 2,
+      payload: { expectedExecutionRevision: 0, publishJobId: publishJob.id },
+      type: PLATFORM_PUBLICATION_JOB_TYPE,
+    })
+    jobIDs.push(queued.job.id)
+    const claimedQueueJob = await queue.claimNext()
+    if (!claimedQueueJob) throw new Error('Expected Instagram publication queue job claim')
+    const intent: MultiImagePublishingIntent = {
+      checkpoint,
+      expectedRevision: 0,
+      idempotencyKey,
+      platform: 'instagram',
+      platformAccountId: instagramAccount.id,
+      publishJobId: publishJob.id,
+      route: 'instagram-carousel-staged',
+    }
+    const lease: MultiImagePublishingLeaseFence = {
+      leaseExpiresAt: claimedQueueJob.leaseExpiresAt,
+      ownerToken: claimedQueueJob.ownerToken,
+      queueJobId: claimedQueueJob.id,
+    }
+    const authority = new PayloadMultiImagePublishingAuthority({ payload })
+    const getInstagramContainerStatus = vi.fn().mockResolvedValue({ state: 'ready' })
+    const publishInstagramMedia = vi
+      .fn()
+      .mockResolvedValue({ igMediaId: '18116793680282345' })
+    const getInstagramMediaPermalink = vi
+      .fn()
+      .mockResolvedValue({ permalink: 'https://www.instagram.com/p/CAROUSEL123/' })
+    await expect(
+      executeMultiImagePublishingStage({
+        authority,
+        intent,
+        leaseFence: lease,
+        transport: {
+          getInstagramContainerStatus,
+          getInstagramMediaPermalink,
+          publishInstagramMedia,
+        } as never,
+      }),
+    ).resolves.toMatchObject({
+      changed: true,
+      checkpoint: {
+        mediaId: '18116793680282345',
+        permalink: 'https://www.instagram.com/p/CAROUSEL123/',
+        stage: 'published',
+      },
+      event: 'published',
+    })
+    expect(getInstagramContainerStatus).toHaveBeenCalledTimes(1)
+    expect(publishInstagramMedia).toHaveBeenCalledTimes(1)
+    expect(getInstagramMediaPermalink).toHaveBeenCalledWith(
+      expect.objectContaining({ mediaId: '18116793680282345' }),
+    )
+
+    await expect(
+      payload.findByID({
+        collection: 'publish-jobs',
+        depth: 0,
+        id: publishJob.id,
+        overrideAccess: true,
+      }),
+    ).resolves.toMatchObject({
+      executionRevision: 1,
+      externalPublicationId: '18116793680282345',
+      externalPublicationUrl: 'https://www.instagram.com/p/CAROUSEL123/',
+      providerCheckpoint: expect.objectContaining({
+        mediaId: '18116793680282345',
+        permalink: 'https://www.instagram.com/p/CAROUSEL123/',
+        stage: 'published',
+      }),
+      status: 'published',
+    })
   })
 
   it('rejects a forged queue lease without mutating the publication row', async () => {

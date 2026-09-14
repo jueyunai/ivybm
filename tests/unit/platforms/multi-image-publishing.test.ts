@@ -338,10 +338,14 @@ describe('multi-image publishing execution', () => {
       .mockResolvedValueOnce({ state: 'pending' })
       .mockResolvedValueOnce({ state: 'ready' })
     const publishInstagramMedia = vi.fn().mockResolvedValue({ igMediaId: 'ig-media-1' })
+    const getInstagramMediaPermalink = vi
+      .fn()
+      .mockResolvedValue({ permalink: 'https://www.instagram.com/p/CAROUSEL123/' })
     const transport = {
       createInstagramCarouselContainer,
       createInstagramCarouselItem,
       getInstagramContainerStatus,
+      getInstagramMediaPermalink,
       publishInstagramMedia,
     } as never
     const checkpoint: InstagramCarouselPublishingCheckpoint = {
@@ -396,7 +400,107 @@ describe('multi-image publishing execution', () => {
       leaseFence: lease,
       transport,
     })
-    expect(published.checkpoint).toMatchObject({ mediaId: 'ig-media-1', stage: 'published' })
+    expect(getInstagramMediaPermalink).toHaveBeenCalledWith({
+      accountExternalId: '17841400000000001',
+      authorizationRevision: 2,
+      mediaId: 'ig-media-1',
+      platformAccountId: 7,
+    })
+    expect(published.checkpoint).toMatchObject({
+      mediaId: 'ig-media-1',
+      permalink: 'https://www.instagram.com/p/CAROUSEL123/',
+      stage: 'published',
+    })
+  })
+
+  it('keeps a confirmed Instagram carousel published when permalink lookup fails and never republishes it', async () => {
+    const publishInstagramMedia = vi.fn().mockResolvedValue({ igMediaId: 'ig-media-2' })
+    const getInstagramMediaPermalink = vi.fn().mockRejectedValue(new Error('temporary read failure'))
+    const checkpoint: InstagramCarouselPublishingCheckpoint = {
+      accountExternalId: '17841400000000001',
+      authorizationRevision: 2,
+      caption: 'Facade finish options',
+      carouselContainerId: 'parent2',
+      items: [
+        { containerId: 'child1', imageUrl: 'https://cdn.invalid/1.jpg' },
+        { containerId: 'child2', imageUrl: 'https://cdn.invalid/2.jpg' },
+      ],
+      stage: 'publication_created',
+    }
+    const intent: MultiImagePublishingIntent = {
+      checkpoint,
+      expectedRevision: 5,
+      idempotencyKey: 'publish-multi-ig-lookup-failure',
+      platform: 'instagram',
+      platformAccountId: 7,
+      publishJobId: 45,
+      route: 'instagram-carousel-staged',
+    }
+    const transport = {
+      getInstagramContainerStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
+      getInstagramMediaPermalink,
+      publishInstagramMedia,
+    } as never
+
+    const published = await executeMultiImagePublishingStage({
+      authority: authorityFor(intent),
+      intent,
+      leaseFence: lease,
+      transport,
+    })
+    expect(published).toMatchObject({
+      changed: true,
+      checkpoint: { mediaId: 'ig-media-2', stage: 'published' },
+      event: 'published',
+    })
+    expect(published.checkpoint).not.toHaveProperty('permalink')
+
+    const replay = await executeMultiImagePublishingStage({
+      authority: authorityFor({ ...intent, checkpoint: published.checkpoint }),
+      intent: { ...intent, checkpoint: published.checkpoint },
+      leaseFence: lease,
+      transport,
+    })
+    expect(replay).toEqual({ changed: false, checkpoint: published.checkpoint })
+    expect(publishInstagramMedia).toHaveBeenCalledTimes(1)
+    expect(getInstagramMediaPermalink).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not persist a non-Instagram permalink for a confirmed carousel', async () => {
+    const checkpoint: InstagramCarouselPublishingCheckpoint = {
+      accountExternalId: '17841400000000001',
+      authorizationRevision: 2,
+      carouselContainerId: 'parent3',
+      items: [
+        { containerId: 'child1', imageUrl: 'https://cdn.invalid/1.jpg' },
+        { containerId: 'child2', imageUrl: 'https://cdn.invalid/2.jpg' },
+      ],
+      stage: 'publication_created',
+    }
+    const intent: MultiImagePublishingIntent = {
+      checkpoint,
+      expectedRevision: 6,
+      idempotencyKey: 'publish-multi-ig-invalid-permalink',
+      platform: 'instagram',
+      platformAccountId: 7,
+      publishJobId: 46,
+      route: 'instagram-carousel-staged',
+    }
+    const published = await executeMultiImagePublishingStage({
+      authority: authorityFor(intent),
+      intent,
+      leaseFence: lease,
+      transport: {
+        getInstagramContainerStatus: vi.fn().mockResolvedValue({ state: 'ready' }),
+        getInstagramMediaPermalink: vi
+          .fn()
+          .mockResolvedValue({ permalink: 'https://evil.example.invalid/p/forged/' }),
+        publishInstagramMedia: vi.fn().mockResolvedValue({ igMediaId: 'ig-media-3' }),
+      } as never,
+    })
+
+    expect(published.checkpoint).toMatchObject({ mediaId: 'ig-media-3', stage: 'published' })
+    expect(published.checkpoint).not.toHaveProperty('permalink')
   })
 
   it('marks a proven provider I/O recovery as delivery_unknown and stops resend', async () => {

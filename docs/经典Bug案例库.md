@@ -1,5 +1,83 @@
 # 经典 Bug 案例库
 
+## P-PROVIDER-SUCCESS-LOCATOR 平台成功但用户无法定位外部结果
+
+- Category: test-gap, product-acceptance, observability
+- Applies to: 社媒发布、文件上传、支付/订单、第三方任务等返回 provider ID 与可访问定位符的异步流程
+- Example cases: INSTAGRAM-002
+
+### Invariant
+
+对客户声称第三方操作成功时，必须保存 provider 权威 ID；如平台支持官方可访问链接，还必须在不重放 mutation 的前提下查询并保存。链接查询失败不得把已确认成功降级为可重试或触发重复外部操作。
+
+### Failure Mechanism
+
+阶段状态机仅以 provider ID 作为“已发布”终态条件，漏掉发布后的只读 permalink/status URL 查询。单元测试只断言 `stage` 和 ID，Portal 因 URL 为空只能显示不可点击的代码，直到真实发布后的产品验收才暴露。
+
+### Early Signals
+
+- 一个发布 route 有 `get...Permalink`，相邻的单图/多图 route 没有。
+- 成功用例只断言 `externalPublicationId`，不断言 `externalPublicationUrl` 或 Portal 可点击性。
+- UI 对“有 URL”和“只有 ID”走不同分支，但 provider route 没有同时覆盖两种结果。
+
+### Prevention Gate
+
+每条真实 provider 成功路径都必须列出“权威 ID + 官方定位符”契约；用成功、链接查询失败、伪造链接三个用例证明：成功时保存 canonical URL，只读补充失败时保留已成功 ID 且不重发，非官方 URL 不落库。
+
+### Verification
+
+以两张图片跑完 Instagram carousel 阶段链，断言 `getInstagramMediaPermalink` 收到最终 media ID，checkpoint 与 PublishJob 同时包含 ID/URL；再让 permalink 查询抛错，断言第二次执行不再调用 `publishInstagramMedia`。
+
+### Reuse Prompt
+
+“这条 provider 成功路径除了保存 ID，是否还保存了客户能直接打开的官方定位符？定位符查询失败时是否保证不重放已成功 mutation？”
+
+## INSTAGRAM-002 轮播帖已发布但发布记录没有帖子链接
+
+- Category: test-gap, product-acceptance, observability
+- Pattern: P-PROVIDER-SUCCESS-LOCATOR
+- Date: 2026-09-14
+- Area: Task 13 Instagram carousel publishing / Portal Content Studio
+- Environment: production 受控 Instagram Professional 账号
+- Severity: P1
+
+### Symptom
+
+Portal 发布记录显示“已发布”和媒体 ID `18116793680282345`，但 ID 不可点击，没有帖子链接。同批 Facebook 多图帖有正常链接。
+
+### Context
+
+生产 PublishJob #4 为 `published`，`externalPublicationId` 存在、`externalPublicationUrl` 为空；帖子在 Instagram 实际发布成功。Portal 已有 URL anchor 展示逻辑，问题不在 UI。
+
+### Root Cause
+
+Technical cause: `instagram-carousel-staged` 在 `publishInstagramMedia` 返回 media ID 后立即提交 `published`，没有调用已有的 `getInstagramMediaPermalink`；单图 Instagram 路径已有该逻辑。
+
+Process cause: 多图发布测试只断言媒体 ID 和 `published` 终态，未把客户可点击链接纳入验收。
+
+### Why Existing Checks Missed It
+
+Meta request/parser 层已测 permalink，Portal 也已测 URL 展示，但两者之间的 Instagram carousel 执行链没有断言 permalink 查询和 checkpoint 保存。
+
+### Fix
+
+轮播 publish mutation 返回有效 media ID 后，best-effort 调用官方 permalink 只读接口；仅保存 canonical Instagram HTTPS URL。查询失败时继续提交 `published + mediaId`，终态重放直接返回，绝不重发帖。已有 PublishJob #4 通过官方只读查询回填 `https://www.instagram.com/p/DdQ00d9CMRI/`。
+
+### Prevention Checklist
+
+- [ ] 每条平台成功 route 同时核对 provider ID 和官方 URL。
+- [ ] 区分发布 mutation 与发布后只读补充，后者失败不能触发前者重试。
+- [ ] 拒绝非官方 host、带账密/锚点或非 HTTPS 链接。
+- [ ] 真实平台验收不只看“已发布”，还要在 Portal 点开官方帖子链接。
+
+### Regression Test
+
+`tests/unit/platforms/multi-image-publishing.test.ts`：覆盖 permalink 成功保存、查询失败仍保留终态且不重发、非 Instagram URL 不保存。
+
+### Related Workflow Gates
+
+- product-development-workflow Gate 1、Gate 3、Gate 4、Gate 6、Gate 7、Gate 8
+
 ## P-CONTEXT-SPECIFIC-TEXT-VALIDATION 通用字符串过滤破坏合法业务文本
 
 - Category: test-gap, product-acceptance
@@ -623,6 +701,7 @@ Process cause: 既有断开 / 重连验收只验证凭据、状态、Base 和 ma
 ### Symptom
 
 在 AI 内容工作台勾选「自动生成配图」生成社媒内容时：
+
 1. 若文本模型出现长尾排队波动（如第三方代理耗时 40s~50s），在出厂默认配置（30s）下会被系统主动掐断抛出超时异常；
 2. 若简单粗暴将全局模型超时默认值放大（如提升至 90s），当串行执行“文本大模型（最多 90s）+ 生图大模型（最多 60s/120s）”时，极端总耗时将达到 150s~210s，直接击穿 `portalCommandReceipts.ts` 中固定 120 秒（`COMMAND_LEASE_MS = 120_000`）的命令防重锁租约；
 3. 击穿后导致命令在未收敛时被误判过期，用户重试或网络重发会发生同 Key Reclaim 重复派发外部扣费调用，引发数据不一致与重复生成。

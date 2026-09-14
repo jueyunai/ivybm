@@ -181,6 +181,23 @@ const providerId = (value: unknown): string | undefined => {
   return normalized && /^[\w:-]{1,240}$/u.test(normalized) ? normalized : undefined
 }
 
+const instagramPermalink = (value: unknown): string | undefined => {
+  const normalized = bounded(value, 2_000)
+  if (!normalized) return undefined
+  try {
+    const url = new URL(normalized)
+    return url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      !url.hash &&
+      (url.hostname === 'instagram.com' || url.hostname === 'www.instagram.com')
+      ? normalized
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 const safeIdentity = (value: unknown): number | string | undefined =>
   (typeof value === 'number' && Number.isSafeInteger(value)) ||
   (typeof value === 'string' && Boolean(bounded(value, 240)))
@@ -654,9 +671,29 @@ const runStage = async ({
       })
       const mediaId = providerId(result.igMediaId)
       if (!mediaId) return unknown(checkpoint, 'Instagram carousel media ID is unknown; resend is disabled.')
+      let permalink: string | undefined
+      try {
+        permalink = instagramPermalink(
+          (
+            await (transport as MetaPublishingTransport).getInstagramMediaPermalink({
+              accountExternalId: instagramCheckpoint.accountExternalId,
+              authorizationRevision: instagramCheckpoint.authorizationRevision,
+              mediaId,
+              platformAccountId,
+            })
+          ).permalink,
+        )
+      } catch {
+        // The publish mutation is confirmed. Preserve the media ID without inventing a URL or resending.
+      }
       return {
         changed: true,
-        checkpoint: { ...instagramCheckpoint, mediaId, stage: 'published' },
+        checkpoint: {
+          ...instagramCheckpoint,
+          mediaId,
+          ...(permalink ? { permalink } : {}),
+          stage: 'published',
+        },
         event: 'published',
         summary: 'Instagram confirmed carousel publication.',
       }
