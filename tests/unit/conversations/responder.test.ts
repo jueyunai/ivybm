@@ -107,7 +107,7 @@ describe('knowledge conversation responder', () => {
     const generateText = vi.fn(async () => ({
       cost: { estimated: 0 },
       model: 'fake-text-model',
-      text: 'Single-curved panels bend in one direction [1]. Double-curved panels change in two directions [1, 3]. A [2024] drawing reference remains.',
+      text: 'Single-curved panels bend in one direction [ 1 ]. Double-curved panels change in two directions [1, 3 ]. Sources [1-2] and [2–3] agree. A [2024] drawing reference remains, while invalid [3-1] and [1-4] ranges stay.',
       usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
     }))
     const knowledge = [1, 2, 3].map((documentId) => ({
@@ -125,7 +125,7 @@ describe('knowledge conversation responder', () => {
     ).resolves.toMatchObject({
       citations: knowledge.map(({ citation }) => citation),
       content:
-        'Single-curved panels bend in one direction. Double-curved panels change in two directions. A [2024] drawing reference remains.',
+        'Single-curved panels bend in one direction. Double-curved panels change in two directions. Sources and agree. A [2024] drawing reference remains, while invalid [3-1] and [1-4] ranges stay.',
     })
     expect(generateText).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -163,12 +163,12 @@ describe('knowledge conversation responder', () => {
     })
   })
 
-  it('does not trim customer text while removing an inline citation marker', async () => {
+  it('trims outer whitespace and a leading inline citation marker', async () => {
     const responder = createKnowledgeConversationResponder({
       generateText: async () => ({
         cost: { estimated: 0 },
         model: 'fake-text-model',
-        text: '\nPanels can be customized [1].\n',
+        text: '\n\t[1] Panels can be customized [1].\n',
         usage: { inputTokens: 5, totalTokens: 5 },
       }),
       getPrompt: async () => ({ template: 'Answer naturally.', version: 1 }),
@@ -182,7 +182,7 @@ describe('knowledge conversation responder', () => {
 
     await expect(
       responder.generateReply({ message: 'Can panels be customized?', session }),
-    ).resolves.toMatchObject({ content: '\nPanels can be customized.\n' })
+    ).resolves.toMatchObject({ content: 'Panels can be customized.' })
   })
 
   it('hands off instead of sending an empty reply after citation cleanup', async () => {

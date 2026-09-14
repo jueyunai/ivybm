@@ -982,31 +982,6 @@ describe.sequential('chat HTTP API', () => {
     ])
     expect(takeover.map(({ status }) => status).sort()).toEqual([200, 409])
 
-    const visitorSnapshot = await getSession(
-      new NextRequest(`http://localhost/api/chat/sessions/${session.id}`, { headers: { cookie } }),
-      { params: Promise.resolve({ id: session.id }) },
-    )
-    expect(visitorSnapshot.status).toBe(200)
-    await expect(visitorSnapshot.json()).resolves.not.toHaveProperty('assignedTo')
-
-    const operatorSnapshot = await getPortalConversation(
-      new NextRequest(`http://localhost/api/portal/conversations/${session.id}?view=operator`, {
-        headers: firstAuth,
-      }),
-      { params: Promise.resolve({ id: session.id }) },
-    )
-    expect(operatorSnapshot.status).toBe(200)
-    await expect(operatorSnapshot.json()).resolves.toMatchObject({
-      allowedActions: ['send_operator_message', 'resolve'],
-    })
-    const unassignedSalesSnapshot = await getSession(
-      new NextRequest(`http://localhost/api/chat/sessions/${session.id}?view=operator`, {
-        headers: otherSalesAuth,
-      }),
-      { params: Promise.resolve({ id: session.id }) },
-    )
-    expect(unassignedSalesSnapshot.status).toBe(403)
-
     const conversation = (
       await payload.find({
         collection: 'conversations',
@@ -1016,6 +991,76 @@ describe.sequential('chat HTTP API', () => {
         where: { publicId: { equals: session.id } },
       })
     ).docs[0]
+    await payload.create({
+      collection: 'messages',
+      data: {
+        author: 'ai',
+        citations: [
+          {
+            documentId: `portal-reference-${suffix}`,
+            title: 'Reviewed portal reference',
+            url: 'https://cms.example.invalid/internal/reviewed-reference',
+            version: '1.0',
+          },
+        ],
+        content: 'A reviewed answer for the assigned sales member.',
+        conversation: conversation.id,
+        estimatedCostUSD: 0.001,
+        idempotencyKey: `portal-reference-${suffix}`,
+        model: 'fake-internal-model',
+        promptVersion: 3,
+        requestId: `portal-reference-request-${suffix}`,
+        status: 'sent',
+        tokenUsage: { inputTokens: 8, outputTokens: 4, totalTokens: 12 },
+      },
+      overrideAccess: true,
+    })
+
+    const visitorSnapshot = await getSession(
+      new NextRequest(`http://localhost/api/chat/sessions/${session.id}`, { headers: { cookie } }),
+      { params: Promise.resolve({ id: session.id }) },
+    )
+    expect(visitorSnapshot.status).toBe(200)
+    const visitorSnapshotBody = (await visitorSnapshot.json()) as {
+      messages: Array<Record<string, unknown>>
+    }
+    expect(visitorSnapshotBody).not.toHaveProperty('assignedTo')
+    expect(visitorSnapshotBody.messages.find(({ author }) => author === 'ai')).not.toHaveProperty(
+      'citations',
+    )
+
+    const operatorSnapshot = await getPortalConversation(
+      new NextRequest(`http://localhost/api/portal/conversations/${session.id}?view=operator`, {
+        headers: firstAuth,
+      }),
+      { params: Promise.resolve({ id: session.id }) },
+    )
+    expect(operatorSnapshot.status).toBe(200)
+    const operatorSnapshotBody = (await operatorSnapshot.json()) as {
+      messages: Array<Record<string, unknown>>
+    }
+    expect(operatorSnapshotBody).toMatchObject({
+      allowedActions: ['send_operator_message', 'resolve'],
+    })
+    expect(operatorSnapshotBody.messages.find(({ author }) => author === 'ai')).toMatchObject({
+      citations: [
+        expect.objectContaining({
+          title: 'Reviewed portal reference',
+          url: 'https://cms.example.invalid/internal/reviewed-reference',
+        }),
+      ],
+      model: 'fake-internal-model',
+      promptVersion: 3,
+      tokenUsage: { inputTokens: 8, outputTokens: 4, totalTokens: 12 },
+    })
+    const unassignedSalesSnapshot = await getSession(
+      new NextRequest(`http://localhost/api/chat/sessions/${session.id}?view=operator`, {
+        headers: otherSalesAuth,
+      }),
+      { params: Promise.resolve({ id: session.id }) },
+    )
+    expect(unassignedSalesSnapshot.status).toBe(403)
+
     await payload.update({
       collection: 'conversations',
       id: conversation.id,
@@ -1030,10 +1075,24 @@ describe.sequential('chat HTTP API', () => {
       { params: Promise.resolve({ id: session.id }) },
     )
     expect(salesSnapshot.status).toBe(200)
-    await expect(salesSnapshot.json()).resolves.toMatchObject({
+    const salesSnapshotBody = (await salesSnapshot.json()) as {
+      messages: Array<Record<string, unknown>>
+    }
+    expect(salesSnapshotBody).toMatchObject({
       allowedActions: ['send_operator_message', 'resolve'],
       assignedTo: { id: users[2].id },
     })
+    const salesAiMessage = salesSnapshotBody.messages.find(({ author }) => author === 'ai')
+    expect(salesAiMessage).toMatchObject({
+      citations: [expect.objectContaining({ title: 'Reviewed portal reference' })],
+    })
+    expect((salesAiMessage?.citations as Array<Record<string, unknown>>)[0]).not.toHaveProperty(
+      'url',
+    )
+    expect(salesAiMessage).not.toHaveProperty('estimatedCostUSD')
+    expect(salesAiMessage).not.toHaveProperty('model')
+    expect(salesAiMessage).not.toHaveProperty('promptVersion')
+    expect(salesAiMessage).not.toHaveProperty('tokenUsage')
     const operatorInbox = await listPortalConversations(
       new NextRequest('http://localhost/api/portal/conversations?limit=10', {
         headers: firstAuth,

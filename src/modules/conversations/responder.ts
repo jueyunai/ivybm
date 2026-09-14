@@ -79,18 +79,24 @@ const qualificationPrompt = (fields: LeadQualificationField[], locale: ChatLocal
   fields.map((field) => QUALIFICATION_QUESTIONS[field][locale]).join(' ')
 
 const stripInlineCitationMarkers = (text: string, citationCount: number): string => {
-  return text.replace(/[ \t]*\[([0-9]+(?:[ \t]*,[ \t]*[0-9]+)*)\]/gu, (match, raw) => {
-    const references = String(raw)
-      .split(',')
-      .map((value) => Number(value.trim()))
-    return references.length > 0 &&
-      references.every(
-        (reference) =>
-          Number.isSafeInteger(reference) && reference >= 1 && reference <= citationCount,
-      )
-      ? ''
-      : match
-  })
+  return text.replace(
+    /[ \t]*\[[ \t]*([0-9]+(?:[ \t]*[-–][ \t]*[0-9]+)?(?:[ \t]*,[ \t]*[0-9]+(?:[ \t]*[-–][ \t]*[0-9]+)?)*)[ \t]*\]/gu,
+    (match, raw) => {
+      const valid = String(raw)
+        .split(',')
+        .every((value) => {
+          const [start, end = start] = value.split(/[-–]/u).map((part) => Number(part.trim()))
+          return (
+            Number.isSafeInteger(start) &&
+            Number.isSafeInteger(end) &&
+            start >= 1 &&
+            start <= end &&
+            end <= citationCount
+          )
+        })
+      return valid ? '' : match
+    },
+  )
 }
 
 const nextQualificationFields = (
@@ -147,14 +153,14 @@ export const createKnowledgeConversationResponder = ({
       input: `Customer message:\n${message}\n\nReviewed knowledge:\n${context}`,
       instructions: `${prompt.template}\nAnswer only from the reviewed knowledge. Do not promise price, delivery, certification, payment terms, or warranty.\n${CUSTOMER_REPLY_STYLE}`,
     })
-    const customerText = stripInlineCitationMarkers(generated.text, knowledge.length)
-    if (!customerText.trim()) {
+    const customerText = stripInlineCitationMarkers(generated.text, knowledge.length).trim()
+    if (!customerText) {
       return { handoff: { reason: 'reviewed_knowledge_unavailable', source: 'ai_policy' } }
     }
 
     return {
       citations: knowledge.map(({ citation }) => citation),
-      content: question ? `${customerText.trim()}\n\n${question}` : customerText,
+      content: question ? `${customerText}\n\n${question}` : customerText,
       estimatedCostUSD: generated.cost.estimated,
       model: generated.model,
       promptVersion: prompt.version,
