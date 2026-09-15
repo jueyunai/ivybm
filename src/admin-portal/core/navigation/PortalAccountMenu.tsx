@@ -13,6 +13,7 @@ import {
 import type { PortalUser } from '@/admin-portal/core/auth/types'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import type { PortalLocale } from '@/admin-portal/core/i18n/types'
+import type { PortalSidebarNavigateDetail } from '@/admin-portal/core/navigation/PortalSidebar'
 import { requestPortalLogout } from '@/modules/auth/payloadLogout'
 
 export interface PortalAccountMenuProps {
@@ -155,10 +156,13 @@ export function PortalAccountMenu({
                 closeMenu()
                 onClose?.()
               }
-              const navEvent = new CustomEvent('portal:sidebar-navigate', {
-                cancelable: true,
-                detail: { href: '/dashboard/settings#account', onClose: handleClose },
-              })
+              const navEvent = new CustomEvent<PortalSidebarNavigateDetail>(
+                'portal:sidebar-navigate',
+                {
+                  cancelable: true,
+                  detail: { href: '/dashboard/settings#account', onClose: handleClose },
+                },
+              )
               const allowed = window.dispatchEvent(navEvent)
               if (!allowed) {
                 event.preventDefault()

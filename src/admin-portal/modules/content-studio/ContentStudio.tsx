@@ -35,6 +35,10 @@ import {
 
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
+import type {
+  PortalNavigateActiveDetail,
+  PortalSidebarNavigateDetail,
+} from '@/admin-portal/core/navigation/PortalSidebar'
 import {
   Button,
   ConfirmDialog,
@@ -163,7 +167,7 @@ export function ContentStudio({
 
   useEffect(() => {
     const handleSidebarNavigate = (event: Event) => {
-      const customEvent = event as CustomEvent<{ href: string; onClose?: () => void }>
+      const customEvent = event as CustomEvent<PortalSidebarNavigateDetail>
       const targetHref = customEvent.detail?.href
       const closeNav = customEvent.detail?.onClose
       if (!targetHref) return
@@ -201,7 +205,7 @@ export function ContentStudio({
 
   useEffect(() => {
     const handleActiveNav = (event: Event) => {
-      const customEvent = event as CustomEvent<{ href: string }>
+      const customEvent = event as CustomEvent<PortalNavigateActiveDetail>
       if (customEvent.detail?.href === '/dashboard/content-studio' && !isDirtyRef.current) {
         setActiveAction(null)
         setFeedback(null)
