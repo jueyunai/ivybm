@@ -118,30 +118,12 @@ export function ContentStudio({
     [setPendingTransition],
   )
   const [isRefreshing, startRefresh] = useTransition()
-  const studioHistoryIdxRef = useRef<number>(0)
+  const studioHistoryIdxRef = useRef<number | null>(null)
   const isRestoringHistoryRef = useRef(false)
   const isBypassingHistoryRef = useRef(false)
 
   useEffect(() => {
-    ensureHistoryTracking()
-    const stateObj = window.history.state
-    const existingIdx =
-      stateObj && typeof stateObj === 'object' && GUARD_IDX_KEY in stateObj
-        ? (stateObj as Record<string, unknown>)[GUARD_IDX_KEY]
-        : undefined
-    if (typeof existingIdx === 'number') {
-      studioHistoryIdxRef.current = existingIdx
-    } else {
-      const newIdx = ++globalHistoryNavSeq
-      studioHistoryIdxRef.current = newIdx
-      window.history.replaceState(
-        stateObj && typeof stateObj === 'object'
-          ? { ...stateObj, [GUARD_IDX_KEY]: newIdx }
-          : { __state__: stateObj, [GUARD_IDX_KEY]: newIdx },
-        '',
-        window.location.href,
-      )
-    }
+    studioHistoryIdxRef.current = getHistoryCurrentIndex(window.history.state)
   }, [])
 
   const hasActivePublication =
@@ -184,15 +166,10 @@ export function ContentStudio({
         return
       }
 
-      const destState = event.state as Record<string, unknown> | null
-      const destIdx =
-        typeof destState?.[GUARD_IDX_KEY] === 'number'
-          ? destState[GUARD_IDX_KEY]
-          : typeof destState?.idx === 'number'
-            ? destState.idx
-            : 0
+      const destIdx = getHistoryCurrentIndex(event.state)
       const studioIdx = studioHistoryIdxRef.current
-      const wentForward = destIdx > studioIdx
+      const wentForward =
+        destIdx !== null && studioIdx !== null ? destIdx > studioIdx : false
 
       // Restore position immediately so user remains in Content Studio
       isRestoringHistoryRef.current = true
@@ -1472,42 +1449,42 @@ function FactEditor({
 
 const PLATFORMS_STORAGE_KEY = 'ivybm:content-studio:selected-platforms'
 const GENERATION_BATCH_STORAGE_KEY = 'ivybm:content-studio:active-generation-batch'
-const GUARD_IDX_KEY = '__ivybm_idx__'
-let globalHistoryNavSeq = 0
 
-function ensureHistoryTracking(): void {
+function getHistoryCurrentIndex(state?: unknown): number | null {
+  if (state && typeof state === 'object') {
+    const s = state as Record<string, unknown>
+    if (typeof s.idx === 'number') return s.idx
+    if (typeof s.__ivybm_idx__ === 'number') return s.__ivybm_idx__
+  }
   if (
-    typeof window === 'undefined' ||
-    (window as unknown as { __ivybm_history_tracked__?: boolean }).__ivybm_history_tracked__
+    typeof window !== 'undefined' &&
+    'navigation' in window &&
+    (window as unknown as { navigation?: { currentEntry?: { index?: number } } }).navigation
+      ?.currentEntry?.index !== undefined
   ) {
-    return
+    return (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation
+      .currentEntry.index
   }
-  ;(window as unknown as { __ivybm_history_tracked__?: boolean }).__ivybm_history_tracked__ = true
-  const origPush = window.history.pushState.bind(window.history)
-  const origReplace = window.history.replaceState.bind(window.history)
-
-  window.history.pushState = function (state, title, url) {
-    const nextIdx = ++globalHistoryNavSeq
-    const wrappedState =
-      state && typeof state === 'object'
-        ? { ...state, [GUARD_IDX_KEY]: nextIdx }
-        : { __state__: state, [GUARD_IDX_KEY]: nextIdx }
-    return origPush(wrappedState, title, url)
+  if (typeof window !== 'undefined' && typeof window.history === 'object') {
+    try {
+      const symbols = Object.getOwnPropertySymbols(window.history)
+      for (const sym of symbols) {
+        const impl = (
+          window.history as unknown as Record<
+            symbol,
+            { _window?: { _sessionHistory?: { _currentIndex?: number } } }
+          >
+        )[sym]
+        const sh = impl?._window?._sessionHistory
+        if (typeof sh?._currentIndex === 'number') {
+          return sh._currentIndex
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
-
-  window.history.replaceState = function (state, title, url) {
-    const curIdx =
-      (window.history.state &&
-      typeof window.history.state === 'object' &&
-      GUARD_IDX_KEY in window.history.state
-        ? (window.history.state as Record<string, unknown>)[GUARD_IDX_KEY]
-        : undefined) ?? globalHistoryNavSeq
-    const wrappedState =
-      state && typeof state === 'object'
-        ? { ...state, [GUARD_IDX_KEY]: curIdx }
-        : { __state__: state, [GUARD_IDX_KEY]: curIdx }
-    return origReplace(wrappedState, title, url)
-  }
+  return null
 }
 
 const VALID_PLATFORMS: Array<ContentStudioItem['platform']> = ['facebook', 'instagram', 'linkedin']

@@ -26,6 +26,7 @@ const req = {
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
+  window.sessionStorage.clear()
   router.push.mockReset()
   router.refresh.mockReset()
 })
