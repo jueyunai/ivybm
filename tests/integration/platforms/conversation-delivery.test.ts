@@ -7,6 +7,7 @@ import { getPayload, type Payload } from 'payload'
 import config from '@/payload.config'
 import { hashVisitorToken } from '@/modules/conversations/auth'
 import { PayloadConversationRepository } from '@/modules/conversations/payloadRepository'
+import { createKnowledgeConversationResponder } from '@/modules/conversations/responder'
 import { createConversationService } from '@/modules/conversations/service'
 import { PayloadJobQueue } from '@/modules/jobs/claim'
 import { PayloadConversationLeadSink } from '@/modules/leads/conversationLeadSink'
@@ -180,19 +181,28 @@ describe.sequential('Task 13 persisted platform conversation delivery', () => {
     const externalThreadId = `${accountExternalId}:${senderExternalId}`
     testThreads.push(externalThreadId)
     await createPlatformAccount({ accountExternalId, aiAutoReplyEnabled: true })
-    const generateReply = vi.fn(async ({ session }: { session: { locale: 'ar' | 'en' } }) => {
-      expect(session.locale).toBe('ar')
+    const generateText = vi.fn(async ({ instructions }: { instructions: string }) => {
+      expect(instructions).toContain('Do not ask follow-up questions')
       return {
-        content: 'شكرًا. ما الدولة التي يقع فيها المشروع؟',
-        estimatedCostUSD: 0,
+        cost: { estimated: 0 },
         model: 'integration-model',
-        promptVersion: 1,
+        text: 'يمكننا المساعدة في ألواح الواجهات لهذا المشروع [1].',
         tokenUsage: { inputTokens: 5, outputTokens: 8, totalTokens: 13 },
+        usage: { inputTokens: 5, outputTokens: 8, totalTokens: 13 },
       }
     })
     const conversations = new PayloadPlatformConversationPort({
       payload,
-      responder: { generateReply },
+      responder: createKnowledgeConversationResponder({
+        generateText,
+        getPrompt: async () => ({ template: 'أجب باللغة العربية.', version: 1 }),
+        retrieve: async () => [
+          {
+            citation: { documentId: 1, title: 'دليل الواجهات', version: '1.0' },
+            content: 'تتوفر حلول ألواح ألمنيوم مخصصة للمشاريع التجارية.',
+          },
+        ],
+      }),
     })
     const event = {
       accountExternalId,
@@ -212,7 +222,7 @@ describe.sequential('Task 13 persisted platform conversation delivery', () => {
     await expect(
       conversations.writeInboundMessage({ ...event, idempotencyKey: `transport-retry-${suffix}` }),
     ).resolves.toMatchObject({ status: 'duplicate' })
-    expect(generateReply).toHaveBeenCalledTimes(1)
+    expect(generateText).toHaveBeenCalledTimes(1)
 
     const conversation = await payload.find({
       collection: 'conversations',
@@ -239,7 +249,12 @@ describe.sequential('Task 13 persisted platform conversation delivery', () => {
     })
     expect(messages.docs).toEqual([
       expect.objectContaining({ author: 'visitor', status: 'sent' }),
-      expect.objectContaining({ author: 'ai', status: 'pending' }),
+      expect.objectContaining({
+        author: 'ai',
+        citations: [expect.objectContaining({ title: 'دليل الواجهات', version: '1.0' })],
+        content: expect.not.stringContaining('[1]'),
+        status: 'pending',
+      }),
     ])
     await expect(
       payload.count({
@@ -279,6 +294,7 @@ describe.sequential('Task 13 persisted platform conversation delivery', () => {
     await queue.complete(job)
 
     expect(send).toHaveBeenCalledTimes(1)
+    expect(send.mock.calls[0]?.[0].text).not.toContain('[1]')
     await expect(
       payload.findByID({ collection: 'messages', id: messages.docs[1]!.id, overrideAccess: true }),
     ).resolves.toMatchObject({

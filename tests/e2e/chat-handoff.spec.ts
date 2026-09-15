@@ -61,7 +61,9 @@ const installChatMock = async (page: Page, locale: ChatLocale, options: ChatMock
       ) {
         await route.fulfill({
           contentType: 'application/json',
-          json: { error: { code: 'invalid_request', message: 'Invalid start command', retryable: false } },
+          json: {
+            error: { code: 'invalid_request', message: 'Invalid start command', retryable: false },
+          },
           status: 400,
         })
         return
@@ -76,7 +78,10 @@ const installChatMock = async (page: Page, locale: ChatLocale, options: ChatMock
       return
     }
 
-    if (request.method() === 'POST' && url.pathname === `/api/chat/sessions/${session.id}/handoff`) {
+    if (
+      request.method() === 'POST' &&
+      url.pathname === `/api/chat/sessions/${session.id}/handoff`
+    ) {
       if (
         !body ||
         typeof body.idempotencyKey !== 'string' ||
@@ -87,7 +92,13 @@ const installChatMock = async (page: Page, locale: ChatLocale, options: ChatMock
       ) {
         await route.fulfill({
           contentType: 'application/json',
-          json: { error: { code: 'invalid_request', message: 'Invalid handoff command', retryable: false } },
+          json: {
+            error: {
+              code: 'invalid_request',
+              message: 'Invalid handoff command',
+              retryable: false,
+            },
+          },
           status: 400,
         })
         return
@@ -100,11 +111,26 @@ const installChatMock = async (page: Page, locale: ChatLocale, options: ChatMock
       return
     }
 
-    if (request.method() === 'POST' && url.pathname === `/api/chat/sessions/${session.id}/messages`) {
-      if (!body || typeof body.idempotencyKey !== 'string' || !body.idempotencyKey || typeof body.text !== 'string' || !body.text) {
+    if (
+      request.method() === 'POST' &&
+      url.pathname === `/api/chat/sessions/${session.id}/messages`
+    ) {
+      if (
+        !body ||
+        typeof body.idempotencyKey !== 'string' ||
+        !body.idempotencyKey ||
+        typeof body.text !== 'string' ||
+        !body.text
+      ) {
         await route.fulfill({
           contentType: 'application/json',
-          json: { error: { code: 'invalid_request', message: 'Invalid message command', retryable: false } },
+          json: {
+            error: {
+              code: 'invalid_request',
+              message: 'Invalid message command',
+              retryable: false,
+            },
+          },
           status: 400,
         })
         return
@@ -114,7 +140,9 @@ const installChatMock = async (page: Page, locale: ChatLocale, options: ChatMock
       if (options.failFirstMessage && messageAttempts === 1) {
         await route.fulfill({
           contentType: 'application/json',
-          json: { error: { code: 'ai_unavailable', message: 'Provider unavailable', retryable: true } },
+          json: {
+            error: { code: 'ai_unavailable', message: 'Provider unavailable', retryable: true },
+          },
           status: 503,
         })
         return
@@ -131,7 +159,9 @@ const installChatMock = async (page: Page, locale: ChatLocale, options: ChatMock
         },
         {
           author: 'ai',
-          citations: [{ documentId: 'knowledge-fixture', title: 'Reviewed panel guide', version: '1.0' }],
+          citations: [
+            { documentId: 'knowledge-fixture', title: 'Reviewed panel guide', version: '1.0' },
+          ],
           content: 'Fixture answer based on reviewed knowledge.',
           createdAt,
           id: `assistant-${messageAttempts}`,
@@ -153,21 +183,23 @@ const installChatMock = async (page: Page, locale: ChatLocale, options: ChatMock
   return { handoffCommands, messageAttempts: () => messageAttempts, messageCommands, starts }
 }
 
-test('English ChatWidget sends through the frozen browser contract and displays citations', async ({ page }) => {
+test('English ChatWidget sends through the frozen browser contract without exposing citations to visitors', async ({
+  page,
+}) => {
   const mock = await installChatMock(page, 'en')
   await page.goto('/en')
 
   const widget = page.getByTestId('chat-widget')
   await widget.getByRole('button', { name: 'Ask our project assistant' }).click()
   await expect(widget.getByRole('dialog', { name: 'Project Assistant' })).toBeVisible()
-  await widget.getByLabel('Ask about panels, drawings, finishes, or your project…').fill(
-    'Can you explain double-curved panel options?',
-  )
+  await widget
+    .getByLabel('Ask about panels, drawings, finishes, or your project…')
+    .fill('Can you explain double-curved panel options?')
   await widget.getByRole('button', { name: 'Send' }).click()
 
   await expect(widget.getByText('Fixture answer based on reviewed knowledge.')).toBeVisible()
-  await expect(widget.getByText('Reviewed sources')).toBeVisible()
-  await expect(widget.getByText(/Reviewed panel guide/)).toBeVisible()
+  await expect(widget.getByText('Reviewed sources')).toHaveCount(0)
+  await expect(widget.getByText(/Reviewed panel guide/)).toHaveCount(0)
   expect(mock.starts).toHaveLength(1)
   expect(mock.starts[0]).toMatchObject({
     channel: 'website',
@@ -175,13 +207,17 @@ test('English ChatWidget sends through the frozen browser contract and displays 
     locale: 'en',
     sourceURL: expect.stringContaining('/en'),
   })
-  expect(mock.messageCommands).toEqual([{
-    idempotencyKey: expect.any(String),
-    text: 'Can you explain double-curved panel options?',
-  }])
+  expect(mock.messageCommands).toEqual([
+    {
+      idempotencyKey: expect.any(String),
+      text: 'Can you explain double-curved panel options?',
+    },
+  ])
 })
 
-test('Arabic ChatWidget respects RTL and displays the authoritative handoff state', async ({ page }) => {
+test('Arabic ChatWidget respects RTL and displays the authoritative handoff state', async ({
+  page,
+}) => {
   const mock = await installChatMock(page, 'ar')
   await page.goto('/ar')
 
@@ -191,15 +227,19 @@ test('Arabic ChatWidget respects RTL and displays the authoritative handoff stat
   await expect(widget.getByRole('dialog', { name: 'مساعد المشروع' })).toBeVisible()
   await widget.getByRole('button', { name: 'التحدث مع مختص' }).click()
 
-  await expect(widget.getByTestId('chat-handoff-pending')).toContainText('تمت مشاركة طلبك مع فريق المشروع')
+  await expect(widget.getByTestId('chat-handoff-pending')).toContainText(
+    'تمت مشاركة طلبك مع فريق المشروع',
+  )
   await expect(widget.getByLabel('اسأل عن الألواح أو مشروعك…')).toBeDisabled()
   const box = await widget.boundingBox()
   expect(box).not.toBeNull()
   expect(box?.x).toBeLessThan(100)
-  expect(mock.handoffCommands).toEqual([{
-    idempotencyKey: expect.any(String),
-    reason: 'visitor_requested_assistance',
-  }])
+  expect(mock.handoffCommands).toEqual([
+    {
+      idempotencyKey: expect.any(String),
+      reason: 'visitor_requested_assistance',
+    },
+  ])
 })
 
 test('ChatWidget exposes a safe retry after a retryable server error', async ({ page }) => {
@@ -208,7 +248,9 @@ test('ChatWidget exposes a safe retry after a retryable server error', async ({ 
 
   const widget = page.getByTestId('chat-widget')
   await widget.getByRole('button', { name: 'Ask our project assistant' }).click()
-  await widget.getByLabel('Ask about panels, drawings, finishes, or your project…').fill('Need panel information.')
+  await widget
+    .getByLabel('Ask about panels, drawings, finishes, or your project…')
+    .fill('Need panel information.')
   await widget.getByRole('button', { name: 'Send' }).click()
 
   await expect(widget.getByRole('alert')).toContainText('Chat is temporarily unavailable')

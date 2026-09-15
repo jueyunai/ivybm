@@ -94,10 +94,7 @@ export const shouldCreateConversationLead = (
   handoffReason?: string,
 ): boolean => {
   if (
-    isWebsiteSilentRecoveryHandoff(
-      contact?.channel,
-      handoffReason ?? evaluation?.handoffReason,
-    )
+    isWebsiteSilentRecoveryHandoff(contact?.channel, handoffReason ?? evaluation?.handoffReason)
   ) {
     return false
   }
@@ -170,23 +167,27 @@ const isUniqueConstraintError = (error: unknown): boolean =>
 export const truncateLeadTranscript = (transcript: string, maxLength = 5_000): string =>
   transcript.length > maxLength ? transcript.slice(-maxLength) : transcript
 
-const mapMessage = (message: Message, includeInternalMetadata: boolean): ChatMessage => ({
+const mapMessage = (
+  message: Message,
+  visibility: { includeCitations: boolean; includeInternalMetadata: boolean },
+): ChatMessage => ({
   author: message.author,
-  citations: message.citations?.map((citation) => ({
-    documentId: citation.documentId,
-    title: citation.title,
-    // Knowledge source URLs are frequently internal authoring locations. Visitors
-    // receive a stable title/version citation, while only authenticated operators
-    // can see the source URL needed for review and correction.
-    ...(includeInternalMetadata && citation.url ? { url: citation.url } : {}),
-    version: citation.version,
-  })),
+  ...(visibility.includeCitations && message.citations?.length
+    ? {
+        citations: message.citations.map((citation) => ({
+          documentId: citation.documentId,
+          title: citation.title,
+          ...(visibility.includeInternalMetadata && citation.url ? { url: citation.url } : {}),
+          version: citation.version,
+        })),
+      }
+    : {}),
   content: message.content,
   createdAt: message.createdAt,
   ...(message.errorCode ? { errorCode: message.errorCode as ChatErrorCode } : {}),
   id: message.requestId,
   status: message.status,
-  ...(includeInternalMetadata
+  ...(visibility.includeInternalMetadata
     ? {
         estimatedCostUSD: message.estimatedCostUSD ?? undefined,
         model: message.model ?? undefined,
@@ -296,6 +297,7 @@ export class PayloadConversationRepository implements ConversationRepository {
           ? 'sales'
           : 'visitor'
     const includeInternalMetadata = viewer === 'operator'
+    const includeCitations = viewer !== 'visitor'
     return {
       allowedActions: allowedActionsFor(conversation.handoffStatus, viewer),
       ...(this.actor && assignedTo ? { assignedTo: { id: assignedTo } } : {}),
@@ -305,7 +307,7 @@ export class PayloadConversationRepository implements ConversationRepository {
       locale: conversation.locale,
       messages: messages
         .filter(({ author }) => includeInternalMetadata || author !== 'system')
-        .map((message) => mapMessage(message, includeInternalMetadata)),
+        .map((message) => mapMessage(message, { includeCitations, includeInternalMetadata })),
       qualificationState: qualificationState(conversation),
       revision: conversation.revision,
       requestId: conversation.requestId,

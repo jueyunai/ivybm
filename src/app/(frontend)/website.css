@@ -2083,32 +2083,6 @@ html[dir='rtl'] .chat-widget {
   font-size: 11px;
 }
 
-.chat-citations {
-  display: grid;
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid #dbe3ea;
-  color: #647483;
-  font-size: 11px;
-  gap: 4px;
-}
-
-.chat-citation {
-  display: inline-flex;
-  align-items: center;
-  color: #3c6790;
-  gap: 4px;
-}
-
-.chat-message[data-author='visitor'] .chat-citations {
-  border-color: rgba(255, 255, 255, 0.3);
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.chat-message[data-author='visitor'] .chat-citation {
-  color: #fff;
-}
-
 .chat-message-retry,
 .chat-error button {
   display: inline-flex;
