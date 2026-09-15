@@ -387,7 +387,7 @@ export function ContentStudio({
             <GenerateDraftEditor
               copy={copy}
               drafts={summary.items.filter((item) => item.status === 'draft')}
-              onClose={() => requestTransition(closeAction)}
+              onClose={closeAction}
               onDirtyChange={setIsDirty}
               onDone={onDone}
               options={summary.options}
@@ -404,7 +404,7 @@ export function ContentStudio({
               copy={copy}
               item={activeAction === 'edit' ? selected : null}
               options={summary.options}
-              onClose={() => requestTransition(closeAction)}
+              onClose={closeAction}
               onDirtyChange={setIsDirty}
               onDone={onDone}
             />
