@@ -203,6 +203,63 @@ describe('Portal navigation', () => {
     window.removeEventListener('portal:sidebar-navigate', listener)
   })
 
+  it('closes both account menu and mobile nav drawer when clicking account link in PortalMobileNav', () => {
+    const resolution = resolvePortalAvailability({
+      env: enabledEnvironment,
+      user: { role: 'admin' },
+    })
+
+    let receivedDetail: { href: string; onClose?: () => void } | null = null
+    const listener = vi.fn((event: Event) => {
+      event.preventDefault()
+      receivedDetail = (event as CustomEvent<{ href: string; onClose?: () => void }>).detail
+    })
+    window.addEventListener('portal:sidebar-navigate', listener)
+
+    const onCloseMobile = vi.fn()
+    const triggerRef = React.createRef<HTMLButtonElement>()
+
+    render(
+      React.createElement(
+        'div',
+        null,
+        React.createElement('button', { ref: triggerRef }, 'Open nav'),
+        React.createElement(PortalMobileNav, {
+          locale: 'zh',
+          modules: resolution.modules,
+          onClose: onCloseMobile,
+          onLocaleToggle: vi.fn(),
+          open: true,
+          triggerRef,
+          user: {
+            id: 1,
+            permissions: PORTAL_PERMISSION_PRESETS.admin,
+            role: 'admin',
+            username: 'admin.example',
+          },
+        }),
+      ),
+    )
+
+    // Open account menu in mobile nav
+    const trigger = screen.getByLabelText('账户菜单')
+    fireEvent.click(trigger)
+
+    const accountLink = screen.getByRole('menuitem', { name: '账户与偏好' })
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true })
+    accountLink.dispatchEvent(clickEvent)
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(clickEvent.defaultPrevented).toBe(true)
+    expect(receivedDetail).toBeTruthy()
+
+    // Calling the detail.onClose (e.g. from transition cancel or commit) must trigger mobile onClose
+    ;(receivedDetail as unknown as { onClose?: () => void })?.onClose?.()
+    expect(onCloseMobile).toHaveBeenCalledTimes(1)
+
+    window.removeEventListener('portal:sidebar-navigate', listener)
+  })
+
   it('fails closed into a Portal maintenance state when the global flag is disabled', () => {
     const resolution = resolvePortalAvailability({ env: {}, user: { role: 'admin' } })
 

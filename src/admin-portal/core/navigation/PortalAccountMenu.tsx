@@ -18,6 +18,7 @@ import { requestPortalLogout } from '@/modules/auth/payloadLogout'
 export interface PortalAccountMenuProps {
   collapsed?: boolean
   locale: PortalLocale
+  onClose?: () => void
   onLocaleToggle?: () => void
   user: PortalUser
 }
@@ -25,6 +26,7 @@ export interface PortalAccountMenuProps {
 export function PortalAccountMenu({
   collapsed = false,
   locale,
+  onClose,
   onLocaleToggle,
   user,
 }: PortalAccountMenuProps) {
@@ -149,16 +151,20 @@ export function PortalAccountMenu({
             className="portal-account__menu-item"
             href="/dashboard/settings#account"
             onClick={(event) => {
+              const handleClose = () => {
+                closeMenu()
+                onClose?.()
+              }
               const navEvent = new CustomEvent('portal:sidebar-navigate', {
                 cancelable: true,
-                detail: { href: '/dashboard/settings#account', onClose: () => closeMenu() },
+                detail: { href: '/dashboard/settings#account', onClose: handleClose },
               })
               const allowed = window.dispatchEvent(navEvent)
               if (!allowed) {
                 event.preventDefault()
                 return
               }
-              closeMenu()
+              handleClose()
             }}
             ref={(element) => {
               itemRefs.current[0] = element

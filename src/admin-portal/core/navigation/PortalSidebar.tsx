@@ -184,6 +184,7 @@ export function PortalSidebar({
         <PortalAccountMenu
           collapsed={collapsed}
           locale={locale}
+          onClose={onClose}
           onLocaleToggle={onLocaleToggle}
           user={user}
         />
