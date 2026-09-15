@@ -118,6 +118,32 @@ export function ContentStudio({
     [setPendingTransition],
   )
   const [isRefreshing, startRefresh] = useTransition()
+  const studioHistoryIdxRef = useRef<number>(0)
+  const isRestoringHistoryRef = useRef(false)
+  const isBypassingHistoryRef = useRef(false)
+
+  useEffect(() => {
+    ensureHistoryTracking()
+    const stateObj = window.history.state
+    const existingIdx =
+      stateObj && typeof stateObj === 'object' && GUARD_IDX_KEY in stateObj
+        ? (stateObj as Record<string, unknown>)[GUARD_IDX_KEY]
+        : undefined
+    if (typeof existingIdx === 'number') {
+      studioHistoryIdxRef.current = existingIdx
+    } else {
+      const newIdx = ++globalHistoryNavSeq
+      studioHistoryIdxRef.current = newIdx
+      window.history.replaceState(
+        stateObj && typeof stateObj === 'object'
+          ? { ...stateObj, [GUARD_IDX_KEY]: newIdx }
+          : { __state__: stateObj, [GUARD_IDX_KEY]: newIdx },
+        '',
+        window.location.href,
+      )
+    }
+  }, [])
+
   const hasActivePublication =
     summary?.items.some((item) =>
       item.publishJobs.some(
@@ -140,30 +166,72 @@ export function ContentStudio({
 
   useEffect(() => {
     if (!isDirty && !editorBusy) return
+
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault()
     }
-    const handlePopState = () => {
-      if (editorBusyRef.current) {
-        window.history.pushState(null, '', window.location.href)
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (isBypassingHistoryRef.current) {
+        isBypassingHistoryRef.current = false
         return
       }
+      if (isRestoringHistoryRef.current) {
+        isRestoringHistoryRef.current = false
+        return
+      }
+      if (!editorBusyRef.current && !isDirtyRef.current) {
+        return
+      }
+
+      const destState = event.state as Record<string, unknown> | null
+      const destIdx =
+        typeof destState?.[GUARD_IDX_KEY] === 'number'
+          ? destState[GUARD_IDX_KEY]
+          : typeof destState?.idx === 'number'
+            ? destState.idx
+            : 0
+      const studioIdx = studioHistoryIdxRef.current
+      const wentForward = destIdx > studioIdx
+
+      // Restore position immediately so user remains in Content Studio
+      isRestoringHistoryRef.current = true
+      if (wentForward) {
+        window.history.back()
+      } else {
+        window.history.forward()
+      }
+
+      if (editorBusyRef.current) {
+        // While busy, block navigation without opening prompt
+        return
+      }
+
       if (isDirtyRef.current) {
-        window.history.pushState(null, '', window.location.href)
-        requestTransition(() => {
-          closeAction()
+        setPendingTransition({
+          commit: () => {
+            isBypassingHistoryRef.current = true
+            closeAction()
+            if (wentForward) {
+              window.history.forward()
+            } else {
+              window.history.back()
+            }
+          },
+          onCancel: () => {
+            // Cancel stays in Content Studio with current edits intact
+          },
         })
       }
     }
 
-    window.history.pushState(null, '', window.location.href)
     window.addEventListener('beforeunload', handleBeforeUnload)
     window.addEventListener('popstate', handlePopState)
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [isDirty, editorBusy, requestTransition, closeAction])
+  }, [isDirty, editorBusy, closeAction])
 
   useEffect(() => {
     const handleSidebarNavigate = (event: Event) => {
@@ -1404,6 +1472,44 @@ function FactEditor({
 
 const PLATFORMS_STORAGE_KEY = 'ivybm:content-studio:selected-platforms'
 const GENERATION_BATCH_STORAGE_KEY = 'ivybm:content-studio:active-generation-batch'
+const GUARD_IDX_KEY = '__ivybm_idx__'
+let globalHistoryNavSeq = 0
+
+function ensureHistoryTracking(): void {
+  if (
+    typeof window === 'undefined' ||
+    (window as unknown as { __ivybm_history_tracked__?: boolean }).__ivybm_history_tracked__
+  ) {
+    return
+  }
+  ;(window as unknown as { __ivybm_history_tracked__?: boolean }).__ivybm_history_tracked__ = true
+  const origPush = window.history.pushState.bind(window.history)
+  const origReplace = window.history.replaceState.bind(window.history)
+
+  window.history.pushState = function (state, title, url) {
+    const nextIdx = ++globalHistoryNavSeq
+    const wrappedState =
+      state && typeof state === 'object'
+        ? { ...state, [GUARD_IDX_KEY]: nextIdx }
+        : { __state__: state, [GUARD_IDX_KEY]: nextIdx }
+    return origPush(wrappedState, title, url)
+  }
+
+  window.history.replaceState = function (state, title, url) {
+    const curIdx =
+      (window.history.state &&
+      typeof window.history.state === 'object' &&
+      GUARD_IDX_KEY in window.history.state
+        ? (window.history.state as Record<string, unknown>)[GUARD_IDX_KEY]
+        : undefined) ?? globalHistoryNavSeq
+    const wrappedState =
+      state && typeof state === 'object'
+        ? { ...state, [GUARD_IDX_KEY]: curIdx }
+        : { __state__: state, [GUARD_IDX_KEY]: curIdx }
+    return origReplace(wrappedState, title, url)
+  }
+}
+
 const VALID_PLATFORMS: Array<ContentStudioItem['platform']> = ['facebook', 'instagram', 'linkedin']
 const DEFAULT_PLATFORMS: Array<ContentStudioItem['platform']> = ['linkedin']
 

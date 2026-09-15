@@ -2050,7 +2050,11 @@ describe('Portal Content Studio', () => {
     globalThis.fetch = originalFetch
   })
 
-  it('intercepts popstate events when dirty or busy and guards history back navigation', async () => {
+  it('guards real history stack: back cancels in place, confirm resumes to previous page, length stays constant, and forward targets are preserved', async () => {
+    // 0. Setup real history stack: Page A -> Content Studio
+    window.history.pushState(null, '', '/dashboard/overview')
+    window.history.pushState(null, '', '/dashboard/content-studio')
+
     const summary: ContentStudioSummary = {
       items: [
         {
@@ -2075,7 +2079,82 @@ describe('Portal Content Studio', () => {
       query: { page: 1, platform: 'all', q: '', status: 'all' },
     }
 
-    const pushStateSpy = vi.spyOn(window.history, 'pushState')
+    const { unmount } = render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    const initialHistoryLength = window.history.length
+
+    // 1. Enter dirty state by typing draft title
+    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
+    const titleInput = screen.getByRole('textbox', { name: '草稿标题' })
+    fireEvent.change(titleInput, { target: { value: 'Dirty Draft on History Back' } })
+
+    // Verify history length has NOT grown upon entering dirty
+    expect(window.history.length).toBe(initialHistoryLength)
+
+    // 2. User clicks browser Back button (A -> Studio -> dirty -> back)
+    act(() => {
+      window.history.back()
+    })
+
+    // Confirmation dialog should appear and user remains on Content Studio
+    expect(await screen.findByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+    await vi.waitFor(() => {
+      expect(window.location.pathname).toBe('/dashboard/content-studio')
+    })
+
+    // 3. User cancels ("继续编辑") -> stays in Content Studio with draft intact
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }))
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    })
+    expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
+    expect((screen.getByRole('textbox', { name: '草稿标题' }) as HTMLInputElement).value).toBe(
+      'Dirty Draft on History Back',
+    )
+    expect(window.location.pathname).toBe('/dashboard/content-studio')
+    expect(window.history.length).toBe(initialHistoryLength)
+
+    // 4. User clicks Back AGAIN and confirms ("放弃并切换") -> resumes navigation to Page A (/dashboard/overview)
+    act(() => {
+      window.history.back()
+    })
+    expect(await screen.findByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
+
+    await vi.waitFor(() => {
+      expect(window.location.pathname).toBe('/dashboard/overview')
+    })
+    expect(window.history.length).toBe(initialHistoryLength)
+
+    unmount()
+  })
+
+  it('preserves existing forward history targets and allows resuming to forward target upon confirmation', async () => {
+    // Setup real history stack with forward entry: Page A -> Studio -> Media -> Back to Studio
+    window.history.pushState(null, '', '/dashboard/overview')
+    window.history.pushState(null, '', '/dashboard/content-studio')
+    window.history.pushState(null, '', '/dashboard/media')
+    window.history.back()
+
+    await vi.waitFor(() => {
+      expect(window.location.pathname).toBe('/dashboard/content-studio')
+    })
+
+    const stackLength = window.history.length
+
+    const summary: ContentStudioSummary = {
+      items: [],
+      options: { assets: [], knowledgeSources: [], platformAccounts: [] },
+      pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
 
     const { unmount } = render(
       React.createElement(
@@ -2085,43 +2164,42 @@ describe('Portal Content Studio', () => {
       ),
     )
 
-    // 1. Open new draft editor and type title to enter dirty state
-    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
-    const titleInput = screen.getByRole('textbox', { name: '草稿标题' })
-    fireEvent.change(titleInput, { target: { value: 'Dirty Draft on History Back' } })
+    // 1. Enter dirty state in generator
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const form = screen.getByRole('heading', { name: /AI生成/ }).closest('.portal-content-studio__form') as HTMLElement
+    const briefTextarea = within(form).getByRole('textbox', { name: '生成需求' })
+    fireEvent.change(briefTextarea, { target: { value: 'Forward target preservation test' } })
 
-    // Wait for dirty state effect to register popstate listener
-    await vi.waitFor(() => expect(pushStateSpy).toHaveBeenCalled())
+    // 2. Verify history length did NOT grow and forward target exists
+    expect(window.history.length).toBe(stackLength)
 
-    // Simulate browser back button (popstate event)
+    // 3. User attempts to navigate forward while dirty
     act(() => {
-      window.dispatchEvent(new PopStateEvent('popstate'))
+      window.history.forward()
     })
 
-    // Confirmation dialog should appear and pushState called to prevent history departure
+    // Confirmation dialog appears and user is restored back to Content Studio
     expect(await screen.findByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
-    expect(pushStateSpy).toHaveBeenCalled()
-
-    // Cancel ("继续编辑") -> stays in editor with draft intact
-    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }))
-    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
-    expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
-    expect((screen.getByRole('textbox', { name: '草稿标题' }) as HTMLInputElement).value).toBe(
-      'Dirty Draft on History Back',
-    )
-
-    // Simulate browser back button again and confirm ("放弃并切换") -> closes editor
-    act(() => {
-      window.dispatchEvent(new PopStateEvent('popstate'))
+    await vi.waitFor(() => {
+      expect(window.location.pathname).toBe('/dashboard/content-studio')
     })
-    expect(await screen.findByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+
+    // 4. Confirm discard -> proceeds to the forward target (/dashboard/media)
     fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
     await vi.waitFor(() => {
-      expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
-      expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
+      expect(window.location.pathname).toBe('/dashboard/media')
     })
+    expect(window.history.length).toBe(stackLength)
 
-    // 2. Test when editorBusy is true during in-flight generation
+    unmount()
+  })
+
+  it('blocks navigation without growing history length while background generation is in flight', async () => {
+    window.history.pushState(null, '', '/dashboard/overview')
+    window.history.pushState(null, '', '/dashboard/content-studio')
+
+    const initialLength = window.history.length
+
     const originalFetch = globalThis.fetch
     let resolveGeneration: ((value: Response) => void) | null = null
     globalThis.fetch = vi.fn((input) => {
@@ -2133,30 +2211,53 @@ describe('Portal Content Studio', () => {
       return originalFetch(input)
     })
 
+    const summary: ContentStudioSummary = {
+      items: [],
+      options: { assets: [], knowledgeSources: [], platformAccounts: [] },
+      pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    const { unmount } = render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
     fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
     const form = screen.getByRole('heading', { name: /AI生成/ }).closest('.portal-content-studio__form') as HTMLElement
     const briefTextarea = within(form).getByRole('textbox', { name: '生成需求' })
-    fireEvent.change(briefTextarea, { target: { value: 'In-flight generation brief' } })
+    fireEvent.change(briefTextarea, { target: { value: 'In-flight busy generation' } })
 
     const generateBtn = within(form).getByRole('button', { name: /AI生成/ })
     fireEvent.click(generateBtn)
 
-    // Generator is now busy
     await vi.waitFor(() => expect(generateBtn.hasAttribute('disabled')).toBe(true))
-    const callsBeforePopState = pushStateSpy.mock.calls.length
+
+    // History length should not have grown
+    expect(window.history.length).toBe(initialLength)
+
+    // User attempts browser back while busy
     act(() => {
-      window.dispatchEvent(new PopStateEvent('popstate'))
+      window.history.back()
     })
-    // Should call pushState to block back navigation and not show discard confirmation
-    expect(pushStateSpy.mock.calls.length).toBeGreaterThan(callsBeforePopState)
+
+    // Navigation is blocked, restored to Content Studio, and no prompt is opened
+    await vi.waitFor(() => {
+      expect(window.location.pathname).toBe('/dashboard/content-studio')
+    })
     expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
     expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
+    expect(window.history.length).toBe(initialLength)
 
     // Resolve in-flight request
     act(() => {
       resolveGeneration!(
         Response.json({
-          content: { assets: [], id: 999 },
+          content: { assets: [], id: 1001 },
         }),
       )
     })
@@ -2165,7 +2266,6 @@ describe('Portal Content Studio', () => {
     })
 
     globalThis.fetch = originalFetch
-    pushStateSpy.mockRestore()
     unmount()
   })
 
