@@ -1460,7 +1460,22 @@ function GenerateDraftEditor({
   const [error, setError] = useState<string | null>(null)
   const [generationProgress, setGenerationProgress] = useState<string | null>(null)
 
-  const editorBusy = busy || imageBusy
+  const { combinedAssets, handleUpload, uploadBusy, uploadError } = useAssetUploader({
+    copy,
+    initialAssets: options.assets,
+    onAssetsUploaded: (newIds) => {
+      formRevisionRef.current += 1
+      setForm((current) => {
+        return {
+          ...current,
+          assets: newIds,
+          contentType: newIds.length >= 2 ? 'carousel' : 'post',
+        }
+      })
+    },
+  })
+
+  const editorBusy = busy || imageBusy || uploadBusy
   useEffect(() => {
     onBusyChange?.(editorBusy)
     return () => onBusyChange?.(false)
@@ -1518,21 +1533,6 @@ function GenerateDraftEditor({
     persistPlatforms(form.platforms)
   }, [form.platforms])
 
-  const { combinedAssets, handleUpload, uploadBusy, uploadError } = useAssetUploader({
-    copy,
-    initialAssets: options.assets,
-    onAssetsUploaded: (newIds) => {
-      formRevisionRef.current += 1
-      setForm((current) => {
-        return {
-          ...current,
-          assets: newIds,
-          contentType: newIds.length >= 2 ? 'carousel' : 'post',
-        }
-      })
-    },
-  })
-
   const update = <Key extends keyof typeof form>(key: Key, value: (typeof form)[Key]) => {
     formRevisionRef.current += 1
     setForm((current) => ({ ...current, [key]: value }))
@@ -1588,9 +1588,11 @@ function GenerateDraftEditor({
     }))
   }
   const canGenerate =
-    (form.assets.length > 0 || form.brief.trim().length > 0) && form.platforms.length > 0
+    (form.assets.length > 0 || form.brief.trim().length > 0) &&
+    form.platforms.length > 0 &&
+    !editorBusy
   const generate = async () => {
-    if (!canGenerate || busy) return
+    if (!canGenerate || editorBusy) return
     const currentEpoch = ++generationEpochRef.current
     const currentRevision = formRevisionRef.current
     setBusy(true)
@@ -1751,7 +1753,7 @@ function GenerateDraftEditor({
                 return (
                   <button
                     className="portal-content-studio__capsule"
-                    disabled={busy}
+                    disabled={editorBusy}
                     key={intentKey}
                     onClick={() => update('brief', copy.quickIntentDescriptions[intentKey])}
                     type="button"
@@ -1766,7 +1768,7 @@ function GenerateDraftEditor({
           <div className="portal-content-studio__form-grid">
             <Field label={copy.brief} required wide>
               <textarea
-                disabled={busy}
+                disabled={editorBusy}
                 maxLength={2000}
                 onChange={(event) => update('brief', event.target.value)}
                 placeholder={
@@ -1784,7 +1786,7 @@ function GenerateDraftEditor({
                 <div className="portal-content-studio__platform-actions">
                   <button
                     className="portal-content-studio__platform-link"
-                    disabled={busy}
+                    disabled={editorBusy}
                     onClick={selectAllPlatforms}
                     type="button"
                   >
@@ -1793,7 +1795,7 @@ function GenerateDraftEditor({
                   <span>·</span>
                   <button
                     className="portal-content-studio__platform-link"
-                    disabled={busy}
+                    disabled={editorBusy}
                     onClick={clearPlatforms}
                     type="button"
                   >
@@ -1812,7 +1814,7 @@ function GenerateDraftEditor({
                     <button
                       aria-pressed={selected}
                       className={`portal-content-studio__platform-card ${selected ? 'is-selected' : ''}`}
-                      disabled={busy}
+                      disabled={editorBusy}
                       key={key}
                       onClick={() => togglePlatform(key)}
                       type="button"
@@ -1834,7 +1836,7 @@ function GenerateDraftEditor({
             <Field label={copy.locale} required>
               <UiSelect
                 ariaLabel={copy.locale}
-                disabled={busy}
+                disabled={editorBusy}
                 onChange={(val) => update('contentLocale', val as typeof form.contentLocale)}
                 options={[
                   { label: 'English (EN)', value: 'en' },
@@ -1846,7 +1848,7 @@ function GenerateDraftEditor({
             <Field label={copy.assets} wide>
               <MultiOptions
                 assetPreviews
-                disabled={busy}
+                disabled={editorBusy}
                 onUpload={handleUpload}
                 options={combinedAssets}
                 selected={form.assets}
@@ -1864,7 +1866,7 @@ function GenerateDraftEditor({
                 <label className="portal-content-studio__auto-image-toggle">
                   <input
                     checked={form.autoGenerateImage}
-                    disabled={busy}
+                    disabled={editorBusy}
                     onChange={(event) => update('autoGenerateImage', event.target.checked)}
                     type="checkbox"
                   />
@@ -1877,7 +1879,7 @@ function GenerateDraftEditor({
             <Field label={copy.knowledge} wide>
               <span className="portal-content-studio__field-hint">{copy.knowledgeHint}</span>
               <MultiOptions
-                disabled={busy}
+                disabled={editorBusy}
                 emptyMessage={copy.noKnowledgeOptions}
                 options={options.knowledgeSources}
                 selected={form.knowledgeSources}
@@ -1890,7 +1892,7 @@ function GenerateDraftEditor({
               <IconShieldCheck aria-hidden="true" size={15} />
               <span>{copy.generationSafetyNotice}</span>
             </div>
-            <Button disabled={busy || !canGenerate} onClick={() => void generate()}>
+            <Button disabled={editorBusy || !canGenerate} onClick={() => void generate()}>
               <IconSparkles aria-hidden="true" size={16} />
               {busy
                 ? (generationProgress ?? copy.generating)

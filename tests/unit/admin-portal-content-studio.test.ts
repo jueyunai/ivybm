@@ -1132,6 +1132,118 @@ describe('Portal Content Studio', () => {
     globalThis.fetch = originalFetch
   })
 
+  it('blocks mode switch, generate button, and navigation while copy asset upload is in-flight', async () => {
+    const summary: ContentStudioSummary = {
+      items: [
+        {
+          assets: [],
+          body: 'First body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 1,
+          knowledgeSources: [],
+          platform: 'instagram',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'approved',
+          title: 'First Approved Post',
+          updatedAt: '2026-08-31T10:00:00.000Z',
+        },
+      ],
+      options: { assets: [], knowledgeSources: [], platformAccounts: [] },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    let resolveUpload: (value: unknown) => void = () => {}
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn((input, init) => {
+      const url = String(input)
+      if (url === '/api/portal/media' && init?.method === 'POST') {
+        return new Promise((resolve) => {
+          resolveUpload = () =>
+            resolve(
+              new Response(
+                JSON.stringify({
+                  result: {
+                    alt: 'Test upload image',
+                    id: 201,
+                    mimeType: 'image/jpeg',
+                    previewUrl: '/api/media/file/test-upload.jpg',
+                  },
+                }),
+                { headers: { 'content-type': 'application/json' }, status: 201 },
+              ),
+            )
+        })
+      }
+      return originalFetch(input, init)
+    })
+
+    const { container } = render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    // Open generator
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const form = screen.getByRole('heading', { name: /AI生成/ }).closest('.portal-content-studio__form') as HTMLElement
+    const briefTextarea = within(form).getByRole('textbox', { name: '生成需求' })
+    fireEvent.change(briefTextarea, { target: { value: 'Test brief' } })
+
+    // Trigger upload
+    const fileInput = container.querySelector('.portal-content-studio__asset-upload-card input[type="file"]') as HTMLInputElement
+    expect(fileInput).toBeTruthy()
+    const testFile = new File(['image-content'], 'test-facade.jpg', { type: 'image/jpeg' })
+    fireEvent.change(fileInput, { target: { files: [testFile] } })
+
+    // While uploading: mode button disabled, generate button disabled, cancel button disabled, brief disabled
+    const imageModeBtn = within(form).getByRole('button', { name: '图片生成' })
+    const generateBtn = within(form).getByRole('button', { name: /AI生成/ })
+    const cancelBtn = within(form).getByRole('button', { name: '取消' })
+
+    expect(imageModeBtn.hasAttribute('disabled')).toBe(true)
+    expect(generateBtn.hasAttribute('disabled')).toBe(true)
+    expect(cancelBtn.hasAttribute('disabled')).toBe(true)
+    expect(briefTextarea.hasAttribute('disabled')).toBe(true)
+
+    // Mode change must be blocked
+    fireEvent.click(imageModeBtn)
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
+    expect(within(form).queryByRole('textbox', { name: '图片提示词' })).toBeNull()
+
+    // Navigation must be blocked
+    fireEvent.click(screen.getByRole('button', { name: /First Approved Post/ }))
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
+
+    const navEvent = new CustomEvent('portal:sidebar-navigate', {
+      cancelable: true,
+      detail: { href: '/dashboard/leads' },
+    })
+    act(() => {
+      window.dispatchEvent(navEvent)
+    })
+    expect(navEvent.defaultPrevented).toBe(true)
+    expect(router.push).not.toHaveBeenCalled()
+
+    // Resolve upload
+    await act(async () => {
+      resolveUpload({})
+    })
+
+    // Now upload finished: controls re-enabled
+    expect(imageModeBtn.hasAttribute('disabled')).toBe(false)
+    expect(generateBtn.hasAttribute('disabled')).toBe(false)
+    expect(cancelBtn.hasAttribute('disabled')).toBe(false)
+
+    globalThis.fetch = originalFetch
+  })
+
   it('blocks mode switch, drawer close, and navigation while image generation, upload, or adopt is in-flight', async () => {
     const summary: ContentStudioSummary = {
       items: [
