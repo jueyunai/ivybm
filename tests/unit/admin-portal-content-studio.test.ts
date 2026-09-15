@@ -1048,7 +1048,7 @@ describe('Portal Content Studio', () => {
     expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
   })
 
-  it('fences delayed async generation so resolving after unmount or mode switch does not trigger onDone or pollute error', async () => {
+  it('disables input controls and blocks navigation and mode switching while copy generation is in-flight', async () => {
     const summary: ContentStudioSummary = {
       items: [
         {
@@ -1100,25 +1100,154 @@ describe('Portal Content Studio', () => {
     const generateBtn = within(form).getByRole('button', { name: /AI生成/ })
     fireEvent.click(generateBtn)
 
-    // While in flight, mode button should be disabled
+    // 1. Inputs and mode buttons MUST be disabled while generation is in-flight
+    expect(briefTextarea.hasAttribute('disabled')).toBe(true)
     const imageModeBtn = within(form).getByRole('button', { name: '图片生成' })
     expect(imageModeBtn.hasAttribute('disabled')).toBe(true)
+    const cancelBtn = within(form).getByRole('button', { name: '取消' })
+    expect(cancelBtn.hasAttribute('disabled')).toBe(true)
 
-    // User navigates away via draft item click and confirms discard
+    // 2. Draft item clicks and sidebar navigate MUST be blocked while in-flight
     fireEvent.click(screen.getByRole('button', { name: /First Approved Post/ }))
-    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
-    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
-    expect(screen.getByRole('heading', { name: 'First Approved Post' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
 
-    // Now delayed request resolves
+    const navEvent = new CustomEvent('portal:sidebar-navigate', {
+      cancelable: true,
+      detail: { href: '/dashboard/media' },
+    })
+    act(() => {
+      window.dispatchEvent(navEvent)
+    })
+    expect(navEvent.defaultPrevented).toBe(true)
+    expect(router.push).not.toHaveBeenCalled()
+
+    // Now request resolves -> onDone executes, generator closes cleanly
     await act(async () => {
       resolveRequest({})
     })
 
-    // Expect: ContentStudio stays on detail view, onDone was NOT triggered
     expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
     expect(screen.getByRole('heading', { name: 'First Approved Post' })).toBeTruthy()
+
+    globalThis.fetch = originalFetch
+  })
+
+  it('blocks mode switch, drawer close, and navigation while image generation, upload, or adopt is in-flight', async () => {
+    const summary: ContentStudioSummary = {
+      items: [
+        {
+          assets: [],
+          body: 'First body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 1,
+          knowledgeSources: [],
+          platform: 'instagram',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'draft',
+          title: 'Target Draft',
+          updatedAt: '2026-08-31T10:00:00.000Z',
+        },
+      ],
+      options: {
+        assets: [{ id: 42, label: 'Existing Ref', meta: 'image/png', previewUrl: '/ref.png' }],
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    let resolveOperation: (value: unknown) => void = () => {}
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn(() => new Promise((resolve) => {
+      resolveOperation = (val) => resolve(val)
+    })) as unknown as typeof fetch
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    // Open generator and switch to image mode
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
+
+    const form = screen.getByRole('heading', { name: /AI生成/ }).closest('.portal-content-studio__form') as HTMLElement
+    const promptTextarea = within(form).getByRole('textbox', { name: '图片提示词' })
+    fireEvent.change(promptTextarea, { target: { value: 'A futuristic facade' } })
+
+    // 1. Trigger generate image
+    const generateImgBtn = within(form).getByRole('button', { name: '生成图片' })
+    fireEvent.click(generateImgBtn)
+
+    // While generating image: mode buttons disabled, prompt disabled, navigation blocked
+    const copyModeBtn = within(form).getByRole('button', { name: '社媒内容' })
+    expect(copyModeBtn.hasAttribute('disabled')).toBe(true)
+    expect(promptTextarea.hasAttribute('disabled')).toBe(true)
+
+    fireEvent.click(copyModeBtn)
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
+
+    const navEvent = new CustomEvent('portal:sidebar-navigate', {
+      cancelable: true,
+      detail: { href: '/dashboard/leads' },
+    })
+    act(() => {
+      window.dispatchEvent(navEvent)
+    })
+    expect(navEvent.defaultPrevented).toBe(true)
+    expect(router.push).not.toHaveBeenCalled()
+
+    // Resolve generate image
+    await act(async () => {
+      resolveOperation({
+        ok: true,
+        json: async () => ({
+          media: { id: 88, previewUrl: '/generated-88.png' },
+          revisedPrompt: 'Revised prompt',
+        }),
+      })
+    })
+
+    // Image preview is rendered
+    expect(screen.getByText('采用为草稿资产')).toBeTruthy()
+    expect(copyModeBtn.hasAttribute('disabled')).toBe(false)
+
+    // 2. Trigger adopt image
+    const adoptBtn = screen.getByRole('button', { name: '采用为草稿资产' })
+    fireEvent.click(adoptBtn)
+
+    // While adopt in flight: mode buttons disabled, adopt disabled, navigation blocked
+    expect(copyModeBtn.hasAttribute('disabled')).toBe(true)
+    expect(adoptBtn.hasAttribute('disabled')).toBe(true)
+
+    const navEvent2 = new CustomEvent('portal:sidebar-navigate', {
+      cancelable: true,
+      detail: { href: '/dashboard/leads' },
+    })
+    act(() => {
+      window.dispatchEvent(navEvent2)
+    })
+    expect(navEvent2.defaultPrevented).toBe(true)
+    expect(router.push).not.toHaveBeenCalled()
+
+    // Resolve adopt
+    await act(async () => {
+      resolveOperation({
+        ok: true,
+        json: async () => ({ content: { id: 1, updatedAt: '2026-08-31T11:00:00.000Z' } }),
+      })
+    })
+
+    // Adopt completes and closes drawer cleanly
+    expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
 
     globalThis.fetch = originalFetch
   })

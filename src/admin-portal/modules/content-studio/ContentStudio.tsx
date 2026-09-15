@@ -85,6 +85,11 @@ export function ContentStudio({
   const [activeAction, setActiveAction] = useState<ActiveAction>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isDirty, setIsDirty] = useState(false)
+  const [editorBusy, setEditorBusy] = useState(false)
+  const editorBusyRef = useRef(editorBusy)
+  useEffect(() => {
+    editorBusyRef.current = editorBusy
+  }, [editorBusy])
   type PendingTransition = { commit: () => void; onCancel?: () => void }
   const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null)
   const isDirtyRef = useRef(isDirty)
@@ -94,6 +99,7 @@ export function ContentStudio({
 
   const requestTransition = useCallback(
     (action: () => void, onCancel?: () => void) => {
+      if (editorBusyRef.current) return
       if (isDirtyRef.current) {
         setPendingTransition({ commit: action, onCancel })
       } else {
@@ -124,13 +130,13 @@ export function ContentStudio({
   }, [hasActivePublication, router])
 
   useEffect(() => {
-    if (!isDirty) return
+    if (!isDirty && !editorBusy) return
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault()
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [isDirty])
+  }, [isDirty, editorBusy])
 
   useEffect(() => {
     const handleSidebarNavigate = (event: Event) => {
@@ -138,6 +144,11 @@ export function ContentStudio({
       const targetHref = customEvent.detail?.href
       const closeNav = customEvent.detail?.onClose
       if (!targetHref) return
+
+      if (editorBusyRef.current) {
+        event.preventDefault()
+        return
+      }
 
       if (isDirtyRef.current) {
         event.preventDefault()
@@ -209,6 +220,7 @@ export function ContentStudio({
   }
 
   const updateFilters = (name: 'status' | 'platform', value: string) => {
+    if (editorBusyRef.current) return
     const targetUrl = buildStudioHref({
       ...summary?.query,
       [name]: value,
@@ -221,6 +233,7 @@ export function ContentStudio({
 
   const handleFilterSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (editorBusyRef.current) return
     const formData = new FormData(event.currentTarget)
     const targetUrl = buildStudioHref({
       platform:
@@ -243,8 +256,9 @@ export function ContentStudio({
         </div>
         <div className="portal-content-studio__intro-actions">
           <Button
+            disabled={editorBusy}
             onClick={() => {
-              if (activeAction === 'generator') return
+              if (activeAction === 'generator' || editorBusy) return
               requestTransition(() => {
                 setActiveAction('generator')
                 setFeedback(null)
@@ -256,8 +270,9 @@ export function ContentStudio({
             {copy.generate}
           </Button>
           <Button
+            disabled={editorBusy}
             onClick={() => {
-              if (activeAction === 'create') return
+              if (activeAction === 'create' || editorBusy) return
               requestTransition(() => {
                 setActiveAction('create')
                 setFeedback(null)
@@ -313,14 +328,18 @@ export function ContentStudio({
             />
           </div>
           <div className="portal-content-studio__filter-actions">
-            <Button size="compact" type="submit">
+            <Button disabled={editorBusy} size="compact" type="submit">
               <IconSearch aria-hidden="true" size={15} stroke={1.8} />
               {copy.filter}
             </Button>
-            <Button asChild size="compact" variant="ghost">
+            <Button asChild disabled={editorBusy} size="compact" variant="ghost">
               <Link
                 href="/dashboard/content-studio"
                 onClick={(event) => {
+                  if (editorBusyRef.current) {
+                    event.preventDefault()
+                    return
+                  }
                   if (isDirtyRef.current) {
                     event.preventDefault()
                     requestTransition(() => {
@@ -364,6 +383,7 @@ export function ContentStudio({
                         : undefined
                     }
                     onClick={() => {
+                      if (editorBusyRef.current) return
                       requestTransition(() => {
                         setSelectedId(item.id)
                         closeAction()
@@ -389,6 +409,7 @@ export function ContentStudio({
             <Pagination
               copy={copy}
               onNavigate={(targetUrl) => {
+                if (editorBusyRef.current) return
                 requestTransition(() => {
                   closeAction()
                   router.push(targetUrl)
@@ -409,6 +430,7 @@ export function ContentStudio({
             <GenerateDraftEditor
               copy={copy}
               drafts={summary.items.filter((item) => item.status === 'draft')}
+              onBusyChange={setEditorBusy}
               onClose={closeAction}
               onDirtyChange={setIsDirty}
               onDone={onDone}
@@ -425,6 +447,7 @@ export function ContentStudio({
               key={`${activeAction}:${activeAction === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
               copy={copy}
               item={activeAction === 'edit' ? selected : null}
+              onBusyChange={setEditorBusy}
               options={summary.options}
               onClose={closeAction}
               onDirtyChange={setIsDirty}
@@ -1046,6 +1069,7 @@ function useAssetUploader({
 function DraftEditor({
   copy,
   item,
+  onBusyChange,
   onClose,
   onDirtyChange,
   onDone,
@@ -1053,6 +1077,7 @@ function DraftEditor({
 }: {
   copy: Copy
   item: ContentStudioItem | null
+  onBusyChange?: (busy: boolean) => void
   onClose: () => void
   onDirtyChange?: (dirty: boolean) => void
   onDone: (message: string) => void
@@ -1120,6 +1145,12 @@ function DraftEditor({
     },
   })
 
+  const editorBusy = busy || uploadBusy
+  useEffect(() => {
+    onBusyChange?.(editorBusy)
+    return () => onBusyChange?.(false)
+  }, [editorBusy, onBusyChange])
+
   const isDirty = useMemo(() => {
     return (
       form.title !== initial.title ||
@@ -1139,6 +1170,7 @@ function DraftEditor({
   }, [isDirty, onDirtyChange])
 
   const save = async () => {
+    if (editorBusy) return
     setBusy(true)
     setError(null)
     try {
@@ -1171,7 +1203,7 @@ function DraftEditor({
           <IconSparkles aria-hidden="true" size={18} />
           <h3>{item ? copy.edit : copy.add}</h3>
         </div>
-        <Button onClick={onClose} size="compact" variant="ghost">
+        <Button disabled={editorBusy} onClick={onClose} size="compact" variant="ghost">
           {copy.cancel}
         </Button>
       </header>
@@ -1179,6 +1211,7 @@ function DraftEditor({
       <div className="portal-content-studio__form-grid">
         <Field label={copy.titleField} required>
           <input
+            disabled={editorBusy}
             maxLength={180}
             onChange={(event) => update('title', event.target.value)}
             value={form.title}
@@ -1187,6 +1220,7 @@ function DraftEditor({
         <Field label={copy.platform} required>
           <UiSelect
             ariaLabel={copy.platform}
+            disabled={editorBusy}
             onChange={(val) => update('platform', val as typeof form.platform)}
             options={(['facebook', 'instagram', 'linkedin'] as const).map((platform) => ({
               label: copy.platformLabels[platform],
@@ -1198,6 +1232,7 @@ function DraftEditor({
         <Field label={copy.locale} required>
           <UiSelect
             ariaLabel={copy.locale}
+            disabled={editorBusy}
             onChange={(val) => update('contentLocale', val as typeof form.contentLocale)}
             options={[
               { label: 'EN', value: 'en' },
@@ -1209,6 +1244,7 @@ function DraftEditor({
         <Field label={copy.type}>
           <UiSelect
             ariaLabel={copy.type}
+            disabled={editorBusy}
             onChange={(val) => update('contentType', val as typeof form.contentType)}
             options={(['post', 'carousel', 'long-form'] as const).map((type) => ({
               label: copy.typeLabels[type],
@@ -1220,6 +1256,7 @@ function DraftEditor({
         <Field label={copy.body} required wide>
           <textarea
             dir={form.contentLocale === 'ar' ? 'rtl' : undefined}
+            disabled={editorBusy}
             maxLength={30_000}
             onChange={(event) => update('body', event.target.value)}
             rows={10}
@@ -1229,6 +1266,7 @@ function DraftEditor({
         <Field label={copy.assets} wide>
           <MultiOptions
             assetPreviews
+            disabled={editorBusy}
             onUpload={handleUpload}
             options={combinedAssets}
             selected={form.assets}
@@ -1245,6 +1283,7 @@ function DraftEditor({
         </Field>
         <Field label={copy.knowledge} wide>
           <MultiOptions
+            disabled={editorBusy}
             emptyMessage={copy.noKnowledgeOptions}
             options={options.knowledgeSources}
             selected={form.knowledgeSources}
@@ -1261,12 +1300,13 @@ function DraftEditor({
       </div>
       <FactEditor
         copy={copy}
+        disabled={editorBusy}
         onChange={(sourceReferences) => update('sourceReferences', sourceReferences)}
         sources={selectedSources}
         value={form.sourceReferences}
       />
       <footer>
-        <Button disabled={busy} onClick={() => void save()}>
+        <Button disabled={editorBusy} onClick={() => void save()}>
           {item ? copy.save : copy.create}
         </Button>
       </footer>
@@ -1276,11 +1316,13 @@ function DraftEditor({
 
 function FactEditor({
   copy,
+  disabled = false,
   onChange,
   sources,
   value,
 }: {
   copy: Copy
+  disabled?: boolean
   onChange: (value: ContentStudioSourceReference[]) => void
   sources: string[]
   value: ContentStudioSourceReference[]
@@ -1292,7 +1334,7 @@ function FactEditor({
       <header>
         <h4>{copy.facts}</h4>
         <Button
-          disabled={sources.length === 0}
+          disabled={disabled || sources.length === 0}
           onClick={() =>
             onChange([...value, { claim: '', id: crypto.randomUUID(), source: sources[0] ?? '' }])
           }
@@ -1309,6 +1351,7 @@ function FactEditor({
         return (
           <div key={fact.id ?? `existing:${index}`}>
             <input
+              disabled={disabled}
               maxLength={500}
               onChange={(event) => update(index, 'claim', event.target.value)}
               placeholder={copy.claim}
@@ -1316,6 +1359,7 @@ function FactEditor({
             />
             <UiSelect
               ariaLabel={copy.source}
+              disabled={disabled}
               onChange={(next) => update(index, 'source', next)}
               options={[
                 { label: copy.source, value: '' },
@@ -1324,6 +1368,7 @@ function FactEditor({
               value={fact.source}
             />
             <Button
+              disabled={disabled}
               onClick={() => onChange(value.filter((_, current) => current !== index))}
               size="compact"
               variant="ghost"
@@ -1368,6 +1413,7 @@ function persistPlatforms(platforms: Array<ContentStudioItem['platform']>): void
 function GenerateDraftEditor({
   copy,
   drafts,
+  onBusyChange,
   onClose,
   onDirtyChange,
   onDone,
@@ -1376,6 +1422,7 @@ function GenerateDraftEditor({
 }: {
   copy: Copy
   drafts: ContentStudioItem[]
+  onBusyChange?: (busy: boolean) => void
   onClose: () => void
   onDirtyChange?: (dirty: boolean) => void
   onDone: (message: string) => void
@@ -1384,9 +1431,11 @@ function GenerateDraftEditor({
 }) {
   const [mode, setMode] = useState<'copy' | 'image'>('copy')
   const [imageDirty, setImageDirty] = useState(false)
+  const [imageBusy, setImageBusy] = useState(false)
   const [pendingModeTransition, setPendingModeTransition] = useState<(() => void) | null>(null)
   const [imageEditorResetKey, setImageEditorResetKey] = useState(0)
   const generationEpochRef = useRef(0)
+  const formRevisionRef = useRef(0)
   useEffect(() => {
     return () => {
       generationEpochRef.current += 1
@@ -1411,6 +1460,12 @@ function GenerateDraftEditor({
   const [error, setError] = useState<string | null>(null)
   const [generationProgress, setGenerationProgress] = useState<string | null>(null)
 
+  const editorBusy = busy || imageBusy
+  useEffect(() => {
+    onBusyChange?.(editorBusy)
+    return () => onBusyChange?.(false)
+  }, [editorBusy, onBusyChange])
+
   const copyDirty =
     form.brief.trim().length > 0 ||
     form.assets.length > 0 ||
@@ -1423,7 +1478,7 @@ function GenerateDraftEditor({
   const currentModeDirty = mode === 'image' ? imageDirty : copyDirty
 
   const requestModeChange = (targetMode: 'copy' | 'image') => {
-    if (mode === targetMode || busy) return
+    if (mode === targetMode || editorBusy) return
     if (currentModeDirty) {
       setPendingModeTransition(() => () => {
         generationEpochRef.current += 1
@@ -1431,6 +1486,7 @@ function GenerateDraftEditor({
         setError(null)
         setGenerationProgress(null)
         if (mode === 'copy') {
+          formRevisionRef.current += 1
           setForm((current) => ({
             ...current,
             assets: [],
@@ -1466,6 +1522,7 @@ function GenerateDraftEditor({
     copy,
     initialAssets: options.assets,
     onAssetsUploaded: (newIds) => {
+      formRevisionRef.current += 1
       setForm((current) => {
         return {
           ...current,
@@ -1476,9 +1533,12 @@ function GenerateDraftEditor({
     },
   })
 
-  const update = <Key extends keyof typeof form>(key: Key, value: (typeof form)[Key]) =>
+  const update = <Key extends keyof typeof form>(key: Key, value: (typeof form)[Key]) => {
+    formRevisionRef.current += 1
     setForm((current) => ({ ...current, [key]: value }))
+  }
   const toggle = (key: 'assets' | 'knowledgeSources', value: string) => {
+    formRevisionRef.current += 1
     if (key === 'assets') {
       const nextAssets = form.assets.includes(value)
         ? form.assets.filter((id) => id !== value)
@@ -1503,6 +1563,7 @@ function GenerateDraftEditor({
     })
   }
   const togglePlatform = (platform: ContentStudioItem['platform']) => {
+    formRevisionRef.current += 1
     setForm((current) => {
       const exists = current.platforms.includes(platform)
       const nextPlatforms = exists
@@ -1512,6 +1573,7 @@ function GenerateDraftEditor({
     })
   }
   const selectAllPlatforms = () => {
+    formRevisionRef.current += 1
     const all: Array<ContentStudioItem['platform']> = ['facebook', 'instagram', 'linkedin']
     setForm((current) => ({
       ...current,
@@ -1519,6 +1581,7 @@ function GenerateDraftEditor({
     }))
   }
   const clearPlatforms = () => {
+    formRevisionRef.current += 1
     setForm((current) => ({
       ...current,
       platforms: [],
@@ -1529,6 +1592,7 @@ function GenerateDraftEditor({
   const generate = async () => {
     if (!canGenerate || busy) return
     const currentEpoch = ++generationEpochRef.current
+    const currentRevision = formRevisionRef.current
     setBusy(true)
     setError(null)
     try {
@@ -1577,7 +1641,12 @@ function GenerateDraftEditor({
           ...payload,
           idempotencyKey,
         })
-        if (generationEpochRef.current !== currentEpoch) return
+        if (
+          generationEpochRef.current !== currentEpoch ||
+          formRevisionRef.current !== currentRevision
+        ) {
+          return
+        }
 
         batch.succeededPlatforms.push(platform)
         if (
@@ -1597,7 +1666,12 @@ function GenerateDraftEditor({
           batch.generatedAssets = generatedAssets
         }
       }
-      if (generationEpochRef.current !== currentEpoch) return
+      if (
+        generationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
       batchRef.current = null
       onDirtyChange?.(false)
       onDone(
@@ -1606,7 +1680,12 @@ function GenerateDraftEditor({
           : copy.generationComplete,
       )
     } catch (caught) {
-      if (generationEpochRef.current !== currentEpoch) return
+      if (
+        generationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
       if (generationEpochRef.current === currentEpoch) {
@@ -1622,7 +1701,7 @@ function GenerateDraftEditor({
           <IconSparkles aria-hidden="true" size={18} />
           <h3>{copy.generate}</h3>
         </div>
-        <Button onClick={onClose} size="compact" variant="ghost">
+        <Button disabled={editorBusy} onClick={onClose} size="compact" variant="ghost">
           {copy.cancel}
         </Button>
       </header>
@@ -1630,7 +1709,7 @@ function GenerateDraftEditor({
       <div aria-label={copy.generationMode} className="portal-content-studio__generation-modes">
         <Button
           aria-pressed={mode === 'copy'}
-          disabled={busy}
+          disabled={editorBusy}
           onClick={() => requestModeChange('copy')}
           size="compact"
           variant={mode === 'copy' ? 'primary' : 'ghost'}
@@ -1639,7 +1718,7 @@ function GenerateDraftEditor({
         </Button>
         <Button
           aria-pressed={mode === 'image'}
-          disabled={busy}
+          disabled={editorBusy}
           onClick={() => requestModeChange('image')}
           size="compact"
           variant={mode === 'image' ? 'primary' : 'ghost'}
@@ -1652,6 +1731,7 @@ function GenerateDraftEditor({
           copy={copy}
           drafts={drafts}
           key={imageEditorResetKey}
+          onBusyChange={setImageBusy}
           onDirtyChange={setImageDirty}
           onDone={onDone}
           options={options}
@@ -1666,27 +1746,27 @@ function GenerateDraftEditor({
               <span className="portal-content-studio__intent-hint">{copy.quickIntentsHint}</span>
             </div>
             <div className="portal-content-studio__intent-capsules">
-              {(['shipment', 'ceiling', 'perforation', 'mockup'] as const).map((intentKey) =>
-                (() => {
-                  const IntentIcon = QUICK_INTENT_ICONS[intentKey]
-                  return (
-                    <button
-                      className="portal-content-studio__capsule"
-                      key={intentKey}
-                      onClick={() => update('brief', copy.quickIntentDescriptions[intentKey])}
-                      type="button"
-                    >
-                      <IntentIcon aria-hidden="true" size={15} stroke={1.8} />
-                      {copy.quickIntents[intentKey]}
-                    </button>
-                  )
-                })(),
-              )}
+              {(['shipment', 'ceiling', 'perforation', 'mockup'] as const).map((intentKey) => {
+                const IntentIcon = QUICK_INTENT_ICONS[intentKey]
+                return (
+                  <button
+                    className="portal-content-studio__capsule"
+                    disabled={busy}
+                    key={intentKey}
+                    onClick={() => update('brief', copy.quickIntentDescriptions[intentKey])}
+                    type="button"
+                  >
+                    <IntentIcon aria-hidden="true" size={15} stroke={1.8} />
+                    {copy.quickIntents[intentKey]}
+                  </button>
+                )
+              })}
             </div>
           </div>
           <div className="portal-content-studio__form-grid">
             <Field label={copy.brief} required wide>
               <textarea
+                disabled={busy}
                 maxLength={2000}
                 onChange={(event) => update('brief', event.target.value)}
                 placeholder={
@@ -1704,6 +1784,7 @@ function GenerateDraftEditor({
                 <div className="portal-content-studio__platform-actions">
                   <button
                     className="portal-content-studio__platform-link"
+                    disabled={busy}
                     onClick={selectAllPlatforms}
                     type="button"
                   >
@@ -1712,6 +1793,7 @@ function GenerateDraftEditor({
                   <span>·</span>
                   <button
                     className="portal-content-studio__platform-link"
+                    disabled={busy}
                     onClick={clearPlatforms}
                     type="button"
                   >
@@ -1730,6 +1812,7 @@ function GenerateDraftEditor({
                     <button
                       aria-pressed={selected}
                       className={`portal-content-studio__platform-card ${selected ? 'is-selected' : ''}`}
+                      disabled={busy}
                       key={key}
                       onClick={() => togglePlatform(key)}
                       type="button"
@@ -1751,6 +1834,7 @@ function GenerateDraftEditor({
             <Field label={copy.locale} required>
               <UiSelect
                 ariaLabel={copy.locale}
+                disabled={busy}
                 onChange={(val) => update('contentLocale', val as typeof form.contentLocale)}
                 options={[
                   { label: 'English (EN)', value: 'en' },
@@ -1762,6 +1846,7 @@ function GenerateDraftEditor({
             <Field label={copy.assets} wide>
               <MultiOptions
                 assetPreviews
+                disabled={busy}
                 onUpload={handleUpload}
                 options={combinedAssets}
                 selected={form.assets}
@@ -1779,6 +1864,7 @@ function GenerateDraftEditor({
                 <label className="portal-content-studio__auto-image-toggle">
                   <input
                     checked={form.autoGenerateImage}
+                    disabled={busy}
                     onChange={(event) => update('autoGenerateImage', event.target.checked)}
                     type="checkbox"
                   />
@@ -1791,6 +1877,7 @@ function GenerateDraftEditor({
             <Field label={copy.knowledge} wide>
               <span className="portal-content-studio__field-hint">{copy.knowledgeHint}</span>
               <MultiOptions
+                disabled={busy}
                 emptyMessage={copy.noKnowledgeOptions}
                 options={options.knowledgeSources}
                 selected={form.knowledgeSources}
@@ -1843,6 +1930,7 @@ type GeneratedImage = {
 function ImageGenerationEditor({
   copy,
   drafts,
+  onBusyChange,
   onDirtyChange,
   onDone,
   options,
@@ -1850,6 +1938,7 @@ function ImageGenerationEditor({
 }: {
   copy: Copy
   drafts: ContentStudioItem[]
+  onBusyChange?: (busy: boolean) => void
   onDirtyChange?: (dirty: boolean) => void
   onDone: (message: string) => void
   options: ContentStudioSummary['options']
@@ -1873,11 +1962,17 @@ function ImageGenerationEditor({
   const [busy, setBusy] = useState<'adopt' | 'generate' | 'upload' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const operationEpochRef = useRef(0)
+  const formRevisionRef = useRef(0)
   useEffect(() => {
     return () => {
       operationEpochRef.current += 1
     }
   }, [])
+
+  useEffect(() => {
+    onBusyChange?.(busy !== null)
+    return () => onBusyChange?.(false)
+  }, [busy, onBusyChange])
 
   const isDirty =
     prompt.trim().length > 0 ||
@@ -1899,8 +1994,9 @@ function ImageGenerationEditor({
   const targetDraft = drafts.find((draft) => draft.id === targetDraftId) ?? null
 
   const upload = async () => {
-    if (!referenceFile) return
+    if (!referenceFile || busy !== null) return
     const currentEpoch = ++operationEpochRef.current
+    const currentRevision = formRevisionRef.current
     setBusy('upload')
     setError(null)
     const fingerprint = JSON.stringify({
@@ -1937,7 +2033,12 @@ function ImageGenerationEditor({
         throw new Error(body.error?.message || copy.unknown)
       }
       uploadCommand.receivedResponse(key)
-      if (operationEpochRef.current !== currentEpoch) return
+      if (
+        operationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
 
       const uploaded = {
         id: body.result.id,
@@ -1945,10 +2046,16 @@ function ImageGenerationEditor({
         meta: body.result.mimeType ?? referenceFile.type,
         ...(body.result.previewUrl ? { previewUrl: body.result.previewUrl } : {}),
       }
+      formRevisionRef.current += 1
       setUploadedReference(uploaded)
       setReferenceMediaId(uploaded.id)
     } catch (caught) {
-      if (operationEpochRef.current !== currentEpoch) return
+      if (
+        operationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
       if (operationEpochRef.current === currentEpoch) {
@@ -1958,7 +2065,9 @@ function ImageGenerationEditor({
   }
 
   const generate = async () => {
+    if (busy !== null) return
     const currentEpoch = ++operationEpochRef.current
+    const currentRevision = formRevisionRef.current
     const input = { prompt: prompt.trim(), referenceMediaId, size }
     const key = generateCommand.key(JSON.stringify(input))
     setBusy('generate')
@@ -1985,7 +2094,12 @@ function ImageGenerationEditor({
         throw new Error(copy.imagePreviewUnavailable)
       }
       generateCommand.receivedResponse(key)
-      if (operationEpochRef.current !== currentEpoch) return
+      if (
+        operationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
 
       setGenerated({
         id: body.media.id,
@@ -1993,7 +2107,12 @@ function ImageGenerationEditor({
         revisedPrompt: body.revisedPrompt ?? null,
       })
     } catch (caught) {
-      if (operationEpochRef.current !== currentEpoch) return
+      if (
+        operationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
       if (operationEpochRef.current === currentEpoch) {
@@ -2003,8 +2122,9 @@ function ImageGenerationEditor({
   }
 
   const adopt = async () => {
-    if (!generated || !targetDraft) return
+    if (!generated || !targetDraft || busy !== null) return
     const currentEpoch = ++operationEpochRef.current
+    const currentRevision = formRevisionRef.current
     const input = { action: 'adopt-image', mediaId: generated.id, updatedAt: targetDraft.updatedAt }
     const key = adoptCommand.key(JSON.stringify({ id: targetDraft.id, ...input }))
     setBusy('adopt')
@@ -2017,12 +2137,22 @@ function ImageGenerationEditor({
         () => adoptCommand.receivedResponse(key),
         key,
       )
-      if (operationEpochRef.current !== currentEpoch) return
+      if (
+        operationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
 
       onDirtyChange?.(false)
       onDone(copy.imageAdopted)
     } catch (caught) {
-      if (operationEpochRef.current !== currentEpoch) return
+      if (
+        operationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
       if (operationEpochRef.current === currentEpoch) {
@@ -2038,8 +2168,10 @@ function ImageGenerationEditor({
       <div className="portal-content-studio__form-grid">
         <Field label={copy.imagePrompt} wide>
           <textarea
+            disabled={busy !== null}
             maxLength={2000}
             onChange={(event) => {
+              formRevisionRef.current += 1
               setPrompt(event.target.value)
               setGenerated(null)
             }}
@@ -2050,7 +2182,9 @@ function ImageGenerationEditor({
         <Field label={copy.imageSize}>
           <UiSelect
             ariaLabel={copy.imageSize}
+            disabled={busy !== null}
             onChange={(val) => {
+              formRevisionRef.current += 1
               setSize(val as typeof size)
               setGenerated(null)
             }}
@@ -2065,7 +2199,9 @@ function ImageGenerationEditor({
         <Field label={copy.referenceAsset}>
           <UiSelect
             ariaLabel={copy.referenceAsset}
+            disabled={busy !== null}
             onChange={(val) => {
+              formRevisionRef.current += 1
               setReferenceMediaId(val ? Number(val) : null)
               setGenerated(null)
             }}
@@ -2083,7 +2219,10 @@ function ImageGenerationEditor({
               accept="image/avif,image/jpeg,image/png,image/webp"
               disabled={busy !== null}
               id="content-studio-reference-upload"
-              onChange={(event) => setReferenceFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                formRevisionRef.current += 1
+                setReferenceFile(event.target.files?.[0] ?? null)
+              }}
               type="file"
             />
             <Button
@@ -2130,6 +2269,7 @@ function ImageGenerationEditor({
           <Field label={copy.targetDraft}>
             <UiSelect
               ariaLabel={copy.targetDraft}
+              disabled={busy !== null}
               onChange={(val) => setTargetDraftId(val ? Number(val) : null)}
               options={[
                 { label: copy.selectDraft, value: '' },
@@ -2430,6 +2570,7 @@ function AssetThumbnail({ option }: { option: ContentStudioSummary['options']['a
 
 function MultiOptions({
   assetPreviews = false,
+  disabled = false,
   emptyMessage,
   onUpload,
   options,
@@ -2440,6 +2581,7 @@ function MultiOptions({
   uploadTitle,
 }: {
   assetPreviews?: boolean
+  disabled?: boolean
   emptyMessage?: string
   onUpload?: (files: FileList | File[]) => Promise<void>
   options:
@@ -2456,7 +2598,7 @@ function MultiOptions({
   const handleDragOver = (event: React.DragEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    if (!uploadBusy) setIsDragOver(true)
+    if (!uploadBusy && !disabled) setIsDragOver(true)
   }
 
   const handleDragLeave = (event: React.DragEvent) => {
@@ -2469,7 +2611,7 @@ function MultiOptions({
     event.preventDefault()
     event.stopPropagation()
     setIsDragOver(false)
-    if (uploadBusy || !onUpload) return
+    if (uploadBusy || disabled || !onUpload) return
     const files = event.dataTransfer.files
     if (files && files.length > 0) {
       void onUpload(files)
@@ -2478,24 +2620,26 @@ function MultiOptions({
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
-    if (files && files.length > 0 && onUpload) {
+    if (files && files.length > 0 && onUpload && !disabled) {
       void onUpload(files)
     }
     event.target.value = ''
   }
 
   return (
-    <div className={`portal-content-studio__multi-options${assetPreviews ? ' is-assets' : ''}`}>
+    <div
+      className={`portal-content-studio__multi-options${assetPreviews ? ' is-assets' : ''}${disabled ? ' is-disabled' : ''}`}
+    >
       {assetPreviews && onUpload ? (
         <label
-          className={`portal-content-studio__asset-upload-card${uploadBusy ? ' is-busy' : ''}${isDragOver ? ' is-drag-over' : ''}`}
+          className={`portal-content-studio__asset-upload-card${uploadBusy ? ' is-busy' : ''}${isDragOver ? ' is-drag-over' : ''}${disabled ? ' is-disabled' : ''}`}
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
           <input
             accept="image/avif,image/jpeg,image/png,image/webp"
-            disabled={uploadBusy}
+            disabled={disabled || uploadBusy}
             onChange={handleFileChange}
             ref={fileInputRef}
             style={{ display: 'none' }}
@@ -2518,13 +2662,14 @@ function MultiOptions({
           const checked = selected.includes(String(option.id))
           return (
             <label
-              className={`${assetPreviews ? 'portal-content-studio__asset-option' : ''}${checked ? ' is-selected' : ''}`}
+              className={`${assetPreviews ? 'portal-content-studio__asset-option' : ''}${checked ? ' is-selected' : ''}${disabled ? ' is-disabled' : ''}`}
               key={option.id}
             >
               <input
                 aria-label={option.label}
                 checked={checked}
-                onChange={() => toggle(String(option.id))}
+                disabled={disabled}
+                onChange={() => !disabled && toggle(String(option.id))}
                 type="checkbox"
               />
               {assetPreviews ? <AssetThumbnail option={option} /> : null}
