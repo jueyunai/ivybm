@@ -138,19 +138,17 @@ export function PortalSidebar({
                           className={`portal-sidebar__link${active ? ' is-active' : ''}`}
                           href={portalModule.href}
                           onClick={(event) => {
-                            if (typeof window !== 'undefined') {
-                              const navEvent = new CustomEvent('portal:sidebar-navigate', {
-                                cancelable: true,
-                                detail: { href: portalModule.href },
-                              })
-                              const allowed = window.dispatchEvent(navEvent)
-                              if (!allowed) {
-                                event.preventDefault()
-                                return
-                              }
+                            const navEvent = new CustomEvent('portal:sidebar-navigate', {
+                              cancelable: true,
+                              detail: { href: portalModule.href, onClose },
+                            })
+                            const allowed = window.dispatchEvent(navEvent)
+                            if (!allowed) {
+                              event.preventDefault()
+                              return
                             }
                             onClose?.()
-                            if (active && typeof window !== 'undefined') {
+                            if (active) {
                               window.dispatchEvent(
                                 new CustomEvent('portal:navigate-active', {
                                   detail: { href: portalModule.href },

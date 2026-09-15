@@ -11,6 +11,7 @@ import {
   loadContentStudioPageData,
   type ContentStudioSummary,
 } from '@/admin-portal/modules/content-studio/getContentStudioPage'
+import { selectUiOption } from './support/uiSelect'
 
 const router = { push: vi.fn(), refresh: vi.fn() }
 
@@ -678,9 +679,10 @@ describe('Portal Content Studio', () => {
     expect(router.push).not.toHaveBeenCalled()
 
     // Trigger sidebar navigation again and confirm ("放弃并切换") -> navigates to /dashboard/media
+    const onCloseSidebar = vi.fn()
     navEvent = new CustomEvent('portal:sidebar-navigate', {
       cancelable: true,
-      detail: { href: '/dashboard/media' },
+      detail: { href: '/dashboard/media', onClose: onCloseSidebar },
     })
     act(() => {
       window.dispatchEvent(navEvent)
@@ -691,6 +693,7 @@ describe('Portal Content Studio', () => {
     fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
     expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
     expect(router.push).toHaveBeenCalledWith('/dashboard/media')
+    expect(onCloseSidebar).toHaveBeenCalledTimes(1)
 
     // 4. Test clicking active sidebar link (/dashboard/content-studio) while dirty
     fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
@@ -699,9 +702,10 @@ describe('Portal Content Studio', () => {
       target: { value: 'Another Unsaved Draft' },
     })
 
+    const onCloseActive = vi.fn()
     const activeNavEvent = new CustomEvent('portal:sidebar-navigate', {
       cancelable: true,
-      detail: { href: '/dashboard/content-studio' },
+      detail: { href: '/dashboard/content-studio', onClose: onCloseActive },
     })
     act(() => {
       window.dispatchEvent(activeNavEvent)
@@ -713,6 +717,151 @@ describe('Portal Content Studio', () => {
     expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
     expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
     expect(screen.getByRole('heading', { name: 'Second Draft Post' })).toBeTruthy()
+    expect(onCloseActive).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats dropdown changes in create mode as dirty and triggers confirmation dialog', () => {
+    const summary: ContentStudioSummary = {
+      items: [
+        {
+          assets: [],
+          body: 'First body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 1,
+          knowledgeSources: [],
+          platform: 'instagram',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'approved',
+          title: 'First Approved Post',
+          updatedAt: '2026-08-31T10:00:00.000Z',
+        },
+        {
+          assets: [],
+          body: 'Second body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 2,
+          knowledgeSources: [],
+          platform: 'linkedin',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'draft',
+          title: 'Second Draft Post',
+          updatedAt: '2026-08-31T11:00:00.000Z',
+        },
+      ],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 2, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    // Open "新建草稿"
+    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
+    const editor = screen.getByRole('heading', { name: /(新建草稿|手动新建)/ }).closest('.portal-content-studio__form') as HTMLElement
+    expect(editor).toBeTruthy()
+
+    // Change platform from LinkedIn to Facebook via UiSelect without entering any text
+    const platformTrigger = within(editor).getByRole('combobox', { name: '平台' })
+    selectUiOption(platformTrigger, 'Facebook')
+
+    // Click second draft item in list -> confirmation dialog MUST appear because platform was changed
+    const secondItemBtn = screen.getByRole('button', { name: /Second Draft Post/ })
+    fireEvent.click(secondItemBtn)
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+
+    // Cancel -> stays in editor
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
+
+    // Click again and confirm -> closes editor and switches
+    fireEvent.click(secondItemBtn)
+    fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
+    expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Second Draft Post' })).toBeTruthy()
+  })
+
+  it('clears error banner and generation progress when confirming sub-mode change in generator', async () => {
+    const summary: ContentStudioSummary = {
+      items: [
+        {
+          assets: [],
+          body: 'First body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 1,
+          knowledgeSources: [],
+          platform: 'instagram',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'approved',
+          title: 'First Approved Post',
+          updatedAt: '2026-08-31T10:00:00.000Z',
+        },
+      ],
+      options: {
+        assets: [],
+        knowledgeSources: [],
+        platformAccounts: [],
+      },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: true,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false,
+      json: async () => ({ error: { message: 'Failed generation server error' } }),
+    })) as unknown as typeof fetch
+
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    // Open generator
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const form = screen.getByRole('heading', { name: /AI生成/ }).closest('.portal-content-studio__form') as HTMLElement
+    const briefTextarea = within(form).getByRole('textbox', { name: '生成需求' })
+    fireEvent.change(briefTextarea, { target: { value: 'Brief requirements' } })
+
+    // Trigger generate -> fails and displays error banner
+    fireEvent.click(within(form).getByRole('button', { name: /AI生成/ }))
+    await screen.findByText('Failed generation server error')
+    expect(within(form).getByRole('alert')).toBeTruthy()
+
+    // Switch to image mode -> confirmation dialog
+    fireEvent.click(within(form).getByRole('button', { name: '图片生成' }))
+    expect(screen.getByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+
+    // Confirm switch -> error banner MUST be cleared
+    fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(within(form).queryByRole('alert')).toBeNull()
+
+    globalThis.fetch = originalFetch
   })
 
   it('guards sub-mode switching within generator and preserves composite dirty state across copy and image modes', () => {

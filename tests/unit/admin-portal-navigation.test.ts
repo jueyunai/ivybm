@@ -117,7 +117,7 @@ describe('Portal navigation', () => {
     window.removeEventListener('portal:navigate-active', listener)
   })
 
-  it('dispatches cancelable portal:sidebar-navigate event on clicking any sidebar link and respects preventDefault', () => {
+  it('dispatches cancelable portal:sidebar-navigate event with onClose callback on clicking any sidebar link and respects preventDefault', () => {
     const resolution = resolvePortalAvailability({
       env: enabledEnvironment,
       user: { role: 'admin' },
@@ -126,6 +126,7 @@ describe('Portal navigation', () => {
     const listener = vi.fn((event: Event) => {
       event.preventDefault()
     })
+    const onClose = vi.fn()
     window.addEventListener('portal:sidebar-navigate', listener)
 
     render(
@@ -133,6 +134,7 @@ describe('Portal navigation', () => {
         collapsed: false,
         locale: 'zh',
         modules: resolution.modules,
+        onClose,
         user: {
           id: 1,
           permissions: PORTAL_PERMISSION_PRESETS.admin,
@@ -149,9 +151,11 @@ describe('Portal navigation', () => {
     expect(listener).toHaveBeenCalledTimes(1)
     expect(listener.mock.calls[0]?.[0]).toMatchObject({
       cancelable: true,
-      detail: { href: '/dashboard/media' },
+      detail: { href: '/dashboard/media', onClose },
     })
     expect(clickEvent.defaultPrevented).toBe(true)
+    // When prevented, onClose should not be called immediately (caller controls via detail.onClose)
+    expect(onClose).not.toHaveBeenCalled()
 
     window.removeEventListener('portal:sidebar-navigate', listener)
   })

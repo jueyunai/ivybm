@@ -57,6 +57,19 @@ import type {
 import { formatScheduledAt } from './formatScheduledAt'
 import { getContentStudioMessages } from './messages'
 
+const buildStudioHref = (query?: Partial<ContentStudioQuery>, page = 1): string => {
+  const params = new URLSearchParams()
+  const q = query?.q?.trim()
+  const status = query?.status?.trim()
+  const platform = query?.platform?.trim()
+  if (q) params.set('q', q)
+  if (status && status !== 'all') params.set('status', status)
+  if (platform && platform !== 'all') params.set('platform', platform)
+  if (page > 1) params.set('page', String(page))
+  const search = params.toString()
+  return search ? `/dashboard/content-studio?${search}` : '/dashboard/content-studio'
+}
+
 export function ContentStudio({
   pageState,
   summary,
@@ -117,8 +130,9 @@ export function ContentStudio({
 
   useEffect(() => {
     const handleSidebarNavigate = (event: Event) => {
-      const customEvent = event as CustomEvent<{ href: string }>
+      const customEvent = event as CustomEvent<{ href: string; onClose?: () => void }>
       const targetHref = customEvent.detail?.href
+      const closeNav = customEvent.detail?.onClose
       if (!targetHref) return
 
       if (isDirtyRef.current) {
@@ -126,6 +140,7 @@ export function ContentStudio({
         setPendingTransition(() => () => {
           setIsDirty(false)
           setActiveAction(null)
+          closeNav?.()
           if (targetHref === '/dashboard/content-studio') {
             setFeedback(null)
           } else {
@@ -133,6 +148,7 @@ export function ContentStudio({
           }
         })
       } else if (targetHref === '/dashboard/content-studio') {
+        closeNav?.()
         setActiveAction(null)
         setFeedback(null)
       }
@@ -184,15 +200,10 @@ export function ContentStudio({
   }
 
   const updateFilters = (name: 'status' | 'platform', value: string) => {
-    const params = new URLSearchParams()
-    if (summary?.query.q) params.set('q', summary.query.q)
-    const nextStatus = name === 'status' ? value : (summary?.query.status ?? 'all')
-    const nextPlatform = name === 'platform' ? value : (summary?.query.platform ?? 'all')
-    if (nextStatus && nextStatus !== 'all') params.set('status', nextStatus)
-    if (nextPlatform && nextPlatform !== 'all') params.set('platform', nextPlatform)
-    const targetUrl = params.toString()
-      ? `/dashboard/content-studio?${params}`
-      : '/dashboard/content-studio'
+    const targetUrl = buildStudioHref({
+      ...summary?.query,
+      [name]: value,
+    })
     requestTransition(() => {
       closeAction()
       router.push(targetUrl)
@@ -202,16 +213,12 @@ export function ContentStudio({
   const handleFilterSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
-    const params = new URLSearchParams()
-    const q = formData.get('q')?.toString().trim()
-    const status = formData.get('status')?.toString().trim()
-    const platform = formData.get('platform')?.toString().trim()
-    if (q) params.set('q', q)
-    if (status && status !== 'all') params.set('status', status)
-    if (platform && platform !== 'all') params.set('platform', platform)
-    const targetUrl = params.toString()
-      ? `/dashboard/content-studio?${params}`
-      : '/dashboard/content-studio'
+    const targetUrl = buildStudioHref({
+      platform:
+        (formData.get('platform')?.toString().trim() as ContentStudioQuery['platform']) || 'all',
+      q: formData.get('q')?.toString().trim() || '',
+      status: (formData.get('status')?.toString().trim() as ContentStudioQuery['status']) || 'all',
+    })
     requestTransition(() => {
       closeAction()
       router.push(targetUrl)
@@ -525,14 +532,6 @@ const request = async (
   if (!response.ok) throw new Error(data.error?.message || 'Request failed')
   return data
 }
-const href = (query: ContentStudioQuery, page: number) => {
-  const params = new URLSearchParams()
-  if (query.q) params.set('q', query.q)
-  if (query.status !== 'all') params.set('status', query.status)
-  if (query.platform !== 'all') params.set('platform', query.platform)
-  if (page > 1) params.set('page', String(page))
-  return `/dashboard/content-studio?${params}`
-}
 
 function Pagination({
   copy,
@@ -548,7 +547,7 @@ function Pagination({
   return (
     <nav className="portal-content-studio__pagination">
       <Button asChild disabled={page <= 1} size="compact" variant="secondary">
-        <Link href={href(query, page - 1)}>
+        <Link href={buildStudioHref(query, page - 1)}>
           <IconArrowLeft aria-hidden="true" size={15} />
           {copy.previous}
         </Link>
@@ -557,7 +556,7 @@ function Pagination({
         {page} / {totalPages}
       </span>
       <Button asChild disabled={page >= totalPages} size="compact" variant="secondary">
-        <Link href={href(query, page + 1)}>
+        <Link href={buildStudioHref(query, page + 1)}>
           {copy.next}
           <IconArrowRight aria-hidden="true" size={15} />
         </Link>
@@ -1092,15 +1091,6 @@ function DraftEditor({
   })
 
   const isDirty = useMemo(() => {
-    if (!item) {
-      return (
-        form.title.trim().length > 0 ||
-        form.body.trim().length > 0 ||
-        form.assets.length > 0 ||
-        form.knowledgeSources.length > 0 ||
-        form.sourceReferences.some((r) => r.claim.trim().length > 0)
-      )
-    }
     return (
       form.title !== initial.title ||
       form.body !== initial.body ||
@@ -1111,7 +1101,7 @@ function DraftEditor({
       JSON.stringify(form.knowledgeSources) !== JSON.stringify(initial.knowledgeSources) ||
       JSON.stringify(form.sourceReferences) !== JSON.stringify(initial.sourceReferences)
     )
-  }, [form, initial, item])
+  }, [form, initial])
 
   useEffect(() => {
     onDirtyChange?.(isDirty)
@@ -1392,15 +1382,13 @@ function GenerateDraftEditor({
 
   const isDirty = copyDirty || imageDirty
   const currentModeDirty = mode === 'image' ? imageDirty : copyDirty
-  const currentModeDirtyRef = useRef(currentModeDirty)
-  useEffect(() => {
-    currentModeDirtyRef.current = currentModeDirty
-  }, [currentModeDirty])
 
   const requestModeChange = (targetMode: 'copy' | 'image') => {
     if (mode === targetMode) return
-    if (currentModeDirtyRef.current) {
+    if (currentModeDirty) {
       setPendingModeTransition(() => () => {
+        setError(null)
+        setGenerationProgress(null)
         if (mode === 'copy') {
           setForm((current) => ({
             ...current,
@@ -1416,6 +1404,8 @@ function GenerateDraftEditor({
         setMode(targetMode)
       })
     } else {
+      setError(null)
+      setGenerationProgress(null)
       setMode(targetMode)
     }
   }
