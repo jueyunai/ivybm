@@ -148,7 +148,18 @@ export function PortalAccountMenu({
           <Link
             className="portal-account__menu-item"
             href="/dashboard/settings#account"
-            onClick={() => closeMenu()}
+            onClick={(event) => {
+              const navEvent = new CustomEvent('portal:sidebar-navigate', {
+                cancelable: true,
+                detail: { href: '/dashboard/settings#account', onClose: () => closeMenu() },
+              })
+              const allowed = window.dispatchEvent(navEvent)
+              if (!allowed) {
+                event.preventDefault()
+                return
+              }
+              closeMenu()
+            }}
             ref={(element) => {
               itemRefs.current[0] = element
             }}

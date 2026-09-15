@@ -85,19 +85,23 @@ export function ContentStudio({
   const [activeAction, setActiveAction] = useState<ActiveAction>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isDirty, setIsDirty] = useState(false)
-  const [pendingTransition, setPendingTransition] = useState<(() => void) | null>(null)
+  type PendingTransition = { commit: () => void; onCancel?: () => void }
+  const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null)
   const isDirtyRef = useRef(isDirty)
   useEffect(() => {
     isDirtyRef.current = isDirty
   }, [isDirty])
 
-  const requestTransition = useCallback((action: () => void) => {
-    if (isDirtyRef.current) {
-      setPendingTransition(() => action)
-    } else {
-      action()
-    }
-  }, [setPendingTransition])
+  const requestTransition = useCallback(
+    (action: () => void, onCancel?: () => void) => {
+      if (isDirtyRef.current) {
+        setPendingTransition({ commit: action, onCancel })
+      } else {
+        action()
+      }
+    },
+    [setPendingTransition],
+  )
   const [isRefreshing, startRefresh] = useTransition()
   const hasActivePublication =
     summary?.items.some((item) =>
@@ -137,15 +141,20 @@ export function ContentStudio({
 
       if (isDirtyRef.current) {
         event.preventDefault()
-        setPendingTransition(() => () => {
-          setIsDirty(false)
-          setActiveAction(null)
-          closeNav?.()
-          if (targetHref === '/dashboard/content-studio') {
-            setFeedback(null)
-          } else {
-            router.push(targetHref)
-          }
+        setPendingTransition({
+          commit: () => {
+            setIsDirty(false)
+            setActiveAction(null)
+            closeNav?.()
+            if (targetHref === '/dashboard/content-studio') {
+              setFeedback(null)
+            } else {
+              router.push(targetHref)
+            }
+          },
+          onCancel: () => {
+            closeNav?.()
+          },
         })
       } else if (targetHref === '/dashboard/content-studio') {
         closeNav?.()
@@ -379,6 +388,12 @@ export function ContentStudio({
           {summary.pagination.totalPages > 1 ? (
             <Pagination
               copy={copy}
+              onNavigate={(targetUrl) => {
+                requestTransition(() => {
+                  closeAction()
+                  router.push(targetUrl)
+                })
+              }}
               query={summary.query}
               page={summary.pagination.page}
               totalPages={summary.pagination.totalPages}
@@ -481,12 +496,16 @@ export function ContentStudio({
         description={copy.unsavedChangesDescription}
         onConfirm={() => {
           setIsDirty(false)
-          const commit = pendingTransition
+          const target = pendingTransition
           setPendingTransition(null)
-          commit?.()
+          target?.commit()
         }}
         onOpenChange={(open) => {
-          if (!open) setPendingTransition(null)
+          if (!open) {
+            const target = pendingTransition
+            setPendingTransition(null)
+            target?.onCancel?.()
+          }
         }}
         open={pendingTransition !== null}
         title={copy.unsavedChangesTitle}
@@ -535,19 +554,30 @@ const request = async (
 
 function Pagination({
   copy,
+  onNavigate,
   page,
   query,
   totalPages,
 }: {
   copy: Copy
+  onNavigate?: (url: string) => void
   page: number
   query: ContentStudioQuery
   totalPages: number
 }) {
+  const prevUrl = buildStudioHref(query, page - 1)
+  const nextUrl = buildStudioHref(query, page + 1)
+  const handlePageClick = (url: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (onNavigate) {
+      event.preventDefault()
+      onNavigate(url)
+    }
+  }
+
   return (
     <nav className="portal-content-studio__pagination">
       <Button asChild disabled={page <= 1} size="compact" variant="secondary">
-        <Link href={buildStudioHref(query, page - 1)}>
+        <Link href={prevUrl} onClick={handlePageClick(prevUrl)}>
           <IconArrowLeft aria-hidden="true" size={15} />
           {copy.previous}
         </Link>
@@ -556,7 +586,7 @@ function Pagination({
         {page} / {totalPages}
       </span>
       <Button asChild disabled={page >= totalPages} size="compact" variant="secondary">
-        <Link href={buildStudioHref(query, page + 1)}>
+        <Link href={nextUrl} onClick={handlePageClick(nextUrl)}>
           {copy.next}
           <IconArrowRight aria-hidden="true" size={15} />
         </Link>
@@ -1356,6 +1386,12 @@ function GenerateDraftEditor({
   const [imageDirty, setImageDirty] = useState(false)
   const [pendingModeTransition, setPendingModeTransition] = useState<(() => void) | null>(null)
   const [imageEditorResetKey, setImageEditorResetKey] = useState(0)
+  const generationEpochRef = useRef(0)
+  useEffect(() => {
+    return () => {
+      generationEpochRef.current += 1
+    }
+  }, [])
   const batchRef = useRef<{
     fingerprint: string
     generatedAssets: string[]
@@ -1378,15 +1414,20 @@ function GenerateDraftEditor({
   const copyDirty =
     form.brief.trim().length > 0 ||
     form.assets.length > 0 ||
-    form.knowledgeSources.length > 0
+    form.knowledgeSources.length > 0 ||
+    form.contentLocale !== 'en' ||
+    form.autoGenerateImage !== false ||
+    form.contentType !== 'post'
 
   const isDirty = copyDirty || imageDirty
   const currentModeDirty = mode === 'image' ? imageDirty : copyDirty
 
   const requestModeChange = (targetMode: 'copy' | 'image') => {
-    if (mode === targetMode) return
+    if (mode === targetMode || busy) return
     if (currentModeDirty) {
       setPendingModeTransition(() => () => {
+        generationEpochRef.current += 1
+        setBusy(false)
         setError(null)
         setGenerationProgress(null)
         if (mode === 'copy') {
@@ -1395,6 +1436,8 @@ function GenerateDraftEditor({
             assets: [],
             autoGenerateImage: false,
             brief: '',
+            contentLocale: 'en',
+            contentType: 'post',
             knowledgeSources: [],
           }))
         } else {
@@ -1485,6 +1528,7 @@ function GenerateDraftEditor({
     (form.assets.length > 0 || form.brief.trim().length > 0) && form.platforms.length > 0
   const generate = async () => {
     if (!canGenerate || busy) return
+    const currentEpoch = ++generationEpochRef.current
     setBusy(true)
     setError(null)
     try {
@@ -1533,6 +1577,8 @@ function GenerateDraftEditor({
           ...payload,
           idempotencyKey,
         })
+        if (generationEpochRef.current !== currentEpoch) return
+
         batch.succeededPlatforms.push(platform)
         if (
           generatedAssets.length === 0 &&
@@ -1551,6 +1597,7 @@ function GenerateDraftEditor({
           batch.generatedAssets = generatedAssets
         }
       }
+      if (generationEpochRef.current !== currentEpoch) return
       batchRef.current = null
       onDirtyChange?.(false)
       onDone(
@@ -1559,10 +1606,13 @@ function GenerateDraftEditor({
           : copy.generationComplete,
       )
     } catch (caught) {
+      if (generationEpochRef.current !== currentEpoch) return
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
-      setBusy(false)
-      setGenerationProgress(null)
+      if (generationEpochRef.current === currentEpoch) {
+        setBusy(false)
+        setGenerationProgress(null)
+      }
     }
   }
   return (
@@ -1580,6 +1630,7 @@ function GenerateDraftEditor({
       <div aria-label={copy.generationMode} className="portal-content-studio__generation-modes">
         <Button
           aria-pressed={mode === 'copy'}
+          disabled={busy}
           onClick={() => requestModeChange('copy')}
           size="compact"
           variant={mode === 'copy' ? 'primary' : 'ghost'}
@@ -1588,6 +1639,7 @@ function GenerateDraftEditor({
         </Button>
         <Button
           aria-pressed={mode === 'image'}
+          disabled={busy}
           onClick={() => requestModeChange('image')}
           size="compact"
           variant={mode === 'image' ? 'primary' : 'ghost'}
@@ -1820,8 +1872,20 @@ function ImageGenerationEditor({
   const [generated, setGenerated] = useState<GeneratedImage | null>(null)
   const [busy, setBusy] = useState<'adopt' | 'generate' | 'upload' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const operationEpochRef = useRef(0)
+  useEffect(() => {
+    return () => {
+      operationEpochRef.current += 1
+    }
+  }, [])
 
-  const isDirty = prompt.trim().length > 0 || referenceFile !== null || generated !== null
+  const isDirty =
+    prompt.trim().length > 0 ||
+    size !== '1024x1024' ||
+    referenceMediaId !== null ||
+    uploadedReference !== null ||
+    referenceFile !== null ||
+    generated !== null
 
   useEffect(() => {
     onDirtyChange?.(isDirty)
@@ -1836,6 +1900,7 @@ function ImageGenerationEditor({
 
   const upload = async () => {
     if (!referenceFile) return
+    const currentEpoch = ++operationEpochRef.current
     setBusy('upload')
     setError(null)
     const fingerprint = JSON.stringify({
@@ -1872,6 +1937,8 @@ function ImageGenerationEditor({
         throw new Error(body.error?.message || copy.unknown)
       }
       uploadCommand.receivedResponse(key)
+      if (operationEpochRef.current !== currentEpoch) return
+
       const uploaded = {
         id: body.result.id,
         label: referenceFile.name,
@@ -1881,13 +1948,17 @@ function ImageGenerationEditor({
       setUploadedReference(uploaded)
       setReferenceMediaId(uploaded.id)
     } catch (caught) {
+      if (operationEpochRef.current !== currentEpoch) return
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
-      setBusy(null)
+      if (operationEpochRef.current === currentEpoch) {
+        setBusy(null)
+      }
     }
   }
 
   const generate = async () => {
+    const currentEpoch = ++operationEpochRef.current
     const input = { prompt: prompt.trim(), referenceMediaId, size }
     const key = generateCommand.key(JSON.stringify(input))
     setBusy('generate')
@@ -1914,20 +1985,26 @@ function ImageGenerationEditor({
         throw new Error(copy.imagePreviewUnavailable)
       }
       generateCommand.receivedResponse(key)
+      if (operationEpochRef.current !== currentEpoch) return
+
       setGenerated({
         id: body.media.id,
         previewUrl: body.media.previewUrl,
         revisedPrompt: body.revisedPrompt ?? null,
       })
     } catch (caught) {
+      if (operationEpochRef.current !== currentEpoch) return
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
-      setBusy(null)
+      if (operationEpochRef.current === currentEpoch) {
+        setBusy(null)
+      }
     }
   }
 
   const adopt = async () => {
     if (!generated || !targetDraft) return
+    const currentEpoch = ++operationEpochRef.current
     const input = { action: 'adopt-image', mediaId: generated.id, updatedAt: targetDraft.updatedAt }
     const key = adoptCommand.key(JSON.stringify({ id: targetDraft.id, ...input }))
     setBusy('adopt')
@@ -1940,12 +2017,17 @@ function ImageGenerationEditor({
         () => adoptCommand.receivedResponse(key),
         key,
       )
+      if (operationEpochRef.current !== currentEpoch) return
+
       onDirtyChange?.(false)
       onDone(copy.imageAdopted)
     } catch (caught) {
+      if (operationEpochRef.current !== currentEpoch) return
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
-      setBusy(null)
+      if (operationEpochRef.current === currentEpoch) {
+        setBusy(null)
+      }
     }
   }
 
