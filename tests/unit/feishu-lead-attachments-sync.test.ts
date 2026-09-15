@@ -189,87 +189,98 @@ describe('Feishu Lead Attachments Sync unit tests', () => {
   })
 
   it('syncs lead with attachments and stable portal URL to Feishu client port', async () => {
-    const attachmentDoc = {
-      byteSize: 2048,
-      createdAt: '2026-08-29T10:00:00.000Z',
-      filename: 'structure.pdf',
-      id: 101,
-      mimeType: 'application/pdf',
-      status: 'associated',
-    }
-    const revision = feishuLeadSyncRevision(baseLead, [attachmentDoc])
-    const upsertRecord = vi.fn().mockResolvedValue({ recordId: 'rec-1', state: 'created' })
-    const client: FeishuClientPort = {
-      sendText: vi.fn(),
-      upsertRecord,
-    }
+    const originalUrl = process.env.NEXT_PUBLIC_SERVER_URL
+    const originalRuntimeUrl = process.env.IVYBM_RUNTIME_SERVER_URL
+    delete process.env.NEXT_PUBLIC_SERVER_URL
+    delete process.env.IVYBM_RUNTIME_SERVER_URL
+    try {
+      const attachmentDoc = {
+        byteSize: 2048,
+        createdAt: '2026-08-29T10:00:00.000Z',
+        filename: 'structure.pdf',
+        id: 101,
+        mimeType: 'application/pdf',
+        status: 'associated',
+      }
+      const revision = feishuLeadSyncRevision(baseLead, [attachmentDoc])
+      const upsertRecord = vi.fn().mockResolvedValue({ recordId: 'rec-1', state: 'created' })
+      const client: FeishuClientPort = {
+        sendText: vi.fn(),
+        upsertRecord,
+      }
 
-    const payload = {
-      config: { i18n: {} },
-      db: {
-        sessions: {
-          tx1: { db: { execute: vi.fn().mockResolvedValue({ rows: [{ id: 88 }] }) } },
+      const payload = {
+        config: { i18n: {} },
+        db: {
+          sessions: {
+            tx1: { db: { execute: vi.fn().mockResolvedValue({ rows: [{ id: 88 }] }) } },
+          },
         },
-      },
-      find: vi.fn().mockImplementation(({ collection }) => {
-        if (collection === 'feishu-mappings') {
-          return Promise.resolve({ docs: [mapping], totalDocs: 1 })
-        }
-        if (collection === 'lead-attachments') {
-          return Promise.resolve({ docs: [attachmentDoc] })
-        }
-        return Promise.resolve({ docs: [] })
-      }),
-      findByID: vi.fn().mockResolvedValue(baseLead),
-    } as never
-
-    const handler = createFeishuLeadSyncJobHandler({
-      client: () => client,
-      payload,
-    })
-
-    const job: ClaimedJob = {
-      attempts: 0,
-      completedAt: null,
-      deadAt: null,
-      lastError: null,
-      createdAt: '2026-08-29T10:00:00.000Z',
-      id: 1,
-      idempotencyKey: 'key-1',
-      leaseExpiresAt: '2026-08-29T12:00:00.000Z',
-      manualRetryCount: 0,
-      maxAttempts: 5,
-      nextRunAt: '2026-08-29T10:00:00.000Z',
-      ownerToken: 'tok-1',
-      payload: {
-        entityId: 88,
-        entityRevision: revision,
-        mappingId: 1,
-        mappingRevision: '2026-08-29T00:00:00.000Z',
-        notificationIntent: 'none',
-      },
-      status: 'processing',
-      type: 'feishu.lead.sync',
-      updatedAt: '2026-08-29T10:00:00.000Z',
-    }
-
-    const lease = {
-      assertLease: vi.fn(),
-      renewLease: vi.fn(),
-      signal: new AbortController().signal,
-    }
-
-    await handler(job, lease)
-
-    expect(upsertRecord).toHaveBeenCalledWith(
-      expect.objectContaining({
-        appToken: 'bascn-unit-test',
-        fields: expect.objectContaining({
-          Attachments: 'structure.pdf: http://localhost:3000/api/portal/leads/88/attachments/101',
-          Customer: 'Façade Tech',
-          'Local Lead ID': '88',
+        find: vi.fn().mockImplementation(({ collection }) => {
+          if (collection === 'feishu-mappings') {
+            return Promise.resolve({ docs: [mapping], totalDocs: 1 })
+          }
+          if (collection === 'lead-attachments') {
+            return Promise.resolve({ docs: [attachmentDoc] })
+          }
+          return Promise.resolve({ docs: [] })
         }),
-      }),
-    )
+        findByID: vi.fn().mockResolvedValue(baseLead),
+      } as never
+
+      const handler = createFeishuLeadSyncJobHandler({
+        client: () => client,
+        payload,
+      })
+
+      const job: ClaimedJob = {
+        attempts: 0,
+        completedAt: null,
+        deadAt: null,
+        lastError: null,
+        createdAt: '2026-08-29T10:00:00.000Z',
+        id: 1,
+        idempotencyKey: 'key-1',
+        leaseExpiresAt: '2026-08-29T12:00:00.000Z',
+        manualRetryCount: 0,
+        maxAttempts: 5,
+        nextRunAt: '2026-08-29T10:00:00.000Z',
+        ownerToken: 'tok-1',
+        payload: {
+          entityId: 88,
+          entityRevision: revision,
+          mappingId: 1,
+          mappingRevision: '2026-08-29T00:00:00.000Z',
+          notificationIntent: 'none',
+        },
+        status: 'processing',
+        type: 'feishu.lead.sync',
+        updatedAt: '2026-08-29T10:00:00.000Z',
+      }
+
+      const lease = {
+        assertLease: vi.fn(),
+        renewLease: vi.fn(),
+        signal: new AbortController().signal,
+      }
+
+      await handler(job, lease)
+
+      expect(upsertRecord).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appToken: 'bascn-unit-test',
+          fields: expect.objectContaining({
+            Attachments: 'structure.pdf: http://localhost:3000/api/portal/leads/88/attachments/101',
+            Customer: 'Façade Tech',
+            'Local Lead ID': '88',
+          }),
+        }),
+      )
+    } finally {
+      if (originalUrl !== undefined) process.env.NEXT_PUBLIC_SERVER_URL = originalUrl
+      else delete process.env.NEXT_PUBLIC_SERVER_URL
+      if (originalRuntimeUrl !== undefined) process.env.IVYBM_RUNTIME_SERVER_URL = originalRuntimeUrl
+      else delete process.env.IVYBM_RUNTIME_SERVER_URL
+    }
   })
 })

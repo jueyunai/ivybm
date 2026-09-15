@@ -1279,7 +1279,7 @@ describe('Portal Content Studio', () => {
       resolveOperation = (val) => resolve(val)
     })) as unknown as typeof fetch
 
-    render(
+    const { container } = render(
       React.createElement(
         PortalPreferencesProvider,
         null,
@@ -1360,6 +1360,46 @@ describe('Portal Content Studio', () => {
 
     // Adopt completes and closes drawer cleanly
     expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
+
+    // 3. Test image reference file upload busy
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    fireEvent.click(screen.getByRole('button', { name: '图片生成' }))
+    const form3 = screen.getByRole('heading', { name: /AI生成/ }).closest('.portal-content-studio__form') as HTMLElement
+    const copyModeBtn3 = within(form3).getByRole('button', { name: '社媒内容' })
+
+    const refFileInput = container.querySelector('#content-studio-reference-upload') as HTMLInputElement
+    expect(refFileInput).toBeTruthy()
+    const testRefFile = new File(['image-bytes'], 'reference.jpg', { type: 'image/jpeg' })
+    fireEvent.change(refFileInput, { target: { files: [testRefFile] } })
+
+    const uploadRefBtn = within(form3).getByRole('button', { name: '上传参考图' })
+    fireEvent.click(uploadRefBtn)
+
+    // While uploading reference: copy mode button disabled, upload button disabled, nav blocked
+    expect(copyModeBtn3.hasAttribute('disabled')).toBe(true)
+    expect(uploadRefBtn.hasAttribute('disabled')).toBe(true)
+
+    const navEvent3 = new CustomEvent('portal:sidebar-navigate', {
+      cancelable: true,
+      detail: { href: '/dashboard/media' },
+    })
+    act(() => {
+      window.dispatchEvent(navEvent3)
+    })
+    expect(navEvent3.defaultPrevented).toBe(true)
+    expect(router.push).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveOperation({
+        ok: true,
+        json: async () => ({
+          result: { id: 99, mimeType: 'image/jpeg', previewUrl: '/uploaded-ref.jpg' },
+        }),
+      })
+    })
+
+    expect(copyModeBtn3.hasAttribute('disabled')).toBe(false)
+    expect(uploadRefBtn.hasAttribute('disabled')).toBe(false)
 
     globalThis.fetch = originalFetch
   })
@@ -2007,6 +2047,244 @@ describe('Portal Content Studio', () => {
 
     expect(screen.getByRole('alert').textContent).toBe('每次请选择 1-3 张图片。')
     expect(fetchMock).not.toHaveBeenCalled()
+    globalThis.fetch = originalFetch
+  })
+
+  it('intercepts popstate events when dirty or busy and guards history back navigation', async () => {
+    const summary: ContentStudioSummary = {
+      items: [
+        {
+          assets: [],
+          body: 'First body text',
+          contentLocale: 'en',
+          contentType: 'post',
+          id: 1,
+          knowledgeSources: [],
+          platform: 'linkedin',
+          publishJobs: [],
+          reviews: [],
+          sourceReferences: [],
+          status: 'draft',
+          title: 'First Draft Post',
+          updatedAt: '2026-09-11T08:00:00.000Z',
+        },
+      ],
+      options: { assets: [], knowledgeSources: [], platformAccounts: [] },
+      pagination: { page: 1, totalDocs: 1, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    const pushStateSpy = vi.spyOn(window.history, 'pushState')
+
+    const { unmount } = render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentStudio, { pageState: 'available', summary }),
+      ),
+    )
+
+    // 1. Open new draft editor and type title to enter dirty state
+    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
+    const titleInput = screen.getByRole('textbox', { name: '草稿标题' })
+    fireEvent.change(titleInput, { target: { value: 'Dirty Draft on History Back' } })
+
+    // Wait for dirty state effect to register popstate listener
+    await vi.waitFor(() => expect(pushStateSpy).toHaveBeenCalled())
+
+    // Simulate browser back button (popstate event)
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+
+    // Confirmation dialog should appear and pushState called to prevent history departure
+    expect(await screen.findByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+    expect(pushStateSpy).toHaveBeenCalled()
+
+    // Cancel ("继续编辑") -> stays in editor with draft intact
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }))
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(screen.getByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeTruthy()
+    expect((screen.getByRole('textbox', { name: '草稿标题' }) as HTMLInputElement).value).toBe(
+      'Dirty Draft on History Back',
+    )
+
+    // Simulate browser back button again and confirm ("放弃并切换") -> closes editor
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    expect(await screen.findByRole('heading', { name: '放弃未保存的内容？' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '放弃并切换' }))
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+      expect(screen.queryByRole('heading', { name: /(新建草稿|手动新建)/ })).toBeNull()
+    })
+
+    // 2. Test when editorBusy is true during in-flight generation
+    const originalFetch = globalThis.fetch
+    let resolveGeneration: ((value: Response) => void) | null = null
+    globalThis.fetch = vi.fn((input) => {
+      if (String(input) === '/api/portal/content-studio/generate') {
+        return new Promise<Response>((resolve) => {
+          resolveGeneration = resolve
+        })
+      }
+      return originalFetch(input)
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const form = screen.getByRole('heading', { name: /AI生成/ }).closest('.portal-content-studio__form') as HTMLElement
+    const briefTextarea = within(form).getByRole('textbox', { name: '生成需求' })
+    fireEvent.change(briefTextarea, { target: { value: 'In-flight generation brief' } })
+
+    const generateBtn = within(form).getByRole('button', { name: /AI生成/ })
+    fireEvent.click(generateBtn)
+
+    // Generator is now busy
+    await vi.waitFor(() => expect(generateBtn.hasAttribute('disabled')).toBe(true))
+    const callsBeforePopState = pushStateSpy.mock.calls.length
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    // Should call pushState to block back navigation and not show discard confirmation
+    expect(pushStateSpy.mock.calls.length).toBeGreaterThan(callsBeforePopState)
+    expect(screen.queryByRole('heading', { name: '放弃未保存的内容？' })).toBeNull()
+    expect(screen.getByRole('heading', { name: /AI生成/ })).toBeTruthy()
+
+    // Resolve in-flight request
+    act(() => {
+      resolveGeneration!(
+        Response.json({
+          content: { assets: [], id: 999 },
+        }),
+      )
+    })
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('heading', { name: /AI生成/ })).toBeNull()
+    })
+
+    globalThis.fetch = originalFetch
+    pushStateSpy.mockRestore()
+    unmount()
+  })
+
+  it('persists generation batch in sessionStorage and reuses batch identity across history departure and retry without duplicate requests', async () => {
+    window.sessionStorage.clear()
+    window.localStorage.removeItem('ivybm:content-studio:selected-platforms')
+    const originalFetch = globalThis.fetch
+    const requests: Array<{
+      assets: string[]
+      idempotencyKey: string
+      platform: string
+    }> = []
+
+    let linkedinAttempts = 0
+    globalThis.fetch = vi.fn(async (input, init) => {
+      if (String(input) !== '/api/portal/content-studio/generate') {
+        return originalFetch(input, init)
+      }
+      const body = JSON.parse(String(init?.body)) as {
+        assets: string[]
+        idempotencyKey: string
+        platform: string
+      }
+      requests.push(body)
+      if (body.platform === 'facebook') {
+        return Response.json({ content: { assets: ['asset-concept-42'], id: 101 } })
+      }
+      if (body.platform === 'linkedin' && linkedinAttempts++ === 0) {
+        return Response.json({ error: { message: 'LinkedIn API Rate Limit' } }, { status: 429 })
+      }
+      return Response.json({ content: { assets: body.assets, id: 102 } })
+    })
+
+    const summary: ContentStudioSummary = {
+      items: [],
+      options: { assets: [], knowledgeSources: [], platformAccounts: [] },
+      pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    const renderStudio = () =>
+      render(
+        React.createElement(
+          PortalPreferencesProvider,
+          null,
+          React.createElement(ContentStudio, { pageState: 'available', summary }),
+        ),
+      )
+
+    // 1. First run: configure Facebook then LinkedIn and start generation
+    const firstInstance = renderStudio()
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const form1 = screen
+      .getByRole('heading', { name: /AI生成/ })
+      .closest('.portal-content-studio__form') as HTMLElement
+
+    // Clear default platforms then explicitly select Facebook then LinkedIn in order
+    fireEvent.click(within(form1).getByRole('button', { name: '清空' }))
+    fireEvent.click(within(form1).getByRole('button', { name: /Facebook/ }))
+    fireEvent.click(within(form1).getByRole('button', { name: /LinkedIn/ }))
+    fireEvent.change(within(form1).getByLabelText('生成需求'), {
+      target: { value: 'Multi-platform enterprise campaign' },
+    })
+
+    const generateBtn1 = within(form1).getByRole('button', { name: /AI生成/ })
+    fireEvent.click(generateBtn1)
+
+    // Facebook succeeds, LinkedIn fails with 429
+    expect((await screen.findByRole('alert')).textContent).toBe('LinkedIn API Rate Limit')
+    expect(requests.map((r) => r.platform)).toEqual(['facebook', 'linkedin'])
+
+    // Verify sessionStorage has cached the active batch with succeeded platform and generated assets
+    const storedBatchRaw = window.sessionStorage.getItem('ivybm:content-studio:active-generation-batch')
+    expect(storedBatchRaw).toBeTruthy()
+    const storedBatch = JSON.parse(storedBatchRaw!) as {
+      fingerprint: string
+      generatedAssets: string[]
+      id: string
+      succeededPlatforms: string[]
+    }
+    expect(storedBatch.succeededPlatforms).toEqual(['facebook'])
+    expect(storedBatch.generatedAssets).toEqual(['asset-concept-42'])
+    expect(typeof storedBatch.id).toBe('string')
+
+    // 2. Simulate history departure / unmount
+    firstInstance.unmount()
+
+    // 3. User returns and opens generator with the exact same requirements
+    renderStudio()
+    fireEvent.click(screen.getByRole('button', { name: /AI生成/ }))
+    const form2 = screen
+      .getByRole('heading', { name: /AI生成/ })
+      .closest('.portal-content-studio__form') as HTMLElement
+
+    // Ensure platforms and brief match the batch fingerprint (platforms persisted in localStorage)
+    fireEvent.change(within(form2).getByLabelText('生成需求'), {
+      target: { value: 'Multi-platform enterprise campaign' },
+    })
+
+    const generateBtn2 = within(form2).getByRole('button', { name: /AI生成/ })
+    fireEvent.click(generateBtn2)
+
+    // 4. Verify only the remaining failed platform (LinkedIn) was requested
+    await vi.waitFor(() => expect(requests).toHaveLength(3))
+    expect(requests.map((r) => r.platform)).toEqual(['facebook', 'linkedin', 'linkedin'])
+
+    // Facebook must NOT have been requested again
+    expect(requests.filter((r) => r.platform === 'facebook')).toHaveLength(1)
+
+    // The retry request must reuse the stored batch id and generated assets
+    expect(requests[2]?.idempotencyKey).toBe(`portal-content-studio:generate:${storedBatch.id}:linkedin`)
+    expect(requests[2]?.assets).toEqual(['asset-concept-42'])
+
+    // 5. Verify batch is cleaned up from sessionStorage upon complete success
+    await vi.waitFor(() => {
+      expect(window.sessionStorage.getItem('ivybm:content-studio:active-generation-batch')).toBeNull()
+    })
+
     globalThis.fetch = originalFetch
   })
 })

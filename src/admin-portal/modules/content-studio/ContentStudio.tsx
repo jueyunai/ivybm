@@ -97,6 +97,11 @@ export function ContentStudio({
     isDirtyRef.current = isDirty
   }, [isDirty])
 
+  const closeAction = useCallback(() => {
+    setActiveAction(null)
+    setIsDirty(false)
+  }, [setActiveAction, setIsDirty])
+
   const requestTransition = useCallback(
     (action: () => void, onCancel?: () => void) => {
       if (editorBusyRef.current) return
@@ -134,9 +139,27 @@ export function ContentStudio({
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault()
     }
+    const handlePopState = () => {
+      if (editorBusyRef.current) {
+        window.history.pushState(null, '', window.location.href)
+        return
+      }
+      if (isDirtyRef.current) {
+        window.history.pushState(null, '', window.location.href)
+        requestTransition(() => {
+          closeAction()
+        })
+      }
+    }
+
+    window.history.pushState(null, '', window.location.href)
     window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [isDirty, editorBusy])
+    window.addEventListener('popstate', handlePopState)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [isDirty, editorBusy, requestTransition, closeAction])
 
   useEffect(() => {
     const handleSidebarNavigate = (event: Event) => {
@@ -147,24 +170,22 @@ export function ContentStudio({
 
       if (editorBusyRef.current) {
         event.preventDefault()
+        closeNav?.()
         return
       }
 
       if (isDirtyRef.current) {
         event.preventDefault()
+        closeNav?.()
         setPendingTransition({
           commit: () => {
             setIsDirty(false)
             setActiveAction(null)
-            closeNav?.()
             if (targetHref === '/dashboard/content-studio') {
               setFeedback(null)
             } else {
               router.push(targetHref)
             }
-          },
-          onCancel: () => {
-            closeNav?.()
           },
         })
       } else if (targetHref === '/dashboard/content-studio') {
@@ -208,13 +229,8 @@ export function ContentStudio({
     )
   const selected = summary.items.find((item) => item.id === selectedId) ?? summary.items[0] ?? null
   const refreshPublicationResults = () => startRefresh(() => router.refresh())
-  const closeAction = () => {
-    setActiveAction(null)
-    setIsDirty(false)
-  }
   const onDone = (message: string) => {
-    setIsDirty(false)
-    setActiveAction(null)
+    closeAction()
     setFeedback(message)
     startRefresh(() => router.refresh())
   }
@@ -1383,8 +1399,44 @@ function FactEditor({
 }
 
 const PLATFORMS_STORAGE_KEY = 'ivybm:content-studio:selected-platforms'
+const GENERATION_BATCH_STORAGE_KEY = 'ivybm:content-studio:active-generation-batch'
 const VALID_PLATFORMS: Array<ContentStudioItem['platform']> = ['facebook', 'instagram', 'linkedin']
 const DEFAULT_PLATFORMS: Array<ContentStudioItem['platform']> = ['linkedin']
+
+type GenerationBatch = {
+  fingerprint: string
+  generatedAssets: string[]
+  id: string
+  succeededPlatforms: Array<ContentStudioItem['platform']>
+}
+
+function readStoredGenerationBatch(fingerprint: string): GenerationBatch | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(GENERATION_BATCH_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as GenerationBatch
+    if (parsed && parsed.fingerprint === fingerprint && typeof parsed.id === 'string') {
+      return parsed
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function persistGenerationBatch(batch: GenerationBatch | null): void {
+  if (typeof window === 'undefined') return
+  try {
+    if (batch) {
+      window.sessionStorage.setItem(GENERATION_BATCH_STORAGE_KEY, JSON.stringify(batch))
+    } else {
+      window.sessionStorage.removeItem(GENERATION_BATCH_STORAGE_KEY)
+    }
+  } catch {
+    // ignore storage quota / access errors
+  }
+}
 
 function readStoredPlatforms(): Array<ContentStudioItem['platform']> | null {
   if (typeof window === 'undefined') return null
@@ -1441,12 +1493,7 @@ function GenerateDraftEditor({
       generationEpochRef.current += 1
     }
   }, [])
-  const batchRef = useRef<{
-    fingerprint: string
-    generatedAssets: string[]
-    id: string
-    succeededPlatforms: Array<ContentStudioItem['platform']>
-  } | null>(null)
+  const batchRef = useRef<GenerationBatch | null>(null)
   const [form, setForm] = useState(() => ({
     assets: [] as string[],
     autoGenerateImage: false,
@@ -1502,6 +1549,8 @@ function GenerateDraftEditor({
         setGenerationProgress(null)
         if (mode === 'copy') {
           formRevisionRef.current += 1
+          batchRef.current = null
+          persistGenerationBatch(null)
           setForm((current) => ({
             ...current,
             assets: [],
@@ -1609,7 +1658,7 @@ function GenerateDraftEditor({
         knowledgeSources: form.knowledgeSources,
         platforms: targetPlatforms,
       })
-      let batch = batchRef.current
+      let batch = batchRef.current ?? readStoredGenerationBatch(fingerprint)
       if (!batch || batch.fingerprint !== fingerprint) {
         batch = {
           fingerprint,
@@ -1617,6 +1666,9 @@ function GenerateDraftEditor({
           id: crypto.randomUUID(),
           succeededPlatforms: [],
         }
+        batchRef.current = batch
+        persistGenerationBatch(batch)
+      } else {
         batchRef.current = batch
       }
       let generatedAssets = batch.generatedAssets
@@ -1667,6 +1719,7 @@ function GenerateDraftEditor({
             .filter(Boolean)
           batch.generatedAssets = generatedAssets
         }
+        persistGenerationBatch(batch)
       }
       if (
         generationEpochRef.current !== currentEpoch ||
@@ -1675,6 +1728,7 @@ function GenerateDraftEditor({
         return
       }
       batchRef.current = null
+      persistGenerationBatch(null)
       onDirtyChange?.(false)
       onDone(
         total > 1

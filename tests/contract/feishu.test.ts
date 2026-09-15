@@ -101,18 +101,29 @@ describe('Feishu CRM contract', () => {
   })
 
   it('maps lead with multiple attachments to formatted Bitable field with direct download URLs', () => {
-    const leadWithAttachments: LeadForFeishu = {
-      ...lead,
-      attachments: [
-        { filename: 'facade-elevation.dwg', id: 101, status: 'associated' },
-        { filename: 'boq-schedule.xlsx', id: 102, status: 'associated' },
-      ],
-    }
+    const originalUrl = process.env.NEXT_PUBLIC_SERVER_URL
+    const originalRuntimeUrl = process.env.IVYBM_RUNTIME_SERVER_URL
+    delete process.env.NEXT_PUBLIC_SERVER_URL
+    delete process.env.IVYBM_RUNTIME_SERVER_URL
+    try {
+      const leadWithAttachments: LeadForFeishu = {
+        ...lead,
+        attachments: [
+          { filename: 'facade-elevation.dwg', id: 101, status: 'associated' },
+          { filename: 'boq-schedule.xlsx', id: 102, status: 'associated' },
+        ],
+      }
 
-    const mapped = mapLead({ lead: leadWithAttachments, mapping })
-    expect(mapped.fields.Attachments).toBe(
-      'facade-elevation.dwg: http://localhost:3000/api/portal/leads/42/attachments/101\nboq-schedule.xlsx: http://localhost:3000/api/portal/leads/42/attachments/102',
-    )
+      const mapped = mapLead({ lead: leadWithAttachments, mapping })
+      expect(mapped.fields.Attachments).toBe(
+        'facade-elevation.dwg: http://localhost:3000/api/portal/leads/42/attachments/101\nboq-schedule.xlsx: http://localhost:3000/api/portal/leads/42/attachments/102',
+      )
+    } finally {
+      if (originalUrl !== undefined) process.env.NEXT_PUBLIC_SERVER_URL = originalUrl
+      else delete process.env.NEXT_PUBLIC_SERVER_URL
+      if (originalRuntimeUrl !== undefined) process.env.IVYBM_RUNTIME_SERVER_URL = originalRuntimeUrl
+      else delete process.env.IVYBM_RUNTIME_SERVER_URL
+    }
   })
 
   it('formats stable Portal lead URL from NEXT_PUBLIC_SERVER_URL and handles explicit attachment URLs', () => {

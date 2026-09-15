@@ -1,18 +1,25 @@
 import React from 'react'
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PortalSidebar } from '@/admin-portal/core/navigation/PortalSidebar'
 import { PortalMobileNav } from '@/admin-portal/core/navigation/PortalMobileNav'
 import { PortalShell } from '@/admin-portal/core/navigation/PortalShell'
+import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
+import { ContentStudio } from '@/admin-portal/modules/content-studio/ContentStudio'
+import type { ContentStudioSummary } from '@/admin-portal/modules/content-studio/getContentStudioPage'
 import { resolvePortalAvailability } from '@/admin-portal/core/modules/resolvePortalAvailability'
 import { PORTAL_PERMISSION_PRESETS } from '@/access/roles'
 
-const navigationMocks = vi.hoisted(() => ({ pathname: '/dashboard/settings' }))
+const navigationMocks = vi.hoisted(() => ({
+  pathname: '/dashboard/settings',
+  router: { push: vi.fn(), refresh: vi.fn() },
+}))
 
 vi.mock('next/navigation', () => ({
   usePathname: () => navigationMocks.pathname,
+  useRouter: () => navigationMocks.router,
 }))
 
 afterEach(cleanup)
@@ -335,5 +342,114 @@ describe('Portal navigation', () => {
     first.focus()
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
     expect(document.activeElement).toBe(last)
+  })
+
+  it('closes mobile nav drawer synchronously on dirty sidebar navigation so ConfirmDialog exclusively owns Tab and Escape focus', async () => {
+    navigationMocks.pathname = '/dashboard/content-studio'
+    const resolution = resolvePortalAvailability({
+      env: enabledEnvironment,
+      user: { role: 'admin' },
+    })
+
+    const summary: ContentStudioSummary = {
+      items: [],
+      options: { assets: [], knowledgeSources: [], platformAccounts: [] },
+      pagination: { page: 1, totalDocs: 0, totalPages: 1 },
+      publishingEnabled: false,
+      query: { page: 1, platform: 'all', q: '', status: 'all' },
+    }
+
+    function MobileStudioTestHarness() {
+      const [mobileOpen, setMobileOpen] = React.useState(false)
+      const triggerRef = React.useRef<HTMLButtonElement>(null)
+
+      return React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(
+          'div',
+          null,
+          React.createElement(
+            'button',
+            {
+              'aria-label': '打开移动导航',
+              onClick: () => setMobileOpen(true),
+              ref: triggerRef,
+              type: 'button',
+            },
+            'Open navigation',
+          ),
+          React.createElement(PortalMobileNav, {
+            locale: 'zh',
+            modules: resolution.modules,
+            onClose: () => setMobileOpen(false),
+            onLocaleToggle: vi.fn(),
+            open: mobileOpen,
+            triggerRef,
+            user: {
+              id: 1,
+              permissions: PORTAL_PERMISSION_PRESETS.admin,
+              role: 'admin',
+              username: 'admin.example',
+            },
+          }),
+          React.createElement(ContentStudio, { pageState: 'available', summary }),
+        ),
+      )
+    }
+
+    render(React.createElement(MobileStudioTestHarness))
+
+    // 1. Enter dirty state in ContentStudio by typing a draft title
+    fireEvent.click(screen.getByRole('button', { name: /(新建草稿|手动新建)/ }))
+    const titleInput = screen.getByRole('textbox', { name: '草稿标题' }) as HTMLInputElement
+    fireEvent.change(titleInput, { target: { value: 'Dirty Draft Title' } })
+    expect(titleInput.value).toBe('Dirty Draft Title')
+
+    // 2. Open mobile navigation drawer
+    fireEvent.click(screen.getByRole('button', { name: '打开移动导航' }))
+    const mobileNav = await screen.findByRole('dialog')
+    expect(mobileNav).toBeTruthy()
+
+    // 3. Click a sidebar link inside mobile navigation
+    const mediaLink = within(mobileNav).getByRole('link', { name: '素材库' })
+    fireEvent.click(mediaLink)
+
+    // 4. Verify mobile nav is synchronously closed and unmounted
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '移动端导航' })).toBeNull()
+      expect(screen.queryByLabelText('关闭导航')).toBeNull()
+    })
+
+    // 5. Verify ConfirmDialog is shown
+    const confirmTitle = await screen.findByText('放弃未保存的内容？')
+    expect(confirmTitle).toBeTruthy()
+    const confirmDialog = confirmTitle.closest('[role="dialog"]') as HTMLElement
+    expect(confirmDialog).toBeTruthy()
+
+    // 6. Verify ConfirmDialog exclusively owns keyboard focus controls
+    const keepDraftBtn = within(confirmDialog).getByRole('button', { name: '继续编辑' })
+    const discardBtn = within(confirmDialog).getByRole('button', { name: '放弃并切换' })
+    const closeBtn = within(confirmDialog).getByRole('button', { name: '关闭弹窗' })
+
+    expect(keepDraftBtn).toBeTruthy()
+    expect(discardBtn).toBeTruthy()
+    expect(closeBtn).toBeTruthy()
+
+    // Focus stays within ConfirmDialog buttons
+    keepDraftBtn.focus()
+    expect(document.activeElement).toBe(keepDraftBtn)
+
+    // Cancel transition via "继续编辑"
+    fireEvent.click(keepDraftBtn)
+
+    // 7. Verify ConfirmDialog is closed, mobile nav remains closed, and draft edits are preserved
+    await waitFor(() => {
+      expect(screen.queryByText('放弃未保存的内容？')).toBeNull()
+    })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect((screen.getByRole('textbox', { name: '草稿标题' }) as HTMLInputElement).value).toBe(
+      'Dirty Draft Title',
+    )
   })
 })

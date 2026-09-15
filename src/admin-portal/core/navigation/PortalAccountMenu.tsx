@@ -162,6 +162,7 @@ export function PortalAccountMenu({
               const allowed = window.dispatchEvent(navEvent)
               if (!allowed) {
                 event.preventDefault()
+                closeMenu()
                 return
               }
               handleClose()
