@@ -1157,12 +1157,12 @@ describe('Portal Content Studio', () => {
       query: { page: 1, platform: 'all', q: '', status: 'all' },
     }
 
-    let resolveUpload: (value: unknown) => void = () => {}
+    let resolveUpload = () => {}
     const originalFetch = globalThis.fetch
     globalThis.fetch = vi.fn((input, init) => {
       const url = String(input)
       if (url === '/api/portal/media' && init?.method === 'POST') {
-        return new Promise((resolve) => {
+        return new Promise<Response>((resolve) => {
           resolveUpload = () =>
             resolve(
               new Response(
@@ -1180,7 +1180,7 @@ describe('Portal Content Studio', () => {
         })
       }
       return originalFetch(input, init)
-    })
+    }) as unknown as typeof fetch
 
     const { container } = render(
       React.createElement(
@@ -1233,7 +1233,7 @@ describe('Portal Content Studio', () => {
 
     // Resolve upload
     await act(async () => {
-      resolveUpload({})
+      resolveUpload()
     })
 
     // Now upload finished: controls re-enabled
