@@ -767,6 +767,69 @@ describe('ChatWidget', () => {
 
     expect(await screen.findAllByRole('alert')).toHaveLength(1)
   })
+
+  it('returns widget to welcome state without eagerly starting a session when starting a new conversation', async () => {
+    const resolvedSession: ChatSession = {
+      ...browserSession,
+      allowedActions: [],
+      handoffStatus: 'resolved',
+      id: 'resolved-session-1',
+      messages: [
+        {
+          author: 'visitor',
+          content: 'Previous conversation message',
+          createdAt: '2026-08-10T10:00:00.000Z',
+          id: 'm-prev',
+          status: 'sent',
+        },
+      ],
+    }
+    const fake = new FakeChatService()
+    vi.spyOn(fake, 'getSession').mockResolvedValue(resolvedSession)
+    const startSessionSpy = vi.spyOn(fake, 'startSession')
+    const sendMessageSpy = vi.spyOn(fake, 'sendMessage')
+
+    window.sessionStorage.setItem('ivybm_chat_session_id_en', 'resolved-session-1')
+    renderWidget(fake)
+    fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
+    const dialog = await screen.findByRole('dialog')
+
+    expect(await screen.findByTestId('chat-resolved')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Start a new conversation' })).not.toBeNull()
+    expect(within(dialog).getByRole('textbox')).toHaveProperty('disabled', true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start a new conversation' }))
+
+    // Returns to local welcome state:
+    // - previous messages and resolved note are gone
+    // - composer input becomes enabled again
+    // - welcome greeting and sample question pills are visible
+    // - startSession has NOT been called eagerly
+    expect(screen.queryByTestId('chat-resolved')).toBeNull()
+    expect(screen.queryByText('Previous conversation message')).toBeNull()
+    await waitFor(() => expect(within(dialog).getByRole('textbox')).toHaveProperty('disabled', false))
+    expect(
+      screen.getByText(
+        'Hello — I can help with product information and connect you with our project team.',
+      ),
+    ).not.toBeNull()
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    expect(window.sessionStorage.getItem('ivybm_chat_session_id_en')).toBeNull()
+
+    // Subsequent message sending lazily triggers startSession and sendMessage
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'New topic after resolve' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(startSessionSpy).toHaveBeenCalledTimes(1)
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'New topic after resolve',
+        }),
+      )
+    })
+  })
 })
 
 describe('browser ChatService adapter', () => {

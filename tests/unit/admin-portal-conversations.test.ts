@@ -1226,11 +1226,19 @@ describe('Portal conversations module', () => {
    }
  })
 
-  it('gracefully handles conversations with missing lastMessageAt without crashing', async () => {
+  it('gracefully handles conversations with missing lastMessageAt and message timestamps without crashing', async () => {
     const abnormalSession: ChatSession = {
       ...session1,
       id: 'conv-no-time',
-      messages: [],
+      messages: [
+        {
+          author: 'visitor',
+          content: 'Message without timestamp',
+          createdAt: undefined as unknown as string,
+          id: 'msg-no-time',
+          status: 'sent',
+        },
+      ],
     }
 
     const fetchMock = vi.fn().mockImplementation((url: string) => {
@@ -1266,7 +1274,11 @@ describe('Portal conversations module', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: '官网访客 #o-time' })).toBeDefined()
     })
+    // Inbox list item displays friendly empty state
     expect(screen.getByText('暂无消息')).toBeDefined()
+    // Message bubble timestamp displays dash instead of inbox-level "暂无消息"
+    expect(screen.getByText('Message without timestamp')).toBeDefined()
+    expect(screen.getByText('—')).toBeDefined()
 
     // Also verify English locale fallback
     cleanup()
@@ -1276,6 +1288,7 @@ describe('Portal conversations module', () => {
       expect(screen.getByRole('heading', { name: 'Website visitor #o-time' })).toBeDefined()
     })
     expect(screen.getByText('No messages')).toBeDefined()
+    expect(screen.getByText('—')).toBeDefined()
     window.localStorage.clear()
   })
 })

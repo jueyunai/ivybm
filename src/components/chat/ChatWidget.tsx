@@ -107,10 +107,7 @@ export function ChatWidget({
   service,
 }: ChatWidgetProps) {
   const copy = getWebsiteCopy(locale).chat
-  const sampleQuestions =
-    propSampleQuestions ??
-    (copy as { sampleQuestions?: string[] }).sampleQuestions ??
-    DEFAULT_SAMPLE_QUESTIONS[locale]
+  const sampleQuestions = propSampleQuestions ?? DEFAULT_SAMPLE_QUESTIONS[locale]
   const browserService = useMemo(() => createBrowserChatService(), [])
   const activeService = service || browserService
   const persistSession = !service
@@ -234,24 +231,22 @@ export function ChatWidget({
     return pending
   }, [activeService, commitSession, copy, sessionStorageKey])
 
-  const startSession = useCallback(
-    (forceNew = false): Promise<ChatSession | null> => {
-      if (!forceNew && sessionRef.current) return Promise.resolve(sessionRef.current)
-      if (startPromiseRef.current) return startPromiseRef.current
+  const startSession = useCallback((): Promise<ChatSession | null> => {
+    if (sessionRef.current) return Promise.resolve(sessionRef.current)
+    if (startPromiseRef.current) return startPromiseRef.current
 
-      const pending = (async (): Promise<ChatSession | null> => {
-        setError('')
-        setStatus('loading')
-        try {
-          const idempotencyKey =
-            forceNew || !startCommandKeyRef.current ? chatCommandKey() : startCommandKeyRef.current
-          startCommandKeyRef.current = idempotencyKey
-          const input: StartChatSessionInput = {
-            channel: 'website',
-            idempotencyKey,
-            locale,
-            sourceURL: typeof window === 'undefined' ? undefined : window.location.href,
-          }
+    const pending = (async (): Promise<ChatSession | null> => {
+      setError('')
+      setStatus('loading')
+      try {
+        const idempotencyKey = startCommandKeyRef.current ?? chatCommandKey()
+        startCommandKeyRef.current = idempotencyKey
+        const input: StartChatSessionInput = {
+          channel: 'website',
+          idempotencyKey,
+          locale,
+          sourceURL: typeof window === 'undefined' ? undefined : window.location.href,
+        }
           const next = await activeService.startSession(input)
           commitSession(next)
           startCommandKeyRef.current = null
@@ -447,11 +442,10 @@ export function ChatWidget({
     }
   }
 
-  const startNewConversation = () => {
+  const startNewConversation = (): void => {
     setDraft('')
     setError('')
     discardSession()
-    void startSession(true)
   }
 
   const messages = [
