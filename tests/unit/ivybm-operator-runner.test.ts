@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Import functions from the CommonJS runner
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const runner = require('../../skills/ivybm-operator/bin/runner.cjs')
+const runner = require('../../docs/skills/ivybm-operator/bin/runner.cjs')
 
 describe('IVYBM Operator Runner', () => {
   let testDir: string

@@ -12,12 +12,12 @@
 1. **安装到技能目录**：
 ```bash
 mkdir -p ~/.codex/skills
-cp -r skills/ivybm-operator ~/.codex/skills/
+cp -r docs/skills/ivybm-operator ~/.codex/skills/
 ```
 
 2. **操作员手动登录**：
 ```bash
-node skills/ivybm-operator/bin/runner.cjs auth login
+node docs/skills/ivybm-operator/bin/runner.cjs auth login
 ```
 按照交互提示输入用户名与掩码密码，成功后获得会话 Token。
 

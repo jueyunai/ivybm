@@ -11,7 +11,7 @@ description: 辅助管理 IVYBM 运营后台（官网英阿双语产品/案例/�
 
 ## 1. 核心架构与安全红线
 
-1. **底层执行器**：所有 API 请求通过本地免依赖执行器 `skills/ivybm-operator/bin/runner.cjs` 完成。
+1. **底层执行器**：所有 API 请求通过本地免依赖执行器 `docs/skills/ivybm-operator/bin/runner.cjs` 完成。
 2. **凭据安全与零密码接触原则（Zero-Plaintext-Password）**：
    - **AI 严禁在对话框中索要或接收用户的明文密码**；
    - 凭据由人类操作员在终端通过交互式登录保存（仅持久化 JWT Token，不保存明文密码），或通过环境变量 `IVYBM_TOKEN` 提供；
@@ -32,14 +32,14 @@ description: 辅助管理 IVYBM 运营后台（官网英阿双语产品/案例/�
 在执行任何业务操作前，请先自检鉴权状态：
 
 ```bash
-node ./skills/ivybm-operator/bin/runner.cjs auth status
+node ./docs/skills/ivybm-operator/bin/runner.cjs auth status
 ```
 
 - **若返回 `{"authenticated": true}`**：正常执行后续业务。
 - **若返回 `{"authenticated": false}`**：
   **切勿询问用户密码**。请向用户输出以下指引：
   > “检测到您尚未登录 IVYBM 后台。为了您的账号安全，请在终端中运行以下命令完成交互式登录：
-  > `node ./skills/ivybm-operator/bin/runner.cjs auth login`
+  > `node ./docs/skills/ivybm-operator/bin/runner.cjs auth login`
   > 登录成功后，即可继续由我为您处理内容上架与草稿撰写。”
 
 ---
@@ -53,12 +53,12 @@ node ./skills/ivybm-operator/bin/runner.cjs auth status
 #### 第一步：创建英文（EN）基准记录
 1. 若包含配图，先上传配图获取 `coverImageId`：
    ```bash
-   node ./skills/ivybm-operator/bin/runner.cjs media upload /tmp/facade.jpg --alt "Aluminum Honeycomb Panel"
+   node ./docs/skills/ivybm-operator/bin/runner.cjs media upload /tmp/facade.jpg --alt "Aluminum Honeycomb Panel"
    # 返回 media result: { id: 101, url: "..." }
    ```
 2. 准备英文数据 `/tmp/product-en.json` 并调用创建：
    ```bash
-   node ./skills/ivybm-operator/bin/runner.cjs content upsert \
+   node ./docs/skills/ivybm-operator/bin/runner.cjs content upsert \
      --type products \
      --locale en \
      --file /tmp/product-en.json
@@ -75,14 +75,14 @@ node ./skills/ivybm-operator/bin/runner.cjs auth status
 2. 准备阿拉伯语数据 `/tmp/product-ar.json`，**必须携带第一步获得的 `id` 与最新 `updatedAt`**：
    ```bash
    # 保存为草稿
-   node ./skills/ivybm-operator/bin/runner.cjs content upsert \
+   node ./docs/skills/ivybm-operator/bin/runner.cjs content upsert \
      --type products \
      --id 15 \
      --locale ar \
      --updatedAt "2026-09-16T12:00:00.000Z" \
      --file /tmp/product-ar.json
    # 或若双语必填字段完全齐备，直接正式发布
-   node ./skills/ivybm-operator/bin/runner.cjs content upsert \
+   node ./docs/skills/ivybm-operator/bin/runner.cjs content upsert \
      --type products \
      --id 15 \
      --locale ar \
@@ -104,13 +104,13 @@ node ./skills/ivybm-operator/bin/runner.cjs auth status
 1. **撰写推文并创建草稿**：
    准备推文 JSON `/tmp/social-post.json`，创建草稿：
    ```bash
-   node ./skills/ivybm-operator/bin/runner.cjs social draft-create --file /tmp/social-post.json
+   node ./docs/skills/ivybm-operator/bin/runner.cjs social draft-create --file /tmp/social-post.json
    # 返回：{ content: { id: 88, status: "draft", updatedAt: "2026-09-16T12:00:00.000Z" }, duplicate: false }
    ```
 2. **修改草稿（如需调整）**：
    若需修改草稿，必须携带上一步的 `updatedAt`：
    ```bash
-   node ./skills/ivybm-operator/bin/runner.cjs social draft-update \
+   node ./docs/skills/ivybm-operator/bin/runner.cjs social draft-update \
      --id 88 \
      --updatedAt "2026-09-16T12:00:00.000Z" \
      --file /tmp/social-post-updated.json
@@ -118,7 +118,7 @@ node ./skills/ivybm-operator/bin/runner.cjs auth status
 3. **提交审核（Submit Review）**：
    携带最新的 `updatedAt` 将草稿状态推进至待审状态（`review`）：
    ```bash
-   node ./skills/ivybm-operator/bin/runner.cjs social draft-submit \
+   node ./docs/skills/ivybm-operator/bin/runner.cjs social draft-submit \
      --id 88 \
      --updatedAt "2026-09-16T12:00:00.000Z"
    # 服务端返回：{ content: { id: 88, status: "review" } }
@@ -137,24 +137,24 @@ node ./skills/ivybm-operator/bin/runner.cjs auth status
 
 ```bash
 # ----------------- 认证 -----------------
-node ./skills/ivybm-operator/bin/runner.cjs auth status
-node ./skills/ivybm-operator/bin/runner.cjs auth login [--endpoint <url>]
-node ./skills/ivybm-operator/bin/runner.cjs auth logout
+node ./docs/skills/ivybm-operator/bin/runner.cjs auth status
+node ./docs/skills/ivybm-operator/bin/runner.cjs auth login [--endpoint <url>]
+node ./docs/skills/ivybm-operator/bin/runner.cjs auth logout
 
 # ----------------- 媒体 -----------------
-node ./skills/ivybm-operator/bin/runner.cjs media upload <filepath> --alt "Description" [--public] [--idempotency-key <key>]
+node ./docs/skills/ivybm-operator/bin/runner.cjs media upload <filepath> --alt "Description" [--public] [--idempotency-key <key>]
 
 # ----------------- 官网内容 -----------------
-node ./skills/ivybm-operator/bin/runner.cjs content options --type products
-node ./skills/ivybm-operator/bin/runner.cjs content get --type products --id 15 --locale en
-node ./skills/ivybm-operator/bin/runner.cjs content upsert --type products --file /tmp/prod.json --locale en [--idempotency-key <key>]
-node ./skills/ivybm-operator/bin/runner.cjs content upsert --type products --id 15 --file /tmp/prod-ar.json --locale ar --updatedAt <ts> [--publish] [--idempotency-key <key>]
-node ./skills/ivybm-operator/bin/runner.cjs content delete --type products --id 15 --locale en --updatedAt <ts> [--idempotency-key <key>]
+node ./docs/skills/ivybm-operator/bin/runner.cjs content options --type products
+node ./docs/skills/ivybm-operator/bin/runner.cjs content get --type products --id 15 --locale en
+node ./docs/skills/ivybm-operator/bin/runner.cjs content upsert --type products --file /tmp/prod.json --locale en [--idempotency-key <key>]
+node ./docs/skills/ivybm-operator/bin/runner.cjs content upsert --type products --id 15 --file /tmp/prod-ar.json --locale ar --updatedAt <ts> [--publish] [--idempotency-key <key>]
+node ./docs/skills/ivybm-operator/bin/runner.cjs content delete --type products --id 15 --locale en --updatedAt <ts> [--idempotency-key <key>]
 
 # ----------------- 社媒工作台 -----------------
-node ./skills/ivybm-operator/bin/runner.cjs social draft-create --file /tmp/draft.json [--idempotency-key <key>]
-node ./skills/ivybm-operator/bin/runner.cjs social draft-update --id 88 --file /tmp/draft.json --updatedAt <ts> [--idempotency-key <key>]
-node ./skills/ivybm-operator/bin/runner.cjs social draft-submit --id 88 --updatedAt <ts> [--idempotency-key <key>]
+node ./docs/skills/ivybm-operator/bin/runner.cjs social draft-create --file /tmp/draft.json [--idempotency-key <key>]
+node ./docs/skills/ivybm-operator/bin/runner.cjs social draft-update --id 88 --file /tmp/draft.json --updatedAt <ts> [--idempotency-key <key>]
+node ./docs/skills/ivybm-operator/bin/runner.cjs social draft-submit --id 88 --updatedAt <ts> [--idempotency-key <key>]
 ```
 
 ---

@@ -81,7 +81,7 @@
 ## 3. 一体化 Skill 包结构
 
 ```text
-skills/ivybm-operator/
+skills/ivybm-operator/ 现归档于 docs/skills/ivybm-operator/
 ├── SKILL.md                 # Agent 核心提示词：角色定位、SOP 流程、英阿双语排版指南、安全红线
 ├── bin/
 │   └── runner.cjs           # 零外部依赖单文件执行器 (Node.js 18+ 原生 API)
