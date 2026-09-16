@@ -394,11 +394,12 @@ describe('ConversationService', () => {
     expect(generateReply).not.toHaveBeenCalled()
   })
 
-  it('safely routes an unavailable AI response to human handoff instead of surfacing a provider failure', async () => {
+  it('keeps the conversation AI-active and surfaces a retryable error when the responder is temporarily unavailable', async () => {
     let sequence = 0
+    const repository = new InMemoryConversationRepository()
     const service = createConversationService({
       createId: (kind) => `${kind}-${++sequence}`,
-      repository: new InMemoryConversationRepository(),
+      repository,
       responder: {
         generateReply: async () => {
           throw new Error('provider timeout')
@@ -417,16 +418,28 @@ describe('ConversationService', () => {
         sessionId: session.id,
         text: 'What finishes are available?',
       }),
-    ).resolves.toMatchObject({
-      handoffStatus: 'handoff_requested',
-      messages: [expect.objectContaining({ author: 'visitor' })],
+    ).rejects.toMatchObject({
+      code: 'ai_unavailable',
+      retryable: true,
     })
+    await expect(service.getSession(session.id)).resolves.toMatchObject({
+      handoffStatus: 'ai_active',
+      messages: [],
+    })
+    expect(repository.handoffEvents).toEqual([])
   })
 
-  it('persists qualification context once when AI is unavailable and the command is retried', async () => {
+  it('reclaims the same failed command key and persists one visitor/AI pair after recovery', async () => {
     const repository = new InMemoryConversationRepository()
     const generateReply = vi.fn(async () => {
-      throw new Error('provider timeout')
+      if (generateReply.mock.calls.length === 1) throw new Error('provider timeout')
+      return {
+        content: 'Recovered answer.',
+        estimatedCostUSD: 0,
+        model: 'fixture',
+        promptVersion: 1,
+        tokenUsage: { inputTokens: 1, totalTokens: 1 },
+      }
     })
     const service = createConversationService({
       leadSink: {
@@ -455,17 +468,19 @@ describe('ConversationService', () => {
       text: 'We need facade panels.',
     }
 
-    const first = await service.sendMessage(input)
-    const replay = await service.sendMessage(input)
-
-    expect(replay).toEqual(first)
-    expect(replay).toMatchObject({
-      handoffStatus: 'handoff_requested',
-      qualificationState: { askedFields: [], awaitingFields: [], roundCount: 0 },
+    await expect(service.sendMessage(input)).rejects.toMatchObject({
+      code: 'ai_unavailable',
+      retryable: true,
     })
-    expect(replay.messages).toHaveLength(1)
-    expect(generateReply).toHaveBeenCalledTimes(1)
-    expect(repository.handoffEvents).toHaveLength(1)
+    const recovered = await service.sendMessage(input)
+
+    expect(recovered).toMatchObject({ handoffStatus: 'ai_active' })
+    expect(recovered.messages).toEqual([
+      expect.objectContaining({ author: 'visitor', content: 'We need facade panels.' }),
+      expect.objectContaining({ author: 'ai', content: 'Recovered answer.' }),
+    ])
+    expect(generateReply).toHaveBeenCalledTimes(2)
+    expect(repository.handoffEvents).toEqual([])
   })
 
   it('carries qualification state through retryMessage and persists the next round', async () => {
@@ -674,6 +689,48 @@ describe('ConversationService', () => {
     expect(resumed.session.messages.filter(({ author }) => author === 'ai')).toHaveLength(1)
     expect(evaluate).toHaveBeenCalledTimes(1)
     expect(generateReply).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets a platform job retry the same external event after a transient AI failure', async () => {
+    const repository = new InMemoryConversationRepository()
+    const generateReply = vi.fn(async () => {
+      if (generateReply.mock.calls.length === 1) throw new Error('provider timeout')
+      return {
+        content: 'Recovered platform reply.',
+        estimatedCostUSD: 0,
+        model: 'fixture',
+        promptVersion: 1,
+        tokenUsage: { inputTokens: 1, totalTokens: 1 },
+      }
+    })
+    const service = createConversationService({ repository, responder: { generateReply } })
+    const input = {
+      channel: 'facebook' as const,
+      externalAccountId: 'page-retry',
+      externalMessageId: 'message-retry',
+      externalSenderId: 'sender-retry',
+      externalThreadId: 'page-retry:sender-retry',
+      locale: 'en' as const,
+      text: 'Please share finish options.',
+    }
+
+    await expect(service.ingestExternalMessage(input)).rejects.toMatchObject({
+      code: 'ai_unavailable',
+      retryable: true,
+    })
+    expect(repository.sessionCount).toBe(1)
+
+    const recovered = await service.ingestExternalMessage(input)
+    expect(recovered).toMatchObject({
+      session: { handoffStatus: 'ai_active' },
+      status: 'accepted',
+    })
+    expect(recovered.session.messages).toEqual([
+      expect.objectContaining({ author: 'visitor', content: input.text }),
+      expect.objectContaining({ author: 'ai', content: 'Recovered platform reply.' }),
+    ])
+    expect(generateReply).toHaveBeenCalledTimes(2)
+    expect(repository.handoffEvents).toEqual([])
   })
 
   it('records later external messages after handoff and resolution without restarting AI automation', async () => {

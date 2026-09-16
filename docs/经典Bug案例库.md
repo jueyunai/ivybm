@@ -1,5 +1,85 @@
 # 经典 Bug 案例库
 
+## P-TECHNICAL-FAILURE-STATE-POISON 技术瞬时故障污染长期业务状态
+
+- Category: state-management, ai-model, observability, test-gap
+- Applies to: AI 客服、支付、发布、Webhook 投递等将技术重试与业务状态机结合的流程
+- Example cases: CHAT-001
+
+### Invariant
+
+可恢复的技术异常不得不可逆地推进业务状态机。技术失败应失败当前幂等命令、保留原状态并允许安全重试；仅明确业务规则或人工命令才能进入人工接管等长期状态。
+
+### Failure Mechanism
+
+服务捕获所有 Provider/数据库/检索异常，把它们转换成业务 handoff 并以 200 成功持久化。短暂故障因此变成不可逆会话状态，恢复后原会话仍禁止 AI。同时 catch 吞掉原错误，日志无法区分超时、限流、配置或数据库故障。
+
+### Early Signals
+
+- catch 返回业务事件/状态，而不是可重试错误。
+- 失败路径返回 HTTP 200，并写入长期状态字段。
+- 相同幂等键的失败命令无法 reclaim，或 retry 会重复写入。
+- 生产只留下泛化 `unavailable`，无 conversation/request ID 和底层错误类别。
+
+### Prevention Gate
+
+显式分离“技术命令结果”与“业务状态迁移”。每个可恢复失败用例必须断言：状态和业务消息零副作用、同幂等键可重试、成功后仅写入一份结果。独立测试业务策略 handoff，防止为了恢复能力而放弃高风险安全边界。
+
+### Verification
+
+第一次 Provider 调用抛错，断言 503/retryable、会话仍 `ai_active`、消息和 handoff 为 0；相同命令键第二次成功，断言恰好一条 visitor 和一条 AI 消息。高风险/知识无匹配等策略用例仍断言转人工。
+
+### Reuse Prompt
+
+“这个 catch 处理的是技术失败还是业务决策？它会不会把一次可重试故障写成不可逆长期状态？”
+
+## CHAT-001 一次 AI 异常使网站会话永久转人工
+
+- Category: state-management, ai-model, observability, test-gap
+- Pattern: P-TECHNICAL-FAILURE-STATE-POISON
+- Date: 2026-09-16
+- Area: 官网 ChatWidget / ConversationService / RAG responder
+- Environment: production
+- Severity: P1
+
+### Symptom
+
+访客发送“你好”后立即看到“Your request has been shared with our project team”；Portal 会话变成“待接管”。后续 AI 已恢复，但原会话不再自动回复。
+
+### Context
+
+生产会话 #32 的 handoff reason 为 `ai_service_unavailable`。同时读取核对证明模块开关、AI Routes/Profiles/Provider、Prompt、英/阿知识均已启用；embedding、文本 Provider 与完整 RAG 探针正常，后续会话 #33/#34 在同一进程内正常自动回复。
+
+### Root Cause
+
+Technical cause: `ConversationService.replyOrHandoff` 捕获所有 responder 异常并返回 `ai_service_unavailable` handoff，调用方以成功命令保存 visitor 消息和 `handoff_requested`。Payload responder 还会缓存失败的 gateway resolution Promise，潜在把一次配置/数据库失败扩大到进程生命周期。
+
+Process cause: 既有单测把“一次 Provider 失败就转人工”当作正确契约，没有测试技术失败后状态零副作用与同 key 恢复。
+
+### Why Existing Checks Missed It
+
+ChatWidget 已有 503 Retry 和同 key 回归，但真实 Service 在 HTTP 层之前就把异常吞掉并返回 200 handoff，因而 UI 恢复能力永远无法触发。
+
+### Fix
+
+技术异常改为抛出 `503 ai_unavailable, retryable=true`，由命令幂等层标记 failed 并允许同 key reclaim；不保存 visitor/状态/handoff 副作用。Payload responder 对失败的 gateway Promise 清缓存，并写入不含访客正文/Prompt/知识/密钥的结构化日志。显式高风险/知识/资格策略 handoff 保持不变。
+
+### Prevention Checklist
+
+- [ ] 技术异常返回非 2xx 可重试契约，不写业务 handoff。
+- [ ] 同幂等键失败后可 reclaim，恢复成功只有一对 visitor/AI 消息。
+- [ ] 失败的 Promise 不做进程级永久缓存。
+- [ ] 日志带 conversation/request ID 与错误分类，不带敏感正文。
+- [ ] 业务策略 handoff 使用独立回归，不被技术恢复改动破坏。
+
+### Regression Test
+
+`tests/unit/conversations/service.test.ts`：首次失败状态零副作用，同 key 恢复成功只写一对消息。`tests/unit/conversations/payload-responder.test.ts`：失败 gateway 不缓存、日志脱敏。`tests/integration/chat-api.test.ts`：真实 PostgreSQL/HTTP 返回 503 且 conversations/messages/handoffs 零副作用。
+
+### Related Workflow Gates
+
+- product-development-workflow Gate 1、Gate 3、Gate 4、Gate 6、Gate 7、Gate 8
+
 ## P-CONTEXT-SPECIFIC-TEXT-VALIDATION 通用字符串过滤破坏合法业务文本
 
 - Category: test-gap, product-acceptance
