@@ -1225,4 +1225,57 @@ describe('Portal conversations module', () => {
      vi.useRealTimers()
    }
  })
+
+  it('gracefully handles conversations with missing lastMessageAt without crashing', async () => {
+    const abnormalSession: ChatSession = {
+      ...session1,
+      id: 'conv-no-time',
+      messages: [],
+    }
+
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      const urlStr = String(url)
+      if (
+        urlStr.startsWith('/api/portal/conversations?') ||
+        urlStr === '/api/portal/conversations'
+      ) {
+        return Promise.resolve(
+          jsonResponse({
+            docs: [
+              {
+                ...abnormalSession,
+                lastMessageAt: undefined,
+                messages: undefined,
+              },
+            ],
+            page: 1,
+            totalDocs: 1,
+            totalPages: 1,
+          }),
+        )
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-no-time')) {
+        return Promise.resolve(jsonResponse(abnormalSession))
+      }
+      return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWorkspace('conv-no-time')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '官网访客 #o-time' })).toBeDefined()
+    })
+    expect(screen.getByText('暂无消息')).toBeDefined()
+
+    // Also verify English locale fallback
+    cleanup()
+    window.localStorage.setItem('ivybm.portal.preferences', JSON.stringify({ locale: 'en' }))
+    renderWorkspace('conv-no-time')
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Website visitor #o-time' })).toBeDefined()
+    })
+    expect(screen.getByText('No messages')).toBeDefined()
+    window.localStorage.clear()
+  })
 })

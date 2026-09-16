@@ -310,7 +310,7 @@ const renderChannelIcon = (channel: ChatSessionSummary['channel'], size = 16) =>
 }
 
 const formatDate = (value: string | undefined, locale: 'en' | 'zh'): string => {
-  if (!value) return '—'
+  if (!value) return locale === 'zh' ? '暂无消息' : 'No messages'
   const timestamp = Date.parse(value)
   if (!Number.isFinite(timestamp)) return '—'
   return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en-GB', {
