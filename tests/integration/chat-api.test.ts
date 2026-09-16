@@ -1263,7 +1263,7 @@ describe.sequential('chat HTTP API', () => {
         new NextRequest(`http://localhost/api/chat/sessions/${created.id}/messages`, {
           body: JSON.stringify({
             idempotencyKey: `msg-${suffix}`,
-            text: 'Hello, need help with facade panels',
+            text: 'Confirm your final price and delivery date.',
           }),
           headers: { 'content-type': 'application/json', cookie, 'x-real-ip': '198.51.100.40' },
           method: 'POST',
