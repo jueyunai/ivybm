@@ -302,7 +302,7 @@ describe.sequential('chat HTTP API', () => {
     })
   })
 
-  it('safely creates a handoff when the AI runtime is unavailable', async () => {
+  it('keeps the website session AI-active and returns a retryable error when AI is unavailable', async () => {
     const suffix = randomUUID()
     const startKey = `unavailable-start-${suffix}`
     const started = await startSession(
@@ -325,13 +325,10 @@ describe.sequential('chat HTTP API', () => {
       }),
       { params: Promise.resolve({ id: session.id }) },
     )
-    expect(response.status).toBe(200)
-    const snapshot = (await response.json()) as {
-      handoffStatus: string
-      messages: Array<{ author: string }>
-    }
-    expect(snapshot.handoffStatus).toBe('handoff_requested')
-    expect(snapshot.messages).toEqual([expect.objectContaining({ author: 'visitor' })])
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'ai_unavailable', retryable: true },
+    })
 
     const conversation = (
       await payload.find({
@@ -341,17 +338,21 @@ describe.sequential('chat HTTP API', () => {
         where: { publicId: { equals: session.id } },
       })
     ).docs[0]
+    expect(conversation).toMatchObject({ handoffStatus: 'ai_active' })
+    const messages = await payload.find({
+      collection: 'messages',
+      limit: 10,
+      overrideAccess: true,
+      where: { conversation: { equals: conversation.id } },
+    })
+    expect(messages.docs).toHaveLength(0)
     const handoffs = await payload.find({
       collection: 'handoffs',
       limit: 10,
       overrideAccess: true,
       where: { conversation: { equals: conversation.id } },
     })
-    expect(handoffs.docs).toHaveLength(1)
-    expect(handoffs.docs[0]).toMatchObject({
-      reason: 'ai_service_unavailable',
-      status: 'requested',
-    })
+    expect(handoffs.docs).toHaveLength(0)
 
     await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
     const visitors = await payload.find({
