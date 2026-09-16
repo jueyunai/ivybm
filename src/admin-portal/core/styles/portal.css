@@ -5272,17 +5272,42 @@
   }
 
   .portal-leads__detail--editor .portal-leads-editor {
-    padding: 16px;
-    gap: 16px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    padding: 0;
+    gap: 0;
   }
 
   .portal-leads__detail--editor .portal-leads-editor > header {
-    padding: 0 0 12px;
+    display: flex;
+    min-height: 55px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--portal-border);
+    flex-shrink: 0;
+  }
+
+  .portal-leads__detail--editor .portal-leads-editor > p[role="alert"] {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 8px 16px;
     border-bottom: 1px solid var(--portal-border);
   }
 
   .portal-leads__detail--editor .portal-leads-editor__fields {
-    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 14px 16px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .portal-leads__detail--editor .portal-leads-editor > footer {
@@ -5290,8 +5315,10 @@
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    padding: 12px 0 0;
+    padding: 12px 16px;
     border-top: 1px solid var(--portal-border);
+    background: var(--portal-surface);
+    flex-shrink: 0;
   }
 
   .portal-leads__filters label,
@@ -5504,6 +5531,7 @@
     font-size: 12px;
   }
 
+  .portal-leads__detail-body > dl,
   .portal-leads__detail > dl {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5512,6 +5540,7 @@
     padding: 14px;
   }
 
+  .portal-leads__detail-body > dl > div,
   .portal-leads__detail > dl > div {
     display: grid;
     min-height: 42px;
@@ -7198,11 +7227,18 @@
     max-height: 440px;
   }
 
+  .portal-leads__detail-body > dl,
   .portal-leads__detail > dl {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .portal-leads__detail--editor .portal-leads-editor {
+    height: auto;
+  }
+
+  .portal-leads__detail--editor .portal-leads-editor__fields,
   .portal-leads-editor__fields {
+    overflow-y: visible;
     grid-template-columns: minmax(0, 1fr);
   }
 

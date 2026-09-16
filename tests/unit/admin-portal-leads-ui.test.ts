@@ -1,5 +1,5 @@
 import React from 'react'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PortalPreferencesProvider } from '@/admin-portal/core/navigation/PortalPreferences'
@@ -122,6 +122,54 @@ describe('LeadsHub Master-Detail UI Rendering', () => {
     // Verify detail container has detail-body section separating fixed header from scrollable content
     const detailBody = container.querySelector('.portal-leads__detail-body')
     expect(detailBody).not.toBeNull()
-    expect(detailBody?.querySelector('dl')).not.toBeNull()
+    const dl = detailBody?.querySelector(':scope > dl')
+    expect(dl).not.toBeNull()
+    const dlItems = dl?.querySelectorAll(':scope > div')
+    expect(dlItems && dlItems.length > 0).toBe(true)
+  })
+
+  it('renders editor inside detail with isolated scrollable fields and visible footer', () => {
+    const { container } = renderLeadsHub()
+
+    // Click "新增线索" to enter create editor mode
+    const createButton = screen.getByRole('button', { name: /新增线索|create lead/i })
+    fireEvent.click(createButton)
+
+    // Detail container must switch to editor variant
+    const editorDetail = container.querySelector('.portal-leads__detail--editor')
+    expect(editorDetail).not.toBeNull()
+
+    const editor = editorDetail?.querySelector('.portal-leads-editor')
+    expect(editor).not.toBeNull()
+
+    // Header must be distinct and contain title
+    const header = editor?.querySelector(':scope > header')
+    expect(header).not.toBeNull()
+
+    // Fields area must be isolated for overflow scrolling
+    const fields = editor?.querySelector(':scope > .portal-leads-editor__fields')
+    expect(fields).not.toBeNull()
+    expect(fields?.querySelectorAll('input').length).toBeGreaterThan(0)
+
+    // Footer must be anchored at bottom with action buttons
+    const footer = editor?.querySelector(':scope > footer')
+    expect(footer).not.toBeNull()
+    const submitBtn = footer?.querySelector('button')
+    expect(submitBtn).not.toBeNull()
+  })
+
+  it('declares matching CSS rules for detail-body dl and scrollable editor fields', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const cssPath = path.resolve(__dirname, '../../src/admin-portal/core/styles/portal.css')
+    const css = fs.readFileSync(cssPath, 'utf8')
+
+    // Must have selectors matching the new detail-body wrapper
+    expect(css).toContain('.portal-leads__detail-body > dl')
+    expect(css).toContain('.portal-leads__detail-body > dl > div')
+
+    // Must have scrollable editor fields and fixed footer rules in detail--editor
+    expect(css).toContain('.portal-leads__detail--editor .portal-leads-editor__fields')
+    expect(css).toContain('.portal-leads__detail--editor .portal-leads-editor > footer')
   })
 })

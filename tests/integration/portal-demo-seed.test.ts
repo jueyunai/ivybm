@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto'
 
 import type { PostgresAdapter } from '@payloadcms/db-postgres'
+import { NextRequest } from 'next/server'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { getPayload, type Payload } from 'payload'
 
+import { GET as listOperatorSessions } from '@/app/api/chat/operator/sessions/route'
 import config from '@/payload.config'
 import { seedPortalDemo } from '@/seed/portalDemo'
 
@@ -18,6 +20,8 @@ const DEMO_PLATFORM_IDS = [
 describe.sequential('Portal demo seed integration', () => {
   let payload: Payload
   let adminID = 0
+  let adminPassword = ''
+  let adminUsername = ''
 
   beforeAll(async () => {
     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required')
@@ -26,14 +30,16 @@ describe.sequential('Portal demo seed integration', () => {
       disableOnInit: true,
       key: 'portal-demo-seed-integration',
     })
+    adminPassword = `Portal-demo-${randomUUID()}`
+    adminUsername = `portal-demo-seed-${randomUUID()}`
     const admin = await payload.create({
       collection: 'users',
       context: { skipAudit: true },
       data: {
         email: `portal-demo-seed-${randomUUID()}@example.invalid`,
-        password: `Portal-demo-${randomUUID()}`,
+        password: adminPassword,
         role: 'admin',
-        username: `portal-demo-seed-${randomUUID()}`,
+        username: adminUsername,
       },
       draft: true,
       overrideAccess: true,
@@ -115,6 +121,23 @@ describe.sequential('Portal demo seed integration', () => {
       demoConversations.filter(({ handoffStatus }) => handoffStatus === 'resolved'),
     ).toHaveLength(1)
     expect(demoConversations.every(({ channel }) => channel === 'website')).toBe(true)
+    expect(demoConversations.every(({ lastMessageAt }) => Boolean(lastMessageAt))).toBe(true)
+
+    const login = await payload.login({
+      collection: 'users',
+      data: { password: adminPassword, username: adminUsername },
+    })
+    const operatorResponse = await listOperatorSessions(
+      new NextRequest('http://localhost/api/chat/operator/sessions?limit=50', {
+        headers: { authorization: `JWT ${login.token}` },
+      }),
+    )
+    expect(operatorResponse.status).toBe(200)
+    const operatorData = (await operatorResponse.json()) as { docs: Array<{ id: string }> }
+    for (const demoId of DEMO_CONVERSATION_IDS) {
+      expect(operatorData.docs.some((doc) => doc.id === demoId)).toBe(true)
+    }
+
     expect(demoContents.map(({ status }) => status).sort()).toEqual([
       'approved',
       'draft',

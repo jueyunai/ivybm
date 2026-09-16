@@ -4,7 +4,7 @@
 
 **Goal:** 彻底解决官网点开聊天浮窗产生空会话以及运营后台被无时间空会话霸屏的问题：前台实现延迟建连（首条消息才写库建连），后台接口实现有效会话强制过滤（`lastMessageAt` 存在性约束）。
 
-**Architecture:** 
+**Architecture:**
 1. 服务端：在 `src/app/api/chat/operator/sessions/route.ts` 中为后台操作员列表查询增加 `{ lastMessageAt: { exists: true } }` 约束，只返回有真实消息记录的有效会话。
 2. 前台端：修改 `src/components/chat/ChatWidget.tsx`，在展开聊天挂件时仅渲染本地欢迎界面（不请求 `/api/chat/sessions`），在访客提交首条消息或点击快捷胶囊时顺序触发建连与发送；保留 `sessionStorage` 历史会话恢复能力。
 3. 工作台：在 `ConversationWorkspace.tsx` 对异常无时间会话做防御性降级渲染。
