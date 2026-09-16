@@ -117,9 +117,10 @@ describe('ChatWidget', () => {
     renderWidget(service)
     await openWidget()
 
-    // Opening the widget must not create a backend session
+    // Opening the widget must not create a backend session and handoff button must be hidden
     expect(startSessionSpy).not.toHaveBeenCalled()
     expect(sendMessageSpy).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Talk to a specialist' })).toBeNull()
 
     // Sending the first message triggers startSession and then sendMessage
     const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
@@ -130,6 +131,41 @@ describe('ChatWidget', () => {
       expect(startSessionSpy).toHaveBeenCalledTimes(1)
       expect(sendMessageSpy).toHaveBeenCalledTimes(1)
     })
+    expect(await screen.findByRole('button', { name: 'Talk to a specialist' })).not.toBeNull()
+  })
+
+  it('discards an expired persisted session on open without creating a blank backend session', async () => {
+    window.sessionStorage.setItem('ivybm_chat_session_id_en', 'expired-session')
+    const service = new FakeChatService()
+    const getSessionSpy = vi.spyOn(service, 'getSession').mockRejectedValue(
+      new ChatServiceError('not_found', 'Session not found'),
+    )
+    const startSessionSpy = vi.spyOn(service, 'startSession')
+
+    renderWidget(service)
+    await openWidget()
+
+    expect(getSessionSpy).toHaveBeenCalledWith('expired-session')
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    expect(window.sessionStorage.getItem('ivybm_chat_session_id_en')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(
+      screen.getByText(
+        'Hello — I can help with product information and connect you with our project team.',
+      ),
+    ).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Talk to a specialist' })).toBeNull()
+
+    // Sending a message subsequently creates the session and sends the message
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'First message after discarded session' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(startSessionSpy).toHaveBeenCalledTimes(1)
+    })
+    expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Talk to a specialist' })).not.toBeNull()
   })
 
   it('uses the frozen service contract without exposing reviewed citations to visitors', async () => {
@@ -151,12 +187,19 @@ describe('ChatWidget', () => {
     await openWidget()
 
     expect(screen.getByRole('dialog', { name: 'مساعد المشروع' })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'التحدث مع مختص' })).toBeNull()
+
+    const composer = screen.getByLabelText('اسأل عن الألواح أو مشروعك…')
+    fireEvent.change(composer, { target: { value: 'مرحبا' } })
+    fireEvent.click(screen.getByRole('button', { name: 'إرسال' }))
+    expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
+
     fireEvent.click(screen.getByRole('button', { name: 'التحدث مع مختص' }))
 
     expect((await screen.findByTestId('chat-handoff-pending')).textContent).toContain(
       'تمت مشاركة طلبك مع فريق المشروع',
     )
-    expect(screen.getByLabelText('اسأل عن الألواح أو مشروعك…')).toHaveProperty('disabled', true)
+    expect(composer).toHaveProperty('disabled', true)
   })
 
   it.each([
@@ -339,6 +382,14 @@ describe('ChatWidget', () => {
     renderWidget(service)
     await openWidget()
 
+    expect(screen.queryByRole('button', { name: 'Talk to a specialist' })).toBeNull()
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, {
+      target: { value: 'Please share panel finish options.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
+
     fireEvent.click(screen.getByRole('button', { name: 'Talk to a specialist' }))
     expect(await screen.findByRole('alert')).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Talk to a specialist' }))
@@ -491,6 +542,12 @@ describe('ChatWidget', () => {
     }
     renderWidget(service)
     await openWidget()
+
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Hi' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
+
     vi.useFakeTimers()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Talk to a specialist' }))
@@ -529,6 +586,12 @@ describe('ChatWidget', () => {
     }
     renderWidget(service)
     await openWidget()
+
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Hi' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
+
     vi.useFakeTimers()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Talk to a specialist' }))
