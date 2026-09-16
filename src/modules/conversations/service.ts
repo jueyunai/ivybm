@@ -270,9 +270,14 @@ export const createConversationService = ({
   ): Promise<ConversationResponse> => {
     try {
       return await responder.generateReply({ message, missingFields, qualificationState, session })
-    } catch {
-      // AI and retrieval failures must not leave a visitor without a recoverable path.
-      return { handoff: { reason: 'ai_service_unavailable', source: 'ai_policy' } }
+    } catch (error) {
+      // Technical failures do not change the authoritative handoff state. The
+      // command is failed and can be reclaimed with the same idempotency key,
+      // so a website retry cannot duplicate the visitor message or AI reply.
+      throw new ChatServiceError('ai_unavailable', 'AI service is temporarily unavailable', {
+        cause: error,
+        retryable: true,
+      })
     }
   }
 
