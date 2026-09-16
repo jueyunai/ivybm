@@ -56,6 +56,15 @@ const MODULE_ICONS: Record<PortalModuleId, TablerIcon> = {
 const isActiveHref = (pathname: string, href: string): boolean =>
   href === '/dashboard' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`)
 
+export interface PortalSidebarNavigateDetail {
+  href: string
+  onClose?: () => void
+}
+
+export interface PortalNavigateActiveDetail {
+  href: string
+}
+
 export interface PortalSidebarProps {
   collapsed: boolean
   locale: PortalLocale
@@ -137,7 +146,31 @@ export function PortalSidebar({
                           aria-label={collapsed ? label : undefined}
                           className={`portal-sidebar__link${active ? ' is-active' : ''}`}
                           href={portalModule.href}
-                          onClick={onClose}
+                          onClick={(event) => {
+                            const navEvent = new CustomEvent<PortalSidebarNavigateDetail>(
+                              'portal:sidebar-navigate',
+                              {
+                                cancelable: true,
+                                detail: { href: portalModule.href, onClose },
+                              },
+                            )
+                            const allowed = window.dispatchEvent(navEvent)
+                            if (!allowed) {
+                              event.preventDefault()
+                              return
+                            }
+                            onClose?.()
+                            if (active) {
+                              window.dispatchEvent(
+                                new CustomEvent<PortalNavigateActiveDetail>(
+                                  'portal:navigate-active',
+                                  {
+                                    detail: { href: portalModule.href },
+                                  },
+                                ),
+                              )
+                            }
+                          }}
                           title={collapsed ? label : undefined}
                         >
                           {content}
@@ -166,6 +199,7 @@ export function PortalSidebar({
         <PortalAccountMenu
           collapsed={collapsed}
           locale={locale}
+          onClose={onClose}
           onLocaleToggle={onLocaleToggle}
           user={user}
         />

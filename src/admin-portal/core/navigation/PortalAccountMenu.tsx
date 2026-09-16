@@ -13,11 +13,13 @@ import {
 import type { PortalUser } from '@/admin-portal/core/auth/types'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import type { PortalLocale } from '@/admin-portal/core/i18n/types'
+import type { PortalSidebarNavigateDetail } from '@/admin-portal/core/navigation/PortalSidebar'
 import { requestPortalLogout } from '@/modules/auth/payloadLogout'
 
 export interface PortalAccountMenuProps {
   collapsed?: boolean
   locale: PortalLocale
+  onClose?: () => void
   onLocaleToggle?: () => void
   user: PortalUser
 }
@@ -25,6 +27,7 @@ export interface PortalAccountMenuProps {
 export function PortalAccountMenu({
   collapsed = false,
   locale,
+  onClose,
   onLocaleToggle,
   user,
 }: PortalAccountMenuProps) {
@@ -148,7 +151,26 @@ export function PortalAccountMenu({
           <Link
             className="portal-account__menu-item"
             href="/dashboard/settings#account"
-            onClick={() => closeMenu()}
+            onClick={(event) => {
+              const handleClose = () => {
+                closeMenu()
+                onClose?.()
+              }
+              const navEvent = new CustomEvent<PortalSidebarNavigateDetail>(
+                'portal:sidebar-navigate',
+                {
+                  cancelable: true,
+                  detail: { href: '/dashboard/settings#account', onClose: handleClose },
+                },
+              )
+              const allowed = window.dispatchEvent(navEvent)
+              if (!allowed) {
+                event.preventDefault()
+                closeMenu()
+                return
+              }
+              handleClose()
+            }}
             ref={(element) => {
               itemRefs.current[0] = element
             }}

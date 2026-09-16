@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 
 import Image from 'next/image'
 import Link from 'next/link'
@@ -35,8 +35,13 @@ import {
 
 import { usePortalCommandKey } from '@/admin-portal/core/commands/usePortalCommandKey'
 import { usePortalPreferences } from '@/admin-portal/core/navigation/PortalPreferences'
+import type {
+  PortalNavigateActiveDetail,
+  PortalSidebarNavigateDetail,
+} from '@/admin-portal/core/navigation/PortalSidebar'
 import {
   Button,
+  ConfirmDialog,
   ModalDialog,
   PortalState,
   SearchInput,
@@ -56,6 +61,19 @@ import type {
 import { formatScheduledAt } from './formatScheduledAt'
 import { getContentStudioMessages } from './messages'
 
+const buildStudioHref = (query?: Partial<ContentStudioQuery>, page = 1): string => {
+  const params = new URLSearchParams()
+  const q = query?.q?.trim()
+  const status = query?.status?.trim()
+  const platform = query?.platform?.trim()
+  if (q) params.set('q', q)
+  if (status && status !== 'all') params.set('status', status)
+  if (platform && platform !== 'all') params.set('platform', platform)
+  if (page > 1) params.set('page', String(page))
+  const search = params.toString()
+  return search ? `/dashboard/content-studio?${search}` : '/dashboard/content-studio'
+}
+
 export function ContentStudio({
   pageState,
   summary,
@@ -70,7 +88,44 @@ export function ContentStudio({
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [activeAction, setActiveAction] = useState<ActiveAction>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [isDirty, setIsDirty] = useState(false)
+  const [editorBusy, setEditorBusy] = useState(false)
+  const editorBusyRef = useRef(editorBusy)
+  useEffect(() => {
+    editorBusyRef.current = editorBusy
+  }, [editorBusy])
+  type PendingTransition = { commit: () => void; onCancel?: () => void }
+  const [pendingTransition, setPendingTransition] = useState<PendingTransition | null>(null)
+  const isDirtyRef = useRef(isDirty)
+  useEffect(() => {
+    isDirtyRef.current = isDirty
+  }, [isDirty])
+
+  const closeAction = useCallback(() => {
+    setActiveAction(null)
+    setIsDirty(false)
+  }, [setActiveAction, setIsDirty])
+
+  const requestTransition = useCallback(
+    (action: () => void, onCancel?: () => void) => {
+      if (editorBusyRef.current) return
+      if (isDirtyRef.current) {
+        setPendingTransition({ commit: action, onCancel })
+      } else {
+        action()
+      }
+    },
+    [setPendingTransition],
+  )
   const [isRefreshing, startRefresh] = useTransition()
+  const studioHistoryIdxRef = useRef<number | null>(null)
+  const isRestoringHistoryRef = useRef(false)
+  const isBypassingHistoryRef = useRef(false)
+
+  useEffect(() => {
+    studioHistoryIdxRef.current = getHistoryCurrentIndex(window.history.state)
+  }, [])
+
   const hasActivePublication =
     summary?.items.some((item) =>
       item.publishJobs.some(
@@ -91,6 +146,120 @@ export function ContentStudio({
     return () => window.clearInterval(interval)
   }, [hasActivePublication, router])
 
+  useEffect(() => {
+    if (!isDirty && !editorBusy) return
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (isBypassingHistoryRef.current) {
+        isBypassingHistoryRef.current = false
+        return
+      }
+      if (isRestoringHistoryRef.current) {
+        isRestoringHistoryRef.current = false
+        return
+      }
+      if (!editorBusyRef.current && !isDirtyRef.current) {
+        return
+      }
+
+      const destIdx = getHistoryCurrentIndex(event.state)
+      const studioIdx = studioHistoryIdxRef.current
+      const wentForward =
+        destIdx !== null && studioIdx !== null ? destIdx > studioIdx : false
+
+      // Restore position immediately so user remains in Content Studio
+      isRestoringHistoryRef.current = true
+      if (wentForward) {
+        window.history.back()
+      } else {
+        window.history.forward()
+      }
+
+      if (editorBusyRef.current) {
+        // While busy, block navigation without opening prompt
+        return
+      }
+
+      if (isDirtyRef.current) {
+        setPendingTransition({
+          commit: () => {
+            isBypassingHistoryRef.current = true
+            closeAction()
+            if (wentForward) {
+              window.history.forward()
+            } else {
+              window.history.back()
+            }
+          },
+          onCancel: () => {
+            // Cancel stays in Content Studio with current edits intact
+          },
+        })
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('popstate', handlePopState)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [isDirty, editorBusy, closeAction])
+
+  useEffect(() => {
+    const handleSidebarNavigate = (event: Event) => {
+      const customEvent = event as CustomEvent<PortalSidebarNavigateDetail>
+      const targetHref = customEvent.detail?.href
+      const closeNav = customEvent.detail?.onClose
+      if (!targetHref) return
+
+      if (editorBusyRef.current) {
+        event.preventDefault()
+        closeNav?.()
+        return
+      }
+
+      if (isDirtyRef.current) {
+        event.preventDefault()
+        closeNav?.()
+        setPendingTransition({
+          commit: () => {
+            setIsDirty(false)
+            setActiveAction(null)
+            if (targetHref === '/dashboard/content-studio') {
+              setFeedback(null)
+            } else {
+              router.push(targetHref)
+            }
+          },
+        })
+      } else if (targetHref === '/dashboard/content-studio') {
+        closeNav?.()
+        setActiveAction(null)
+        setFeedback(null)
+      }
+    }
+
+    window.addEventListener('portal:sidebar-navigate', handleSidebarNavigate)
+    return () => window.removeEventListener('portal:sidebar-navigate', handleSidebarNavigate)
+  }, [router])
+
+  useEffect(() => {
+    const handleActiveNav = (event: Event) => {
+      const customEvent = event as CustomEvent<PortalNavigateActiveDetail>
+      if (customEvent.detail?.href === '/dashboard/content-studio' && !isDirtyRef.current) {
+        setActiveAction(null)
+        setFeedback(null)
+      }
+    }
+    window.addEventListener('portal:navigate-active', handleActiveNav)
+    return () => window.removeEventListener('portal:navigate-active', handleActiveNav)
+  }, [])
+
   if (pageState !== 'available' || !summary)
     return (
       <main className="portal-page portal-content-studio">
@@ -109,23 +278,38 @@ export function ContentStudio({
     )
   const selected = summary.items.find((item) => item.id === selectedId) ?? summary.items[0] ?? null
   const refreshPublicationResults = () => startRefresh(() => router.refresh())
-  const closeAction = () => setActiveAction(null)
   const onDone = (message: string) => {
-    setActiveAction(null)
+    closeAction()
     setFeedback(message)
     startRefresh(() => router.refresh())
   }
 
   const updateFilters = (name: 'status' | 'platform', value: string) => {
-    const params = new URLSearchParams()
-    if (summary?.query.q) params.set('q', summary.query.q)
-    const nextStatus = name === 'status' ? value : (summary?.query.status ?? 'all')
-    const nextPlatform = name === 'platform' ? value : (summary?.query.platform ?? 'all')
-    if (nextStatus && nextStatus !== 'all') params.set('status', nextStatus)
-    if (nextPlatform && nextPlatform !== 'all') params.set('platform', nextPlatform)
-    router.push(
-      params.toString() ? `/dashboard/content-studio?${params}` : '/dashboard/content-studio',
-    )
+    if (editorBusyRef.current) return
+    const targetUrl = buildStudioHref({
+      ...summary?.query,
+      [name]: value,
+    })
+    requestTransition(() => {
+      closeAction()
+      router.push(targetUrl)
+    })
+  }
+
+  const handleFilterSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (editorBusyRef.current) return
+    const formData = new FormData(event.currentTarget)
+    const targetUrl = buildStudioHref({
+      platform:
+        (formData.get('platform')?.toString().trim() as ContentStudioQuery['platform']) || 'all',
+      q: formData.get('q')?.toString().trim() || '',
+      status: (formData.get('status')?.toString().trim() as ContentStudioQuery['status']) || 'all',
+    })
+    requestTransition(() => {
+      closeAction()
+      router.push(targetUrl)
+    })
   }
 
   return (
@@ -137,9 +321,13 @@ export function ContentStudio({
         </div>
         <div className="portal-content-studio__intro-actions">
           <Button
+            disabled={editorBusy}
             onClick={() => {
-              setActiveAction('generator')
-              setFeedback(null)
+              if (activeAction === 'generator' || editorBusy) return
+              requestTransition(() => {
+                setActiveAction('generator')
+                setFeedback(null)
+              })
             }}
             variant="secondary"
           >
@@ -147,9 +335,13 @@ export function ContentStudio({
             {copy.generate}
           </Button>
           <Button
+            disabled={editorBusy}
             onClick={() => {
-              setActiveAction('create')
-              setFeedback(null)
+              if (activeAction === 'create' || editorBusy) return
+              requestTransition(() => {
+                setActiveAction('create')
+                setFeedback(null)
+              })
             }}
           >
             <IconPlus aria-hidden="true" size={16} />
@@ -163,7 +355,7 @@ export function ContentStudio({
         </p>
       ) : null}
       <Surface as="section" className="portal-content-studio__filters">
-        <form action="/dashboard/content-studio" method="get">
+        <form action="/dashboard/content-studio" method="get" onSubmit={handleFilterSubmit}>
           <div className="portal-content-studio__filter-item">
             <span className="portal-content-studio__filter-label">{copy.titleField}</span>
             <SearchInput defaultValue={summary.query.q} name="q" placeholder={copy.titleField} />
@@ -201,12 +393,31 @@ export function ContentStudio({
             />
           </div>
           <div className="portal-content-studio__filter-actions">
-            <Button size="compact" type="submit">
+            <Button disabled={editorBusy} size="compact" type="submit">
               <IconSearch aria-hidden="true" size={15} stroke={1.8} />
               {copy.filter}
             </Button>
-            <Button asChild size="compact" variant="ghost">
-              <Link href="/dashboard/content-studio">{copy.resetFilters}</Link>
+            <Button asChild disabled={editorBusy} size="compact" variant="ghost">
+              <Link
+                href="/dashboard/content-studio"
+                onClick={(event) => {
+                  if (editorBusyRef.current) {
+                    event.preventDefault()
+                    return
+                  }
+                  if (isDirtyRef.current) {
+                    event.preventDefault()
+                    requestTransition(() => {
+                      closeAction()
+                      router.push('/dashboard/content-studio')
+                    })
+                  } else {
+                    closeAction()
+                  }
+                }}
+              >
+                {copy.resetFilters}
+              </Link>
             </Button>
           </div>
         </form>
@@ -224,15 +435,25 @@ export function ContentStudio({
               {summary.items.map((item) => (
                 <li key={item.id}>
                   <button
-                    aria-pressed={activeAction !== 'create' && selected?.id === item.id}
+                    aria-pressed={
+                      activeAction !== 'create' &&
+                      activeAction !== 'generator' &&
+                      selected?.id === item.id
+                    }
                     className={
-                      activeAction !== 'create' && selected?.id === item.id
+                      activeAction !== 'create' &&
+                      activeAction !== 'generator' &&
+                      selected?.id === item.id
                         ? 'is-selected'
                         : undefined
                     }
                     onClick={() => {
-                      setSelectedId(item.id)
-                      setFeedback(null)
+                      if (editorBusyRef.current) return
+                      requestTransition(() => {
+                        setSelectedId(item.id)
+                        closeAction()
+                        setFeedback(null)
+                      })
                     }}
                     type="button"
                   >
@@ -252,6 +473,13 @@ export function ContentStudio({
           {summary.pagination.totalPages > 1 ? (
             <Pagination
               copy={copy}
+              onNavigate={(targetUrl) => {
+                if (editorBusyRef.current) return
+                requestTransition(() => {
+                  closeAction()
+                  router.push(targetUrl)
+                })
+              }}
               query={summary.query}
               page={summary.pagination.page}
               totalPages={summary.pagination.totalPages}
@@ -267,7 +495,9 @@ export function ContentStudio({
             <GenerateDraftEditor
               copy={copy}
               drafts={summary.items.filter((item) => item.status === 'draft')}
+              onBusyChange={setEditorBusy}
               onClose={closeAction}
+              onDirtyChange={setIsDirty}
               onDone={onDone}
               options={summary.options}
               selectedDraftId={selected?.status === 'draft' ? selected.id : null}
@@ -282,8 +512,10 @@ export function ContentStudio({
               key={`${activeAction}:${activeAction === 'edit' ? String(selected?.id ?? 'none') : 'new'}`}
               copy={copy}
               item={activeAction === 'edit' ? selected : null}
+              onBusyChange={setEditorBusy}
               options={summary.options}
               onClose={closeAction}
+              onDirtyChange={setIsDirty}
               onDone={onDone}
             />
           </Surface>
@@ -346,6 +578,27 @@ export function ContentStudio({
           </Surface>
         )}
       </div>
+      <ConfirmDialog
+        cancelLabel={copy.keepDraft}
+        confirmLabel={copy.discardAndSwitch}
+        description={copy.unsavedChangesDescription}
+        onConfirm={() => {
+          setIsDirty(false)
+          const target = pendingTransition
+          setPendingTransition(null)
+          target?.commit()
+        }}
+        onOpenChange={(open) => {
+          if (!open) {
+            const target = pendingTransition
+            setPendingTransition(null)
+            target?.onCancel?.()
+          }
+        }}
+        open={pendingTransition !== null}
+        title={copy.unsavedChangesTitle}
+        variant="danger"
+      />
     </main>
   )
 }
@@ -386,30 +639,33 @@ const request = async (
   if (!response.ok) throw new Error(data.error?.message || 'Request failed')
   return data
 }
-const href = (query: ContentStudioQuery, page: number) => {
-  const params = new URLSearchParams()
-  if (query.q) params.set('q', query.q)
-  if (query.status !== 'all') params.set('status', query.status)
-  if (query.platform !== 'all') params.set('platform', query.platform)
-  if (page > 1) params.set('page', String(page))
-  return `/dashboard/content-studio?${params}`
-}
 
 function Pagination({
   copy,
+  onNavigate,
   page,
   query,
   totalPages,
 }: {
   copy: Copy
+  onNavigate?: (url: string) => void
   page: number
   query: ContentStudioQuery
   totalPages: number
 }) {
+  const prevUrl = buildStudioHref(query, page - 1)
+  const nextUrl = buildStudioHref(query, page + 1)
+  const handlePageClick = (url: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (onNavigate) {
+      event.preventDefault()
+      onNavigate(url)
+    }
+  }
+
   return (
     <nav className="portal-content-studio__pagination">
       <Button asChild disabled={page <= 1} size="compact" variant="secondary">
-        <Link href={href(query, page - 1)}>
+        <Link href={prevUrl} onClick={handlePageClick(prevUrl)}>
           <IconArrowLeft aria-hidden="true" size={15} />
           {copy.previous}
         </Link>
@@ -418,7 +674,7 @@ function Pagination({
         {page} / {totalPages}
       </span>
       <Button asChild disabled={page >= totalPages} size="compact" variant="secondary">
-        <Link href={href(query, page + 1)}>
+        <Link href={nextUrl} onClick={handlePageClick(nextUrl)}>
           {copy.next}
           <IconArrowRight aria-hidden="true" size={15} />
         </Link>
@@ -878,13 +1134,17 @@ function useAssetUploader({
 function DraftEditor({
   copy,
   item,
+  onBusyChange,
   onClose,
+  onDirtyChange,
   onDone,
   options,
 }: {
   copy: Copy
   item: ContentStudioItem | null
+  onBusyChange?: (busy: boolean) => void
   onClose: () => void
+  onDirtyChange?: (dirty: boolean) => void
   onDone: (message: string) => void
   options: ContentStudioSummary['options']
 }) {
@@ -949,7 +1209,33 @@ function DraftEditor({
       })
     },
   })
+
+  const editorBusy = busy || uploadBusy
+  useEffect(() => {
+    onBusyChange?.(editorBusy)
+    return () => onBusyChange?.(false)
+  }, [editorBusy, onBusyChange])
+
+  const isDirty = useMemo(() => {
+    return (
+      form.title !== initial.title ||
+      form.body !== initial.body ||
+      form.platform !== initial.platform ||
+      form.contentLocale !== initial.contentLocale ||
+      form.contentType !== initial.contentType ||
+      JSON.stringify(form.assets) !== JSON.stringify(initial.assets) ||
+      JSON.stringify(form.knowledgeSources) !== JSON.stringify(initial.knowledgeSources) ||
+      JSON.stringify(form.sourceReferences) !== JSON.stringify(initial.sourceReferences)
+    )
+  }, [form, initial])
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+    return () => onDirtyChange?.(false)
+  }, [isDirty, onDirtyChange])
+
   const save = async () => {
+    if (editorBusy) return
     setBusy(true)
     setError(null)
     try {
@@ -964,6 +1250,7 @@ function DraftEditor({
         createKey ? { ...body, idempotencyKey: createKey } : body,
         createKey ? () => createCommand.receivedResponse(createKey) : undefined,
       )
+      onDirtyChange?.(false)
       onDone(copy.feedback)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : copy.unknown)
@@ -981,7 +1268,7 @@ function DraftEditor({
           <IconSparkles aria-hidden="true" size={18} />
           <h3>{item ? copy.edit : copy.add}</h3>
         </div>
-        <Button onClick={onClose} size="compact" variant="ghost">
+        <Button disabled={editorBusy} onClick={onClose} size="compact" variant="ghost">
           {copy.cancel}
         </Button>
       </header>
@@ -989,6 +1276,7 @@ function DraftEditor({
       <div className="portal-content-studio__form-grid">
         <Field label={copy.titleField} required>
           <input
+            disabled={editorBusy}
             maxLength={180}
             onChange={(event) => update('title', event.target.value)}
             value={form.title}
@@ -997,6 +1285,7 @@ function DraftEditor({
         <Field label={copy.platform} required>
           <UiSelect
             ariaLabel={copy.platform}
+            disabled={editorBusy}
             onChange={(val) => update('platform', val as typeof form.platform)}
             options={(['facebook', 'instagram', 'linkedin'] as const).map((platform) => ({
               label: copy.platformLabels[platform],
@@ -1008,6 +1297,7 @@ function DraftEditor({
         <Field label={copy.locale} required>
           <UiSelect
             ariaLabel={copy.locale}
+            disabled={editorBusy}
             onChange={(val) => update('contentLocale', val as typeof form.contentLocale)}
             options={[
               { label: 'EN', value: 'en' },
@@ -1019,6 +1309,7 @@ function DraftEditor({
         <Field label={copy.type}>
           <UiSelect
             ariaLabel={copy.type}
+            disabled={editorBusy}
             onChange={(val) => update('contentType', val as typeof form.contentType)}
             options={(['post', 'carousel', 'long-form'] as const).map((type) => ({
               label: copy.typeLabels[type],
@@ -1030,6 +1321,7 @@ function DraftEditor({
         <Field label={copy.body} required wide>
           <textarea
             dir={form.contentLocale === 'ar' ? 'rtl' : undefined}
+            disabled={editorBusy}
             maxLength={30_000}
             onChange={(event) => update('body', event.target.value)}
             rows={10}
@@ -1039,6 +1331,7 @@ function DraftEditor({
         <Field label={copy.assets} wide>
           <MultiOptions
             assetPreviews
+            disabled={editorBusy}
             onUpload={handleUpload}
             options={combinedAssets}
             selected={form.assets}
@@ -1055,6 +1348,7 @@ function DraftEditor({
         </Field>
         <Field label={copy.knowledge} wide>
           <MultiOptions
+            disabled={editorBusy}
             emptyMessage={copy.noKnowledgeOptions}
             options={options.knowledgeSources}
             selected={form.knowledgeSources}
@@ -1071,12 +1365,13 @@ function DraftEditor({
       </div>
       <FactEditor
         copy={copy}
+        disabled={editorBusy}
         onChange={(sourceReferences) => update('sourceReferences', sourceReferences)}
         sources={selectedSources}
         value={form.sourceReferences}
       />
       <footer>
-        <Button disabled={busy} onClick={() => void save()}>
+        <Button disabled={editorBusy} onClick={() => void save()}>
           {item ? copy.save : copy.create}
         </Button>
       </footer>
@@ -1086,11 +1381,13 @@ function DraftEditor({
 
 function FactEditor({
   copy,
+  disabled = false,
   onChange,
   sources,
   value,
 }: {
   copy: Copy
+  disabled?: boolean
   onChange: (value: ContentStudioSourceReference[]) => void
   sources: string[]
   value: ContentStudioSourceReference[]
@@ -1102,7 +1399,7 @@ function FactEditor({
       <header>
         <h4>{copy.facts}</h4>
         <Button
-          disabled={sources.length === 0}
+          disabled={disabled || sources.length === 0}
           onClick={() =>
             onChange([...value, { claim: '', id: crypto.randomUUID(), source: sources[0] ?? '' }])
           }
@@ -1119,6 +1416,7 @@ function FactEditor({
         return (
           <div key={fact.id ?? `existing:${index}`}>
             <input
+              disabled={disabled}
               maxLength={500}
               onChange={(event) => update(index, 'claim', event.target.value)}
               placeholder={copy.claim}
@@ -1126,6 +1424,7 @@ function FactEditor({
             />
             <UiSelect
               ariaLabel={copy.source}
+              disabled={disabled}
               onChange={(next) => update(index, 'source', next)}
               options={[
                 { label: copy.source, value: '' },
@@ -1134,6 +1433,7 @@ function FactEditor({
               value={fact.source}
             />
             <Button
+              disabled={disabled}
               onClick={() => onChange(value.filter((_, current) => current !== index))}
               size="compact"
               variant="ghost"
@@ -1148,8 +1448,82 @@ function FactEditor({
 }
 
 const PLATFORMS_STORAGE_KEY = 'ivybm:content-studio:selected-platforms'
+const GENERATION_BATCH_STORAGE_KEY = 'ivybm:content-studio:active-generation-batch'
+
+function getHistoryCurrentIndex(state?: unknown): number | null {
+  if (state && typeof state === 'object') {
+    const s = state as Record<string, unknown>
+    if (typeof s.idx === 'number') return s.idx
+    if (typeof s.__ivybm_idx__ === 'number') return s.__ivybm_idx__
+  }
+  if (
+    typeof window !== 'undefined' &&
+    'navigation' in window &&
+    (window as unknown as { navigation?: { currentEntry?: { index?: number } } }).navigation
+      ?.currentEntry?.index !== undefined
+  ) {
+    return (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation
+      .currentEntry.index
+  }
+  if (typeof window !== 'undefined' && typeof window.history === 'object') {
+    try {
+      const symbols = Object.getOwnPropertySymbols(window.history)
+      for (const sym of symbols) {
+        const impl = (
+          window.history as unknown as Record<
+            symbol,
+            { _window?: { _sessionHistory?: { _currentIndex?: number } } }
+          >
+        )[sym]
+        const sh = impl?._window?._sessionHistory
+        if (typeof sh?._currentIndex === 'number') {
+          return sh._currentIndex
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null
+}
+
 const VALID_PLATFORMS: Array<ContentStudioItem['platform']> = ['facebook', 'instagram', 'linkedin']
 const DEFAULT_PLATFORMS: Array<ContentStudioItem['platform']> = ['linkedin']
+
+type GenerationBatch = {
+  fingerprint: string
+  generatedAssets: string[]
+  id: string
+  succeededPlatforms: Array<ContentStudioItem['platform']>
+}
+
+function readStoredGenerationBatch(fingerprint: string): GenerationBatch | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(GENERATION_BATCH_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as GenerationBatch
+    if (parsed && parsed.fingerprint === fingerprint && typeof parsed.id === 'string') {
+      return parsed
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function persistGenerationBatch(batch: GenerationBatch | null): void {
+  if (typeof window === 'undefined') return
+  try {
+    if (batch) {
+      window.sessionStorage.setItem(GENERATION_BATCH_STORAGE_KEY, JSON.stringify(batch))
+    } else {
+      window.sessionStorage.removeItem(GENERATION_BATCH_STORAGE_KEY)
+    }
+  } catch {
+    // ignore storage quota / access errors
+  }
+}
 
 function readStoredPlatforms(): Array<ContentStudioItem['platform']> | null {
   if (typeof window === 'undefined') return null
@@ -1178,25 +1552,35 @@ function persistPlatforms(platforms: Array<ContentStudioItem['platform']>): void
 function GenerateDraftEditor({
   copy,
   drafts,
+  onBusyChange,
   onClose,
+  onDirtyChange,
   onDone,
   options,
   selectedDraftId,
 }: {
   copy: Copy
   drafts: ContentStudioItem[]
+  onBusyChange?: (busy: boolean) => void
   onClose: () => void
+  onDirtyChange?: (dirty: boolean) => void
   onDone: (message: string) => void
   options: ContentStudioSummary['options']
   selectedDraftId: null | number
 }) {
   const [mode, setMode] = useState<'copy' | 'image'>('copy')
-  const batchRef = useRef<{
-    fingerprint: string
-    generatedAssets: string[]
-    id: string
-    succeededPlatforms: Array<ContentStudioItem['platform']>
-  } | null>(null)
+  const [imageDirty, setImageDirty] = useState(false)
+  const [imageBusy, setImageBusy] = useState(false)
+  const [pendingModeTransition, setPendingModeTransition] = useState<(() => void) | null>(null)
+  const [imageEditorResetKey, setImageEditorResetKey] = useState(0)
+  const generationEpochRef = useRef(0)
+  const formRevisionRef = useRef(0)
+  useEffect(() => {
+    return () => {
+      generationEpochRef.current += 1
+    }
+  }, [])
+  const batchRef = useRef<GenerationBatch | null>(null)
   const [form, setForm] = useState(() => ({
     assets: [] as string[],
     autoGenerateImage: false,
@@ -1210,14 +1594,11 @@ function GenerateDraftEditor({
   const [error, setError] = useState<string | null>(null)
   const [generationProgress, setGenerationProgress] = useState<string | null>(null)
 
-  useEffect(() => {
-    persistPlatforms(form.platforms)
-  }, [form.platforms])
-
   const { combinedAssets, handleUpload, uploadBusy, uploadError } = useAssetUploader({
     copy,
     initialAssets: options.assets,
     onAssetsUploaded: (newIds) => {
+      formRevisionRef.current += 1
       setForm((current) => {
         return {
           ...current,
@@ -1228,9 +1609,72 @@ function GenerateDraftEditor({
     },
   })
 
-  const update = <Key extends keyof typeof form>(key: Key, value: (typeof form)[Key]) =>
+  const editorBusy = busy || imageBusy || uploadBusy
+  useEffect(() => {
+    onBusyChange?.(editorBusy)
+    return () => onBusyChange?.(false)
+  }, [editorBusy, onBusyChange])
+
+  const copyDirty =
+    form.brief.trim().length > 0 ||
+    form.assets.length > 0 ||
+    form.knowledgeSources.length > 0 ||
+    form.contentLocale !== 'en' ||
+    form.autoGenerateImage !== false ||
+    form.contentType !== 'post'
+
+  const isDirty = copyDirty || imageDirty
+  const currentModeDirty = mode === 'image' ? imageDirty : copyDirty
+
+  const requestModeChange = (targetMode: 'copy' | 'image') => {
+    if (mode === targetMode || editorBusy) return
+    if (currentModeDirty) {
+      setPendingModeTransition(() => () => {
+        generationEpochRef.current += 1
+        setBusy(false)
+        setError(null)
+        setGenerationProgress(null)
+        if (mode === 'copy') {
+          formRevisionRef.current += 1
+          batchRef.current = null
+          persistGenerationBatch(null)
+          setForm((current) => ({
+            ...current,
+            assets: [],
+            autoGenerateImage: false,
+            brief: '',
+            contentLocale: 'en',
+            contentType: 'post',
+            knowledgeSources: [],
+          }))
+        } else {
+          setImageDirty(false)
+          setImageEditorResetKey((k) => k + 1)
+        }
+        setMode(targetMode)
+      })
+    } else {
+      setError(null)
+      setGenerationProgress(null)
+      setMode(targetMode)
+    }
+  }
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+    return () => onDirtyChange?.(false)
+  }, [isDirty, onDirtyChange])
+
+  useEffect(() => {
+    persistPlatforms(form.platforms)
+  }, [form.platforms])
+
+  const update = <Key extends keyof typeof form>(key: Key, value: (typeof form)[Key]) => {
+    formRevisionRef.current += 1
     setForm((current) => ({ ...current, [key]: value }))
+  }
   const toggle = (key: 'assets' | 'knowledgeSources', value: string) => {
+    formRevisionRef.current += 1
     if (key === 'assets') {
       const nextAssets = form.assets.includes(value)
         ? form.assets.filter((id) => id !== value)
@@ -1255,6 +1699,7 @@ function GenerateDraftEditor({
     })
   }
   const togglePlatform = (platform: ContentStudioItem['platform']) => {
+    formRevisionRef.current += 1
     setForm((current) => {
       const exists = current.platforms.includes(platform)
       const nextPlatforms = exists
@@ -1264,6 +1709,7 @@ function GenerateDraftEditor({
     })
   }
   const selectAllPlatforms = () => {
+    formRevisionRef.current += 1
     const all: Array<ContentStudioItem['platform']> = ['facebook', 'instagram', 'linkedin']
     setForm((current) => ({
       ...current,
@@ -1271,15 +1717,20 @@ function GenerateDraftEditor({
     }))
   }
   const clearPlatforms = () => {
+    formRevisionRef.current += 1
     setForm((current) => ({
       ...current,
       platforms: [],
     }))
   }
   const canGenerate =
-    (form.assets.length > 0 || form.brief.trim().length > 0) && form.platforms.length > 0
+    (form.assets.length > 0 || form.brief.trim().length > 0) &&
+    form.platforms.length > 0 &&
+    !editorBusy
   const generate = async () => {
-    if (!canGenerate || busy) return
+    if (!canGenerate || editorBusy) return
+    const currentEpoch = ++generationEpochRef.current
+    const currentRevision = formRevisionRef.current
     setBusy(true)
     setError(null)
     try {
@@ -1294,7 +1745,7 @@ function GenerateDraftEditor({
         knowledgeSources: form.knowledgeSources,
         platforms: targetPlatforms,
       })
-      let batch = batchRef.current
+      let batch = batchRef.current ?? readStoredGenerationBatch(fingerprint)
       if (!batch || batch.fingerprint !== fingerprint) {
         batch = {
           fingerprint,
@@ -1302,6 +1753,9 @@ function GenerateDraftEditor({
           id: crypto.randomUUID(),
           succeededPlatforms: [],
         }
+        batchRef.current = batch
+        persistGenerationBatch(batch)
+      } else {
         batchRef.current = batch
       }
       let generatedAssets = batch.generatedAssets
@@ -1328,6 +1782,13 @@ function GenerateDraftEditor({
           ...payload,
           idempotencyKey,
         })
+        if (
+          generationEpochRef.current !== currentEpoch ||
+          formRevisionRef.current !== currentRevision
+        ) {
+          return
+        }
+
         batch.succeededPlatforms.push(platform)
         if (
           generatedAssets.length === 0 &&
@@ -1345,18 +1806,35 @@ function GenerateDraftEditor({
             .filter(Boolean)
           batch.generatedAssets = generatedAssets
         }
+        persistGenerationBatch(batch)
+      }
+      if (
+        generationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
       }
       batchRef.current = null
+      persistGenerationBatch(null)
+      onDirtyChange?.(false)
       onDone(
         total > 1
           ? copy.generationMultiComplete.replace('{count}', String(total))
           : copy.generationComplete,
       )
     } catch (caught) {
+      if (
+        generationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
-      setBusy(false)
-      setGenerationProgress(null)
+      if (generationEpochRef.current === currentEpoch) {
+        setBusy(false)
+        setGenerationProgress(null)
+      }
     }
   }
   return (
@@ -1366,7 +1844,7 @@ function GenerateDraftEditor({
           <IconSparkles aria-hidden="true" size={18} />
           <h3>{copy.generate}</h3>
         </div>
-        <Button onClick={onClose} size="compact" variant="ghost">
+        <Button disabled={editorBusy} onClick={onClose} size="compact" variant="ghost">
           {copy.cancel}
         </Button>
       </header>
@@ -1374,7 +1852,8 @@ function GenerateDraftEditor({
       <div aria-label={copy.generationMode} className="portal-content-studio__generation-modes">
         <Button
           aria-pressed={mode === 'copy'}
-          onClick={() => setMode('copy')}
+          disabled={editorBusy}
+          onClick={() => requestModeChange('copy')}
           size="compact"
           variant={mode === 'copy' ? 'primary' : 'ghost'}
         >
@@ -1382,7 +1861,8 @@ function GenerateDraftEditor({
         </Button>
         <Button
           aria-pressed={mode === 'image'}
-          onClick={() => setMode('image')}
+          disabled={editorBusy}
+          onClick={() => requestModeChange('image')}
           size="compact"
           variant={mode === 'image' ? 'primary' : 'ghost'}
         >
@@ -1393,6 +1873,9 @@ function GenerateDraftEditor({
         <ImageGenerationEditor
           copy={copy}
           drafts={drafts}
+          key={imageEditorResetKey}
+          onBusyChange={setImageBusy}
+          onDirtyChange={setImageDirty}
           onDone={onDone}
           options={options}
           selectedDraftId={selectedDraftId}
@@ -1406,27 +1889,27 @@ function GenerateDraftEditor({
               <span className="portal-content-studio__intent-hint">{copy.quickIntentsHint}</span>
             </div>
             <div className="portal-content-studio__intent-capsules">
-              {(['shipment', 'ceiling', 'perforation', 'mockup'] as const).map((intentKey) =>
-                (() => {
-                  const IntentIcon = QUICK_INTENT_ICONS[intentKey]
-                  return (
-                    <button
-                      className="portal-content-studio__capsule"
-                      key={intentKey}
-                      onClick={() => update('brief', copy.quickIntentDescriptions[intentKey])}
-                      type="button"
-                    >
-                      <IntentIcon aria-hidden="true" size={15} stroke={1.8} />
-                      {copy.quickIntents[intentKey]}
-                    </button>
-                  )
-                })(),
-              )}
+              {(['shipment', 'ceiling', 'perforation', 'mockup'] as const).map((intentKey) => {
+                const IntentIcon = QUICK_INTENT_ICONS[intentKey]
+                return (
+                  <button
+                    className="portal-content-studio__capsule"
+                    disabled={editorBusy}
+                    key={intentKey}
+                    onClick={() => update('brief', copy.quickIntentDescriptions[intentKey])}
+                    type="button"
+                  >
+                    <IntentIcon aria-hidden="true" size={15} stroke={1.8} />
+                    {copy.quickIntents[intentKey]}
+                  </button>
+                )
+              })}
             </div>
           </div>
           <div className="portal-content-studio__form-grid">
             <Field label={copy.brief} required wide>
               <textarea
+                disabled={editorBusy}
                 maxLength={2000}
                 onChange={(event) => update('brief', event.target.value)}
                 placeholder={
@@ -1444,6 +1927,7 @@ function GenerateDraftEditor({
                 <div className="portal-content-studio__platform-actions">
                   <button
                     className="portal-content-studio__platform-link"
+                    disabled={editorBusy}
                     onClick={selectAllPlatforms}
                     type="button"
                   >
@@ -1452,6 +1936,7 @@ function GenerateDraftEditor({
                   <span>·</span>
                   <button
                     className="portal-content-studio__platform-link"
+                    disabled={editorBusy}
                     onClick={clearPlatforms}
                     type="button"
                   >
@@ -1470,6 +1955,7 @@ function GenerateDraftEditor({
                     <button
                       aria-pressed={selected}
                       className={`portal-content-studio__platform-card ${selected ? 'is-selected' : ''}`}
+                      disabled={editorBusy}
                       key={key}
                       onClick={() => togglePlatform(key)}
                       type="button"
@@ -1491,6 +1977,7 @@ function GenerateDraftEditor({
             <Field label={copy.locale} required>
               <UiSelect
                 ariaLabel={copy.locale}
+                disabled={editorBusy}
                 onChange={(val) => update('contentLocale', val as typeof form.contentLocale)}
                 options={[
                   { label: 'English (EN)', value: 'en' },
@@ -1502,6 +1989,7 @@ function GenerateDraftEditor({
             <Field label={copy.assets} wide>
               <MultiOptions
                 assetPreviews
+                disabled={editorBusy}
                 onUpload={handleUpload}
                 options={combinedAssets}
                 selected={form.assets}
@@ -1519,6 +2007,7 @@ function GenerateDraftEditor({
                 <label className="portal-content-studio__auto-image-toggle">
                   <input
                     checked={form.autoGenerateImage}
+                    disabled={editorBusy}
                     onChange={(event) => update('autoGenerateImage', event.target.checked)}
                     type="checkbox"
                   />
@@ -1531,6 +2020,7 @@ function GenerateDraftEditor({
             <Field label={copy.knowledge} wide>
               <span className="portal-content-studio__field-hint">{copy.knowledgeHint}</span>
               <MultiOptions
+                disabled={editorBusy}
                 emptyMessage={copy.noKnowledgeOptions}
                 options={options.knowledgeSources}
                 selected={form.knowledgeSources}
@@ -1543,7 +2033,7 @@ function GenerateDraftEditor({
               <IconShieldCheck aria-hidden="true" size={15} />
               <span>{copy.generationSafetyNotice}</span>
             </div>
-            <Button disabled={busy || !canGenerate} onClick={() => void generate()}>
+            <Button disabled={editorBusy || !canGenerate} onClick={() => void generate()}>
               <IconSparkles aria-hidden="true" size={16} />
               {busy
                 ? (generationProgress ?? copy.generating)
@@ -1554,6 +2044,22 @@ function GenerateDraftEditor({
           </footer>
         </>
       )}
+      <ConfirmDialog
+        cancelLabel={copy.keepDraft}
+        confirmLabel={copy.discardAndSwitch}
+        description={copy.unsavedChangesDescription}
+        onConfirm={() => {
+          const commit = pendingModeTransition
+          setPendingModeTransition(null)
+          commit?.()
+        }}
+        onOpenChange={(open) => {
+          if (!open) setPendingModeTransition(null)
+        }}
+        open={pendingModeTransition !== null}
+        title={copy.unsavedChangesTitle}
+        variant="danger"
+      />
     </div>
   )
 }
@@ -1567,12 +2073,16 @@ type GeneratedImage = {
 function ImageGenerationEditor({
   copy,
   drafts,
+  onBusyChange,
+  onDirtyChange,
   onDone,
   options,
   selectedDraftId,
 }: {
   copy: Copy
   drafts: ContentStudioItem[]
+  onBusyChange?: (busy: boolean) => void
+  onDirtyChange?: (dirty: boolean) => void
   onDone: (message: string) => void
   options: ContentStudioSummary['options']
   selectedDraftId: null | number
@@ -1594,6 +2104,32 @@ function ImageGenerationEditor({
   const [generated, setGenerated] = useState<GeneratedImage | null>(null)
   const [busy, setBusy] = useState<'adopt' | 'generate' | 'upload' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const operationEpochRef = useRef(0)
+  const formRevisionRef = useRef(0)
+  useEffect(() => {
+    return () => {
+      operationEpochRef.current += 1
+    }
+  }, [])
+
+  useEffect(() => {
+    onBusyChange?.(busy !== null)
+    return () => onBusyChange?.(false)
+  }, [busy, onBusyChange])
+
+  const isDirty =
+    prompt.trim().length > 0 ||
+    size !== '1024x1024' ||
+    referenceMediaId !== null ||
+    uploadedReference !== null ||
+    referenceFile !== null ||
+    generated !== null
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+    return () => onDirtyChange?.(false)
+  }, [isDirty, onDirtyChange])
+
   const references = uploadedReference
     ? [uploadedReference, ...imageOptions.filter((asset) => asset.id !== uploadedReference.id)]
     : imageOptions
@@ -1601,7 +2137,9 @@ function ImageGenerationEditor({
   const targetDraft = drafts.find((draft) => draft.id === targetDraftId) ?? null
 
   const upload = async () => {
-    if (!referenceFile) return
+    if (!referenceFile || busy !== null) return
+    const currentEpoch = ++operationEpochRef.current
+    const currentRevision = formRevisionRef.current
     setBusy('upload')
     setError(null)
     const fingerprint = JSON.stringify({
@@ -1638,22 +2176,41 @@ function ImageGenerationEditor({
         throw new Error(body.error?.message || copy.unknown)
       }
       uploadCommand.receivedResponse(key)
+      if (
+        operationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
+
       const uploaded = {
         id: body.result.id,
         label: referenceFile.name,
         meta: body.result.mimeType ?? referenceFile.type,
         ...(body.result.previewUrl ? { previewUrl: body.result.previewUrl } : {}),
       }
+      formRevisionRef.current += 1
       setUploadedReference(uploaded)
       setReferenceMediaId(uploaded.id)
     } catch (caught) {
+      if (
+        operationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
-      setBusy(null)
+      if (operationEpochRef.current === currentEpoch) {
+        setBusy(null)
+      }
     }
   }
 
   const generate = async () => {
+    if (busy !== null) return
+    const currentEpoch = ++operationEpochRef.current
+    const currentRevision = formRevisionRef.current
     const input = { prompt: prompt.trim(), referenceMediaId, size }
     const key = generateCommand.key(JSON.stringify(input))
     setBusy('generate')
@@ -1680,20 +2237,37 @@ function ImageGenerationEditor({
         throw new Error(copy.imagePreviewUnavailable)
       }
       generateCommand.receivedResponse(key)
+      if (
+        operationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
+
       setGenerated({
         id: body.media.id,
         previewUrl: body.media.previewUrl,
         revisedPrompt: body.revisedPrompt ?? null,
       })
     } catch (caught) {
+      if (
+        operationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
-      setBusy(null)
+      if (operationEpochRef.current === currentEpoch) {
+        setBusy(null)
+      }
     }
   }
 
   const adopt = async () => {
-    if (!generated || !targetDraft) return
+    if (!generated || !targetDraft || busy !== null) return
+    const currentEpoch = ++operationEpochRef.current
+    const currentRevision = formRevisionRef.current
     const input = { action: 'adopt-image', mediaId: generated.id, updatedAt: targetDraft.updatedAt }
     const key = adoptCommand.key(JSON.stringify({ id: targetDraft.id, ...input }))
     setBusy('adopt')
@@ -1706,11 +2280,27 @@ function ImageGenerationEditor({
         () => adoptCommand.receivedResponse(key),
         key,
       )
+      if (
+        operationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
+
+      onDirtyChange?.(false)
       onDone(copy.imageAdopted)
     } catch (caught) {
+      if (
+        operationEpochRef.current !== currentEpoch ||
+        formRevisionRef.current !== currentRevision
+      ) {
+        return
+      }
       setError(caught instanceof Error ? caught.message : copy.unknown)
     } finally {
-      setBusy(null)
+      if (operationEpochRef.current === currentEpoch) {
+        setBusy(null)
+      }
     }
   }
 
@@ -1721,8 +2311,10 @@ function ImageGenerationEditor({
       <div className="portal-content-studio__form-grid">
         <Field label={copy.imagePrompt} wide>
           <textarea
+            disabled={busy !== null}
             maxLength={2000}
             onChange={(event) => {
+              formRevisionRef.current += 1
               setPrompt(event.target.value)
               setGenerated(null)
             }}
@@ -1733,7 +2325,9 @@ function ImageGenerationEditor({
         <Field label={copy.imageSize}>
           <UiSelect
             ariaLabel={copy.imageSize}
+            disabled={busy !== null}
             onChange={(val) => {
+              formRevisionRef.current += 1
               setSize(val as typeof size)
               setGenerated(null)
             }}
@@ -1748,7 +2342,9 @@ function ImageGenerationEditor({
         <Field label={copy.referenceAsset}>
           <UiSelect
             ariaLabel={copy.referenceAsset}
+            disabled={busy !== null}
             onChange={(val) => {
+              formRevisionRef.current += 1
               setReferenceMediaId(val ? Number(val) : null)
               setGenerated(null)
             }}
@@ -1766,7 +2362,10 @@ function ImageGenerationEditor({
               accept="image/avif,image/jpeg,image/png,image/webp"
               disabled={busy !== null}
               id="content-studio-reference-upload"
-              onChange={(event) => setReferenceFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                formRevisionRef.current += 1
+                setReferenceFile(event.target.files?.[0] ?? null)
+              }}
               type="file"
             />
             <Button
@@ -1813,6 +2412,7 @@ function ImageGenerationEditor({
           <Field label={copy.targetDraft}>
             <UiSelect
               ariaLabel={copy.targetDraft}
+              disabled={busy !== null}
               onChange={(val) => setTargetDraftId(val ? Number(val) : null)}
               options={[
                 { label: copy.selectDraft, value: '' },
@@ -2113,6 +2713,7 @@ function AssetThumbnail({ option }: { option: ContentStudioSummary['options']['a
 
 function MultiOptions({
   assetPreviews = false,
+  disabled = false,
   emptyMessage,
   onUpload,
   options,
@@ -2123,6 +2724,7 @@ function MultiOptions({
   uploadTitle,
 }: {
   assetPreviews?: boolean
+  disabled?: boolean
   emptyMessage?: string
   onUpload?: (files: FileList | File[]) => Promise<void>
   options:
@@ -2139,7 +2741,7 @@ function MultiOptions({
   const handleDragOver = (event: React.DragEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    if (!uploadBusy) setIsDragOver(true)
+    if (!uploadBusy && !disabled) setIsDragOver(true)
   }
 
   const handleDragLeave = (event: React.DragEvent) => {
@@ -2152,7 +2754,7 @@ function MultiOptions({
     event.preventDefault()
     event.stopPropagation()
     setIsDragOver(false)
-    if (uploadBusy || !onUpload) return
+    if (uploadBusy || disabled || !onUpload) return
     const files = event.dataTransfer.files
     if (files && files.length > 0) {
       void onUpload(files)
@@ -2161,24 +2763,26 @@ function MultiOptions({
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
-    if (files && files.length > 0 && onUpload) {
+    if (files && files.length > 0 && onUpload && !disabled) {
       void onUpload(files)
     }
     event.target.value = ''
   }
 
   return (
-    <div className={`portal-content-studio__multi-options${assetPreviews ? ' is-assets' : ''}`}>
+    <div
+      className={`portal-content-studio__multi-options${assetPreviews ? ' is-assets' : ''}${disabled ? ' is-disabled' : ''}`}
+    >
       {assetPreviews && onUpload ? (
         <label
-          className={`portal-content-studio__asset-upload-card${uploadBusy ? ' is-busy' : ''}${isDragOver ? ' is-drag-over' : ''}`}
+          className={`portal-content-studio__asset-upload-card${uploadBusy ? ' is-busy' : ''}${isDragOver ? ' is-drag-over' : ''}${disabled ? ' is-disabled' : ''}`}
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
           <input
             accept="image/avif,image/jpeg,image/png,image/webp"
-            disabled={uploadBusy}
+            disabled={disabled || uploadBusy}
             onChange={handleFileChange}
             ref={fileInputRef}
             style={{ display: 'none' }}
@@ -2201,13 +2805,14 @@ function MultiOptions({
           const checked = selected.includes(String(option.id))
           return (
             <label
-              className={`${assetPreviews ? 'portal-content-studio__asset-option' : ''}${checked ? ' is-selected' : ''}`}
+              className={`${assetPreviews ? 'portal-content-studio__asset-option' : ''}${checked ? ' is-selected' : ''}${disabled ? ' is-disabled' : ''}`}
               key={option.id}
             >
               <input
                 aria-label={option.label}
                 checked={checked}
-                onChange={() => toggle(String(option.id))}
+                disabled={disabled}
+                onChange={() => !disabled && toggle(String(option.id))}
                 type="checkbox"
               />
               {assetPreviews ? <AssetThumbnail option={option} /> : null}

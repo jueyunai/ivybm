@@ -1,6 +1,7 @@
 'use client'
 
 import { type RefObject, useEffect, useRef } from 'react'
+import { usePathname } from 'next/navigation'
 
 import type { PortalUser } from '@/admin-portal/core/auth/types'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
@@ -46,6 +47,15 @@ export function PortalMobileNav({
 }: PortalMobileNavProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const messages = getPortalMessages(locale)
+  const pathname = usePathname()
+  const lastPathnameRef = useRef(pathname)
+
+  useEffect(() => {
+    if (lastPathnameRef.current !== pathname) {
+      lastPathnameRef.current = pathname
+      if (open) onClose()
+    }
+  }, [pathname, open, onClose])
 
   useEffect(() => {
     if (!open) return
