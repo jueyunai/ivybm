@@ -1280,6 +1280,43 @@ describe.sequential('chat HTTP API', () => {
       expect(listActiveResponse.status).toBe(200)
       const listActiveData = (await listActiveResponse.json()) as { docs: Array<{ id: string }> }
       expect(listActiveData.docs.some((doc) => doc.id === created.id)).toBe(true)
+
+      // Also verify that an empty conversation with handoff_requested IS returned so operators can take over
+      const handoffSuffix = randomUUID()
+      const handoffStart = await startSession(
+        new NextRequest('http://localhost/api/chat/sessions', {
+          body: JSON.stringify({
+            channel: 'website',
+            idempotencyKey: `start-handoff-${handoffSuffix}`,
+            locale: 'en',
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        }),
+      )
+      const handoffSession = (await handoffStart.json()) as { id: string }
+      await payload.update({
+        collection: 'conversations',
+        data: { handoffStatus: 'handoff_requested' },
+        overrideAccess: true,
+        where: { publicId: { equals: handoffSession.id } },
+      })
+      try {
+        const listHandoffResponse = await listOperatorSessions(
+          new NextRequest('http://localhost/api/chat/operator/sessions?limit=50', {
+            headers: operatorAuth,
+          }),
+        )
+        expect(listHandoffResponse.status).toBe(200)
+        const listHandoffData = (await listHandoffResponse.json()) as { docs: Array<{ id: string }> }
+        expect(listHandoffData.docs.some((doc) => doc.id === handoffSession.id)).toBe(true)
+      } finally {
+        await payload.delete({
+          collection: 'conversations',
+          overrideAccess: true,
+          where: { publicId: { equals: handoffSession.id } },
+        })
+      }
     } finally {
       const conversation = (
         await payload.find({

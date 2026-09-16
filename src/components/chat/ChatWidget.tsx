@@ -130,6 +130,7 @@ export function ChatWidget({
   const startCommandKeyRef = useRef<string | null>(null)
   const startPromiseRef = useRef<Promise<ChatSession | null> | null>(null)
   const restorePromiseRef = useRef<Promise<ChatSession | null> | null>(null)
+  const sendInFlightRef = useRef(false)
 
   const commitSession = useCallback(
     (next: ChatSession) => {
@@ -287,54 +288,70 @@ export function ChatWidget({
 
   const sendTextMessage = async (textToSend: string) => {
     const text = textToSend.trim()
-    if (!text || operationPending(status)) return
+    if (!text || operationPending(status) || sendInFlightRef.current) return
+    sendInFlightRef.current = true
 
-    let activeSession = sessionRef.current
-    if (!activeSession) {
-      if (restorePromiseRef.current) {
-        activeSession = await restorePromiseRef.current
-      }
-      if (!activeSession) {
-        activeSession = await startSession()
-      }
-    }
-    if (!activeSession || !hasAction(activeSession, 'send_message')) return
-
-    setStatus('sending')
-    setError('')
-    setLastFailedAttempt(null)
-    const idempotencyKey = chatCommandKey()
     try {
-      const input: SendChatMessageInput = {
-        idempotencyKey,
-        sessionId: activeSession.id,
-        text,
+      let activeSession = sessionRef.current
+      if (!activeSession) {
+        const persistedID = readPersistedSessionID(sessionStorageKey)
+        if (persistedID) {
+          activeSession = await (restorePromiseRef.current ?? restoreSession())
+          if (!activeSession) {
+            // Check if the session was permanently discarded (e.g. 404/403).
+            // If discarded, removePersistedSessionID was called and the key is gone.
+            // If the key is STILL present, the failure was transient (network/500),
+            // so do NOT fall back to startSession(), which would fork into a new conversation
+            // and overwrite the persisted ID and auth cookie.
+            if (readPersistedSessionID(sessionStorageKey)) {
+              return
+            }
+            activeSession = await (startPromiseRef.current ?? startSession())
+          }
+        } else {
+          activeSession = await (startPromiseRef.current ?? startSession())
+        }
       }
-      const next = await activeService.sendMessage(input)
-      commitSession(next)
-      setDraft('')
-    } catch (caught) {
-      if (shouldDiscardPersistedSession(caught)) {
-        discardSession()
+      if (!activeSession || !hasAction(activeSession, 'send_message')) return
+
+      setStatus('sending')
+      setError('')
+      setLastFailedAttempt(null)
+      const idempotencyKey = chatCommandKey()
+      try {
+        const input: SendChatMessageInput = {
+          idempotencyKey,
+          sessionId: activeSession.id,
+          text,
+        }
+        const next = await activeService.sendMessage(input)
+        commitSession(next)
+        setDraft('')
+      } catch (caught) {
+        if (shouldDiscardPersistedSession(caught)) {
+          discardSession()
+          setError(getErrorMessage(caught, copy))
+          return
+        }
+        const failed: ChatMessage = {
+          author: 'visitor',
+          content: text,
+          createdAt: new Date().toISOString(),
+          errorCode: caught instanceof ChatServiceError ? caught.code : 'internal_error',
+          id: `failed-${chatCommandKey()}`,
+          status: 'failed',
+        }
+        setLastFailedAttempt({
+          idempotencyKey,
+          message: failed,
+          retryable: isRetryableError(caught),
+        })
         setError(getErrorMessage(caught, copy))
-        return
+      } finally {
+        setStatus('idle')
       }
-      const failed: ChatMessage = {
-        author: 'visitor',
-        content: text,
-        createdAt: new Date().toISOString(),
-        errorCode: caught instanceof ChatServiceError ? caught.code : 'internal_error',
-        id: `failed-${chatCommandKey()}`,
-        status: 'failed',
-      }
-      setLastFailedAttempt({
-        idempotencyKey,
-        message: failed,
-        retryable: isRetryableError(caught),
-      })
-      setError(getErrorMessage(caught, copy))
     } finally {
-      setStatus('idle')
+      sendInFlightRef.current = false
     }
   }
 

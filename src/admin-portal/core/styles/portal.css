@@ -4597,7 +4597,7 @@
 
   .portal-conversations__workspace {
     display: grid;
-    height: calc(100vh - 230px);
+    height: var(--portal-conversations-workspace-height, calc(100vh - 240px));
     min-height: 580px;
     grid-template-columns: minmax(310px, 0.36fr) minmax(0, 0.64fr);
     gap: 14px;
@@ -5369,7 +5369,7 @@
 
   .portal-leads__workspace {
     display: grid;
-    height: calc(100vh - 230px);
+    height: var(--portal-leads-workspace-height, calc(100vh - 220px));
     min-height: 580px;
     grid-template-columns: minmax(280px, 0.38fr) minmax(0, 0.62fr);
     gap: 14px;

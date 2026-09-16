@@ -168,6 +168,62 @@ describe('ChatWidget', () => {
     expect(screen.getByRole('button', { name: 'Talk to a specialist' })).not.toBeNull()
   })
 
+  it('does not create a new session when session restoration fails with a transient error, preserving persisted ID', async () => {
+    window.sessionStorage.setItem('ivybm_chat_session_id_en', 'persisted-transient-session')
+    const service = new FakeChatService()
+    const getSessionSpy = vi.spyOn(service, 'getSession').mockRejectedValue(
+      new ChatServiceError('internal_error', 'Database connection timeout'),
+    )
+    const startSessionSpy = vi.spyOn(service, 'startSession')
+    const sendMessageSpy = vi.spyOn(service, 'sendMessage')
+
+    renderWidget(service)
+    await openWidget()
+
+    expect(getSessionSpy).toHaveBeenCalledWith('persisted-transient-session')
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    expect(window.sessionStorage.getItem('ivybm_chat_session_id_en')).toBe(
+      'persisted-transient-session',
+    )
+    expect(await screen.findByRole('alert')).not.toBeNull()
+
+    // Visitor tries to send message while restore failed with transient error
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Trying to send message' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    // Must NOT call startSession, and storage key must still be preserved
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    expect(sendMessageSpy).not.toHaveBeenCalled()
+    expect(window.sessionStorage.getItem('ivybm_chat_session_id_en')).toBe(
+      'persisted-transient-session',
+    )
+  })
+
+  it('deduplicates rapid sample question pill clicks using sendInFlightRef', async () => {
+    const service = new FakeChatService()
+    let resolveStart: ((session: ChatSession) => void) | undefined
+    const startPromise = new Promise<ChatSession>((resolve) => {
+      resolveStart = resolve
+    })
+    vi.spyOn(service, 'startSession').mockImplementation(() => startPromise)
+    const sendMessageSpy = vi.spyOn(service, 'sendMessage')
+
+    renderWidget(service)
+    await openWidget()
+
+    const sampleButton = screen.getByRole('button', { name: /perforated facade|facade panels/i })
+    fireEvent.click(sampleButton)
+    fireEvent.click(sampleButton)
+
+    // startSession should only be called once
+    expect(service.startSession).toHaveBeenCalledTimes(1)
+    resolveStart!(browserSession)
+    await waitFor(() => {
+      expect(sendMessageSpy).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('triggers deferred session creation when clicking a sample question pill', async () => {
     const service = new FakeChatService()
     const startSessionSpy = vi.spyOn(service, 'startSession')

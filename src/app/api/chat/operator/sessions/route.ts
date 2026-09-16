@@ -43,9 +43,18 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
     const filters: Where[] = [
       {
-        lastMessageAt: {
-          exists: true,
-        },
+        or: [
+          {
+            lastMessageAt: {
+              exists: true,
+            },
+          },
+          {
+            handoffStatus: {
+              in: ['handoff_requested', 'human_active'],
+            },
+          },
+        ],
       },
     ]
     if (actor.role === 'sales') filters.push({ assignedTo: { equals: actor.id } })
