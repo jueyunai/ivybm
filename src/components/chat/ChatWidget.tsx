@@ -25,7 +25,21 @@ type WidgetStatus = 'error' | 'idle' | 'loading' | 'sending'
 
 type ChatWidgetProps = {
   locale: Locale
+  sampleQuestions?: string[]
   service?: VisitorChatService
+}
+
+const DEFAULT_SAMPLE_QUESTIONS: Record<Locale, string[]> = {
+  ar: [
+    'هل تصنعون ألواح واجهات مثقوبة؟',
+    'ما هي خيارات تشطيب الألمنيوم المتوفرة؟',
+    'ما هي مدة التوريد للمشاريع الخارجية؟',
+  ],
+  en: [
+    'Do you manufacture perforated facade panels?',
+    'What surface finish options do you provide for aluminum panels?',
+    'What are the standard lead times for overseas projects?',
+  ],
 }
 
 type FailedChatAttempt = {
@@ -87,8 +101,16 @@ const removePersistedSessionID = (key: string): void => {
   }
 }
 
-export function ChatWidget({ locale, service }: ChatWidgetProps) {
+export function ChatWidget({
+  locale,
+  sampleQuestions: propSampleQuestions,
+  service,
+}: ChatWidgetProps) {
   const copy = getWebsiteCopy(locale).chat
+  const sampleQuestions =
+    propSampleQuestions ??
+    (copy as { sampleQuestions?: string[] }).sampleQuestions ??
+    DEFAULT_SAMPLE_QUESTIONS[locale]
   const browserService = useMemo(() => createBrowserChatService(), [])
   const activeService = service || browserService
   const persistSession = !service
@@ -268,9 +290,8 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
     }
   }
 
-  const submitMessage = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const text = draft.trim()
+  const sendTextMessage = async (textToSend: string) => {
+    const text = textToSend.trim()
     if (!text || operationPending(status)) return
 
     let activeSession = sessionRef.current
@@ -320,6 +341,11 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
     } finally {
       setStatus('idle')
     }
+  }
+
+  const submitMessage = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    await sendTextMessage(draft)
   }
 
   const requestHandoff = async () => {
@@ -518,10 +544,27 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
               </article>
             ) : null}
             {messages.length === 0 && !error ? (
-              <article className="chat-welcome">
-                <IconUser aria-hidden size={18} stroke={1.7} />
-                <p>{copy.greeting}</p>
-              </article>
+              <>
+                <article className="chat-welcome">
+                  <IconUser aria-hidden size={18} stroke={1.7} />
+                  <p>{copy.greeting}</p>
+                </article>
+                {sampleQuestions.length > 0 ? (
+                  <div className="chat-sample-questions">
+                    {sampleQuestions.map((question) => (
+                      <button
+                        className="chat-sample-question"
+                        disabled={operationPending(status)}
+                        key={question}
+                        onClick={() => void sendTextMessage(question)}
+                        type="button"
+                      >
+                        {question}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </>
             ) : null}
             {messages.map((message) => (
               <ChatBubble

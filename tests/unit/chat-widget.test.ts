@@ -168,6 +168,123 @@ describe('ChatWidget', () => {
     expect(screen.getByRole('button', { name: 'Talk to a specialist' })).not.toBeNull()
   })
 
+  it('triggers deferred session creation when clicking a sample question pill', async () => {
+    const service = new FakeChatService()
+    const startSessionSpy = vi.spyOn(service, 'startSession')
+    const sendMessageSpy = vi.spyOn(service, 'sendMessage')
+
+    renderWidget(service)
+    await openWidget()
+
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    const sampleButton = screen.queryByRole('button', { name: /perforated facade|facade panels/i })
+    expect(sampleButton).not.toBeNull()
+    if (sampleButton) {
+      fireEvent.click(sampleButton)
+      await waitFor(() => {
+        expect(startSessionSpy).toHaveBeenCalledTimes(1)
+        expect(sendMessageSpy).toHaveBeenCalledTimes(1)
+      })
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringMatching(/perforated facade|facade panels/i),
+        }),
+      )
+    }
+  })
+
+  it('sends sample question using restored session without creating a new session', async () => {
+    window.sessionStorage.setItem('ivybm_chat_session_id_en', 'restored-sample-session')
+    const fake = new FakeChatService()
+    const getSessionSpy = vi.spyOn(fake, 'getSession').mockResolvedValue({
+      ...browserSession,
+      id: 'restored-sample-session',
+      messages: [],
+    })
+    const startSessionSpy = vi.spyOn(fake, 'startSession')
+    const sendMessageSpy = vi.spyOn(fake, 'sendMessage')
+
+    renderWidget(fake)
+    await openWidget()
+
+    await waitFor(() => expect(getSessionSpy).toHaveBeenCalledWith('restored-sample-session'))
+    expect(startSessionSpy).not.toHaveBeenCalled()
+
+    const sampleButton = screen.queryByRole('button', { name: /perforated facade|facade panels/i })
+    expect(sampleButton).not.toBeNull()
+    if (sampleButton) {
+      fireEvent.click(sampleButton)
+      await waitFor(() => {
+        expect(startSessionSpy).not.toHaveBeenCalled()
+        expect(sendMessageSpy).toHaveBeenCalledTimes(1)
+      })
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'restored-sample-session',
+          text: expect.stringMatching(/perforated facade|facade panels/i),
+        }),
+      )
+    }
+  })
+
+  it('triggers deferred session creation in Arabic when clicking a sample question pill', async () => {
+    const service = new FakeChatService()
+    const startSessionSpy = vi.spyOn(service, 'startSession')
+    const sendMessageSpy = vi.spyOn(service, 'sendMessage')
+
+    renderWidget(service, 'ar')
+    await openWidget()
+
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    const sampleButton = screen.queryByRole('button', { name: /ألواح واجهات مثقوبة/i })
+    expect(sampleButton).not.toBeNull()
+    if (sampleButton) {
+      fireEvent.click(sampleButton)
+      await waitFor(() => {
+        expect(startSessionSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            channel: 'website',
+            locale: 'ar',
+          }),
+        )
+        expect(sendMessageSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: 'هل تصنعون ألواح واجهات مثقوبة؟',
+          }),
+        )
+      })
+    }
+  })
+
+  it('renders and sends custom sample questions when provided via props', async () => {
+    const service = new FakeChatService()
+    const startSessionSpy = vi.spyOn(service, 'startSession')
+    const sendMessageSpy = vi.spyOn(service, 'sendMessage')
+
+    render(
+      React.createElement(ChatWidget, {
+        locale: 'en',
+        sampleQuestions: ['Can I request a custom mock-up for my facade project?'],
+        service,
+      }),
+    )
+    await openWidget()
+
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    const customButton = screen.getByRole('button', {
+      name: 'Can I request a custom mock-up for my facade project?',
+    })
+    fireEvent.click(customButton)
+    await waitFor(() => {
+      expect(startSessionSpy).toHaveBeenCalledTimes(1)
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'Can I request a custom mock-up for my facade project?',
+        }),
+      )
+    })
+  })
+
   it('uses the frozen service contract without exposing reviewed citations to visitors', async () => {
     renderWidget(new FakeChatService())
     await openWidget()
