@@ -141,7 +141,7 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
     if (typeof scrollIntoView === 'function') {
       scrollIntoView.call(messagesEndRef.current, { behavior: 'smooth', block: 'end' })
     }
-  }, [session?.messages.length, isOpen])
+  }, [session?.messages?.length, isOpen])
 
   const closeChat = useCallback(() => {
     setIsOpen(false)
@@ -187,17 +187,15 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
         setError('')
         setStatus('loading')
         try {
-          if (!forceNew && persistSession) {
-            const persistedID = readPersistedSessionID(sessionStorageKey)
-            if (persistedID) {
-              try {
-                const restored = await activeService.getSession(persistedID)
-                commitSession(restored)
-                return restored
-              } catch (caught) {
-                if (!shouldDiscardPersistedSession(caught)) throw caught
-                removePersistedSessionID(sessionStorageKey)
-              }
+          const persistedID = readPersistedSessionID(sessionStorageKey)
+          if (!forceNew && persistedID) {
+            try {
+              const restored = await activeService.getSession(persistedID)
+              commitSession(restored)
+              return restored
+            } catch (caught) {
+              if (!shouldDiscardPersistedSession(caught)) throw caught
+              removePersistedSessionID(sessionStorageKey)
             }
           }
           const idempotencyKey =
@@ -227,12 +225,15 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
       })
       return pending
     },
-    [activeService, commitSession, copy, locale, persistSession, session, sessionStorageKey],
+    [activeService, commitSession, copy, locale, session, sessionStorageKey],
   )
 
   const open = (): void => {
     setIsOpen(true)
-    void startSession()
+    const persistedID = readPersistedSessionID(sessionStorageKey)
+    if (persistedID && !session) {
+      void startSession(false)
+    }
   }
 
   const submitMessage = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -240,7 +241,10 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
     const text = draft.trim()
     if (!text || operationPending(status)) return
 
-    const activeSession = await startSession()
+    let activeSession = session
+    if (!activeSession) {
+      activeSession = await startSession()
+    }
     if (!activeSession || !hasAction(activeSession, 'send_message')) return
 
     setStatus('sending')
@@ -282,7 +286,12 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
   }
 
   const requestHandoff = async () => {
-    if (!session || !hasAction(session, 'request_handoff') || operationPending(status)) return
+    if (operationPending(status)) return
+    let activeSession = session
+    if (!activeSession) {
+      activeSession = await startSession()
+    }
+    if (!activeSession || !hasAction(activeSession, 'request_handoff')) return
     setStatus('sending')
     setError('')
     const idempotencyKey = handoffCommandKeyRef.current || chatCommandKey()
@@ -291,14 +300,14 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
       const input: RequestHandoffInput = {
         idempotencyKey,
         reason: 'visitor_requested_assistance',
-        sessionId: session.id,
+        sessionId: activeSession.id,
         source: 'visitor',
       }
       commitSession(await activeService.requestHandoff(input))
       handoffCommandKeyRef.current = null
     } catch (caught) {
       try {
-        const recovered = await activeService.getSession(session.id)
+        const recovered = await activeService.getSession(activeSession.id)
         commitSession(recovered)
         if (recovered.handoffStatus !== 'ai_active') {
           handoffCommandKeyRef.current = null
@@ -391,8 +400,8 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
     ...(session?.messages || []),
     ...(lastFailedAttempt ? [lastFailedAttempt.message] : []),
   ]
-  const inputEnabled = hasAction(session, 'send_message') && !operationPending(status)
-  const showHandoff = hasAction(session, 'request_handoff')
+  const inputEnabled = (!session || hasAction(session, 'send_message')) && !operationPending(status)
+  const showHandoff = !session || hasAction(session, 'request_handoff')
   const liveStatus = error
     ? ''
     : status === 'loading'
@@ -476,7 +485,7 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
                 </button>
               </article>
             ) : null}
-            {session && messages.length === 0 ? (
+            {(!session || session.messages.length === 0) && messages.length === 0 && !error ? (
               <article className="chat-welcome">
                 <IconUser aria-hidden size={18} stroke={1.7} />
                 <p>{copy.greeting}</p>

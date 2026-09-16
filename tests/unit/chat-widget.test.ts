@@ -109,6 +109,29 @@ afterEach(() => {
 })
 
 describe('ChatWidget', () => {
+  it('does not start a session when opening the widget until the visitor sends a message', async () => {
+    const service = new FakeChatService()
+    const startSessionSpy = vi.spyOn(service, 'startSession')
+    const sendMessageSpy = vi.spyOn(service, 'sendMessage')
+
+    renderWidget(service)
+    await openWidget()
+
+    // Opening the widget must not create a backend session
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    expect(sendMessageSpy).not.toHaveBeenCalled()
+
+    // Sending the first message triggers startSession and then sendMessage
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Hello there' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(startSessionSpy).toHaveBeenCalledTimes(1)
+      expect(sendMessageSpy).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('uses the frozen service contract without exposing reviewed citations to visitors', async () => {
     renderWidget(new FakeChatService())
     await openWidget()
@@ -272,7 +295,13 @@ describe('ChatWidget', () => {
       takeOver: fake.takeOver.bind(fake),
     }
     renderWidget(service)
-    fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
+    await openWidget()
+
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, {
+      target: { value: 'Please share panel finish options.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     expect(await screen.findByRole('alert')).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
@@ -350,11 +379,12 @@ describe('ChatWidget', () => {
       startSession: async () => failedSession,
       takeOver: async () => failedSession,
     }
+    window.sessionStorage.setItem('ivybm_chat_session_id_en', 'failed-session')
     renderWidget(service)
     fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
-    await screen.findByRole('dialog')
+    const retryButton = await screen.findByRole('button', { name: 'Retry message' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry message' }))
+    fireEvent.click(retryButton)
     expect(await screen.findByRole('alert')).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Retry message' }))
 
@@ -369,15 +399,19 @@ describe('ChatWidget', () => {
     })
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(new Response(JSON.stringify(browserSession), { status: 201 }))
+      .mockImplementation(async () => new Response(JSON.stringify(browserSession), { status: 201 }))
     vi.stubGlobal('fetch', fetchMock)
 
     render(React.createElement(ChatWidget, { locale: 'en' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
+    await openWidget()
+
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Can you explain curved panel options?' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveProperty('disabled', false))
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('does not offer a resend action for a non-retryable server error', async () => {
@@ -545,7 +579,11 @@ describe('ChatWidget', () => {
       takeOver: fake.takeOver.bind(fake),
     }
     renderWidget(service)
-    fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
+    await openWidget()
+
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Hello' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     expect(await screen.findAllByRole('alert')).toHaveLength(1)
   })
