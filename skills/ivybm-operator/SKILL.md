@@ -38,8 +38,8 @@ node ./skills/ivybm-operator/bin/runner.cjs auth status
 - **若返回 `{"authenticated": true}`**：正常执行后续业务。
 - **若返回 `{"authenticated": false}`**：
   **切勿询问用户密码**。请向用户输出以下指引：
-  > “检测到您尚未登录 IVYBM 后台。为了您的账号安全，请在终端中运行以下命令完成交互式登录：  
-  > `node ./skills/ivybm-operator/bin/runner.cjs auth login`  
+  > “检测到您尚未登录 IVYBM 后台。为了您的账号安全，请在终端中运行以下命令完成交互式登录：
+  > `node ./skills/ivybm-operator/bin/runner.cjs auth login`
   > 登录成功后，即可继续由我为您处理内容上架与草稿撰写。”
 
 ---
@@ -81,7 +81,6 @@ node ./skills/ivybm-operator/bin/runner.cjs auth status
      --locale ar \
      --updatedAt "2026-09-16T12:00:00.000Z" \
      --file /tmp/product-ar.json
-   
    # 或若双语必填字段完全齐备，直接正式发布
    node ./skills/ivybm-operator/bin/runner.cjs content upsert \
      --type products \
@@ -126,10 +125,10 @@ node ./skills/ivybm-operator/bin/runner.cjs auth status
    ```
 4. **向操作员汇报并引导至 `/dashboard` 终审**：
    AI 必须在会话中向操作员总结并提示：
-   > “✅ 社媒推文草稿（ID: 88）已生成并提交至审核队列。  
-   > 平台：LinkedIn  
-   > 标题：[展示标题]  
-   > 状态：review（待审核）  
+   > “✅ 社媒推文草稿（ID: 88）已生成并提交至审核队列。
+   > 平台：LinkedIn
+   > 标题：[展示标题]
+   > 状态：review（待审核）
    > 请前往 **IVYBM 运营后台（/dashboard ➔ AI 内容工作台）** 核对文案与配图，完成 5 项合规清单确认后点击‘立即发布’。”
 
 ---
