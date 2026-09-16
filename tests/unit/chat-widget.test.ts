@@ -109,6 +109,238 @@ afterEach(() => {
 })
 
 describe('ChatWidget', () => {
+  it('does not start a session when opening the widget until the visitor sends a message', async () => {
+    const service = new FakeChatService()
+    const startSessionSpy = vi.spyOn(service, 'startSession')
+    const sendMessageSpy = vi.spyOn(service, 'sendMessage')
+
+    renderWidget(service)
+    await openWidget()
+
+    // Opening the widget must not create a backend session and handoff button must be hidden
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    expect(sendMessageSpy).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Talk to a specialist' })).toBeNull()
+
+    // Sending the first message triggers startSession and then sendMessage
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Hello there' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(startSessionSpy).toHaveBeenCalledTimes(1)
+      expect(sendMessageSpy).toHaveBeenCalledTimes(1)
+    })
+    expect(await screen.findByRole('button', { name: 'Talk to a specialist' })).not.toBeNull()
+  })
+
+  it('discards an expired persisted session on open without creating a blank backend session', async () => {
+    window.sessionStorage.setItem('ivybm_chat_session_id_en', 'expired-session')
+    const service = new FakeChatService()
+    const getSessionSpy = vi.spyOn(service, 'getSession').mockRejectedValue(
+      new ChatServiceError('not_found', 'Session not found'),
+    )
+    const startSessionSpy = vi.spyOn(service, 'startSession')
+
+    renderWidget(service)
+    await openWidget()
+
+    expect(getSessionSpy).toHaveBeenCalledWith('expired-session')
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    expect(window.sessionStorage.getItem('ivybm_chat_session_id_en')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(
+      screen.getByText(
+        'Hello — I can help with product information and connect you with our project team.',
+      ),
+    ).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Talk to a specialist' })).toBeNull()
+
+    // Sending a message subsequently creates the session and sends the message
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'First message after discarded session' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(startSessionSpy).toHaveBeenCalledTimes(1)
+    })
+    expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Talk to a specialist' })).not.toBeNull()
+  })
+
+  it('does not create a new session when session restoration fails with a transient error, preserving persisted ID', async () => {
+    window.sessionStorage.setItem('ivybm_chat_session_id_en', 'persisted-transient-session')
+    const service = new FakeChatService()
+    const getSessionSpy = vi.spyOn(service, 'getSession').mockRejectedValue(
+      new ChatServiceError('internal_error', 'Database connection timeout'),
+    )
+    const startSessionSpy = vi.spyOn(service, 'startSession')
+    const sendMessageSpy = vi.spyOn(service, 'sendMessage')
+
+    renderWidget(service)
+    await openWidget()
+
+    expect(getSessionSpy).toHaveBeenCalledWith('persisted-transient-session')
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    expect(window.sessionStorage.getItem('ivybm_chat_session_id_en')).toBe(
+      'persisted-transient-session',
+    )
+    expect(await screen.findByRole('alert')).not.toBeNull()
+
+    // Visitor tries to send message while restore failed with transient error
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Trying to send message' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    // Must NOT call startSession, and storage key must still be preserved
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    expect(sendMessageSpy).not.toHaveBeenCalled()
+    expect(window.sessionStorage.getItem('ivybm_chat_session_id_en')).toBe(
+      'persisted-transient-session',
+    )
+  })
+
+  it('deduplicates rapid sample question pill clicks using sendInFlightRef', async () => {
+    const service = new FakeChatService()
+    let resolveStart: ((session: ChatSession) => void) | undefined
+    const startPromise = new Promise<ChatSession>((resolve) => {
+      resolveStart = resolve
+    })
+    vi.spyOn(service, 'startSession').mockImplementation(() => startPromise)
+    const sendMessageSpy = vi.spyOn(service, 'sendMessage')
+
+    renderWidget(service)
+    await openWidget()
+
+    const sampleButton = screen.getByRole('button', { name: /perforated facade|facade panels/i })
+    fireEvent.click(sampleButton)
+    fireEvent.click(sampleButton)
+
+    // startSession should only be called once
+    expect(service.startSession).toHaveBeenCalledTimes(1)
+    resolveStart!(browserSession)
+    await waitFor(() => {
+      expect(sendMessageSpy).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('triggers deferred session creation when clicking a sample question pill', async () => {
+    const service = new FakeChatService()
+    const startSessionSpy = vi.spyOn(service, 'startSession')
+    const sendMessageSpy = vi.spyOn(service, 'sendMessage')
+
+    renderWidget(service)
+    await openWidget()
+
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    const sampleButton = screen.queryByRole('button', { name: /perforated facade|facade panels/i })
+    expect(sampleButton).not.toBeNull()
+    if (sampleButton) {
+      fireEvent.click(sampleButton)
+      await waitFor(() => {
+        expect(startSessionSpy).toHaveBeenCalledTimes(1)
+        expect(sendMessageSpy).toHaveBeenCalledTimes(1)
+      })
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringMatching(/perforated facade|facade panels/i),
+        }),
+      )
+    }
+  })
+
+  it('sends sample question using restored session without creating a new session', async () => {
+    window.sessionStorage.setItem('ivybm_chat_session_id_en', 'restored-sample-session')
+    const fake = new FakeChatService()
+    const getSessionSpy = vi.spyOn(fake, 'getSession').mockResolvedValue({
+      ...browserSession,
+      id: 'restored-sample-session',
+      messages: [],
+    })
+    const startSessionSpy = vi.spyOn(fake, 'startSession')
+    const sendMessageSpy = vi.spyOn(fake, 'sendMessage')
+
+    renderWidget(fake)
+    await openWidget()
+
+    await waitFor(() => expect(getSessionSpy).toHaveBeenCalledWith('restored-sample-session'))
+    expect(startSessionSpy).not.toHaveBeenCalled()
+
+    const sampleButton = screen.queryByRole('button', { name: /perforated facade|facade panels/i })
+    expect(sampleButton).not.toBeNull()
+    if (sampleButton) {
+      fireEvent.click(sampleButton)
+      await waitFor(() => {
+        expect(startSessionSpy).not.toHaveBeenCalled()
+        expect(sendMessageSpy).toHaveBeenCalledTimes(1)
+      })
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'restored-sample-session',
+          text: expect.stringMatching(/perforated facade|facade panels/i),
+        }),
+      )
+    }
+  })
+
+  it('triggers deferred session creation in Arabic when clicking a sample question pill', async () => {
+    const service = new FakeChatService()
+    const startSessionSpy = vi.spyOn(service, 'startSession')
+    const sendMessageSpy = vi.spyOn(service, 'sendMessage')
+
+    renderWidget(service, 'ar')
+    await openWidget()
+
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    const sampleButton = screen.queryByRole('button', { name: /ألواح واجهات مثقوبة/i })
+    expect(sampleButton).not.toBeNull()
+    if (sampleButton) {
+      fireEvent.click(sampleButton)
+      await waitFor(() => {
+        expect(startSessionSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            channel: 'website',
+            locale: 'ar',
+          }),
+        )
+        expect(sendMessageSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: 'هل تصنعون ألواح واجهات مثقوبة؟',
+          }),
+        )
+      })
+    }
+  })
+
+  it('renders and sends custom sample questions when provided via props', async () => {
+    const service = new FakeChatService()
+    const startSessionSpy = vi.spyOn(service, 'startSession')
+    const sendMessageSpy = vi.spyOn(service, 'sendMessage')
+
+    render(
+      React.createElement(ChatWidget, {
+        locale: 'en',
+        sampleQuestions: ['Can I request a custom mock-up for my facade project?'],
+        service,
+      }),
+    )
+    await openWidget()
+
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    const customButton = screen.getByRole('button', {
+      name: 'Can I request a custom mock-up for my facade project?',
+    })
+    fireEvent.click(customButton)
+    await waitFor(() => {
+      expect(startSessionSpy).toHaveBeenCalledTimes(1)
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'Can I request a custom mock-up for my facade project?',
+        }),
+      )
+    })
+  })
+
   it('uses the frozen service contract without exposing reviewed citations to visitors', async () => {
     renderWidget(new FakeChatService())
     await openWidget()
@@ -128,12 +360,19 @@ describe('ChatWidget', () => {
     await openWidget()
 
     expect(screen.getByRole('dialog', { name: 'مساعد المشروع' })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'التحدث مع مختص' })).toBeNull()
+
+    const composer = screen.getByLabelText('اسأل عن الألواح أو مشروعك…')
+    fireEvent.change(composer, { target: { value: 'مرحبا' } })
+    fireEvent.click(screen.getByRole('button', { name: 'إرسال' }))
+    expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
+
     fireEvent.click(screen.getByRole('button', { name: 'التحدث مع مختص' }))
 
     expect((await screen.findByTestId('chat-handoff-pending')).textContent).toContain(
       'تمت مشاركة طلبك مع فريق المشروع',
     )
-    expect(screen.getByLabelText('اسأل عن الألواح أو مشروعك…')).toHaveProperty('disabled', true)
+    expect(composer).toHaveProperty('disabled', true)
   })
 
   it.each([
@@ -272,7 +511,13 @@ describe('ChatWidget', () => {
       takeOver: fake.takeOver.bind(fake),
     }
     renderWidget(service)
-    fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
+    await openWidget()
+
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, {
+      target: { value: 'Please share panel finish options.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     expect(await screen.findByRole('alert')).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
@@ -309,6 +554,14 @@ describe('ChatWidget', () => {
     }
     renderWidget(service)
     await openWidget()
+
+    expect(screen.queryByRole('button', { name: 'Talk to a specialist' })).toBeNull()
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, {
+      target: { value: 'Please share panel finish options.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Talk to a specialist' }))
     expect(await screen.findByRole('alert')).not.toBeNull()
@@ -350,11 +603,12 @@ describe('ChatWidget', () => {
       startSession: async () => failedSession,
       takeOver: async () => failedSession,
     }
+    window.sessionStorage.setItem('ivybm_chat_session_id_en', 'failed-session')
     renderWidget(service)
     fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
-    await screen.findByRole('dialog')
+    const retryButton = await screen.findByRole('button', { name: 'Retry message' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry message' }))
+    fireEvent.click(retryButton)
     expect(await screen.findByRole('alert')).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Retry message' }))
 
@@ -369,15 +623,19 @@ describe('ChatWidget', () => {
     })
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(new Response(JSON.stringify(browserSession), { status: 201 }))
+      .mockImplementation(async () => new Response(JSON.stringify(browserSession), { status: 201 }))
     vi.stubGlobal('fetch', fetchMock)
 
     render(React.createElement(ChatWidget, { locale: 'en' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
+    await openWidget()
+
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Can you explain curved panel options?' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveProperty('disabled', false))
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('does not offer a resend action for a non-retryable server error', async () => {
@@ -457,6 +715,12 @@ describe('ChatWidget', () => {
     }
     renderWidget(service)
     await openWidget()
+
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Hi' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
+
     vi.useFakeTimers()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Talk to a specialist' }))
@@ -495,6 +759,12 @@ describe('ChatWidget', () => {
     }
     renderWidget(service)
     await openWidget()
+
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Hi' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByText('Fixture AI reply.')).not.toBeNull()
+
     vi.useFakeTimers()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Talk to a specialist' }))
@@ -545,9 +815,76 @@ describe('ChatWidget', () => {
       takeOver: fake.takeOver.bind(fake),
     }
     renderWidget(service)
-    fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
+    await openWidget()
+
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Hello' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     expect(await screen.findAllByRole('alert')).toHaveLength(1)
+  })
+
+  it('returns widget to welcome state without eagerly starting a session when starting a new conversation', async () => {
+    const resolvedSession: ChatSession = {
+      ...browserSession,
+      allowedActions: [],
+      handoffStatus: 'resolved',
+      id: 'resolved-session-1',
+      messages: [
+        {
+          author: 'visitor',
+          content: 'Previous conversation message',
+          createdAt: '2026-08-10T10:00:00.000Z',
+          id: 'm-prev',
+          status: 'sent',
+        },
+      ],
+    }
+    const fake = new FakeChatService()
+    vi.spyOn(fake, 'getSession').mockResolvedValue(resolvedSession)
+    const startSessionSpy = vi.spyOn(fake, 'startSession')
+    const sendMessageSpy = vi.spyOn(fake, 'sendMessage')
+
+    window.sessionStorage.setItem('ivybm_chat_session_id_en', 'resolved-session-1')
+    renderWidget(fake)
+    fireEvent.click(screen.getByRole('button', { name: 'Ask our project assistant' }))
+    const dialog = await screen.findByRole('dialog')
+
+    expect(await screen.findByTestId('chat-resolved')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Start a new conversation' })).not.toBeNull()
+    expect(within(dialog).getByRole('textbox')).toHaveProperty('disabled', true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start a new conversation' }))
+
+    // Returns to local welcome state:
+    // - previous messages and resolved note are gone
+    // - composer input becomes enabled again
+    // - welcome greeting and sample question pills are visible
+    // - startSession has NOT been called eagerly
+    expect(screen.queryByTestId('chat-resolved')).toBeNull()
+    expect(screen.queryByText('Previous conversation message')).toBeNull()
+    await waitFor(() => expect(within(dialog).getByRole('textbox')).toHaveProperty('disabled', false))
+    expect(
+      screen.getByText(
+        'Hello — I can help with product information and connect you with our project team.',
+      ),
+    ).not.toBeNull()
+    expect(startSessionSpy).not.toHaveBeenCalled()
+    expect(window.sessionStorage.getItem('ivybm_chat_session_id_en')).toBeNull()
+
+    // Subsequent message sending lazily triggers startSession and sendMessage
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'New topic after resolve' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(startSessionSpy).toHaveBeenCalledTimes(1)
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'New topic after resolve',
+        }),
+      )
+    })
   })
 })
 

@@ -1225,4 +1225,70 @@ describe('Portal conversations module', () => {
      vi.useRealTimers()
    }
  })
+
+  it('gracefully handles conversations with missing lastMessageAt and message timestamps without crashing', async () => {
+    const abnormalSession: ChatSession = {
+      ...session1,
+      id: 'conv-no-time',
+      messages: [
+        {
+          author: 'visitor',
+          content: 'Message without timestamp',
+          createdAt: undefined as unknown as string,
+          id: 'msg-no-time',
+          status: 'sent',
+        },
+      ],
+    }
+
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      const urlStr = String(url)
+      if (
+        urlStr.startsWith('/api/portal/conversations?') ||
+        urlStr === '/api/portal/conversations'
+      ) {
+        return Promise.resolve(
+          jsonResponse({
+            docs: [
+              {
+                ...abnormalSession,
+                lastMessageAt: undefined,
+                messages: undefined,
+              },
+            ],
+            page: 1,
+            totalDocs: 1,
+            totalPages: 1,
+          }),
+        )
+      }
+      if (urlStr.includes('/api/portal/conversations/conv-no-time')) {
+        return Promise.resolve(jsonResponse(abnormalSession))
+      }
+      return Promise.reject(new Error(`Unhandled: ${urlStr}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWorkspace('conv-no-time')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '官网访客 #o-time' })).toBeDefined()
+    })
+    // Inbox list item displays friendly empty state
+    expect(screen.getByText('暂无消息')).toBeDefined()
+    // Message bubble timestamp displays dash instead of inbox-level "暂无消息"
+    expect(screen.getByText('Message without timestamp')).toBeDefined()
+    expect(screen.getByText('—')).toBeDefined()
+
+    // Also verify English locale fallback
+    cleanup()
+    window.localStorage.setItem('ivybm.portal.preferences', JSON.stringify({ locale: 'en' }))
+    renderWorkspace('conv-no-time')
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Website visitor #o-time' })).toBeDefined()
+    })
+    expect(screen.getByText('No messages')).toBeDefined()
+    expect(screen.getByText('—')).toBeDefined()
+    window.localStorage.clear()
+  })
 })

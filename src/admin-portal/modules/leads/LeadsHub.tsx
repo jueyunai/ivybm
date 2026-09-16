@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
+  IconArrowLeft,
+  IconArrowRight,
+  IconClock,
   IconDownload,
   IconEdit,
   IconFile,
@@ -189,6 +192,19 @@ export const getLeadMutationPayload = (
 
 const formatDate = (value: string, locale: 'en' | 'zh') => new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value))
 
+const formatDateTime = (value: string | undefined, locale: 'en' | 'zh'): string => {
+  if (!value) return '—'
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return '—'
+  return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en-GB', {
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(timestamp)
+}
+
 const relatedConversationStatus = (status: string, locale: 'en' | 'zh'): string =>
   ({
     ai_active: locale === 'zh' ? 'AI 服务中' : 'AI active',
@@ -361,6 +377,12 @@ export function LeadsHub({ feishuRegistrationEnabled = false, pageState, role, s
                           </span>
                         ) : null}
                       </div>
+                      <div className="portal-leads__list-footer">
+                        <time dateTime={lead.updatedAt}>
+                          <IconClock aria-hidden="true" size={12} />
+                          <span>{formatDateTime(lead.updatedAt, locale)}</span>
+                        </time>
+                      </div>
                     </button>
                   </li>
                 )
@@ -370,14 +392,34 @@ export function LeadsHub({ feishuRegistrationEnabled = false, pageState, role, s
             <PortalState description={text.emptyDescription} title={text.empty} type="empty" />
           )}
           {summary.pagination.totalPages > 1 ? (
-            <nav>
-              <Button asChild disabled={summary.pagination.page <= 1} size="compact" variant="secondary">
-                <Link href={href(summary.query, summary.pagination.page - 1)}>{text.previous}</Link>
-              </Button>
+            <nav aria-label={text.title} className="portal-leads__pagination">
+              {summary.pagination.page <= 1 ? (
+                <Button disabled size="compact" variant="secondary">
+                  <IconArrowLeft aria-hidden="true" size={15} />
+                  {text.previous}
+                </Button>
+              ) : (
+                <Button asChild size="compact" variant="secondary">
+                  <Link href={href(summary.query, summary.pagination.page - 1)}>
+                    <IconArrowLeft aria-hidden="true" size={15} />
+                    {text.previous}
+                  </Link>
+                </Button>
+              )}
               <span>{summary.pagination.page} / {summary.pagination.totalPages}</span>
-              <Button asChild disabled={summary.pagination.page >= summary.pagination.totalPages} size="compact" variant="secondary">
-                <Link href={href(summary.query, summary.pagination.page + 1)}>{text.next}</Link>
-              </Button>
+              {summary.pagination.page >= summary.pagination.totalPages ? (
+                <Button disabled size="compact" variant="secondary">
+                  {text.next}
+                  <IconArrowRight aria-hidden="true" size={15} />
+                </Button>
+              ) : (
+                <Button asChild size="compact" variant="secondary">
+                  <Link href={href(summary.query, summary.pagination.page + 1)}>
+                    {text.next}
+                    <IconArrowRight aria-hidden="true" size={15} />
+                  </Link>
+                </Button>
+              )}
             </nav>
           ) : null}
         </Surface>
@@ -433,7 +475,8 @@ export function LeadsHub({ feishuRegistrationEnabled = false, pageState, role, s
                   </Button>
                 </div>
               </header>
-              <dl>
+              <div className="portal-leads__detail-body">
+                <dl>
                 <div><dt>{text.email}</dt><dd>{selected.email || '—'}</dd></div>
                 <div><dt>{text.phone}</dt><dd>{selected.phone || '—'}</dd></div>
                 <div><dt>{text.messagingContact}</dt><dd>{messagingContactLabel(selected) || '—'}</dd></div>
@@ -533,6 +576,7 @@ export function LeadsHub({ feishuRegistrationEnabled = false, pageState, role, s
                   <p>{text.noRelated}</p>
                 )}
               </section>
+              </div>
             </>
           ) : (
             <PortalState description={text.emptyDescription} title={text.empty} type="empty" />

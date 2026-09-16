@@ -25,7 +25,21 @@ type WidgetStatus = 'error' | 'idle' | 'loading' | 'sending'
 
 type ChatWidgetProps = {
   locale: Locale
+  sampleQuestions?: string[]
   service?: VisitorChatService
+}
+
+const DEFAULT_SAMPLE_QUESTIONS: Record<Locale, string[]> = {
+  ar: [
+    'هل تصنعون ألواح واجهات مثقوبة؟',
+    'ما هي خيارات تشطيب الألمنيوم المتوفرة؟',
+    'ما هي مدة التوريد للمشاريع الخارجية؟',
+  ],
+  en: [
+    'Do you manufacture perforated facade panels?',
+    'What surface finish options do you provide for aluminum panels?',
+    'What are the standard lead times for overseas projects?',
+  ],
 }
 
 type FailedChatAttempt = {
@@ -87,8 +101,13 @@ const removePersistedSessionID = (key: string): void => {
   }
 }
 
-export function ChatWidget({ locale, service }: ChatWidgetProps) {
+export function ChatWidget({
+  locale,
+  sampleQuestions: propSampleQuestions,
+  service,
+}: ChatWidgetProps) {
   const copy = getWebsiteCopy(locale).chat
+  const sampleQuestions = propSampleQuestions ?? DEFAULT_SAMPLE_QUESTIONS[locale]
   const browserService = useMemo(() => createBrowserChatService(), [])
   const activeService = service || browserService
   const persistSession = !service
@@ -110,6 +129,8 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
   const sessionRef = useRef<ChatSession | null>(null)
   const startCommandKeyRef = useRef<string | null>(null)
   const startPromiseRef = useRef<Promise<ChatSession | null> | null>(null)
+  const restorePromiseRef = useRef<Promise<ChatSession | null> | null>(null)
+  const sendInFlightRef = useRef(false)
 
   const commitSession = useCallback(
     (next: ChatSession) => {
@@ -133,15 +154,15 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
     setLastFailedAttempt(null)
     setRetriedMessageIDs(new Set())
     setSession(null)
-    if (persistSession) removePersistedSessionID(sessionStorageKey)
-  }, [persistSession, sessionStorageKey])
+    removePersistedSessionID(sessionStorageKey)
+  }, [sessionStorageKey])
 
   useEffect(() => {
     const scrollIntoView = messagesEndRef.current?.scrollIntoView
     if (typeof scrollIntoView === 'function') {
       scrollIntoView.call(messagesEndRef.current, { behavior: 'smooth', block: 'end' })
     }
-  }, [session?.messages.length, isOpen])
+  }, [session?.messages?.length, isOpen])
 
   const closeChat = useCallback(() => {
     setIsOpen(false)
@@ -178,37 +199,55 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
     return () => window.clearInterval(timer)
   }, [activeService, commitSession, copy, discardSession, isOpen, session])
 
-  const startSession = useCallback(
-    (forceNew = false): Promise<ChatSession | null> => {
-      if (!forceNew && session) return Promise.resolve(session)
-      if (startPromiseRef.current) return startPromiseRef.current
+  const restoreSession = useCallback((): Promise<ChatSession | null> => {
+    if (sessionRef.current) return Promise.resolve(sessionRef.current)
+    if (restorePromiseRef.current) return restorePromiseRef.current
 
-      const pending = (async (): Promise<ChatSession | null> => {
-        setError('')
-        setStatus('loading')
-        try {
-          if (!forceNew && persistSession) {
-            const persistedID = readPersistedSessionID(sessionStorageKey)
-            if (persistedID) {
-              try {
-                const restored = await activeService.getSession(persistedID)
-                commitSession(restored)
-                return restored
-              } catch (caught) {
-                if (!shouldDiscardPersistedSession(caught)) throw caught
-                removePersistedSessionID(sessionStorageKey)
-              }
-            }
-          }
-          const idempotencyKey =
-            forceNew || !startCommandKeyRef.current ? chatCommandKey() : startCommandKeyRef.current
-          startCommandKeyRef.current = idempotencyKey
-          const input: StartChatSessionInput = {
-            channel: 'website',
-            idempotencyKey,
-            locale,
-            sourceURL: typeof window === 'undefined' ? undefined : window.location.href,
-          }
+    const pending = (async (): Promise<ChatSession | null> => {
+      const persistedID = readPersistedSessionID(sessionStorageKey)
+      if (!persistedID) return null
+
+      setError('')
+      setStatus('loading')
+      try {
+        const restored = await activeService.getSession(persistedID)
+        commitSession(restored)
+        return restored
+      } catch (caught) {
+        if (shouldDiscardPersistedSession(caught)) {
+          removePersistedSessionID(sessionStorageKey)
+          return null
+        }
+        setError(getErrorMessage(caught, copy))
+        return null
+      } finally {
+        setStatus('idle')
+      }
+    })()
+
+    restorePromiseRef.current = pending
+    void pending.finally(() => {
+      if (restorePromiseRef.current === pending) restorePromiseRef.current = null
+    })
+    return pending
+  }, [activeService, commitSession, copy, sessionStorageKey])
+
+  const startSession = useCallback((): Promise<ChatSession | null> => {
+    if (sessionRef.current) return Promise.resolve(sessionRef.current)
+    if (startPromiseRef.current) return startPromiseRef.current
+
+    const pending = (async (): Promise<ChatSession | null> => {
+      setError('')
+      setStatus('loading')
+      try {
+        const idempotencyKey = startCommandKeyRef.current ?? chatCommandKey()
+        startCommandKeyRef.current = idempotencyKey
+        const input: StartChatSessionInput = {
+          channel: 'website',
+          idempotencyKey,
+          locale,
+          sourceURL: typeof window === 'undefined' ? undefined : window.location.href,
+        }
           const next = await activeService.startSession(input)
           commitSession(next)
           startCommandKeyRef.current = null
@@ -227,58 +266,98 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
       })
       return pending
     },
-    [activeService, commitSession, copy, locale, persistSession, session, sessionStorageKey],
+    [activeService, commitSession, copy, locale],
   )
 
   const open = (): void => {
     setIsOpen(true)
-    void startSession()
+    const persistedID = readPersistedSessionID(sessionStorageKey)
+    if (persistedID && !sessionRef.current) {
+      void restoreSession()
+    }
+  }
+
+  const retryStartup = () => {
+    const persistedID = readPersistedSessionID(sessionStorageKey)
+    if (persistedID) {
+      void restoreSession()
+    } else {
+      void startSession()
+    }
+  }
+
+  const sendTextMessage = async (textToSend: string) => {
+    const text = textToSend.trim()
+    if (!text || operationPending(status) || sendInFlightRef.current) return
+    sendInFlightRef.current = true
+
+    try {
+      let activeSession = sessionRef.current
+      if (!activeSession) {
+        const persistedID = readPersistedSessionID(sessionStorageKey)
+        if (persistedID) {
+          activeSession = await (restorePromiseRef.current ?? restoreSession())
+          if (!activeSession) {
+            // Check if the session was permanently discarded (e.g. 404/403).
+            // If discarded, removePersistedSessionID was called and the key is gone.
+            // If the key is STILL present, the failure was transient (network/500),
+            // so do NOT fall back to startSession(), which would fork into a new conversation
+            // and overwrite the persisted ID and auth cookie.
+            if (readPersistedSessionID(sessionStorageKey)) {
+              return
+            }
+            activeSession = await (startPromiseRef.current ?? startSession())
+          }
+        } else {
+          activeSession = await (startPromiseRef.current ?? startSession())
+        }
+      }
+      if (!activeSession || !hasAction(activeSession, 'send_message')) return
+
+      setStatus('sending')
+      setError('')
+      setLastFailedAttempt(null)
+      const idempotencyKey = chatCommandKey()
+      try {
+        const input: SendChatMessageInput = {
+          idempotencyKey,
+          sessionId: activeSession.id,
+          text,
+        }
+        const next = await activeService.sendMessage(input)
+        commitSession(next)
+        setDraft('')
+      } catch (caught) {
+        if (shouldDiscardPersistedSession(caught)) {
+          discardSession()
+          setError(getErrorMessage(caught, copy))
+          return
+        }
+        const failed: ChatMessage = {
+          author: 'visitor',
+          content: text,
+          createdAt: new Date().toISOString(),
+          errorCode: caught instanceof ChatServiceError ? caught.code : 'internal_error',
+          id: `failed-${chatCommandKey()}`,
+          status: 'failed',
+        }
+        setLastFailedAttempt({
+          idempotencyKey,
+          message: failed,
+          retryable: isRetryableError(caught),
+        })
+        setError(getErrorMessage(caught, copy))
+      } finally {
+        setStatus('idle')
+      }
+    } finally {
+      sendInFlightRef.current = false
+    }
   }
 
   const submitMessage = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const text = draft.trim()
-    if (!text || operationPending(status)) return
-
-    const activeSession = await startSession()
-    if (!activeSession || !hasAction(activeSession, 'send_message')) return
-
-    setStatus('sending')
-    setError('')
-    setLastFailedAttempt(null)
-    const idempotencyKey = chatCommandKey()
-    try {
-      const input: SendChatMessageInput = {
-        idempotencyKey,
-        sessionId: activeSession.id,
-        text,
-      }
-      const next = await activeService.sendMessage(input)
-      commitSession(next)
-      setDraft('')
-    } catch (caught) {
-      if (shouldDiscardPersistedSession(caught)) {
-        discardSession()
-        setError(getErrorMessage(caught, copy))
-        return
-      }
-      const failed: ChatMessage = {
-        author: 'visitor',
-        content: text,
-        createdAt: new Date().toISOString(),
-        errorCode: caught instanceof ChatServiceError ? caught.code : 'internal_error',
-        id: `failed-${chatCommandKey()}`,
-        status: 'failed',
-      }
-      setLastFailedAttempt({
-        idempotencyKey,
-        message: failed,
-        retryable: isRetryableError(caught),
-      })
-      setError(getErrorMessage(caught, copy))
-    } finally {
-      setStatus('idle')
-    }
+    await sendTextMessage(draft)
   }
 
   const requestHandoff = async () => {
@@ -380,19 +459,18 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
     }
   }
 
-  const startNewConversation = () => {
+  const startNewConversation = (): void => {
     setDraft('')
     setError('')
     discardSession()
-    void startSession(true)
   }
 
   const messages = [
     ...(session?.messages || []),
     ...(lastFailedAttempt ? [lastFailedAttempt.message] : []),
   ]
-  const inputEnabled = hasAction(session, 'send_message') && !operationPending(status)
-  const showHandoff = hasAction(session, 'request_handoff')
+  const inputEnabled = (!session || hasAction(session, 'send_message')) && !operationPending(status)
+  const showHandoff = Boolean(session && hasAction(session, 'request_handoff'))
   const liveStatus = error
     ? ''
     : status === 'loading'
@@ -470,17 +548,34 @@ export function ChatWidget({ locale, service }: ChatWidgetProps) {
               <article className="chat-unavailable-card" role="alert">
                 <IconMessageCircle2 aria-hidden size={22} stroke={1.7} />
                 <p>{error}</p>
-                <button onClick={() => void startSession()} type="button">
+                <button onClick={retryStartup} type="button">
                   <IconRefresh aria-hidden size={15} />
                   {copy.retry}
                 </button>
               </article>
             ) : null}
-            {session && messages.length === 0 ? (
-              <article className="chat-welcome">
-                <IconUser aria-hidden size={18} stroke={1.7} />
-                <p>{copy.greeting}</p>
-              </article>
+            {messages.length === 0 && !error ? (
+              <>
+                <article className="chat-welcome">
+                  <IconUser aria-hidden size={18} stroke={1.7} />
+                  <p>{copy.greeting}</p>
+                </article>
+                {sampleQuestions.length > 0 ? (
+                  <div className="chat-sample-questions">
+                    {sampleQuestions.map((question) => (
+                      <button
+                        className="chat-sample-question"
+                        disabled={operationPending(status)}
+                        key={question}
+                        onClick={() => void sendTextMessage(question)}
+                        type="button"
+                      >
+                        {question}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </>
             ) : null}
             {messages.map((message) => (
               <ChatBubble

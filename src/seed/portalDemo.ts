@@ -218,22 +218,32 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
       overrideAccess: true,
       where: { idempotencyKey: { equals: data.idempotencyKey } },
     })
-    if (existing.docs[0]) {
+    const message = existing.docs[0]
+      ? await payload.update({
+          collection: 'messages',
+          context: portalDemoContext,
+          data,
+          id: existing.docs[0].id,
+          overrideAccess: true,
+        })
+      : await payload.create({
+          collection: 'messages',
+          context: portalDemoContext,
+          data,
+          overrideAccess: true,
+        })
+    if (data.conversation) {
+      const convId =
+        typeof data.conversation === 'object' ? data.conversation.id : data.conversation
       await payload.update({
-        collection: 'messages',
+        collection: 'conversations',
         context: portalDemoContext,
-        data,
-        id: existing.docs[0].id,
-        overrideAccess: true,
-      })
-    } else {
-      await payload.create({
-        collection: 'messages',
-        context: portalDemoContext,
-        data,
+        data: { lastMessageAt: message.createdAt || now },
+        id: convId,
         overrideAccess: true,
       })
     }
+    return message
   }
 
   const session1 = await ensureVisitorSession({
@@ -267,6 +277,7 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
     channel: 'website',
     handoffStatus: 'ai_active',
     intentLevel: 'a',
+    lastMessageAt: now,
     locale: 'en',
     publicId: 'conv-001',
     requestId: 'req-conv-001',
@@ -277,6 +288,7 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
     channel: 'website',
     handoffStatus: 'handoff_requested',
     intentLevel: 'a',
+    lastMessageAt: now,
     locale: 'en',
     publicId: 'conv-002',
     requestId: 'req-conv-002',
@@ -287,6 +299,7 @@ export async function seedPortalDemo(payload: Payload): Promise<void> {
     channel: 'website',
     handoffStatus: 'resolved',
     intentLevel: 'b',
+    lastMessageAt: now,
     locale: 'ar',
     publicId: 'conv-003',
     requestId: 'req-conv-003',

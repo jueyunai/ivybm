@@ -41,7 +41,22 @@ export async function GET(request: NextRequest): Promise<Response> {
     ) {
       throw new ChatServiceError('invalid_request', 'Unsupported handoff status')
     }
-    const filters: Where[] = []
+    const filters: Where[] = [
+      {
+        or: [
+          {
+            lastMessageAt: {
+              exists: true,
+            },
+          },
+          {
+            handoffStatus: {
+              in: ['handoff_requested', 'human_active'],
+            },
+          },
+        ],
+      },
+    ]
     if (actor.role === 'sales') filters.push({ assignedTo: { equals: actor.id } })
     if (status) filters.push({ handoffStatus: { equals: status } })
     const result = await payload.find({

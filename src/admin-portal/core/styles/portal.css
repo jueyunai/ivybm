@@ -4597,7 +4597,8 @@
 
   .portal-conversations__workspace {
     display: grid;
-    min-height: 640px;
+    height: var(--portal-conversations-workspace-height, calc(100vh - 240px));
+    min-height: 580px;
     grid-template-columns: minmax(310px, 0.36fr) minmax(0, 0.64fr);
     gap: 14px;
     align-items: stretch;
@@ -5271,17 +5272,42 @@
   }
 
   .portal-leads__detail--editor .portal-leads-editor {
-    padding: 16px;
-    gap: 16px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    padding: 0;
+    gap: 0;
   }
 
   .portal-leads__detail--editor .portal-leads-editor > header {
-    padding: 0 0 12px;
+    display: flex;
+    min-height: 55px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--portal-border);
+    flex-shrink: 0;
+  }
+
+  .portal-leads__detail--editor .portal-leads-editor > p[role="alert"] {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 8px 16px;
     border-bottom: 1px solid var(--portal-border);
   }
 
   .portal-leads__detail--editor .portal-leads-editor__fields {
-    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 14px 16px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .portal-leads__detail--editor .portal-leads-editor > footer {
@@ -5289,8 +5315,10 @@
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    padding: 12px 0 0;
+    padding: 12px 16px;
     border-top: 1px solid var(--portal-border);
+    background: var(--portal-surface);
+    flex-shrink: 0;
   }
 
   .portal-leads__filters label,
@@ -5341,16 +5369,25 @@
 
   .portal-leads__workspace {
     display: grid;
-    min-height: 590px;
-    grid-template-columns: minmax(280px, 0.4fr) minmax(0, 0.6fr);
-    gap: 12px;
+    height: var(--portal-leads-workspace-height, calc(100vh - 220px));
+    min-height: 580px;
+    grid-template-columns: minmax(280px, 0.38fr) minmax(0, 0.62fr);
+    gap: 14px;
+    align-items: stretch;
   }
 
   .portal-leads__list,
   .portal-leads__detail,
   .portal-leads__editor {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
+    min-height: 0;
+    height: 100%;
     overflow: hidden;
+    border: 1px solid var(--portal-border);
+    border-radius: var(--portal-radius-card);
+    background: var(--portal-surface);
   }
 
   .portal-leads__list > header,
@@ -5392,7 +5429,17 @@
     font-size: 12px;
   }
 
-  .portal-leads__list ul,
+  .portal-leads__list ul {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    margin: 0;
+    padding: 7px;
+    list-style: none;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
   .portal-leads__related ul {
     display: grid;
     margin: 0;
@@ -5415,6 +5462,7 @@
     color: var(--portal-ink);
     text-align: start;
     cursor: pointer;
+    transition: all 0.12s ease;
   }
 
   .portal-leads__list li button:hover,
@@ -5435,11 +5483,55 @@
     gap: 5px;
   }
 
+  .portal-leads__list-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-top: 3px;
+    padding-top: 4px;
+    border-top: 1px dashed var(--portal-border);
+    color: var(--portal-muted);
+    font-size: 11px;
+  }
+
+  .portal-leads__list-footer time {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--portal-font-data);
+  }
+
+  .portal-leads__pagination {
+    display: flex;
+    min-height: 48px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--portal-border);
+    background: var(--portal-surface);
+  }
+
+  .portal-leads__pagination > span {
+    color: var(--portal-muted);
+    font-family: var(--portal-font-data);
+    font-size: 12px;
+  }
+
+  .portal-leads__detail-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
   .portal-leads__detail > header p {
     color: var(--portal-muted);
     font-size: 12px;
   }
 
+  .portal-leads__detail-body > dl,
   .portal-leads__detail > dl {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5448,6 +5540,7 @@
     padding: 14px;
   }
 
+  .portal-leads__detail-body > dl > div,
   .portal-leads__detail > dl > div {
     display: grid;
     min-height: 42px;
@@ -7066,6 +7159,8 @@
   }
 
   .portal-conversations__workspace {
+    height: auto;
+    min-height: 0;
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -7123,14 +7218,27 @@
   }
 
   .portal-leads__workspace {
+    height: auto;
+    min-height: 0;
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .portal-leads__list {
+    max-height: 440px;
+  }
+
+  .portal-leads__detail-body > dl,
   .portal-leads__detail > dl {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .portal-leads__detail--editor .portal-leads-editor {
+    height: auto;
+  }
+
+  .portal-leads__detail--editor .portal-leads-editor__fields,
   .portal-leads-editor__fields {
+    overflow-y: visible;
     grid-template-columns: minmax(0, 1fr);
   }
 

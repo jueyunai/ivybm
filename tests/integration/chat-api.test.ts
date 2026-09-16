@@ -35,6 +35,16 @@ describe.sequential('chat HTTP API', () => {
     process.env.ADMIN_PORTAL_ENABLED = 'true'
     process.env.TRUST_PROXY_HEADERS = 'true'
     payload = await getPayload({ config, disableOnInit: true, key: 'task9-chat-api-integration' })
+    await payload.delete({
+      collection: 'ai-usage-routes',
+      overrideAccess: true,
+      where: { id: { exists: true } },
+    })
+    await payload.delete({
+      collection: 'knowledge-documents',
+      overrideAccess: true,
+      where: { id: { exists: true } },
+    })
   })
 
   afterAll(async () => {
@@ -1016,6 +1026,12 @@ describe.sequential('chat HTTP API', () => {
       },
       overrideAccess: true,
     })
+    await payload.update({
+      collection: 'conversations',
+      id: conversation.id,
+      overrideAccess: true,
+      data: { lastMessageAt: new Date().toISOString() },
+    })
 
     const visitorSnapshot = await getSession(
       new NextRequest(`http://localhost/api/chat/sessions/${session.id}`, { headers: { cookie } }),
@@ -1202,5 +1218,136 @@ describe.sequential('chat HTTP API', () => {
       overrideAccess: true,
       where: { id: { in: users.map(({ id }) => id) } },
     })
+  })
+
+  it('omits empty conversations with no messages from the operator inbox', async () => {
+    const suffix = randomUUID()
+    const idempotencyKey = `empty-session-${suffix}`
+    const body = JSON.stringify({ channel: 'website', idempotencyKey, locale: 'en' })
+    const startResponse = await startSession(
+      new NextRequest('http://localhost/api/chat/sessions', {
+        body,
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      }),
+    )
+    expect(startResponse.status).toBe(201)
+    const created = (await startResponse.json()) as { id: string }
+    const cookie = startResponse.headers.get('set-cookie')?.split(';')[0] || ''
+
+    const password = 'OperatorPassword123!'
+    const operator = await payload.create({
+      collection: 'users',
+      context: { skipAudit: true },
+      data: { password, role: 'operator', username: `empty-op-${suffix}` },
+      draft: true,
+      overrideAccess: true,
+    })
+    const login = await payload.login({
+      collection: 'users',
+      data: { password, username: operator.username },
+    })
+    const operatorAuth = { authorization: `JWT ${login.token}` }
+
+    try {
+      const listEmptyResponse = await listOperatorSessions(
+        new NextRequest('http://localhost/api/chat/operator/sessions', {
+          headers: operatorAuth,
+        }),
+      )
+      expect(listEmptyResponse.status).toBe(200)
+      const listEmptyData = (await listEmptyResponse.json()) as { docs: Array<{ id: string }> }
+      expect(listEmptyData.docs.some((doc) => doc.id === created.id)).toBe(false)
+
+      const messageResponse = await sendMessage(
+        new NextRequest(`http://localhost/api/chat/sessions/${created.id}/messages`, {
+          body: JSON.stringify({
+            idempotencyKey: `msg-${suffix}`,
+            text: 'Confirm your final price and delivery date.',
+          }),
+          headers: { 'content-type': 'application/json', cookie, 'x-real-ip': '198.51.100.40' },
+          method: 'POST',
+        }),
+        { params: Promise.resolve({ id: created.id }) },
+      )
+      expect(messageResponse.status).toBe(200)
+
+      const listActiveResponse = await listOperatorSessions(
+        new NextRequest('http://localhost/api/chat/operator/sessions', {
+          headers: operatorAuth,
+        }),
+      )
+      expect(listActiveResponse.status).toBe(200)
+      const listActiveData = (await listActiveResponse.json()) as { docs: Array<{ id: string }> }
+      expect(listActiveData.docs.some((doc) => doc.id === created.id)).toBe(true)
+
+      // Also verify that an empty conversation with handoff_requested IS returned so operators can take over
+      const handoffSuffix = randomUUID()
+      const handoffStart = await startSession(
+        new NextRequest('http://localhost/api/chat/sessions', {
+          body: JSON.stringify({
+            channel: 'website',
+            idempotencyKey: `start-handoff-${handoffSuffix}`,
+            locale: 'en',
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        }),
+      )
+      const handoffSession = (await handoffStart.json()) as { id: string }
+      await payload.update({
+        collection: 'conversations',
+        data: { handoffStatus: 'handoff_requested' },
+        overrideAccess: true,
+        where: { publicId: { equals: handoffSession.id } },
+      })
+      try {
+        const listHandoffResponse = await listOperatorSessions(
+          new NextRequest('http://localhost/api/chat/operator/sessions?limit=50', {
+            headers: operatorAuth,
+          }),
+        )
+        expect(listHandoffResponse.status).toBe(200)
+        const listHandoffData = (await listHandoffResponse.json()) as { docs: Array<{ id: string }> }
+        expect(listHandoffData.docs.some((doc) => doc.id === handoffSession.id)).toBe(true)
+      } finally {
+        await payload.delete({
+          collection: 'conversations',
+          overrideAccess: true,
+          where: { publicId: { equals: handoffSession.id } },
+        })
+      }
+    } finally {
+      const conversation = (
+        await payload.find({
+          collection: 'conversations',
+          limit: 1,
+          overrideAccess: true,
+          where: { publicId: { equals: created.id } },
+        })
+      ).docs[0]
+      if (conversation) {
+        await payload.delete({
+          collection: 'conversations',
+          id: conversation.id,
+          overrideAccess: true,
+        })
+      }
+      await payload.delete({
+        collection: 'visitor-sessions',
+        overrideAccess: true,
+        where: { idempotencyKey: { equals: idempotencyKey } },
+      })
+      await payload.delete({
+        collection: 'conversation-commands',
+        overrideAccess: true,
+        where: { idempotencyKey: { contains: suffix } },
+      })
+      await payload.delete({
+        collection: 'users',
+        id: operator.id,
+        overrideAccess: true,
+      })
+    }
   })
 })

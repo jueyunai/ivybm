@@ -309,8 +309,12 @@ const renderChannelIcon = (channel: ChatSessionSummary['channel'], size = 16) =>
   }
 }
 
-const formatDate = (value: string | undefined, locale: 'en' | 'zh'): string => {
-  if (!value) return '—'
+const formatDate = (
+  value: string | undefined,
+  locale: 'en' | 'zh',
+  fallback: string = locale === 'zh' ? '暂无消息' : 'No messages',
+): string => {
+  if (!value) return fallback
   const timestamp = Date.parse(value)
   if (!Number.isFinite(timestamp)) return '—'
   return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en-GB', {
@@ -322,7 +326,7 @@ const formatDate = (value: string | undefined, locale: 'en' | 'zh'): string => {
 }
 
 const messageTimestamp = (message: ChatMessage, locale: 'en' | 'zh') =>
-  formatDate(message.createdAt, locale)
+  formatDate(message.createdAt, locale, '—')
 
 export function ConversationWorkspace({
   enabled,
