@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -207,6 +207,50 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
     fireEvent.click(menuButton)
     expect(mobileNav.getAttribute('data-open')).toBe('true')
     expect(langButton.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('closes mobile navigation drawer when viewport expands beyond 1100px mobile breakpoint', () => {
+    let mediaListener: ((e: MediaQueryListEvent) => void) | undefined
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn((event: string, handler: (e: MediaQueryListEvent) => void) => {
+        if (event === 'change') mediaListener = handler
+      }),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+
+    try {
+      render(
+        React.createElement(SiteHeader, {
+          locale: 'en',
+          siteName: 'IVYBM',
+        }),
+      )
+
+      const menuButton = screen.getByRole('button', { name: 'Menu' })
+      const mobileNav = screen.getByRole('navigation', { name: 'Mobile navigation' })
+
+      fireEvent.click(menuButton)
+      expect(mobileNav.getAttribute('data-open')).toBe('true')
+      expect(document.body.style.overflow).toBe('hidden')
+
+      // Viewport expands beyond 1100px (e.g. tablet rotated to landscape)
+      expect(mediaListener).toBeDefined()
+      act(() => {
+        mediaListener!({ matches: false } as MediaQueryListEvent)
+      })
+
+      expect(mobileNav.getAttribute('data-open')).toBe('false')
+      expect(document.body.style.overflow).toBe('')
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
   })
 
   it('ensures mobile-navigation is positioned relative to header bottom instead of hardcoded 82px fixed top', () => {

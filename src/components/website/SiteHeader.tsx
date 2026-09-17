@@ -100,6 +100,17 @@ export function SiteHeader({
     }
   }, [menuOpen])
 
+  // Close mobile menu when viewport expands beyond mobile breakpoint (e.g. tablet orientation change)
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mql = window.matchMedia('(max-width: 1100px)')
+    const handleMediaChange = (e: MediaQueryListEvent) => {
+      if (!e.matches) closeMobileMenu()
+    }
+    mql.addEventListener?.('change', handleMediaChange)
+    return () => mql.removeEventListener?.('change', handleMediaChange)
+  }, [closeMobileMenu])
+
   // Escape key listener for mobile menu
   useEffect(() => {
     if (!menuOpen) return

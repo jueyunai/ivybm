@@ -2256,6 +2256,7 @@ html[dir='rtl'] .chat-widget {
 }
 
 @media (max-width: 1100px) {
+  /* Disable backdrop-filter when menu is open so child .mobile-nav-backdrop does not treat header as containing block */
   .site-header[data-menu-open='true'] {
     z-index: 70;
     -webkit-backdrop-filter: none;
