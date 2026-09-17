@@ -384,13 +384,18 @@ describe('ConversationService', () => {
         type: 'handoff.created',
       }),
     ])
-    await expect(
-      service.sendMessage({
-        idempotencyKey: 'message-after-handoff',
-        sessionId: session.id,
-        text: 'Will the AI still answer?',
-      }),
-    ).rejects.toMatchObject({ code: 'conflict' } satisfies Partial<ChatServiceError>)
+    const afterHandoff = await service.sendMessage({
+      idempotencyKey: 'message-after-handoff',
+      sessionId: session.id,
+      text: 'My email is buyer@example.invalid and our drawings are ready.',
+    })
+    expect(afterHandoff.handoffStatus).toBe('handoff_requested')
+    expect(afterHandoff.allowedActions).toEqual(['send_message'])
+    expect(afterHandoff.messages.at(-1)).toMatchObject({
+      author: 'visitor',
+      content: 'My email is buyer@example.invalid and our drawings are ready.',
+      status: 'sent',
+    })
     expect(generateReply).not.toHaveBeenCalled()
   })
 

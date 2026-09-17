@@ -7,13 +7,115 @@ import {
 } from './contracts'
 import { formatLeadContact } from './leadContact'
 
+const formatChannel = (channel: HandoffForFeishu['channel']): string => {
+  switch (channel) {
+    case 'website':
+      return '官方网站 (Website)'
+    case 'whatsapp':
+      return 'WhatsApp'
+    case 'facebook':
+      return 'Facebook Messenger'
+    case 'instagram':
+      return 'Instagram'
+    case 'tiktok':
+      return 'TikTok'
+    default:
+      return String(channel)
+  }
+}
+
+const KNOWN_REASONS: Record<string, string> = {
+  ai_service_unavailable: 'AI 服务暂不可用',
+  high_intent: '高意向工程咨询',
+  high_risk_topic: '涉及敏感话题',
+  qualification_complete: '需求收集完成',
+  qualification_incomplete: '需求收集未完成',
+  reviewed_knowledge_unavailable: '知识库暂不可用',
+  visitor: '访客主动申请',
+  visitor_request: '访客主动申请',
+}
+
+const formatReason = (reason: string): string => {
+  const trimmed = reason.trim()
+  if (KNOWN_REASONS[trimmed]) {
+    return `${KNOWN_REASONS[trimmed]} (${trimmed})`
+  }
+  const compressed = trimmed.replace(/\s+/g, ' ')
+  return Array.from(compressed).slice(0, 120).join('')
+}
+
+const formatProductInterest = (
+  interest?: string | null,
+  quantitySquareMeters?: number | null,
+): string => {
+  const cleanInterest = interest?.trim()
+  const hasQuantity = typeof quantitySquareMeters === 'number' && Number.isFinite(quantitySquareMeters)
+  const quantityText = hasQuantity ? `${quantitySquareMeters.toLocaleString('en-US')} m²` : null
+
+  if (cleanInterest && quantityText) {
+    return `${cleanInterest} / ${quantityText}`
+  }
+  if (cleanInterest) {
+    return cleanInterest
+  }
+  if (quantityText) {
+    return quantityText
+  }
+  return '详见最新留言'
+}
+
+const formatContact = (email?: string | null, phone?: string | null): string => {
+  const cleanEmail = email?.trim()
+  const cleanPhone = phone?.trim()
+  if (cleanEmail && cleanPhone) {
+    return `${cleanEmail} / ${cleanPhone}`
+  }
+  if (cleanEmail) {
+    return cleanEmail
+  }
+  if (cleanPhone) {
+    return cleanPhone
+  }
+  return '暂未留资（客户可继续输入）'
+}
+
+const formatRequestedAt = (requestedAt: string): string => {
+  const date = new Date(requestedAt)
+  if (Number.isNaN(date.getTime())) return requestedAt
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const y = date.getUTCFullYear()
+  const m = pad(date.getUTCMonth() + 1)
+  const d = pad(date.getUTCDate())
+  const h = pad(date.getUTCHours())
+  const min = pad(date.getUTCMinutes())
+  return `${y}-${m}-${d} ${h}:${min} (UTC)`
+}
+
+const formatLatestVisitorMessage = (message?: string | null): string => {
+  if (!message?.trim()) {
+    return '（暂无留言）'
+  }
+  const compressed = message.replace(/\s+/g, ' ').trim()
+  const sanitized = compressed.replace(/<(\/?at\b)/gi, '＜$1')
+  const truncated = Array.from(sanitized).slice(0, 150).join('')
+  return `“${truncated}”`
+}
+
 export const formatHandoffNotification = (handoff: HandoffForFeishu): string =>
   [
-    'AI 客服需要人工接管',
-    `会话：${handoff.conversationPublicId}`,
-    `来源：${handoff.source}`,
-    `原因：${handoff.reason}`,
-    `请求时间：${handoff.requestedAt}`,
+    '🔔【AI 客服需要人工接管】',
+    `• 渠道来源：${formatChannel(handoff.channel)}`,
+    `• 接管原因：${formatReason(handoff.reason)}`,
+    `• 客户国家：${handoff.country?.trim() || '待确认'}`,
+    `• 关注产品：${formatProductInterest(handoff.productInterest, handoff.quantitySquareMeters)}`,
+    `• 联系方式：${formatContact(handoff.email, handoff.phone)}`,
+    `• 请求时间：${formatRequestedAt(handoff.requestedAt)}`,
+    '-----------------------------------------',
+    '💬 最新客户留言：',
+    formatLatestVisitorMessage(handoff.latestVisitorMessage),
+    '-----------------------------------------',
+    '🔗 工作台一键接管：',
+    handoff.portalUrl,
   ].join('\n')
 
 export const notifyHandoff = async ({

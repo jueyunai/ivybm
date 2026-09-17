@@ -176,9 +176,32 @@ export const runChatWorkflow = async ({
     // Round 3 should transition to handoff state
     const handoffPending = widget
       .getByTestId('chat-handoff-pending')
-      .or(widget.getByText(/Your request has been shared|تمت مشاركة طلبك/i))
+      .or(widget.getByText(/Our project team has been notified|تم إشعار فريق المشروع/i))
     await handoffPending.first().waitFor({ state: 'visible', timeout: 20_000 })
-    await expect(chatInput).toBeDisabled({ timeout: 10_000 })
+    await expect(chatInput).toBeEnabled({ timeout: 10_000 })
+
+    // Verify visitor can continue sending project information during handoff_requested without deadlock
+    const followUpNote =
+      locale === 'ar'
+        ? 'لدينا رسومات ومواصفات معمارية جاهزة للمشروع.'
+        : 'Our CAD architectural drawings and facade specifications are ready.'
+    await chatInput.fill(followUpNote)
+    const sendFollowUp = visitorPage.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname ===
+          `/api/chat/sessions/${encodeURIComponent(capturedSessionId!)}/messages`,
+      { timeout: 15_000 },
+    )
+    await sendBtn.click()
+    const followUpResponse = await sendFollowUp
+    if (!followUpResponse.ok()) {
+      throw new Error(
+        `Follow-up chat message during handoff returned HTTP ${followUpResponse.status()}.`,
+      )
+    }
+    await widget.getByText(followUpNote).waitFor({ state: 'visible', timeout: 10_000 })
+    await expect(chatInput).toBeEnabled({ timeout: 10_000 })
 
     if (captureFullEvidence) {
       if (await captureLocatorEvidence({ locator: widget, path: screenshotPaths.visitor })) {

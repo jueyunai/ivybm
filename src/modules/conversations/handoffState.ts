@@ -47,7 +47,11 @@ export const allowedActionsFor = (
     case 'ai_active':
       return viewer === 'visitor' ? ['send_message', 'request_handoff'] : []
     case 'handoff_requested':
-      return viewer === 'operator' ? ['take_over'] : []
+      return viewer === 'operator'
+        ? ['take_over']
+        : viewer === 'visitor'
+          ? ['send_message']
+          : []
     case 'human_active':
       return viewer === 'operator' || viewer === 'sales'
         ? ['send_operator_message', 'resolve']

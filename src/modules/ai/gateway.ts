@@ -231,7 +231,7 @@ const normalizeError = (error: unknown): AiGatewayError => {
 
   return new AiGatewayError('provider_error', 'AI provider request failed', {
     cause: error,
-    retryable: false,
+    retryable: true,
   })
 }
 

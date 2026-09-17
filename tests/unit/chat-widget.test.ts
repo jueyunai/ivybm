@@ -88,7 +88,7 @@ const createQualificationService = (
                 roundCount: 2,
               }
       } else {
-        next.allowedActions = []
+        next.allowedActions = ['send_message']
         next.handoffStatus = 'handoff_requested'
       }
       next.revision += 1
@@ -372,9 +372,14 @@ describe('ChatWidget', () => {
     fireEvent.click(screen.getByRole('button', { name: 'التحدث مع مختص' }))
 
     expect((await screen.findByTestId('chat-handoff-pending')).textContent).toContain(
-      'تمت مشاركة طلبك مع فريق المشروع',
+      'تم إشعار فريق المشروع',
     )
-    expect(composer).toHaveProperty('disabled', true)
+    expect(composer).toHaveProperty('disabled', false)
+
+    fireEvent.change(composer, { target: { value: 'لدينا رسومات هندسية جاهزة' } })
+    fireEvent.click(screen.getByRole('button', { name: 'إرسال' }))
+    expect(await screen.findByText('لدينا رسومات هندسية جاهزة')).not.toBeNull()
+    expect(composer).toHaveProperty('disabled', false)
   })
 
   it.each([
@@ -383,7 +388,7 @@ describe('ChatWidget', () => {
       firstAnswer: 'We are at tender stage in UAE. I work at Acme Facades.',
       firstQuestion:
         'Roughly how much area or how many panels do you need? When are you hoping to purchase or start the project?',
-      handoffCopy: 'Your request has been shared with our project team',
+      handoffCopy: 'Our project team has been notified',
       inputLabel: 'Ask about panels, drawings, finishes, or your project…',
       locale: 'en' as const,
       secondAnswer:
@@ -395,7 +400,7 @@ describe('ChatWidget', () => {
       contactQuestion: 'ما أفضل بريد إلكتروني للعمل أو رقم هاتف للمتابعة؟',
       firstAnswer: 'اسم الشركة: شركة النور. المشروع في السعودية ومرحلة مناقصة.',
       firstQuestion: 'ما المساحة أو الكمية التقريبية المطلوبة؟ متى تتوقعون الشراء أو بدء المشروع؟',
-      handoffCopy: 'تمت مشاركة طلبك مع فريق المشروع',
+      handoffCopy: 'تم إشعار فريق المشروع',
       inputLabel: 'اسأل عن الألواح أو مشروعك…',
       locale: 'ar' as const,
       secondAnswer: 'نحتاج 1200 متر مربع ولدينا رسومات وميزانية 300000 ريال والشراء خلال 3 أشهر.',
@@ -431,7 +436,7 @@ describe('ChatWidget', () => {
       fireEvent.click(screen.getByRole('button', { name: sendLabel }))
 
       expect((await screen.findByTestId('chat-handoff-pending')).textContent).toContain(handoffCopy)
-      expect(composer).toHaveProperty('disabled', true)
+      expect(composer).toHaveProperty('disabled', false)
     },
   )
 

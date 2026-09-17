@@ -51,6 +51,12 @@ describe('Payload conversation Lead gate', () => {
       ),
     ).toBe(true)
     expect(
+      shouldCreateConversationLead(
+        evaluation({ handoffReason: 'high_risk_topic', level: 'a' }),
+        websiteContact,
+      ),
+    ).toBe(true)
+    expect(
       shouldCreateConversationLead(evaluation({ country: '', level: 'a' }), websiteContact),
     ).toBe(true)
     expect(
@@ -66,7 +72,6 @@ describe('Payload conversation Lead gate', () => {
 
   it.each([
     'ai_service_unavailable',
-    'high_risk_topic',
     'reviewed_knowledge_unavailable',
   ])('does not create a website Lead for the %s recovery handoff', (handoffReason) => {
     expect(

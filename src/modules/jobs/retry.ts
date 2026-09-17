@@ -43,16 +43,18 @@ export const transitionAfterFailure = ({
   now,
   retryNotBefore,
   retryOptions,
+  retryable,
 }: {
   attempts: number
   maxAttempts: number
   now: Date
   retryNotBefore?: Date
   retryOptions?: RetryOptions
+  retryable?: boolean
 }): FailureTransition => {
   validateMaxAttempts(maxAttempts)
 
-  if (attempts >= maxAttempts) {
+  if (retryable === false || attempts >= maxAttempts) {
     return {
       deadAt: now,
       nextRunAt: null,

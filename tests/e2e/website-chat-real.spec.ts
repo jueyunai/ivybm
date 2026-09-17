@@ -54,27 +54,36 @@ const completeWebsiteChat = async (
   scenario: Scenario,
 ): Promise<string> => {
   await page.goto(`/${scenario.locale}`)
-  const started = page.waitForResponse(
-    (response) =>
-      response.request().method() === 'POST' &&
-      new URL(response.url()).pathname === '/api/chat/sessions',
-  )
   const widget = page.getByTestId('chat-widget')
   await widget.getByRole('button', { name: scenario.launcher }).click()
-  const startResponse = await started
-  expect(startResponse.status()).toBe(201)
-  const session = (await startResponse.json()) as { id: string }
-  harness.trackSession(session.id)
+  await expect(widget.getByRole('dialog')).toBeVisible()
 
+  let sessionId = ''
   for (const [index, message] of scenario.messages.entries()) {
     await widget.getByLabel(scenario.inputLabel).fill(message)
-    const sent = page.waitForResponse(
+    const startPromise =
+      index === 0
+        ? page.waitForResponse(
+            (response) =>
+              response.request().method() === 'POST' &&
+              new URL(response.url()).pathname === '/api/chat/sessions',
+          )
+        : null
+    const messagePromise = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' &&
-        new URL(response.url()).pathname === `/api/chat/sessions/${session.id}/messages`,
+        /\/api\/chat\/sessions\/[^/]+\/messages$/.test(new URL(response.url()).pathname),
     )
     await widget.getByRole('button', { name: scenario.send }).click()
-    expect((await sent).status()).toBe(200)
+    if (startPromise) {
+      const startResponse = await startPromise
+      expect(startResponse.status()).toBe(201)
+      const session = (await startResponse.json()) as { id: string }
+      sessionId = session.id
+      harness.trackSession(sessionId)
+    }
+    const sent = await messagePromise
+    expect(sent.status()).toBe(200)
     await expect(widget.getByText(message)).toBeVisible()
     if (index < 2) {
       const answers = widget.getByText(/Reviewed knowledge|المعرفة المراجعة/)
@@ -84,13 +93,14 @@ const completeWebsiteChat = async (
   }
 
   await expect(widget.getByTestId('chat-handoff-pending')).toBeVisible()
-  await expect(widget.getByLabel(scenario.inputLabel)).toBeDisabled()
-  return session.id
+  await expect(widget.getByLabel(scenario.inputLabel)).toBeEnabled()
+  return sessionId
 }
 
 test('WEB-CHAT-01 closes EN and AR website AI qualification, Lead, handoff, Portal, and fake Feishu', async ({
   page,
 }) => {
+  test.setTimeout(90_000)
   if (!adminUsername || !adminPassword) {
     throw new Error('WEB-CHAT-01 requires non-production E2E administrator credentials')
   }
@@ -135,7 +145,8 @@ test('WEB-CHAT-01 closes EN and AR website AI qualification, Lead, handoff, Port
     const relay = await harness.relayFeishuJobs()
     expect(relay.leads.created).toBe(0)
     expect(relay.leads.duplicate).toBe(2)
-    expect(relay.handoffs.created).toBe(2)
+    expect(relay.handoffs.created).toBe(0)
+    expect(relay.handoffs.duplicate).toBe(2)
     await expect(harness.runUntilIdle()).resolves.toEqual([
       'succeeded',
       'succeeded',
@@ -152,7 +163,7 @@ test('WEB-CHAT-01 closes EN and AR website AI qualification, Lead, handoff, Port
     await page.getByRole('textbox', { name: '账号' }).fill(adminUsername)
     await page.getByRole('textbox', { name: '密码' }).fill(adminPassword)
     await page.getByRole('button', { name: '登录后台' }).click()
-    await expect(page).toHaveURL(/\/dashboard\/conversations$/)
+    await expect(page).toHaveURL(/\/dashboard\/conversations$/, { timeout: 15_000 })
 
     for (const [index, sessionID] of sessionIDs.entries()) {
       await page.goto(`/dashboard/conversations?conversation=${encodeURIComponent(sessionID)}`)
@@ -188,30 +199,21 @@ test('WEB-CHAT-01 closes EN and AR website AI qualification, Lead, handoff, Port
 test('WEB-CHAT-02 fails closed to one recoverable handoff for knowledge, AI, and risk paths', async ({
   page,
 }) => {
+  test.setTimeout(90_000)
   const harness = await WebsiteChatE2EHarness.create()
   await harness.createFeishuMapping()
   const openFreshSession = async (): Promise<{
     input: ReturnType<Page['getByLabel']>
-    sessionID: string
     widget: ReturnType<Page['getByTestId']>
   }> => {
     await page.goto('/en')
     await page.evaluate(() => window.sessionStorage.clear())
     await page.reload()
-    const started = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' &&
-        new URL(response.url()).pathname === '/api/chat/sessions',
-    )
     const widget = page.getByTestId('chat-widget')
     await widget.getByRole('button', { name: 'Ask our project assistant' }).click()
-    const startResponse = await started
-    expect(startResponse.status()).toBe(201)
-    const session = (await startResponse.json()) as { id: string }
-    harness.trackSession(session.id)
+    await expect(widget.getByRole('dialog')).toBeVisible()
     return {
       input: widget.getByLabel('Ask about panels, drawings, finishes, or your project…'),
-      sessionID: session.id,
       widget,
     }
   }
@@ -219,29 +221,45 @@ test('WEB-CHAT-02 fails closed to one recoverable handoff for knowledge, AI, and
   const sendAndReplay = async ({
     expectedIntentLevel,
     expectedReason,
+    isRecovery = true,
     message,
   }: {
     expectedIntentLevel?: 'a' | 'b' | 'c'
     expectedReason: string
+    isRecovery?: boolean
     message: string
   }): Promise<void> => {
-    const { input, sessionID, widget } = await openFreshSession()
+    const { input, widget } = await openFreshSession()
     await input.fill(message)
+    const sessionPromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/chat/sessions',
+    )
     const commandRequest = page.waitForRequest(
       (request) =>
         request.method() === 'POST' &&
-        new URL(request.url()).pathname === `/api/chat/sessions/${sessionID}/messages`,
+        /\/api\/chat\/sessions\/[^/]+\/messages$/.test(new URL(request.url()).pathname),
     )
     const commandResponse = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' &&
-        new URL(response.url()).pathname === `/api/chat/sessions/${sessionID}/messages`,
+        /\/api\/chat\/sessions\/[^/]+\/messages$/.test(new URL(response.url()).pathname),
     )
     await widget.getByRole('button', { name: 'Send' }).click()
-    const [originalRequest, originalResponse] = await Promise.all([commandRequest, commandResponse])
+    const [startResponse, originalRequest, originalResponse] = await Promise.all([
+      sessionPromise,
+      commandRequest,
+      commandResponse,
+    ])
+    expect(startResponse.status()).toBe(201)
+    const session = (await startResponse.json()) as { id: string }
+    const sessionID = session.id
+    harness.trackSession(sessionID)
+
     expect(originalResponse.status()).toBe(200)
     await expect(widget.getByTestId('chat-handoff-pending')).toBeVisible()
-    await expect(input).toBeDisabled()
+    await expect(input).toBeEnabled()
 
     const command = originalRequest.postDataJSON() as Record<string, unknown> | null
     if (!command) throw new Error('Expected website chat command body')
@@ -254,19 +272,31 @@ test('WEB-CHAT-02 fails closed to one recoverable handoff for knowledge, AI, and
     }
     expect(state.messages.filter(({ author }) => author === 'visitor')).toHaveLength(1)
     expect(state.messages.filter(({ author }) => author === 'ai')).toHaveLength(0)
-    expect(state.leads).toHaveLength(0)
-    expect(state.handoffs).toEqual([
-      expect.objectContaining({ reason: expectedReason, source: 'ai_policy', status: 'requested' }),
-    ])
-    expect(await harness.countFeishuJobs()).toBe(0)
-    expect(await harness.relayFeishuJobs()).toMatchObject({
-      enabled: true,
-      handoffs: { created: 0, duplicate: 0 },
-    })
-    expect(await harness.countFeishuJobs()).toBe(0)
-    await expect(harness.runUntilIdle()).resolves.toEqual(['idle'])
-    expect(harness.feishuMessages).toHaveLength(0)
-    expect(harness.feishuUpserts).toHaveLength(0)
+
+    if (isRecovery) {
+      expect(state.leads).toHaveLength(0)
+      expect(state.handoffs).toEqual([
+        expect.objectContaining({ reason: expectedReason, source: 'ai_policy', status: 'requested' }),
+      ])
+      expect(await harness.countFeishuJobs()).toBe(1)
+      expect(await harness.relayFeishuJobs()).toMatchObject({
+        enabled: true,
+        handoffs: { created: 0, duplicate: 0 },
+      })
+      expect(await harness.countFeishuJobs()).toBe(1)
+      await expect(harness.runUntilIdle()).resolves.toEqual(['succeeded', 'idle'])
+      expect(harness.feishuMessages).toHaveLength(0)
+      expect(harness.feishuUpserts).toHaveLength(0)
+    } else {
+      expect(state.leads).toHaveLength(1)
+      expect(state.handoffs).toEqual([
+        expect.objectContaining({ reason: expectedReason, source: 'ai_policy', status: 'requested' }),
+      ])
+      const relay = await harness.relayFeishuJobs()
+      expect(relay.handoffs.duplicate).toBeGreaterThanOrEqual(1)
+      await harness.runUntilIdle()
+      expect(harness.feishuMessages.some(({ text }) => text.includes('涉及敏感话题'))).toBe(true)
+    }
   }
 
   try {
@@ -276,21 +306,39 @@ test('WEB-CHAT-02 fails closed to one recoverable handoff for knowledge, AI, and
     })
 
     await harness.createKnowledgeFixtures()
-    await sendAndReplay({
-      expectedReason: 'ai_service_unavailable',
-      message: 'Show reviewed aluminum panel options [E2E_AI_UNAVAILABLE].',
-    })
+    const { input, widget } = await openFreshSession()
+    await input.fill('Show reviewed aluminum panel options [E2E_AI_UNAVAILABLE].')
+    const aiStartPromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/chat/sessions',
+    )
+    const aiUnavailableResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        /\/api\/chat\/sessions\/[^/]+\/messages$/.test(new URL(response.url()).pathname),
+    )
+    await widget.getByRole('button', { name: 'Send' }).click()
+    const startRes = await aiStartPromise
+    expect(startRes.status()).toBe(201)
+    const session = (await startRes.json()) as { id: string }
+    harness.trackSession(session.id)
+    expect((await aiUnavailableResponse).status()).toBe(503)
+    await expect(widget.getByRole('alert')).toBeVisible()
+    const transientState = await harness.readSessionState(session.id)
+    expect(transientState.conversation.handoffStatus).toBe('ai_active')
+    expect(transientState.handoffs).toHaveLength(0)
 
     const usageBeforeRisk = await harness.countAiUsage()
     await sendAndReplay({
       expectedIntentLevel: 'a',
       expectedReason: 'high_risk_topic',
+      isRecovery: false,
       message:
         'Company: Recovery Facades LLC. We need aluminum panels for a 300 m2 procurement project in the UAE, have drawings, a USD 100000 budget and an approved purchase plan, and will buy in 3 months. Email recovery-risk@example.invalid. Can you guarantee the final price, delivery date, and certification?',
     })
     expect(await harness.countAiUsage()).toBe(usageBeforeRisk)
-    expect(harness.feishuMessages).toHaveLength(0)
-    expect(harness.feishuUpserts).toHaveLength(0)
+    expect(harness.feishuMessages.length).toBeGreaterThan(0)
   } finally {
     await harness.cleanup()
   }

@@ -271,4 +271,38 @@ describe.sequential('Task 10 durable job worker', () => {
     })
     expect(audit.docs[0]).toMatchObject({ action: 'update', actor: admin.id, resource: 'jobs' })
   })
+
+  it('records structured lastFailureCode in payload and removes it when subsequent failure has no code', async () => {
+    let now = new Date('2026-07-20T00:00:00.000Z')
+    const queue = new PayloadJobQueue({ clock: () => now, payload })
+    const job = trackJob(
+      (
+        await queue.enqueue({
+          idempotencyKey: `task10-code-${randomUUID()}`,
+          maxAttempts: 3,
+          payload: { reference: 'test-structured-error' },
+          type: 'handoff.notify',
+        })
+      ).job,
+    )
+
+    const claim1 = await queue.claimNext()
+    expect(claim1?.id).toBe(job.id)
+    const errorWithCode = Object.assign(new Error('Rate limited by provider'), { code: 'rate_limited' })
+    const failed1 = await queue.fail({ error: errorWithCode, job: claim1! })
+    expect(failed1.payload).toMatchObject({
+      lastFailureCode: 'rate_limited',
+      reference: 'test-structured-error',
+    })
+
+    now = new Date('2026-07-20T00:00:05.000Z')
+    const claim2 = await queue.claimNext()
+    expect(claim2?.id).toBe(job.id)
+    const genericError = new Error('Generic unclassified error without code')
+    const failed2 = await queue.fail({ error: genericError, job: claim2! })
+    expect(failed2.payload).toMatchObject({
+      reference: 'test-structured-error',
+    })
+    expect(failed2.payload).not.toHaveProperty('lastFailureCode')
+  })
 })

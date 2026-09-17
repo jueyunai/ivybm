@@ -35,6 +35,13 @@ describe('job retry policy', () => {
       nextRunAt: null,
       status: 'dead',
     })
+    expect(
+      transitionAfterFailure({ attempts: 1, maxAttempts: 5, now, retryable: false }),
+    ).toEqual({
+      deadAt: now,
+      nextRunAt: null,
+      status: 'dead',
+    })
   })
 
   it('only permits explicit human compensation for retryable terminal states', () => {
