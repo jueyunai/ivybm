@@ -80,6 +80,7 @@ export type PayloadJobQueueOptions = {
 }
 
 export type EnsureRunnableJobOptions = {
+  rearmDeadForFailureCodes?: readonly string[]
   rearmSucceeded?: boolean
 }
 
@@ -318,26 +319,72 @@ export class PayloadJobQueue {
     const now = this.clock().toISOString()
     const nextRunAt = (input.nextRunAt ?? this.clock()).toISOString()
     const rearmSucceeded = options.rearmSucceeded === true
+    const rearmDeadCodes =
+      Array.isArray(options.rearmDeadForFailureCodes) && options.rearmDeadForFailureCodes.length > 0
+        ? options.rearmDeadForFailureCodes.map(String)
+        : null
+    const payloadParam = input.payload !== undefined ? JSON.stringify(input.payload) : null
     const repaired = await this.pool.query<JobDatabaseRow>(
       `UPDATE jobs
        SET
-         status = CASE WHEN $4::boolean AND status = 'succeeded' THEN 'pending' ELSE status END,
-         attempts = CASE WHEN $4::boolean AND status = 'succeeded' THEN 0 ELSE attempts END,
-         completed_at = CASE WHEN $4::boolean AND status = 'succeeded' THEN NULL ELSE completed_at END,
-         dead_at = CASE WHEN $4::boolean AND status = 'succeeded' THEN NULL ELSE dead_at END,
-         last_error = CASE WHEN $4::boolean AND status = 'succeeded' THEN NULL ELSE last_error END,
+         status = CASE
+           WHEN ($4::boolean AND status = 'succeeded')
+             OR ($6::text[] IS NOT NULL AND status = 'dead' AND payload->>'lastFailureCode' = ANY($6::text[]))
+             THEN 'pending'
+           ELSE status
+         END,
+         attempts = CASE
+           WHEN ($4::boolean AND status = 'succeeded')
+             OR ($6::text[] IS NOT NULL AND status = 'dead' AND payload->>'lastFailureCode' = ANY($6::text[]))
+             THEN 0
+           ELSE attempts
+         END,
+         completed_at = CASE
+           WHEN ($4::boolean AND status = 'succeeded')
+             OR ($6::text[] IS NOT NULL AND status = 'dead' AND payload->>'lastFailureCode' = ANY($6::text[]))
+             THEN NULL
+           ELSE completed_at
+         END,
+         dead_at = CASE
+           WHEN ($4::boolean AND status = 'succeeded')
+             OR ($6::text[] IS NOT NULL AND status = 'dead' AND payload->>'lastFailureCode' = ANY($6::text[]))
+             THEN NULL
+           ELSE dead_at
+         END,
+         last_error = CASE
+           WHEN ($4::boolean AND status = 'succeeded')
+             OR ($6::text[] IS NOT NULL AND status = 'dead' AND payload->>'lastFailureCode' = ANY($6::text[]))
+             THEN NULL
+           ELSE last_error
+         END,
          next_run_at = CASE
-           WHEN $4::boolean AND status = 'succeeded' THEN $2
+           WHEN ($4::boolean AND status = 'succeeded')
+             OR ($6::text[] IS NOT NULL AND status = 'dead' AND payload->>'lastFailureCode' = ANY($6::text[]))
+             THEN $2
            ELSE GREATEST(COALESCE(next_run_at, $2), $2)
+         END,
+         payload = CASE
+           WHEN $6::text[] IS NOT NULL AND status = 'dead' AND payload->>'lastFailureCode' = ANY($6::text[]) AND $7::text IS NOT NULL
+             THEN $7::jsonb
+           ELSE payload
          END,
          updated_at = $1
        WHERE type = $5 AND idempotency_key = $3
          AND (
            (status IN ('pending', 'failed') AND attempts < max_attempts)
            OR ($4::boolean AND status = 'succeeded')
+           OR ($6::text[] IS NOT NULL AND status = 'dead' AND payload->>'lastFailureCode' = ANY($6::text[]))
          )
        RETURNING ${selectedJobColumns}`,
-      [now, nextRunAt, idempotencyKey, rearmSucceeded, input.type],
+      [
+        now,
+        nextRunAt,
+        idempotencyKey,
+        rearmSucceeded,
+        input.type,
+        rearmDeadCodes,
+        payloadParam,
+      ],
     )
     if (repaired.rows[0]) {
       return { job: mapDatabaseJob(repaired.rows[0]), state: queued.state }
@@ -460,13 +507,27 @@ export class PayloadJobQueue {
 
   async fail({ error, job, retryNotBefore }: JobFailure): Promise<JobRecord> {
     const now = this.clock()
+    const retryable =
+      error && typeof error === 'object' && 'retryable' in error && typeof (error as { retryable?: unknown }).retryable === 'boolean'
+        ? (error as { retryable: boolean }).retryable
+        : undefined
+
     const transition = transitionAfterFailure({
       attempts: job.attempts,
       maxAttempts: job.maxAttempts,
       now,
       retryNotBefore,
       retryOptions: this.retryOptions,
+      retryable,
     })
+
+    const errorCode =
+      error && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code !== undefined && (error as { code?: unknown }).code !== null
+        ? String((error as { code?: unknown }).code)
+        : error instanceof Error && error.name && error.name !== 'Error'
+          ? error.name
+          : null
+
     const result = await this.pool.query<JobDatabaseRow>(
       `UPDATE jobs
        SET
@@ -476,7 +537,11 @@ export class PayloadJobQueue {
          next_run_at = $3,
          owner_token = NULL,
          status = $4,
-         updated_at = $5
+         updated_at = $5,
+         payload = CASE
+           WHEN $8::text IS NOT NULL THEN jsonb_set(COALESCE(payload, '{}'::jsonb), '{lastFailureCode}', to_jsonb($8::text))
+           ELSE COALESCE(payload, '{}'::jsonb) - 'lastFailureCode'
+         END
        WHERE id = $6 AND status = 'processing' AND owner_token = $7
        RETURNING ${selectedJobColumns}`,
       [
@@ -487,6 +552,7 @@ export class PayloadJobQueue {
         now.toISOString(),
         job.id,
         job.ownerToken,
+        errorCode,
       ],
     )
 

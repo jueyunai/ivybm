@@ -84,7 +84,7 @@ const exerciseChatContract = (createService: () => ChatService & PlatformConvers
       source: 'visitor',
     })
     expect(repeated).toEqual(requested)
-    expect(requested).toMatchObject({ allowedActions: [], handoffStatus: 'handoff_requested' })
+    expect(requested).toMatchObject({ allowedActions: ['send_message'], handoffStatus: 'handoff_requested' })
   })
 
   it('covers takeover, operator response, resolve and a safe retry rejection', async () => {

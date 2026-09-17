@@ -1,4 +1,4 @@
-import type { Lead } from '@/payload-types'
+import type { Conversation, Handoff, Lead } from '@/payload-types'
 import { createHash } from 'node:crypto'
 
 import { sql, type PostgresAdapter } from '@payloadcms/db-postgres'
@@ -7,6 +7,7 @@ import {
   createLocalReq,
   initTransaction,
   killTransaction,
+  NotFound,
   type Payload,
   type PayloadRequest,
   type CollectionAfterChangeHook,
@@ -20,6 +21,7 @@ import { isWebsiteSilentRecoveryHandoff } from '@/modules/conversations/recovery
 import { createFeishuClientForMapping } from './connectionClient'
 import { findActiveFeishuMapping } from './config'
 import {
+  FeishuApiError,
   FeishuConfigurationError,
   type FeishuClientPort,
   type FeishuMappingConfig,
@@ -34,6 +36,7 @@ import {
   notifyLeadSyncFailure,
   notifyNewLead,
 } from './notify'
+import { resolvePortalConversationUrl } from './mapLead'
 import { syncLead } from './syncLead'
 
 export const FEISHU_LEAD_SYNC_JOB_TYPE = 'feishu.lead.sync'
@@ -365,23 +368,6 @@ const leadForFeishu = (value: unknown, attachmentsCandidate?: unknown): LeadForF
   }
 }
 
-const handoffForFeishu = (value: unknown): HandoffForFeishu => {
-  const handoff = record(value)
-  const conversation = record(handoff?.conversation)
-  const source = handoff?.source
-  if (source !== 'ai_policy' && source !== 'operator' && source !== 'visitor') {
-    throw new FeishuConfigurationError('Handoff source is invalid')
-  }
-  return {
-    conversationPublicId: requiredString(conversation?.publicId, 'conversation publicId'),
-    domainEventId: requiredString(handoff?.domainEventId, 'handoff domainEventId'),
-    publicId: requiredString(handoff?.publicId, 'handoff publicId'),
-    reason: requiredString(handoff?.reason, 'handoff reason'),
-    requestedAt: requiredString(handoff?.requestedAt, 'handoff requestedAt'),
-    source,
-  }
-}
-
 const currentMapping = async ({
   mappingId,
   mappingRevision,
@@ -670,6 +656,36 @@ export const enqueueFeishuLeadAttachmentChange: CollectionAfterChangeHook = asyn
   return doc
 }
 
+export const enqueueFeishuHandoffChange: CollectionAfterChangeHook = async ({
+  doc,
+  operation,
+  req,
+}) => {
+  if (operation !== 'create' || doc?.status !== 'requested') return doc
+  try {
+    const mapping = await findActiveFeishuMapping(req.payload, req)
+    if (!mapping) return doc
+    const queue = new PayloadJobQueue({ payload: req.payload })
+    await queue.enqueue(
+      {
+        idempotencyKey: `${mapping.key}:handoff:${doc.domainEventId}`,
+        payload: {
+          entityId: doc.id,
+          mappingId: mapping.id,
+          mappingRevision: mapping.revision,
+        },
+        type: FEISHU_HANDOFF_NOTIFY_JOB_TYPE,
+      },
+      req,
+    )
+  } catch (error) {
+    req.payload?.logger?.error?.(
+      `Feishu handoff notification enqueue failed for handoff ${doc?.id} (${doc?.domainEventId}): ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  return doc
+}
+
 export const createFeishuLeadSyncJobHandler =
   ({
     client = (mapping) => createFeishuClientForMapping({ mapping, payload }),
@@ -855,16 +871,114 @@ export const createFeishuHandoffNotifyJobHandler =
   }): JobHandler =>
   async (job, execution) => {
     const input = parseFeishuJobPayload(job.payload)
-    const mapping = await currentMapping({ ...input, payload })
-    if (!mapping) return
-    const document = await payload.findByID({
-      collection: 'handoffs',
-      depth: 1,
-      id: input.entityId,
+    const mapping = await findActiveFeishuMapping(payload)
+    if (!mapping) {
+      throw new FeishuApiError({
+        code: 'feishu_mapping_inactive',
+        message: 'No active Feishu mapping available for handoff notification',
+        retryable: true,
+      })
+    }
+
+    let handoffDoc: Handoff | null = null
+    try {
+      handoffDoc = await payload.findByID({
+        collection: 'handoffs',
+        depth: 0,
+        id: input.entityId,
+        overrideAccess: true,
+      })
+    } catch (error) {
+      if (error instanceof NotFound) {
+        return
+      }
+      throw error
+    }
+    if (!handoffDoc) return
+
+    const conversationId =
+      typeof handoffDoc.conversation === 'object' && handoffDoc.conversation !== null
+        ? handoffDoc.conversation.id
+        : handoffDoc.conversation
+    if (!conversationId) return
+
+    let conversationDoc: Conversation | null = null
+    try {
+      conversationDoc = await payload.findByID({
+        collection: 'conversations',
+        depth: 0,
+        id: conversationId,
+        overrideAccess: true,
+      })
+    } catch (error) {
+      if (error instanceof NotFound) {
+        return
+      }
+      throw error
+    }
+    if (!conversationDoc) return
+
+    if (isWebsiteSilentRecoveryHandoff(conversationDoc.channel, handoffDoc.reason)) {
+      return
+    }
+
+    const messages = await payload.find({
+      collection: 'messages',
+      depth: 0,
+      limit: 1,
       overrideAccess: true,
+      sort: '-createdAt',
+      where: {
+        and: [
+          { conversation: { equals: conversationDoc.id } },
+          { author: { equals: 'visitor' } },
+        ],
+      },
     })
-    if (shouldSilenceFeishuHandoff(document)) return
-    const handoff = handoffForFeishu(document)
+    const latestVisitorMessage = messages.docs[0]?.content ?? null
+
+    const leadId =
+      typeof conversationDoc.lead === 'object' && conversationDoc.lead !== null
+        ? conversationDoc.lead.id
+        : conversationDoc.lead
+    let leadDoc: Lead | null = null
+    if (leadId) {
+      try {
+        leadDoc = await payload.findByID({
+          collection: 'leads',
+          depth: 0,
+          id: leadId,
+          overrideAccess: true,
+        })
+      } catch (error) {
+        if (!(error instanceof NotFound)) {
+          throw error
+        }
+      }
+    }
+
+    const portalUrl = resolvePortalConversationUrl(conversationDoc.publicId)
+
+    const handoff: HandoffForFeishu = {
+      channel: conversationDoc.channel as HandoffForFeishu['channel'],
+      conversationPublicId: conversationDoc.publicId,
+      country: leadDoc?.country ?? null,
+      domainEventId: handoffDoc.domainEventId,
+      email: leadDoc?.email ?? null,
+      latestVisitorMessage,
+      phone: leadDoc?.phone ?? null,
+      portalUrl,
+      productInterest: leadDoc?.interest ?? null,
+      publicId: handoffDoc.publicId,
+      quantitySquareMeters:
+        typeof leadDoc?.quantitySquareMeters === 'number'
+          ? leadDoc.quantitySquareMeters
+          : null,
+      reason: handoffDoc.reason,
+      requestedAt: handoffDoc.requestedAt,
+      source: handoffDoc.source as HandoffForFeishu['source'],
+    }
+
     execution.assertLease()
     await notifyHandoff({
       client: await client(mapping),
@@ -1048,11 +1162,17 @@ export const enqueuePendingFeishuJobs = async ({
     for (const handoff of handoffs.docs) {
       if (shouldSilenceFeishuHandoff(handoff)) continue
       const domainEventId = requiredString(handoff.domainEventId, 'handoff domainEventId')
-      const enqueued = await queue.enqueue({
-        idempotencyKey: `${mapping.key}:handoff:${domainEventId}`,
-        payload: { entityId: handoff.id, mappingId: mapping.id, mappingRevision: mapping.revision },
-        type: FEISHU_HANDOFF_NOTIFY_JOB_TYPE,
-      })
+      const enqueued = await queue.ensureRunnable(
+        {
+          idempotencyKey: `${mapping.key}:handoff:${domainEventId}`,
+          payload: { entityId: handoff.id, mappingId: mapping.id, mappingRevision: mapping.revision },
+          type: FEISHU_HANDOFF_NOTIFY_JOB_TYPE,
+        },
+        {
+          rearmDeadForFailureCodes:
+            handoff.status === 'requested' ? ['feishu_mapping_inactive'] : undefined,
+        },
+      )
       result.handoffs[enqueued.state] += 1
     }
     if (!handoffs.hasNextPage) break

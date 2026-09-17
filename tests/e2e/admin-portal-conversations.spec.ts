@@ -413,3 +413,12 @@ test('reuses the same idempotency key after a malformed successful reply respons
   await expect.poll(() => mock.commandRequests.length).toBe(3)
   expect(mock.commandRequests[1]?.idempotencyKey).toBe(mock.commandRequests[2]?.idempotencyKey)
 })
+
+test('preserves conversation query parameter in returnTo when redirecting unauthenticated sales to login', async ({
+  page,
+}) => {
+  await page.goto('/dashboard/conversations?conversation=portal-conversation-e2e')
+  await expect(page).toHaveURL(
+    /\/dashboard\/login\?returnTo=%2Fdashboard%2Fconversations%3Fconversation%3Dportal-conversation-e2e$/,
+  )
+})

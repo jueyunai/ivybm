@@ -19,7 +19,9 @@ import {
   FEISHU_LEAD_SYNC_JOB_TYPE,
 } from '@/modules/feishu/jobs'
 import { createFeishuLeadResyncPlan, executeFeishuLeadResync } from '@/modules/feishu/resync'
-import type { FeishuClientPort } from '@/modules/feishu/contracts'
+import { resolvePortalAttachmentUrl } from '@/modules/feishu/mapLead'
+import { FeishuConfigurationError, type FeishuClientPort } from '@/modules/feishu/contracts'
+import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import config from '@/payload.config'
 
 let payload: Payload
@@ -89,6 +91,25 @@ const claimedJob = async (id: number): Promise<ClaimedJob> => {
     ...job,
     leaseExpiresAt: '2026-07-29T12:00:00.000Z',
     ownerToken: `fixture-owner-${id}`,
+    status: 'processing',
+  }
+}
+
+const claimProcessingJob = async (id: number, token = `fixture-owner-${id}`): Promise<ClaimedJob> => {
+  const now = new Date().toISOString()
+  const leaseExpiresAt = new Date(Date.now() + 120_000).toISOString()
+  await (payload.db as unknown as PostgresAdapter).pool.query(
+    `UPDATE jobs
+     SET status = 'processing', owner_token = $1, lease_expires_at = $2, attempts = attempts + 1, updated_at = $3
+     WHERE id = $4`,
+    [token, leaseExpiresAt, now, id],
+  )
+  const job = await new PayloadJobQueue({ payload }).getByID(id)
+  if (!job) throw new Error(`Missing test job ${id}`)
+  return {
+    ...job,
+    leaseExpiresAt,
+    ownerToken: token,
     status: 'processing',
   }
 }
@@ -1216,8 +1237,9 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     const duplicate = await enqueuePendingFeishuJobs({ payload })
     expect(first).toMatchObject({
       enabled: true,
-      handoffs: { created: 1 },
+      handoffs: { created: 0 },
     })
+    expect(first.handoffs.duplicate).toBeGreaterThanOrEqual(1)
     expect(first.leads.created).toBe(0)
     expect(first.leads.duplicate).toBeGreaterThanOrEqual(1)
     expect(duplicate.handoffs.duplicate).toBeGreaterThanOrEqual(1)
@@ -1348,7 +1370,6 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
 
       for (const reason of [
         'ai_service_unavailable',
-        'high_risk_topic',
         'reviewed_knowledge_unavailable',
       ]) {
         const recoveryJobID = await createHandoffJob({
@@ -1361,6 +1382,14 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
       expect(sendText).toHaveBeenCalledTimes(2)
       expect(upsertRecord).not.toHaveBeenCalled()
       expect(client).toHaveBeenCalledTimes(2)
+
+      const highRiskJobID = await createHandoffJob({
+        channelConversationID: conversationID,
+        reason: 'high_risk_topic',
+      })
+      await handler(await claimedJob(highRiskJobID), execution)
+      expect(sendText).toHaveBeenCalledTimes(3)
+      expect(client).toHaveBeenCalledTimes(3)
 
       const socialVisitor = await payload.create({
         collection: 'visitor-sessions',
@@ -1401,8 +1430,8 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
         reason: 'high_risk_topic',
       })
       await handler(await claimedJob(socialJobID), execution)
-      expect(sendText).toHaveBeenCalledTimes(3)
-      expect(client).toHaveBeenCalledTimes(3)
+      expect(sendText).toHaveBeenCalledTimes(4)
+      expect(client).toHaveBeenCalledTimes(4)
     } finally {
       if (extraJobIDs.length > 0) {
         await payload.delete({
@@ -1435,6 +1464,327 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
           id: socialVisitorID,
           overrideAccess: true,
         })
+      }
+    }
+  })
+
+  it('recovers dead handoff notification jobs when an inactive mapping is restored and automatically delivers them', async () => {
+    const testSuffix = randomUUID()
+    const pool = (payload.db as unknown as PostgresAdapter).pool
+    const mapping = await payload.findByID({
+      collection: 'feishu-mappings',
+      id: mappingID,
+      overrideAccess: true,
+    })
+    const originalUpdatedAt = mapping.updatedAt
+    let testVisitorID: number | undefined
+    let testConversationID: number | undefined
+    let testHandoffID: number | undefined
+    let testJobID: number | undefined
+
+    try {
+      const visitor = await payload.create({
+        collection: 'visitor-sessions',
+        context,
+        data: {
+          channel: 'website',
+          expiresAt: '2026-08-05T00:00:00.000Z',
+          idempotencyKey: randomUUID(),
+          lastSeenAt: '2026-07-29T00:00:00.000Z',
+          locale: 'en',
+          publicId: `dead-recovery-visitor-${testSuffix}`,
+          sessionTokenHash: `dead-recovery-hash-${testSuffix}`,
+        },
+        overrideAccess: true,
+      })
+      testVisitorID = visitor.id
+
+      const conversation = await payload.create({
+        collection: 'conversations',
+        context,
+        data: {
+          channel: 'website',
+          handoffStatus: 'handoff_requested',
+          intentLevel: 'a',
+          locale: 'en',
+          publicId: `dead-recovery-conv-${testSuffix}`,
+          requestId: randomUUID(),
+          revision: 1,
+          visitorSession: visitor.id,
+        },
+        overrideAccess: true,
+      })
+      testConversationID = conversation.id
+
+      const handoff = await payload.create({
+        collection: 'handoffs',
+        context,
+        data: {
+          conversation: conversation.id,
+          domainEventId: `dead-event-${testSuffix}`,
+          idempotencyKey: `dead-handoff-cmd-${testSuffix}`,
+          publicId: `dead-recovery-handoff-${testSuffix}`,
+          reason: 'high_intent',
+          requestedAt: '2026-07-29T00:00:00.000Z',
+          source: 'ai_policy',
+          status: 'requested',
+        },
+        overrideAccess: true,
+      })
+      testHandoffID = handoff.id
+
+      // 1. Locate the job enqueued by Handoffs.afterChange
+      const initialJobs = await payload.find({
+        collection: 'jobs',
+        limit: 10,
+        overrideAccess: true,
+        where: {
+          and: [
+            { type: { equals: FEISHU_HANDOFF_NOTIFY_JOB_TYPE } },
+            { 'payload.entityId': { equals: handoff.id } },
+          ],
+        },
+      })
+      expect(initialJobs.docs).toHaveLength(1)
+      const job = initialJobs.docs[0]!
+      testJobID = job.id
+
+      // 2. Mapping is deactivated (Mapping 关闭)
+      await pool.query('UPDATE feishu_mappings SET status = $1 WHERE id = $2', [
+        'draft',
+        mappingID,
+      ])
+
+      // 3. Verify handler throws retryable error while mapping is inactive
+      const sendText = vi.fn(async () => ({ messageId: randomUUID() }))
+      const client = vi.fn(async () => ({ sendText, upsertRecord: vi.fn() } as unknown as FeishuClientPort))
+      const handler = createFeishuHandoffNotifyJobHandler({ client, payload })
+      const queue = new PayloadJobQueue({ payload })
+
+      const cJob = await claimProcessingJob(job.id)
+      let failureError: unknown
+      try {
+        await handler(cJob, {
+          assertLease: vi.fn(),
+          renewLease: vi.fn(),
+          signal: new AbortController().signal,
+        })
+      } catch (err) {
+        failureError = err
+      }
+      expect(failureError).toMatchObject({
+        code: 'feishu_mapping_inactive',
+        retryable: true,
+      })
+
+      // Fail through real queue.fail with attempts = 5 to trigger transitionAfterFailure dead status
+      const failed = await queue.fail({
+        error: failureError as Error,
+        job: { ...cJob, attempts: 5 },
+      })
+      expect(failed.status).toBe('dead')
+      expect(failed.payload).toMatchObject({ lastFailureCode: 'feishu_mapping_inactive' })
+      expect(sendText).not.toHaveBeenCalled()
+
+      // 4. Mapping is restored (Mapping 恢复)
+      await pool.query(
+        'UPDATE feishu_mappings SET status = $1, updated_at = $2 WHERE id = $3',
+        ['active', originalUpdatedAt, mappingID],
+      )
+
+      // 5. Relay runs: enqueuePendingFeishuJobs detects dead job with feishu_mapping_inactive and automatically rearms it
+      const relay = await enqueuePendingFeishuJobs({ payload })
+      expect(relay.enabled).toBe(true)
+
+      const rearmedJob = await payload.findByID({
+        collection: 'jobs',
+        id: job.id,
+        overrideAccess: true,
+      })
+      expect(rearmedJob.status).toBe('pending')
+      expect(rearmedJob.attempts).toBe(0)
+      expect(rearmedJob.deadAt).toBeNull()
+
+      // 6. Worker claims the rearmed job and delivers the notification (自动发送)
+      const claimedForExecution = await claimProcessingJob(job.id, `owner-exec-${job.id}`)
+      await handler(claimedForExecution, {
+        assertLease: vi.fn(),
+        renewLease: vi.fn(),
+        signal: new AbortController().signal,
+      })
+      await queue.complete(claimedForExecution)
+
+      expect(sendText).toHaveBeenCalledTimes(1)
+      expect(sendText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('AI 客服需要人工接管'),
+        }),
+      )
+    } finally {
+      // Ensure mapping is restored to active with original timestamp if anything threw
+      await pool
+        .query('UPDATE feishu_mappings SET status = $1, updated_at = $2 WHERE id = $3', [
+          'active',
+          originalUpdatedAt,
+          mappingID,
+        ])
+        .catch(() => undefined)
+
+      if (testJobID) {
+        await payload.delete({ collection: 'jobs', context, id: testJobID, overrideAccess: true })
+      }
+      if (testHandoffID) {
+        await payload.delete({ collection: 'handoffs', context, id: testHandoffID, overrideAccess: true })
+      }
+      if (testConversationID) {
+        await payload.delete({ collection: 'conversations', context, id: testConversationID, overrideAccess: true })
+      }
+      if (testVisitorID) {
+        await payload.delete({ collection: 'visitor-sessions', context, id: testVisitorID, overrideAccess: true })
+      }
+    }
+  })
+
+  it('does not resurrect dead handoff notification jobs caused by permanent configuration or non-retryable errors', async () => {
+    const testSuffix = randomUUID()
+    const pool = (payload.db as unknown as PostgresAdapter).pool
+    let testVisitorID: number | undefined
+    let testConversationID: number | undefined
+    let testHandoffID: number | undefined
+    let testJobID: number | undefined
+
+    try {
+      const visitor = await payload.create({
+        collection: 'visitor-sessions',
+        context,
+        data: {
+          channel: 'website',
+          expiresAt: '2026-08-05T00:00:00.000Z',
+          idempotencyKey: randomUUID(),
+          lastSeenAt: '2026-07-29T00:00:00.000Z',
+          locale: 'en',
+          publicId: `perm-dead-visitor-${testSuffix}`,
+          sessionTokenHash: `perm-dead-hash-${testSuffix}`,
+        },
+        overrideAccess: true,
+      })
+      testVisitorID = visitor.id
+
+      const conversation = await payload.create({
+        collection: 'conversations',
+        context,
+        data: {
+          channel: 'website',
+          handoffStatus: 'handoff_requested',
+          intentLevel: 'a',
+          locale: 'en',
+          publicId: `perm-dead-conv-${testSuffix}`,
+          requestId: randomUUID(),
+          revision: 1,
+          visitorSession: visitor.id,
+        },
+        overrideAccess: true,
+      })
+      testConversationID = conversation.id
+
+      const handoff = await payload.create({
+        collection: 'handoffs',
+        context,
+        data: {
+          conversation: conversation.id,
+          domainEventId: `perm-dead-event-${testSuffix}`,
+          idempotencyKey: `perm-dead-handoff-cmd-${testSuffix}`,
+          publicId: `perm-dead-handoff-${testSuffix}`,
+          reason: 'high_intent',
+          requestedAt: '2026-07-29T00:00:00.000Z',
+          source: 'ai_policy',
+          status: 'requested',
+        },
+        overrideAccess: true,
+      })
+      testHandoffID = handoff.id
+
+      const initialJobs = await payload.find({
+        collection: 'jobs',
+        limit: 10,
+        overrideAccess: true,
+        where: {
+          and: [
+            { type: { equals: FEISHU_HANDOFF_NOTIFY_JOB_TYPE } },
+            { 'payload.entityId': { equals: handoff.id } },
+          ],
+        },
+      })
+      expect(initialJobs.docs).toHaveLength(1)
+      const job = initialJobs.docs[0]!
+      testJobID = job.id
+
+      const sendText = vi.fn(async () => ({ messageId: randomUUID() }))
+      const queue = new PayloadJobQueue({ payload })
+
+      // Case 1: Job fails with a permanent FeishuConfigurationError (retryable: false)
+      const cJob = await claimProcessingJob(job.id)
+
+      const permError = new FeishuConfigurationError('Production portal origin is localhost')
+      const failed = await queue.fail({
+        error: permError,
+        job: cJob,
+      })
+      expect(failed.status).toBe('dead')
+      expect(failed.payload).toMatchObject({ lastFailureCode: 'FeishuConfigurationError' })
+
+      // Relay runs while mapping is active
+      const relayResult = await enqueuePendingFeishuJobs({ payload })
+      expect(relayResult.enabled).toBe(true)
+
+      // The job MUST remain dead
+      const stillDeadJob = await payload.findByID({
+        collection: 'jobs',
+        id: job.id,
+        overrideAccess: true,
+      })
+      expect(stillDeadJob.status).toBe('dead')
+      expect(stillDeadJob.deadAt).not.toBeNull()
+      expect(stillDeadJob.payload).toMatchObject({ lastFailureCode: 'FeishuConfigurationError' })
+
+      // No external notification was called
+      expect(sendText).not.toHaveBeenCalled()
+
+      // Case 2: Another job that died due to non-retryable FeishuApiError (e.g. 400 Bad Request)
+      await pool.query(
+        `UPDATE jobs
+         SET
+           status = 'dead',
+           attempts = 5,
+           dead_at = $1,
+           last_error = 'Feishu API request failed (400): invalid request parameter',
+           payload = jsonb_set(COALESCE(payload, '{}'::jsonb), '{lastFailureCode}', '"400"')
+         WHERE id = $2`,
+        [new Date().toISOString(), job.id],
+      )
+
+      await enqueuePendingFeishuJobs({ payload })
+
+      const apiDeadJob = await payload.findByID({
+        collection: 'jobs',
+        id: job.id,
+        overrideAccess: true,
+      })
+      expect(apiDeadJob.status).toBe('dead')
+      expect(apiDeadJob.payload).toMatchObject({ lastFailureCode: '400' })
+      expect(sendText).not.toHaveBeenCalled()
+    } finally {
+      if (testJobID) {
+        await payload.delete({ collection: 'jobs', context, id: testJobID, overrideAccess: true })
+      }
+      if (testHandoffID) {
+        await payload.delete({ collection: 'handoffs', context, id: testHandoffID, overrideAccess: true })
+      }
+      if (testConversationID) {
+        await payload.delete({ collection: 'conversations', context, id: testConversationID, overrideAccess: true })
+      }
+      if (testVisitorID) {
+        await payload.delete({ collection: 'visitor-sessions', context, id: testVisitorID, overrideAccess: true })
       }
     }
   })
@@ -1606,7 +1956,7 @@ describe.sequential('Task 11 Feishu CRM integration', () => {
     expect(upsertRecord).toHaveBeenCalledWith(
       expect.objectContaining({
         fields: expect.objectContaining({
-          Attachments: `facade-specs.pdf: http://localhost:3000/api/portal/leads/${attachmentLead.id}/attachments/${attachment.id}`,
+          Attachments: `facade-specs.pdf: ${resolvePortalAttachmentUrl(attachmentLead.id, attachment.id)}`,
           Customer: 'Facade Attachment Co',
           'Local Lead ID': String(attachmentLead.id),
         }),

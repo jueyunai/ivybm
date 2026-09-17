@@ -63,7 +63,7 @@ const originalInquiry = (lead: LeadForFeishu): string => {
     : lead.message.trim()
 }
 
-const resolvePortalOrigin = (explicitOrigin?: string): string => {
+export const resolvePortalOrigin = (explicitOrigin?: string): string => {
   const originCandidate =
     explicitOrigin?.trim() ||
     process.env.IVYBM_RUNTIME_SERVER_URL?.trim() ||
@@ -81,6 +81,35 @@ const resolvePortalOrigin = (explicitOrigin?: string): string => {
 
 export const resolvePortalLeadUrl = (leadId: number | string, explicitOrigin?: string): string =>
   `${resolvePortalOrigin(explicitOrigin)}/dashboard/leads?lead=${encodeURIComponent(String(leadId))}`
+
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1'])
+
+export const resolvePortalConversationUrl = (
+  conversationPublicId: number | string,
+  explicitOrigin?: string,
+): string => {
+  const origin = resolvePortalOrigin(explicitOrigin)
+  try {
+    const url = new URL(origin)
+    const hostname = url.hostname.replace(/^\[(.*)\]$/u, '$1')
+    if (
+      process.env.NODE_ENV === 'production' &&
+      LOOPBACK_HOSTNAMES.has(hostname)
+    ) {
+      throw new FeishuConfigurationError(
+        'Cannot generate Feishu notification link with localhost origin in production',
+      )
+    }
+  } catch (error) {
+    if (error instanceof FeishuConfigurationError) throw error
+    if (process.env.NODE_ENV === 'production') {
+      throw new FeishuConfigurationError(
+        'Cannot parse portal origin for conversation URL in production',
+      )
+    }
+  }
+  return `${origin}/dashboard/conversations?conversation=${encodeURIComponent(String(conversationPublicId))}`
+}
 
 export const resolvePortalAttachmentUrl = (
   leadId: number | string,
