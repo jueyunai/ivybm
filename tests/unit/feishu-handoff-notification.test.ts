@@ -94,6 +94,17 @@ describe('Feishu Handoff Notification Formatting', () => {
     expect(text).toContain(expected)
   })
 
+  it('neutralizes feishu <at> tags in visitor message to prevent mention injection', () => {
+    const malicious =
+      'Hello <at user_id="all">everyone</at> please check <AT user_id="ou_123">admin</AT> and <atom>stay safe</atom>'
+    const text = formatHandoffNotification({ ...fullHandoff, latestVisitorMessage: malicious })
+    expect(text).not.toContain('<at ')
+    expect(text).not.toContain('<AT ')
+    expect(text).not.toContain('</at>')
+    expect(text).not.toContain('</AT>')
+    expect(text).toContain('“Hello ＜at user_id="all">everyone＜/at> please check ＜AT user_id="ou_123">admin＜/AT> and <atom>stay safe</atom>”')
+  })
+
   it('gracefully degrades when country, interest, contact, or visitor message are missing', () => {
     const minimal: HandoffForFeishu = {
       channel: 'website',

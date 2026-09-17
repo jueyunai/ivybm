@@ -434,10 +434,7 @@ export class PayloadConversationRepository implements ConversationRepository {
       ? await this.payload.update({
           collection: 'leads',
           context: { skipAudit: true },
-          data: {
-            ...baseData,
-            status: existing.docs[0].status,
-          },
+          data: baseData,
           id: existing.docs[0].id,
           overrideAccess: true,
           req,

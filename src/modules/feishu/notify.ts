@@ -96,7 +96,8 @@ const formatLatestVisitorMessage = (message?: string | null): string => {
     return '（暂无留言）'
   }
   const compressed = message.replace(/\s+/g, ' ').trim()
-  const truncated = Array.from(compressed).slice(0, 150).join('')
+  const sanitized = compressed.replace(/<(\/?at\b)/gi, '＜$1')
+  const truncated = Array.from(sanitized).slice(0, 150).join('')
   return `“${truncated}”`
 }
 

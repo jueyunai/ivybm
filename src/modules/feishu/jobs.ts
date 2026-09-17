@@ -1158,6 +1158,9 @@ export const enqueuePendingFeishuJobs = async ({
       overrideAccess: true,
       page,
       sort: 'id',
+      where: {
+        status: { equals: 'requested' },
+      },
     })
     for (const handoff of handoffs.docs) {
       if (shouldSilenceFeishuHandoff(handoff)) continue
@@ -1169,8 +1172,7 @@ export const enqueuePendingFeishuJobs = async ({
           type: FEISHU_HANDOFF_NOTIFY_JOB_TYPE,
         },
         {
-          rearmDeadForFailureCodes:
-            handoff.status === 'requested' ? ['feishu_mapping_inactive'] : undefined,
+          rearmDeadForFailureCodes: ['feishu_mapping_inactive'],
         },
       )
       result.handoffs[enqueued.state] += 1
