@@ -1,6 +1,6 @@
 'use client'
 
-import { IconArrowUp, IconMessageCircle2, IconRefresh, IconUser, IconX } from '@tabler/icons-react'
+import { IconArrowRight, IconArrowUp, IconMessageCircle2, IconRefresh, IconUser, IconX } from '@tabler/icons-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { chatCommandKey, createBrowserChatService } from '@/components/chat/service'
@@ -120,6 +120,7 @@ export function ChatWidget({
   const [status, setStatus] = useState<WidgetStatus>('idle')
   const [lastFailedAttempt, setLastFailedAttempt] = useState<FailedChatAttempt | null>(null)
   const [retriedMessageIDs, setRetriedMessageIDs] = useState<Set<string>>(() => new Set())
+  const [pendingMessage, setPendingMessage] = useState<ChatMessage | null>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const launcherRef = useRef<HTMLButtonElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -152,6 +153,7 @@ export function ChatWidget({
     sessionRef.current = null
     startCommandKeyRef.current = null
     setLastFailedAttempt(null)
+    setPendingMessage(null)
     setRetriedMessageIDs(new Set())
     setSession(null)
     removePersistedSessionID(sessionStorageKey)
@@ -162,7 +164,7 @@ export function ChatWidget({
     if (typeof scrollIntoView === 'function') {
       scrollIntoView.call(messagesEndRef.current, { behavior: 'smooth', block: 'end' })
     }
-  }, [session?.messages?.length, isOpen])
+  }, [session?.messages?.length, pendingMessage, status, isOpen])
 
   const closeChat = useCallback(() => {
     setIsOpen(false)
@@ -221,7 +223,9 @@ export function ChatWidget({
         setError(getErrorMessage(caught, copy))
         return null
       } finally {
-        setStatus('idle')
+        if (!sendInFlightRef.current) {
+          setStatus('idle')
+        }
       }
     })()
 
@@ -256,7 +260,9 @@ export function ChatWidget({
           setError(getErrorMessage(caught, copy))
           return null
         } finally {
-          setStatus('idle')
+          if (!sendInFlightRef.current) {
+            setStatus('idle')
+          }
         }
       })()
 
@@ -291,6 +297,20 @@ export function ChatWidget({
     if (!text || operationPending(status) || sendInFlightRef.current) return
     sendInFlightRef.current = true
 
+    // Optimistically clear the draft input and print the visitor message immediately
+    setDraft('')
+    const optimisticMessage: ChatMessage = {
+      author: 'visitor',
+      content: text,
+      createdAt: new Date().toISOString(),
+      id: `pending-${chatCommandKey()}`,
+      status: 'sent',
+    }
+    setPendingMessage(optimisticMessage)
+    setStatus('sending')
+    setError('')
+    setLastFailedAttempt(null)
+
     try {
       let activeSession = sessionRef.current
       if (!activeSession) {
@@ -304,6 +324,8 @@ export function ChatWidget({
             // so do NOT fall back to startSession(), which would fork into a new conversation
             // and overwrite the persisted ID and auth cookie.
             if (readPersistedSessionID(sessionStorageKey)) {
+              setPendingMessage(null)
+              setStatus('idle')
               return
             }
             activeSession = await (startPromiseRef.current ?? startSession())
@@ -312,11 +334,13 @@ export function ChatWidget({
           activeSession = await (startPromiseRef.current ?? startSession())
         }
       }
-      if (!activeSession || !hasAction(activeSession, 'send_message')) return
+      if (!activeSession || !hasAction(activeSession, 'send_message')) {
+        setPendingMessage(null)
+        setStatus('idle')
+        return
+      }
 
       setStatus('sending')
-      setError('')
-      setLastFailedAttempt(null)
       const idempotencyKey = chatCommandKey()
       try {
         const input: SendChatMessageInput = {
@@ -325,9 +349,10 @@ export function ChatWidget({
           text,
         }
         const next = await activeService.sendMessage(input)
+        setPendingMessage(null)
         commitSession(next)
-        setDraft('')
       } catch (caught) {
+        setPendingMessage(null)
         if (shouldDiscardPersistedSession(caught)) {
           discardSession()
           setError(getErrorMessage(caught, copy))
@@ -462,11 +487,13 @@ export function ChatWidget({
   const startNewConversation = (): void => {
     setDraft('')
     setError('')
+    setPendingMessage(null)
     discardSession()
   }
 
   const messages = [
     ...(session?.messages || []),
+    ...(pendingMessage ? [pendingMessage] : []),
     ...(lastFailedAttempt ? [lastFailedAttempt.message] : []),
   ]
   const inputEnabled = (!session || hasAction(session, 'send_message')) && !operationPending(status)
@@ -561,7 +588,12 @@ export function ChatWidget({
                   <p>{copy.greeting}</p>
                 </article>
                 {sampleQuestions.length > 0 ? (
-                  <div className="chat-sample-questions">
+                  <div
+                    aria-label={copy.sampleQuestionsLabel}
+                    className="chat-sample-questions"
+                    role="group"
+                  >
+                    <span className="chat-sample-label">{copy.sampleQuestionsLabel}</span>
                     {sampleQuestions.map((question) => (
                       <button
                         className="chat-sample-question"
@@ -570,7 +602,8 @@ export function ChatWidget({
                         onClick={() => void sendTextMessage(question)}
                         type="button"
                       >
-                        {question}
+                        <span className="chat-sample-text">{question}</span>
+                        <IconArrowRight aria-hidden className="chat-sample-arrow" size={15} />
                       </button>
                     ))}
                   </div>
@@ -605,6 +638,18 @@ export function ChatWidget({
                   <IconMessageCircle2 aria-hidden size={15} />
                   {copy.newConversation}
                 </button>
+              </div>
+            ) : null}
+            {status === 'sending' || (pendingMessage && operationPending(status)) ? (
+              <div
+                aria-label={copy.loading}
+                className="chat-typing-indicator"
+                data-testid="chat-typing-indicator"
+                role="status"
+              >
+                <span className="chat-typing-dot" />
+                <span className="chat-typing-dot" />
+                <span className="chat-typing-dot" />
               </div>
             ) : null}
             <div ref={messagesEndRef} />
