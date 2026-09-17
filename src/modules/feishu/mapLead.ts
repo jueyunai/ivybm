@@ -84,6 +84,10 @@ export const resolvePortalLeadUrl = (leadId: number | string, explicitOrigin?: s
 
 const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1'])
 
+const allowsLoopbackOrigin = (): boolean =>
+  process.env.IVYBM_E2E_ALLOW_HTTP_LOOPBACK === 'true' ||
+  process.env.IVYBM_E2E_MODE === 'mutation'
+
 export const resolvePortalConversationUrl = (
   conversationPublicId: number | string,
   explicitOrigin?: string,
@@ -94,6 +98,7 @@ export const resolvePortalConversationUrl = (
     const hostname = url.hostname.replace(/^\[(.*)\]$/u, '$1')
     if (
       process.env.NODE_ENV === 'production' &&
+      !allowsLoopbackOrigin() &&
       LOOPBACK_HOSTNAMES.has(hostname)
     ) {
       throw new FeishuConfigurationError(
@@ -102,7 +107,7 @@ export const resolvePortalConversationUrl = (
     }
   } catch (error) {
     if (error instanceof FeishuConfigurationError) throw error
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === 'production' && !allowsLoopbackOrigin()) {
       throw new FeishuConfigurationError(
         'Cannot parse portal origin for conversation URL in production',
       )
