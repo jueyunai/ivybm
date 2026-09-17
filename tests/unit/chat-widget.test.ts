@@ -474,6 +474,132 @@ describe('ChatWidget', () => {
     )
   })
 
+  it('renders sample question cards with accessible label, text wrapper, and arrow affordance in English and Arabic', async () => {
+    // English
+    renderWidget(new FakeChatService(), 'en')
+    await openWidget()
+
+    const enGroup = screen.getByRole('group', { name: 'Suggested inquiries' })
+    expect(enGroup.classList.contains('chat-sample-questions')).toBe(true)
+    expect(within(enGroup).getByText('Suggested inquiries').classList.contains('chat-sample-label')).toBe(true)
+
+    const enButtons = within(enGroup).getAllByRole('button')
+    expect(enButtons.length).toBe(3)
+    enButtons.forEach((btn) => {
+      expect(btn.classList.contains('chat-sample-question')).toBe(true)
+      expect(btn.querySelector('.chat-sample-text')).not.toBeNull()
+      expect(btn.querySelector('.chat-sample-arrow')).not.toBeNull()
+    })
+
+    cleanup()
+
+    // Arabic
+    renderWidget(new FakeChatService(), 'ar')
+    await openWidget()
+
+    const arGroup = screen.getByRole('group', { name: 'استفسارات مقترحة' })
+    expect(arGroup.classList.contains('chat-sample-questions')).toBe(true)
+    expect(within(arGroup).getByText('استفسارات مقترحة').classList.contains('chat-sample-label')).toBe(true)
+
+    const arButtons = within(arGroup).getAllByRole('button')
+    expect(arButtons.length).toBe(3)
+    arButtons.forEach((btn) => {
+      expect(btn.classList.contains('chat-sample-question')).toBe(true)
+      expect(btn.querySelector('.chat-sample-text')).not.toBeNull()
+      expect(btn.querySelector('.chat-sample-arrow')).not.toBeNull()
+    })
+  })
+
+  it('declares sample question card styling and RTL arrow flipping in website.css', () => {
+    const cssContent = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/app/(frontend)/website.css'),
+      'utf8',
+    )
+    expect(cssContent).toMatch(/\.chat-sample-questions\s*\{[^}]*display:\s*flex/u)
+    expect(cssContent).toMatch(/\.chat-sample-question\s*\{[^}]*border-radius:\s*10px/u)
+    expect(cssContent).toMatch(/\.chat-sample-arrow\s*\{/u)
+    expect(cssContent).toMatch(/html\[dir=['"]rtl['"]\]\s+\.chat-sample-arrow\s*\{[^}]*transform:\s*scaleX\(-1\)/u)
+  })
+
+  it('immediately displays the visitor message in thread, clears draft, and keeps typing indicator and lock while startSession completes and sendMessage is pending', async () => {
+    const fake = new FakeChatService()
+    let resolveStart: ((session: ChatSession) => void) | undefined
+    const startPromise = new Promise<ChatSession>((resolve) => {
+      resolveStart = resolve
+    })
+    vi.spyOn(fake, 'startSession').mockImplementation(() => startPromise)
+
+    let resolveSend: ((session: ChatSession) => void) | undefined
+    const sendPromise = new Promise<ChatSession>((resolve) => {
+      resolveSend = resolve
+    })
+    vi.spyOn(fake, 'sendMessage').mockImplementation(() => sendPromise)
+
+    renderWidget(fake)
+    await openWidget()
+
+    const composer = screen.getByLabelText('Ask about panels, drawings, finishes, or your project…')
+    fireEvent.change(composer, { target: { value: 'Inquiring about 1000m panels' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    // 1. Initial optimistic state (before startSession completes)
+    expect(composer).toHaveProperty('value', '')
+    expect(composer).toHaveProperty('disabled', true)
+    expect(screen.getByText('Inquiring about 1000m panels')).not.toBeNull()
+    expect(screen.getByTestId('chat-typing-indicator')).not.toBeNull()
+
+    // 2. Resolve startSession - sendMessage is now called and in-flight
+    resolveStart!(browserSession)
+    await waitFor(() => {
+      expect(fake.sendMessage).toHaveBeenCalledTimes(1)
+    })
+
+    // 3. CRITICAL WINDOW: startSession has finished, but sendMessage is still pending.
+    // The widget must NOT reset status to idle or prematurely unlock the composer!
+    expect(composer).toHaveProperty('disabled', true)
+    expect(screen.getByTestId('chat-typing-indicator')).not.toBeNull()
+    expect(screen.getByText('Inquiring about 1000m panels')).not.toBeNull()
+
+    // 4. When server responds, typing indicator disappears and AI response appears
+    const repliedSession: ChatSession = {
+      ...browserSession,
+      messages: [
+        {
+          author: 'visitor',
+          content: 'Inquiring about 1000m panels',
+          createdAt: new Date().toISOString(),
+          id: 'msg-visitor-1',
+          status: 'sent',
+        },
+        {
+          author: 'ai',
+          content: 'We can deliver 1000m custom perforated panels within 4 weeks.',
+          createdAt: new Date().toISOString(),
+          id: 'msg-ai-1',
+          status: 'sent',
+        },
+      ],
+    }
+    resolveSend!(repliedSession)
+
+    await waitFor(() => {
+      expect(screen.getByText('We can deliver 1000m custom perforated panels within 4 weeks.')).not.toBeNull()
+      expect(screen.queryByTestId('chat-typing-indicator')).toBeNull()
+      expect(composer).toHaveProperty('disabled', false)
+    })
+  })
+
+  it('declares bottom gap on handoff button and typing indicator animations in website.css', () => {
+    const cssContent = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/app/(frontend)/website.css'),
+      'utf8',
+    )
+    expect(cssContent).toMatch(/\.chat-handoff\s*\{[^}]*margin:\s*8px\s+16px\s+14px/u)
+    expect(cssContent).toMatch(/\.chat-typing-indicator\s*\{/u)
+    expect(cssContent).toMatch(/\.chat-typing-dot\s*\{/u)
+    expect(cssContent).toMatch(/@keyframes\s+chat-typing-bounce\s*\{/u)
+  })
+
   it('reuses a retryable send command key after a lost response', async () => {
     const fake = new FakeChatService()
     const commandKeys: string[] = []
