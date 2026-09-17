@@ -86,7 +86,8 @@ const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1'])
 
 const allowsLoopbackOrigin = (): boolean =>
   process.env.IVYBM_E2E_ALLOW_HTTP_LOOPBACK === 'true' ||
-  process.env.IVYBM_E2E_MODE === 'mutation'
+  process.env.IVYBM_E2E_MODE === 'mutation' ||
+  Boolean(process.env.IVYBM_E2E_RUN_ID)
 
 export const resolvePortalConversationUrl = (
   conversationPublicId: number | string,
