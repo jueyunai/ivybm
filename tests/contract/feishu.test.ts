@@ -435,8 +435,10 @@ describe('Feishu CRM contract', () => {
       notifyHandoff({
         client,
         handoff: {
+          channel: 'website',
           conversationPublicId: 'conversation-fixture',
           domainEventId: '10000000-0000-4000-8000-000000000001',
+          portalUrl: 'http://localhost:3000/dashboard/conversations?conversation=conversation-fixture',
           publicId: 'handoff-fixture',
           reason: 'Customer requested a human quotation review.',
           requestedAt: '2026-07-29T00:00:00.000Z',

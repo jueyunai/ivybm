@@ -1,6 +1,5 @@
 const WEBSITE_SILENT_RECOVERY_HANDOFF_REASONS = new Set([
   'ai_service_unavailable',
-  'high_risk_topic',
   'reviewed_knowledge_unavailable',
 ])
 

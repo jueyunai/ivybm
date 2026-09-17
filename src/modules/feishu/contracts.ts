@@ -96,9 +96,17 @@ export type LeadForFeishu = {
 }
 
 export type HandoffForFeishu = {
+  channel: 'website' | 'whatsapp' | 'facebook' | 'instagram' | 'tiktok'
   conversationPublicId: string
+  country?: string | null
   domainEventId: string
+  email?: string | null
+  latestVisitorMessage?: string | null
+  phone?: string | null
+  portalUrl: string
+  productInterest?: string | null
   publicId: string
+  quantitySquareMeters?: number | null
   reason: string
   requestedAt: string
   source: 'ai_policy' | 'operator' | 'visitor'
@@ -129,6 +137,8 @@ export interface FeishuClientPort {
 }
 
 export class FeishuConfigurationError extends Error {
+  readonly retryable: boolean = false
+
   constructor(message: string) {
     super(message)
     this.name = 'FeishuConfigurationError'

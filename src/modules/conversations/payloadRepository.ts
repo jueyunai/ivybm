@@ -409,7 +409,7 @@ export class PayloadConversationRepository implements ConversationRepository {
       : email
         ? email.split('@')[0]
         : `Phone contact #${(phone ?? '').slice(-4)}`
-    const data = {
+    const baseData = {
       company: evaluation.signals.company,
       country: country || null,
       email: email || null,
@@ -429,13 +429,12 @@ export class PayloadConversationRepository implements ConversationRepository {
       phone: phone || null,
       requestId: `chat-${session.requestId}`,
       source: source.id,
-      status: 'new' as const,
     }
     const lead: Lead = existing.docs[0]
       ? await this.payload.update({
           collection: 'leads',
           context: { skipAudit: true },
-          data,
+          data: baseData,
           id: existing.docs[0].id,
           overrideAccess: true,
           req,
@@ -443,7 +442,10 @@ export class PayloadConversationRepository implements ConversationRepository {
       : await this.payload.create({
           collection: 'leads',
           context: { skipAudit: true },
-          data,
+          data: {
+            ...baseData,
+            status: 'new' as const,
+          },
           overrideAccess: true,
           req,
         })

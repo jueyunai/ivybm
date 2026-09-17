@@ -385,7 +385,7 @@ test.describe('live-workflow browser runner with synthetic server', () => {
               <div role="dialog" aria-label="${isAr ? 'مساعد المشروع' : 'Project Assistant'}" id="chat-dialog" style="display:none;">
                 <div id="messages"></div>
                 <div data-testid="chat-handoff-pending" id="handoff-box" style="display:none;">
-                  ${isAr ? 'تمت مشاركة طلبك مع فريق المشروع' : 'Your request has been shared with our project team.'}
+                  ${isAr ? 'تم إشعار فريق المشروع' : 'Our project team has been notified'}
                 </div>
                 <textarea id="chat-input" aria-label="${isAr ? 'اسأل عن الألواح أو مشروعك…' : 'Ask about panels, drawings, finishes, or your project…'}"></textarea>
                 <button type="button" id="send-btn">${isAr ? 'إرسال' : 'Send'}</button>
@@ -421,7 +421,7 @@ test.describe('live-workflow browser runner with synthetic server', () => {
                   msgBox.appendChild(aiMsg);
                 } else {
                   document.getElementById('handoff-box').style.display = 'block';
-                  document.getElementById('chat-input').disabled = true;
+                  document.getElementById('chat-input').disabled = false;
                 }
               });
 

@@ -130,7 +130,7 @@ test.describe.serial('FB-IN-01 Facebook Messenger durable closure', () => {
     await expect(harness.runNext()).resolves.toBe('succeeded')
     await expect(harness.relayFeishuJobs()).resolves.toMatchObject({
       enabled: true,
-      handoffs: { created: 1 },
+      handoffs: { duplicate: 1 },
     })
     await expect(harness.runUntilIdle()).resolves.toEqual(['succeeded', 'succeeded', 'idle'])
 
@@ -227,7 +227,7 @@ test.describe.serial('FB-IN-01 Facebook Messenger durable closure', () => {
     await expect(harness.runNext()).resolves.toBe('succeeded')
     await expect(harness.relayFeishuJobs()).resolves.toMatchObject({
       enabled: true,
-      handoffs: { created: 1 },
+      handoffs: { duplicate: 1 },
     })
     await expect(harness.runUntilIdle()).resolves.toEqual(['succeeded', 'succeeded', 'idle'])
 

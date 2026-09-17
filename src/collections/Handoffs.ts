@@ -7,6 +7,7 @@ import {
   conversationsAdmin,
 } from '../access/conversations'
 import { writeAuditLogAfterChange, writeAuditLogAfterDelete } from '../hooks/writeAuditLog'
+import { enqueueFeishuHandoffChange } from '../modules/feishu/jobs'
 
 export const Handoffs: CollectionConfig = {
   slug: 'handoffs',
@@ -89,7 +90,7 @@ export const Handoffs: CollectionConfig = {
     },
   ],
   hooks: {
-    afterChange: [writeAuditLogAfterChange],
+    afterChange: [writeAuditLogAfterChange, enqueueFeishuHandoffChange],
     afterDelete: [writeAuditLogAfterDelete],
   },
 }

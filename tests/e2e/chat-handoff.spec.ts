@@ -104,7 +104,7 @@ const installChatMock = async (page: Page, locale: ChatLocale, options: ChatMock
         return
       }
       handoffCommands.push(body)
-      session.allowedActions = []
+      session.allowedActions = ['send_message']
       session.handoffStatus = 'handoff_requested'
       session.revision += 1
       await route.fulfill({ contentType: 'application/json', json: session, status: 200 })
@@ -149,15 +149,15 @@ const installChatMock = async (page: Page, locale: ChatLocale, options: ChatMock
       }
 
       const text = String(body?.text || '')
-      session.messages.push(
-        {
-          author: 'visitor',
-          content: text,
-          createdAt,
-          id: `visitor-${messageAttempts}`,
-          status: 'sent',
-        },
-        {
+      session.messages.push({
+        author: 'visitor',
+        content: text,
+        createdAt,
+        id: `visitor-${messageAttempts}`,
+        status: 'sent',
+      })
+      if (session.handoffStatus === 'ai_active') {
+        session.messages.push({
           author: 'ai',
           citations: [
             { documentId: 'knowledge-fixture', title: 'Reviewed panel guide', version: '1.0' },
@@ -166,8 +166,8 @@ const installChatMock = async (page: Page, locale: ChatLocale, options: ChatMock
           createdAt,
           id: `assistant-${messageAttempts}`,
           status: 'sent',
-        },
-      )
+        })
+      }
       session.revision += 1
       await route.fulfill({ contentType: 'application/json', json: session, status: 200 })
       return
@@ -225,15 +225,38 @@ test('Arabic ChatWidget respects RTL and displays the authoritative handoff stat
   const widget = page.getByTestId('chat-widget')
   await widget.getByRole('button', { name: 'اسأل مساعد المشروع' }).click()
   await expect(widget.getByRole('dialog', { name: 'مساعد المشروع' })).toBeVisible()
+
+  await widget
+    .getByLabel('اسأل عن الألواح أو مشروعك…')
+    .fill('مرحبا، أحتاج معلومات عن الألواح.')
+  await widget.getByRole('button', { name: 'إرسال' }).click()
+  await expect(widget.getByText('Fixture answer based on reviewed knowledge.')).toBeVisible()
+
   await widget.getByRole('button', { name: 'التحدث مع مختص' }).click()
 
   await expect(widget.getByTestId('chat-handoff-pending')).toContainText(
-    'تمت مشاركة طلبك مع فريق المشروع',
+    'تم إشعار فريق المشروع',
   )
-  await expect(widget.getByLabel('اسأل عن الألواح أو مشروعك…')).toBeDisabled()
+  await expect(widget.getByLabel('اسأل عن الألواح أو مشروعك…')).toBeEnabled()
+  await widget
+    .getByLabel('اسأل عن الألواح أو مشروعك…')
+    .fill('الرجاء مراجعة مواصفات الواجهة.')
+  await widget.getByRole('button', { name: 'إرسال' }).click()
+  await expect(widget.getByText('الرجاء مراجعة مواصفات الواجهة.')).toBeVisible()
   const box = await widget.boundingBox()
   expect(box).not.toBeNull()
   expect(box?.x).toBeLessThan(100)
+  expect(mock.starts).toHaveLength(1)
+  expect(mock.messageCommands).toEqual([
+    {
+      idempotencyKey: expect.any(String),
+      text: 'مرحبا، أحتاج معلومات عن الألواح.',
+    },
+    {
+      idempotencyKey: expect.any(String),
+      text: 'الرجاء مراجعة مواصفات الواجهة.',
+    },
+  ])
   expect(mock.handoffCommands).toEqual([
     {
       idempotencyKey: expect.any(String),

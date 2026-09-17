@@ -70,7 +70,8 @@ export const WEBSITE_COPY = {
       assistantAvailable: 'AI project assistant',
       close: 'Close chat',
       greeting: 'Hello — I can help with product information and connect you with our project team.',
-      handoffPending: 'Your request has been shared with our project team. A specialist will join shortly.',
+      handoffPending:
+        'Our project team has been notified. Our service hours are Mon–Sat 09:00–18:00 China Standard Time (UTC+8). Please feel free to leave your work email, WhatsApp, or additional project details below so we can prioritize your follow-up.',
       humanActive: 'A project specialist has joined this conversation.',
       launcher: 'Ask our project assistant',
       loading: 'Preparing a secure conversation…',
@@ -244,7 +245,8 @@ export const WEBSITE_COPY = {
       assistantAvailable: 'مساعد مشروع بالذكاء الاصطناعي',
       close: 'إغلاق المحادثة',
       greeting: 'مرحبًا — يمكنني المساعدة بمعلومات المنتجات وربطك بفريق المشروع لدينا.',
-      handoffPending: 'تمت مشاركة طلبك مع فريق المشروع. سينضم إليك أحد المختصين قريبًا.',
+      handoffPending:
+        'تم إشعار فريق المشروع. ساعات العمل: من الإثنين إلى السبت 09:00–18:00 بتوقيت الصين (UTC+8). يُرجى ترك بريدك الإلكتروني أو رقم الواتساب أو تفاصيل إضافية أدناه لنتمكن من متابعة طلبك بأولوية.',
       humanActive: 'انضم أحد مختصي المشروع إلى هذه المحادثة.',
       launcher: 'اسأل مساعد المشروع',
       loading: 'جارٍ إعداد محادثة آمنة…',

@@ -8,19 +8,25 @@ export default async function ConversationsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requirePortalUser({ returnTo: '/dashboard/conversations' })
+  const params = await searchParams
+  const rawConversation = params.conversation
+  const rawParam = Array.isArray(rawConversation) ? rawConversation[0] : rawConversation
+  const conversationParam =
+    typeof rawParam === 'string' && rawParam.trim() ? rawParam.trim() : undefined
+  const returnTo = conversationParam
+    ? `/dashboard/conversations?conversation=${encodeURIComponent(conversationParam)}`
+    : '/dashboard/conversations'
+
+  const user = await requirePortalUser({ returnTo })
   const featureState = getPortalFeatureState({
     env: process.env,
     module: CONVERSATIONS_MODULE,
   })
 
-  const conversation = (await searchParams).conversation
-  const initialConversationId = Array.isArray(conversation) ? conversation[0] : conversation
-
   return (
     <ConversationWorkspace
       enabled={featureState.enabled}
-      initialConversationId={initialConversationId}
+      initialConversationId={conversationParam}
       role={user.role}
     />
   )

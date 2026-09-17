@@ -37,7 +37,7 @@ describe('handoff state machine', () => {
   })
 
   it('advertises actions for the current caller rather than another role', () => {
-    expect(allowedActionsFor('handoff_requested', 'visitor')).toEqual([])
+    expect(allowedActionsFor('handoff_requested', 'visitor')).toEqual(['send_message'])
     expect(allowedActionsFor('handoff_requested', 'operator')).toEqual(['take_over'])
     expect(allowedActionsFor('handoff_requested', 'sales')).toEqual([])
     expect(allowedActionsFor('human_active', 'visitor')).toEqual(['send_message'])

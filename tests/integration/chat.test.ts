@@ -853,4 +853,89 @@ describe.sequential('Task 9 conversation persistence', () => {
         where: { idempotencyKey: { contains: suffix } } })
     }
   })
+
+  it('preserves existing lead status when updated with additional messages in handoff_requested', async () => {
+    const suffix = randomUUID()
+    const token = `preserve-status-${suffix}`
+    const responder = {
+      generateReply: vi.fn(async () => ({
+        content: 'Not called during handoff_requested.',
+        estimatedCostUSD: 0,
+        model: 'fake-model',
+        promptVersion: 1,
+        tokenUsage: { inputTokens: 1, totalTokens: 1 },
+      })),
+    }
+    const visitorService = createConversationService({
+      leadSink: new PayloadConversationLeadSink(),
+      repository: new PayloadConversationRepository({
+        payload,
+        sessionTokenHash: hashVisitorToken(token),
+      }),
+      responder,
+    })
+    const session = await visitorService.startSession({
+      channel: 'website',
+      idempotencyKey: `lead-preserve-start-${suffix}`,
+      locale: 'en',
+    })
+
+    const highIntent = await visitorService.sendMessage({
+      idempotencyKey: `lead-preserve-msg-1-${suffix}`,
+      sessionId: session.id,
+      text: `I am from UAE. My company is Facade Engineering LLC. We have a tender for 4,000 sqm aluminum facade panels within 3 months. Drawings are ready. Our budget is USD 450000 and the purchase plan is within 3 months. Contact buyer-${suffix}@example.invalid or +971 50 111 2222. Please arrange a sales follow-up.`,
+    })
+    expect(highIntent.handoffStatus).toBe('handoff_requested')
+    expect(highIntent.allowedActions).toEqual(['send_message'])
+
+    const initialLeads = await payload.find({
+      collection: 'leads',
+      overrideAccess: true,
+      where: { idempotencyKey: { equals: `chat-lead:${String(session.id)}` } },
+    })
+    expect(initialLeads.totalDocs).toBe(1)
+    expect(initialLeads.docs[0]?.status).toBe('new')
+
+    await payload.update({
+      collection: 'leads',
+      id: initialLeads.docs[0]!.id,
+      data: { status: 'contacted' },
+      overrideAccess: true,
+    })
+
+    const followUp = await visitorService.sendMessage({
+      idempotencyKey: `lead-preserve-msg-2-${suffix}`,
+      sessionId: session.id,
+      text: 'We also have architectural drawings ready to share.',
+    })
+    expect(followUp.handoffStatus).toBe('handoff_requested')
+    expect(responder.generateReply).not.toHaveBeenCalled()
+
+    const updatedLeads = await payload.find({
+      collection: 'leads',
+      overrideAccess: true,
+      where: { id: { equals: initialLeads.docs[0]!.id } },
+    })
+    expect(updatedLeads.docs[0]?.status).toBe('contacted')
+    expect(updatedLeads.docs[0]?.hasDrawings).toBe(true)
+
+    const conversation = (await payload.find({
+      collection: 'conversations',
+      limit: 1,
+      overrideAccess: true,
+      where: { publicId: { equals: String(session.id) } },
+    })).docs[0]
+    if (conversation) await payload.delete({ collection: 'conversations', id: conversation.id, overrideAccess: true })
+    if (initialLeads.docs[0]) await payload.delete({ collection: 'leads', id: initialLeads.docs[0].id, overrideAccess: true })
+    await payload.delete({
+      collection: 'visitor-sessions',
+      overrideAccess: true,
+      where: { idempotencyKey: { equals: `lead-preserve-start-${suffix}` } },
+    })
+    await payload.delete({
+      collection: 'conversation-commands',
+      overrideAccess: true,
+      where: { idempotencyKey: { contains: suffix } },
+    })
+  })
 })
