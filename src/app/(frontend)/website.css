@@ -88,6 +88,7 @@ h2 {
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(31, 35, 39, 0.96);
   color: #fff;
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
 
@@ -2255,6 +2256,18 @@ html[dir='rtl'] .chat-widget {
 }
 
 @media (max-width: 1100px) {
+  /* Disable backdrop-filter when menu is open so child .mobile-nav-backdrop does not treat header as containing block */
+  .site-header[data-menu-open='true'] {
+    z-index: 70;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .site-header[data-menu-open='true'] .nav-shell {
+    position: relative;
+    z-index: 2;
+  }
+
   .nav-links {
     display: none;
   }
@@ -2276,11 +2289,26 @@ html[dir='rtl'] .chat-widget {
     border-radius: 8px;
     background: #24282d;
     box-shadow: var(--shadow);
-    z-index: 60;
+    z-index: 3;
+    max-height: calc(100vh - 100% - 18px - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 100% - 18px - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .mobile-navigation[data-open='true'] {
     display: flex;
+  }
+
+  .mobile-nav-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    background: rgba(0, 0, 0, 0.5);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .mobile-navigation a {
@@ -2290,6 +2318,35 @@ html[dir='rtl'] .chat-widget {
 
   .mobile-navigation a:hover {
     background: rgba(255, 255, 255, 0.1);
+  }
+
+  .mobile-nav-cta-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .mobile-nav-cta {
+    width: 100%;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .mobile-nav-whatsapp {
+    width: 100%;
+    justify-content: center;
+    gap: 8px;
+    border: 0;
+    background: #25d366;
+    color: #fff;
+  }
+
+  .mobile-nav-whatsapp:hover {
+    background: #20bd5a;
+    color: #fff;
   }
 }
 
@@ -2427,6 +2484,10 @@ html[dir='rtl'] .chat-widget {
     width: 52px;
     justify-content: center;
     padding: 0;
+  }
+
+  .chat-widget[data-open='true'] .chat-launcher {
+    display: none;
   }
 }
 

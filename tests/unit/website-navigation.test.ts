@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -125,7 +125,45 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
     expect(cta.getAttribute('href')).toBe('/ar/contact')
   })
 
-  it('toggles mobile navigation drawer on menu button click', () => {
+  it('toggles mobile navigation drawer on menu button click with accessible controls, CTAs, and body scroll lock', () => {
+    render(
+      React.createElement(SiteHeader, {
+        locale: 'en',
+        siteName: 'IVYBM',
+        whatsapp: '+8618520040515',
+      }),
+    )
+
+    const mobileNav = screen.getByRole('navigation', { name: 'Mobile navigation' })
+    expect(mobileNav.getAttribute('data-open')).toBe('false')
+    expect(mobileNav.getAttribute('id')).toBe('mobile-navigation-drawer')
+
+    const menuButton = screen.getByRole('button', { name: 'Menu' })
+    expect(menuButton.getAttribute('aria-controls')).toBe('mobile-navigation-drawer')
+    expect(menuButton.getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(menuButton)
+    expect(mobileNav.getAttribute('data-open')).toBe('true')
+    expect(menuButton.getAttribute('aria-expanded')).toBe('true')
+    expect(document.body.style.overflow).toBe('hidden')
+
+    // Verify CTAs in mobile navigation
+    const drawer = screen.getByRole('navigation', { name: 'Mobile navigation' })
+    const drawerUploadCta = within(drawer).getByRole('link', { name: /Upload Drawing/i })
+    expect(drawerUploadCta.getAttribute('href')).toBe('/en/contact')
+    const whatsappCta = within(drawer).getByRole('link', { name: /WhatsApp/i })
+    expect(whatsappCta.getAttribute('href')).toBe('https://wa.me/8618520040515')
+
+    // Verify backdrop exists and clicking it closes the menu
+    const backdrop = document.querySelector('.mobile-nav-backdrop')
+    expect(backdrop).not.toBeNull()
+    fireEvent.click(backdrop!)
+    expect(mobileNav.getAttribute('data-open')).toBe('false')
+    expect(menuButton.getAttribute('aria-expanded')).toBe('false')
+    expect(document.body.style.overflow).toBe('')
+  })
+
+  it('closes mobile menu on Escape key and restores focus to menu button', () => {
     render(
       React.createElement(SiteHeader, {
         locale: 'en',
@@ -133,15 +171,86 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
       }),
     )
 
-    const mobileNav = screen.getByRole('navigation', { name: 'Mobile navigation' })
-    expect(mobileNav.getAttribute('data-open')).toBe('false')
-
     const menuButton = screen.getByRole('button', { name: 'Menu' })
     fireEvent.click(menuButton)
+    const mobileNav = screen.getByRole('navigation', { name: 'Mobile navigation' })
     expect(mobileNav.getAttribute('data-open')).toBe('true')
 
-    fireEvent.click(menuButton)
+    fireEvent.keyDown(document, { key: 'Escape' })
     expect(mobileNav.getAttribute('data-open')).toBe('false')
+    expect(document.activeElement).toBe(menuButton)
+  })
+
+  it('maintains mutual exclusion between language dropdown and mobile navigation drawer', () => {
+    render(
+      React.createElement(SiteHeader, {
+        locale: 'en',
+        siteName: 'IVYBM',
+      }),
+    )
+
+    const menuButton = screen.getByRole('button', { name: 'Menu' })
+    const langButton = screen.getByRole('button', { name: 'Language' })
+    const mobileNav = screen.getByRole('navigation', { name: 'Mobile navigation' })
+
+    // Open mobile menu
+    fireEvent.click(menuButton)
+    expect(mobileNav.getAttribute('data-open')).toBe('true')
+    expect(langButton.getAttribute('aria-expanded')).toBe('false')
+
+    // Opening language menu closes mobile menu
+    fireEvent.click(langButton)
+    expect(mobileNav.getAttribute('data-open')).toBe('false')
+    expect(langButton.getAttribute('aria-expanded')).toBe('true')
+
+    // Opening mobile menu closes language menu
+    fireEvent.click(menuButton)
+    expect(mobileNav.getAttribute('data-open')).toBe('true')
+    expect(langButton.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('closes mobile navigation drawer when viewport expands beyond 1100px mobile breakpoint', () => {
+    let mediaListener: ((e: MediaQueryListEvent) => void) | undefined
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn((event: string, handler: (e: MediaQueryListEvent) => void) => {
+        if (event === 'change') mediaListener = handler
+      }),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+
+    try {
+      render(
+        React.createElement(SiteHeader, {
+          locale: 'en',
+          siteName: 'IVYBM',
+        }),
+      )
+
+      const menuButton = screen.getByRole('button', { name: 'Menu' })
+      const mobileNav = screen.getByRole('navigation', { name: 'Mobile navigation' })
+
+      fireEvent.click(menuButton)
+      expect(mobileNav.getAttribute('data-open')).toBe('true')
+      expect(document.body.style.overflow).toBe('hidden')
+
+      // Viewport expands beyond 1100px (e.g. tablet rotated to landscape)
+      expect(mediaListener).toBeDefined()
+      act(() => {
+        mediaListener!({ matches: false } as MediaQueryListEvent)
+      })
+
+      expect(mobileNav.getAttribute('data-open')).toBe('false')
+      expect(document.body.style.overflow).toBe('')
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
   })
 
   it('ensures mobile-navigation is positioned relative to header bottom instead of hardcoded 82px fixed top', () => {
@@ -152,6 +261,9 @@ describe('SiteHeader navigation, brand logo, and CTA', () => {
     expect(cssContent).toMatch(/\.mobile-navigation\s*\{[^}]*position:\s*absolute/u)
     expect(cssContent).toMatch(/\.mobile-navigation\s*\{[^}]*top:\s*calc\(100%/u)
     expect(cssContent).not.toMatch(/\.mobile-navigation\s*\{[^}]*top:\s*82px/u)
+    expect(cssContent).toMatch(/\.site-header\[data-menu-open='true'\]\s*\{[^}]*z-index:\s*70/u)
+    expect(cssContent).toMatch(/\.site-header\[data-menu-open='true'\]\s*\{[^}]*backdrop-filter:\s*none/u)
+    expect(cssContent).toMatch(/\.mobile-nav-backdrop\s*\{[^}]*touch-action:\s*none/u)
   })
 
   it('renders custom language menu button with accessible attributes and label', () => {

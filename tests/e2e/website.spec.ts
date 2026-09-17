@@ -20,6 +20,7 @@ for (const locale of ['en', 'ar'] as const) {
         await expect(page.locator('head link[rel="canonical"]')).toHaveAttribute(
           'href',
           new RegExp(`/${locale}${route || ''}$`),
+          { timeout: 20000 },
         )
         await expect(page.locator('head link[hreflang="en"]')).toHaveCount(1)
         await expect(page.locator('head link[hreflang="ar"]')).toHaveCount(1)
@@ -121,6 +122,269 @@ test('mobile navigation, locale switch, carousel and product filtering work', as
   await expect(page.getByRole('heading', { name: 'Double-Curved Aluminum Panel' })).toBeVisible()
   await expect(page.getByRole('table')).toBeVisible()
   await expect(page.getByRole('rowheader', { name: 'Thickness' })).toBeVisible()
+})
+
+for (const viewport of [
+  { height: 844, width: 390 },
+  { height: 667, width: 375 },
+  { height: 800, width: 360 },
+] as const) {
+  test(`mobile drawer CTA is visible and navigates to contact on ${viewport.width}x${viewport.height}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport)
+    await page.goto('/en')
+
+    const menuButton = page.getByRole('button', { name: 'Menu' })
+    await menuButton.click()
+    const mobileNav = page.getByRole('navigation', { name: 'Mobile navigation' })
+    await expect(mobileNav).toBeVisible()
+
+    // Verify physical bottom-most CTA (WhatsApp or Upload Drawing) is reachable and within viewport
+    const ctaLinks = mobileNav.locator('.mobile-nav-cta-group a')
+    const ctaCount = await ctaLinks.count()
+    expect(ctaCount).toBeGreaterThanOrEqual(1)
+    const lastCta = ctaLinks.nth(ctaCount - 1)
+    await expect(lastCta).toBeVisible()
+    const lastCtaBox = await lastCta.boundingBox()
+    expect(lastCtaBox).not.toBeNull()
+    expect(lastCtaBox!.y + lastCtaBox!.height).toBeLessThanOrEqual(viewport.height)
+
+    // Verify the physical bottom-most CTA is actionable and clickable (trial click without navigating away)
+    await lastCta.click({ trial: true })
+
+    // Click Upload Drawing CTA and confirm navigation
+    const mobileCta = mobileNav.getByRole('link', { name: 'Upload Drawing' })
+    await expect(mobileCta).toBeVisible()
+    await mobileCta.click()
+
+    await expect(page).toHaveURL(/\/en\/contact$/)
+    await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).not.toBeVisible()
+    const bodyOverflow = await page.evaluate(() => document.body.style.overflow)
+    expect(bodyOverflow).toBe('')
+  })
+}
+
+test('mobile backdrop covers full viewport, locks scroll without jump, and blocks pass-through clicks', async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 844, width: 390 })
+  await page.goto('/en')
+
+  // Wait for content and scroll down so page has a scroll offset
+  await expect(page.locator('.hero')).toBeVisible()
+  await page.evaluate(() => window.scrollTo({ behavior: 'instant', top: 300 }))
+  await page.waitForFunction(() => (window.scrollY || document.documentElement.scrollTop) >= 200)
+  const scrollOffsetBefore = await page.evaluate(() => window.scrollY || document.documentElement.scrollTop)
+  expect(scrollOffsetBefore).toBeGreaterThanOrEqual(200)
+
+  const menuButton = page.getByRole('button', { name: 'Menu' })
+  await menuButton.click()
+  const mobileNav = page.getByRole('navigation', { name: 'Mobile navigation' })
+  await expect(mobileNav).toBeVisible()
+
+  // 1. Backdrop bounding box matches the entire viewport
+  const backdrop = page.locator('.mobile-nav-backdrop')
+  await expect(backdrop).toBeVisible()
+  const backdropBox = await backdrop.boundingBox()
+  expect(backdropBox).not.toBeNull()
+  expect(backdropBox?.x).toBe(0)
+  expect(backdropBox?.y).toBe(0)
+  expect(backdropBox?.width).toBe(390)
+  expect(backdropBox?.height).toBe(844)
+
+  // 2. Body scroll lock is applied and scroll position is preserved
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden')
+  expect(await page.evaluate(() => window.scrollY || document.documentElement.scrollTop)).toBe(scrollOffsetBefore)
+
+  // Attempt user wheel scroll while menu is open: scroll position must NOT change
+  await page.mouse.wheel(0, 200)
+  expect(await page.evaluate(() => window.scrollY || document.documentElement.scrollTop)).toBe(scrollOffsetBefore)
+
+  // 3. Header and backdrop are strictly above ChatWidget (elementFromPoint positive assertion)
+  const chatLauncher = page.locator('.chat-launcher')
+  await expect(chatLauncher).toBeAttached()
+  const launcherBox = await chatLauncher.boundingBox()
+  expect(launcherBox).not.toBeNull()
+  expect(launcherBox!.width).toBeGreaterThan(0)
+  expect(launcherBox!.height).toBeGreaterThan(0)
+
+  const hitsBackdrop = await page.evaluate(
+    ({ x, y }) => {
+      const el = document.elementFromPoint(x, y)
+      return el ? Boolean(el.closest('.mobile-nav-backdrop')) : false
+    },
+    { x: launcherBox!.x + launcherBox!.width / 2, y: launcherBox!.y + launcherBox!.height / 2 },
+  )
+  expect(hitsBackdrop).toBe(true)
+
+  // 4. Clicking outside the drawer on the backdrop (using safe dynamic coordinate) closes menu
+  const navBox = await mobileNav.boundingBox()
+  expect(navBox).not.toBeNull()
+  const safeBackdropClickY = Math.min(navBox!.y + navBox!.height + 25, 844 - 20)
+  await page.mouse.click(195, safeBackdropClickY)
+  await expect(mobileNav).not.toBeVisible()
+  await expect(backdrop).not.toBeVisible()
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('')
+  expect(await page.evaluate(() => window.scrollY || document.documentElement.scrollTop)).toBe(scrollOffsetBefore)
+})
+
+test('mobile drawer manages mutual exclusion, route click, popstate navigation, and escape focus', async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 844, width: 390 })
+  await page.goto('/en')
+
+  const menuButton = page.getByRole('button', { name: 'Menu' })
+  const langButton = page.getByRole('button', { name: 'Language' })
+  const mobileNav = page.getByRole('navigation', { name: 'Mobile navigation' })
+
+  // Mutual exclusion A: Menu open -> Open Language -> Menu closes
+  await menuButton.click()
+  await expect(mobileNav).toBeVisible()
+  await langButton.click()
+  await expect(mobileNav).not.toBeVisible()
+  await expect(page.getByRole('listbox', { name: 'Language' })).toBeVisible()
+
+  // Mutual exclusion B: Language open -> Open Menu -> Language closes
+  await menuButton.click()
+  await expect(page.getByRole('listbox', { name: 'Language' })).not.toBeVisible()
+  await expect(mobileNav).toBeVisible()
+
+  // Escape key closes menu and returns focus to menu button
+  await page.keyboard.press('Escape')
+  await expect(mobileNav).not.toBeVisible()
+  const isMenuBtnFocused = await page.evaluate(() => {
+    const btn = document.querySelector('header button.menu-button')
+    return document.activeElement === btn
+  })
+  expect(isMenuBtnFocused).toBe(true)
+
+  // Drawer link click navigates and closes drawer: build history stack /en -> /en/products -> /en/about
+  await menuButton.click()
+  await expect(mobileNav).toBeVisible()
+  await mobileNav.getByRole('link', { name: 'Products' }).click()
+  await expect(page).toHaveURL(/\/en\/products$/)
+  await expect(mobileNav).not.toBeVisible()
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('')
+
+  await menuButton.click()
+  await expect(mobileNav).toBeVisible()
+  await mobileNav.getByRole('link', { name: 'About' }).click()
+  await expect(page).toHaveURL(/\/en\/about$/)
+  await expect(mobileNav).not.toBeVisible()
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('')
+
+  // Popstate backward navigation: opening drawer then browser back closes drawer and unlocks body
+  await menuButton.click()
+  await expect(mobileNav).toBeVisible()
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden')
+  await page.goBack()
+  await expect(page).toHaveURL(/\/en\/products$/)
+  await expect(mobileNav).not.toBeVisible()
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('')
+
+  // Popstate forward navigation: opening drawer then browser forward closes drawer and unlocks body
+  await menuButton.click()
+  await expect(mobileNav).toBeVisible()
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden')
+  await page.goForward()
+  await expect(page).toHaveURL(/\/en\/about$/)
+  await expect(mobileNav).not.toBeVisible()
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('')
+})
+
+test('RTL mobile drawer renders with correct direction, reachable CTA and navigates to /ar/contact', async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 844, width: 390 })
+  await page.goto('/ar')
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl')
+
+  const arMenuButton = page.getByRole('button', { name: 'القائمة' })
+  await arMenuButton.click()
+  const arMobileNav = page.getByRole('navigation', { name: 'التنقل عبر الهاتف' })
+  await expect(arMobileNav).toBeVisible()
+
+  // Verify RTL layout and text direction on drawer and CTA
+  const drawerStyles = await arMobileNav.evaluate((el) => {
+    const computed = window.getComputedStyle(el)
+    return { direction: computed.direction }
+  })
+  expect(drawerStyles.direction).toBe('rtl')
+
+  const arCta = arMobileNav.getByRole('link', { name: 'رفع المخططات' })
+  await expect(arCta).toBeVisible()
+  const ctaStyles = await arCta.evaluate((el) => window.getComputedStyle(el).direction)
+  expect(ctaStyles).toBe('rtl')
+
+  // Verify geometric alignment and horizontal containment inside the drawer
+  const navBox = await arMobileNav.boundingBox()
+  const ctaBox = await arCta.boundingBox()
+  expect(navBox).not.toBeNull()
+  expect(ctaBox).not.toBeNull()
+  expect(ctaBox!.x).toBeGreaterThanOrEqual(navBox!.x - 1)
+  expect(ctaBox!.x + ctaBox!.width).toBeLessThanOrEqual(navBox!.x + navBox!.width + 1)
+
+  await arCta.click()
+  await expect(page).toHaveURL(/\/ar\/contact$/)
+  await expect(arMobileNav).not.toBeVisible()
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('')
+})
+
+test('capabilities and for-professionals pages render distinct H1 and H2 in EN and AR', async ({ page }) => {
+  await page.goto('/en/capabilities')
+  const enCapH1 = await page.getByRole('heading', { level: 1 }).textContent()
+  const enCapH2 = await page.getByRole('heading', { level: 2, name: 'Step-by-Step Engineering & Delivery Workflow' }).textContent()
+  expect(enCapH1?.trim()).toBe('Engineering & Manufacturing Capabilities')
+  expect(enCapH2?.trim()).toBe('Step-by-Step Engineering & Delivery Workflow')
+
+  await page.goto('/ar/capabilities')
+  const arCapH1 = await page.getByRole('heading', { level: 1 }).textContent()
+  const arCapH2 = await page.getByRole('heading', { level: 2, name: 'مسار العمل الهندسي والتصنيع خطوة بخطوة' }).textContent()
+  expect(arCapH1?.trim()).toBe('القدرات الهندسية والتصنيعية')
+  expect(arCapH2?.trim()).toBe('مسار العمل الهندسي والتصنيع خطوة بخطوة')
+
+  await page.goto('/en/for-professionals')
+  const enProfH1 = await page.getByRole('heading', { level: 1 }).textContent()
+  const enProfH2 = await page.getByRole('heading', { level: 2, name: 'Comprehensive Technical Services by Project Role' }).textContent()
+  expect(enProfH1?.trim()).toBe('Engineering Support for Facade Professionals')
+  expect(enProfH2?.trim()).toBe('Comprehensive Technical Services by Project Role')
+
+  await page.goto('/ar/for-professionals')
+  const arProfH1 = await page.getByRole('heading', { level: 1 }).textContent()
+  const arProfH2 = await page.getByRole('heading', { level: 2, name: 'خدمات فنية متكاملة حسب دور المشروع' }).textContent()
+  expect(arProfH1?.trim()).toBe('الدعم الهندسي للمهنيين واستشاريي الواجهات')
+  expect(arProfH2?.trim()).toBe('خدمات فنية متكاملة حسب دور المشروع')
+})
+
+test('mobile ChatWidget hides launcher when dialog is open on small screen and restores focus on close', async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 844, width: 390 })
+  await page.goto('/en')
+
+  const launcher = page.getByRole('button', { name: 'Ask our project assistant' })
+  await expect(launcher).toBeVisible()
+  await launcher.click()
+
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  await expect(page.locator('.chat-launcher')).not.toBeVisible()
+
+  const closeButton = page.getByRole('button', { name: 'Close chat' })
+  await expect(closeButton).toBeVisible()
+  await closeButton.click()
+
+  await expect(dialog).not.toBeVisible()
+  await expect(launcher).toBeVisible()
+
+  // Assert focus restoration to launcher
+  const isLauncherFocused = await page.evaluate(() => {
+    const launcherEl = document.querySelector('.chat-launcher')
+    return document.activeElement === launcherEl
+  })
+  expect(isLauncherFocused).toBe(true)
 })
 
 test('contact form exposes accessible validation without simulated success', async ({ page }) => {

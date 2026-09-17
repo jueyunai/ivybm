@@ -76,5 +76,9 @@ describe('Website v1.7 navigation tab order and CTA specification', () => {
     const ctaButton = document.querySelector('.nav-quote')
     expect(ctaButton).not.toBeNull()
     expect(ctaButton?.getAttribute('href')).toBe('/en/contact')
+
+    const mobileCta = document.querySelector('.mobile-nav-cta')
+    expect(mobileCta).not.toBeNull()
+    expect(mobileCta?.getAttribute('href')).toBe('/en/contact')
   })
 })

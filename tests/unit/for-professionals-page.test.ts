@@ -14,7 +14,11 @@ describe('ForProfessionalsView component', () => {
       }),
     )
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Engineering Support for Facade Professionals' })).toBeDefined()
+    const h1 = screen.getByRole('heading', { level: 1, name: 'Engineering Support for Facade Professionals' })
+    const h2 = screen.getByRole('heading', { level: 2, name: 'Comprehensive Technical Services by Project Role' })
+    expect(h1).toBeDefined()
+    expect(h2).toBeDefined()
+    expect(h1.textContent).not.toBe(h2.textContent)
     expect(screen.getByText('Architects & Facade Consultants')).toBeDefined()
     expect(screen.getByText('Curtain Wall & Facade Contractors')).toBeDefined()
     expect(screen.getByText('Main Contractors & Procurement Heads')).toBeDefined()
@@ -29,7 +33,11 @@ describe('ForProfessionalsView component', () => {
       }),
     )
 
-    expect(screen.getByRole('heading', { level: 1, name: 'الدعم الهندسي للمهنيين واستشاريي الواجهات' })).toBeDefined()
+    const h1 = screen.getByRole('heading', { level: 1, name: 'الدعم الهندسي للمهنيين واستشاريي الواجهات' })
+    const h2 = screen.getByRole('heading', { level: 2, name: 'خدمات فنية متكاملة حسب دور المشروع' })
+    expect(h1).toBeDefined()
+    expect(h2).toBeDefined()
+    expect(h1.textContent).not.toBe(h2.textContent)
     expect(screen.getByText('المعماريون واستشاريو الواجهات')).toBeDefined()
     expect(screen.getByText('مقاولو الواجهات وكسوات الجدران')).toBeDefined()
     expect(screen.getByText('المقاولون الرئيسيون ومديرو المشتريات')).toBeDefined()
