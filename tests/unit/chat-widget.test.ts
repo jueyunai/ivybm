@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -436,8 +438,12 @@ describe('ChatWidget', () => {
   it('keeps dialog focus contained, exposes its label, and restores focus on Escape', async () => {
     renderWidget(new FakeChatService())
     const launcher = screen.getByRole('button', { name: 'Ask our project assistant' })
+    const widgetAside = launcher.closest('.chat-widget')
+    expect(widgetAside?.getAttribute('data-open')).toBe('false')
+
     const dialog = await openWidget()
 
+    expect(widgetAside?.getAttribute('data-open')).toBe('true')
     expect(dialog.getAttribute('aria-modal')).toBe('true')
     expect(dialog.getAttribute('aria-labelledby')).toBe('chat-panel-en-title')
     await waitFor(() =>
@@ -449,7 +455,18 @@ describe('ChatWidget', () => {
 
     fireEvent.keyDown(dialog, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(widgetAside?.getAttribute('data-open')).toBe('false')
     expect(document.activeElement).toBe(launcher)
+  })
+
+  it('declares mobile single-close CSS rule to hide launcher when dialog is open on small screens', () => {
+    const cssContent = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/app/(frontend)/website.css'),
+      'utf8',
+    )
+    expect(cssContent).toMatch(
+      /\.chat-widget\[data-open=['"]true['"]\]\s+\.chat-launcher\s*\{[^}]*display:\s*none/u,
+    )
   })
 
   it('reuses a retryable send command key after a lost response', async () => {

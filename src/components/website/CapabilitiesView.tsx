@@ -38,8 +38,8 @@ export function CapabilitiesView({
       <section className="section">
         <div className="container">
           <div className="section-kicker">{copy.capabilities.kicker}</div>
-          <h2>{copy.capabilities.title}</h2>
-          <p className="muted max-w-prose">{copy.capabilities.subtitle}</p>
+          <h2>{copy.capabilities.workflowTitle}</h2>
+          <p className="muted max-w-prose">{copy.capabilities.workflowDescription}</p>
 
           <div className="capabilities-workflow">
             {copy.capabilities.items.map((item, index) => {

@@ -11,7 +11,7 @@ import {
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   localePath,
@@ -51,6 +51,7 @@ export function SiteHeader({
   const [langOpen, setLangOpen] = useState(false)
   const langDropdownRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
   const itemRefs = useRef<(HTMLLIElement | null)[]>([])
 
   const whatsappHref = whatsapp
@@ -58,6 +59,62 @@ export function SiteHeader({
       ? whatsapp
       : `https://wa.me/${whatsapp.replace(/\D/g, '')}`
     : undefined
+
+  const closeMobileMenu = useCallback((): void => {
+    setMenuOpen(false)
+    setLangOpen(false)
+  }, [])
+
+  const toggleMobileMenu = (): void => {
+    setLangOpen(false)
+    setMenuOpen((open) => !open)
+  }
+
+  const toggleLangMenu = (): void => {
+    setMenuOpen(false)
+    setLangOpen((open) => !open)
+  }
+
+  const [prevPathname, setPrevPathname] = useState(pathname)
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname)
+    setMenuOpen(false)
+    setLangOpen(false)
+  }
+
+  // Cleanup on popstate (browser back/forward or mobile edge swipe-back)
+  useEffect(() => {
+    window.addEventListener('popstate', closeMobileMenu)
+    return () => {
+      window.removeEventListener('popstate', closeMobileMenu)
+    }
+  }, [closeMobileMenu])
+
+  // Body scroll lock
+  useEffect(() => {
+    if (!menuOpen) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = originalOverflow
+    }
+  }, [menuOpen])
+
+  // Escape key listener for mobile menu
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeMobileMenu()
+        menuButtonRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [closeMobileMenu, menuOpen])
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -85,6 +142,7 @@ export function SiteHeader({
   const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
+      setMenuOpen(false)
       setLangOpen(true)
       const activeIdx = languageOptions.findIndex((opt) => opt.code === locale)
       const targetIdx = activeIdx >= 0 ? activeIdx : 0
@@ -126,7 +184,7 @@ export function SiteHeader({
   const currentOption = languageOptions.find((opt) => opt.code === locale) || languageOptions[0]
 
   return (
-    <header className="site-header">
+    <header className="site-header" data-menu-open={menuOpen}>
       {/* Utility Topbar Strip */}
       <div className="utility-strip" data-testid="utility-strip">
         <div className="container utility-strip-inner">
@@ -160,7 +218,7 @@ export function SiteHeader({
                 className={active ? 'active' : undefined}
                 href={href}
                 key={key}
-                onClick={() => setMenuOpen(false)}
+                onClick={closeMobileMenu}
               >
                 {copy.navigation[key as keyof typeof copy.navigation]}
               </Link>
@@ -177,7 +235,7 @@ export function SiteHeader({
               aria-label={copy.accessibility.language}
               className="language-dropdown-toggle language-select"
               id="language-menu-button"
-              onClick={() => setLangOpen((prev) => !prev)}
+              onClick={toggleLangMenu}
               onKeyDown={handleTriggerKeyDown}
               ref={triggerRef}
               type="button"
@@ -251,23 +309,59 @@ export function SiteHeader({
             {copy.actions.uploadDrawing}
           </Link>
           <button
+            aria-controls="mobile-navigation-drawer"
             aria-expanded={menuOpen}
             aria-label={copy.accessibility.menu}
             className="icon-button menu-button"
-            onClick={() => setMenuOpen((open) => !open)}
+            onClick={toggleMobileMenu}
+            ref={menuButtonRef}
             type="button"
           >
             {menuOpen ? <IconX aria-hidden size={21} /> : <IconMenu2 aria-hidden size={21} />}
           </button>
         </div>
       </nav>
-      <nav aria-label={copy.accessibility.mobileNavigation} className="mobile-navigation" data-open={menuOpen}>
+      <nav
+        aria-label={copy.accessibility.mobileNavigation}
+        className="mobile-navigation"
+        data-open={menuOpen}
+        id="mobile-navigation-drawer"
+      >
         {navItems.map(([key, route]) => (
-          <Link href={localePath(locale, route)} key={key} onClick={() => setMenuOpen(false)}>
+          <Link href={localePath(locale, route)} key={key} onClick={closeMobileMenu}>
             {copy.navigation[key as keyof typeof copy.navigation]}
           </Link>
         ))}
+        <div className="mobile-nav-cta-group">
+          <Link
+            className="button mobile-nav-cta"
+            href={localePath(locale, '/contact')}
+            onClick={closeMobileMenu}
+          >
+            <IconUpload aria-hidden size={19} stroke={1.8} />
+            {copy.actions.uploadDrawing}
+          </Link>
+          {whatsappHref ? (
+            <a
+              className="button secondary mobile-nav-whatsapp"
+              href={whatsappHref}
+              onClick={closeMobileMenu}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <IconMessageCircle aria-hidden size={19} stroke={1.8} />
+              WhatsApp
+            </a>
+          ) : null}
+        </div>
       </nav>
+      {menuOpen ? (
+        <div
+          aria-hidden="true"
+          className="mobile-nav-backdrop"
+          onClick={closeMobileMenu}
+        />
+      ) : null}
     </header>
   )
 }

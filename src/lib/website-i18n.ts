@@ -81,6 +81,9 @@ export const WEBSITE_V17_COPY = {
       subtitle:
         'A complete 4-step engineering workflow from parametric design deepening to complex hyperbolic fabrication, 1:1 mock-up verification, and overseas export delivery.',
       title: 'Engineering & Manufacturing Capabilities',
+      workflowDescription:
+        'Follow the four delivery stages from design deepening and complex fabrication through full-scale verification and export delivery.',
+      workflowTitle: 'Step-by-Step Engineering & Delivery Workflow',
     },
     contact: {
       send: 'Submit',
@@ -160,6 +163,9 @@ export const WEBSITE_V17_COPY = {
       subtitle:
         'Tailored engineering coordination, fabrication feasibility analysis, and commercial support for architects, facade contractors, and main contractors.',
       title: 'Engineering Support for Facade Professionals',
+      rolesSectionDescription:
+        'See how our engineering, fabrication, and delivery teams support architects, facade contractors, and procurement leaders.',
+      rolesSectionTitle: 'Comprehensive Technical Services by Project Role',
     },
     home: {
       coreCapabilitiesKicker: 'Factory Craftsmanship',
@@ -371,6 +377,9 @@ export const WEBSITE_V17_COPY = {
       subtitle:
         'مسار عمل هندسي متكامل من 4 خطوات: من تعميق التصميم البارامتري إلى التشكيل المنحني المعقد، ونماذج 1:1، والتسليم للتصدير.',
       title: 'القدرات الهندسية والتصنيعية',
+      workflowDescription:
+        'تعرّف على مراحل التسليم الأربع من تعميق التصميم والتصنيع المعقد إلى التحقق بالحجم الكامل والتسليم للتصدير.',
+      workflowTitle: 'مسار العمل الهندسي والتصنيع خطوة بخطوة',
     },
     contact: {
       send: 'إرسال',
@@ -450,6 +459,9 @@ export const WEBSITE_V17_COPY = {
       subtitle:
         'تنسيق هندسي متخصص، وتحليل جدوى التصنيع، ودعم تجاري مخصص للمعماريين ومقاولي الواجهات والمقاولين الرئيسيين.',
       title: 'الدعم الهندسي للمهنيين واستشاريي الواجهات',
+      rolesSectionDescription:
+        'تعرّف على دعم فرق الهندسة والتصنيع والتسليم للمعماريين ومقاولي الواجهات ومسؤولي المشتريات.',
+      rolesSectionTitle: 'خدمات فنية متكاملة حسب دور المشروع',
     },
     home: {
       coreCapabilitiesKicker: 'حرفية وتصنيع المصنع',

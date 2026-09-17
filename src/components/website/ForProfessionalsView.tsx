@@ -38,8 +38,8 @@ export function ForProfessionalsView({
       <section className="section">
         <div className="container">
           <div className="section-kicker">{copy.forProfessionals.kicker}</div>
-          <h2>{copy.forProfessionals.title}</h2>
-          <p className="muted max-w-prose">{copy.forProfessionals.subtitle}</p>
+          <h2>{copy.forProfessionals.rolesSectionTitle}</h2>
+          <p className="muted max-w-prose">{copy.forProfessionals.rolesSectionDescription}</p>
 
           <div className="professionals-grid">
             {copy.forProfessionals.roles.map((role, index) => {
