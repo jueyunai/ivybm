@@ -1,6 +1,7 @@
 import fsp from 'fs/promises'
 import path from 'path'
 import os from 'os'
+import { PassThrough, Writable } from 'stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Import functions from the CommonJS runner
@@ -16,6 +17,8 @@ describe('IVYBM Operator Runner', () => {
 
   afterEach(async () => {
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
     try {
       await fsp.rm(testDir, { recursive: true, force: true })
     } catch {}
@@ -63,6 +66,38 @@ describe('IVYBM Operator Runner', () => {
   })
 
   describe('Authentication & Zero-Plaintext-Password Security', () => {
+    it('never echoes typed or pasted passwords and restores terminal mode', async () => {
+      // Emulate an interactive terminal; TERM=dumb disables readline editing.
+      vi.stubEnv('TERM', 'xterm')
+      const input = Object.assign(new PassThrough(), { isTTY: true, setRawMode: vi.fn() })
+      let transcript = ''
+      const output = Object.assign(new Writable({
+        write(chunk, _encoding, callback) { transcript += chunk.toString(); callback() },
+      }), { isTTY: true })
+      const answer = runner.promptHidden('Password: ', input, output)
+      input.write('secretX')
+      input.write('\x7f')
+      input.write(' pasted 密码\r')
+      expect(await answer).toBe('secret pasted 密码')
+      expect(transcript).toBe('Password: \n')
+      expect(input.setRawMode).toHaveBeenLastCalledWith(false)
+      input.destroy()
+      output.destroy()
+    })
+
+    it('cancels hidden input on Ctrl+C and refuses non-interactive input', async () => {
+      const input = Object.assign(new PassThrough(), { isTTY: true, setRawMode: vi.fn() })
+      const output = Object.assign(new PassThrough(), { isTTY: true })
+      const cancelled = expect(runner.promptHidden('Password: ', input, output)).rejects.toThrow('已取消')
+      input.write('\x03')
+      await cancelled
+      expect(input.setRawMode).toHaveBeenLastCalledWith(false)
+      input.isTTY = false
+      await expect(runner.promptHidden('Password: ', input, output)).rejects.toThrow('交互式终端')
+      input.destroy()
+      output.destroy()
+    })
+
     it('saves JWT token but NEVER saves password to auth.json', async () => {
       const mockUser = { id: 1, username: 'operator1', role: 'operator' }
       const mockFetch = vi.fn<typeof fetch>().mockResolvedValue(
@@ -217,6 +252,19 @@ describe('IVYBM Operator Runner', () => {
 
       const headers = mockFetch.mock.calls[0][1]?.headers as Headers
       expect(headers.get('Idempotency-Key')).toBe(customKey)
+    })
+
+    it('reports an unknown write result with its original key and reuses that key on retry', async () => {
+      const mockFetch = vi.fn<typeof fetch>()
+        .mockRejectedValueOnce(new Error('connection lost after server committed'))
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      vi.stubGlobal('fetch', mockFetch)
+      const options = { method: 'POST', body: '{}', idempotencyKey: 'retry.fixed-key-1234' }
+      await expect(runner.authenticatedFetch('/api/portal/media', options, testDir))
+        .rejects.toThrow('复用 --idempotency-key retry.fixed-key-1234')
+      await runner.authenticatedFetch('/api/portal/media', options, testDir)
+      expect(mockFetch.mock.calls.map(([, init]) => (init?.headers as Headers).get('Idempotency-Key')))
+        .toEqual(['retry.fixed-key-1234', 'retry.fixed-key-1234'])
     })
 
     it('maps 401 Unauthorized to a clear error message instructing to re-login', async () => {
@@ -378,6 +426,9 @@ describe('IVYBM Operator Runner', () => {
       })
 
       expect(res.result.id).toBe(101)
+      expect((mockFetch.mock.calls[0][1]?.body as FormData).get('isPublic')).toBe('true')
+      await runner.uploadMedia({ filePath: tempImage, customDir: testDir })
+      expect((mockFetch.mock.calls[1][1]?.body as FormData).get('isPublic')).toBe('false')
       const headers = mockFetch.mock.calls[0][1]?.headers as Headers
       expect(headers.get('Idempotency-Key')).toBeTruthy()
       expect(headers.get('Authorization')).toBe('JWT valid-token')

@@ -17,16 +17,16 @@
    macOS / Linux（`CODEX_HOME` 未设置时使用 `~/.codex`）：
 ```bash
 SKILL_ROOT="${CODEX_HOME:-$HOME/.codex}/skills/ivybm-operator"
-mkdir -p "$(dirname "$SKILL_ROOT")"
-cp -R ivybm-operator "$SKILL_ROOT"
+mkdir -p "$SKILL_ROOT"
+cp -R ivybm-operator/. "$SKILL_ROOT/"
 ```
 
    Windows PowerShell：
 ```powershell
-$codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
-$skillRoot = Join-Path $codexHome "skills\ivybm-operator"
-New-Item -ItemType Directory -Force -Path (Split-Path $skillRoot) | Out-Null
-Copy-Item -Recurse -Force ivybm-operator $skillRoot
+$ivybmCodexDir = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
+$skillRoot = Join-Path $ivybmCodexDir "skills\ivybm-operator"
+New-Item -ItemType Directory -Force -Path $skillRoot | Out-Null
+Get-ChildItem -LiteralPath ./ivybm-operator -Force | Copy-Item -Destination $skillRoot -Recurse -Force
 ```
 
 2. **操作员手动登录**：
@@ -39,7 +39,11 @@ Windows PowerShell：
 ```powershell
 node (Join-Path $skillRoot "bin\runner.cjs") auth login
 ```
-按照交互提示输入用户名与掩码密码，成功后获得会话 Token。
+按照交互提示输入用户名与密码；密码输入不显示字符或星号，回车提交。需使用交互式终端，不支持管道或输出重定向。成功后获得会话 Token。
+
+安装命令也适用于更新：复制包内文件覆盖旧版，不会嵌套创建第二个 `ivybm-operator` 目录。凭据位于独立的用户目录，更新包不会覆盖登录凭据。
+
+写操作超时或断线时，先在后台核对记录，不要直接重新创建。确需重试时保持请求参数不变，复用原来的 `--idempotency-key`；连接失败提示会显示该键。
 
 人工终审和三平台正式发布仍在 [IVYBM 运营后台](https://ivybm.com/dashboard) 完成。
 

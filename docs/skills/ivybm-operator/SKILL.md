@@ -26,6 +26,14 @@ description: 辅助管理 IVYBM 运营后台（官网英阿双语产品/案例/�
    - 组装的中间数据与 JSON 文件统一存放于操作系统临时目录（macOS/Linux 可用 `$TMPDIR` 或 `/tmp`，Windows 使用 `%TEMP%`），或工作区临时目录，避免污染仓库工作区。
 
 文档中的 `<TEMP_DIR>` 代表当前操作系统的临时目录；它不是固定的 `/tmp` 路径。
+多行命令示例采用 Bash 续行格式；在 Windows PowerShell 中合并为单行执行。向用户提供命令前必须替换所有路径占位符。
+
+### 写操作与失败恢复
+
+- 在每个写操作首次执行前生成一个随机 UUID（可运行 `node -e "console.log(require('crypto').randomUUID())"`），记录该键、请求参数和文件内容，再通过 `--idempotency-key <该键>` 显式传入下文所有上传、创建、更新、删除、送审命令。下文业务示例省略该参数，但实际执行必须补齐。
+- 每个独立动作使用不同键（例如英文创建、阿文更新、送审各一键）。同一动作重试必须使用同一键和完全相同的请求内容；不能重新生成键或修改请求后复用旧键。
+- 超时、断线、响应读取失败或服务端报告结果未知时，停止后续写操作，先在 `/dashboard` 核对记录。只在确认可重试后原样重放；无法判断时报告“结果未知”，不自动循环重试。不要把失败当成尚未创建。
+- 遇到 409 版本冲突，先读取最新记录并核对用户意图，再以新版本和新键发起新的修改，不能盲目覆盖。
 
 ---
 
@@ -55,10 +63,10 @@ node "<SKILL_ROOT>/bin/runner.cjs" auth status
 由于服务端内容系统每次请求处理单一语言（`locale: 'en' | 'ar'`），上架双语内容必须严格遵循以下两步流转：
 
 #### 第一步：创建英文（EN）基准记录
-1. 若包含配图，先上传配图获取 `coverImageId`：
+1. 若包含已获准用于公开官网的配图，使用 `--public` 上传，获取 `result.id` 作为 `coverImageId`。公开上传后图片可被访客读取；非公开客户资料不得使用此参数。社媒待审素材保持默认私有，不加 `--public`。
    ```bash
-   node "<SKILL_ROOT>/bin/runner.cjs" media upload "<TEMP_DIR>/facade.jpg" --alt "Aluminum Honeycomb Panel"
-   # 返回 media result: { id: 101, url: "..." }
+   node "<SKILL_ROOT>/bin/runner.cjs" media upload "<TEMP_DIR>/facade.jpg" --alt "Aluminum Honeycomb Panel" --public
+   # 返回：{ result: { id: 101, url: "..." } }
    ```
 2. 准备英文数据 `<TEMP_DIR>/product-en.json` 并调用创建：
    ```bash
@@ -67,8 +75,8 @@ node "<SKILL_ROOT>/bin/runner.cjs" auth status
      --locale en \
      --file "<TEMP_DIR>/product-en.json"
    ```
-   **服务端返回**：`{ id: 15, slug: "aluminum-honeycomb-panel", updatedAt: "2026-09-16T12:00:00.000Z", ... }`。
-   **注意保存返回的 `id` 与 `updatedAt`**。
+   **服务端返回**：`{ result: { id: 15, slug: "aluminum-honeycomb-panel", updatedAt: "2026-09-16T12:00:00.000Z", ... } }`。
+   **保存 `result.id` 与 `result.updatedAt`**；更新接口也使用 `{ result }` 包装。读取详情 `content get` 返回 `{ options, record }`，其版本位于 `record.updatedAt`。
 
 #### 第二步：组装阿拉伯语（AR）并 PATCH 更新
 1. 根据英文规格提炼地道阿拉伯语工程表述（严禁生硬机翻，符合中东 GCC 幕墙工程规范）：
@@ -85,7 +93,8 @@ node "<SKILL_ROOT>/bin/runner.cjs" auth status
      --locale ar \
      --updatedAt "2026-09-16T12:00:00.000Z" \
      --file "<TEMP_DIR>/product-ar.json"
-   # 或若双语必填字段完全齐备，直接正式发布
+   # 以下是替代操作，不要紧接上面的保存命令使用旧版本执行。
+   # 仅在用户要求发布且双语必填字段齐备时使用；已保存过则读取最新 updatedAt。
    node "<SKILL_ROOT>/bin/runner.cjs" content upsert \
      --type products \
      --id 15 \

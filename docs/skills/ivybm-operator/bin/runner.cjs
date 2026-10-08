@@ -14,6 +14,7 @@ const path = require('path')
 const os = require('os')
 const crypto = require('crypto')
 const readline = require('readline')
+const { Writable } = require('stream')
 
 // This skill is dedicated to the IVYBM production portal. Local or staging
 // environments may still override the endpoint explicitly through
@@ -104,32 +105,30 @@ function assertValidIdempotencyKey(key) {
   }
 }
 
-function promptHidden(query) {
-  return new Promise((resolve) => {
+function promptHidden(query, input = process.stdin, output = process.stdout) {
+  if (!input.isTTY || !output.isTTY) {
+    return Promise.reject(new Error('请在交互式终端输入密码，不支持管道或重定向登录。'))
+  }
+  return new Promise((resolve, reject) => {
+    // Discard readline's echo before it reaches the terminal or its logs.
+    const muted = new Writable({ write(_chunk, _encoding, callback) { callback() } })
     const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
+      input,
+      output: muted,
+      terminal: true,
+      historySize: 0,
     })
-
-    const stdin = process.stdin
-    const onData = (char) => {
-      char = char + ''
-      switch (char) {
-        case '\n':
-        case '\r':
-        case ' ':
-          break
-        default:
-          process.stdout.write('\x1B[2K\x1B[200D' + query + '*'.repeat(rl.line.length))
-          break
-      }
-    }
-
-    stdin.on('data', onData)
-    rl.question(query, (value) => {
-      stdin.removeListener('data', onData)
+    let answered = false
+    rl.once('SIGINT', () => rl.close())
+    rl.once('close', () => {
+      muted.destroy()
+      output.write('\n')
+      if (!answered) reject(new Error('密码输入已取消。'))
+    })
+    output.write(query)
+    rl.question('', (value) => {
+      answered = true
       rl.close()
-      console.log('')
       resolve(value)
     })
   })
@@ -153,6 +152,9 @@ function promptText(query) {
 // ---------------------------------------------------------------------------
 
 async function loginInteractive({ endpoint, authDir: customDir }) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error('请在交互式终端登录，不支持管道或重定向。')
+  }
   const base = normalizeEndpoint(endpoint)
   const authDir = getAuthDir(customDir)
 
@@ -163,7 +165,7 @@ async function loginInteractive({ endpoint, authDir: customDir }) {
   const username = await promptText('用户名: ')
   if (!username) throw new Error('用户名不能为空')
 
-  const password = await promptHidden('密码: ')
+  const password = await promptHidden('密码（输入不回显）: ')
   if (!password) throw new Error('密码不能为空')
 
   return await executeLogin({ endpoint: base, username, password, authDir })
@@ -346,7 +348,16 @@ async function authenticatedFetch(pathOrUrl, options = {}, customDir) {
   }
 
   const signal = options.signal || AbortSignal.timeout(30_000)
-  const res = await fetch(targetUrl, { ...options, headers, signal })
+  let res
+  try {
+    res = await fetch(targetUrl, { ...options, headers, signal })
+  } catch (error) {
+    if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
+      const key = headers.get('Idempotency-Key')
+      throw new Error(`请求结果未知，请先核对后台记录；如需重试，保持相同参数并复用 --idempotency-key ${key}。不要换新键重复创建。`, { cause: error })
+    }
+    throw error
+  }
 
   if (res.status === 401) {
     throw new Error('认证失败 (401 Unauthorized)。登录凭证已失效或权限不足，请在终端运行 `runner.cjs auth login`。')
@@ -775,6 +786,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  promptHidden,
   DEFAULT_ENDPOINT,
   executeLogin,
   setToken,
