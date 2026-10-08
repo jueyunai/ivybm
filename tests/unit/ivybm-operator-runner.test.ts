@@ -22,6 +22,17 @@ describe('IVYBM Operator Runner', () => {
   })
 
   describe('CLI Argument Parsing & Idempotency Key', () => {
+    it('uses the IVYBM production origin and normalizes dashboard URLs', () => {
+      expect(runner.DEFAULT_ENDPOINT).toBe('https://ivybm.com')
+      expect(runner.normalizeEndpoint('https://ivybm.com/dashboard')).toBe('https://ivybm.com')
+      expect(runner.normalizeEndpoint('https://ivybm.com/dashboard/')).toBe('https://ivybm.com')
+      expect(runner.normalizeEndpoint('http://localhost:3000/dashboard')).toBe('http://localhost:3000')
+    })
+
+    it('rejects remote HTTP endpoints so credentials are not sent in plaintext', () => {
+      expect(() => runner.normalizeEndpoint('http://cms.example.com')).toThrow(/必须使用 HTTPS/)
+    })
+
     it('parses commands, positional arguments, and flags accurately', () => {
       const parsed = runner.parseArgs([
         'content',

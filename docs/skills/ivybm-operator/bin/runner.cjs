@@ -15,7 +15,10 @@ const os = require('os')
 const crypto = require('crypto')
 const readline = require('readline')
 
-const DEFAULT_ENDPOINT = process.env.IVYBM_ENDPOINT || 'http://localhost:3000'
+// This skill is dedicated to the IVYBM production portal. Local or staging
+// environments may still override the endpoint explicitly through
+// IVYBM_ENDPOINT or --endpoint during development and testing.
+const DEFAULT_ENDPOINT = 'https://ivybm.com'
 const DEFAULT_AUTH_DIR = process.env.IVYBM_AUTH_DIR || path.join(os.homedir(), '.ivybm')
 
 // ---------------------------------------------------------------------------
@@ -28,6 +31,30 @@ function getAuthDir(customDir) {
 
 function getAuthFilePath(authDir) {
   return path.join(authDir, 'auth.json')
+}
+
+function normalizeEndpoint(rawEndpoint) {
+  let value = String(rawEndpoint || process.env.IVYBM_ENDPOINT || DEFAULT_ENDPOINT).trim()
+  if (!/^https?:\/\//i.test(value)) {
+    const isLoopback = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(value)
+    value = `${isLoopback ? 'http' : 'https'}://${value}`
+  }
+
+  const parsed = new URL(value)
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  const isLoopback =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname.endsWith('.localhost')
+
+  if (!isLoopback && parsed.protocol !== 'https:') {
+    throw new Error(`远程服务地址必须使用 HTTPS 协议: ${parsed.origin}`)
+  }
+
+  // The human-facing dashboard may be copied from the browser address bar.
+  // API requests always start from the site's origin, never from /dashboard.
+  return parsed.origin
 }
 
 async function ensureDirectory(dir) {
@@ -126,7 +153,7 @@ function promptText(query) {
 // ---------------------------------------------------------------------------
 
 async function loginInteractive({ endpoint, authDir: customDir }) {
-  const base = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '')
+  const base = normalizeEndpoint(endpoint)
   const authDir = getAuthDir(customDir)
 
   console.log(`\n=== IVYBM Portal CLI 交互式登录 ===`)
@@ -147,19 +174,12 @@ async function loginInteractive({ endpoint, authDir: customDir }) {
  * NEVER exposed as a CLI flag with password argument.
  */
 async function executeLogin({ endpoint, username, password, authDir: customDir }) {
-  const base = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '')
+  const base = normalizeEndpoint(endpoint)
   const authDir = getAuthDir(customDir)
 
   if (!username || !password) {
     throw new Error('Username and password are required for login')
   }
-
-  try {
-    const urlObj = new URL(base)
-    if (urlObj.hostname !== 'localhost' && urlObj.hostname !== '127.0.0.1' && urlObj.protocol !== 'https:') {
-      console.warn(`[Warning] 正在使用不安全的 HTTP 协议连接远程地址 (${base})，建议在生产环境使用 HTTPS。`)
-    }
-  } catch {}
 
   const signal = AbortSignal.timeout(30_000)
   const res = await fetch(`${base}/api/users/login`, {
@@ -209,7 +229,7 @@ async function executeLogin({ endpoint, username, password, authDir: customDir }
  * Programmatic token setter (used by automated pipelines or test environments).
  */
 async function setToken({ token, endpoint, authDir: customDir }) {
-  const base = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '')
+  const base = normalizeEndpoint(endpoint)
   const authDir = getAuthDir(customDir)
 
   if (!token) throw new Error('Token is required')
@@ -232,7 +252,7 @@ async function getAuthStatus(customDir) {
     return {
       authenticated: true,
       source: 'env:IVYBM_TOKEN',
-      endpoint: process.env.IVYBM_ENDPOINT || DEFAULT_ENDPOINT,
+      endpoint: normalizeEndpoint(),
     }
   }
 
@@ -248,7 +268,7 @@ async function getAuthStatus(customDir) {
   return {
     authenticated: !isExpired,
     user: auth.user,
-    endpoint: auth.endpoint,
+    endpoint: normalizeEndpoint(auth.endpoint),
     expiresAt: auth.expiresAt ? new Date(auth.expiresAt).toISOString() : null,
     expired: isExpired,
     reason: isExpired ? 'Token 已过期，请在终端执行 `runner.cjs auth login` 重新登录。' : undefined,
@@ -268,7 +288,7 @@ async function getValidAuth(customDir) {
   const envToken = process.env.IVYBM_TOKEN
   if (envToken) {
     return {
-      endpoint: process.env.IVYBM_ENDPOINT || DEFAULT_ENDPOINT,
+      endpoint: normalizeEndpoint(),
       token: envToken,
     }
   }
@@ -283,7 +303,7 @@ async function getValidAuth(customDir) {
     throw new Error('会话 Token 已过期。请在终端运行 `runner.cjs auth login` 重新登录。')
   }
 
-  return auth
+  return { ...auth, endpoint: normalizeEndpoint(auth.endpoint) }
 }
 
 /**
@@ -296,9 +316,10 @@ async function authenticatedFetch(pathOrUrl, options = {}, customDir) {
   const auth = await getValidAuth(authDir)
 
   let targetUrl
+  const endpoint = normalizeEndpoint(auth.endpoint)
   if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
     const parsedTarget = new URL(pathOrUrl)
-    const expectedOrigin = new URL(auth.endpoint).origin
+    const expectedOrigin = new URL(endpoint).origin
     if (parsedTarget.origin !== expectedOrigin) {
       throw new Error(
         `Security Error: Cross-origin request to "${parsedTarget.origin}" is blocked. Requests may only target "${expectedOrigin}".`
@@ -309,7 +330,7 @@ async function authenticatedFetch(pathOrUrl, options = {}, customDir) {
     if (!pathOrUrl.startsWith('/api/')) {
       throw new Error(`Path must start with "/api/". Got: "${pathOrUrl}"`)
     }
-    targetUrl = `${auth.endpoint}${pathOrUrl}`
+    targetUrl = `${endpoint}${pathOrUrl}`
   }
 
   const headers = new Headers(options.headers || {})
@@ -754,6 +775,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  DEFAULT_ENDPOINT,
   executeLogin,
   setToken,
   getAuthStatus,
@@ -769,5 +791,6 @@ module.exports = {
   submitSocialReview,
   parseArgs,
   generateIdempotencyKey,
+  normalizeEndpoint,
   authenticatedFetch,
 }

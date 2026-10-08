@@ -96,7 +96,7 @@ skills/ivybm-operator/ 现归档于 docs/skills/ivybm-operator/
 - 凭据保存在 `~/.ivybm/auth.json`（权限 `0600`，仅当前操作系统用户可读写）：
   ```json
   {
-    "endpoint": "https://cms.example.com",
+    "endpoint": "https://ivybm.com",
     "token": "eyJhbGciOiJIUzI1NiIsIn...",
     "user": { "id": 1, "username": "operator1", "role": "operator" },
     "expiresAt": 1726580000,
@@ -118,7 +118,7 @@ skills/ivybm-operator/ 现归档于 docs/skills/ivybm-operator/
                          │
                          ▼
               执行自检状态命令:
-          node ./bin/runner.cjs auth status
+          node "<SKILL_ROOT>/bin/runner.cjs" auth status
                          │
             ┌────────────┴────────────┐
        [未登录 / Token过期]         [已登录有效]
@@ -132,27 +132,27 @@ skills/ivybm-operator/ 现归档于 docs/skills/ivybm-operator/
                          │
                          ▼
         【步骤 1：素材上传】
-        node ./bin/runner.cjs media upload /tmp/panel.jpg
+        node "<SKILL_ROOT>/bin/runner.cjs" media upload "<TEMP_DIR>/panel.jpg"
         --> 获得 mediaId = 101
                          │
                          ▼
         【步骤 2：上架官网英阿双语产品】
         2a. 创建英文版:
-        node ./bin/runner.cjs content upsert --type products \
-             --locale en --file /tmp/product-en.json
+        node "<SKILL_ROOT>/bin/runner.cjs" content upsert --type products \
+             --locale en --file "<TEMP_DIR>/product-en.json"
         --> 获得 id = 15, updatedAt = "2026-09-16T12:00:00Z"
         2b. 补充阿拉伯语版:
-        node ./bin/runner.cjs content upsert --type products \
+        node "<SKILL_ROOT>/bin/runner.cjs" content upsert --type products \
              --id 15 --locale ar --updatedAt "2026-09-16T12:00:00Z" \
-             --file /tmp/product-ar.json
+             --file "<TEMP_DIR>/product-ar.json"
         --> 完成双语闭环
                          │
                          ▼
         【步骤 3：生成社媒推文并提交送审】
-        node ./bin/runner.cjs social draft-create \
-             --file /tmp/social-payload.json
+        node "<SKILL_ROOT>/bin/runner.cjs" social draft-create \
+             --file "<TEMP_DIR>/social-payload.json"
         --> 获得草稿 id = 88, status = "draft"
-        node ./bin/runner.cjs social draft-submit --id 88 --updatedAt <ts>
+        node "<SKILL_ROOT>/bin/runner.cjs" social draft-submit --id 88 --updatedAt <ts>
         --> 状态推进至 review
                          │
                          ▼

@@ -1,6 +1,6 @@
-# IVYBM Operator Skill (RFC Prototype)
+# IVYBM Operator Skill
 
-面向 OpenAI Codex、Claude Code 及私有 AI 智能体的运营辅助技能包（待评审原型）。
+面向 OpenAI Codex、Claude Code 及私有 AI 智能体的 IVYBM 专属运营辅助技能包。
 
 ## 特性
 - **零外部依赖**：基于 Node.js 18+ 原生 API，无需 `npm install`。
@@ -9,17 +9,41 @@
 
 ## 安装与快速开始
 
-1. **安装到技能目录**：
+1. **安装到 Skill 目录**：
+
+   Skill 应安装到 Codex 的用户级 Skill 目录，不依赖当前业务项目目录，也不需要安装到系统 PATH。
+   以下命令假设当前目录的下一层包含 `ivybm-operator/` 发布包；如果从本仓库根目录执行，将源目录替换为 `docs/skills/ivybm-operator`。
+
+   macOS / Linux（`CODEX_HOME` 未设置时使用 `~/.codex`）：
 ```bash
-mkdir -p ~/.codex/skills
-cp -r docs/skills/ivybm-operator ~/.codex/skills/
+SKILL_ROOT="${CODEX_HOME:-$HOME/.codex}/skills/ivybm-operator"
+mkdir -p "$(dirname "$SKILL_ROOT")"
+cp -R ivybm-operator "$SKILL_ROOT"
+```
+
+   Windows PowerShell：
+```powershell
+$codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
+$skillRoot = Join-Path $codexHome "skills\ivybm-operator"
+New-Item -ItemType Directory -Force -Path (Split-Path $skillRoot) | Out-Null
+Copy-Item -Recurse -Force ivybm-operator $skillRoot
 ```
 
 2. **操作员手动登录**：
+
+   IVYBM 专属 Skill 默认连接正式后台 `https://ivybm.com`，不需要客户输入后台地址。
 ```bash
-node docs/skills/ivybm-operator/bin/runner.cjs auth login
+node "$SKILL_ROOT/bin/runner.cjs" auth login
+```
+Windows PowerShell：
+```powershell
+node (Join-Path $skillRoot "bin\runner.cjs") auth login
 ```
 按照交互提示输入用户名与掩码密码，成功后获得会话 Token。
+
+人工终审和三平台正式发布仍在 [IVYBM 运营后台](https://ivybm.com/dashboard) 完成。
+
+在本仓库内进行开发测试时，`SKILL_ROOT` 可以直接设置为 `docs/skills/ivybm-operator`；客户日常使用不需要进入源码仓库。
 
 3. **对话式调度**：
 在与 AI 助手的对话中即可直接通过自然语言指示其辅助工作，例如：
