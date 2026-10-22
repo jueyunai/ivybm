@@ -69,7 +69,7 @@
 
 | 业务动作 | 对应端点与方法 | 关键 Header 与输入 | 说明 / 生产约束 |
 | :--- | :--- | :--- | :--- |
-| **操作员登录** | `POST /api/users/login` | `{ username, password }` | 人工在终端运行，换取 2 小时 JWT Token，本地仅存 Token |
+| **操作员登录** | `POST /api/users/login` | `{ username, password }` | 人工在终端运行，换取会话 JWT，本地仅存 Token；到期以登录响应 `exp` 为准，不由 Skill 固定时长 |
 | **媒体上传** | `POST /api/portal/media` | Header: `Idempotency-Key`<br>Multipart: `file`, `alt`, `source`, `isPublic` | 返回 `{ result: { id: number, previewUrl: string \| null, ... } }` |
 | **获取内容配置** | `GET /api/portal/content/[type]` | 无需幂等头 | 获取该内容类型可用的类别、分类、标签等 `{ options }` |
 | **创建/更新官网内容** | `POST/PATCH /api/portal/content/[type](/[id])` | Header: `Idempotency-Key`<br>Body: `{ locale: 'en'\|'ar', action: 'save-draft'\|'publish', title, slug, updatedAt, ... }` | 支持 products, product-categories, projects, posts, knowledge；每次处理单语言，英阿双语需先 POST 创建 EN 获取 ID，再 PATCH AR 并携带最新 updatedAt；`--publish` 映射为 `action: 'publish'` |
