@@ -1429,17 +1429,19 @@ export function ContentEditorActions({
   onCreate,
   onEdit,
 }: {
-  onCreate: () => void
+  onCreate?: () => void
   onEdit?: () => void
 }) {
   const { locale } = usePortalPreferences()
   const text = copy[locale]
   return (
     <div className="portal-content__editor-actions">
-      <Button onClick={onCreate}>
-        <IconPlus aria-hidden="true" size={16} />
-        {text.add}
-      </Button>
+      {onCreate ? (
+        <Button onClick={onCreate}>
+          <IconPlus aria-hidden="true" size={16} />
+          {text.add}
+        </Button>
+      ) : null}
       {onEdit ? (
         <Button onClick={onEdit} variant="secondary">
           <IconEdit aria-hidden="true" size={16} />

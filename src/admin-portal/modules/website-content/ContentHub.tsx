@@ -746,7 +746,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
               {PORTAL_CONTENT_TYPE_IDS.includes(
                 summary.query.type as (typeof PORTAL_CONTENT_TYPE_IDS)[number],
               ) ? (
-                <ContentEditorActions onCreate={openCreate} onEdit={() => setEditor('edit')} />
+                <ContentEditorActions onEdit={() => setEditor('edit')} />
               ) : null}
 
               {selected.previewHrefs.en || selected.previewHrefs.ar ? (
