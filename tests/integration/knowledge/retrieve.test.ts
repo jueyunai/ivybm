@@ -919,6 +919,81 @@ describe.sequential('knowledge retrieval', () => {
     expect(remaining.docs[0].id).toBe(matching.id)
   })
 
+  it.each(['en', 'ar'] as const)(
+    'indexes every %s chunk with a provider that accepts at most 20 inputs per request',
+    async (locale) => {
+      const paragraphs = Array.from({ length: 41 }, (_, index) =>
+        locale === 'en'
+          ? `Section ${index + 1} ${'x'.repeat(44)}.`
+          : `قسم ${index + 1} ${'م'.repeat(44)}.`,
+      )
+      const document = await payload.create({
+        collection: 'knowledge-documents',
+        data: {
+          content: paragraphs.join('\n\n'),
+          indexStatus: 'pending',
+          locale,
+          reviewStatus: 'reviewed',
+          sourceTitle: `Twenty-input provider ${randomUUID()}`,
+          sourceType: 'product-manual',
+          sourceVersion: '1.0',
+        },
+        overrideAccess: true,
+      })
+      documentIDs.push(document.id)
+      const batches: string[][] = []
+      let embeddedCount = 0
+
+      await expect(
+        indexKnowledgeDocument({
+          chunkOptions: { maxCharacters: 60 },
+          documentId: document.id,
+          gateway: {
+            embed: async ({ input }) => {
+              if (input.length > 20) throw new Error('Provider batch size cannot exceed 20')
+              batches.push(input)
+              return {
+                cost: { currency: 'USD' as const, estimated: 0 },
+                embeddingSpace: 'fixture:twenty-input-provider',
+                embeddings: input.map(() => [++embeddedCount, 1, 0]),
+                model: 'fixture-embedding',
+                provider: 'fixture',
+                usage: { inputTokens: input.length, totalTokens: input.length },
+              }
+            },
+          },
+          payload,
+          pool: getDatabase().pool,
+        }),
+      ).resolves.toMatchObject({ chunkCount: 41, model: 'fixture-embedding' })
+
+      expect(batches.map((batch) => batch.length)).toEqual([20, 20, 1])
+      expect(batches.flat()).toEqual(paragraphs)
+      const stored = await getDatabase().pool.query<{
+        content: string
+        embedding: string
+      }>(
+        `SELECT content, embedding_vector::text AS embedding
+           FROM knowledge_chunks WHERE document_id = $1 ORDER BY "index"`,
+        [document.id],
+      )
+      expect(stored.rows).toEqual(
+        paragraphs.map((content, index) => ({ content, embedding: `[${index + 1},1,0]` })),
+      )
+      const ready = await payload.findByID({
+        collection: 'knowledge-documents',
+        id: document.id,
+        overrideAccess: true,
+      })
+      expect(ready).toMatchObject({
+        embeddingModel: 'fixture-embedding',
+        embeddingSpace: 'fixture:twenty-input-provider',
+        indexStatus: 'ready',
+        locale,
+      })
+    },
+  )
+
   it('batches embedding calls within item and estimated token limits', async () => {
     const suffix = randomUUID()
     const paragraphs = Array.from(

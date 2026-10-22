@@ -67,7 +67,8 @@ export type KnowledgeIndexLimits = {
 
 export const DEFAULT_KNOWLEDGE_INDEX_LIMITS: KnowledgeIndexLimits = {
   documentMaxBytes: 2_000_000,
-  embeddingBatchMaxItems: 64,
+  // Qwen's OpenAI-compatible embedding endpoint accepts at most 20 inputs.
+  embeddingBatchMaxItems: 20,
   embeddingBatchMaxTokens: 8_000,
   existingChunkPageSize: 500,
   maxChunksPerDocument: 5_000,
