@@ -47,7 +47,10 @@ export const PORTAL_ZH = {
   overview: {
     dependencyDescription: '线索自动流转与飞书多维表格的协同状态，可在「线索管理」中查看与维护。',
     dependencyItems: {
-      'feishu-failures': { label: '飞书协同状态', description: '飞书应用授权与多维表格映射状态（可在「线索管理」维护）' },
+      'feishu-failures': {
+        label: '飞书协同状态',
+        description: '飞书应用授权与多维表格映射状态（可在「线索管理」维护）',
+      },
     },
     dependencyStatus: '功能接入中',
     dependencyTitle: '规划与接入',
@@ -95,6 +98,7 @@ export const PORTAL_ZH = {
     arabic: '阿语',
     completenessComplete: '字段完整',
     completenessMissing: '缺少 {count} 项发布字段',
+    createdAt: '创建于',
     collections: {
       pages: '页面',
       products: '产品',
@@ -125,6 +129,7 @@ export const PORTAL_ZH = {
     previewArabic: '阿语预览',
     previewEnglish: '英文预览',
     previousPage: '上一页',
+    publishedAt: '发布于',
     readErrorDescription: '官网内容读取失败，请检查网络连接后重试。',
     readErrorTitle: '官网内容暂时不可用',
     resetFilters: '清除筛选',
@@ -133,6 +138,8 @@ export const PORTAL_ZH = {
     searchSubmit: '筛选',
     selectedItem: '当前选中',
     slug: '链接标识 (Slug)',
+    sortLabel: '排序',
+    sortModes: { created: '最近新增', updated: '最近修改', website: '官网顺序' },
     status: '状态',
     statuses: {
       active: '启用',
@@ -144,6 +151,7 @@ export const PORTAL_ZH = {
     },
     title: '官网内容',
     total: '总计',
+    updatedAt: '更新于',
   },
   mediaWorkspace: {
     allKinds: '全部类型',

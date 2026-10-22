@@ -25,20 +25,24 @@ const summary: ContentSummary = {
   editor: { status: 'available' },
   items: [
     {
+      createdAt: '2026-08-01T09:00:00.000Z',
       id: 1,
       localeCompleteness: { ar: 100, en: 100 },
       localeMissing: { ar: [], en: [] },
       previewHrefs: { ar: '/ar/products?category=first', en: '/en/products?category=first' },
+      publishedAt: '2026-08-02T09:00:00.000Z',
       slug: 'first',
       status: 'always-visible',
       title: '第一项',
       updatedAt: '2026-08-04T10:00:00.000Z',
     },
     {
+      createdAt: '2026-08-01T08:00:00.000Z',
       id: 2,
       localeCompleteness: { ar: 100, en: 100 },
       localeMissing: { ar: [], en: [] },
       previewHrefs: { ar: '/ar/products?category=second', en: '/en/products?category=second' },
+      publishedAt: null,
       slug: 'second',
       status: 'always-visible',
       title: '第二项',
@@ -105,7 +109,9 @@ describe('Portal content hub editing transitions', () => {
         if (init?.method === 'POST') {
           return Response.json({
             result: {
+              createdAt: '2026-08-04T11:00:00.000Z',
               id: 3,
+              publishedAt: null,
               slug: 'new-category',
               status: 'always-visible',
               title: '新分类',
@@ -116,7 +122,9 @@ describe('Portal content hub editing transitions', () => {
         if (init?.method === 'PATCH') {
           return Response.json({
             result: {
+              createdAt: '2026-08-01T09:00:00.000Z',
               id: 1,
+              publishedAt: null,
               slug: 'first',
               status: 'always-visible',
               title: '第一项',
@@ -169,9 +177,7 @@ describe('Portal content hub editing transitions', () => {
 
     selectUiOption(screen.getByRole('combobox', { name: '状态' }), 'draft')
 
-    expect(navigation.push).toHaveBeenCalledWith(
-      '/dashboard/content?type=products&status=draft',
-    )
+    expect(navigation.push).toHaveBeenCalledWith('/dashboard/content?type=products&status=draft')
     expect(screen.getByRole('link', { name: '清除筛选' }).getAttribute('href')).toBe(
       '/dashboard/content?type=products',
     )
@@ -189,6 +195,79 @@ describe('Portal content hub editing transitions', () => {
     )
     expect(screen.getByRole('button', { name: /第二项/ }).getAttribute('aria-pressed')).toBe(
       'false',
+    )
+  })
+
+  it.each([
+    ['created', '创建于', '2026-08-01T09:00:00.000Z'],
+    ['updated', '更新于', '2026-08-04T10:00:00.000Z'],
+    ['website', '发布于', '2026-08-02T09:00:00.000Z'],
+  ] as const)(
+    'shows the %s timestamp on the left and keeps last updated on the right',
+    (sort, label, timestamp) => {
+      render(
+        React.createElement(
+          PortalPreferencesProvider,
+          null,
+          React.createElement(ContentHub, {
+            pageState: 'available',
+            summary: { ...summary, query: { ...summary.query, sort, type: 'products' } },
+          }),
+        ),
+      )
+      const item = screen.getByRole('button', { name: /第一项/ })
+      expect(item.querySelector('time')?.getAttribute('datetime')).toBe(timestamp)
+      expect(item.querySelector('time')?.textContent).toContain(label)
+      const lastUpdated = screen.getByText('最后更新', { selector: 'dt' })
+      expect(lastUpdated.nextElementSibling?.textContent).toBe(
+        new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(
+          new Date(summary.items[0].updatedAt),
+        ),
+      )
+    },
+  )
+
+  it('selects website order with the published filter and resets pagination', () => {
+    render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentHub, {
+          pageState: 'available',
+          summary: {
+            ...summary,
+            query: { page: 3, q: 'panel', status: 'draft', type: 'products' },
+          },
+        }),
+      ),
+    )
+    selectUiOption(screen.getByRole('combobox', { name: '排序' }), 'website')
+    expect(navigation.push).toHaveBeenCalledWith(
+      '/dashboard/content?type=products&status=published&q=panel&sort=website',
+    )
+  })
+
+  it('preserves sort through the search form, pagination and content-type links', () => {
+    const { container } = render(
+      React.createElement(
+        PortalPreferencesProvider,
+        null,
+        React.createElement(ContentHub, {
+          pageState: 'available',
+          summary: {
+            ...summary,
+            pagination: { page: 2, totalDocs: 30, totalPages: 3 },
+            query: { page: 2, q: 'panel', sort: 'updated', status: 'all', type: 'products' },
+          },
+        }),
+      ),
+    )
+    expect(new FormData(container.querySelector('form')!).get('sort')).toBe('updated')
+    expect(screen.getByRole('link', { name: '下一页' }).getAttribute('href')).toBe(
+      '/dashboard/content?type=products&q=panel&page=3&sort=updated',
+    )
+    expect(screen.getByRole('link', { name: /^项目案例/ }).getAttribute('href')).toBe(
+      '/dashboard/content?type=projects&sort=updated',
     )
   })
 

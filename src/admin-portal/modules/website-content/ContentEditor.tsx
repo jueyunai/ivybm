@@ -67,12 +67,6 @@ const toDateTimeLocalValue = (value: unknown): string => {
   return local.toISOString().slice(0, 16)
 }
 
-const toISOStringOrEmpty = (value: string): string => {
-  if (!value) return ''
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '' : date.toISOString()
-}
-
 const copy = {
   en: {
     activate: 'Activate',
@@ -113,7 +107,7 @@ const copy = {
       qualityVerification: 'Quality Verification & Delivery',
       postCategory: 'Post category',
       productCategory: 'Product category',
-      publishedAt: 'Published at',
+      publishedAt: 'First published',
       resourceMatrix: 'Resource Matrix (Title | Category | Description)',
       roleCards: 'Professional Roles (RoleKey | Title | Description | Deliverables)',
       seoDescription: 'SEO description',
@@ -195,7 +189,7 @@ const copy = {
       qualityVerification: '质量验证与交付',
       postCategory: '文章分类',
       productCategory: '产品分类',
-      publishedAt: '发布时间',
+      publishedAt: '首次发布时间',
       resourceMatrix: '资源矩阵 (标题 | 分类 | 说明)',
       roleCards: '角色专区 (角色key | 标题 | 说明 | 交付产物)',
       seoDescription: '搜索摘要',
@@ -705,7 +699,7 @@ export const ContentEditor = forwardRef<
     ...form,
     action,
     engineeringWorkflow: parseWorkflow(form.engineeringWorkflowText),
-    publishedAt: toISOStringOrEmpty(form.publishedAt),
+    publishedAt: undefined,
     specifications: parseSpecifications(form.specificationsText),
   })
 
@@ -720,12 +714,11 @@ export const ContentEditor = forwardRef<
         >(':invalid')
       : null
     if (invalid) {
-      const focusTarget =
-        invalid.matches('[data-ui-select-control]')
-          ? (invalid
-              .closest('.portal-ui-select')
-              ?.querySelector<HTMLButtonElement>('[role="combobox"]') ?? invalid)
-          : invalid
+      const focusTarget = invalid.matches('[data-ui-select-control]')
+        ? (invalid
+            .closest('.portal-ui-select')
+            ?.querySelector<HTMLButtonElement>('[role="combobox"]') ?? invalid)
+        : invalid
       const validationMessage =
         invalid instanceof HTMLInputElement && invalid.validity.patternMismatch
           ? errorMessages[portalLocale]['content-invalid-slug']
@@ -1300,13 +1293,14 @@ export const ContentEditor = forwardRef<
             />
           </Field>
         ) : null}
-        {type === 'posts' || type === 'knowledge' ? (
+        {['products', 'projects', 'posts', 'knowledge'].includes(type) ? (
           <Field label={text.fields.publishedAt}>
-            <input
-              onChange={(event) => update('publishedAt', event.target.value)}
-              type="datetime-local"
-              value={form.publishedAt}
-            />
+            <input readOnly type="datetime-local" value={form.publishedAt} />
+            <small>
+              {portalLocale === 'zh'
+                ? '首次发布后自动记录，后续编辑保持不变。'
+                : 'Recorded on first publication and preserved on later edits.'}
+            </small>
           </Field>
         ) : null}
 

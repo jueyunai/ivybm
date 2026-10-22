@@ -28,10 +28,12 @@ const renderEditor = (type: 'downloads' | 'pages' | 'products' = 'pages') =>
   )
 
 const unpublishedProject: ContentSummaryItem = {
+  createdAt: '2026-08-01T09:00:00.000Z',
   id: 41,
   localeCompleteness: { ar: 100, en: 100 },
   localeMissing: { ar: [], en: [] },
   previewHrefs: { ar: null, en: null },
+  publishedAt: '2026-08-02T09:00:00.000Z',
   slug: 'shunde-gymnasium',
   status: 'unpublished',
   title: 'Shunde Gymnasium',

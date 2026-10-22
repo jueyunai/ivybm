@@ -38,13 +38,14 @@ import type {
   ContentItemStatus,
   ContentLocale,
   ContentQuery,
+  ContentSortMode,
   ContentStatusFilter,
   ContentSummary,
   ContentSummaryItem,
   ContentTypeId,
   WebsiteContentPageState,
 } from './getContentSummary'
-import { PORTAL_CONTENT_TYPE_IDS } from './getContentSummary'
+import { PORTAL_CONTENT_TYPE_IDS, supportsWebsiteSort } from './getContentSummary'
 
 export interface ContentHubProps {
   pageState: WebsiteContentPageState | 'read-failed'
@@ -93,6 +94,7 @@ const buildContentHref = (query: Partial<ContentQuery> & Pick<ContentQuery, 'typ
   if (query.status && query.status !== 'all') params.set('status', query.status)
   if (query.q) params.set('q', query.q)
   if (query.page && query.page > 1) params.set('page', String(query.page))
+  if (query.sort && query.sort !== 'created') params.set('sort', query.sort)
   return `/dashboard/content?${params.toString()}`
 }
 
@@ -229,14 +231,24 @@ function ItemButton({
   item,
   locale,
   onSelect,
+  sort,
 }: {
   active: boolean
   disabled?: boolean
   item: ContentSummaryItem
   locale: 'en' | 'zh'
   onSelect: () => void
+  sort: ContentSortMode
 }) {
   const messages = getPortalMessages(locale).websiteContent
+  const timestamp =
+    sort === 'updated' ? item.updatedAt : sort === 'website' ? item.publishedAt : item.createdAt
+  const timeLabel =
+    sort === 'updated'
+      ? messages.updatedAt
+      : sort === 'website'
+        ? messages.publishedAt
+        : messages.createdAt
 
   return (
     <button
@@ -255,7 +267,9 @@ function ItemButton({
       <span className="portal-content__item-meta">
         <span>EN {item.localeCompleteness.en}%</span>
         <span>AR {item.localeCompleteness.ar}%</span>
-        <time dateTime={item.updatedAt}>{formatTimestamp(item.updatedAt, locale)}</time>
+        <time dateTime={timestamp ?? undefined}>
+          {timeLabel} {formatTimestamp(timestamp, locale)}
+        </time>
       </span>
     </button>
   )
@@ -429,6 +443,10 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
   }
 
   const statusOptions = statusOptionsFor(summary.query.type)
+  const sort = summary.query.sort ?? 'created'
+  const sortOptions: ContentSortMode[] = supportsWebsiteSort(summary.query.type)
+    ? ['created', 'updated', 'website']
+    : ['created', 'updated']
   const statusLabel: Record<ContentStatusFilter, string> = {
     active: messages.statuses.active,
     all: messages.allStatuses,
@@ -466,12 +484,23 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
             <Link
               aria-current={collection.id === summary.query.type ? 'page' : undefined}
               className={collection.id === summary.query.type ? 'is-active' : undefined}
-              href={buildContentHref({ type: collection.id })}
+              href={buildContentHref({
+                sort: sort === 'website' && !supportsWebsiteSort(collection.id) ? 'created' : sort,
+                status:
+                  sort === 'website' && supportsWebsiteSort(collection.id) ? 'published' : 'all',
+                type: collection.id,
+              })}
               key={collection.id}
             >
               <span>{messages.collections[collection.id]}</span>
               <strong>{collection.total}</strong>
-              <small>{formatTimestamp(collection.updatedAt, locale)}</small>
+              <small>
+                {messages.lastUpdated}
+                <br />
+                <time dateTime={collection.updatedAt ?? undefined}>
+                  {formatTimestamp(collection.updatedAt, locale)}
+                </time>
+              </small>
             </Link>
           ))}
       </nav>
@@ -480,7 +509,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
         <form
           action="/dashboard/content"
           className="portal-content__filter-form"
-          key={`${summary.query.type}:${summary.query.status}:${summary.query.q}`}
+          key={`${summary.query.type}:${summary.query.status}:${summary.query.q}:${sort}`}
           method="get"
         >
           <input name="type" type="hidden" value={summary.query.type} />
@@ -507,6 +536,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
                   buildContentHref({
                     ...summary.query,
                     page: 1,
+                    sort: sort === 'website' && value !== 'published' ? 'created' : sort,
                     status: value as ContentStatusFilter,
                   }),
                 )
@@ -516,6 +546,27 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
                 value: status,
               }))}
               value={summary.query.status}
+            />
+          </div>
+          <div className="portal-content__filter-item portal-content__sort-filter">
+            <span className="portal-content__filter-label">{messages.sortLabel}</span>
+            <UiSelect
+              ariaLabel={messages.sortLabel}
+              name="sort"
+              onChange={(value) =>
+                requestTransition(messages.sortModes[value as ContentSortMode], () =>
+                  router.push(
+                    buildContentHref({
+                      ...summary.query,
+                      page: 1,
+                      sort: value as ContentSortMode,
+                      status: value === 'website' ? 'published' : summary.query.status,
+                    }),
+                  ),
+                )
+              }
+              options={sortOptions.map((value) => ({ label: messages.sortModes[value], value }))}
+              value={sort}
             />
           </div>
           <div className="portal-content__filter-actions">
@@ -568,6 +619,7 @@ export function ContentHub({ pageState, summary }: ContentHubProps) {
                     item={item}
                     locale={locale}
                     onSelect={() => requestSelection(item)}
+                    sort={sort}
                   />
                 </li>
               ))}

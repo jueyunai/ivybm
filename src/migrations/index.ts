@@ -37,6 +37,7 @@ import * as migration_20260910_113313_users_username_permissions from './2026091
 import * as migration_20260910_235252_task17_ai_model_profile_defaults from './20260910_235252_task17_ai_model_profile_defaults'
 import * as migration_20260911_000000_multi_image_publish_routes from './20260911_000000_multi_image_publish_routes'
 import * as migration_20260911_024207_task17_ai_model_profile_defaults from './20260911_024207_task17_ai_model_profile_defaults'
+import * as migration_20261022_105725_content_first_publication from './20261022_105725_content_first_publication'
 
 export const migrations = [
   {
@@ -233,5 +234,10 @@ export const migrations = [
     up: migration_20260911_024207_task17_ai_model_profile_defaults.up,
     down: migration_20260911_024207_task17_ai_model_profile_defaults.down,
     name: '20260911_024207_task17_ai_model_profile_defaults',
+  },
+  {
+    up: migration_20261022_105725_content_first_publication.up,
+    down: migration_20261022_105725_content_first_publication.down,
+    name: '20261022_105725_content_first_publication',
   },
 ]
