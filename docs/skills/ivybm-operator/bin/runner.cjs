@@ -89,6 +89,46 @@ function formatApiError(res, text, actionDesc) {
   return new Error(`${actionDesc} failed (${res.status}): ${detail}`)
 }
 
+function unknownWriteError(key, cause) {
+  const detail = cause instanceof Error ? `${cause.message} ` : ''
+  return new Error(`${detail}请求结果未知，请先核对后台记录；如需重试，保持相同参数并复用 --idempotency-key ${key}。不要换新键重复创建。`, { cause })
+}
+
+// A write is not confirmed until its response body has been read successfully.
+// Keep the key in scope even when the server commits before the connection drops.
+async function requestJSON(url, options, actionDesc, customDir) {
+  const isWrite = ['POST', 'PATCH', 'PUT', 'DELETE'].includes((options.method || 'GET').toUpperCase())
+  const key = isWrite
+    ? new Headers(options.headers || {}).get('Idempotency-Key') || options.idempotencyKey || generateIdempotencyKey('req')
+    : undefined
+  const res = await authenticatedFetch(url, { ...options, idempotencyKey: key }, customDir)
+  let text
+  try {
+    text = await res.text()
+  } catch (error) {
+    if (isWrite) throw unknownWriteError(key, error)
+    throw error
+  }
+  if (isWrite && (res.status >= 500 || res.status === 408)) {
+    throw unknownWriteError(key, formatApiError(res, text, actionDesc))
+  }
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch (error) {
+    if (isWrite && res.ok) throw unknownWriteError(key, error)
+    throw formatApiError(res, text, actionDesc)
+  }
+  if (!res.ok) {
+    const error = formatApiError(res, text, actionDesc)
+    if (isWrite && ['portal-command-result-unknown', 'portal-command-processing'].includes(data?.error?.code)) {
+      throw unknownWriteError(key, error)
+    }
+    throw error
+  }
+  return data
+}
+
 /**
  * Generates an idempotency key matching /^[A-Za-z0-9][A-Za-z0-9:._-]{7,199}$/
  */
@@ -189,6 +229,7 @@ async function executeLogin({ endpoint, username, password, authDir: customDir }
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: username.trim(), password }),
     signal,
+    redirect: 'error',
   })
 
   if (!res.ok) {
@@ -345,16 +386,17 @@ async function authenticatedFetch(pathOrUrl, options = {}, customDir) {
       assertValidIdempotencyKey(explicitKey)
       headers.set('Idempotency-Key', explicitKey)
     }
+    assertValidIdempotencyKey(headers.get('Idempotency-Key'))
   }
 
   const signal = options.signal || AbortSignal.timeout(30_000)
   let res
   try {
-    res = await fetch(targetUrl, { ...options, headers, signal })
+    res = await fetch(targetUrl, { ...options, headers, signal, redirect: 'error' })
   } catch (error) {
     if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
       const key = headers.get('Idempotency-Key')
-      throw new Error(`请求结果未知，请先核对后台记录；如需重试，保持相同参数并复用 --idempotency-key ${key}。不要换新键重复创建。`, { cause: error })
+      throw unknownWriteError(key, error)
     }
     throw error
   }
@@ -409,18 +451,11 @@ async function uploadMedia({ filePath, alt, source, isPublic = false, idempotenc
   formData.append('source', source || 'codex-agent')
   formData.append('isPublic', isPublic ? 'true' : 'false')
 
-  const res = await authenticatedFetch('/api/portal/media', {
+  return requestJSON('/api/portal/media', {
     method: 'POST',
     body: formData,
     idempotencyKey,
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, 'Media upload')
-  }
-
-  return await res.json()
+  }, 'Media upload', customDir)
 }
 
 // ---------------------------------------------------------------------------
@@ -428,16 +463,9 @@ async function uploadMedia({ filePath, alt, source, isPublic = false, idempotenc
 // ---------------------------------------------------------------------------
 
 async function getContentOptions({ type, customDir }) {
-  const res = await authenticatedFetch(`/api/portal/content/${type}`, {
+  return requestJSON(`/api/portal/content/${type}`, {
     method: 'GET',
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, `Get options for ${type}`)
-  }
-
-  return await res.json()
+  }, `Get options for ${type}`, customDir)
 }
 
 async function getContent({ type, id, locale = 'en', customDir }) {
@@ -445,16 +473,9 @@ async function getContent({ type, id, locale = 'en', customDir }) {
   if (locale) params.set('locale', locale)
 
   const query = `?${params.toString()}`
-  const res = await authenticatedFetch(`/api/portal/content/${type}/${id}${query}`, {
+  return requestJSON(`/api/portal/content/${type}/${id}${query}`, {
     method: 'GET',
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, `Get ${type} #${id}`)
-  }
-
-  return await res.json()
+  }, `Get ${type} #${id}`, customDir)
 }
 
 async function upsertContent({ type, id, payload, idempotencyKey, customDir }) {
@@ -472,19 +493,12 @@ async function upsertContent({ type, id, payload, idempotencyKey, customDir }) {
     throw new Error(`--locale must be explicitly specified as "en" or "ar"`)
   }
 
-  const res = await authenticatedFetch(url, {
+  return requestJSON(url, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(bodyData),
     idempotencyKey,
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, `${isUpdate ? 'Update' : 'Create'} ${type}`)
-  }
-
-  return await res.json()
+  }, `${isUpdate ? 'Update' : 'Create'} ${type}`, customDir)
 }
 
 async function deleteContent({ type, id, locale, updatedAt, idempotencyKey, customDir }) {
@@ -495,19 +509,12 @@ async function deleteContent({ type, id, locale, updatedAt, idempotencyKey, cust
     throw new Error(`--locale (en or ar) is required to delete content #${id}`)
   }
 
-  const res = await authenticatedFetch(`/api/portal/content/${type}/${id}`, {
+  return requestJSON(`/api/portal/content/${type}/${id}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ locale, updatedAt }),
     idempotencyKey,
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, `Delete ${type} #${id}`)
-  }
-
-  return await res.json()
+  }, `Delete ${type} #${id}`, customDir)
 }
 
 // ---------------------------------------------------------------------------
@@ -530,19 +537,12 @@ async function createSocialDraft({ draft, idempotencyKey, customDir }) {
     sourceReferences: draft.sourceReferences || [],
   }
 
-  const res = await authenticatedFetch('/api/portal/content-studio', {
+  return requestJSON('/api/portal/content-studio', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     idempotencyKey: key,
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, 'Create social draft')
-  }
-
-  return await res.json()
+  }, 'Create social draft', customDir)
 }
 
 async function updateSocialDraft({ id, draft, updatedAt, idempotencyKey, customDir }) {
@@ -554,19 +554,12 @@ async function updateSocialDraft({ id, draft, updatedAt, idempotencyKey, customD
     throw new Error(`--updatedAt is required when updating social draft #${id}`)
   }
 
-  const res = await authenticatedFetch(`/api/portal/content-studio/${id}`, {
+  return requestJSON(`/api/portal/content-studio/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(bodyData),
     idempotencyKey,
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, `Update social draft #${id}`)
-  }
-
-  return await res.json()
+  }, `Update social draft #${id}`, customDir)
 }
 
 async function submitSocialReview({ id, updatedAt, idempotencyKey, customDir }) {
@@ -574,19 +567,12 @@ async function submitSocialReview({ id, updatedAt, idempotencyKey, customDir }) 
     throw new Error(`--updatedAt is required when submitting social draft #${id} for review`)
   }
 
-  const res = await authenticatedFetch(`/api/portal/content-studio/${id}`, {
+  return requestJSON(`/api/portal/content-studio/${id}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'submit-review', updatedAt }),
     idempotencyKey,
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, `Submit social draft #${id} for review`)
-  }
-
-  return await res.json()
+  }, `Submit social draft #${id} for review`, customDir)
 }
 
 // ---------------------------------------------------------------------------
@@ -604,11 +590,20 @@ function parseArgs(argv) {
       if (equalIdx !== -1) {
         const key = arg.slice(2, equalIdx)
         const val = arg.slice(equalIdx + 1)
-        flags[key] = val
+        if (['public', 'publish'].includes(key)) {
+          if (val !== 'true' && val !== 'false') {
+            throw new Error(`--${key} must be true or false; use --${key}=true or --${key}=false`)
+          }
+          flags[key] = val === 'true'
+        } else {
+          flags[key] = val
+        }
       } else {
         const key = arg.slice(2)
         const next = argv[i + 1]
-        if (next && !next.startsWith('-')) {
+        if (['public', 'publish'].includes(key)) {
+          flags[key] = true
+        } else if (next && !next.startsWith('-')) {
           flags[key] = next
           i++
         } else {
@@ -647,13 +642,13 @@ async function main() {
   const args = process.argv.slice(2)
   if (args.length === 0) {
     console.log(JSON.stringify({
-      version: '1.0.0',
+      version: '1.0.1-rc.2',
       description: 'IVYBM Operator Runner CLI',
       commands: [
         'auth status',
         'auth login [--endpoint <url>]',
         'auth logout',
-        'media upload <file> [--alt <alt>] [--public] [--idempotency-key <key>]',
+        'media upload <file> [--alt <alt>] [--source <source>] [--public] [--idempotency-key <key>]',
         'content options --type <products|product-categories|projects|posts|knowledge>',
         'content get --type <type> --id <id> [--locale en|ar]',
         'content upsert --type <type> [--id <id>] --file <file.json> --locale <en|ar> [--updatedAt <ts>] [--publish] [--idempotency-key <key>]',
@@ -666,12 +661,11 @@ async function main() {
     return
   }
 
-  const { flags, positionals } = parseArgs(args)
-  const [scope, action] = positionals
-  const customDir = flags['auth-dir']
-  const idempotencyKey = flags['idempotency-key']
-
   try {
+    const { flags, positionals } = parseArgs(args)
+    const [scope, action] = positionals
+    const customDir = flags['auth-dir']
+    const idempotencyKey = flags['idempotency-key']
     let result
 
     // 1. Auth commands (NO --password or --token in argv for security)
