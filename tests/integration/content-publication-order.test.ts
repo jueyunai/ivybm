@@ -75,9 +75,9 @@ describe.sequential('content publication lifecycle and ordering', () => {
     const url = new URL(process.env.DATABASE_URL ?? '')
     if (
       !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
-      !url.pathname.endsWith('_test')
+      !/(?:_test|_ci)$/.test(url.pathname)
     ) {
-      throw new Error('A local isolated _test database is required')
+      throw new Error('A local isolated _test or _ci database is required')
     }
     payload = await getPayload({ config, disableOnInit: true })
     admin = await payload.create({
