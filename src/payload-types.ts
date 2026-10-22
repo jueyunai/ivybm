@@ -871,6 +871,10 @@ export interface Product {
    */
   slug: string;
   hasBeenPublished?: boolean | null;
+  /**
+   * Recorded on first publication; later edits and republication preserve this date.
+   */
+  publishedAt?: string | null;
   shortDescription?: string | null;
   description?: {
     root: {
@@ -953,6 +957,10 @@ export interface Project {
    */
   slug: string;
   hasBeenPublished?: boolean | null;
+  /**
+   * Recorded on first publication; later edits and republication preserve this date.
+   */
+  publishedAt?: string | null;
   summary?: string | null;
   description?: {
     root: {
@@ -1054,6 +1062,9 @@ export interface Post {
     | 'procurement'
     | 'quality-logistics';
   featuredImage?: (number | null) | Media;
+  /**
+   * Recorded on first publication; later edits and republication preserve this date.
+   */
   publishedAt?: string | null;
   seo?: {
     title?: string | null;
@@ -2211,6 +2222,7 @@ export interface ProductsSelect<T extends boolean = true> {
   generateSlug?: T;
   slug?: T;
   hasBeenPublished?: T;
+  publishedAt?: T;
   shortDescription?: T;
   description?: T;
   category?: T;
@@ -2256,6 +2268,7 @@ export interface ProjectsSelect<T extends boolean = true> {
   generateSlug?: T;
   slug?: T;
   hasBeenPublished?: T;
+  publishedAt?: T;
   summary?: T;
   description?: T;
   location?: T;

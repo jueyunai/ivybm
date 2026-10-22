@@ -52,7 +52,8 @@ export const PORTAL_EN = {
     dependencyItems: {
       'feishu-failures': {
         label: 'Feishu integration',
-        description: 'Feishu application authorization and bitable mapping status (managed in Leads Hub)',
+        description:
+          'Feishu application authorization and bitable mapping status (managed in Leads Hub)',
       },
     },
     dependencyStatus: 'DEPENDENCY-GATED',
@@ -122,6 +123,7 @@ export const PORTAL_EN = {
     arabic: 'Arabic',
     completenessComplete: 'Required fields complete',
     completenessMissing: '{count} required fields missing',
+    createdAt: 'Created',
     collections: {
       pages: 'Pages',
       products: 'Products',
@@ -156,6 +158,7 @@ export const PORTAL_EN = {
     previewArabic: 'Arabic preview',
     previewEnglish: 'English preview',
     previousPage: 'Previous page',
+    publishedAt: 'Published',
     readErrorDescription:
       'The CMS summary failed to load and was not disguised as an empty list. Please retry shortly.',
     readErrorTitle: 'Website content is unavailable',
@@ -165,6 +168,8 @@ export const PORTAL_EN = {
     searchSubmit: 'Filter',
     selectedItem: 'Selected',
     slug: 'Stable slug',
+    sortLabel: 'Sort by',
+    sortModes: { created: 'Recently added', updated: 'Recently updated', website: 'Website order' },
     status: 'Status',
     statuses: {
       active: 'Active',
@@ -176,6 +181,7 @@ export const PORTAL_EN = {
     },
     title: 'Website content',
     total: 'Total',
+    updatedAt: 'Updated',
   },
   mediaWorkspace: {
     allKinds: 'All types',
@@ -362,15 +368,19 @@ export const PORTAL_EN = {
       chooseFile: 'Choose DOCX or PDF',
       english: 'English',
       errorSummaries: {
-        'empty-document': 'The document contains no readable text. Make sure it is not a pure image or scan and retry.',
+        'empty-document':
+          'The document contains no readable text. Make sure it is not a pure image or scan and retry.',
         'empty-source-text': 'No source text is available for translation.',
         'external-docx-relation': 'The document contains an unsupported external link.',
         'file-signature-mismatch': 'The file format does not match its declared type.',
-        'file-too-large': 'The file exceeds the 30MB size limit. Compress or split it and upload again.',
+        'file-too-large':
+          'The file exceeds the 30MB size limit. Compress or split it and upload again.',
         'image-too-large': 'An embedded image exceeds the allowed size.',
         'image-signature-mismatch': 'An embedded image is invalid or damaged.',
-        'image-total-too-large': 'The embedded images exceed the 40MB total limit. Compress the images and retry.',
-        'ingestion-failed': 'The document could not be processed. Retry later or contact an administrator.',
+        'image-total-too-large':
+          'The embedded images exceed the 40MB total limit. Compress the images and retry.',
+        'ingestion-failed':
+          'The document could not be processed. Retry later or contact an administrator.',
         'invalid-docx': 'The DOCX file is invalid or damaged.',
         'invalid-docx-archive': 'The DOCX archive structure is invalid.',
         'invalid-docx-image': 'A referenced DOCX image is missing.',
@@ -383,14 +393,16 @@ export const PORTAL_EN = {
         'pdf-page-limit': 'The PDF contains too many pages.',
         'pdf-password-required': 'The PDF is password protected and cannot be read.',
         'text-too-large': 'The extracted text exceeds the allowed size.',
-        'too-many-images': 'The document contains more than 100 embedded images. Reduce the images and retry.',
+        'too-many-images':
+          'The document contains more than 100 embedded images. Reduce the images and retry.',
         'translation-model-unavailable': 'The translation model is unavailable.',
         'translation-prompt-ambiguous': 'The translation prompt configuration is invalid.',
         'translation-prompt-unavailable': 'No active translation prompt is configured.',
         'translation-fidelity': 'The translation failed a number or image placeholder check.',
         'translation-empty': 'The translation service returned no content.',
         'translation-too-large': 'The document is too large to translate safely.',
-        'unsupported-file-type': 'Only DOCX and PDF files are allowed. Convert the file and upload again.',
+        'unsupported-file-type':
+          'Only DOCX and PDF files are allowed. Convert the file and upload again.',
         'unsupported-image': 'The document contains an unsupported image format.',
         unknown: 'The document could not be processed. Check the file format and retry.',
       },

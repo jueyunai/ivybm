@@ -31,6 +31,7 @@ const showcaseAssetsDir = path.resolve(__dirname, './assets/showcase')
 
 const seedContext = {
   disableRevalidate: true,
+  importPublicationDate: true,
   skipAudit: true,
 }
 

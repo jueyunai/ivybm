@@ -15,7 +15,32 @@ vi.mock('payload', async (importOriginal) => {
   }
 })
 
-import { getPostBySlug, getPosts } from '@/lib/website-data'
+import { getPostBySlug, getPosts, getProducts, getProjects } from '@/lib/website-data'
+
+describe('public content ordering', () => {
+  it.each(['en', 'ar'] as const)(
+    'uses first publication with a stable tie-break for every %s list',
+    async (locale) => {
+      for (const [load, collection] of [
+        [getProducts, 'products'],
+        [getProjects, 'projects'],
+        [getPosts, 'posts'],
+      ] as const) {
+        mockFind.mockResolvedValueOnce({ docs: [] })
+        await load(locale)
+        expect(mockFind).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            collection,
+            draft: false,
+            locale,
+            overrideAccess: false,
+            sort: ['-publishedAt', '-id'],
+          }),
+        )
+      }
+    },
+  )
+})
 
 describe('website-data Posts queries with contentType filtering', () => {
   it('filters posts by contentType and applies english fallback by default', async () => {

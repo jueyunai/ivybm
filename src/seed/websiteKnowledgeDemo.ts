@@ -1,7 +1,9 @@
 import type { Payload } from 'payload'
 
-const DEMO_NOTICE_EN = 'DEMO ONLY — this is synthetic local preview data for website knowledge, not a customer-approved fact.'
-const DEMO_NOTICE_AR = 'بيانات تجريبية فقط — هذا محتوى معاينة محلي لصفحة المعرفة، وليس حقيقة معتمدة من العميل.'
+const DEMO_NOTICE_EN =
+  'DEMO ONLY — this is synthetic local preview data for website knowledge, not a customer-approved fact.'
+const DEMO_NOTICE_AR =
+  'بيانات تجريبية فقط — هذا محتوى معاينة محلي لصفحة المعرفة، وليس حقيقة معتمدة من العميل.'
 
 export const buildPlainRichText = (text: string, locale: 'ar' | 'en') => ({
   root: {
@@ -73,7 +75,8 @@ export const WEBSITE_KNOWLEDGE_DEMO_POSTS: readonly WebsiteKnowledgeDemoPost[] =
       content: `${DEMO_NOTICE_EN}\n\nSelecting facade cladding requires balanced consideration between solid aluminum panels and composite panels.\n\nSolid architectural aluminum panels (typically 2.0mm to 3.0mm thickness) offer non-combustible fire safety, superior roll-bending flexibility for double-curved surfaces, and recyclable lifecycle value.\n\nAlways verify final panelization, alloy specifications, and wind-load calculations against project shop drawings.`,
       excerpt: `${DEMO_NOTICE_EN} Comprehensive engineering comparison between solid aluminum sheets and composite panels for high-rise facade envelopes.`,
       seo: {
-        description: 'Engineering comparison between solid aluminum panels and composite panels for curtain walls.',
+        description:
+          'Engineering comparison between solid aluminum panels and composite panels for curtain walls.',
         title: '[DEMO] Aluminum vs Composite Panels Selection Guide',
       },
       title: '[DEMO] Architectural Aluminum vs Composite Panels: Engineering Selection Guide',
@@ -97,7 +100,8 @@ export const WEBSITE_KNOWLEDGE_DEMO_POSTS: readonly WebsiteKnowledgeDemoPost[] =
       content: `${DEMO_NOTICE_EN}\n\nFabricating double-curved aluminum panels requires rigorous 3D parametric modelling and tight CNC roll-bending controls.\n\nTypical fabrication tolerances range within ±0.5mm to ±1.0mm depending on radius complexity and interface connections.\n\nFactory 1:1 trial assembly and 3D laser scan verification are recommended before export dispatch to guarantee on-site joint alignment.`,
       excerpt: `${DEMO_NOTICE_EN} Technical reference for 3D parametric panelization, roll-bending limits, and joint tolerance verification.`,
       seo: {
-        description: 'Technical guide on double-curved aluminum panel tolerances and parametric detailing.',
+        description:
+          'Technical guide on double-curved aluminum panel tolerances and parametric detailing.',
         title: '[DEMO] Double-Curved Aluminum Panel Tolerances',
       },
       title: '[DEMO] Double-Curved Aluminum Panel Tolerances and Parametric Detailing',
@@ -121,10 +125,12 @@ export const WEBSITE_KNOWLEDGE_DEMO_POSTS: readonly WebsiteKnowledgeDemoPost[] =
       content: `${DEMO_NOTICE_EN}\n\nInternational curtain wall procurement requires systematic quality inspections and reinforced export crating.\n\nQuality control checkpoints include PVDF coating dry film thickness (DFT), color uniformity (Delta E < 1.0), and salt-spray resistance documentation.\n\nCustom reinforced wooden crates with protective EVA foam interleaving prevent surface abrasion during long-haul ocean freight.`,
       excerpt: `${DEMO_NOTICE_EN} Step-by-step quality control, 1:1 mock-up verification, and containerized export packing standards for global curtain wall projects.`,
       seo: {
-        description: 'Quality assurance checklist and export packing standards for international facade procurement.',
+        description:
+          'Quality assurance checklist and export packing standards for international facade procurement.',
         title: '[DEMO] Facade Quality Inspection & Export Packing',
       },
-      title: '[DEMO] International Facade Procurement: Quality Inspection and Export Packing Checklist',
+      title:
+        '[DEMO] International Facade Procurement: Quality Inspection and Export Packing Checklist',
     },
     publishedAt: '2026-08-31T10:00:00.000Z',
     slug: 'demo-facade-procurement-qa-checklist',
@@ -133,6 +139,7 @@ export const WEBSITE_KNOWLEDGE_DEMO_POSTS: readonly WebsiteKnowledgeDemoPost[] =
 
 const seedContext = {
   disableRevalidate: true,
+  importPublicationDate: true,
   skipAudit: true,
 }
 

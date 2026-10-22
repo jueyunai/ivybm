@@ -14,8 +14,12 @@ const path = require('path')
 const os = require('os')
 const crypto = require('crypto')
 const readline = require('readline')
+const { Writable } = require('stream')
 
-const DEFAULT_ENDPOINT = process.env.IVYBM_ENDPOINT || 'http://localhost:3000'
+// This skill is dedicated to the IVYBM production portal. Local or staging
+// environments may still override the endpoint explicitly through
+// IVYBM_ENDPOINT or --endpoint during development and testing.
+const DEFAULT_ENDPOINT = 'https://ivybm.com'
 const DEFAULT_AUTH_DIR = process.env.IVYBM_AUTH_DIR || path.join(os.homedir(), '.ivybm')
 
 // ---------------------------------------------------------------------------
@@ -28,6 +32,30 @@ function getAuthDir(customDir) {
 
 function getAuthFilePath(authDir) {
   return path.join(authDir, 'auth.json')
+}
+
+function normalizeEndpoint(rawEndpoint) {
+  let value = String(rawEndpoint || process.env.IVYBM_ENDPOINT || DEFAULT_ENDPOINT).trim()
+  if (!/^https?:\/\//i.test(value)) {
+    const isLoopback = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(value)
+    value = `${isLoopback ? 'http' : 'https'}://${value}`
+  }
+
+  const parsed = new URL(value)
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  const isLoopback =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname.endsWith('.localhost')
+
+  if (!isLoopback && parsed.protocol !== 'https:') {
+    throw new Error(`远程服务地址必须使用 HTTPS 协议: ${parsed.origin}`)
+  }
+
+  // The human-facing dashboard may be copied from the browser address bar.
+  // API requests always start from the site's origin, never from /dashboard.
+  return parsed.origin
 }
 
 async function ensureDirectory(dir) {
@@ -61,6 +89,46 @@ function formatApiError(res, text, actionDesc) {
   return new Error(`${actionDesc} failed (${res.status}): ${detail}`)
 }
 
+function unknownWriteError(key, cause) {
+  const detail = cause instanceof Error ? `${cause.message} ` : ''
+  return new Error(`${detail}请求结果未知，请先核对后台记录；如需重试，保持相同参数并复用 --idempotency-key ${key}。不要换新键重复创建。`, { cause })
+}
+
+// A write is not confirmed until its response body has been read successfully.
+// Keep the key in scope even when the server commits before the connection drops.
+async function requestJSON(url, options, actionDesc, customDir) {
+  const isWrite = ['POST', 'PATCH', 'PUT', 'DELETE'].includes((options.method || 'GET').toUpperCase())
+  const key = isWrite
+    ? new Headers(options.headers || {}).get('Idempotency-Key') || options.idempotencyKey || generateIdempotencyKey('req')
+    : undefined
+  const res = await authenticatedFetch(url, { ...options, idempotencyKey: key }, customDir)
+  let text
+  try {
+    text = await res.text()
+  } catch (error) {
+    if (isWrite) throw unknownWriteError(key, error)
+    throw error
+  }
+  if (isWrite && (res.status >= 500 || res.status === 408)) {
+    throw unknownWriteError(key, formatApiError(res, text, actionDesc))
+  }
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch (error) {
+    if (isWrite && res.ok) throw unknownWriteError(key, error)
+    throw formatApiError(res, text, actionDesc)
+  }
+  if (!res.ok) {
+    const error = formatApiError(res, text, actionDesc)
+    if (isWrite && ['portal-command-result-unknown', 'portal-command-processing'].includes(data?.error?.code)) {
+      throw unknownWriteError(key, error)
+    }
+    throw error
+  }
+  return data
+}
+
 /**
  * Generates an idempotency key matching /^[A-Za-z0-9][A-Za-z0-9:._-]{7,199}$/
  */
@@ -77,32 +145,30 @@ function assertValidIdempotencyKey(key) {
   }
 }
 
-function promptHidden(query) {
-  return new Promise((resolve) => {
+function promptHidden(query, input = process.stdin, output = process.stdout) {
+  if (!input.isTTY || !output.isTTY) {
+    return Promise.reject(new Error('请在交互式终端输入密码，不支持管道或重定向登录。'))
+  }
+  return new Promise((resolve, reject) => {
+    // Discard readline's echo before it reaches the terminal or its logs.
+    const muted = new Writable({ write(_chunk, _encoding, callback) { callback() } })
     const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
+      input,
+      output: muted,
+      terminal: true,
+      historySize: 0,
     })
-
-    const stdin = process.stdin
-    const onData = (char) => {
-      char = char + ''
-      switch (char) {
-        case '\n':
-        case '\r':
-        case ' ':
-          break
-        default:
-          process.stdout.write('\x1B[2K\x1B[200D' + query + '*'.repeat(rl.line.length))
-          break
-      }
-    }
-
-    stdin.on('data', onData)
-    rl.question(query, (value) => {
-      stdin.removeListener('data', onData)
+    let answered = false
+    rl.once('SIGINT', () => rl.close())
+    rl.once('close', () => {
+      muted.destroy()
+      output.write('\n')
+      if (!answered) reject(new Error('密码输入已取消。'))
+    })
+    output.write(query)
+    rl.question('', (value) => {
+      answered = true
       rl.close()
-      console.log('')
       resolve(value)
     })
   })
@@ -126,7 +192,10 @@ function promptText(query) {
 // ---------------------------------------------------------------------------
 
 async function loginInteractive({ endpoint, authDir: customDir }) {
-  const base = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '')
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error('请在交互式终端登录，不支持管道或重定向。')
+  }
+  const base = normalizeEndpoint(endpoint)
   const authDir = getAuthDir(customDir)
 
   console.log(`\n=== IVYBM Portal CLI 交互式登录 ===`)
@@ -136,7 +205,7 @@ async function loginInteractive({ endpoint, authDir: customDir }) {
   const username = await promptText('用户名: ')
   if (!username) throw new Error('用户名不能为空')
 
-  const password = await promptHidden('密码: ')
+  const password = await promptHidden('密码（输入不回显）: ')
   if (!password) throw new Error('密码不能为空')
 
   return await executeLogin({ endpoint: base, username, password, authDir })
@@ -147,19 +216,12 @@ async function loginInteractive({ endpoint, authDir: customDir }) {
  * NEVER exposed as a CLI flag with password argument.
  */
 async function executeLogin({ endpoint, username, password, authDir: customDir }) {
-  const base = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '')
+  const base = normalizeEndpoint(endpoint)
   const authDir = getAuthDir(customDir)
 
   if (!username || !password) {
     throw new Error('Username and password are required for login')
   }
-
-  try {
-    const urlObj = new URL(base)
-    if (urlObj.hostname !== 'localhost' && urlObj.hostname !== '127.0.0.1' && urlObj.protocol !== 'https:') {
-      console.warn(`[Warning] 正在使用不安全的 HTTP 协议连接远程地址 (${base})，建议在生产环境使用 HTTPS。`)
-    }
-  } catch {}
 
   const signal = AbortSignal.timeout(30_000)
   const res = await fetch(`${base}/api/users/login`, {
@@ -167,6 +229,7 @@ async function executeLogin({ endpoint, username, password, authDir: customDir }
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: username.trim(), password }),
     signal,
+    redirect: 'error',
   })
 
   if (!res.ok) {
@@ -209,7 +272,7 @@ async function executeLogin({ endpoint, username, password, authDir: customDir }
  * Programmatic token setter (used by automated pipelines or test environments).
  */
 async function setToken({ token, endpoint, authDir: customDir }) {
-  const base = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '')
+  const base = normalizeEndpoint(endpoint)
   const authDir = getAuthDir(customDir)
 
   if (!token) throw new Error('Token is required')
@@ -232,7 +295,7 @@ async function getAuthStatus(customDir) {
     return {
       authenticated: true,
       source: 'env:IVYBM_TOKEN',
-      endpoint: process.env.IVYBM_ENDPOINT || DEFAULT_ENDPOINT,
+      endpoint: normalizeEndpoint(),
     }
   }
 
@@ -248,7 +311,7 @@ async function getAuthStatus(customDir) {
   return {
     authenticated: !isExpired,
     user: auth.user,
-    endpoint: auth.endpoint,
+    endpoint: normalizeEndpoint(auth.endpoint),
     expiresAt: auth.expiresAt ? new Date(auth.expiresAt).toISOString() : null,
     expired: isExpired,
     reason: isExpired ? 'Token 已过期，请在终端执行 `runner.cjs auth login` 重新登录。' : undefined,
@@ -268,7 +331,7 @@ async function getValidAuth(customDir) {
   const envToken = process.env.IVYBM_TOKEN
   if (envToken) {
     return {
-      endpoint: process.env.IVYBM_ENDPOINT || DEFAULT_ENDPOINT,
+      endpoint: normalizeEndpoint(),
       token: envToken,
     }
   }
@@ -283,7 +346,7 @@ async function getValidAuth(customDir) {
     throw new Error('会话 Token 已过期。请在终端运行 `runner.cjs auth login` 重新登录。')
   }
 
-  return auth
+  return { ...auth, endpoint: normalizeEndpoint(auth.endpoint) }
 }
 
 /**
@@ -296,9 +359,10 @@ async function authenticatedFetch(pathOrUrl, options = {}, customDir) {
   const auth = await getValidAuth(authDir)
 
   let targetUrl
+  const endpoint = normalizeEndpoint(auth.endpoint)
   if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
     const parsedTarget = new URL(pathOrUrl)
-    const expectedOrigin = new URL(auth.endpoint).origin
+    const expectedOrigin = new URL(endpoint).origin
     if (parsedTarget.origin !== expectedOrigin) {
       throw new Error(
         `Security Error: Cross-origin request to "${parsedTarget.origin}" is blocked. Requests may only target "${expectedOrigin}".`
@@ -309,7 +373,7 @@ async function authenticatedFetch(pathOrUrl, options = {}, customDir) {
     if (!pathOrUrl.startsWith('/api/')) {
       throw new Error(`Path must start with "/api/". Got: "${pathOrUrl}"`)
     }
-    targetUrl = `${auth.endpoint}${pathOrUrl}`
+    targetUrl = `${endpoint}${pathOrUrl}`
   }
 
   const headers = new Headers(options.headers || {})
@@ -322,10 +386,20 @@ async function authenticatedFetch(pathOrUrl, options = {}, customDir) {
       assertValidIdempotencyKey(explicitKey)
       headers.set('Idempotency-Key', explicitKey)
     }
+    assertValidIdempotencyKey(headers.get('Idempotency-Key'))
   }
 
   const signal = options.signal || AbortSignal.timeout(30_000)
-  const res = await fetch(targetUrl, { ...options, headers, signal })
+  let res
+  try {
+    res = await fetch(targetUrl, { ...options, headers, signal, redirect: 'error' })
+  } catch (error) {
+    if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
+      const key = headers.get('Idempotency-Key')
+      throw unknownWriteError(key, error)
+    }
+    throw error
+  }
 
   if (res.status === 401) {
     throw new Error('认证失败 (401 Unauthorized)。登录凭证已失效或权限不足，请在终端运行 `runner.cjs auth login`。')
@@ -377,18 +451,11 @@ async function uploadMedia({ filePath, alt, source, isPublic = false, idempotenc
   formData.append('source', source || 'codex-agent')
   formData.append('isPublic', isPublic ? 'true' : 'false')
 
-  const res = await authenticatedFetch('/api/portal/media', {
+  return requestJSON('/api/portal/media', {
     method: 'POST',
     body: formData,
     idempotencyKey,
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, 'Media upload')
-  }
-
-  return await res.json()
+  }, 'Media upload', customDir)
 }
 
 // ---------------------------------------------------------------------------
@@ -396,16 +463,9 @@ async function uploadMedia({ filePath, alt, source, isPublic = false, idempotenc
 // ---------------------------------------------------------------------------
 
 async function getContentOptions({ type, customDir }) {
-  const res = await authenticatedFetch(`/api/portal/content/${type}`, {
+  return requestJSON(`/api/portal/content/${type}`, {
     method: 'GET',
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, `Get options for ${type}`)
-  }
-
-  return await res.json()
+  }, `Get options for ${type}`, customDir)
 }
 
 async function getContent({ type, id, locale = 'en', customDir }) {
@@ -413,16 +473,9 @@ async function getContent({ type, id, locale = 'en', customDir }) {
   if (locale) params.set('locale', locale)
 
   const query = `?${params.toString()}`
-  const res = await authenticatedFetch(`/api/portal/content/${type}/${id}${query}`, {
+  return requestJSON(`/api/portal/content/${type}/${id}${query}`, {
     method: 'GET',
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, `Get ${type} #${id}`)
-  }
-
-  return await res.json()
+  }, `Get ${type} #${id}`, customDir)
 }
 
 async function upsertContent({ type, id, payload, idempotencyKey, customDir }) {
@@ -440,19 +493,12 @@ async function upsertContent({ type, id, payload, idempotencyKey, customDir }) {
     throw new Error(`--locale must be explicitly specified as "en" or "ar"`)
   }
 
-  const res = await authenticatedFetch(url, {
+  return requestJSON(url, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(bodyData),
     idempotencyKey,
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, `${isUpdate ? 'Update' : 'Create'} ${type}`)
-  }
-
-  return await res.json()
+  }, `${isUpdate ? 'Update' : 'Create'} ${type}`, customDir)
 }
 
 async function deleteContent({ type, id, locale, updatedAt, idempotencyKey, customDir }) {
@@ -463,19 +509,12 @@ async function deleteContent({ type, id, locale, updatedAt, idempotencyKey, cust
     throw new Error(`--locale (en or ar) is required to delete content #${id}`)
   }
 
-  const res = await authenticatedFetch(`/api/portal/content/${type}/${id}`, {
+  return requestJSON(`/api/portal/content/${type}/${id}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ locale, updatedAt }),
     idempotencyKey,
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, `Delete ${type} #${id}`)
-  }
-
-  return await res.json()
+  }, `Delete ${type} #${id}`, customDir)
 }
 
 // ---------------------------------------------------------------------------
@@ -498,19 +537,12 @@ async function createSocialDraft({ draft, idempotencyKey, customDir }) {
     sourceReferences: draft.sourceReferences || [],
   }
 
-  const res = await authenticatedFetch('/api/portal/content-studio', {
+  return requestJSON('/api/portal/content-studio', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     idempotencyKey: key,
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, 'Create social draft')
-  }
-
-  return await res.json()
+  }, 'Create social draft', customDir)
 }
 
 async function updateSocialDraft({ id, draft, updatedAt, idempotencyKey, customDir }) {
@@ -522,19 +554,12 @@ async function updateSocialDraft({ id, draft, updatedAt, idempotencyKey, customD
     throw new Error(`--updatedAt is required when updating social draft #${id}`)
   }
 
-  const res = await authenticatedFetch(`/api/portal/content-studio/${id}`, {
+  return requestJSON(`/api/portal/content-studio/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(bodyData),
     idempotencyKey,
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, `Update social draft #${id}`)
-  }
-
-  return await res.json()
+  }, `Update social draft #${id}`, customDir)
 }
 
 async function submitSocialReview({ id, updatedAt, idempotencyKey, customDir }) {
@@ -542,19 +567,12 @@ async function submitSocialReview({ id, updatedAt, idempotencyKey, customDir }) 
     throw new Error(`--updatedAt is required when submitting social draft #${id} for review`)
   }
 
-  const res = await authenticatedFetch(`/api/portal/content-studio/${id}`, {
+  return requestJSON(`/api/portal/content-studio/${id}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'submit-review', updatedAt }),
     idempotencyKey,
-  }, customDir)
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw formatApiError(res, text, `Submit social draft #${id} for review`)
-  }
-
-  return await res.json()
+  }, `Submit social draft #${id} for review`, customDir)
 }
 
 // ---------------------------------------------------------------------------
@@ -572,11 +590,20 @@ function parseArgs(argv) {
       if (equalIdx !== -1) {
         const key = arg.slice(2, equalIdx)
         const val = arg.slice(equalIdx + 1)
-        flags[key] = val
+        if (['public', 'publish'].includes(key)) {
+          if (val !== 'true' && val !== 'false') {
+            throw new Error(`--${key} must be true or false; use --${key}=true or --${key}=false`)
+          }
+          flags[key] = val === 'true'
+        } else {
+          flags[key] = val
+        }
       } else {
         const key = arg.slice(2)
         const next = argv[i + 1]
-        if (next && !next.startsWith('-')) {
+        if (['public', 'publish'].includes(key)) {
+          flags[key] = true
+        } else if (next && !next.startsWith('-')) {
           flags[key] = next
           i++
         } else {
@@ -615,13 +642,13 @@ async function main() {
   const args = process.argv.slice(2)
   if (args.length === 0) {
     console.log(JSON.stringify({
-      version: '1.0.0',
+      version: '1.0.1-rc.2',
       description: 'IVYBM Operator Runner CLI',
       commands: [
         'auth status',
         'auth login [--endpoint <url>]',
         'auth logout',
-        'media upload <file> [--alt <alt>] [--public] [--idempotency-key <key>]',
+        'media upload <file> [--alt <alt>] [--source <source>] [--public] [--idempotency-key <key>]',
         'content options --type <products|product-categories|projects|posts|knowledge>',
         'content get --type <type> --id <id> [--locale en|ar]',
         'content upsert --type <type> [--id <id>] --file <file.json> --locale <en|ar> [--updatedAt <ts>] [--publish] [--idempotency-key <key>]',
@@ -634,12 +661,11 @@ async function main() {
     return
   }
 
-  const { flags, positionals } = parseArgs(args)
-  const [scope, action] = positionals
-  const customDir = flags['auth-dir']
-  const idempotencyKey = flags['idempotency-key']
-
   try {
+    const { flags, positionals } = parseArgs(args)
+    const [scope, action] = positionals
+    const customDir = flags['auth-dir']
+    const idempotencyKey = flags['idempotency-key']
     let result
 
     // 1. Auth commands (NO --password or --token in argv for security)
@@ -754,6 +780,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  promptHidden,
+  DEFAULT_ENDPOINT,
   executeLogin,
   setToken,
   getAuthStatus,
@@ -769,5 +797,6 @@ module.exports = {
   submitSocialReview,
   parseArgs,
   generateIdempotencyKey,
+  normalizeEndpoint,
   authenticatedFetch,
 }

@@ -12,7 +12,7 @@ describe('authentication collections', () => {
       },
       lockTime: 10 * 60 * 1000,
       maxLoginAttempts: 5,
-      tokenExpiration: 2 * 60 * 60,
+      tokenExpiration: 12 * 60 * 60,
       useSessions: true,
     })
 

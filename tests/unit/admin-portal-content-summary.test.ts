@@ -36,11 +36,11 @@ describe('Portal website content summary', () => {
         status: 'draft',
         type: 'products',
       }),
-    ).toEqual({ page: 3, q: 'Solid Aluminum', status: 'draft', type: 'products' })
+    ).toEqual({ page: 3, q: 'Solid Aluminum', sort: 'created', status: 'draft', type: 'products' })
 
     expect(
       parseContentQuery({ page: '-5', q: 'x'.repeat(120), status: 'unknown', type: 'users' }),
-    ).toEqual({ page: 1, q: 'x'.repeat(80), status: 'all', type: 'products' })
+    ).toEqual({ page: 1, q: 'x'.repeat(80), sort: 'created', status: 'all', type: 'products' })
   })
 
   it('uses access-controlled localized reads and returns metadata instead of CMS bodies', async () => {
@@ -83,6 +83,8 @@ describe('Portal website content summary', () => {
               en: { root: { children: [{ text: 'Product description' }] } },
             },
             id: 21,
+            createdAt: '2026-07-20T09:00:00.000Z',
+            publishedAt: '2026-07-22T09:00:00.000Z',
             seo: {
               description: { ar: 'وصف', en: 'Description' },
               title: { ar: 'عنوان', en: 'SEO title' },
@@ -96,6 +98,7 @@ describe('Portal website content summary', () => {
             _status: 'draft',
             hasBeenPublished: false,
             id: 22,
+            createdAt: '2026-07-21T07:00:00.000Z',
             seo: { description: { ar: null, en: null }, title: { ar: null, en: null } },
             slug: 'double-curved-panel',
             title: { ar: null, en: 'Double-curved Panel' },
@@ -230,6 +233,7 @@ describe('Portal website content summary', () => {
             editor: { status: 'available' },
             items: [
               {
+                createdAt: '2026-07-20T09:00:00.000Z',
                 id: 21,
                 localeCompleteness: { ar: 100, en: 100 },
                 localeMissing: { ar: [], en: [] },
@@ -237,12 +241,14 @@ describe('Portal website content summary', () => {
                   ar: '/ar/products/solid-aluminum-panel',
                   en: '/en/products/solid-aluminum-panel',
                 },
+                publishedAt: '2026-07-22T09:00:00.000Z',
                 slug: 'solid-aluminum-panel',
                 status: 'published',
                 title: 'Solid Aluminum Panel',
                 updatedAt: '2026-07-30T09:00:00.000Z',
               },
               {
+                createdAt: '2026-07-21T07:00:00.000Z',
                 id: 22,
                 localeCompleteness: { ar: 40, en: 67 },
                 localeMissing: {
@@ -250,6 +256,7 @@ describe('Portal website content summary', () => {
                   en: ['coverImage'],
                 },
                 previewHrefs: { ar: null, en: null },
+                publishedAt: null,
                 slug: 'draft-panel',
                 status: 'draft',
                 title: 'Draft Panel',

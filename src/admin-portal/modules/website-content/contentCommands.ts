@@ -40,7 +40,9 @@ export interface ParsedContentMutation {
 }
 
 export interface ContentCommandResult {
+  createdAt: string
   id: number | string
+  publishedAt: null | string
   slug: string
   status: ContentItemStatus
   title: string
@@ -519,7 +521,6 @@ export function parseContentMutation(
         excerpt: optionalString(input, 'excerpt', 1000),
         featuredImage: numericValue(input, 'featuredImageId'),
         internalNotes: optionalString(input, 'internalNotes', 5000),
-        publishedAt: optionalString(input, 'publishedAt', 100),
       }
       break
     }
@@ -535,7 +536,6 @@ export function parseContentMutation(
         excerpt: optionalString(input, 'excerpt', 1000),
         featuredImage: numericValue(input, 'featuredImageId'),
         internalNotes: optionalString(input, 'internalNotes', 5000),
-        publishedAt: optionalString(input, 'publishedAt', 100),
       }
       break
     }
@@ -583,7 +583,9 @@ const statusFromDocument = (type: ContentTypeId, document: LooseRecord): Content
 }
 
 const toResult = (type: ContentTypeId, document: LooseRecord): ContentCommandResult => ({
+  createdAt: typeof document.createdAt === 'string' ? document.createdAt : '',
   id: document.id as number | string,
+  publishedAt: typeof document.publishedAt === 'string' ? document.publishedAt : null,
   slug: typeof document.slug === 'string' ? document.slug : '',
   status: statusFromDocument(type, document),
   title: typeof document.title === 'string' ? document.title : '',
@@ -870,14 +872,12 @@ export async function createPortalContent({
 export async function updatePortalContent({
   id,
   input,
-  now = () => new Date(),
   payload,
   req,
   type,
 }: {
   id: number | string
   input: unknown
-  now?: () => Date
   payload: ContentCommandPayloadLike
   req: PayloadRequest
   type: ContentTypeId
@@ -914,9 +914,6 @@ export async function updatePortalContent({
   if (mutation.action === 'publish') assertPublishable(type, mutation.data)
   await assertContentMediaReferences({ data: mutation.data, payload, req, type })
 
-  if ((type === 'posts' || type === 'knowledge') && mutation.action === 'publish' && !mutation.data.publishedAt) {
-    mutation.data.publishedAt = now().toISOString()
-  }
   const update = requireMethod(payload, 'update')
   const document = await update({
     collection,
@@ -1021,9 +1018,13 @@ const editorDataFor = (type: ContentTypeId, document: LooseRecord): LooseRecord 
       const professionalSection = asRecord(document.professionalSection)
       const capabilitiesItems = Array.isArray(capabilities.items) ? capabilities.items : []
       const workflowItems = Array.isArray(capabilities.workflow) ? capabilities.workflow : []
-      const roleCardItems = Array.isArray(professionalSection.roleCards) ? professionalSection.roleCards : []
+      const roleCardItems = Array.isArray(professionalSection.roleCards)
+        ? professionalSection.roleCards
+        : []
       const faqItems = Array.isArray(professionalSection.faq) ? professionalSection.faq : []
-      const resourceItems = Array.isArray(professionalSection.resourceMatrix) ? professionalSection.resourceMatrix : []
+      const resourceItems = Array.isArray(professionalSection.resourceMatrix)
+        ? professionalSection.resourceMatrix
+        : []
 
       return {
         ...common,
@@ -1070,7 +1071,9 @@ const editorDataFor = (type: ContentTypeId, document: LooseRecord): LooseRecord 
       }
     }
     case 'products': {
-      const workflow = Array.isArray(document.engineeringWorkflow) ? document.engineeringWorkflow : []
+      const workflow = Array.isArray(document.engineeringWorkflow)
+        ? document.engineeringWorkflow
+        : []
       return {
         ...common,
         bodyText: richTextToPlainText(document.description),
@@ -1088,6 +1091,7 @@ const editorDataFor = (type: ContentTypeId, document: LooseRecord): LooseRecord 
           : [],
         internalNotes: document.internalNotes ?? '',
         shortDescription: document.shortDescription ?? '',
+        publishedAt: document.publishedAt ?? '',
         specifications: Array.isArray(document.specifications) ? document.specifications : [],
       }
     }
@@ -1110,6 +1114,7 @@ const editorDataFor = (type: ContentTypeId, document: LooseRecord): LooseRecord 
         location: document.location ?? '',
         observedFocus: document.observedFocus ?? '',
         projectSnapshot: document.projectSnapshot ?? '',
+        publishedAt: document.publishedAt ?? '',
         qualityVerification: document.qualityVerification ?? '',
         solutionFramework: document.solutionFramework ?? '',
         summary: document.summary ?? '',
@@ -1144,7 +1149,17 @@ const LOCALIZED_EDITOR_FIELDS: Record<ContentTypeId, readonly string[]> = {
   posts: ['content', 'excerpt', 'title'],
   'product-categories': ['description', 'title'],
   products: ['description', 'disclaimer', 'shortDescription', 'title'],
-  projects: ['application', 'description', 'location', 'observedFocus', 'projectSnapshot', 'qualityVerification', 'solutionFramework', 'summary', 'title'],
+  projects: [
+    'application',
+    'description',
+    'location',
+    'observedFocus',
+    'projectSnapshot',
+    'qualityVerification',
+    'solutionFramework',
+    'summary',
+    'title',
+  ],
 }
 
 const valueForLocale = (value: unknown, locale: ContentLocale): unknown => {

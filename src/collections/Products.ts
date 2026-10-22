@@ -8,6 +8,7 @@ import {
   publishedContentRead,
 } from '../access/content'
 import { internalNotesField } from '../fields/internalNotes'
+import { firstPublishedAtField, preserveFirstPublishedAt } from '../fields/firstPublishedAt'
 import { imageMediaFilter } from '../fields/media'
 import { preservePublicationHistory, publicationHistoryField } from '../fields/publicationHistory'
 import { seoField } from '../fields/seo'
@@ -41,6 +42,7 @@ export const Products: CollectionConfig = {
     },
     stableSlugField(),
     publicationHistoryField,
+    firstPublishedAtField,
     {
       name: 'shortDescription',
       type: 'textarea',
@@ -131,7 +133,7 @@ export const Products: CollectionConfig = {
   hooks: {
     afterChange: [revalidateContentAfterChange, writeAuditLogAfterChange],
     afterDelete: [revalidateContentAfterDelete, writeAuditLogAfterDelete],
-    beforeChange: [preservePublicationHistory],
+    beforeChange: [preservePublicationHistory, preserveFirstPublishedAt],
   },
   versions: {
     drafts: true,

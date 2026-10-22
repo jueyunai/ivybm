@@ -309,12 +309,13 @@ describe('Portal website content commands', () => {
     })
   })
 
-  it('rejects stale updates and publishes posts with a publication timestamp', async () => {
+  it('rejects stale updates and delegates first publication dates to the collection hook', async () => {
     const create = vi.fn().mockResolvedValue({ id: 1 })
     const update = vi.fn().mockResolvedValue({
       _status: 'published',
       id: 9,
       slug: 'industry-update',
+      publishedAt: '2026-07-30T10:30:00.000Z',
       title: 'Industry update',
       updatedAt: '2026-07-30T11:00:00.000Z',
     })
@@ -338,7 +339,6 @@ describe('Portal website content commands', () => {
           title: 'Industry update',
           updatedAt: '2026-07-30T09:59:59.000Z',
         },
-        now: () => new Date('2026-07-30T10:30:00.000Z'),
         payload: { create, findByID, update },
         req,
         type: 'posts',
@@ -360,22 +360,26 @@ describe('Portal website content commands', () => {
           title: 'Industry update',
           updatedAt: '2026-07-30T10:00:00.000Z',
         },
-        now: () => new Date('2026-07-30T10:30:00.000Z'),
         payload: { create, findByID, update },
         req,
         type: 'posts',
       }),
-    ).resolves.toMatchObject({ id: 9, status: 'published' })
+    ).resolves.toMatchObject({
+      id: 9,
+      publishedAt: '2026-07-30T10:30:00.000Z',
+      status: 'published',
+    })
 
     expect(update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         collection: 'posts',
-        data: expect.objectContaining({ publishedAt: '2026-07-30T10:30:00.000Z' }),
+        data: expect.objectContaining({ _status: 'published' }),
         draft: false,
         overrideAccess: false,
         req,
       }),
     )
+    expect(update.mock.calls.at(-1)?.[0].data).not.toHaveProperty('publishedAt')
   })
 
   it('unpublishes the root document instead of only creating a draft version', async () => {

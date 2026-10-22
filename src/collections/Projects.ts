@@ -8,6 +8,7 @@ import {
   publishedContentRead,
 } from '../access/content'
 import { internalNotesField } from '../fields/internalNotes'
+import { firstPublishedAtField, preserveFirstPublishedAt } from '../fields/firstPublishedAt'
 import { imageMediaFilter } from '../fields/media'
 import { preservePublicationHistory, publicationHistoryField } from '../fields/publicationHistory'
 import { seoField } from '../fields/seo'
@@ -41,6 +42,7 @@ export const Projects: CollectionConfig = {
     },
     stableSlugField(),
     publicationHistoryField,
+    firstPublishedAtField,
     {
       name: 'summary',
       type: 'textarea',
@@ -81,7 +83,8 @@ export const Projects: CollectionConfig = {
       name: 'solutionFramework',
       type: 'textarea',
       admin: {
-        description: 'Engineering solution, 3D modeling, material selection, and fabrication method',
+        description:
+          'Engineering solution, 3D modeling, material selection, and fabrication method',
       },
       localized: true,
     },
@@ -89,7 +92,8 @@ export const Projects: CollectionConfig = {
       name: 'qualityVerification',
       type: 'textarea',
       admin: {
-        description: 'Quality inspection, trial assembly, tolerance verification, and delivery results',
+        description:
+          'Quality inspection, trial assembly, tolerance verification, and delivery results',
       },
       localized: true,
     },
@@ -113,7 +117,7 @@ export const Projects: CollectionConfig = {
   hooks: {
     afterChange: [revalidateContentAfterChange, writeAuditLogAfterChange],
     afterDelete: [revalidateContentAfterDelete, writeAuditLogAfterDelete],
-    beforeChange: [preservePublicationHistory],
+    beforeChange: [preservePublicationHistory, preserveFirstPublishedAt],
   },
   versions: {
     drafts: true,

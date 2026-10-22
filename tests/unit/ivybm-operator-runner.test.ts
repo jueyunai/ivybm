@@ -1,6 +1,7 @@
 import fsp from 'fs/promises'
 import path from 'path'
 import os from 'os'
+import { PassThrough, Writable } from 'stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Import functions from the CommonJS runner
@@ -16,12 +17,25 @@ describe('IVYBM Operator Runner', () => {
 
   afterEach(async () => {
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
     try {
       await fsp.rm(testDir, { recursive: true, force: true })
     } catch {}
   })
 
   describe('CLI Argument Parsing & Idempotency Key', () => {
+    it('uses the IVYBM production origin and normalizes dashboard URLs', () => {
+      expect(runner.DEFAULT_ENDPOINT).toBe('https://ivybm.com')
+      expect(runner.normalizeEndpoint('https://ivybm.com/dashboard')).toBe('https://ivybm.com')
+      expect(runner.normalizeEndpoint('https://ivybm.com/dashboard/')).toBe('https://ivybm.com')
+      expect(runner.normalizeEndpoint('http://localhost:3000/dashboard')).toBe('http://localhost:3000')
+    })
+
+    it('rejects remote HTTP endpoints so credentials are not sent in plaintext', () => {
+      expect(() => runner.normalizeEndpoint('http://cms.example.com')).toThrow(/必须使用 HTTPS/)
+    })
+
     it('parses commands, positional arguments, and flags accurately', () => {
       const parsed = runner.parseArgs([
         'content',
@@ -45,6 +59,23 @@ describe('IVYBM Operator Runner', () => {
       })
     })
 
+    it('does not consume the media path after a boolean flag', () => {
+      expect(runner.parseArgs(['media', 'upload', '--public', '/tmp/panel image.png']))
+        .toEqual({ flags: { public: true }, positionals: ['media', 'upload', '/tmp/panel image.png'] })
+    })
+
+    it('parses explicit false without accidentally making media public or publishing', () => {
+      expect(runner.parseArgs(['media', 'upload', '/tmp/panel.png', '--public=false']))
+        .toEqual({ flags: { public: false }, positionals: ['media', 'upload', '/tmp/panel.png'] })
+      expect(runner.parseArgs(['content', 'upsert', '--publish=false']).flags.publish).toBe(false)
+      expect(runner.parseArgs(['content', 'upsert', '--publish=true']).flags.publish).toBe(true)
+    })
+
+    it('rejects ambiguous boolean values instead of treating them as true', () => {
+      expect(() => runner.parseArgs(['media', 'upload', '--public=no'])).toThrow('--public')
+      expect(() => runner.parseArgs(['content', 'upsert', '--publish='])).toThrow('--publish')
+    })
+
     it('generates valid Idempotency-Key matching backend pattern', () => {
       const key = runner.generateIdempotencyKey('test')
       expect(key).toMatch(/^[A-Za-z0-9][A-Za-z0-9:._-]{7,199}$/)
@@ -52,6 +83,38 @@ describe('IVYBM Operator Runner', () => {
   })
 
   describe('Authentication & Zero-Plaintext-Password Security', () => {
+    it('never echoes typed or pasted passwords and restores terminal mode', async () => {
+      // Emulate an interactive terminal; TERM=dumb disables readline editing.
+      vi.stubEnv('TERM', 'xterm')
+      const input = Object.assign(new PassThrough(), { isTTY: true, setRawMode: vi.fn() })
+      let transcript = ''
+      const output = Object.assign(new Writable({
+        write(chunk, _encoding, callback) { transcript += chunk.toString(); callback() },
+      }), { isTTY: true })
+      const answer = runner.promptHidden('Password: ', input, output)
+      input.write('secretX')
+      input.write('\x7f')
+      input.write(' pasted 密码\r')
+      expect(await answer).toBe('secret pasted 密码')
+      expect(transcript).toBe('Password: \n')
+      expect(input.setRawMode).toHaveBeenLastCalledWith(false)
+      input.destroy()
+      output.destroy()
+    })
+
+    it('cancels hidden input on Ctrl+C and refuses non-interactive input', async () => {
+      const input = Object.assign(new PassThrough(), { isTTY: true, setRawMode: vi.fn() })
+      const output = Object.assign(new PassThrough(), { isTTY: true })
+      const cancelled = expect(runner.promptHidden('Password: ', input, output)).rejects.toThrow('已取消')
+      input.write('\x03')
+      await cancelled
+      expect(input.setRawMode).toHaveBeenLastCalledWith(false)
+      input.isTTY = false
+      await expect(runner.promptHidden('Password: ', input, output)).rejects.toThrow('交互式终端')
+      input.destroy()
+      output.destroy()
+    })
+
     it('saves JWT token but NEVER saves password to auth.json', async () => {
       const mockUser = { id: 1, username: 'operator1', role: 'operator' }
       const mockFetch = vi.fn<typeof fetch>().mockResolvedValue(
@@ -75,6 +138,7 @@ describe('IVYBM Operator Runner', () => {
 
       expect(result.success).toBe(true)
       expect(result.user).toEqual(mockUser)
+      expect(mockFetch.mock.calls[0][1]?.redirect).toBe('error')
 
       const authFile = path.join(testDir, 'auth.json')
       const stored = JSON.parse(await fsp.readFile(authFile, 'utf-8'))
@@ -206,6 +270,87 @@ describe('IVYBM Operator Runner', () => {
 
       const headers = mockFetch.mock.calls[0][1]?.headers as Headers
       expect(headers.get('Idempotency-Key')).toBe(customKey)
+    })
+
+    it('validates an explicit header key and disables redirect following', async () => {
+      const mockFetch = vi.fn<typeof fetch>().mockResolvedValue(new Response('{}'))
+      vi.stubGlobal('fetch', mockFetch)
+      await expect(runner.authenticatedFetch('/api/portal/media', {
+        method: 'POST', headers: { 'Idempotency-Key': 'bad key' },
+      }, testDir)).rejects.toThrow('Invalid Idempotency-Key')
+      expect(mockFetch).not.toHaveBeenCalled()
+      await runner.authenticatedFetch('/api/portal/media', { method: 'GET', redirect: 'follow' }, testDir)
+      expect(mockFetch.mock.calls[0][1]?.redirect).toBe('error')
+    })
+
+    it('reports an unknown write result with its original key and reuses that key on retry', async () => {
+      const mockFetch = vi.fn<typeof fetch>()
+        .mockRejectedValueOnce(new Error('connection lost after server committed'))
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      vi.stubGlobal('fetch', mockFetch)
+      const options = { method: 'POST', body: '{}', idempotencyKey: 'retry.fixed-key-1234' }
+      await expect(runner.authenticatedFetch('/api/portal/media', options, testDir))
+        .rejects.toThrow('复用 --idempotency-key retry.fixed-key-1234')
+      await runner.authenticatedFetch('/api/portal/media', options, testDir)
+      expect(mockFetch.mock.calls.map(([, init]) => (init?.headers as Headers).get('Idempotency-Key')))
+        .toEqual(['retry.fixed-key-1234', 'retry.fixed-key-1234'])
+    })
+
+    it.each(['media', 'content-create', 'content-delete', 'draft-create', 'draft-update', 'draft-submit'])
+    ('preserves the original write key when %s returns an incomplete success body', async (operation) => {
+      const mockFetch = vi.fn<typeof fetch>().mockResolvedValue(new Response('{"result":', { status: 200 }))
+      vi.stubGlobal('fetch', mockFetch)
+      const common = { customDir: testDir, idempotencyKey: 'retry.body-key-1234' }
+      const revision = '2026-09-16T12:00:00.000Z'
+      let request
+      if (operation === 'media') {
+        const filePath = path.join(testDir, 'panel.png')
+        await fsp.writeFile(filePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+        request = runner.uploadMedia({ ...common, filePath })
+      } else if (operation === 'content-create') {
+        request = runner.upsertContent({ ...common, type: 'products', payload: { locale: 'en', title: 'Panel' } })
+      } else if (operation === 'content-delete') {
+        request = runner.deleteContent({ ...common, type: 'products', id: 15, locale: 'en', updatedAt: revision })
+      } else if (operation === 'draft-create') {
+        request = runner.createSocialDraft({ ...common, draft: { title: 'Panel', body: 'Facts', platform: 'linkedin' } })
+      } else if (operation === 'draft-update') {
+        request = runner.updateSocialDraft({ ...common, id: 88, updatedAt: revision, draft: { title: 'Panel' } })
+      } else {
+        request = runner.submitSocialReview({ ...common, id: 88, updatedAt: revision })
+      }
+      await expect(request).rejects.toThrow('结果未知')
+      await expect(request).rejects.toThrow('复用 --idempotency-key retry.body-key-1234')
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('preserves an automatically generated key when the response stream disconnects', async () => {
+      const body = new ReadableStream({ start(controller) { controller.error(new Error('connection lost')) } })
+      const mockFetch = vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 201 }))
+      vi.stubGlobal('fetch', mockFetch)
+      const request = runner.upsertContent({ type: 'products', payload: { locale: 'en' }, customDir: testDir })
+      await expect(request).rejects.toThrow('结果未知')
+      const key = (mockFetch.mock.calls[0][1]?.headers as Headers).get('Idempotency-Key')
+      expect(key).toMatch(/^[A-Za-z0-9][A-Za-z0-9:._-]{7,199}$/)
+      await expect(request).rejects.toThrow(`复用 --idempotency-key ${key}`)
+    })
+
+    it.each([408, 500, 502, 503])('does not present HTTP %s as a confirmed failed write', async (status) => {
+      const mockFetch = vi.fn<typeof fetch>().mockResolvedValue(new Response('Gateway failure', { status }))
+      vi.stubGlobal('fetch', mockFetch)
+      await expect(runner.upsertContent({
+        type: 'products', payload: { locale: 'en' }, customDir: testDir, idempotencyKey: 'retry.gateway-key-1234',
+      })).rejects.toThrow('复用 --idempotency-key retry.gateway-key-1234')
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
+    it.each(['portal-command-result-unknown', 'portal-command-processing'])
+    ('distinguishes %s from a stale revision conflict', async (code) => {
+      vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+        error: { code, message: 'Check current data.' },
+      }), { status: 409 })))
+      await expect(runner.upsertContent({
+        type: 'products', payload: { locale: 'en' }, customDir: testDir, idempotencyKey: 'retry.receipt-key-1234',
+      })).rejects.toThrow('复用 --idempotency-key retry.receipt-key-1234')
     })
 
     it('maps 401 Unauthorized to a clear error message instructing to re-login', async () => {
@@ -367,6 +512,9 @@ describe('IVYBM Operator Runner', () => {
       })
 
       expect(res.result.id).toBe(101)
+      expect((mockFetch.mock.calls[0][1]?.body as FormData).get('isPublic')).toBe('true')
+      await runner.uploadMedia({ filePath: tempImage, customDir: testDir })
+      expect((mockFetch.mock.calls[1][1]?.body as FormData).get('isPublic')).toBe('false')
       const headers = mockFetch.mock.calls[0][1]?.headers as Headers
       expect(headers.get('Idempotency-Key')).toBeTruthy()
       expect(headers.get('Authorization')).toBe('JWT valid-token')
@@ -457,10 +605,12 @@ describe('IVYBM Operator Runner', () => {
           return Promise.resolve(
             new Response(
               JSON.stringify({
-                id: 88,
-                title: 'Updated Title',
-                status: 'draft',
-                updatedAt: '2026-09-16T12:10:00.000Z',
+                content: {
+                  id: 88,
+                  title: 'Updated Title',
+                  status: 'draft',
+                  updatedAt: '2026-09-16T12:10:00.000Z',
+                },
               }),
               { status: 200, headers: { 'Content-Type': 'application/json' } },
             ),
@@ -493,12 +643,12 @@ describe('IVYBM Operator Runner', () => {
       // 2. Successful update
       const updateRes = await runner.updateSocialDraft({
         id: 88,
-        draft: { title: 'Updated' },
+        draft: { title: 'Updated', body: 'Facts', platform: 'linkedin', contentType: 'post', contentLocale: 'en', assets: [] },
         updatedAt: '2026-09-16T12:00:00.000Z',
         customDir: testDir,
       })
-      expect(updateRes.id).toBe(88)
-      expect(updateRes.updatedAt).toBe('2026-09-16T12:10:00.000Z')
+      expect(updateRes.content.id).toBe(88)
+      expect(updateRes.content.updatedAt).toBe('2026-09-16T12:10:00.000Z')
 
       // 3. 409 Conflict formatted error
       await expect(

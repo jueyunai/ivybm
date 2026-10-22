@@ -28,10 +28,12 @@ const renderEditor = (type: 'downloads' | 'pages' | 'products' = 'pages') =>
   )
 
 const unpublishedProject: ContentSummaryItem = {
+  createdAt: '2026-08-01T09:00:00.000Z',
   id: 41,
   localeCompleteness: { ar: 100, en: 100 },
   localeMissing: { ar: [], en: [] },
   previewHrefs: { ar: null, en: null },
+  publishedAt: '2026-08-02T09:00:00.000Z',
   slug: 'shunde-gymnasium',
   status: 'unpublished',
   title: 'Shunde Gymnasium',
@@ -112,6 +114,27 @@ describe('Portal website content editor', () => {
     expect(document.activeElement).toBe(title)
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
     expect(screen.getByRole('alert').textContent).toBe('请先补全必填项，再发布内容。')
+  })
+
+  it('keeps unsaved content and the current page when saving is rejected by an expired session', async () => {
+    const fetcher = vi.mocked(fetch)
+      .mockResolvedValueOnce(Response.json({ options: { categories: [], media: [] } }))
+      .mockResolvedValueOnce(Response.json({ error: { code: 'content-unauthenticated' } }, { status: 401 }))
+    renderEditor()
+
+    const title = (await screen.findByLabelText('标题')) as HTMLInputElement
+    const slug = screen.getByLabelText('固定链接标识') as HTMLInputElement
+    fireEvent.change(title, { target: { value: '编辑中的案例内容' } })
+    fireEvent.change(slug, { target: { value: 'unsaved-case' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存草稿' }))
+
+    expect((await screen.findByRole('alert')).textContent).toBe('登录状态已失效，请重新登录。')
+    expect(title.value).toBe('编辑中的案例内容')
+    expect(slug.value).toBe('unsaved-case')
+    expect(screen.getByLabelText('标题')).toBe(title)
+    expect(navigation.refresh).not.toHaveBeenCalled()
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect((screen.getByRole('button', { name: '保存草稿' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it.each([

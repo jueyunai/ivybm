@@ -2198,7 +2198,7 @@
     color: var(--portal-muted);
     font-size: 12px;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
   }
 
   .portal-content__filters {
@@ -2232,6 +2232,10 @@
 
   .portal-content__status-filter .portal-ui-select {
     width: 140px;
+  }
+
+  .portal-content__sort-filter .portal-ui-select {
+    width: 160px;
   }
 
   .portal-content__filter-actions {

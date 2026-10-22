@@ -267,6 +267,7 @@ export interface PortalWebsiteContentMessages {
   arabic: string
   completenessComplete: string
   completenessMissing: string
+  createdAt: string
   collections: Record<
     'downloads' | 'knowledge' | 'pages' | 'posts' | 'product-categories' | 'products' | 'projects',
     string
@@ -292,6 +293,7 @@ export interface PortalWebsiteContentMessages {
   previewArabic: string
   previewEnglish: string
   previousPage: string
+  publishedAt: string
   readErrorDescription: string
   readErrorTitle: string
   resetFilters: string
@@ -300,6 +302,8 @@ export interface PortalWebsiteContentMessages {
   searchSubmit: string
   selectedItem: string
   slug: string
+  sortLabel: string
+  sortModes: Record<'created' | 'updated' | 'website', string>
   status: string
   statuses: Record<
     'active' | 'always-visible' | 'draft' | 'inactive' | 'published' | 'unpublished',
@@ -307,6 +311,7 @@ export interface PortalWebsiteContentMessages {
   >
   title: string
   total: string
+  updatedAt: string
 }
 
 export interface PortalMediaMessages {

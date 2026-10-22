@@ -40,6 +40,23 @@ export type ContentStatusFilter = (typeof CONTENT_STATUS_FILTERS)[number]
 export type ContentItemStatus =
   'active' | 'always-visible' | 'draft' | 'inactive' | 'published' | 'unpublished'
 export type ContentLocale = 'ar' | 'en'
+export const CONTENT_SORT_MODES = ['created', 'updated', 'website'] as const
+export type ContentSortMode = (typeof CONTENT_SORT_MODES)[number]
+
+export const supportsWebsiteSort = (type: ContentTypeId): boolean =>
+  ['products', 'projects', 'posts', 'knowledge'].includes(type)
+
+const normalizeSort = (type: ContentTypeId, value: string | undefined): ContentSortMode =>
+  CONTENT_SORT_MODES.includes(value as ContentSortMode) &&
+  (value !== 'website' || supportsWebsiteSort(type))
+    ? (value as ContentSortMode)
+    : 'created'
+
+const sortFields: Record<ContentSortMode, string[]> = {
+  created: ['-createdAt', '-id'],
+  updated: ['-updatedAt', '-id'],
+  website: ['-publishedAt', '-id'],
+}
 
 export const isPortalContentType = (value: string | undefined): value is ContentTypeId =>
   PORTAL_CONTENT_TYPE_IDS.includes(value as (typeof PORTAL_CONTENT_TYPE_IDS)[number])
@@ -47,15 +64,18 @@ export const isPortalContentType = (value: string | undefined): value is Content
 export interface ContentQuery {
   page: number
   q: string
+  sort?: ContentSortMode
   status: ContentStatusFilter
   type: ContentTypeId
 }
 
 export interface ContentSummaryItem {
+  createdAt: string
   id: number | string
   localeCompleteness: Record<ContentLocale, number>
   localeMissing: Record<ContentLocale, string[]>
   previewHrefs: Record<ContentLocale, null | string>
+  publishedAt: null | string
   slug: string
   status: ContentItemStatus
   title: string
@@ -97,6 +117,7 @@ interface ContentProjection {
   category?: unknown
   content?: unknown
   contentType?: unknown
+  createdAt: string
   coverImage?: unknown
   description?: unknown
   excerpt?: unknown
@@ -108,6 +129,7 @@ interface ContentProjection {
   id: number | string
   isActive?: boolean | null
   location?: unknown
+  publishedAt?: null | string
   seo?: {
     canonical?: unknown
     description?: unknown
@@ -156,14 +178,20 @@ export function parseContentQuery(
   const pageValue = Number.parseInt(firstValue(input.page) ?? '1', 10)
 
   const requestedType = typeValue as ContentTypeId | undefined
+  const type = isPortalContentType(requestedType) ? requestedType : 'products'
+  const sort = normalizeSort(type, firstValue(input.sort))
 
   return {
     page: Number.isSafeInteger(pageValue) && pageValue > 0 ? pageValue : 1,
     q: (firstValue(input.q) ?? '').trim().slice(0, 80),
-    status: CONTENT_STATUS_FILTERS.includes(statusValue as ContentStatusFilter)
-      ? (statusValue as ContentStatusFilter)
-      : 'all',
-    type: isPortalContentType(requestedType) ? requestedType : 'products',
+    sort,
+    status:
+      sort === 'website'
+        ? 'published'
+        : CONTENT_STATUS_FILTERS.includes(statusValue as ContentStatusFilter)
+          ? (statusValue as ContentStatusFilter)
+          : 'all',
+    type,
   }
 }
 
@@ -221,6 +249,7 @@ const buildWhere = (query: ContentQuery): Where => {
 
 const selectionFor = (type: ContentTypeId) => {
   const common = {
+    createdAt: true,
     id: true,
     seo: { description: true, ogImage: true, title: true },
     slug: true,
@@ -249,6 +278,7 @@ const selectionFor = (type: ContentTypeId) => {
         description: true,
         gallery: true,
         hasBeenPublished: true,
+        publishedAt: true,
         shortDescription: true,
       } as const
     case 'product-categories':
@@ -263,6 +293,7 @@ const selectionFor = (type: ContentTypeId) => {
         gallery: true,
         hasBeenPublished: true,
         location: true,
+        publishedAt: true,
         summary: true,
       } as const
     case 'knowledge':
@@ -290,6 +321,7 @@ const selectionFor = (type: ContentTypeId) => {
 }
 
 const findContent = async ({
+  draft = true,
   fallbackLocale,
   limit,
   locale,
@@ -298,10 +330,11 @@ const findContent = async ({
   payload,
   req,
   select,
-  sort = '-updatedAt',
+  sort = ['-updatedAt', '-id'],
   type,
   where,
 }: {
+  draft?: boolean
   fallbackLocale: false
   limit: number
   locale: 'all' | 'ar' | 'en'
@@ -310,7 +343,7 @@ const findContent = async ({
   payload: Payload
   req: PayloadRequest
   select: Record<string, unknown>
-  sort?: string
+  sort?: string | string[]
   type: ContentTypeId
   where?: Where
 }): Promise<ContentFindResult> => {
@@ -332,13 +365,13 @@ const findContent = async ({
     case 'pages':
       return (await payload.find({
         collection: 'pages',
-        draft: true,
+        draft,
         ...options,
       })) as ContentFindResult
     case 'products':
       return (await payload.find({
         collection: 'products',
-        draft: true,
+        draft,
         ...options,
       })) as ContentFindResult
     case 'product-categories':
@@ -349,14 +382,14 @@ const findContent = async ({
     case 'projects':
       return (await payload.find({
         collection: 'projects',
-        draft: true,
+        draft,
         ...options,
       })) as ContentFindResult
     case 'knowledge':
     case 'posts':
       return (await payload.find({
         collection: 'posts',
-        draft: true,
+        draft,
         ...options,
       })) as ContentFindResult
     case 'downloads':
@@ -476,9 +509,10 @@ const localizedProjection = (
   document: ContentProjection,
   locale: ContentLocale,
 ): ContentProjection => {
-  const seo = document.seo && typeof document.seo === 'object'
-    ? document.seo as Record<string, unknown>
-    : undefined
+  const seo =
+    document.seo && typeof document.seo === 'object'
+      ? (document.seo as Record<string, unknown>)
+      : undefined
 
   return {
     ...document,
@@ -520,7 +554,8 @@ const imageReferencesFor = (
       document.gallery.forEach((value, index) => addReference(`gallery.${index}`, value))
     }
   }
-  if (type === 'posts' || type === 'knowledge') addReference('featuredImage', document.featuredImage)
+  if (type === 'posts' || type === 'knowledge')
+    addReference('featuredImage', document.featuredImage)
   if (type === 'downloads') addReference('coverImage', document.coverImage)
   addReference('seo.ogImage', document.seo?.ogImage)
 
@@ -572,9 +607,11 @@ const previewHrefFor = (
   downloadHref?: string,
 ): null | string => {
   if (type === 'product-categories') {
-    return status === 'always-visible' ? `/${locale}/products?category=${encodeURIComponent(slug)}` : null
+    return status === 'always-visible'
+      ? `/${locale}/products?category=${encodeURIComponent(slug)}`
+      : null
   }
-  if (type === 'downloads') return status === 'active' ? downloadHref ?? null : null
+  if (type === 'downloads') return status === 'active' ? (downloadHref ?? null) : null
   if (status !== 'published') return null
   if (type === 'pages') return slug === 'home' ? `/${locale}` : `/${locale}/${slug}`
   if (type === 'products') return `/${locale}/products/${slug}`
@@ -635,7 +672,13 @@ export async function getContentSummary({
   query: ContentQuery
   req: PayloadRequest
 }): Promise<ContentSummary> {
-  const normalizedQuery = { ...query, status: normalizedStatus(query.type, query.status) }
+  const sort = normalizeSort(query.type, query.sort)
+  const normalizedQuery = {
+    ...query,
+    sort,
+    status:
+      sort === 'website' ? ('published' as const) : normalizedStatus(query.type, query.status),
+  }
 
   try {
     const collectionResults = await Promise.all(
@@ -662,6 +705,7 @@ export async function getContentSummary({
     )
 
     const localized = await findContent({
+      draft: sort !== 'website',
       fallbackLocale: false,
       limit: PAGE_SIZE,
       locale: 'all',
@@ -669,6 +713,7 @@ export async function getContentSummary({
       payload,
       req,
       select: selectionFor(normalizedQuery.type),
+      sort: sortFields[sort],
       type: normalizedQuery.type,
       where: buildWhere(normalizedQuery),
     })
@@ -797,6 +842,7 @@ export async function getContentSummary({
           ? publicMediaURLById.get(relationId(document.file) ?? '')
           : undefined
       return {
+        createdAt: document.createdAt,
         id: document.id,
         localeCompleteness: {
           ar: arabicCompleteness.percent,
@@ -810,6 +856,7 @@ export async function getContentSummary({
           ar: previewHrefFor(normalizedQuery.type, slug, status, 'ar', downloadHref),
           en: previewHrefFor(normalizedQuery.type, slug, status, 'en', downloadHref),
         },
+        publishedAt: document.publishedAt ?? null,
         slug,
         status,
         title: englishDocument.title?.trim() || arabicDocument.title?.trim() || slug,

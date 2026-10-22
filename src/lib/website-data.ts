@@ -16,10 +16,7 @@ export type GetPostsOptions = {
 }
 
 export const getSiteSettings = cache(
-  async (
-    locale: Locale,
-    options: { fallbackLocale?: false | 'en' } = {},
-  ): Promise<SiteSetting> => {
+  async (locale: Locale, options: { fallbackLocale?: false | 'en' } = {}): Promise<SiteSetting> => {
     const payload = await getPayloadClient()
 
     return payload.findGlobal({
@@ -67,7 +64,7 @@ export const getProductCategories = cache(
       limit: 100,
       locale,
       overrideAccess: false,
-      sort: 'sortOrder',
+      sort: ['sortOrder', 'id'],
     })
 
     return result.docs
@@ -75,10 +72,7 @@ export const getProductCategories = cache(
 )
 
 export const getProducts = cache(
-  async (
-    locale: Locale,
-    options: { fallbackLocale?: false | 'en' } = {},
-  ): Promise<Product[]> => {
+  async (locale: Locale, options: { fallbackLocale?: false | 'en' } = {}): Promise<Product[]> => {
     const payload = await getPayloadClient()
     const result = await payload.find({
       collection: 'products',
@@ -88,7 +82,7 @@ export const getProducts = cache(
       limit: 100,
       locale,
       overrideAccess: false,
-      sort: 'title',
+      sort: ['-publishedAt', '-id'],
     })
 
     return result.docs
@@ -118,10 +112,7 @@ export const getProductBySlug = cache(
 )
 
 export const getProjects = cache(
-  async (
-    locale: Locale,
-    options: { fallbackLocale?: false | 'en' } = {},
-  ): Promise<Project[]> => {
+  async (locale: Locale, options: { fallbackLocale?: false | 'en' } = {}): Promise<Project[]> => {
     const payload = await getPayloadClient()
     const result = await payload.find({
       collection: 'projects',
@@ -131,7 +122,7 @@ export const getProjects = cache(
       limit: 100,
       locale,
       overrideAccess: false,
-      sort: '-createdAt',
+      sort: ['-publishedAt', '-id'],
     })
 
     return result.docs
@@ -175,7 +166,7 @@ export const getPosts = cache(
       limit: options.limit ?? 100,
       locale,
       overrideAccess: false,
-      sort: '-publishedAt',
+      sort: ['-publishedAt', '-id'],
       where,
     })
 
