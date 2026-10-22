@@ -2,6 +2,7 @@
 
 import { type ReactNode, useCallback, useRef, useState } from 'react'
 
+import { PortalSessionKeeper } from '@/admin-portal/core/auth/PortalSessionKeeper'
 import type { PortalUser } from '@/admin-portal/core/auth/types'
 import { getPortalMessages } from '@/admin-portal/core/i18n/getPortalMessages'
 import type { PortalAvailabilityResolution } from '@/admin-portal/core/modules/resolvePortalAvailability'
@@ -66,7 +67,10 @@ function PortalShellFrame({ availability, children, environment, user }: PortalS
           onLocaleToggle={toggleLocale}
           onOpenNavigation={() => setMobileOpen(true)}
         />
-        <div className="portal-main__body">{children}</div>
+        <div className="portal-main__body">
+          <PortalSessionKeeper locale={locale} />
+          {children}
+        </div>
       </div>
       <PortalMobileNav
         locale={locale}
